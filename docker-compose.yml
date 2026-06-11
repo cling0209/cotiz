@@ -1,0 +1,84 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - cotiz
+
+  app:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    volumes:
+      - .:/var/www/html
+    env_file:
+      - .env
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8082
+      APP_TIMEZONE: America/Santiago
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: cotiz
+      DB_USERNAME: cotiz
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      ADMIN_OTP_ENABLED: "false"
+      L5_SWAGGER_GENERATE_ALWAYS: "false"
+      PRODUCT_IMAGE_BASE_URL: https://www.romulo.cl/allproducts/imagenes/productos
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - cotiz
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: cotiz
+      POSTGRES_USER: cotiz
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cotiz -d cotiz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cotiz
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - cotiz
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8027:8025"
+      - "1027:1025"
+    networks:
+      - cotiz
+
+volumes:
+  postgres_data:
+
+networks:
+  cotiz:
+    driver: bridge

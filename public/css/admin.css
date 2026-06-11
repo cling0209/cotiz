@@ -1,0 +1,93 @@
+.admin-body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #f1f5f9;
+    min-height: 100vh;
+}
+
+.admin-navbar {
+    background: #0f172a;
+}
+
+.nav-link-admin {
+    color: rgba(255, 255, 255, 0.75);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.nav-link-admin:hover,
+.nav-link-admin.active {
+    color: #fff;
+}
+
+.admin-main {
+    min-height: calc(100vh - 56px);
+}
+
+.admin-card {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.admin-table thead th {
+    background: #f8fafc;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    border-bottom-width: 1px;
+}
+
+.admin-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    background: #e2e8f0;
+}
+
+.product-image--admin-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 0.5rem;
+}
+
+.product-image--admin-thumb .product-image__img,
+.product-image--admin-thumb.is-loaded .product-image__img {
+    border-radius: 0.5rem;
+}
+
+.product-image--admin-preview {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.admin-login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+}
+
+.admin-login-card {
+    width: 100%;
+    max-width: 420px;
+    border: none;
+    border-radius: 1rem;
+}
+
+.admin-image-url {
+    color: #fff;
+    background: transparent;
+    user-select: all;
+}
+
+.admin-image-url::selection {
+    color: #0f172a;
+    background: #bfdbfe;
+}

@@ -1,0 +1,436 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Rómulo API",
+        "description": "API REST tienda online con carrito, Redis y Webpay Plus (Chile)",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8081",
+            "description": "Docker local"
+        }
+    ],
+    "paths": {
+        "/api/v1/auth/register": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Registrar usuario",
+                "operationId": "b9e746d77661fb8df55d0ac63e1ece77",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Iniciar sesión",
+                "operationId": "a7997e7c1e3bfed64d4e56de82415931",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Cerrar sesión",
+                "operationId": "f6b8957b4c0b25636613a9f0512a8ba9",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Usuario actual",
+                "operationId": "37d33f0281f67d31d05b4c45eea0143b",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/cart": {
+            "get": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Obtener carrito",
+                "operationId": "2949ba84adf7767b0d9724b8cfdb4f92",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/cart/items": {
+            "post": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Agregar al carrito",
+                "operationId": "810facb5ae78d4f8e2f356e6f1ef05b1",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/cart/items/{id}": {
+            "delete": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Eliminar del carrito",
+                "operationId": "23db43e7bb24d70c755bb1f89b6ca573",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Actualizar cantidad",
+                "operationId": "c661b0359f5a5c5d80d8f005b000bfee",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/categories": {
+            "get": {
+                "tags": [
+                    "Categories"
+                ],
+                "summary": "Listar categorías",
+                "operationId": "e225c2b7eb5daf7fb16e00f4f07ff030",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/categories": {
+            "post": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Crear categoría (admin)",
+                "operationId": "023ed99ded1e70b04de9c66b47eff7b0",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/categories/{id}": {
+            "put": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Actualizar categoría",
+                "operationId": "826edf85af6fa4774e064c5dfda1aec5",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Eliminar categoría",
+                "operationId": "4ac56baea492dc2292bd09d9154f5b5e",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/locations/chile": {
+            "get": {
+                "tags": [
+                    "Locations"
+                ],
+                "summary": "Regiones y comunas de Chile",
+                "operationId": "465237c445a983ad38bac1219b74a02e",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/orders": {
+            "post": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Crear orden desde carrito",
+                "operationId": "79da0a1adcc617490783dfd61927ff56",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/orders/{uuid}": {
+            "get": {
+                "tags": [
+                    "Orders"
+                ],
+                "summary": "Detalle de orden",
+                "operationId": "c4c95a0abbe4353d5cc739b467aa50ed",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Acceso no autorizado"
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/orders": {
+            "get": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Listar órdenes (admin)",
+                "operationId": "6e35a80a3ee2256e1c667be153a31fe7",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{id}": {
+            "patch": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Actualizar orden",
+                "operationId": "ca45ff967ca5ee2f6d302321a8d62a34",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/payments/webpay/create": {
+            "post": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Iniciar pago Webpay",
+                "operationId": "8d6f698b7699029af44e2a2c1ef13708",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/webpay/commit": {
+            "post": {
+                "tags": [
+                    "Payments"
+                ],
+                "summary": "Confirmar pago Webpay",
+                "operationId": "e00cb145e6e809a4440e3dd1bcf54c62",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/products": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Listar productos",
+                "operationId": "1ce27f90dd8c39cea9520bf45d58c7c2",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/products/{slug}": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Detalle producto",
+                "operationId": "1752983014e15d384cd3812cdff6367f",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/products": {
+            "post": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Crear producto",
+                "operationId": "b9a4af40ec034b1c86ab44946b99d4fe",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{id}": {
+            "put": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Actualizar producto",
+                "operationId": "1ec440c6066e0138762fd890fde7b867",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Eliminar producto",
+                "operationId": "a02d174ffeb4e644661a1177e17d5e1a",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                },
+                "security": [
+                    {
+                        "sanctum": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "sanctum": {
+                "type": "apiKey",
+                "description": "Cookie de sesión Sanctum + CSRF",
+                "name": "X-XSRF-TOKEN",
+                "in": "header"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Auth"
+        },
+        {
+            "name": "Cart"
+        },
+        {
+            "name": "Categories"
+        },
+        {
+            "name": "Locations"
+        },
+        {
+            "name": "Orders"
+        },
+        {
+            "name": "Payments"
+        },
+        {
+            "name": "Products"
+        },
+        {
+            "name": "Admin",
+            "description": "Admin"
+        }
+    ]
+}
