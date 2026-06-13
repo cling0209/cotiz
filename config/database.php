@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Str;
 use Pdo\Mysql;
-use PDO;
 
 return [
 
@@ -103,7 +102,7 @@ return [
                 env('DB_EMULATE_PREPARES', str_contains((string) env('DB_HOST', ''), 'pooler')
                     || str_contains((string) env('DATABASE_URL', ''), '-pooler')),
                 FILTER_VALIDATE_BOOL
-            ) ? [PDO::ATTR_EMULATE_PREPARES => true] : [],
+            ) ? [\PDO::ATTR_EMULATE_PREPARES => true] : [],
         ],
 
         'sqlsrv' => [
