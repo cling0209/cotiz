@@ -274,7 +274,7 @@
                                 type="text"
                                 id="modal-buscar-input"
                                 class="form-control"
-                                placeholder="C&oacute;digo o descripci&oacute;n del producto..."
+                                placeholder="Texto del cliente, c&oacute;digo o descripci&oacute;n..."
                                 autocomplete="off"
                             >
                             <button type="button" class="btn btn-primary" id="btn-modal-buscar">
@@ -286,7 +286,7 @@
                             <input type="number" id="modal-cantidad" class="form-control form-control-sm" value="1" min="1" style="width:4.5rem">
                         </div>
                     </div>
-                    <p id="modal-buscar-estado" class="small text-muted mb-2">Escriba c&oacute;digo o descripci&oacute;n y pulse Buscar.</p>
+                    <p id="modal-buscar-estado" class="small text-muted mb-2">Escriba el texto del cliente o descripci&oacute;n y pulse Buscar.</p>
                     <div class="table-responsive cotiz-buscar-tabla-wrap">
                         <table class="table table-sm table-hover mb-0 cotiz-buscar-tabla" id="tabla-buscar-productos">
                             <thead class="table-light sticky-top">
@@ -655,8 +655,8 @@
             modalBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-3">Sin resultados.</td></tr>';
             if (modalEstado) {
                 modalEstado.textContent = meta?.q
-                    ? 'No se encontraron productos para «' + meta.q + '».'
-                    : 'Escriba código o descripción y pulse Buscar.';
+                    ? 'No se encontraron productos similares para «' + meta.q + '».'
+                    : 'Escriba el texto del cliente o descripción y pulse Buscar.';
             }
             return;
         }
@@ -732,7 +732,7 @@
         modalInput.value = '';
         renderResultados([], {});
         if (modalEstado) {
-            modalEstado.textContent = 'Escriba código o descripción y pulse Buscar.';
+            modalEstado.textContent = 'Escriba el texto del cliente o descripción y pulse Buscar.';
         }
         bsModal.show();
         setTimeout(() => {

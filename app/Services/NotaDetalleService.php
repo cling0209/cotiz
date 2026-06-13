@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class NotaDetalleService
 {
+    public function __construct(
+        protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
+    ) {}
+
     public function lineasDeNota(Nota $nota): Collection
     {
         return NotaDetalle::query()
@@ -283,50 +287,6 @@ class NotaDetalleService
         $maxLimite = max(1, (int) config('cotiz.buscar_productos_max_limite', 50));
         $limit = min(max(1, $limit), $maxLimite);
 
-        $termLower = mb_strtolower($term);
-        $likeTerm = '%'.$termLower.'%';
-        $prefixTerm = $termLower.'%';
-        $words = preg_split('/\s+/u', $termLower, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        $query = Maeprod::query()
-            ->selectRaw('maeprod.*, (
-                CASE
-                    WHEN LOWER(prod_item) = ? THEN 100
-                    WHEN prod_item ILIKE ? THEN 95
-                    WHEN prod_nombre ILIKE ? THEN 85
-                    WHEN prod_item ILIKE ? THEN 70
-                    WHEN prod_nombre ILIKE ? THEN 55
-                    ELSE 40
-                END
-            ) AS relevancia', [
-                $termLower,
-                $prefixTerm,
-                $prefixTerm,
-                $likeTerm,
-                $likeTerm,
-            ])
-            ->where(function ($q) use ($likeTerm, $words) {
-                $q->where('prod_nombre', 'ilike', $likeTerm)
-                    ->orWhere('prod_item', 'ilike', $likeTerm);
-
-                if (count($words) > 1) {
-                    $q->orWhere(function ($sub) use ($words) {
-                        foreach ($words as $word) {
-                            $sub->where('prod_nombre', 'ilike', '%'.$word.'%');
-                        }
-                    });
-                }
-            });
-
-        if ($familia) {
-            $query->where('prod_familia', trim($familia));
-        }
-
-        return $query
-            ->orderByDesc('relevancia')
-            ->orderBy('prod_valor')
-            ->orderBy('prod_nombre')
-            ->limit($limit)
-            ->get();
+        return $this->busquedaSimilitud->buscar($term, $familia, $limit);
     }
 }
