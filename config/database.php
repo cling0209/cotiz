@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Str;
 use Pdo\Mysql;
+use PDO;
 
 return [
 
@@ -97,6 +98,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Neon pooler: evita "cached plan must not change result type" tras migraciones
+            'options' => extension_loaded('pdo_pgsql') && filter_var(
+                env('DB_EMULATE_PREPARES', str_contains((string) env('DB_HOST', ''), 'pooler')
+                    || str_contains((string) env('DATABASE_URL', ''), '-pooler')),
+                FILTER_VALIDATE_BOOL
+            ) ? [PDO::ATTR_EMULATE_PREPARES => true] : [],
         ],
 
         'sqlsrv' => [
