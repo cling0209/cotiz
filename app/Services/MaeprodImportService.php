@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Maeprod;
+use App\Support\MaeprodImportError;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -120,38 +121,76 @@ class MaeprodImportService
     }
 
     /**
-     * @return array{created: int, updated: int, skipped: int, errors: list<string>}
+     * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
+     */
+    public function emptyResult(): array
+    {
+        return [
+            'created' => 0,
+            'updated' => 0,
+            'skipped' => 0,
+            'errors' => [],
+        ];
+    }
+
+    /**
+     * @param  list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>  $errors
+     */
+    public function errorsCsvDownloadResponse(array $errors): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($errors) {
+            $handle = fopen('php://output', 'w');
+            if ($handle === false) {
+                return;
+            }
+
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, ['fila', 'codigo', 'nombre', 'familia', 'error', 'detalle'], ';');
+
+            foreach ($errors as $error) {
+                fputcsv($handle, [
+                    $error['fila'] ?? '',
+                    $error['codigo'] ?? '',
+                    $error['nombre'] ?? '',
+                    $error['familia'] ?? '',
+                    $error['mensaje'] ?? '',
+                    $error['detalle'] ?? '',
+                ], ';');
+            }
+
+            fclose($handle);
+        }, 'errores_importacion_maeprod_'.now()->format('Y-m-d_His').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
     public function importFromUploadedFile(UploadedFile $file, ?string $usuarioUpd = null): array
     {
         $rows = $this->parseCsv($file);
 
         if ($rows === []) {
-            return [
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'errors' => ['El archivo no contiene filas de datos.'],
-            ];
+            return array_merge($this->emptyResult(), [
+                'errors' => [MaeprodImportError::general('El archivo no contiene filas de datos.')],
+            ]);
         }
 
         return $this->importRows($rows, $usuarioUpd);
     }
 
     /**
-     * @return array{created: int, updated: int, skipped: int, errors: list<string>}
+     * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
     public function importFromPath(string $path, ?string $usuarioUpd = null): array
     {
         $rows = $this->parseCsvFromPath($path);
 
         if ($rows === []) {
-            return [
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'errors' => ['El archivo no contiene filas de datos.'],
-            ];
+            return array_merge($this->emptyResult(), [
+                'errors' => [MaeprodImportError::general('El archivo no contiene filas de datos.')],
+            ]);
         }
 
         return $this->importRows($rows, $usuarioUpd);
@@ -159,16 +198,11 @@ class MaeprodImportService
 
     /**
      * @param  list<array<string, string>>  $rows
-     * @return array{created: int, updated: int, skipped: int, errors: list<string>}
+     * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
     public function importRows(array $rows, ?string $usuarioUpd = null): array
     {
-        $result = [
-            'created' => 0,
-            'updated' => 0,
-            'skipped' => 0,
-            'errors' => [],
-        ];
+        $result = $this->emptyResult();
 
         $pending = [];
 
@@ -178,9 +212,7 @@ class MaeprodImportService
 
             $validation = $this->validateRow($row, $fila);
             if ($validation !== null) {
-                if (count($result['errors']) < self::MAX_ERRORS) {
-                    $result['errors'][] = $validation;
-                }
+                $this->pushError($result, $validation);
                 $result['skipped']++;
 
                 continue;
@@ -219,8 +251,10 @@ class MaeprodImportService
             $unique[$item] = $row;
         }
 
-        if ($duplicates > 0 && count($result['errors']) < self::MAX_ERRORS) {
-            $result['errors'][] = "{$duplicates} fila(s) duplicada(s) en el CSV; se usó la última ocurrencia de cada código.";
+        if ($duplicates > 0) {
+            $this->pushError($result, MaeprodImportError::general(
+                "{$duplicates} fila(s) duplicada(s) en el CSV; se usó la última ocurrencia de cada código.",
+            ));
         }
 
         return array_values($unique);
@@ -273,25 +307,100 @@ class MaeprodImportService
             return;
         }
 
-        DB::transaction(function () use ($upsertRows) {
-            Maeprod::query()->upsert(
-                $upsertRows,
-                ['prod_item'],
-                [
-                    'prod_nombre',
-                    'prod_familia',
-                    'prod_imagen',
-                    'prod_gramaje',
-                    'prod_item_softland',
-                    'prod_valor',
-                    'prod_valor_costo',
-                    'prod_stock_real',
-                    'prod_valor_fecha',
-                    'prod_item_softland_fecha',
-                    'prod_user_upd',
-                ],
+        try {
+            DB::transaction(function () use ($upsertRows) {
+                Maeprod::query()->upsert(
+                    $upsertRows,
+                    ['prod_item'],
+                    [
+                        'prod_nombre',
+                        'prod_familia',
+                        'prod_imagen',
+                        'prod_gramaje',
+                        'prod_item_softland',
+                        'prod_valor',
+                        'prod_valor_costo',
+                        'prod_stock_real',
+                        'prod_valor_fecha',
+                        'prod_item_softland_fecha',
+                        'prod_user_upd',
+                    ],
+                );
+            });
+        } catch (\Throwable $exception) {
+            $codigos = implode(', ', array_slice($items, 0, 5));
+            $extra = count($items) > 5 ? '…' : '';
+
+            $this->pushError($result, MaeprodImportError::general(
+                'Error al guardar un lote de productos en la base de datos.',
+                codigo: $codigos.$extra,
+            ));
+
+            $this->pushError($result, MaeprodImportError::general(
+                config('app.debug') ? $exception->getMessage() : 'Revise duplicados o datos inválidos en el lote.',
+            ));
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param  array{created: int, updated: int, skipped: int, errors: list<array<string, mixed>>}  $result
+     * @param  array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}  $error
+     */
+    private function pushError(array &$result, array $error): void
+    {
+        if (count($result['errors']) < self::MAX_ERRORS) {
+            $result['errors'][] = $error;
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $row
+     * @return array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}|null
+     */
+    private function validateRow(array $row, int $fila): ?array
+    {
+        if (trim((string) ($row['prod_item'] ?? '')) === '') {
+            return MaeprodImportError::row($fila, $row, 'Falta código.');
+        }
+
+        if (trim((string) ($row['prod_nombre'] ?? '')) === '') {
+            return MaeprodImportError::row($fila, $row, 'Falta nombre.');
+        }
+
+        if (trim((string) ($row['prod_familia'] ?? '')) === '') {
+            return MaeprodImportError::row($fila, $row, 'Falta familia.');
+        }
+
+        if (! is_numeric($row['prod_valor'] ?? null)) {
+            return MaeprodImportError::row(
+                $fila,
+                $row,
+                'Precio inválido.',
+                'valor: '.($row['prod_valor'] ?? ''),
             );
-        });
+        }
+
+        if (isset($row['prod_valor_costo']) && $row['prod_valor_costo'] !== '' && ! is_numeric($row['prod_valor_costo'])) {
+            return MaeprodImportError::row(
+                $fila,
+                $row,
+                'Costo inválido.',
+                'costo: '.$row['prod_valor_costo'],
+            );
+        }
+
+        if (isset($row['prod_stock_real']) && $row['prod_stock_real'] !== '' && ! is_numeric($row['prod_stock_real'])) {
+            return MaeprodImportError::row(
+                $fila,
+                $row,
+                'Stock inválido.',
+                'stock: '.$row['prod_stock_real'],
+            );
+        }
+
+        return null;
     }
 
     /**
@@ -329,38 +438,6 @@ class MaeprodImportService
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
-    }
-
-    /**
-     * @param  array<string, string>  $row
-     */
-    private function validateRow(array $row, int $fila): ?string
-    {
-        if (trim((string) ($row['prod_item'] ?? '')) === '') {
-            return "Fila {$fila}: falta codigo.";
-        }
-
-        if (trim((string) ($row['prod_nombre'] ?? '')) === '') {
-            return "Fila {$fila}: falta nombre.";
-        }
-
-        if (trim((string) ($row['prod_familia'] ?? '')) === '') {
-            return "Fila {$fila}: falta familia.";
-        }
-
-        if (! is_numeric($row['prod_valor'] ?? null)) {
-            return "Fila {$fila}: precio inválido.";
-        }
-
-        if (isset($row['prod_valor_costo']) && $row['prod_valor_costo'] !== '' && ! is_numeric($row['prod_valor_costo'])) {
-            return "Fila {$fila}: costo inválido.";
-        }
-
-        if (isset($row['prod_stock_real']) && $row['prod_stock_real'] !== '' && ! is_numeric($row['prod_stock_real'])) {
-            return "Fila {$fila}: stock inválido.";
-        }
-
-        return null;
     }
 
     /**

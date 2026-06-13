@@ -19,16 +19,11 @@
         </div>
     </div>
 
-    @if(session('import_errors'))
-        <div class="alert alert-warning">
-            <strong>Algunas filas no se importaron:</strong>
-            <ul class="mb-0 mt-2">
-                @foreach(session('import_errors') as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+    <x-maeprod-import-errors
+        :errors="session('import_errors', [])"
+        :total="session('import_errors_total')"
+        :download-token="session('import_errors_token')"
+    />
 
     <div class="card shadow-sm mb-3">
         <div class="card-body py-3">

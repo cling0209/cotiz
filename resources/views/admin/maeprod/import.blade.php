@@ -14,16 +14,22 @@
         </a>
     </div>
 
-    @if(session('import_errors'))
-        <div class="alert alert-warning">
-            <strong>Algunas filas no se importaron:</strong>
-            <ul class="mb-0 mt-2">
-                @foreach(session('import_errors') as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+    <div id="importLockBanner" class="alert alert-info @if(empty($activeImport)) d-none @endif">
+        <strong>Importaci&oacute;n en curso.</strong>
+        <span id="importLockMessage">
+            @if(!empty($activeImport))
+                Iniciada por <strong>{{ $activeImport['username'] }}</strong>
+                ({{ \Illuminate\Support\Carbon::parse($activeImport['started_at'])->timezone(config('app.timezone'))->format('d/m/Y H:i') }}).
+                Espere a que termine antes de iniciar otra carga.
+            @endif
+        </span>
+    </div>
+
+    <x-maeprod-import-errors
+        :errors="session('import_errors', [])"
+        :total="session('import_errors_total')"
+        :download-token="session('import_errors_token')"
+    />
 
     <div class="row g-4">
         <div class="col-lg-5">
@@ -63,9 +69,9 @@
                     <form id="importForm" enctype="multipart/form-data">
                         <div class="mb-3">
                             <label class="form-label">Archivo CSV *</label>
-                            <input type="file" id="importFile" accept=".csv,text/csv" class="form-control" required>
+                            <input type="file" id="importFile" accept=".csv,text/csv" class="form-control" required @if(!empty($activeImport)) disabled @endif>
                             <div class="form-text">
-                                Hasta 50 MB. Se sube en fragmentos de ~6 MB y se importa en el servidor en una sola pasada.
+                                Hasta 50 MB. Solo puede haber <strong>una importaci&oacute;n activa</strong> a la vez en el sistema.
                                 Si el c&oacute;digo ya existe, el producto se actualiza; si no, se crea.
                             </div>
                         </div>
@@ -82,7 +88,7 @@
 
                         <div id="importError" class="alert alert-danger d-none mb-3"></div>
 
-                        <button type="submit" id="importSubmitBtn" class="btn btn-primary">
+                        <button type="submit" id="importSubmitBtn" class="btn btn-primary" @if(!empty($activeImport)) disabled @endif>
                             <i class="bi bi-upload"></i> Importar productos
                         </button>
                     </form>
@@ -98,6 +104,7 @@
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const processImportUrl = @json(route('admin.productos.import.process', [], false));
+const importStatusUrl = @json(route('admin.productos.import.status', [], false));
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || @json(csrf_token());
 
 function importErrorMessage(payload, status) {
@@ -110,6 +117,50 @@ function importErrorMessage(payload, status) {
     }
 
     return `Error del servidor (${status}).`;
+}
+
+function setImportLocked(locked, message = '') {
+    const banner = document.getElementById('importLockBanner');
+    const messageEl = document.getElementById('importLockMessage');
+    const fileInput = document.getElementById('importFile');
+    const submitBtn = document.getElementById('importSubmitBtn');
+
+    if (locked) {
+        banner?.classList.remove('d-none');
+        if (messageEl && message) {
+            messageEl.textContent = message;
+        }
+        if (fileInput) fileInput.disabled = true;
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    banner?.classList.add('d-none');
+    if (fileInput) fileInput.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+async function refreshImportStatus() {
+    try {
+        const response = await fetch(importStatusUrl, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            return;
+        }
+
+        if (payload.active && payload.lock) {
+            const started = payload.lock.started_at ? new Date(payload.lock.started_at).toLocaleString('es-CL') : '';
+            setImportLocked(true, `Iniciada por ${payload.lock.username}${started ? ' (' + started + ')' : ''}. Espere a que termine antes de iniciar otra carga.`);
+        } else {
+            setImportLocked(false);
+        }
+    } catch (error) {
+        // ignore polling errors
+    }
 }
 
 async function processImportAll(uploadId, progressBar, progressLabel, progressPercent) {
@@ -174,11 +225,19 @@ document.getElementById('importForm').addEventListener('submit', async (event) =
         return;
     }
 
+    await refreshImportStatus();
+    if (submitBtn.disabled) {
+        errorBox.textContent = 'Hay una importación en curso. Espere a que termine.';
+        errorBox.classList.remove('d-none');
+        return;
+    }
+
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const uploadId = crypto.randomUUID();
 
     submitBtn.disabled = true;
     fileInput.disabled = true;
+    setImportLocked(true, 'Su importación está en curso. No cierre esta ventana hasta que finalice.');
     errorBox.classList.add('d-none');
     progressWrap.classList.remove('d-none');
     progressLabel.textContent = 'Subiendo archivo...';
@@ -236,10 +295,14 @@ document.getElementById('importForm').addEventListener('submit', async (event) =
             : (error.message || 'Error inesperado durante la carga.');
         errorBox.textContent = message;
         errorBox.classList.remove('d-none');
-        submitBtn.disabled = false;
-        fileInput.disabled = false;
+        await refreshImportStatus();
+        if (!submitBtn.disabled) {
+            fileInput.disabled = false;
+        }
         progressWrap.classList.add('d-none');
     }
 });
+
+refreshImportStatus();
 </script>
 @endpush

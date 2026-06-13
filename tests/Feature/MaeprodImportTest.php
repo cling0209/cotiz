@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Maeprod;
 use App\Models\User;
+use App\Services\MaeprodImportLockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -12,6 +14,12 @@ use Tests\TestCase;
 class MaeprodImportTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::forget(MaeprodImportLockService::CACHE_KEY);
+    }
 
     public function test_superadmin_can_download_import_template(): void
     {
@@ -128,6 +136,85 @@ class MaeprodImportTest extends TestCase
         ]);
 
         $this->assertSame(1, Maeprod::query()->where('prod_item', 'DUP001')->count());
+    }
+
+    public function test_second_import_is_blocked_while_first_is_active(): void
+    {
+        $admin1 = User::factory()->create([
+            'username' => 'admin1',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        $admin2 = User::factory()->create([
+            'username' => 'admin2',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        app(MaeprodImportLockService::class)->acquire(
+            $admin1->id,
+            'admin1',
+            (string) Str::uuid(),
+            'primero.csv',
+        );
+
+        $file = UploadedFile::fake()->createWithContent(
+            'productos.csv',
+            "codigo;nombre;familia;precio\nX001;PRODUCTO;PAPEL;1000\n",
+        );
+
+        $response = $this->withoutMiddleware()
+            ->actingAs($admin2)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => (string) Str::uuid(),
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'productos.csv',
+                'chunk' => $file,
+            ]);
+
+        $response->assertStatus(409);
+
+        $this->assertStringContainsString(
+            'importación en curso',
+            (string) $response->json('message'),
+        );
+    }
+
+    public function test_import_reports_row_details_for_validation_errors(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $csv = "codigo;nombre;familia;precio\nBAD001;PRODUCTO MAL;PAPEL;no-es-numero\n";
+        $uploadId = (string) Str::uuid();
+        $file = UploadedFile::fake()->createWithContent('productos.csv', $csv);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'productos.csv',
+                'chunk' => $file,
+            ])
+            ->assertOk();
+
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $uploadId,
+            ]);
+
+        $processResponse->assertOk()->assertJson(['finished' => true]);
+
+        $errors = session('import_errors');
+        $this->assertIsArray($errors);
+        $this->assertNotEmpty($errors);
+        $this->assertSame('BAD001', $errors[0]['codigo']);
+        $this->assertSame('PRODUCTO MAL', $errors[0]['nombre']);
+        $this->assertStringContainsString('Precio inválido', $errors[0]['mensaje']);
     }
 
     public function test_ejecutivo_cannot_access_bulk_import(): void

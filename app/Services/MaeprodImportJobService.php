@@ -188,18 +188,38 @@ class MaeprodImportJobService
      */
     public function processAllBatches(string $uploadId, int $userId): array
     {
-        $progress = [
-            'finished' => false,
-            'processed_batches' => 0,
-            'total_batches' => 0,
-            'result' => $this->emptyResult(),
-        ];
+        $lock = app(MaeprodImportLockService::class);
 
-        while (! $progress['finished']) {
-            $progress = $this->processNextBatch($uploadId, $userId);
+        if ($lock->isBlockedFor($uploadId)) {
+            $current = $lock->current();
+            $started = $current
+                ? \Illuminate\Support\Carbon::parse($current['started_at'])->timezone(config('app.timezone'))->format('d/m/Y H:i')
+                : '';
+
+            throw new \InvalidArgumentException(
+                "Hay una importación en curso iniciada por {$current['username']} el {$started}.",
+            );
         }
 
-        return $progress;
+        try {
+            $lock->touch($uploadId);
+
+            $progress = [
+                'finished' => false,
+                'processed_batches' => 0,
+                'total_batches' => 0,
+                'result' => $this->emptyResult(),
+            ];
+
+            while (! $progress['finished']) {
+                $lock->touch($uploadId);
+                $progress = $this->processNextBatch($uploadId, $userId);
+            }
+
+            return $progress;
+        } finally {
+            $lock->release($uploadId);
+        }
     }
 
     /**
@@ -289,12 +309,7 @@ class MaeprodImportJobService
      */
     protected function emptyResult(): array
     {
-        return [
-            'created' => 0,
-            'updated' => 0,
-            'skipped' => 0,
-            'errors' => [],
-        ];
+        return app(MaeprodImportService::class)->emptyResult();
     }
 
     protected function assertValidUploadId(string $uploadId): void

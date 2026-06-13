@@ -7,7 +7,9 @@ use App\Models\Maeprod;
 use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
 use App\Services\MaeprodImportJobService;
+use App\Services\MaeprodImportLockService;
 use App\Services\MaeprodImportService;
+use App\Support\MaeprodImportError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,9 +87,30 @@ class MaeprodController extends Controller
             ->with('success', 'Producto actualizado.');
     }
 
-    public function importForm(): View
+    public function importForm(MaeprodImportLockService $importLock): View
     {
-        return view('admin.maeprod.import');
+        return view('admin.maeprod.import', [
+            'activeImport' => $importLock->current(),
+        ]);
+    }
+
+    public function importStatus(MaeprodImportLockService $importLock): JsonResponse
+    {
+        $current = $importLock->current();
+
+        return response()->json([
+            'active' => $current !== null,
+            'lock' => $current,
+        ]);
+    }
+
+    public function downloadImportErrors(string $token): StreamedResponse
+    {
+        $errors = MaeprodImportError::readStored($token);
+
+        abort_if($errors === [], 404);
+
+        return $this->importService->errorsCsvDownloadResponse($errors);
     }
 
     public function downloadImportTemplate(): StreamedResponse
@@ -127,9 +150,14 @@ class MaeprodController extends Controller
                 $request->user()->username,
             );
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(
+                ['message' => $e->getMessage()],
+                $this->importConflictStatus($e),
+            );
         } catch (\Throwable $e) {
             report($e);
+
+            app(MaeprodImportLockService::class)->release($data['upload_id']);
 
             return response()->json([
                 'message' => config('app.debug')
@@ -165,9 +193,14 @@ class MaeprodController extends Controller
                 (int) $request->user()->id,
             );
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return response()->json(
+                ['message' => $e->getMessage()],
+                $this->importConflictStatus($e),
+            );
         } catch (\Throwable $e) {
             report($e);
+
+            app(MaeprodImportLockService::class)->release($data['upload_id']);
 
             return response()->json([
                 'message' => config('app.debug')
@@ -190,7 +223,7 @@ class MaeprodController extends Controller
     }
 
     /**
-     * @param  array{created: int, updated: int, skipped: int, errors: list<string>}  $result
+     * @param  array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}  $result
      */
     protected function flashImportResultAndGetRedirectUrl(array $result): string
     {
@@ -204,9 +237,17 @@ class MaeprodController extends Controller
             $parts[] = $result['updated'].' actualizado(s)';
         }
 
+        $errorsToken = MaeprodImportError::storeForDownload($result['errors']);
+        $displayErrors = array_slice($result['errors'], 0, 50);
+
         if ($parts === []) {
             session()->flash('error', 'No se importó ningún producto.');
-            session()->flash('import_errors', array_slice($result['errors'], 0, 20));
+            session()->flash('import_errors', $displayErrors);
+            session()->flash('import_errors_total', count($result['errors']));
+
+            if ($errorsToken !== null) {
+                session()->flash('import_errors_token', $errorsToken);
+            }
 
             return route('admin.productos.import');
         }
@@ -218,13 +259,23 @@ class MaeprodController extends Controller
         }
 
         if ($result['errors'] !== []) {
-            session()->flash('import_errors', array_slice($result['errors'], 0, 20));
+            session()->flash('import_errors', $displayErrors);
+            session()->flash('import_errors_total', count($result['errors']));
 
-            if (count($result['errors']) > 20) {
-                session()->flash('error', 'Algunas filas fallaron. Se muestran los primeros 20 errores.');
+            if ($errorsToken !== null) {
+                session()->flash('import_errors_token', $errorsToken);
+            }
+
+            if (count($result['errors']) > 50) {
+                session()->flash('error', 'Algunas filas fallaron. Se muestran las primeras 50.');
             }
         }
 
         return route('admin.productos.index');
+    }
+
+    protected function importConflictStatus(\InvalidArgumentException $exception): int
+    {
+        return str_contains($exception->getMessage(), 'importación en curso') ? 409 : 422;
     }
 }

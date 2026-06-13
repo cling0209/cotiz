@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\MaeprodImportService;
+use App\Support\MaeprodImportError;
 use Illuminate\Console\Command;
 
 class ImportMaeprodCommand extends Command
@@ -53,7 +54,7 @@ class ImportMaeprodCommand extends Command
             $this->warn('Errores ('.count($result['errors']).'):');
 
             foreach (array_slice($result['errors'], 0, 20) as $error) {
-                $this->line(' - '.$error);
+                $this->line(' - '.MaeprodImportError::summary($error));
             }
 
             if (count($result['errors']) > 20) {

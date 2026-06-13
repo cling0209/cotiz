@@ -41,6 +41,17 @@ class MaeprodChunkUploadService
             throw new \InvalidArgumentException('El archivo completo supera el tamaño máximo permitido.');
         }
 
+        if ($chunkIndex === 0) {
+            app(MaeprodImportLockService::class)->acquire(
+                $userId,
+                $username,
+                $uploadId,
+                $originalName,
+            );
+        } else {
+            app(MaeprodImportLockService::class)->touch($uploadId);
+        }
+
         $dir = $this->uploadDirectory($uploadId);
         File::ensureDirectoryExists($dir);
 
