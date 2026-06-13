@@ -212,6 +212,22 @@ class MaeprodImportService
     }
 
     /**
+     * @param  array<string, string|null>  $columnMapping
+     * @return array{
+     *     rows: list<array<string, mixed>>,
+     *     summary: array{crear: int, actualizar: int, error: int},
+     *     total_rows: int,
+     *     preview_limit: int
+     * }
+     */
+    public function previewFromContent(string $content, array $columnMapping, int $limit = 10): array
+    {
+        $rows = $this->parseCsvText($content);
+
+        return $this->previewRows($rows, $columnMapping, $limit);
+    }
+
+    /**
      * @param  list<array<string, string>>  $rows
      * @param  array<string, string|null>|null  $columnMapping
      * @return array{

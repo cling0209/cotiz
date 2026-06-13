@@ -21,6 +21,29 @@ class MaeprodImportJobService
         string $originalName,
         ?array $columnMapping = null,
     ): array {
+        $content = app(MaeprodImportService::class)->readPathAsUtf8($mergedPath);
+
+        return $this->prepareFromCsvContent(
+            $uploadId,
+            $content,
+            $userId,
+            $username,
+            $originalName,
+            $columnMapping,
+        );
+    }
+
+    /**
+     * @return array{upload_id: string, batch_count: int}
+     */
+    public function prepareFromCsvContent(
+        string $uploadId,
+        string $content,
+        int $userId,
+        string $username,
+        string $originalName,
+        ?array $columnMapping = null,
+    ): array {
         $this->assertValidUploadId($uploadId);
         $jobDir = $this->jobDirectory($uploadId);
 
@@ -31,7 +54,6 @@ class MaeprodImportJobService
         File::ensureDirectoryExists($jobDir);
 
         $importService = app(MaeprodImportService::class);
-        $content = $importService->readPathAsUtf8($mergedPath);
         $rows = $importService->parseCsvText($content);
 
         if ($rows === []) {

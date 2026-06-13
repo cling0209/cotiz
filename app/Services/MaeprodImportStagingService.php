@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 class MaeprodImportStagingService
 {
+    public const MAX_AGE_HOURS = 24;
+
     /**
      * @return array{upload_id: string, columns: list<string>, total_rows: int, suggested_mapping: array<string, string>}
      */
@@ -33,17 +35,17 @@ class MaeprodImportStagingService
             fn (string $header) => $header !== '_csv_line',
         ));
 
-        File::ensureDirectoryExists($this->stagingDirectory());
-        File::copy($mergedPath, $this->stagingCsvPath($uploadId));
+        MaeprodImportStaging::query()->where('upload_id', $uploadId)->delete();
 
-        File::put($this->stagingMetaPath($uploadId), json_encode([
+        MaeprodImportStaging::query()->create([
+            'upload_id' => $uploadId,
             'user_id' => $userId,
             'username' => $username,
             'original_name' => $originalName,
             'columns' => $columns,
             'total_rows' => count($rows),
-            'created_at' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR));
+            'csv_content' => $content,
+        ]);
 
         return [
             'upload_id' => $uploadId,
@@ -59,26 +61,20 @@ class MaeprodImportStagingService
      */
     public function prepareJob(string $uploadId, int $userId, array $mapping): array
     {
-        $meta = $this->readMeta($uploadId);
+        $staging = $this->findStaging($uploadId);
 
-        if ((int) $meta['user_id'] !== $userId) {
+        if ((int) $staging->user_id !== $userId) {
             throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
         }
 
         MaeprodImportColumnMapping::validate($mapping);
 
-        $csvPath = $this->stagingCsvPath($uploadId);
-
-        if (! File::exists($csvPath)) {
-            throw new \InvalidArgumentException('El archivo temporal expiró. Vuelva a subir el CSV.');
-        }
-
-        $prepared = app(MaeprodImportJobService::class)->prepareFromMergedCsv(
+        $prepared = app(MaeprodImportJobService::class)->prepareFromCsvContent(
             $uploadId,
-            $csvPath,
+            $staging->csv_content,
             $userId,
-            $meta['username'],
-            $meta['original_name'],
+            $staging->username,
+            $staging->original_name,
             $mapping,
         );
 
@@ -98,72 +94,45 @@ class MaeprodImportStagingService
      */
     public function preview(string $uploadId, int $userId, array $mapping, int $limit = 10): array
     {
-        $meta = $this->readMeta($uploadId);
+        $staging = $this->findStaging($uploadId);
 
-        if ((int) $meta['user_id'] !== $userId) {
+        if ((int) $staging->user_id !== $userId) {
             throw new \InvalidArgumentException('No autorizado para previsualizar esta importación.');
         }
 
         MaeprodImportColumnMapping::validate($mapping);
 
-        $csvPath = $this->stagingCsvPath($uploadId);
-
-        if (! File::exists($csvPath)) {
-            throw new \InvalidArgumentException('El archivo temporal expiró. Vuelva a subir el CSV.');
-        }
-
-        return app(MaeprodImportService::class)->previewFromPath($csvPath, $mapping, $limit);
-    }
-
-    /**
-     * @return array{user_id: int, username: string, original_name: string, columns: list<string>, total_rows: int, created_at: string}
-     */
-    public function readMeta(string $uploadId): array
-    {
-        $this->assertValidUploadId($uploadId);
-
-        $metaPath = $this->stagingMetaPath($uploadId);
-
-        if (! File::exists($metaPath)) {
-            throw new \InvalidArgumentException('No se encontró la carga temporal. Vuelva a subir el archivo.');
-        }
-
-        $meta = json_decode(File::get($metaPath), true, flags: JSON_THROW_ON_ERROR);
-
-        if (! is_array($meta) || ! isset($meta['user_id'], $meta['username'], $meta['original_name'], $meta['columns'])) {
-            throw new \InvalidArgumentException('Metadatos de carga temporal inválidos.');
-        }
-
-        return $meta;
+        return app(MaeprodImportService::class)->previewFromContent(
+            $staging->csv_content,
+            $mapping,
+            $limit,
+        );
     }
 
     public function cleanup(string $uploadId): void
     {
-        $csv = $this->stagingCsvPath($uploadId);
-        $meta = $this->stagingMetaPath($uploadId);
+        MaeprodImportStaging::query()->where('upload_id', $uploadId)->delete();
+    }
 
-        if (File::exists($csv)) {
-            File::delete($csv);
+    protected function findStaging(string $uploadId): MaeprodImportStaging
+    {
+        $this->assertValidUploadId($uploadId);
+        $this->purgeExpired();
+
+        $staging = MaeprodImportStaging::query()->find($uploadId);
+
+        if ($staging === null) {
+            throw new \InvalidArgumentException('No se encontró la carga temporal. Vuelva a subir el archivo.');
         }
 
-        if (File::exists($meta)) {
-            File::delete($meta);
-        }
+        return $staging;
     }
 
-    protected function stagingDirectory(): string
+    protected function purgeExpired(): void
     {
-        return storage_path('app/imports/staging');
-    }
-
-    protected function stagingCsvPath(string $uploadId): string
-    {
-        return $this->stagingDirectory().'/'.$uploadId.'.csv';
-    }
-
-    protected function stagingMetaPath(string $uploadId): string
-    {
-        return $this->stagingDirectory().'/'.$uploadId.'.json';
+        MaeprodImportStaging::query()
+            ->where('created_at', '<', now()->subHours(self::MAX_AGE_HOURS))
+            ->delete();
     }
 
     protected function assertValidUploadId(string $uploadId): void
