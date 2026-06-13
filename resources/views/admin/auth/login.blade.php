@@ -6,10 +6,15 @@
 <div class="admin-login-wrap">
     <div class="card admin-login-card shadow">
         <div class="card-body p-4 p-md-5">
-            <h1 class="h4 fw-bold mb-1">{{ config('app.name', 'Cotiz') }}</h1>
-            <p class="text-muted mb-4">Sistema de cotizaciones Romulo</p>
+            <div class="admin-login-brand">
+                <span class="admin-login-icon" aria-hidden="true"><i class="bi bi-calculator"></i></span>
+                <div>
+                    <h1 class="h4 fw-bold mb-0">{{ config('app.name', 'Cotiz') }}</h1>
+                    <p class="admin-login-subtitle mb-0 small">Sistema de cotizaciones Romulo</p>
+                </div>
+            </div>
 
-            <form method="post" action="{{ route('admin.login.store') }}">
+            <form method="post" action="{{ route('admin.login.store') }}" class="mt-4">
                 @csrf
                 <div class="mb-3">
                     <label class="form-label" for="username">Usuario</label>
