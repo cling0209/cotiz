@@ -69,6 +69,44 @@ class MaeprodImportTest extends TestCase
         ]);
     }
 
+    public function test_import_mixed_batch_with_new_and_existing_rows(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'IMP003',
+            'prod_nombre' => 'EXISTENTE',
+            'prod_familia' => 'LIBR',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'prod_valor_fecha' => now()->subDay(),
+            'prod_user_upd' => 'legacy',
+        ]);
+
+        $csv = "codigo;nombre;familia;precio;costo;gramaje;softland\n";
+        $csv .= "IMP003;EXISTENTE SIN CAMBIO PRECIO;LIBR;1000;800;unidad;LIBR1135\n";
+        $csv .= "IMP004;PRODUCTO NUEVO;LIBR;365;0;unidad;LIBR1136\n";
+
+        $this->importCsvAsAdmin($admin, $csv);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'IMP003',
+            'prod_nombre' => 'EXISTENTE SIN CAMBIO PRECIO',
+            'prod_valor' => 1000,
+            'prod_user_upd' => 'legacy',
+        ]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'IMP004',
+            'prod_nombre' => 'PRODUCTO NUEVO',
+            'prod_valor' => 365,
+            'prod_user_upd' => 'admin',
+        ]);
+    }
+
     public function test_ejecutivo_cannot_access_bulk_import(): void
     {
         $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);

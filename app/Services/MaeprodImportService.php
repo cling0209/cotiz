@@ -236,7 +236,7 @@ class MaeprodImportService
                 $result['created']++;
             }
 
-            $upsertRows[] = $record;
+            $upsertRows[] = $this->normalizeUpsertRecord($record);
         }
 
         if ($upsertRows === []) {
@@ -262,6 +262,43 @@ class MaeprodImportService
                 ],
             );
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function normalizeUpsertRecord(array $record): array
+    {
+        return [
+            'prod_item' => $record['prod_item'],
+            'prod_nombre' => $record['prod_nombre'],
+            'prod_familia' => $record['prod_familia'],
+            'prod_imagen' => $record['prod_imagen'] ?? null,
+            'prod_gramaje' => $record['prod_gramaje'] ?? null,
+            'prod_item_softland' => $record['prod_item_softland'] ?? null,
+            'prod_valor' => $record['prod_valor'],
+            'prod_valor_costo' => $record['prod_valor_costo'] ?? 0,
+            'prod_stock_real' => $record['prod_stock_real'] ?? null,
+            'prod_valor_fecha' => $this->formatDateTime($record['prod_valor_fecha'] ?? null),
+            'prod_item_softland_fecha' => $this->formatDateTime($record['prod_item_softland_fecha'] ?? null),
+            'prod_user_upd' => $record['prod_user_upd'] ?? null,
+        ];
+    }
+
+    private function formatDateTime(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     /**
