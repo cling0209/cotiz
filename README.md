@@ -1,4 +1,4 @@
-# Cotiz — Sistema de cotizaciones (Reicol)
+# Cotiz — Sistema de cotizaciones (Romulo)
 
 Migración Laravel de **allproducts** (cotizaciones). Stack: Laravel 13, PHP 8.4, PostgreSQL, Blade + Bootstrap 5.
 

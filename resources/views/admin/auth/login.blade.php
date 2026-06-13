@@ -7,7 +7,7 @@
     <div class="card admin-login-card shadow">
         <div class="card-body p-4 p-md-5">
             <h1 class="h4 fw-bold mb-1">{{ config('app.name', 'Cotiz') }}</h1>
-            <p class="text-muted mb-4">Sistema de cotizaciones Reicol</p>
+            <p class="text-muted mb-4">Sistema de cotizaciones Romulo</p>
 
             <form method="post" action="{{ route('admin.login.store') }}">
                 @csrf
