@@ -321,5 +321,4 @@ if (checkoutForm) {
 if (regionSelect.value) loadComunas();
 updateCheckoutSubmitState();
 </script>
-<script src="{{ asset('js/password-toggle.js') }}" defer></script>
 @endpush

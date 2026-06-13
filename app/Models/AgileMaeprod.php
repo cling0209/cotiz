@@ -1,0 +1,30 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class AgileMaeprod extends Model
+{
+    protected $table = 'agilemaeprod';
+
+    protected $primaryKey = 'prod_item_agile';
+
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
+    public $timestamps = false;
+
+    protected $fillable = [
+        'prod_item_agile',
+        'prod_descripcion_agile',
+        'prod_item',
+    ];
+
+    public function producto(): BelongsTo
+    {
+        return $this->belongsTo(Maeprod::class, 'prod_item', 'prod_item');
+    }
+}

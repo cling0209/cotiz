@@ -7,9 +7,15 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h3 mb-0">Listado cotizaciones</h1>
         <div class="d-flex gap-2">
-            <form action="{{ route('admin.cotizaciones.create') }}" method="post">@csrf
-                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva</button>
-            </form>
+            @if($cotizacionPendienteSinNumero ?? null)
+                <a href="{{ route('admin.cotizaciones.edit', $cotizacionPendienteSinNumero->nronota) }}" class="btn btn-warning btn-sm">
+                    <i class="bi bi-exclamation-circle"></i> Completar #{{ $cotizacionPendienteSinNumero->nronota }}
+                </a>
+            @else
+                <form action="{{ route('admin.cotizaciones.create') }}" method="post">@csrf
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva</button>
+                </form>
+            @endif
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="btn btn-outline-secondary btn-sm">Retomar &uacute;ltima</a>
         </div>
     </div>
@@ -75,11 +81,15 @@
                         <th>Cotizaci&oacute;n</th>
                         <th>Usuario</th>
                         <th>Estado</th>
-                        <th></th>
+                        <th class="text-end" style="min-width:18rem">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($cotizaciones as $nota)
+                        @php
+                            $estaAceptada = strtolower(trim((string) $nota->estado)) === 'aceptada';
+                            $sinUsuario = trim((string) $nota->usuario) === '';
+                        @endphp
                         <tr>
                             <td>{{ $nota->nronota }}</td>
                             <td>{{ $nota->fecha?->format('d/m/Y') }}</td>
@@ -89,7 +99,40 @@
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->estado ?: '—' }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
+                                <div class="d-flex flex-wrap gap-1 justify-content-end">
+                                    <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
+
+                                    @if((int) $nota->enviadoapi === 0)
+                                        <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"
+                                              onsubmit="return confirm('¿Enviar cotización #{{ $nota->nronota }} a la API?');">
+                                            @csrf
+                                            @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">Enviar</button>
+                                        </form>
+                                    @endif
+
+                                    @if($puedeGestionar)
+                                        @if($sinUsuario)
+                                            <a href="{{ route('admin.cotizaciones.asignar', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Asignar</a>
+                                        @endif
+
+                                        @if(!$estaAceptada)
+                                            <form method="post" action="{{ route('admin.cotizaciones.aceptar', $nota->nronota) }}" class="d-inline"
+                                                  onsubmit="return confirm('¿Marcar cotización #{{ $nota->nronota }} como aceptada?');">
+                                                @csrf
+                                                @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
+                                                <button type="submit" class="btn btn-outline-success btn-sm">Aceptar</button>
+                                            </form>
+                                        @else
+                                            <form method="post" action="{{ route('admin.cotizaciones.no-aceptar', $nota->nronota) }}" class="d-inline"
+                                                  onsubmit="return confirm('¿Quitar estado aceptada de la cotización #{{ $nota->nronota }}?');">
+                                                @csrf
+                                                @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
+                                                <button type="submit" class="btn btn-outline-warning btn-sm">No aceptar</button>
+                                            </form>
+                                        @endif
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty
@@ -100,6 +143,18 @@
         </div>
         @if($cotizaciones->hasPages())
             <div class="card-footer">{{ $cotizaciones->links() }}</div>
+        @endif
+
+        @if($puedeGestionar)
+            <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+                <a href="{{ route('admin.cotizaciones.export.sin-codigo-softland') }}" class="btn btn-secondary btn-sm" data-no-loader
+                   title="Solo productos de cotizaciones aceptadas sin código Softland en el maestro">
+                    Descargar sin c&oacute;digo Softland
+                </a>
+                <a href="{{ route('admin.cotizaciones.export.aceptadas') }}" class="btn btn-secondary btn-sm">
+                    Descargar aceptadas
+                </a>
+            </div>
         @endif
     </div>
 </div>

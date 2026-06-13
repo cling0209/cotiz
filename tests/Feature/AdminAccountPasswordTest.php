@@ -13,9 +13,9 @@ class AdminAccountPasswordTest extends TestCase
     public function test_admin_can_change_password_with_valid_rules(): void
     {
         $admin = User::factory()->create([
-            'email' => 'admin@carro.local',
+            'correo' => 'admin@example.com',
+            'perfil' => User::PERFIL_SUPERADMIN,
             'password' => 'Admin123!Secure',
-            'role' => 'admin',
         ]);
 
         $response = $this->actingAs($admin)->put(route('admin.account.password.update'), [
@@ -31,11 +31,28 @@ class AdminAccountPasswordTest extends TestCase
         $this->assertTrue(password_verify('nueva1', $admin->password));
     }
 
+    public function test_ejecutivo_can_change_password(): void
+    {
+        $user = User::factory()->create([
+            'perfil' => User::PERFIL_EJECUTIVO,
+            'password' => 'Ejec123!Secure',
+        ]);
+
+        $response = $this->actingAs($user)->put(route('admin.account.password.update'), [
+            'current_password' => 'Ejec123!Secure',
+            'password' => 'nueva2',
+            'password_confirmation' => 'nueva2',
+        ]);
+
+        $response->assertRedirect(route('admin.account.password'));
+        $response->assertSessionHas('success');
+    }
+
     public function test_admin_password_requires_letters_and_numbers(): void
     {
         $admin = User::factory()->create([
             'password' => 'Admin123!Secure',
-            'role' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
         $response = $this->actingAs($admin)->from(route('admin.account.password'))->put(route('admin.account.password.update'), [
@@ -52,7 +69,7 @@ class AdminAccountPasswordTest extends TestCase
     {
         $admin = User::factory()->create([
             'password' => 'Admin123!Secure',
-            'role' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
         $tooLong = 'a1'.str_repeat('x', 19);

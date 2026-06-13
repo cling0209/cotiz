@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Maeprod;
+use App\Models\Product;
+
 if (! function_exists('clp')) {
     function clp(float|int|string|null $amount): string
     {
@@ -8,7 +11,18 @@ if (! function_exists('clp')) {
 }
 
 if (! function_exists('product_image')) {
-    function product_image(?\App\Models\Product $product): string
+    function product_image(?Product $product): string
+    {
+        if (! $product) {
+            return '';
+        }
+
+        return $product->resolveImageUrl();
+    }
+}
+
+if (! function_exists('maeprod_image')) {
+    function maeprod_image(?Maeprod $product): string
     {
         if (! $product) {
             return '';

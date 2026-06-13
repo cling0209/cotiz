@@ -10,7 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="{{ asset('css/admin.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/page-loader.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/page-loader.css') }}?v=calc" rel="stylesheet">
     @stack('head')
 </head>
 <body class="admin-body">
@@ -25,13 +25,33 @@
             <a href="{{ route('admin.cotizaciones.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.index') ? 'active' : '' }}">
                 <i class="bi bi-list-ul"></i> Listado
             </a>
-            <a href="{{ route('admin.cotizaciones.create') }}" class="nav-link-admin" onclick="event.preventDefault(); document.getElementById('form-nueva-cotiz').submit();">
-                <i class="bi bi-plus-circle"></i> Nueva
-            </a>
+            @if($cotizacionPendienteSinNumero ?? null)
+                <a href="{{ route('admin.cotizaciones.edit', $cotizacionPendienteSinNumero->nronota) }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.edit') && (int) request()->route('nronota') === $cotizacionPendienteSinNumero->nronota ? 'active' : '' }}" title="Complete el número de cotización antes de crear otra">
+                    <i class="bi bi-exclamation-circle"></i> Pendiente #{{ $cotizacionPendienteSinNumero->nronota }}
+                </a>
+            @else
+                <a href="{{ route('admin.cotizaciones.create') }}" class="nav-link-admin">
+                    <i class="bi bi-plus-circle"></i> Nueva
+                </a>
+            @endif
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="nav-link-admin">
                 <i class="bi bi-arrow-repeat"></i> Retomar
             </a>
+            <a href="{{ route('admin.agile.index') }}" class="nav-link-admin {{ request()->routeIs('admin.agile.*') ? 'active' : '' }}">
+                <i class="bi bi-cloud-download"></i> Recepción Agile
+            </a>
+            @if(auth()->user()->isSuperAdmin())
+                <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
+                    <i class="bi bi-box-seam"></i> Productos
+                </a>
+                <a href="{{ route('admin.users.index') }}" class="nav-link-admin {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
+                    <i class="bi bi-people"></i> Usuarios
+                </a>
+            @endif
             <span class="text-white-50 small d-none d-md-inline">{{ auth()->user()->fullName() ?: auth()->user()->username }}</span>
+            <a href="{{ route('admin.account.password') }}" class="nav-link-admin {{ request()->routeIs('admin.account.password') ? 'active' : '' }}" title="Cambiar contraseña">
+                <i class="bi bi-key"></i> Contraseña
+            </a>
             <form action="{{ route('admin.logout') }}" method="post" class="d-inline">
                 @csrf
                 <button type="submit" class="btn btn-outline-light btn-sm">Salir</button>
@@ -39,7 +59,6 @@
         </div>
     </div>
 </nav>
-<form id="form-nueva-cotiz" action="{{ route('admin.cotizaciones.create') }}" method="post" class="d-none">@csrf</form>
 @endif
 
 @if(session('success'))
@@ -58,11 +77,30 @@
         </div>
     </div>
 @endif
+@if(session('info'))
+    <div class="container-fluid mt-3">
+        <div class="alert alert-info alert-dismissible fade show mb-0">
+            {{ session('info') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+@endif
+
+@if(session('warning'))
+    <div class="container-fluid mt-3">
+        <div class="alert alert-warning alert-dismissible fade show mb-0">
+            {{ session('warning') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+@endif
 
 <main class="admin-main">@yield('content')</main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ asset('js/page-loader.js') }}" defer></script>
+<script src="{{ asset('js/page-loader.js') }}?v=exportmsg" defer></script>
+<script src="{{ asset('js/product-image.js') }}" defer></script>
+<script src="{{ asset('js/password-toggle.js') }}" defer></script>
 @stack('scripts')
 </body>
 </html>

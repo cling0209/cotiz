@@ -1,0 +1,376 @@
+.cotizacion-ingreso {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0.75rem 0 1.5rem;
+}
+
+.cotizacion-ingreso > h1 {
+    font-size: 1.15rem;
+    margin-bottom: 0.5rem;
+}
+
+.cotizacion-ingreso fieldset.cotiz-cabecera {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.35rem 0.5rem 0.5rem;
+    margin-bottom: 0.5rem;
+    background: #fff;
+}
+
+.cotizacion-ingreso #tabla_datos1 {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.cotizacion-ingreso #tabla_datos1 th:nth-child(1) { width: 11%; }
+.cotizacion-ingreso #tabla_datos1 th:nth-child(2) { width: 22%; }
+.cotizacion-ingreso #tabla_datos1 th:nth-child(3) { width: 11%; }
+.cotizacion-ingreso #tabla_datos1 th:nth-child(4) { width: 22%; }
+.cotizacion-ingreso #tabla_datos1 th:nth-child(5) { width: 11%; }
+.cotizacion-ingreso #tabla_datos1 th:nth-child(6) { width: 23%; }
+
+.cotizacion-ingreso #tabla_datos1 th,
+.cotizacion-ingreso #tabla_datos1 td {
+    padding: 2px 4px;
+    vertical-align: middle;
+    word-break: break-word;
+}
+
+.cotizacion-ingreso #tabla_datos1 th:first-child,
+.cotizacion-ingreso #tabla_datos1 td:first-child {
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+}
+
+.cotizacion-ingreso #tabla_datos1 input,
+.cotizacion-ingreso #tabla_datos1 input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+.cotizacion-ingreso #notaventa-bloque-factor {
+    margin-top: 8px;
+    padding: 8px 6px 4px;
+    border-top: 1px solid #c8c8c8;
+    font-size: 13px;
+    color: #000;
+}
+
+.cotizacion-ingreso #notaventa-bloque-factor strong,
+.cotizacion-ingreso #notaventa-bloque-factor label {
+    color: #000;
+}
+
+.cotizacion-ingreso .cotiz-agregar {
+    margin: 0.5rem 0;
+}
+
+.cotizacion-ingreso #notaventa-tabla-detalle-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 0.75rem;
+}
+
+.cotizacion-ingreso #tabla_detalle {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-bottom: 0;
+}
+
+.cotizacion-ingreso #tabla_detalle th:nth-child(1),
+.cotizacion-ingreso #tabla_detalle td:nth-child(1) { width: 42px; min-width: 42px; max-width: 42px; padding: 0.25rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(2),
+.cotizacion-ingreso #tabla_detalle td:nth-child(2) { width: 80px; min-width: 80px; max-width: 80px; overflow: hidden; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(3),
+.cotizacion-ingreso #tabla_detalle td:nth-child(3) { width: 5%; min-width: 3.5rem; word-break: break-all; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(4),
+.cotizacion-ingreso #tabla_detalle td:nth-child(4) { width: 7%; min-width: 4.5rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(5),
+.cotizacion-ingreso #tabla_detalle td:nth-child(5) { width: 7%; min-width: 4.75rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(6),
+.cotizacion-ingreso #tabla_detalle td:nth-child(6) { width: 12%; min-width: 7rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(7),
+.cotizacion-ingreso #tabla_detalle td:nth-child(7) { width: 8%; min-width: 5.75rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(8),
+.cotizacion-ingreso #tabla_detalle td:nth-child(8) { width: 8%; min-width: 5.5rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(9),
+.cotizacion-ingreso #tabla_detalle td:nth-child(9) { width: 8%; min-width: 5.5rem; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(10),
+.cotizacion-ingreso #tabla_detalle td:nth-child(10) { width: 7%; min-width: 3.25rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(11),
+.cotizacion-ingreso #tabla_detalle td:nth-child(11) { width: 6%; min-width: 4rem; text-align: right; white-space: nowrap; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(12),
+.cotizacion-ingreso #tabla_detalle td:nth-child(12) { width: 5%; min-width: 3rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(13),
+.cotizacion-ingreso #tabla_detalle td:nth-child(13) { width: 9%; min-width: 5.75rem; text-align: center; }
+
+.cotizacion-ingreso #tabla_detalle th,
+.cotizacion-ingreso #tabla_detalle td {
+    padding: 5px 6px;
+    vertical-align: middle;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.cotizacion-ingreso #tabla_detalle thead th {
+    background: #f1f3f5;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida {
+    background: #fef2f2;
+    border-left: 3px solid #dc2626;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida:hover {
+    background: #fee2e2;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida td {
+    color: #991b1b;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida .nv-fill,
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida input {
+    color: #991b1b;
+}
+
+.cotizacion-ingreso #tabla_detalle tbody tr.linea-repetida input {
+    border-color: #fca5a5;
+    background-color: #fff1f2;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-imagen-cell {
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    vertical-align: middle;
+    padding: 4px !important;
+}
+
+.cotizacion-ingreso #tabla_detalle td .imagen.product-image {
+    width: 72px;
+    height: 72px;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.cotizacion-ingreso #tabla_detalle td .imagen .product-image__img,
+.cotizacion-ingreso #tabla_detalle td .imagen.is-loaded .product-image__img {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin-left: 0;
+}
+
+.cotizacion-ingreso #tabla_detalle td .imagen .product-image__state-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.cotizacion-ingreso #tabla_detalle .nv-fill {
+    display: block;
+    word-break: break-word;
+    line-height: 1.35;
+    padding: 2px 0;
+}
+
+.cotizacion-ingreso #tabla_detalle .fecha-precio-antigua {
+    color: #c00;
+    font-weight: 600;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-drag-col,
+.cotizacion-ingreso #tabla_detalle .linea-drag-cell {
+    width: 42px;
+    min-width: 42px;
+    max-width: 42px;
+    padding: 0.25rem !important;
+    vertical-align: middle;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2.25rem;
+    color: #475569;
+    cursor: grab;
+    touch-action: none;
+    border-radius: 0.375rem;
+    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+    border: 1px solid #94a3b8;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-drag-handle:hover {
+    color: #1e293b;
+    background: linear-gradient(180deg, #fff 0%, #dbeafe 100%);
+    border-color: #64748b;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-drag-handle:active {
+    cursor: grabbing;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-drag-grip {
+    display: block;
+    fill: currentColor;
+    pointer-events: none;
+}
+
+.cotizacion-ingreso #tabla_detalle tr.linea-sortable-chosen {
+    background: #eff6ff !important;
+}
+
+.cotizacion-ingreso #tabla_detalle tr.linea-sortable-ghost {
+    opacity: 0.45;
+    background: #dbeafe !important;
+}
+
+.cotizacion-ingreso #tabla_detalle tr.linea-sortable-drag {
+    cursor: grabbing;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-orden-cell {
+    width: 4.5rem;
+    vertical-align: middle;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-orden-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-orden-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-orden-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-orden-buttons .btn {
+    line-height: 1;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.7rem;
+}
+
+.cotizacion-ingreso #tabla_detalle input {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+.cotizacion-ingreso #tabla_detalle input.nv-precio-costo-sololectura {
+    background: #f0f0f0;
+    color: #333;
+    cursor: default;
+}
+
+.cotizacion-ingreso .cotiz-campo-numero-cotiz {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.15);
+}
+
+.cotizacion-ingreso .cotiz-contenido-bloqueado {
+    opacity: 0.45;
+    pointer-events: none;
+    user-select: none;
+}
+
+.cotizacion-ingreso .cotiz-guardar-numero {
+    padding-top: 0.25rem;
+}
+
+.cotizacion-ingreso .cotiz-cabecera-factor {
+    padding-top: 0.25rem;
+}
+
+.cotizacion-ingreso fieldset.cotiz-botones {
+    border: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.cotizacion-ingreso .cotiz-panel-mp {
+    margin: 0.5rem 0 0.75rem;
+    padding: 0.65rem 0.75rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.cotizacion-ingreso .cotiz-panel-mp__texto {
+    color: #333;
+    margin: 0;
+}
+
+.cotizacion-ingreso .cotiz-panel-mp__msg {
+    color: #157347;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.cotizacion-ingreso .alert-precio-antiguo {
+    font-size: 12px;
+    margin-bottom: 0.5rem;
+}
+
+.cotiz-buscar-tabla-wrap {
+    max-height: min(420px, 55vh);
+}
+
+.cotiz-buscar-tabla .cotiz-buscar-fila {
+    cursor: pointer;
+}
+
+.cotiz-buscar-tabla .cotiz-buscar-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
+
+.cotizacion-ingreso #resultados-producto {
+    display: none !important;
+}
+
+@media (max-width: 991.98px) {
+    .cotizacion-ingreso {
+        max-width: 100%;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}

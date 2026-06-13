@@ -51,4 +51,9 @@ class Nota extends Model
     {
         return (int) $this->detalle->sum(fn (NotaDetalle $linea) => $linea->prod_valor * $linea->cantidad);
     }
+
+    public function requiereNumeroCotizacion(): bool
+    {
+        return trim((string) $this->encargado) === '';
+    }
 }

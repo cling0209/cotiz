@@ -33,7 +33,7 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        $user = User::query()->where('email', $data['email'])->first();
+        $user = User::query()->where('correo', $data['email'])->first();
 
         MailDevelopmentLogger::info('Recuperación admin solicitada', [
             'email' => $data['email'],
@@ -52,7 +52,7 @@ class PasswordResetController extends Controller
                     'email' => $data['email'],
                 ]);
 
-                Password::sendResetLink(['email' => $data['email']]);
+                Password::sendResetLink(['correo' => $data['email']]);
 
                 MailDevelopmentLogger::info('Enlace de recuperación admin procesado', [
                     'email' => $data['email'],
@@ -154,7 +154,7 @@ class PasswordResetController extends Controller
     protected function editWithLink(Request $request, ?string $token): View|RedirectResponse
     {
         $email = $request->query('email', '');
-        $user = User::query()->where('email', $email)->first();
+        $user = User::query()->where('correo', $email)->first();
 
         if (! $token || ! $user?->isAdmin()) {
             return redirect()
@@ -225,7 +225,7 @@ class PasswordResetController extends Controller
             ],
         ]);
 
-        $user = User::query()->where('email', $request->input('email'))->first();
+        $user = User::query()->where('correo', $request->input('email'))->first();
 
         if (! $user?->isAdmin()) {
             return back()->withErrors([
@@ -234,7 +234,12 @@ class PasswordResetController extends Controller
         }
 
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
+            [
+                'correo' => $request->input('email'),
+                'password' => $request->input('password'),
+                'password_confirmation' => $request->input('password_confirmation'),
+                'token' => $request->input('token'),
+            ],
             function (User $resetUser, string $password) {
                 if (! $resetUser->isAdmin()) {
                     return;

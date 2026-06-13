@@ -43,11 +43,22 @@ class NotaService
             ->first();
     }
 
+    public function pendienteSinNumeroCotizacion(string $usuario): ?Nota
+    {
+        return Nota::query()
+            ->where('usuario', $usuario)
+            ->whereRaw("trim(coalesce(encargado, '')) = ''")
+            ->orderByDesc('nronota')
+            ->first();
+    }
+
     public function modificarCabecera(Nota $nota, array $datos): Nota
     {
-        $factor = isset($datos['factor_precio_venta']) && (float) $datos['factor_precio_venta'] > 0
-            ? (float) $datos['factor_precio_venta']
-            : $nota->factor_precio_venta;
+        $factorParsed = array_key_exists('factor_precio_venta', $datos)
+            ? $this->parseFactorPrecioVenta($datos['factor_precio_venta'])
+            : null;
+
+        $factor = $factorParsed ?? round((float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta')), 2);
 
         $nota->update([
             'descripcion' => $datos['descripcion'] ?? $nota->descripcion,
@@ -64,6 +75,90 @@ class NotaService
         ]);
 
         return $nota->fresh();
+    }
+
+    public function validarNumeroCotizacion(Nota $nota, ?string $encargado = null): ?string
+    {
+        $numero = trim($encargado ?? (string) $nota->encargado);
+
+        if ($numero === '') {
+            return 'Debe ingresar el número de cotización antes de continuar.';
+        }
+
+        $existente = Nota::query()
+            ->where('nronota', '!=', $nota->nronota)
+            ->whereRaw('trim(encargado) ilike ?', [$numero])
+            ->first(['nronota', 'encargado']);
+
+        if ($existente) {
+            return sprintf(
+                'La cotización «%s» ya existe (nota #%d). No se puede duplicar.',
+                trim((string) $existente->encargado),
+                $existente->nronota,
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Factor de precio venta: positivo, máximo 2 decimales (acepta coma o punto).
+     */
+    public function aceptar(Nota $nota, string $usuario): Nota
+    {
+        $nota->update([
+            'estado' => 'aceptada',
+            'estadofecha' => now(),
+            'estadousuario' => $usuario,
+        ]);
+
+        return $nota->fresh();
+    }
+
+    public function noAceptar(Nota $nota, string $usuario): Nota
+    {
+        $nota->update([
+            'estado' => '',
+            'estadofecha' => now(),
+            'estadousuario' => $usuario,
+        ]);
+
+        return $nota->fresh();
+    }
+
+    public function asignarUsuario(Nota $nota, string $usuario): Nota
+    {
+        $nota->update(['usuario' => $usuario]);
+
+        return $nota->fresh();
+    }
+
+    public function marcarEnviadoApi(Nota $nota, int $enviado): Nota
+    {
+        $nota->update(['enviadoapi' => $enviado]);
+
+        return $nota->fresh();
+    }
+
+    public function estaAceptada(Nota $nota): bool
+    {
+        return strtolower(trim((string) $nota->estado)) === 'aceptada';
+    }
+
+    public function parseFactorPrecioVenta(mixed $valor): ?float
+    {
+        if ($valor === null) {
+            return null;
+        }
+
+        $texto = trim(str_replace(',', '.', (string) $valor));
+        if ($texto === '' || ! preg_match('/^\d+(?:\.\d{1,2})?$/', $texto)) {
+            return null;
+        }
+
+        $factor = (float) $texto;
+
+        return $factor > 0 ? round($factor, 2) : null;
     }
 
     private function siguienteNronota(): int

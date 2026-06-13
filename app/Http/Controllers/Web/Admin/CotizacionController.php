@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
 use App\Models\Nota;
+use App\Models\User;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
 use Illuminate\Http\JsonResponse;
@@ -21,10 +22,18 @@ class CotizacionController extends Controller
 
     public function create(Request $request): RedirectResponse
     {
-        $nota = $this->notaService->crear($request->user()->username);
+        $usuario = $request->user()->username;
+
+        if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+            return redirect()
+                ->route('admin.cotizaciones.edit', $pendiente->nronota)
+                ->with('error', 'Debe ingresar el número de cotización en la nota #'.$pendiente->nronota.' antes de crear una nueva.');
+        }
+
+        $nota = $this->notaService->crear($usuario);
 
         return redirect()->route('admin.cotizaciones.edit', $nota->nronota)
-            ->with('success', 'Cotización '.$nota->nronota.' creada.');
+            ->with('info', 'Ingrese el número de cotización para continuar.');
     }
 
     public function retomar(Request $request): RedirectResponse
@@ -48,11 +57,15 @@ class CotizacionController extends Controller
         }
 
         $lineas = $this->detalleService->lineasDeNota($nota);
+        $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
             'lineas' => $lineas,
             'total' => $lineas->sum(fn ($row) => $row['total']),
+            'hayPrecioAntiguo' => $hayPrecioAntiguo,
+            'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
+            'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
         ]);
     }
 
@@ -64,10 +77,50 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        $accion = $request->string('accion')->toString();
+
+        if ($accion === 'aplicar_factor') {
+            if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+                return back()->with('error', $error);
+            }
+
+            $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
+
+            if ($factor === null) {
+                return back()->withInput()->withErrors([
+                    'factor_precio_venta' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                ]);
+            }
+
+            $result = $this->detalleService->aplicarFactorPrecioVenta(
+                $nota,
+                $factor,
+                $request->user()->username,
+            );
+
+            $factorFmt = number_format($result['factor'], 2, ',', '');
+
+            return back()->with(
+                'success',
+                'Se actualizaron '.$result['ok'].' de '.$result['total'].' filas. Factor guardado ('.$factorFmt.').',
+            );
+        }
+
+        $input = $request->all();
+        if (array_key_exists('factor_precio_venta', $input) && trim((string) $input['factor_precio_venta']) !== '') {
+            $factor = $this->notaService->parseFactorPrecioVenta($input['factor_precio_venta']);
+            if ($factor === null) {
+                return back()->withInput()->withErrors([
+                    'factor_precio_venta' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                ]);
+            }
+            $request->merge(['factor_precio_venta' => $factor]);
+        }
+
         $datos = $request->validate([
             'descripcion' => ['required', 'string', 'max:500'],
             'empresa' => ['nullable', 'string', 'max:100'],
-            'encargado' => ['nullable', 'string', 'max:100'],
+            'encargado' => ['required', 'string', 'max:100'],
             'celular' => ['nullable', 'string', 'max:15'],
             'contacto' => ['nullable', 'string', 'max:100'],
             'contactocorreo' => ['nullable', 'string', 'max:60'],
@@ -76,11 +129,35 @@ class CotizacionController extends Controller
             'ocompra' => ['nullable', 'string', 'max:20'],
             'fechaentrega' => ['nullable', 'date'],
             'factor_precio_venta' => ['nullable', 'numeric', 'min:0'],
+            'lineas' => ['nullable', 'array'],
+            'lineas.*.prod_item' => ['required_with:lineas', 'string', 'max:50'],
+            'lineas.*.orden' => ['required_with:lineas', 'integer'],
+            'lineas.*.cantidad' => ['nullable', 'integer', 'min:1'],
+            'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
+            'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
+            'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
         ]);
+
+        if ($error = $this->notaService->validarNumeroCotizacion($nota, $datos['encargado'])) {
+            return back()->withInput()->withErrors(['encargado' => $error]);
+        }
+
+        $lineas = $datos['lineas'] ?? [];
+        unset($datos['lineas']);
+
+        $eraSinNumero = $nota->requiereNumeroCotizacion();
 
         $this->notaService->modificarCabecera($nota, $datos);
 
-        return back()->with('success', 'Cotización guardada.');
+        if ($lineas !== []) {
+            $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
+        }
+
+        $mensaje = $eraSinNumero
+            ? 'Número de cotización guardado. Ya puede agregar productos.'
+            : 'Cotización guardada.';
+
+        return back()->with('success', $mensaje);
     }
 
     public function agregarLinea(Request $request, int $nronota): RedirectResponse|JsonResponse
@@ -89,6 +166,10 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -131,6 +212,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'prod_item' => ['required', 'string'],
             'orden' => ['required', 'integer'],
@@ -141,12 +226,68 @@ class CotizacionController extends Controller
         return back()->with('success', 'Línea eliminada.');
     }
 
+    public function cambiarOrdenLinea(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
+        $datos = $request->validate([
+            'prod_item' => ['required', 'string', 'max:50'],
+            'orden' => ['required', 'integer', 'min:1'],
+            'direccion' => ['nullable', 'in:up,down'],
+            'orden_nuevo' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        try {
+            if (! empty($datos['direccion'])) {
+                $delta = $datos['direccion'] === 'up' ? -1 : 1;
+                $this->detalleService->moverLineaRelativo(
+                    $nota,
+                    $datos['prod_item'],
+                    (int) $datos['orden'],
+                    $delta,
+                );
+            } else {
+                if (! isset($datos['orden_nuevo'])) {
+                    return response()->json(['error' => 'Indique dirección o nuevo orden.'], 422);
+                }
+
+                $this->detalleService->cambiarOrden(
+                    $nota,
+                    $datos['prod_item'],
+                    (int) $datos['orden'],
+                    (int) $datos['orden_nuevo'],
+                );
+            }
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Grabado con éxito.',
+        ]);
+    }
+
     public function buscarProductos(Request $request): JsonResponse
     {
         $term = $request->string('q')->trim()->toString();
         $familia = $request->string('familia')->trim()->toString() ?: null;
+        $limiteConfig = (int) config('cotiz.buscar_productos_limite', 15);
+        $maxLimite = (int) config('cotiz.buscar_productos_max_limite', 50);
+        $limit = min(
+            max(1, (int) $request->input('limit', $limiteConfig)),
+            max(1, $maxLimite),
+        );
 
-        $productos = $this->detalleService->buscarProductos($term, $familia);
+        $productos = $this->detalleService->buscarProductos($term, $familia, $limit);
 
         return response()->json([
             'data' => $productos->map(fn (Maeprod $p) => [
@@ -155,8 +296,15 @@ class CotizacionController extends Controller
                 'prod_valor' => $p->prod_valor,
                 'prod_valor_costo' => $p->prod_valor_costo,
                 'prod_familia' => $p->prod_familia,
+                'prod_gramaje' => $p->prod_gramaje,
                 'image_url' => $p->imageUrl(),
             ]),
+            'meta' => [
+                'q' => $term,
+                'count' => $productos->count(),
+                'limit' => $limit,
+                'min_chars' => (int) config('cotiz.buscar_productos_min_chars', 2),
+            ],
         ]);
     }
 
@@ -164,10 +312,23 @@ class CotizacionController extends Controller
     {
         $user = $request->user();
 
-        if ($user->perfil === \App\Models\User::PERFIL_SUPERADMIN) {
+        if ($user->perfil === User::PERFIL_SUPERADMIN) {
             return true;
         }
 
         return $nota->usuario === $user->username;
+    }
+
+    private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): RedirectResponse|JsonResponse|null
+    {
+        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => $error], 422);
+            }
+
+            return back()->with('error', $error);
+        }
+
+        return null;
     }
 }

@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Notifications\AdminWelcomeNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
@@ -16,131 +16,171 @@ class UserController extends Controller
 
     public function index(Request $request): View
     {
-        $admins = User::query()
-            ->where('role', 'admin')
+        $usuarios = User::query()
+            ->whereIn('perfil', [User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])
             ->when($request->filled('q'), function ($query) use ($request) {
                 $term = '%'.$request->string('q')->trim().'%';
 
                 return $query->where(function ($q) use ($term) {
-                    $q->where('name', 'ilike', $term)
-                        ->orWhere('email', 'ilike', $term);
+                    $q->where('username', 'ilike', $term)
+                        ->orWhere('nombre', 'ilike', $term)
+                        ->orWhere('apellidop', 'ilike', $term)
+                        ->orWhere('correo', 'ilike', $term);
                 });
             })
-            ->orderBy('name')
+            ->orderBy('username')
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.users.index', compact('admins'));
+        return view('admin.users.index', compact('usuarios'));
     }
 
     public function create(): View
     {
         return view('admin.users.form', [
+            'usuario' => null,
             'passwordMaxLength' => self::PASSWORD_MAX_LENGTH,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email', 'max:255'],
-            'password' => $this->passwordRules(),
-        ], $this->passwordMessages());
+        $datos = $request->validate($this->reglasUsuario(true));
 
-        $existing = User::query()->where('email', $data['email'])->first();
-
-        if ($existing?->isAdmin()) {
-            return back()
-                ->withInput($request->except('password', 'password_confirmation'))
-                ->with('error', 'Ya existe un administrador con ese correo.');
-        }
-
-        if ($existing) {
-            $existing->update([
-                'name' => $data['name'],
-                'password' => $data['password'],
-                'role' => 'admin',
-            ]);
-
-            return $this->redirectAfterAdminSaved(
-                $existing,
-                'La cuenta existente fue promovida a administrador.'
-            );
-        }
-
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => $data['password'],
-            'role' => 'admin',
+        User::query()->create([
+            'username' => $datos['username'],
+            'nombre' => $datos['nombre'],
+            'apellidop' => $datos['apellidop'] ?? null,
+            'apellidom' => $datos['apellidom'] ?? null,
+            'correo' => $datos['correo'] ?? null,
+            'perfil' => (int) $datos['perfil'],
+            'password' => $datos['password'],
         ]);
 
-        return $this->redirectAfterAdminSaved($user, 'Administrador creado correctamente.');
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', 'Usuario creado.');
     }
 
-    public function destroy(Request $request, User $user): RedirectResponse
+    public function edit(User $usuario): View
     {
-        if (! $user->isAdmin()) {
+        $this->asegurarUsuarioPanel($usuario);
+
+        return view('admin.users.form', [
+            'usuario' => $usuario,
+            'passwordMaxLength' => self::PASSWORD_MAX_LENGTH,
+        ]);
+    }
+
+    public function update(Request $request, User $usuario): RedirectResponse
+    {
+        $this->asegurarUsuarioPanel($usuario);
+
+        $datos = $request->validate($this->reglasUsuario(false, $usuario));
+
+        $updates = [
+            'nombre' => $datos['nombre'],
+            'apellidop' => $datos['apellidop'] ?? null,
+            'apellidom' => $datos['apellidom'] ?? null,
+            'correo' => $datos['correo'] ?? null,
+            'perfil' => (int) $datos['perfil'],
+        ];
+
+        if (! empty($datos['password'])) {
+            $updates['password'] = $datos['password'];
+        }
+
+        if ($usuario->id === $request->user()->id && (int) $datos['perfil'] !== User::PERFIL_SUPERADMIN) {
+            return back()
+                ->withInput($request->except('password', 'password_confirmation'))
+                ->with('error', 'No puedes quitarte el perfil de superadministrador.');
+        }
+
+        if ($usuario->isSuperAdmin()
+            && (int) $datos['perfil'] !== User::PERFIL_SUPERADMIN
+            && $this->cantidadSuperadmins() <= 1) {
+            return back()
+                ->withInput($request->except('password', 'password_confirmation'))
+                ->with('error', 'Debe quedar al menos un superadministrador.');
+        }
+
+        $usuario->update($updates);
+
+        return redirect()
+            ->route('admin.users.edit', $usuario)
+            ->with('success', 'Usuario actualizado.');
+    }
+
+    public function destroy(Request $request, User $usuario): RedirectResponse
+    {
+        $this->asegurarUsuarioPanel($usuario);
+
+        if ($usuario->id === $request->user()->id) {
+            return redirect()
+                ->route('admin.users.index')
+                ->with('error', 'No puedes eliminar tu propia cuenta.');
+        }
+
+        if ($usuario->isSuperAdmin() && $this->cantidadSuperadmins() <= 1) {
+            return redirect()
+                ->route('admin.users.index')
+                ->with('error', 'Debe quedar al menos un superadministrador.');
+        }
+
+        $usuario->delete();
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with('success', 'Usuario eliminado.');
+    }
+
+    private function asegurarUsuarioPanel(User $usuario): void
+    {
+        if (! in_array($usuario->perfil, [User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO], true)) {
             abort(404);
         }
-
-        if ($request->user()->id === $user->id) {
-            return redirect()
-                ->route('admin.users.index')
-                ->with('error', 'No puedes eliminar tu propia cuenta de administrador.');
-        }
-
-        if (User::query()->where('role', 'admin')->count() <= 1) {
-            return redirect()
-                ->route('admin.users.index')
-                ->with('error', 'Debe quedar al menos un administrador en el sistema.');
-        }
-
-        $user->update(['role' => 'customer']);
-
-        return redirect()
-            ->route('admin.users.index')
-            ->with('success', 'El usuario ya no tiene permisos de administrador.');
     }
 
-    protected function redirectAfterAdminSaved(User $user, string $message): RedirectResponse
+    private function cantidadSuperadmins(): int
     {
-        try {
-            $user->notify(new AdminWelcomeNotification());
-            $message .= ' Se envió un correo de bienvenida al administrador.';
-        } catch (\Throwable $e) {
-            report($e);
-            $message .= ' No se pudo enviar el correo de bienvenida; revisa la configuración SMTP.';
+        return User::query()->where('perfil', User::PERFIL_SUPERADMIN)->count();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reglasUsuario(bool $esNuevo, ?User $usuario = null): array
+    {
+        $reglas = [
+            'nombre' => ['required', 'string', 'max:20'],
+            'apellidop' => ['nullable', 'string', 'max:30'],
+            'apellidom' => ['nullable', 'string', 'max:20'],
+            'correo' => ['nullable', 'email', 'max:60'],
+            'perfil' => ['required', 'integer', Rule::in([User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])],
+        ];
+
+        if ($esNuevo) {
+            $reglas['username'] = ['required', 'string', 'max:20', 'alpha_dash', 'unique:users,username'];
+            $reglas['password'] = $this->passwordRules(required: true);
+        } else {
+            $reglas['password'] = $this->passwordRules(required: false);
         }
 
-        return redirect()
-            ->route('admin.users.index')
-            ->with('success', $message);
+        return $reglas;
     }
 
     /**
      * @return array<int, mixed>
      */
-    protected function passwordRules(): array
+    private function passwordRules(bool $required): array
     {
-        return [
-            'required',
+        $rules = [
+            $required ? 'required' : 'nullable',
             'confirmed',
             'max:'.self::PASSWORD_MAX_LENGTH,
             Password::min(8)->letters()->numbers(),
         ];
-    }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function passwordMessages(): array
-    {
-        return [
-            'password.required' => 'Ingresa la contraseña.',
-            'password.confirmed' => 'La confirmación de contraseña no coincide.',
-            'password.max' => 'La contraseña no puede superar '.self::PASSWORD_MAX_LENGTH.' caracteres.',
-        ];
+        return $rules;
     }
 }

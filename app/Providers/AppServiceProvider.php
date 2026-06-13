@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Services\NotaService;
 use App\Support\MailDevelopmentLogger;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        \Illuminate\Pagination\Paginator::useBootstrapFive();
+        Paginator::useBootstrapFive();
 
         if ($this->app->environment('local')) {
             MailDevelopmentLogger::register();
@@ -30,5 +33,16 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        View::composer('layouts.admin', function ($view) {
+            $pendiente = null;
+
+            if (auth()->check()) {
+                $pendiente = app(NotaService::class)
+                    ->pendienteSinNumeroCotizacion(auth()->user()->username);
+            }
+
+            $view->with('cotizacionPendienteSinNumero', $pendiente);
+        });
     }
 }

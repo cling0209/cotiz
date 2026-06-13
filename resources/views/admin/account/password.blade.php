@@ -19,45 +19,41 @@
 
                         <div class="mb-3">
                             <label class="form-label" for="current_password">Contraseña actual *</label>
-                            <div class="input-group">
-                                <input type="password" name="current_password" id="current_password"
-                                       class="form-control @error('current_password') is-invalid @enderror"
-                                       required autocomplete="current-password"
-                                       maxlength="{{ $passwordMaxLength }}">
-                                <button type="button" class="btn btn-outline-secondary js-password-toggle"
-                                        data-target="current_password" aria-label="Mostrar contraseña">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
+                            <x-password-input
+                                name="current_password"
+                                id="current_password"
+                                required
+                                autocomplete="current-password"
+                                :maxlength="$passwordMaxLength"
+                                class="@error('current_password') is-invalid @enderror"
+                            />
                             @error('current_password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label" for="password">Nueva contraseña *</label>
-                            <div class="input-group">
-                                <input type="password" name="password" id="password"
-                                       class="form-control @error('password') is-invalid @enderror"
-                                       required autocomplete="new-password"
-                                       minlength="6" maxlength="{{ $passwordMaxLength }}">
-                                <button type="button" class="btn btn-outline-secondary js-password-toggle"
-                                        data-target="password" aria-label="Mostrar contraseña">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
+                            <x-password-input
+                                name="password"
+                                id="password"
+                                required
+                                autocomplete="new-password"
+                                minlength="6"
+                                :maxlength="$passwordMaxLength"
+                                class="@error('password') is-invalid @enderror"
+                            />
                             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
                         <div class="mb-4">
                             <label class="form-label" for="password_confirmation">Confirmar nueva contraseña *</label>
-                            <div class="input-group">
-                                <input type="password" name="password_confirmation" id="password_confirmation"
-                                       class="form-control" required autocomplete="new-password"
-                                       minlength="6" maxlength="{{ $passwordMaxLength }}">
-                                <button type="button" class="btn btn-outline-secondary js-password-toggle"
-                                        data-target="password_confirmation" aria-label="Mostrar contraseña">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
+                            <x-password-input
+                                name="password_confirmation"
+                                id="password_confirmation"
+                                required
+                                autocomplete="new-password"
+                                minlength="6"
+                                :maxlength="$passwordMaxLength"
+                            />
                         </div>
 
                         <button type="submit" class="btn btn-primary">
@@ -70,7 +66,3 @@
     </div>
 </div>
 @endsection
-
-@push('scripts')
-<script src="{{ asset('js/password-toggle.js') }}" defer></script>
-@endpush

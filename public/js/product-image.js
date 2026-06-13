@@ -21,16 +21,38 @@
         }
 
         function markError() {
+            if (img.dataset.imageFallbacks) {
+                try {
+                    var fallbacks = JSON.parse(img.dataset.imageFallbacks);
+                    var tried = img.dataset.imageFallbacksTried ? JSON.parse(img.dataset.imageFallbacksTried) : [];
+                    var next = fallbacks.find(function (url) { return tried.indexOf(url) === -1; });
+                    if (next) {
+                        tried.push(next);
+                        img.dataset.imageFallbacksTried = JSON.stringify(tried);
+                        wrap.classList.remove('is-error');
+                        wrap.classList.remove('is-loaded');
+                        img.src = next;
+                        return;
+                    }
+                } catch (e) {}
+            }
             wrap.classList.remove('is-loaded');
             wrap.classList.add('is-error');
         }
 
-        if (img.complete) {
-            if (img.naturalWidth > 0) {
-                markLoaded();
-            } else {
-                markError();
+        function checkComplete() {
+            if (img.complete) {
+                if (img.naturalWidth > 0) {
+                    markLoaded();
+                } else {
+                    markError();
+                }
+                return true;
             }
+            return false;
+        }
+
+        if (checkComplete()) {
             return;
         }
 

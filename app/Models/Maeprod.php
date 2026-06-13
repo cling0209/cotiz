@@ -32,17 +32,115 @@ class Maeprod extends Model
 
     public function imageUrl(): string
     {
-        $base = rtrim((string) config('products.image_base_url'), '/');
-        $familia = trim((string) $this->prod_familia);
-        $item = trim((string) $this->prod_item);
+        return $this->resolveImageUrl();
+    }
 
-        if ($base === '' || $familia === '' || $item === '') {
-            return (string) config('products.image_fallback_url', '');
+    public function resolveImageUrl(): string
+    {
+        return $this->buildExternalImageUrl() ?? '';
+    }
+
+    public function buildExternalImageUrl(): ?string
+    {
+        $base = rtrim((string) config('products.image_base_url'), '/');
+        $folder = $this->resolveFamiliaFolder();
+        $filename = trim((string) $this->prod_imagen);
+
+        if ($base === '' || $folder === '') {
+            return null;
         }
 
-        $pattern = config('products.image_filename_pattern', '{codigo}_medium.jpg');
-        $filename = str_replace('{codigo}', $item, $pattern);
+        if ($filename === '') {
+            $filename = $this->guessImageFilename();
+        }
 
-        return $base.'/'.trim($familia, '/').'/'.ltrim($filename, '/');
+        if ($filename === '') {
+            return null;
+        }
+
+        return $base.'/'.trim($folder, '/').'/'.ltrim($filename, '/');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function imageUrlCandidates(): array
+    {
+        $base = rtrim((string) config('products.image_base_url'), '/');
+        $folder = $this->resolveFamiliaFolder();
+
+        if ($base === '' || $folder === '') {
+            return [];
+        }
+
+        $filenames = $this->imageFilenameCandidates();
+        $urls = [];
+
+        foreach ($filenames as $filename) {
+            $urls[] = $base.'/'.trim($folder, '/').'/'.ltrim($filename, '/');
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    private function resolveFamiliaFolder(): string
+    {
+        $familia = trim((string) $this->prod_familia);
+
+        if ($familia === '') {
+            return '';
+        }
+
+        $codigo = Famprod::query()
+            ->where('codigo', $familia)
+            ->orWhere('nombre', $familia)
+            ->value('codigo');
+
+        if ($codigo) {
+            return trim((string) $codigo);
+        }
+
+        return match (mb_strtoupper($familia)) {
+            'PAPELERIA' => 'PAPEL',
+            'LIBRERIA' => 'LIBR',
+            default => $familia,
+        };
+    }
+
+    private function guessImageFilename(): string
+    {
+        $item = trim((string) $this->prod_item);
+
+        if ($item === '') {
+            return '';
+        }
+
+        return $item.'.jpg';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function imageFilenameCandidates(): array
+    {
+        $primary = trim((string) $this->prod_imagen);
+
+        if ($primary === '') {
+            $primary = $this->guessImageFilename();
+        }
+
+        if ($primary === '') {
+            return [];
+        }
+
+        $candidates = [$primary];
+
+        if (preg_match('/^(.+)_medium(\.[^.]+)$/i', $primary, $matches)) {
+            $candidates[] = $matches[1].$matches[2];
+        } elseif (preg_match('/^(.+)(\.[^.]+)$/i', $primary, $matches)) {
+            $candidates[] = $matches[1].'_medium'.$matches[2];
+        }
+
+        return array_values(array_unique($candidates));
     }
 }

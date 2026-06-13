@@ -1,0 +1,55 @@
+.agile-popup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1050;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.agile-popup-content {
+    background: #fff;
+    border-radius: 8px;
+    width: min(900px, 100%);
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.agile-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.agile-popup-body {
+    padding: 1rem;
+    max-height: calc(90vh - 60px);
+    overflow-y: auto;
+}
+
+.agile-popup-resultados table {
+    font-size: 0.875rem;
+}
+
+.agile-cabecera th {
+    width: 110px;
+}
+
+.agile-precio-actualizado {
+    animation: agile-precio-flash 1.4s ease-out;
+}
+
+@keyframes agile-precio-flash {
+    0% {
+        background-color: rgba(25, 135, 84, 0.35);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}

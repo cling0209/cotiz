@@ -12,13 +12,17 @@
 
 <div id="page-loader" aria-hidden="true" aria-live="polite" role="status">
     <div class="page-loader__scene">
-        <span class="page-loader__track" aria-hidden="true"></span>
-        <img
-            src="{{ asset('images/cart-loader.svg') }}"
-            class="page-loader__cart"
-            alt=""
-            width="88"
-            height="56"
-        >
+        @php
+            $loaderSvg = file_get_contents(public_path('images/cotiz-loader.svg'));
+            $loaderSvg = preg_replace(
+                '/<svg([^>]*)>/',
+                '<svg class="page-loader__icon"$1 aria-hidden="true">',
+                $loaderSvg,
+                1
+            );
+            $loaderSvg = preg_replace('/\s*role="img"\s*/', ' ', $loaderSvg, 1);
+            $loaderSvg = preg_replace('/\s*aria-label="[^"]*"\s*/', ' ', $loaderSvg, 1);
+        @endphp
+        {!! $loaderSvg !!}
     </div>
 </div>

@@ -53,19 +53,85 @@
         hideLoader();
     }
 
+    function isExportHref(href) {
+        return /\/(exportar|export|plantilla)(\/|\?|$)/i.test(href || '');
+    }
+
     function isDownloadLink(link) {
         if (link.dataset.noLoader !== undefined || link.hasAttribute('download')) {
             return true;
         }
 
-        const href = link.getAttribute('href') || '';
+        return isExportHref(link.getAttribute('href') || '');
+    }
 
-        return /\/(exportar|export|plantilla)(\/|\?|$)/i.test(href);
+    function parseFilename(disposition, fallback) {
+        if (!disposition) {
+            return fallback;
+        }
+
+        const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8) {
+            try {
+                return decodeURIComponent(utf8[1].trim());
+            } catch (error) {
+                return utf8[1].trim();
+            }
+        }
+
+        const plain = disposition.match(/filename="?([^";]+)"?/i);
+        return plain ? plain[1].trim() : fallback;
     }
 
     function beginNavigation() {
         markNavigationPending();
         showLoader();
+    }
+
+    async function downloadWithLoader(link) {
+        const href = link.getAttribute('href');
+        if (!href) {
+            return;
+        }
+
+        downloadUntil = 0;
+        beginNavigation();
+
+        try {
+            const res = await fetch(href, {
+                credentials: 'same-origin',
+                headers: { Accept: '*/*' },
+            });
+
+            if (!res.ok) {
+                const errorText = (await res.text()).trim();
+                throw new Error(errorText || ('HTTP ' + res.status));
+            }
+
+            const blob = await res.blob();
+            const filename = parseFilename(
+                res.headers.get('Content-Disposition'),
+                'descarga_' + Date.now()
+            );
+
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = objectUrl;
+            anchor.download = filename;
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            const message = error instanceof Error && error.message
+                ? error.message
+                : 'No se pudo completar la descarga. Intente nuevamente.';
+            alert(message);
+        } finally {
+            downloadUntil = Date.now() + 1500;
+            hideLoader();
+        }
     }
 
     window.PageLoader = { show: showLoader, hide: hideLoader };
@@ -81,6 +147,15 @@
             return;
         }
 
+        const href = link.getAttribute('href') || '';
+
+        if (isExportHref(href) && link.dataset.noLoader === undefined) {
+            event.preventDefault();
+            downloadWithLoader(link);
+
+            return;
+        }
+
         if (isDownloadLink(link)) {
             markDownloadIntent();
 
@@ -90,8 +165,6 @@
         if (link.target === '_blank') {
             return;
         }
-
-        const href = link.getAttribute('href');
 
         if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
             return;

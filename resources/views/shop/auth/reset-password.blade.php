@@ -51,5 +51,4 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('js/password-toggle.js') }}" defer></script>
 @endpush

@@ -1,73 +1,102 @@
 @extends('layouts.admin')
 
-@section('title', 'Nuevo administrador')
+@section('title', $usuario ? 'Editar usuario' : 'Nuevo usuario')
 
 @section('content')
+@php
+    $esNuevo = ! $usuario;
+    $action = $esNuevo ? route('admin.users.store') : route('admin.users.update', $usuario);
+@endphp
+
 <div class="container-fluid py-4">
-    <div class="mb-4">
-        <a href="{{ route('admin.users.index') }}" class="text-decoration-none small">
-            <i class="bi bi-arrow-left"></i> Volver al listado
-        </a>
-        <h1 class="h3 fw-bold mt-2">Nuevo administrador</h1>
-        <p class="text-muted mb-0">
-            Si el correo ya existe como cliente, la cuenta se promoverá a administrador.
-            Al guardar, se enviará un correo de bienvenida. Al ingresar al panel se pedirá un código enviado por correo.
-        </p>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <h1 class="h4 mb-0">{{ $esNuevo ? 'Nuevo usuario' : 'Editar usuario' }}</h1>
+        <a href="{{ route('admin.users.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
     </div>
 
     <div class="row">
-        <div class="col-lg-7">
-            <div class="card admin-card">
-                <div class="card-body p-4">
-                    <form method="post" action="{{ route('admin.users.store') }}">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="post" action="{{ $action }}">
                         @csrf
+                        @if(! $esNuevo) @method('PUT') @endif
 
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label">Nombre *</label>
-                                <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                                       value="{{ old('name') }}" required autocomplete="name">
-                                @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Correo *</label>
-                                <input type="email" name="email" class="form-control @error('email') is-invalid @enderror"
-                                       value="{{ old('email') }}" required autocomplete="email">
-                                @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="mb-3">
+                            <label class="form-label">Usuario (login) <span class="text-danger">*</span></label>
+                            @if($esNuevo)
+                                <input type="text" name="username" class="form-control form-control-sm @error('username') is-invalid @enderror"
+                                       value="{{ old('username') }}" maxlength="20" required autofocus>
+                                @error('username')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            @else
+                                <input type="text" class="form-control form-control-sm" value="{{ $usuario->username }}" readonly>
+                            @endif
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                                <input type="text" name="nombre" class="form-control form-control-sm @error('nombre') is-invalid @enderror"
+                                       value="{{ old('nombre', $usuario?->nombre) }}" maxlength="20" required>
+                                @error('nombre')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="password">Contraseña *</label>
-                                <div class="input-group">
-                                    <input type="password" name="password" id="password"
-                                           class="form-control @error('password') is-invalid @enderror"
-                                           required autocomplete="new-password"
-                                           maxlength="{{ $passwordMaxLength }}">
-                                    <button type="button" class="btn btn-outline-secondary js-password-toggle"
-                                            data-target="password" aria-label="Mostrar contraseña">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
-                                @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                                <div class="form-text">Mínimo 8 caracteres, con letras y números.</div>
+                                <label class="form-label">Apellido paterno</label>
+                                <input type="text" name="apellidop" class="form-control form-control-sm"
+                                       value="{{ old('apellidop', $usuario?->apellidop) }}" maxlength="30">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label" for="password_confirmation">Confirmar contraseña *</label>
-                                <div class="input-group">
-                                    <input type="password" name="password_confirmation" id="password_confirmation"
-                                           class="form-control" required autocomplete="new-password"
-                                           maxlength="{{ $passwordMaxLength }}">
-                                    <button type="button" class="btn btn-outline-secondary js-password-toggle"
-                                            data-target="password_confirmation" aria-label="Mostrar contraseña">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
+                                <label class="form-label">Apellido materno</label>
+                                <input type="text" name="apellidom" class="form-control form-control-sm"
+                                       value="{{ old('apellidom', $usuario?->apellidom) }}" maxlength="20">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Correo</label>
+                                <input type="email" name="correo" class="form-control form-control-sm @error('correo') is-invalid @enderror"
+                                       value="{{ old('correo', $usuario?->correo) }}" maxlength="60">
+                                @error('correo')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                         </div>
 
-                        <div class="mt-4 d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">Crear administrador</button>
-                            <a href="{{ route('admin.users.index') }}" class="btn btn-outline-secondary">Cancelar</a>
+                        <div class="mb-3">
+                            <label class="form-label">Perfil <span class="text-danger">*</span></label>
+                            <select name="perfil" class="form-select form-select-sm @error('perfil') is-invalid @enderror" required>
+                                <option value="{{ \App\Models\User::PERFIL_SUPERADMIN }}" @selected((int) old('perfil', $usuario?->perfil) === \App\Models\User::PERFIL_SUPERADMIN)>
+                                    Superadministrador (mantenedores + todo)
+                                </option>
+                                <option value="{{ \App\Models\User::PERFIL_EJECUTIVO }}" @selected((int) old('perfil', $usuario?->perfil ?? \App\Models\User::PERFIL_EJECUTIVO) === \App\Models\User::PERFIL_EJECUTIVO)>
+                                    Ejecutivo (solo cotizaciones propias)
+                                </option>
+                            </select>
+                            @error('perfil')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="password">
+                                {{ $esNuevo ? 'Contraseña' : 'Nueva contraseña' }}
+                                @if($esNuevo)<span class="text-danger">*</span>@else<span class="text-muted small">(opcional)</span>@endif
+                            </label>
+                            <x-password-input
+                                name="password"
+                                id="password"
+                                :required="$esNuevo"
+                                autocomplete="new-password"
+                                class="form-control-sm @error('password') is-invalid @enderror"
+                            />
+                            @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="password_confirmation">Confirmar contrase&ntilde;a</label>
+                            <x-password-input
+                                name="password_confirmation"
+                                id="password_confirmation"
+                                autocomplete="new-password"
+                                class="form-control-sm"
+                            />
+                            <div class="form-text">M&iacute;nimo 8 caracteres, letras y n&uacute;meros. M&aacute;x. {{ $passwordMaxLength }}.</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
                     </form>
                 </div>
             </div>
@@ -75,7 +104,3 @@
     </div>
 </div>
 @endsection
-
-@push('scripts')
-<script src="{{ asset('js/password-toggle.js') }}" defer></script>
-@endpush

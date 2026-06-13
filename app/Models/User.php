@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\AdminResetPasswordNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -42,6 +43,52 @@ class User extends Authenticatable
     public function isEjecutivo(): bool
     {
         return $this->perfil === self::PERFIL_EJECUTIVO;
+    }
+
+    public function canAccessPanel(): bool
+    {
+        return in_array($this->perfil, [self::PERFIL_SUPERADMIN, self::PERFIL_EJECUTIVO], true);
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->canAccessPanel();
+    }
+
+    public function getEmailForPasswordReset(): string
+    {
+        return (string) ($this->correo ?? '');
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new AdminResetPasswordNotification($token));
+    }
+
+    public function getEmailAttribute(): ?string
+    {
+        return $this->correo;
+    }
+
+    public function setEmailAttribute(?string $value): void
+    {
+        $this->attributes['correo'] = $value;
+    }
+
+    public function getNameAttribute(): string
+    {
+        return $this->fullName() ?: $this->username;
+    }
+
+    public function perfilLabel(): string
+    {
+        return match ($this->perfil) {
+            self::PERFIL_SUPERADMIN => 'Superadmin',
+            self::PERFIL_EJECUTIVO => 'Ejecutivo',
+            self::PERFIL_ADMIN_CLIENTE => 'Admin cliente',
+            self::PERFIL_PEDIDOS => 'Pedidos',
+            default => 'Perfil '.$this->perfil,
+        };
     }
 
     protected function casts(): array

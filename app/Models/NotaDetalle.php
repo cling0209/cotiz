@@ -15,7 +15,7 @@ class NotaDetalle extends Model
 
     protected $fillable = [
         'nronota', 'prod_item', 'prod_valor', 'cantidad', 'fechahora',
-        'orden', 'prod_valor_costo', 'prod_item_agile',
+        'orden', 'prod_valor_costo', 'prod_item_agile', 'prod_descripcion_agile',
     ];
 
     protected function casts(): array

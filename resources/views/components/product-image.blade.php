@@ -1,5 +1,6 @@
 @props([
     'product' => null,
+    'maeprod' => null,
     'src' => null,
     'alt' => '',
     'class' => '',
@@ -8,8 +9,10 @@
 ])
 
 @php
-    $imageSrc = $src ?? ($product ? product_image($product) : '');
-    $altText = $alt ?: ($product?->name ?? 'Producto');
+    $imageSrc = $src ?? ($maeprod
+        ? maeprod_image($maeprod)
+        : ($product ? product_image($product) : ''));
+    $altText = $alt ?: ($product?->name ?? $maeprod?->prod_nombre ?? 'Producto');
     $variantClass = 'product-image--' . $variant;
     $hasSrc = filled($imageSrc);
 @endphp
@@ -26,10 +29,14 @@
     @if($hasSrc)
         <img
             src="{{ $imageSrc }}"
+            @if($maeprod && count($maeprod->imageUrlCandidates()) > 1)
+                data-image-fallbacks="{{ json_encode(array_slice($maeprod->imageUrlCandidates(), 1)) }}"
+            @endif
             alt="{{ $altText }}"
             class="product-image__img {{ $class }}"
-            loading="lazy"
+            loading="{{ $variant === 'admin-preview' || $variant === 'detail' ? 'eager' : 'lazy' }}"
             decoding="async"
+            referrerpolicy="no-referrer"
         >
     @endif
 </div>

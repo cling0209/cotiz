@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="100" viewBox="0 0 96 100" role="img" aria-label="Calculando">
+  <defs>
+    <linearGradient id="calc-body" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <linearGradient id="btn-normal" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="btn-active" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="btn-equals" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <ellipse cx="48" cy="92" rx="26" ry="4" fill="#2563eb" opacity="0.14"/>
+
+  <rect x="20" y="8" width="56" height="84" rx="8" fill="url(#calc-body)" stroke="#2563eb" stroke-width="2.5"/>
+  <rect x="20" y="8" width="56" height="14" rx="8" fill="#2563eb"/>
+  <rect x="20" y="16" width="56" height="6" fill="#2563eb"/>
+
+  <rect x="26" y="22" width="44" height="24" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+
+  <!-- Pantalla: 12 → 12× → 12×45 → 540 -->
+  <text x="66" y="38" text-anchor="end" font-family="ui-monospace, Consolas, monospace" font-size="11" font-weight="700" fill="#94a3b8" opacity="0">
+    12
+    <animate attributeName="opacity" values="0;1;1;0;0;0;0" keyTimes="0;0.06;0.18;0.24;0.26;0.9;1" dur="2.4s" repeatCount="indefinite"/>
+  </text>
+  <text x="66" y="38" text-anchor="end" font-family="ui-monospace, Consolas, monospace" font-size="11" font-weight="700" fill="#94a3b8" opacity="0">
+    12×
+    <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.24;0.26;0.32;0.44;0.5;1" dur="2.4s" repeatCount="indefinite"/>
+  </text>
+  <text x="66" y="38" text-anchor="end" font-family="ui-monospace, Consolas, monospace" font-size="11" font-weight="700" fill="#94a3b8" opacity="0">
+    12×45
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.52;0.58;0.78;0.8" dur="2.4s" repeatCount="indefinite"/>
+  </text>
+  <text x="66" y="38" text-anchor="end" font-family="ui-monospace, Consolas, monospace" font-size="13" font-weight="700" fill="#38bdf8" opacity="0">
+    540
+    <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8;0.88;0.96;1" dur="2.4s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- Teclas: 7 8 9 × | 4 5 6 - | 1 2 3 + | 0 = -->
+  <g>
+    <rect x="26" y="50" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="31" y="58" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">7</text>
+  </g>
+  <g>
+    <rect x="38" y="50" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="43" y="58" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">8</text>
+  </g>
+  <g>
+    <rect x="50" y="50" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="55" y="58" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">9</text>
+  </g>
+  <g>
+    <rect x="62" y="50" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-normal);url(#btn-normal);url(#btn-active);url(#btn-normal)" keyTimes="0;0.26;0.36;0.46" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="67" y="58" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="#334155">
+      ×
+      <animate attributeName="fill" values="#334155;#334155;#fff;#334155" keyTimes="0;0.26;0.36;0.46" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+
+  <g>
+    <rect x="26" y="62" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-normal);url(#btn-normal);url(#btn-normal);url(#btn-active);url(#btn-normal)" keyTimes="0;0.5;0.52;0.62;0.72" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="31" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">
+      4
+      <animate attributeName="fill" values="#334155;#334155;#334155;#fff;#334155" keyTimes="0;0.5;0.52;0.62;0.72" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+  <g>
+    <rect x="38" y="62" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-normal);url(#btn-normal);url(#btn-normal);url(#btn-normal);url(#btn-active);url(#btn-normal)" keyTimes="0;0.52;0.58;0.6;0.7;0.8" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="43" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">
+      5
+      <animate attributeName="fill" values="#334155;#334155;#334155;#334155;#fff;#334155" keyTimes="0;0.52;0.58;0.6;0.7;0.8" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+  <g>
+    <rect x="50" y="62" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="55" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">6</text>
+  </g>
+  <g>
+    <rect x="62" y="62" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="67" y="70" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="#334155">−</text>
+  </g>
+
+  <g>
+    <rect x="26" y="74" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-active);url(#btn-normal);url(#btn-normal);url(#btn-normal)" keyTimes="0;0.1;0.2;1" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="31" y="82" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">
+      1
+      <animate attributeName="fill" values="#fff;#334155;#334155;#334155" keyTimes="0;0.1;0.2;1" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+  <g>
+    <rect x="38" y="74" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-normal);url(#btn-active);url(#btn-normal);url(#btn-normal)" keyTimes="0;0.12;0.22;1" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="43" y="82" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">
+      2
+      <animate attributeName="fill" values="#334155;#fff;#334155;#334155" keyTimes="0;0.12;0.22;1" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+  <g>
+    <rect x="50" y="74" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="55" y="82" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">3</text>
+  </g>
+  <g>
+    <rect x="62" y="74" width="10" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="67" y="82" text-anchor="middle" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="#334155">+</text>
+  </g>
+
+  <g>
+    <rect x="26" y="86" width="22" height="10" rx="2" fill="url(#btn-normal)" stroke="#94a3b8" stroke-width="0.7"/>
+    <text x="37" y="94" text-anchor="middle" font-family="system-ui,sans-serif" font-size="7.5" font-weight="600" fill="#334155">0</text>
+  </g>
+  <g>
+    <rect x="50" y="86" width="22" height="10" rx="2" fill="url(#btn-equals)" stroke="#d97706" stroke-width="0.7">
+      <animate attributeName="fill" values="url(#btn-equals);url(#btn-equals);url(#btn-equals);url(#btn-active)" keyTimes="0;0.78;0.82;0.92" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <text x="61" y="94" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="#78350f">
+      =
+      <animate attributeName="fill" values="#78350f;#78350f;#78350f;#fff" keyTimes="0;0.78;0.82;0.92" dur="2.4s" repeatCount="indefinite"/>
+    </text>
+  </g>
+</svg>

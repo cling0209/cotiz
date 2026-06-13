@@ -36,6 +36,12 @@ class AuthController extends Controller
                 ->with('error', 'Usuario o contraseña inválidos.');
         }
 
+        if (! $user->canAccessPanel()) {
+            return back()
+                ->withInput($request->only('username'))
+                ->with('error', 'Este usuario no tiene acceso al panel de cotizaciones.');
+        }
+
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 

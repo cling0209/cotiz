@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
 class NotaListadoService
@@ -77,5 +78,35 @@ class NotaListadoService
         }
 
         $query->where('notas.usuario', $user->username);
+    }
+
+    public function puedeVer(User $user, Nota $nota): bool
+    {
+        if ($user->perfil === User::PERFIL_SUPERADMIN) {
+            if ($user->username === 'admin') {
+                return true;
+            }
+
+            return strcasecmp((string) $nota->usuario, 'admin') !== 0;
+        }
+
+        return strcasecmp((string) $nota->usuario, $user->username) === 0;
+    }
+
+    public function puedeGestionar(User $user): bool
+    {
+        return $user->isSuperAdmin();
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function usuariosParaAsignar(): Collection
+    {
+        return User::query()
+            ->whereIn('perfil', [User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])
+            ->orderBy('nombre')
+            ->orderBy('username')
+            ->get();
     }
 }

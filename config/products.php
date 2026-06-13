@@ -15,13 +15,24 @@ return [
     |
     */
 
-    'image_base_url' => env('PRODUCT_IMAGE_BASE_URL'),
-
-    'image_filename_pattern' => env('PRODUCT_IMAGE_FILENAME_PATTERN', '{codigo}_medium.jpg'),
+    /*
+    | Prioridad lectura: PRODUCT_IMAGE_BASE_URL → R2_PUBLIC_URL + prefijo
+    */
+    'image_base_url' => env('PRODUCT_IMAGE_BASE_URL') ?: (
+        filled($r2Public = env('R2_PUBLIC_URL'))
+            ? rtrim($r2Public, '/').'/'.trim(env('R2_IMAGE_PREFIX', 'productos'), '/')
+            : null
+    ),
 
     'image_fallback_url' => env(
         'PRODUCT_IMAGE_FALLBACK_URL',
         '/images/no-image.svg'
     ),
+
+    'storage_disk' => env('PRODUCT_STORAGE_DISK', 'r2'),
+
+    'r2_prefix' => env('R2_IMAGE_PREFIX', 'productos'),
+
+    'legacy_images_path' => env('LEGACY_PRODUCT_IMAGES_PATH'),
 
 ];
