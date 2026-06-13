@@ -24,6 +24,73 @@ class MaeprodImportStagingService
 
         $importService = app(MaeprodImportService::class);
         $content = $importService->readAndNormalizePath($mergedPath, $originalName);
+
+        return $this->storeFromCsvContent(
+            $uploadId,
+            $content,
+            $userId,
+            $username,
+            $originalName,
+        );
+    }
+
+    /**
+     * @return array{upload_id: string, columns: list<string>, total_rows: int, suggested_mapping: array<string, string>}
+     */
+    public function initializeFromPending(string $uploadId, int $userId): array
+    {
+        $existing = MaeprodImportStaging::query()->where('upload_id', $uploadId)->first();
+
+        if ($existing !== null) {
+            if ((int) $existing->user_id !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+            }
+
+            return [
+                'upload_id' => $uploadId,
+                'columns' => $existing->columns ?? [],
+                'total_rows' => (int) $existing->total_rows,
+                'suggested_mapping' => MaeprodImportColumnMapping::suggest($existing->columns ?? []),
+            ];
+        }
+
+        $pendingService = app(MaeprodImportPendingService::class);
+        $pending = $pendingService->find($uploadId);
+
+        if ((int) $pending['user_id'] !== $userId) {
+            throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+        }
+
+        if (($pending['mode'] ?? 'custom') !== 'custom') {
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+        }
+
+        try {
+            return $this->storeFromMergedCsv(
+                $uploadId,
+                (string) $pending['merged_path'],
+                $userId,
+                (string) $pending['username'],
+                (string) $pending['original_name'],
+            );
+        } finally {
+            $pendingService->consume($uploadId);
+        }
+    }
+
+    /**
+     * @return array{upload_id: string, columns: list<string>, total_rows: int, suggested_mapping: array<string, string>}
+     */
+    public function storeFromCsvContent(
+        string $uploadId,
+        string $content,
+        int $userId,
+        string $username,
+        string $originalName,
+    ): array {
+        $this->assertValidUploadId($uploadId);
+
+        $importService = app(MaeprodImportService::class);
         $rows = $importService->parseCsvText($content);
 
         if ($rows === []) {

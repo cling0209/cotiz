@@ -167,6 +167,14 @@ class MaeprodImportTest extends TestCase
                 'mode' => 'custom',
                 'chunk' => $file,
             ])
+            ->assertOk()
+            ->assertJsonPath('pending_parse', true);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.initialize'), [
+                'upload_id' => $uploadId,
+            ])
             ->assertOk();
 
         $mapping = [

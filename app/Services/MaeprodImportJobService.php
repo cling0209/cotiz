@@ -36,6 +36,51 @@ class MaeprodImportJobService
     /**
      * @return array{upload_id: string, batch_count: int}
      */
+    public function ensurePrepared(string $uploadId, int $userId): array
+    {
+        $jobPath = $this->jobDirectory($uploadId).'/job.json';
+
+        if (File::exists($jobPath)) {
+            $job = $this->readJob($uploadId);
+
+            return [
+                'upload_id' => $uploadId,
+                'batch_count' => (int) $job['batch_count'],
+            ];
+        }
+
+        $pendingService = app(MaeprodImportPendingService::class);
+
+        if (! $pendingService->has($uploadId)) {
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+        }
+
+        $pending = $pendingService->find($uploadId);
+
+        if ((int) $pending['user_id'] !== $userId) {
+            throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+        }
+
+        if (($pending['mode'] ?? 'template') !== 'template') {
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+        }
+
+        try {
+            return $this->prepareFromMergedCsv(
+                $uploadId,
+                (string) $pending['merged_path'],
+                $userId,
+                (string) $pending['username'],
+                (string) $pending['original_name'],
+            );
+        } finally {
+            $pendingService->consume($uploadId);
+        }
+    }
+
+    /**
+     * @return array{upload_id: string, batch_count: int}
+     */
     public function prepareFromCsvContent(
         string $uploadId,
         string $content,

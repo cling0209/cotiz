@@ -197,6 +197,7 @@
 <script>
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
+const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
 const processImportUrl = @json(route('admin.productos.import.process', [], false));
 const previewImportUrl = @json(route('admin.productos.import.preview', [], false));
 const prepareImportUrl = @json(route('admin.productos.import.prepare', [], false));
@@ -306,7 +307,7 @@ async function uploadCsvChunks(file, mode, progress) {
 }
 
 async function processImportAll(uploadId, progress) {
-    progress.label.textContent = 'Importando productos en el servidor...';
+    progress.label.textContent = 'Analizando e importando productos en el servidor...';
     progress.bar.style.width = '55%';
     progress.percent.textContent = '55%';
 
@@ -480,10 +481,30 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
     try {
         const payload = await uploadCsvChunks(file, 'custom', progress);
         customUploadId = payload.upload_id;
-        customColumns = payload.columns || [];
 
-        document.getElementById('customTotalRows').textContent = payload.total_rows || 0;
-        populateMappingSelects(customColumns, payload.suggested_mapping || {});
+        let staging = payload;
+        if (payload.pending_parse) {
+            progress.label.textContent = 'Analizando columnas del archivo Excel...';
+            const initResponse = await fetch(initializeImportUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ upload_id: customUploadId }),
+            });
+            const initPayload = await initResponse.json().catch(() => ({}));
+            if (!initResponse.ok) throw new Error(importErrorMessage(initPayload, initResponse.status));
+            staging = initPayload;
+        }
+
+        customColumns = staging.columns || [];
+
+        document.getElementById('customTotalRows').textContent = staging.total_rows || 0;
+        populateMappingSelects(customColumns, staging.suggested_mapping || {});
         document.getElementById('customMappingCard').classList.remove('d-none');
         progress.label.textContent = 'Archivo listo. Indique el mapeo de columnas.';
     } catch (error) {

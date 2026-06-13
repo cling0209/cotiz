@@ -91,6 +91,36 @@ class MaeprodChunkUploadService
         }
 
         $mergedPath = $this->mergeChunks($uploadId, $totalChunks);
+        $isSpreadsheet = MaeprodImportFileTypes::isSpreadsheet((string) $meta['original_name']);
+
+        if ($isSpreadsheet) {
+            app(MaeprodImportPendingService::class)->register(
+                $uploadId,
+                $mergedPath,
+                $userId,
+                (string) $meta['username'],
+                (string) $meta['original_name'],
+                $mode,
+            );
+
+            $this->cleanup($uploadId);
+
+            if ($mode === 'custom') {
+                return [
+                    'ready' => true,
+                    'mode' => 'custom',
+                    'upload_id' => $uploadId,
+                    'pending_parse' => true,
+                ];
+            }
+
+            return [
+                'ready' => true,
+                'mode' => 'template',
+                'upload_id' => $uploadId,
+                'pending_parse' => true,
+            ];
+        }
 
         try {
             if ($mode === 'custom') {

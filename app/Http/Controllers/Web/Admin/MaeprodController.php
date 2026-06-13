@@ -210,11 +210,38 @@ class MaeprodController extends Controller
             'done' => true,
             'mode' => $result['mode'] ?? 'template',
             'upload_id' => $result['upload_id'],
+            'pending_parse' => $result['pending_parse'] ?? false,
             'batch_count' => $result['batch_count'] ?? null,
             'columns' => $result['columns'] ?? null,
             'total_rows' => $result['total_rows'] ?? null,
             'suggested_mapping' => $result['suggested_mapping'] ?? null,
         ]);
+    }
+
+    public function initializeCustomImport(Request $request, MaeprodImportStagingService $staging): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+        ]);
+
+        try {
+            $initialized = $staging->initializeFromPending(
+                $data['upload_id'],
+                (int) $request->user()->id,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error al analizar el archivo Excel.',
+            ], 500);
+        }
+
+        return response()->json($initialized);
     }
 
     public function previewImportMapping(Request $request, MaeprodImportStagingService $staging): JsonResponse
@@ -281,6 +308,11 @@ class MaeprodController extends Controller
         ]);
 
         try {
+            $importJob->ensurePrepared(
+                $data['upload_id'],
+                (int) $request->user()->id,
+            );
+
             $progress = $importJob->processAllBatches(
                 $data['upload_id'],
                 (int) $request->user()->id,

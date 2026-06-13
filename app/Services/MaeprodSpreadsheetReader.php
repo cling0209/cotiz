@@ -16,7 +16,17 @@ class MaeprodSpreadsheetReader
             return [];
         }
 
-        $spreadsheet = IOFactory::load($path);
+        $reader = IOFactory::createReaderForFile($path);
+
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+
+        $spreadsheet = $reader->load($path);
         $sheet = $spreadsheet->getActiveSheet();
         $highestRow = $sheet->getHighestDataRow();
         $highestColumn = $sheet->getHighestDataColumn();
@@ -72,7 +82,7 @@ class MaeprodSpreadsheetReader
 
         for ($columnIndex = 1; $columnIndex <= $columnCount; $columnIndex++) {
             $cell = $sheet->getCell(Coordinate::stringFromColumnIndex($columnIndex).$rowIndex);
-            $values[] = $this->formatCellValue($cell->getCalculatedValue());
+            $values[] = $this->formatCellValue($cell->getValue());
         }
 
         return $values;
