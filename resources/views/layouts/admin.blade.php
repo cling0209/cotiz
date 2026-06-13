@@ -10,7 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="{{ asset('css/admin.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/page-loader.css') }}?v=calc" rel="stylesheet">
+    <link href="{{ asset('css/page-loader.css') }}?v=calc2" rel="stylesheet">
     @stack('head')
 </head>
 <body class="admin-body">
@@ -100,7 +100,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ asset('js/page-loader.js') }}?v=exportmsg" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
-<script src="{{ asset('js/password-toggle.js') }}" defer></script>
+<script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>
 @stack('scripts')
 </body>
 </html>
