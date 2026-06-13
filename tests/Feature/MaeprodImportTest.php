@@ -315,6 +315,44 @@ class MaeprodImportTest extends TestCase
         $this->assertSame(1, Maeprod::query()->where('prod_item', 'DUP001')->count());
     }
 
+    public function test_abandoned_import_lock_is_cleared_on_status_check(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $uploadId = (string) Str::uuid();
+
+        app(MaeprodImportLockService::class)->acquire(
+            $admin->id,
+            $admin->username,
+            $uploadId,
+            'atascado.xlsx',
+        );
+
+        $response = $this->actingAs($admin)->getJson(route('admin.productos.import.status'));
+
+        $response->assertOk()->assertJson(['active' => false, 'lock' => null]);
+        $this->assertNull(app(MaeprodImportLockService::class)->current());
+    }
+
+    public function test_superadmin_can_force_release_import_lock(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        app(MaeprodImportLockService::class)->acquire(
+            $admin->id,
+            'admin',
+            (string) Str::uuid(),
+            'bloqueado.xlsx',
+        );
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.unlock'))
+            ->assertOk()
+            ->assertJson(['released' => true]);
+
+        $this->assertNull(app(MaeprodImportLockService::class)->current());
+    }
+
     public function test_second_import_is_blocked_while_first_is_active(): void
     {
         $admin1 = User::factory()->create([

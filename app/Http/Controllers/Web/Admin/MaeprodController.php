@@ -93,19 +93,34 @@ class MaeprodController extends Controller
     public function importForm(MaeprodImportLockService $importLock): View
     {
         return view('admin.maeprod.import', [
-            'activeImport' => $importLock->current(),
+            'activeImport' => $importLock->currentOrReleaseIfAbandoned(),
             'mappableFields' => MaeprodImportColumnMapping::fieldDefinitions(),
         ]);
     }
 
     public function importStatus(MaeprodImportLockService $importLock): JsonResponse
     {
-        $current = $importLock->current();
+        $current = $importLock->currentOrReleaseIfAbandoned();
 
         return response()->json([
             'active' => $current !== null,
             'lock' => $current,
         ]);
+    }
+
+    public function releaseImportLock(Request $request, MaeprodImportLockService $importLock): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['nullable', 'uuid'],
+        ]);
+
+        if (! empty($data['upload_id'])) {
+            $importLock->release($data['upload_id']);
+        } else {
+            $importLock->forceRelease();
+        }
+
+        return response()->json(['released' => true]);
     }
 
     public function importResult(int $run, MaeprodImportRunService $runService): View

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\MaeprodImportStaging;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 
 class MaeprodImportLockService
 {
@@ -23,6 +25,57 @@ class MaeprodImportLockService
         }
 
         return $lock;
+    }
+
+    /**
+     * Devuelve el bloqueo activo o lo libera si quedó huérfano (p. ej. tras un 502).
+     *
+     * @return array{user_id: int, username: string, upload_id: string, original_name: string, started_at: string}|null
+     */
+    public function currentOrReleaseIfAbandoned(): ?array
+    {
+        $current = $this->current();
+
+        if ($current === null) {
+            return null;
+        }
+
+        if ($this->hasActiveWork((string) $current['upload_id'])) {
+            return $current;
+        }
+
+        $this->release((string) $current['upload_id']);
+
+        return null;
+    }
+
+    public function hasActiveWork(string $uploadId): bool
+    {
+        if (File::isDirectory(storage_path('app/imports/chunks/'.$uploadId))) {
+            return true;
+        }
+
+        if (app(MaeprodImportPendingService::class)->has($uploadId)) {
+            return true;
+        }
+
+        if (MaeprodImportStaging::query()->where('upload_id', $uploadId)->exists()) {
+            return true;
+        }
+
+        $jobPath = storage_path('app/imports/jobs/'.$uploadId.'/job.json');
+
+        if (! File::exists($jobPath)) {
+            return false;
+        }
+
+        $job = json_decode(File::get($jobPath), true);
+
+        if (! is_array($job)) {
+            return false;
+        }
+
+        return (int) ($job['next_batch'] ?? 0) < (int) ($job['batch_count'] ?? 0);
     }
 
     public function isBlockedFor(string $uploadId): bool
@@ -71,5 +124,10 @@ class MaeprodImportLockService
         if ($current !== null && $current['upload_id'] === $uploadId) {
             Cache::forget(self::CACHE_KEY);
         }
+    }
+
+    public function forceRelease(): void
+    {
+        Cache::forget(self::CACHE_KEY);
     }
 }

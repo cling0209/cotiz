@@ -23,6 +23,9 @@
                 Espere a que termine antes de iniciar otra carga.
             @endif
         </span>
+        <button type="button" id="importUnlockBtn" class="btn btn-sm btn-outline-warning ms-2 @if(empty($activeImport)) d-none @endif">
+            Liberar carga atascada
+        </button>
     </div>
 
     <ul class="nav nav-tabs mb-4" id="importModeTabs" role="tablist">
@@ -202,6 +205,7 @@ const processImportUrl = @json(route('admin.productos.import.process', [], false
 const previewImportUrl = @json(route('admin.productos.import.preview', [], false));
 const prepareImportUrl = @json(route('admin.productos.import.prepare', [], false));
 const importStatusUrl = @json(route('admin.productos.import.status', [], false));
+const unlockImportUrl = @json(route('admin.productos.import.unlock', [], false));
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || @json(csrf_token());
 
 let customUploadId = null;
@@ -226,6 +230,7 @@ function importErrorMessage(payload, status) {
 function setImportLocked(locked, message = '') {
     const banner = document.getElementById('importLockBanner');
     const messageEl = document.getElementById('importLockMessage');
+    const unlockBtn = document.getElementById('importUnlockBtn');
     const inputs = [
         document.getElementById('importFileTemplate'),
         document.getElementById('importSubmitBtnTemplate'),
@@ -236,13 +241,32 @@ function setImportLocked(locked, message = '') {
 
     if (locked) {
         banner?.classList.remove('d-none');
+        unlockBtn?.classList.remove('d-none');
         if (messageEl && message) messageEl.textContent = message;
         inputs.forEach(el => { if (el) el.disabled = true; });
         return;
     }
 
     banner?.classList.add('d-none');
+    unlockBtn?.classList.add('d-none');
     inputs.forEach(el => { if (el) el.disabled = false; });
+}
+
+async function releaseImportLock(uploadId = null) {
+    const formData = new FormData();
+    if (uploadId) formData.append('upload_id', uploadId);
+    formData.append('_token', csrfToken);
+
+    await fetch(unlockImportUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken,
+        },
+        credentials: 'same-origin',
+    }).catch(() => {});
 }
 
 async function refreshImportStatus() {
@@ -441,10 +465,13 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
         progress.label.textContent = 'Preparando importación...';
         await processImportAll(payload.upload_id, progress);
     } catch (error) {
+        await releaseImportLock();
         errorBox.textContent = error.message || 'Error inesperado.';
         errorBox.classList.remove('d-none');
         await refreshImportStatus();
-        if (!submitBtn.disabled) fileInput.disabled = false;
+        setImportLocked(false);
+        fileInput.disabled = false;
+        submitBtn.disabled = false;
         progress.wrap.classList.add('d-none');
     }
 });
@@ -602,6 +629,19 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
         errorBox.classList.remove('d-none');
         await refreshImportStatus();
         btn.disabled = false;
+    }
+});
+
+document.getElementById('importUnlockBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('importUnlockBtn');
+    if (btn) btn.disabled = true;
+
+    try {
+        await releaseImportLock();
+        await refreshImportStatus();
+        setImportLocked(false);
+    } finally {
+        if (btn) btn.disabled = false;
     }
 });
 

@@ -73,6 +73,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('superadmin')->group(function () {
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
             Route::get('productos/carga-masiva/estado', [MaeprodController::class, 'importStatus'])->name('productos.import.status');
+            Route::post('productos/carga-masiva/liberar', [MaeprodController::class, 'releaseImportLock'])->name('productos.import.unlock');
             Route::get('productos/carga-masiva/resultado/{run}', [MaeprodController::class, 'importResult'])->name('productos.import.resultado')->whereNumber('run');
             Route::get('productos/carga-masiva/errores/{run}', [MaeprodController::class, 'importErrors'])->name('productos.import.errores')->whereNumber('run');
             Route::get('productos/carga-masiva/errores/{run}/exportar', [MaeprodController::class, 'exportImportErrors'])->name('productos.import.errores.exportar')->whereNumber('run');
