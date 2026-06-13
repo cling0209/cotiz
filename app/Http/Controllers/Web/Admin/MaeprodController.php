@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
+use App\Models\MaeprodImportRun;
 use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
 use App\Services\MaeprodImportJobService;
 use App\Services\MaeprodImportLockService;
+use App\Services\MaeprodImportRunService;
 use App\Services\MaeprodImportService;
-use App\Support\MaeprodImportError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -104,13 +105,32 @@ class MaeprodController extends Controller
         ]);
     }
 
-    public function downloadImportErrors(string $token): StreamedResponse
+    public function importResult(int $run, MaeprodImportRunService $runService): View
     {
-        $errors = MaeprodImportError::readStored($token);
+        return view('admin.maeprod.import-resultado', [
+            'run' => $runService->findRun($run),
+        ]);
+    }
 
-        abort_if($errors === [], 404);
+    public function importErrors(Request $request, int $run, MaeprodImportRunService $runService): View
+    {
+        $runModel = $runService->findRun($run);
 
-        return $this->importService->errorsCsvDownloadResponse($errors);
+        return view('admin.maeprod.import-errores', [
+            'run' => $runModel,
+            'errores' => $runService->paginateErrors(
+                $runModel,
+                (int) config('cotiz.listado_por_pagina', 50),
+            ),
+        ]);
+    }
+
+    public function exportImportErrors(int $run, MaeprodImportRunService $runService): StreamedResponse
+    {
+        $runModel = $runService->findRun($run);
+        abort_unless($runModel->tieneErrores(), 404);
+
+        return $runService->exportErrorsCsvResponse($runModel);
     }
 
     public function downloadImportTemplate(): StreamedResponse
@@ -215,63 +235,12 @@ class MaeprodController extends Controller
             'total_batches' => $progress['total_batches'],
         ];
 
-        if ($progress['finished']) {
-            $payload['redirect'] = $this->flashImportResultAndGetRedirectUrl($progress['result']);
+        if ($progress['finished'] && isset($progress['run_id'])) {
+            $run = MaeprodImportRun::query()->findOrFail($progress['run_id']);
+            $payload['redirect'] = app(MaeprodImportRunService::class)->redirectUrlForRun($run);
         }
 
         return response()->json($payload);
-    }
-
-    /**
-     * @param  array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}  $result
-     */
-    protected function flashImportResultAndGetRedirectUrl(array $result): string
-    {
-        $parts = [];
-
-        if ($result['created'] > 0) {
-            $parts[] = $result['created'].' creado(s)';
-        }
-
-        if ($result['updated'] > 0) {
-            $parts[] = $result['updated'].' actualizado(s)';
-        }
-
-        $errorsToken = MaeprodImportError::storeForDownload($result['errors']);
-        $displayErrors = array_slice($result['errors'], 0, 50);
-
-        if ($parts === []) {
-            session()->flash('error', 'No se importó ningún producto.');
-            session()->flash('import_errors', $displayErrors);
-            session()->flash('import_errors_total', count($result['errors']));
-
-            if ($errorsToken !== null) {
-                session()->flash('import_errors_token', $errorsToken);
-            }
-
-            return route('admin.productos.import');
-        }
-
-        session()->flash('success', 'Importación completada: '.implode(', ', $parts).'.');
-
-        if ($result['skipped'] > 0) {
-            session()->flash('warning', $result['skipped'].' fila(s) omitida(s).');
-        }
-
-        if ($result['errors'] !== []) {
-            session()->flash('import_errors', $displayErrors);
-            session()->flash('import_errors_total', count($result['errors']));
-
-            if ($errorsToken !== null) {
-                session()->flash('import_errors_token', $errorsToken);
-            }
-
-            if (count($result['errors']) > 50) {
-                session()->flash('error', 'Algunas filas fallaron. Se muestran las primeras 50.');
-            }
-        }
-
-        return route('admin.productos.index');
     }
 
     protected function importConflictStatus(\InvalidArgumentException $exception): int

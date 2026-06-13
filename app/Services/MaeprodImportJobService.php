@@ -31,34 +31,24 @@ class MaeprodImportJobService
 
         $importService = app(MaeprodImportService::class);
         $content = $importService->readPathAsUtf8($mergedPath);
-        $handle = fopen('php://temp', 'r+');
+        $rows = $importService->parseCsvText($content);
 
-        if ($handle === false) {
-            throw new \RuntimeException('No se pudo preparar el archivo para importar.');
+        if ($rows === []) {
+            File::deleteDirectory($jobDir);
+            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
         }
 
-        fwrite($handle, $content);
-        rewind($handle);
-
-        $firstLine = fgets($handle);
-
-        if ($firstLine === false) {
-            fclose($handle);
-            throw new \InvalidArgumentException('El archivo no contiene datos.');
-        }
-
-        $delimiter = str_contains($firstLine, ';') ? ';' : ',';
-        $headerRow = str_getcsv(rtrim($firstLine, "\r\n"), $delimiter);
+        $dataHeaders = array_values(array_filter(
+            array_keys($rows[0]),
+            fn (string $header) => $header !== '_csv_line',
+        ));
+        $headerRow = array_merge(['_csv_line'], $dataHeaders);
+        $delimiter = str_contains($content, ';') ? ';' : ',';
         $batchCount = 0;
-        $rowsInBatch = 0;
         $batchHandle = null;
 
-        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
-            if ($this->isEmptyCsvRow($data)) {
-                continue;
-            }
-
-            if ($rowsInBatch === 0) {
+        foreach ($rows as $index => $row) {
+            if ($index % self::ROWS_PER_BATCH === 0) {
                 if ($batchHandle !== null) {
                     fclose($batchHandle);
                 }
@@ -67,7 +57,6 @@ class MaeprodImportJobService
                 $batchHandle = fopen($batchPath, 'wb');
 
                 if ($batchHandle === false) {
-                    fclose($handle);
                     throw new \RuntimeException('No se pudo crear un lote de importación.');
                 }
 
@@ -76,19 +65,17 @@ class MaeprodImportJobService
                 $batchCount++;
             }
 
-            fputcsv($batchHandle, $data, $delimiter);
-            $rowsInBatch++;
-
-            if ($rowsInBatch >= self::ROWS_PER_BATCH) {
-                $rowsInBatch = 0;
+            $line = [(string) ($row['_csv_line'] ?? '')];
+            foreach ($dataHeaders as $header) {
+                $line[] = $row[$header] ?? '';
             }
+
+            fputcsv($batchHandle, $line, $delimiter);
         }
 
         if ($batchHandle !== null) {
             fclose($batchHandle);
         }
-
-        fclose($handle);
 
         if ($batchCount === 0) {
             File::deleteDirectory($jobDir);
@@ -204,6 +191,13 @@ class MaeprodImportJobService
         try {
             $lock->touch($uploadId);
 
+            $job = $this->readJob($uploadId);
+            $runService = app(MaeprodImportRunService::class);
+            $run = $runService->beginRun(
+                (string) ($job['username'] ?? 'import'),
+                (string) ($job['original_name'] ?? 'import.csv'),
+            );
+
             $progress = [
                 'finished' => false,
                 'processed_batches' => 0,
@@ -216,7 +210,11 @@ class MaeprodImportJobService
                 $progress = $this->processNextBatch($uploadId, $userId);
             }
 
-            return $progress;
+            $run = $runService->completeRun($run, $progress['result']);
+
+            return array_merge($progress, [
+                'run_id' => $run->id,
+            ]);
         } finally {
             $lock->release($uploadId);
         }

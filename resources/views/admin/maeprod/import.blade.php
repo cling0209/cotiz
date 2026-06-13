@@ -25,12 +25,6 @@
         </span>
     </div>
 
-    <x-maeprod-import-errors
-        :errors="session('import_errors', [])"
-        :total="session('import_errors_total')"
-        :download-token="session('import_errors_token')"
-    />
-
     <div class="row g-4">
         <div class="col-lg-5">
             <div class="card shadow-sm h-100">

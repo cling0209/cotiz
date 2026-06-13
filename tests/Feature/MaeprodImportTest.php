@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Maeprod;
+use App\Models\MaeprodImportErrorLog;
+use App\Models\MaeprodImportRun;
 use App\Models\User;
 use App\Services\MaeprodImportLockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -187,34 +189,92 @@ class MaeprodImportTest extends TestCase
         ]);
 
         $csv = "codigo;nombre;familia;precio\nBAD001;PRODUCTO MAL;PAPEL;no-es-numero\n";
-        $uploadId = (string) Str::uuid();
-        $file = UploadedFile::fake()->createWithContent('productos.csv', $csv);
+        $processResponse = $this->importCsvAsAdmin($admin, $csv);
+
+        $processResponse->assertJsonPath('finished', true);
+
+        $redirect = (string) $processResponse->json('redirect');
+        $this->assertStringContainsString('/carga-masiva/errores/', $redirect);
+
+        $run = MaeprodImportRun::query()->first();
+        $this->assertNotNull($run);
+        $this->assertSame(1, $run->total_errores);
+
+        $error = MaeprodImportErrorLog::query()->where('run_id', $run->id)->first();
+        $this->assertNotNull($error);
+        $this->assertSame('BAD001', $error->codigo);
+        $this->assertSame('PRODUCTO MAL', $error->nombre);
+        $this->assertStringContainsString('Precio inválido', $error->mensaje);
 
         $this->withoutMiddleware()
             ->actingAs($admin)
-            ->postJson(route('admin.productos.import.chunk'), [
-                'upload_id' => $uploadId,
-                'chunk_index' => 0,
-                'total_chunks' => 1,
-                'original_name' => 'productos.csv',
-                'chunk' => $file,
-            ])
-            ->assertOk();
+            ->get(route('admin.productos.import.errores', ['run' => $run->id]))
+            ->assertOk()
+            ->assertSee('BAD001')
+            ->assertSee('Precio inválido');
+    }
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $uploadId,
-            ]);
+    public function test_import_uses_physical_csv_line_number_with_blank_rows(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
 
-        $processResponse->assertOk()->assertJson(['finished' => true]);
+        $csv = "codigo;nombre;familia;precio\n";
+        $csv .= "\n";
+        $csv .= "BAD002;PRODUCTO;PAPEL;no-es-numero\n";
 
-        $errors = session('import_errors');
-        $this->assertIsArray($errors);
-        $this->assertNotEmpty($errors);
-        $this->assertSame('BAD001', $errors[0]['codigo']);
-        $this->assertSame('PRODUCTO MAL', $errors[0]['nombre']);
-        $this->assertStringContainsString('Precio inválido', $errors[0]['mensaje']);
+        $this->importCsvAsAdmin($admin, $csv);
+
+        $error = MaeprodImportErrorLog::query()->first();
+        $this->assertNotNull($error);
+        $this->assertSame(3, $error->fila);
+    }
+
+    public function test_import_accepts_chilean_thousands_price_format(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $csv = "codigo;nombre;familia;precio\nCH001;PRODUCTO CARO;PAPEL;2.480.000\n";
+
+        $processResponse = $this->importCsvAsAdmin($admin, $csv);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'CH001',
+            'prod_valor' => 2480000,
+        ]);
+
+        $redirect = (string) $processResponse->json('redirect');
+        $this->assertStringContainsString('/carga-masiva/resultado/', $redirect);
+    }
+
+    public function test_successful_import_persists_run_without_errors(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        $csv = "codigo;nombre;familia;precio\nOK001;PRODUCTO OK;PAPEL;1500\n";
+
+        $this->importCsvAsAdmin($admin, $csv);
+
+        $run = MaeprodImportRun::query()->first();
+        $this->assertNotNull($run);
+        $this->assertSame(1, $run->creados);
+        $this->assertSame(0, $run->total_errores);
+        $this->assertSame(0, MaeprodImportErrorLog::query()->count());
+    }
+
+    public function test_new_import_replaces_previous_run_errors(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        $this->importCsvAsAdmin($admin, "codigo;nombre;familia;precio\nBAD001;X;PAPEL;no\n");
+        $this->assertSame(1, MaeprodImportRun::query()->count());
+        $this->assertSame(1, MaeprodImportErrorLog::query()->count());
+
+        $this->importCsvAsAdmin($admin, "codigo;nombre;familia;precio\nOK002;OK;PAPEL;1000\n");
+        $this->assertSame(1, MaeprodImportRun::query()->count());
+        $this->assertSame(0, MaeprodImportErrorLog::query()->count());
     }
 
     public function test_ejecutivo_cannot_access_bulk_import(): void
@@ -227,7 +287,7 @@ class MaeprodImportTest extends TestCase
             ->assertForbidden();
     }
 
-    private function importCsvAsAdmin(User $admin, string $csv): void
+    private function importCsvAsAdmin(User $admin, string $csv): \Illuminate\Testing\TestResponse
     {
         $uploadId = (string) Str::uuid();
         $file = UploadedFile::fake()->createWithContent('productos.csv', $csv);
@@ -255,5 +315,7 @@ class MaeprodImportTest extends TestCase
         $processResponse->assertOk()
             ->assertJson(['finished' => true])
             ->assertJsonStructure(['redirect']);
+
+        return $processResponse;
     }
 }

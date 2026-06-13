@@ -11,8 +11,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class MaeprodImportService
 {
     public const UPSERT_CHUNK_SIZE = 500;
-
-    private const MAX_ERRORS = 100;
     /** @var array<string, string> */
     private const HEADER_ALIASES = [
         'codigo' => 'prod_item',
@@ -207,10 +205,10 @@ class MaeprodImportService
         $pending = [];
 
         foreach ($rows as $lineNumber => $rawRow) {
+            $csvLine = (int) ($rawRow['_csv_line'] ?? ($lineNumber + 2));
             $row = $this->mapRow($rawRow);
-            $fila = $lineNumber + 2;
 
-            $validation = $this->validateRow($row, $fila);
+            $validation = $this->validateRow($row, $csvLine);
             if ($validation !== null) {
                 $this->pushError($result, $validation);
                 $result['skipped']++;
@@ -350,9 +348,7 @@ class MaeprodImportService
      */
     private function pushError(array &$result, array $error): void
     {
-        if (count($result['errors']) < self::MAX_ERRORS) {
-            $result['errors'][] = $error;
-        }
+        $result['errors'][] = $error;
     }
 
     /**
@@ -492,6 +488,10 @@ class MaeprodImportService
         $mapped = [];
 
         foreach ($rawRow as $header => $value) {
+            if ($header === '_csv_line') {
+                continue;
+            }
+
             $key = self::HEADER_ALIASES[mb_strtolower(trim($header))] ?? null;
             if ($key !== null) {
                 $mapped[$key] = trim((string) $value);
@@ -502,7 +502,37 @@ class MaeprodImportService
             $mapped[$optional] ??= '';
         }
 
+        $mapped['prod_valor'] = $this->normalizeNumericField($mapped['prod_valor'] ?? '');
+        $mapped['prod_valor_costo'] = $this->normalizeNumericField($mapped['prod_valor_costo'] ?? '');
+        $mapped['prod_stock_real'] = $this->normalizeNumericField($mapped['prod_stock_real'] ?? '');
+
         return $mapped;
+    }
+
+    private function normalizeNumericField(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $value = str_replace([' ', "\xc2\xa0"], '', $value);
+
+        if (preg_match('/,\d{1,2}$/', $value)) {
+            $value = str_replace('.', '', $value);
+            $value = str_replace(',', '.', $value);
+
+            return $value;
+        }
+
+        if (str_contains($value, '.') && ! str_contains($value, ',')) {
+            $parts = explode('.', $value);
+            if (count($parts) > 1 && strlen(end($parts)) === 3) {
+                return str_replace('.', '', $value);
+            }
+        }
+
+        return $value;
     }
 
     public function readPathAsUtf8(string $path): string
@@ -514,6 +544,14 @@ class MaeprodImportService
         }
 
         return $this->ensureUtf8($raw);
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    public function parseCsvText(string $content): array
+    {
+        return $this->parseCsvContent($content);
     }
 
     /**
@@ -557,18 +595,13 @@ class MaeprodImportService
             return [];
         }
 
-        $handle = fopen('php://temp', 'r+');
-        if ($handle === false) {
+        $lines = preg_split("/\r\n|\n|\r/", $content) ?: [];
+        if ($lines === []) {
             return [];
         }
 
-        fwrite($handle, $content);
-        rewind($handle);
-
-        $firstLine = fgets($handle);
-        if ($firstLine === false) {
-            fclose($handle);
-
+        $firstLine = (string) ($lines[0] ?? '');
+        if (trim($firstLine) === '') {
             return [];
         }
 
@@ -580,25 +613,34 @@ class MaeprodImportService
 
         $rows = [];
 
-        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+        foreach ($lines as $index => $line) {
+            $physicalLine = $index + 1;
+
+            if ($physicalLine === 1) {
+                continue;
+            }
+
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $data = str_getcsv($line, $delimiter);
             if ($this->isEmptyRow($data)) {
                 continue;
             }
 
-            $row = [];
-            foreach ($headers as $index => $header) {
+            $row = ['_csv_line' => $physicalLine];
+            foreach ($headers as $headerIndex => $header) {
                 if ($header === '') {
                     continue;
                 }
-                $row[$header] = trim((string) ($data[$index] ?? ''));
+                $row[$header] = trim((string) ($data[$headerIndex] ?? ''));
             }
 
-            if ($row !== []) {
+            if (count($row) > 1) {
                 $rows[] = $row;
             }
         }
-
-        fclose($handle);
 
         return $rows;
     }

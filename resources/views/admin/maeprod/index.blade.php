@@ -19,12 +19,6 @@
         </div>
     </div>
 
-    <x-maeprod-import-errors
-        :errors="session('import_errors', [])"
-        :total="session('import_errors_total')"
-        :download-token="session('import_errors_token')"
-    />
-
     <div class="card shadow-sm mb-3">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end">
