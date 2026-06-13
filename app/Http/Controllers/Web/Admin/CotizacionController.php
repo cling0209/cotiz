@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\User;
+use App\Services\CompraAgilImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
+use RuntimeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,7 @@ class CotizacionController extends Controller
     public function __construct(
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
+        protected CompraAgilImportService $compraAgilImport,
     ) {}
 
     public function create(Request $request): RedirectResponse
@@ -273,6 +276,56 @@ class CotizacionController extends Controller
         return response()->json([
             'ok' => true,
             'message' => 'Grabado con éxito.',
+        ]);
+    }
+
+    public function importarCompraAgilPreview(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        $datos = $request->validate([
+            'texto' => ['required', 'string', 'max:50000'],
+        ]);
+
+        return response()->json($this->compraAgilImport->preview($datos['texto']));
+    }
+
+    public function importarCompraAgil(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        $datos = $request->validate([
+            'texto' => ['required', 'string', 'max:50000'],
+        ]);
+
+        $preview = $this->compraAgilImport->preview($datos['texto']);
+
+        if ($nota->requiereNumeroCotizacion() && $preview['cabecera']['codigo_cotizacion'] === '') {
+            return response()->json([
+                'error' => 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.',
+            ], 422);
+        }
+
+        try {
+            $resultado = $this->compraAgilImport->aplicar($nota, $datos['texto'], $request->user()->username);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'agregadas' => $resultado['agregadas'],
+            'omitidas' => $resultado['omitidas'],
+            'cabecera_actualizada' => $resultado['cabecera_actualizada'],
+            'mensajes' => $resultado['mensajes'],
         ]);
     }
 

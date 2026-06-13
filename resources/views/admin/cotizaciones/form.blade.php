@@ -112,9 +112,12 @@
                 </span>
             </div>
 
-        <div class="cotiz-agregar mb-2">
+        <div class="cotiz-agregar mb-2 d-flex flex-wrap gap-2">
             <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
                 <i class="bi bi-plus-circle"></i> Agregar producto
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
+                <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
             </button>
         </div>
 
@@ -307,6 +310,60 @@
                 <div class="modal-footer py-2">
                     <span class="small text-muted me-auto">Clic en fila para agregar al detalle.</span>
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-importar-compra-agil" tabindex="-1" aria-labelledby="modal-importar-compra-agil-label" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h2 class="modal-title fs-6" id="modal-importar-compra-agil-label">Importar desde Compra &Aacute;gil</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Copie y pegue el texto de la p&aacute;gina de Compra &Aacute;gil (Mercado P&uacute;blico): cabecera con n&uacute;mero de cotizaci&oacute;n, cliente, RUT y listado de productos con ID.
+                    </p>
+                    <textarea
+                        id="importar-compra-agil-texto"
+                        class="form-control form-control-sm font-monospace mb-2"
+                        rows="8"
+                        placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;...&#10;Limpiadores de uso general ID: 31237835&#10;LIMPIADOR DE PISOS..."
+                    ></textarea>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
+                            <i class="bi bi-search"></i> Analizar
+                        </button>
+                        <span id="importar-compra-agil-estado" class="small text-muted"></span>
+                    </div>
+                    <div id="importar-compra-agil-cabecera" class="small mb-2 d-none">
+                        <strong>Cabecera detectada:</strong>
+                        <span id="importar-compra-agil-cabecera-texto"></span>
+                    </div>
+                    <div class="table-responsive d-none" id="importar-compra-agil-tabla-wrap">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width:90px">ID Agile</th>
+                                    <th>Descripci&oacute;n MP</th>
+                                    <th style="width:70px">Cant.</th>
+                                    <th style="width:100px">C&oacute;digo</th>
+                                    <th>Producto maestro</th>
+                                    <th style="width:80px">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="importar-compra-agil-resultados"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <span class="small text-muted me-auto" id="importar-compra-agil-resumen"></span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-success btn-sm d-none" id="btn-importar-compra-agil-confirmar">
+                        <i class="bi bi-download"></i> Importar
+                    </button>
                 </div>
             </div>
         </div>
@@ -846,6 +903,197 @@
         }).catch(err => {
             alert('No se pudo copiar (use HTTPS o localhost).\n' + (err?.message || ''));
         });
+    });
+
+    const importarMpUrls = {
+        preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota)),
+        importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
+    };
+    const modalImportarEl = document.getElementById('modal-importar-compra-agil');
+    const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
+    const importarTexto = document.getElementById('importar-compra-agil-texto');
+    const importarEstado = document.getElementById('importar-compra-agil-estado');
+    const importarCabecera = document.getElementById('importar-compra-agil-cabecera');
+    const importarCabeceraTexto = document.getElementById('importar-compra-agil-cabecera-texto');
+    const importarTablaWrap = document.getElementById('importar-compra-agil-tabla-wrap');
+    const importarResultados = document.getElementById('importar-compra-agil-resultados');
+    const importarResumen = document.getElementById('importar-compra-agil-resumen');
+    const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
+    const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
+    const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
+    let importPreviewData = null;
+    let importandoCompraAgil = false;
+
+    function escHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function renderImportPreview(data) {
+        importPreviewData = data;
+        const cab = data?.cabecera || {};
+        const partes = [];
+        if (cab.codigo_cotizacion) partes.push('Cotización: ' + cab.codigo_cotizacion);
+        if (cab.empresa) partes.push('Cliente: ' + cab.empresa);
+        if (cab.rutempresa) partes.push('RUT: ' + cab.rutempresa);
+        if (cab.nombre) partes.push('Nombre: ' + cab.nombre);
+
+        if (partes.length && importarCabecera && importarCabeceraTexto) {
+            importarCabeceraTexto.textContent = partes.join(' · ');
+            importarCabecera.classList.remove('d-none');
+        } else if (importarCabecera) {
+            importarCabecera.classList.add('d-none');
+        }
+
+        const lineas = data?.lineas || [];
+        if (!importarResultados || !importarTablaWrap) return;
+
+        if (lineas.length === 0) {
+            importarTablaWrap.classList.add('d-none');
+            importarResultados.innerHTML = '';
+            if (importarResumen) importarResumen.textContent = '';
+            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+            return;
+        }
+
+        importarTablaWrap.classList.remove('d-none');
+        importarResultados.innerHTML = lineas.map(ln => {
+            const prod = ln.producto;
+            const estado = ln.estado === 'ok'
+                ? '<span class="text-success">OK</span>'
+                : '<span class="text-danger">Sin match</span>';
+            const prodTxt = prod
+                ? escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre)
+                : '<span class="text-muted">—</span>';
+
+            return '<tr>'
+                + '<td>' + escHtml(ln.id_agile) + '</td>'
+                + '<td>' + escHtml(ln.descripcion) + '</td>'
+                + '<td class="text-end">' + escHtml(ln.cantidad) + '</td>'
+                + '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>'
+                + '<td>' + prodTxt + '</td>'
+                + '<td>' + estado + '</td>'
+                + '</tr>';
+        }).join('');
+
+        const res = data?.resumen || {};
+        if (importarResumen) {
+            importarResumen.textContent = (res.total || 0) + ' línea(s): '
+                + (res.con_producto || 0) + ' con producto, '
+                + (res.sin_producto || 0) + ' sin match.';
+        }
+
+        if (btnImportarConfirmar) {
+            if ((res.con_producto || 0) > 0) {
+                btnImportarConfirmar.classList.remove('d-none');
+            } else {
+                btnImportarConfirmar.classList.add('d-none');
+            }
+        }
+    }
+
+    async function analizarImportCompraAgil() {
+        const texto = String(importarTexto?.value || '').trim();
+        if (!texto) {
+            if (importarEstado) importarEstado.textContent = 'Pegue el texto de Compra Ágil.';
+            return;
+        }
+
+        if (importarEstado) importarEstado.textContent = 'Analizando...';
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+
+        try {
+            const body = new FormData();
+            body.append('_token', csrf);
+            body.append('texto', texto);
+
+            const res = await fetch(importarMpUrls.preview, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (importarEstado) importarEstado.textContent = json.error || json.message || 'Error al analizar.';
+                renderImportPreview(null);
+                return;
+            }
+
+            renderImportPreview(json);
+            if (importarEstado) {
+                const total = json?.resumen?.total || 0;
+                importarEstado.textContent = total > 0
+                    ? 'Análisis listo.'
+                    : 'No se detectaron productos. Revise el texto pegado.';
+            }
+        } catch (err) {
+            if (importarEstado) importarEstado.textContent = 'Error de conexión.';
+        } finally {
+            if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+        }
+    }
+
+    async function confirmarImportCompraAgil() {
+        if (importandoCompraAgil || !importPreviewData) return;
+
+        const texto = String(importarTexto?.value || '').trim();
+        if (!texto) return;
+
+        const sinMatch = importPreviewData?.resumen?.sin_producto || 0;
+        if (sinMatch > 0) {
+            const ok = window.confirm(
+                'Hay ' + sinMatch + ' línea(s) sin producto en el maestro. Se importarán solo las que tienen match. ¿Continuar?'
+            );
+            if (!ok) return;
+        }
+
+        importandoCompraAgil = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
+        if (importarEstado) importarEstado.textContent = 'Importando...';
+
+        try {
+            const body = new FormData();
+            body.append('_token', csrf);
+            body.append('texto', texto);
+
+            const res = await fetch(importarMpUrls.importar, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (importarEstado) importarEstado.textContent = json.error || json.message || 'No se pudo importar.';
+                return;
+            }
+
+            mostrarLoaderCotiz();
+            window.location.reload();
+        } catch (err) {
+            if (importarEstado) importarEstado.textContent = 'Error de conexión.';
+        } finally {
+            importandoCompraAgil = false;
+            if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
+        }
+    }
+
+    btnAbrirImportar?.addEventListener('click', () => {
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        bsModalImportar?.show();
+        setTimeout(() => importarTexto?.focus(), 200);
+    });
+
+    btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
+    btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
+
+    modalImportarEl?.addEventListener('hidden.bs.modal', () => {
+        importPreviewData = null;
     });
 
     @if($lineas->contains(fn ($row) => $row['repetidos'] > 1))

@@ -153,9 +153,17 @@ class NotaDetalleService
         });
     }
 
-    public function agregarLinea(Nota $nota, string $prodItem, int $cantidad, int $prodValor, ?int $prodValorCosto = null, ?string $usuarioUpd = null): NotaDetalle
-    {
-        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd) {
+    public function agregarLinea(
+        Nota $nota,
+        string $prodItem,
+        int $cantidad,
+        int $prodValor,
+        ?int $prodValorCosto = null,
+        ?string $usuarioUpd = null,
+        ?string $prodItemAgile = null,
+        ?string $prodDescripcionAgile = null,
+    ): NotaDetalle {
+        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
             $producto = Maeprod::query()->find($prodItem);
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
 
@@ -180,6 +188,9 @@ class NotaDetalleService
                 ->where('nronota', $nota->nronota)
                 ->max('orden')) + 1;
 
+            $agileId = trim((string) $prodItemAgile);
+            $agileDesc = trim((string) $prodDescripcionAgile);
+
             return NotaDetalle::create([
                 'nronota' => $nota->nronota,
                 'prod_item' => trim($prodItem),
@@ -188,6 +199,8 @@ class NotaDetalleService
                 'fechahora' => now(),
                 'orden' => $orden ?: 1,
                 'prod_valor_costo' => $costo,
+                'prod_item_agile' => $agileId !== '' ? $agileId : null,
+                'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
             ]);
         });
     }
