@@ -141,6 +141,11 @@ class MaeprodController extends Controller
         return $this->importService->templateCsvDownloadResponse();
     }
 
+    public function downloadImportTemplateExcel(): StreamedResponse
+    {
+        return $this->importService->templateExcelDownloadResponse();
+    }
+
     public function exportCsv(): StreamedResponse
     {
         return $this->importService->exportCsvResponse();

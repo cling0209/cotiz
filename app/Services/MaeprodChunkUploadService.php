@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\MaeprodImportFileTypes;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -26,7 +27,7 @@ class MaeprodChunkUploadService
         string $mode = 'template',
     ): array {
         $this->assertValidUploadId($uploadId);
-        $this->assertCsvFileName($originalName);
+        $this->assertImportFileName($originalName);
 
         if ($totalChunks < 1 || $chunkIndex < 0 || $chunkIndex >= $totalChunks) {
             throw new \InvalidArgumentException('Índice de chunk inválido.');
@@ -139,7 +140,8 @@ class MaeprodChunkUploadService
         $dir = $this->uploadDirectory($uploadId);
         File::ensureDirectoryExists(storage_path('app/imports/merged'));
 
-        $mergedPath = storage_path('app/imports/merged/'.$uploadId.'.csv');
+        $extension = MaeprodImportFileTypes::extensionFromName($this->readMeta($uploadId)['original_name'] ?? 'csv');
+        $mergedPath = storage_path('app/imports/merged/'.$uploadId.'.'.$extension);
         $output = fopen($mergedPath, 'wb');
 
         if ($output === false) {
@@ -233,12 +235,10 @@ class MaeprodChunkUploadService
         }
     }
 
-    protected function assertCsvFileName(string $originalName): void
+    protected function assertImportFileName(string $originalName): void
     {
-        $extension = Str::lower(pathinfo($originalName, PATHINFO_EXTENSION));
-
-        if (! in_array($extension, ['csv', 'txt'], true)) {
-            throw new \InvalidArgumentException('Solo se permiten archivos CSV.');
+        if (! MaeprodImportFileTypes::isAllowed($originalName)) {
+            throw new \InvalidArgumentException('Solo se permiten archivos CSV o Excel (.xlsx, .xls).');
         }
     }
 }

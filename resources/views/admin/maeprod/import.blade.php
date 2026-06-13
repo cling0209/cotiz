@@ -7,7 +7,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
             <h1 class="h3 fw-bold mb-1">Carga masiva de productos</h1>
-            <p class="text-muted mb-0">Use la plantilla est&aacute;ndar o suba un CSV con columnas propias y mapee los campos antes de importar.</p>
+            <p class="text-muted mb-0">Use la plantilla est&aacute;ndar (CSV o Excel) o suba un archivo con columnas propias y mapee los campos antes de importar.</p>
         </div>
         <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Volver al listado
@@ -33,7 +33,7 @@
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="tab-custom" data-bs-toggle="tab" data-bs-target="#panel-custom" type="button" role="tab">
-                CSV personalizado
+                CSV / Excel personalizado
             </button>
         </li>
     </ul>
@@ -46,8 +46,8 @@
                         <div class="card-header bg-white fw-semibold">1. Descargar plantilla</div>
                         <div class="card-body">
                             <p class="text-muted">
-                                Archivo CSV con separador <strong>punto y coma (;)</strong> o coma.
-                                UTF-8 o Excel Windows (Latin-1).
+                                Formatos: <strong>CSV</strong> (<code>;</code> o <code>,</code>) o <strong>Excel</strong> (.xlsx, .xls).
+                                La primera hoja del libro se importa.
                             </p>
                             <dl class="small mb-4">
                                 <dt class="fw-semibold">Columnas obligatorias</dt>
@@ -60,7 +60,10 @@
                             </dl>
                             <div class="d-flex flex-wrap gap-2">
                                 <a href="{{ route('admin.productos.import.template') }}" class="btn btn-outline-primary" data-no-loader>
-                                    <i class="bi bi-download"></i> Descargar plantilla
+                                    <i class="bi bi-download"></i> Plantilla CSV
+                                </a>
+                                <a href="{{ route('admin.productos.import.template.excel') }}" class="btn btn-outline-primary" data-no-loader>
+                                    <i class="bi bi-file-earmark-excel"></i> Plantilla Excel
                                 </a>
                                 <a href="{{ route('admin.productos.export') }}" class="btn btn-outline-success" data-no-loader>
                                     <i class="bi bi-file-earmark-spreadsheet"></i> Descargar productos actuales
@@ -76,8 +79,9 @@
                         <div class="card-body">
                             <form id="importFormTemplate" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <label class="form-label">Archivo CSV *</label>
-                                    <input type="file" id="importFileTemplate" accept=".csv,text/csv" class="form-control" required @if(!empty($activeImport)) disabled @endif>
+                                    <label class="form-label">Archivo CSV o Excel *</label>
+                                    <input type="file" id="importFileTemplate" accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="form-control" required @if(!empty($activeImport)) disabled @endif>
+                                    <div class="form-text">CSV o Excel (.xlsx, .xls) hasta 50 MB (subida fragmentada en trozos de 6 MB).</div>
                                 </div>
                                 <div id="importProgressWrapTemplate" class="mb-3 d-none">
                                     <div class="d-flex justify-content-between small mb-1">
@@ -101,13 +105,13 @@
 
         <div class="tab-pane fade" id="panel-custom" role="tabpanel">
             <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white fw-semibold">1. Subir CSV con sus columnas</div>
+                <div class="card-header bg-white fw-semibold">1. Subir archivo con sus columnas</div>
                 <div class="card-body">
                     <form id="importFormCustom" enctype="multipart/form-data">
                         <div class="mb-3">
-                            <label class="form-label">Archivo CSV *</label>
-                            <input type="file" id="importFileCustom" accept=".csv,text/csv" class="form-control" @if(!empty($activeImport)) disabled @endif>
-                            <div class="form-text">Primera fila = encabezados. Separador <code>;</code> o <code>,</code>. Hasta 50 MB.</div>
+                            <label class="form-label">Archivo CSV o Excel *</label>
+                            <input type="file" id="importFileCustom" accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="form-control" @if(!empty($activeImport)) disabled @endif>
+                            <div class="form-text">Primera fila = encabezados. CSV o Excel (.xlsx, .xls) hasta 50 MB (subida fragmentada).</div>
                         </div>
                         <div id="importProgressWrapCustom" class="mb-3 d-none">
                             <div class="d-flex justify-content-between small mb-1">
@@ -202,6 +206,16 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
 let customUploadId = null;
 let customColumns = [];
 
+const ALLOWED_IMPORT_EXTENSIONS = ['csv', 'txt', 'xlsx', 'xls'];
+
+function fileExtension(name) {
+    return name.split('.').pop()?.toLowerCase() || '';
+}
+
+function isAllowedImportFile(name) {
+    return ALLOWED_IMPORT_EXTENSIONS.includes(fileExtension(name));
+}
+
 function importErrorMessage(payload, status) {
     if (payload?.message) return payload.message;
     if (payload?.errors) return Object.values(payload.errors).flat().join(' ');
@@ -246,6 +260,7 @@ async function refreshImportStatus() {
 }
 
 async function uploadCsvChunks(file, mode, progress) {
+    const extension = fileExtension(file.name);
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const uploadId = crypto.randomUUID();
 
@@ -401,6 +416,12 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
     const file = fileInput.files[0];
     if (!file) return;
 
+    if (!isAllowedImportFile(file.name)) {
+        errorBox.textContent = 'Solo se permiten archivos CSV o Excel (.xlsx, .xls).';
+        errorBox.classList.remove('d-none');
+        return;
+    }
+
     await refreshImportStatus();
     if (submitBtn.disabled) {
         errorBox.textContent = 'Hay una importación en curso.';
@@ -440,6 +461,12 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
     const errorBox = document.getElementById('importErrorCustom');
     const file = fileInput.files[0];
     if (!file) return;
+
+    if (!isAllowedImportFile(file.name)) {
+        errorBox.textContent = 'Solo se permiten archivos CSV o Excel (.xlsx, .xls).';
+        errorBox.classList.remove('d-none');
+        return;
+    }
 
     submitBtn.disabled = true;
     fileInput.disabled = true;

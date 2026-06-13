@@ -23,7 +23,7 @@ class MaeprodImportStagingService
         $this->assertValidUploadId($uploadId);
 
         $importService = app(MaeprodImportService::class);
-        $content = $importService->readPathAsUtf8($mergedPath);
+        $content = $importService->readAndNormalizePath($mergedPath, $originalName);
         $rows = $importService->parseCsvText($content);
 
         if ($rows === []) {

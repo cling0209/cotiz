@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Models\Maeprod;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
+use App\Support\MaeprodImportFileTypes;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodImportService
@@ -65,22 +68,47 @@ class MaeprodImportService
 
             fwrite($handle, "\xEF\xBB\xBF");
             fputcsv($handle, $this->templateHeaders(), ';');
-            fputcsv($handle, [
-                'DEMO001',
-                'PRODUCTO EJEMPLO PAPEL BOND',
-                'PAPEL',
-                '4500',
-                '3600',
-                'DEMO001_medium.jpg',
-                '75 GR',
-                '100',
-                '',
-            ], ';');
+            fputcsv($handle, $this->templateExampleRow(), ';');
 
             fclose($handle);
         }, 'plantilla_productos_maeprod.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    public function templateExcelDownloadResponse(): StreamedResponse
+    {
+        return response()->streamDownload(function () {
+            $spreadsheet = new Spreadsheet;
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray([
+                $this->templateHeaders(),
+                $this->templateExampleRow(),
+            ]);
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 'plantilla_productos_maeprod.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * @return list<string|int>
+     */
+    private function templateExampleRow(): array
+    {
+        return [
+            'DEMO001',
+            'PRODUCTO EJEMPLO PAPEL BOND',
+            'PAPEL',
+            4500,
+            3600,
+            'DEMO001_medium.jpg',
+            '75 GR',
+            100,
+            '',
+        ];
     }
 
     public function exportCsvResponse(): StreamedResponse
@@ -168,7 +196,7 @@ class MaeprodImportService
      */
     public function importFromUploadedFile(UploadedFile $file, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
-        $rows = $this->parseCsv($file);
+        $rows = $this->parseRowsFromUploadedFile($file);
 
         if ($rows === []) {
             return array_merge($this->emptyResult(), [
@@ -184,7 +212,7 @@ class MaeprodImportService
      */
     public function importFromPath(string $path, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
-        $rows = $this->parseCsvFromPath($path);
+        $rows = $this->parseRowsFromPath($path);
 
         if ($rows === []) {
             return array_merge($this->emptyResult(), [
@@ -690,10 +718,16 @@ class MaeprodImportService
     /**
      * @return list<array<string, string>>
      */
-    private function parseCsvFromPath(string $path): array
+    public function parseRowsFromPath(string $path, ?string $originalName = null): array
     {
         if (! is_file($path)) {
             return [];
+        }
+
+        $extension = MaeprodImportFileTypes::extensionFromName($originalName ?? basename($path));
+
+        if (in_array($extension, MaeprodImportFileTypes::SPREADSHEET_EXTENSIONS, true)) {
+            return app(MaeprodSpreadsheetReader::class)->parseFile($path);
         }
 
         $content = $this->readPathAsUtf8($path);
@@ -702,21 +736,72 @@ class MaeprodImportService
     }
 
     /**
+     * Normaliza filas parseadas a texto CSV (;) para almacenamiento temporal.
+     */
+    public function rowsToCsvContent(array $rows): string
+    {
+        if ($rows === []) {
+            return '';
+        }
+
+        $headers = array_values(array_filter(
+            array_keys($rows[0]),
+            fn (string $header) => $header !== '_csv_line',
+        ));
+
+        $handle = fopen('php://temp', 'r+');
+        if ($handle === false) {
+            return '';
+        }
+
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, $headers, ';');
+
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($headers as $header) {
+                $line[] = $row[$header] ?? '';
+            }
+            fputcsv($handle, $line, ';');
+        }
+
+        rewind($handle);
+        $content = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return $content;
+    }
+
+    public function readAndNormalizePath(string $path, ?string $originalName = null): string
+    {
+        $extension = MaeprodImportFileTypes::extensionFromName($originalName ?? $path);
+
+        if (in_array($extension, MaeprodImportFileTypes::SPREADSHEET_EXTENSIONS, true)) {
+            return $this->rowsToCsvContent($this->parseRowsFromPath($path, $originalName));
+        }
+
+        return $this->readPathAsUtf8($path);
+    }
+
+    /**
      * @return list<array<string, string>>
      */
-    private function parseCsv(UploadedFile $file): array
+    private function parseRowsFromUploadedFile(UploadedFile $file): array
     {
         $path = $file->getRealPath();
         if ($path === false) {
             return [];
         }
 
-        $content = $this->readPathAsUtf8($path);
-        if ($content === '') {
-            return [];
-        }
+        return $this->parseRowsFromPath($path, $file->getClientOriginalName());
+    }
 
-        return $this->parseCsvContent($content);
+    /**
+     * @return list<array<string, string>>
+     */
+    private function parseCsvFromPath(string $path): array
+    {
+        return $this->parseRowsFromPath($path);
     }
 
     /**

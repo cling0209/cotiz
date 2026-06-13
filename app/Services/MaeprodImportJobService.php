@@ -21,7 +21,7 @@ class MaeprodImportJobService
         string $originalName,
         ?array $columnMapping = null,
     ): array {
-        $content = app(MaeprodImportService::class)->readPathAsUtf8($mergedPath);
+        $content = app(MaeprodImportService::class)->readAndNormalizePath($mergedPath, $originalName);
 
         return $this->prepareFromCsvContent(
             $uploadId,

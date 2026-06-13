@@ -11,6 +11,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
 
 class MaeprodImportTest extends TestCase
@@ -32,6 +34,171 @@ class MaeprodImportTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-disposition');
         $this->assertStringContainsString('codigo;nombre;familia;precio', $response->streamedContent());
+    }
+
+    public function test_superadmin_can_download_import_template_excel(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        $response = $this->actingAs($admin)->get(route('admin.productos.import.template.excel'));
+
+        $response->assertOk();
+        $response->assertHeader('content-disposition');
+        $this->assertStringContainsString('plantilla_productos_maeprod.xlsx', (string) $response->headers->get('content-disposition'));
+        $this->assertStringStartsWith('PK', $response->streamedContent());
+    }
+
+    public function test_superadmin_can_import_products_from_excel_template(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $this->importExcelAsAdmin($admin, [
+            ['codigo', 'nombre', 'familia', 'precio', 'costo', 'nombre_archivo', 'gramaje', 'stock', 'softland'],
+            ['XLS001', 'PRODUCTO EXCEL', 'PAPEL', 7500, 6000, 'XLS001_medium.jpg', '75 GR', 5, 'SLX01'],
+        ]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'XLS001',
+            'prod_nombre' => 'PRODUCTO EXCEL',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 7500,
+            'prod_valor_costo' => 6000,
+            'prod_item_softland' => 'SLX01',
+        ]);
+    }
+
+    public function test_excel_import_works_when_uploaded_in_multiple_chunks(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $file = $this->makeExcelUpload('productos.xlsx', [
+            ['codigo', 'nombre', 'familia', 'precio'],
+            ['XLS003', 'EXCEL CHUNKED', 'PAPEL', 3300],
+        ]);
+
+        $content = file_get_contents($file->getPathname());
+        $this->assertNotFalse($content);
+
+        $totalChunks = 2;
+        $splitAt = (int) floor(strlen($content) / 2);
+        $uploadId = (string) Str::uuid();
+        $jobUploadId = null;
+
+        for ($chunkIndex = 0; $chunkIndex < $totalChunks; $chunkIndex++) {
+            $partPath = tempnam(sys_get_temp_dir(), 'maeprod_chunk_test_');
+            $this->assertNotFalse($partPath);
+            $partBytes = $chunkIndex === 0
+                ? substr($content, 0, $splitAt)
+                : substr($content, $splitAt);
+            file_put_contents($partPath, $partBytes);
+
+            $chunk = new UploadedFile(
+                $partPath,
+                'chunk-'.$chunkIndex.'.part',
+                'application/octet-stream',
+                UPLOAD_ERR_OK,
+                true,
+            );
+
+            $chunkResponse = $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.chunk'), [
+                    'upload_id' => $uploadId,
+                    'chunk_index' => $chunkIndex,
+                    'total_chunks' => $totalChunks,
+                    'original_name' => 'productos.xlsx',
+                    'chunk' => $chunk,
+                ]);
+
+            $chunkResponse->assertOk();
+
+            if ($chunkIndex === $totalChunks - 1) {
+                $chunkResponse->assertJson(['done' => true]);
+                $jobUploadId = $chunkResponse->json('upload_id');
+            }
+        }
+
+        $this->assertNotNull($jobUploadId);
+
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $jobUploadId,
+            ]);
+
+        $processResponse->assertOk()
+            ->assertJson(['finished' => true])
+            ->assertJsonStructure(['redirect']);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'XLS003',
+            'prod_nombre' => 'EXCEL CHUNKED',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 3300,
+        ]);
+    }
+
+    public function test_custom_excel_import_with_column_mapping(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $uploadId = (string) Str::uuid();
+        $file = $this->makeExcelUpload('custom.xlsx', [
+            ['sku', 'descripcion', 'categoria', 'pvp'],
+            ['XLS002', 'EXCEL CUSTOM', 'LIBR', 2200],
+        ]);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'custom.xlsx',
+                'mode' => 'custom',
+                'chunk' => $file,
+            ])
+            ->assertOk();
+
+        $mapping = [
+            'codigo' => 'sku',
+            'nombre' => 'descripcion',
+            'familia' => 'categoria',
+            'precio' => 'pvp',
+        ];
+
+        $prepareResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.prepare'), [
+                'upload_id' => $uploadId,
+                'mapping' => $mapping,
+            ]);
+
+        $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
+
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $prepareResponse->json('upload_id'),
+            ]);
+
+        $processResponse->assertOk()->assertJson(['finished' => true]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'XLS002',
+            'prod_nombre' => 'EXCEL CUSTOM',
+            'prod_familia' => 'LIBR',
+            'prod_valor' => 2200,
+        ]);
     }
 
     public function test_superadmin_can_import_products_from_csv(): void
@@ -414,5 +581,66 @@ class MaeprodImportTest extends TestCase
             ->assertJsonStructure(['redirect']);
 
         return $processResponse;
+    }
+
+    /**
+     * @param  list<list<string|int|float>>  $rows
+     */
+    private function importExcelAsAdmin(User $admin, array $rows): \Illuminate\Testing\TestResponse
+    {
+        $uploadId = (string) Str::uuid();
+        $file = $this->makeExcelUpload('productos.xlsx', $rows);
+
+        $chunkResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'productos.xlsx',
+                'chunk' => $file,
+            ]);
+
+        $chunkResponse->assertOk()->assertJson(['done' => true]);
+
+        $jobUploadId = $chunkResponse->json('upload_id');
+
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $jobUploadId,
+            ]);
+
+        $processResponse->assertOk()
+            ->assertJson(['finished' => true])
+            ->assertJsonStructure(['redirect']);
+
+        return $processResponse;
+    }
+
+    /**
+     * @param  list<list<string|int|float>>  $rows
+     */
+    private function makeExcelUpload(string $filename, array $rows): UploadedFile
+    {
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray($rows);
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'maeprod_import_test_');
+        $this->assertNotFalse($tempPath);
+
+        $xlsxPath = $tempPath.'.xlsx';
+        rename($tempPath, $xlsxPath);
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($xlsxPath);
+
+        return new UploadedFile(
+            $xlsxPath,
+            $filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            UPLOAD_ERR_OK,
+            true,
+        );
     }
 }
