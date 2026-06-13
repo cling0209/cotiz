@@ -316,6 +316,34 @@ class MaeprodController extends Controller
         ]);
     }
 
+    public function prepareTemplateImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+        ]);
+
+        try {
+            $prepared = $importJob->ensurePrepared(
+                $data['upload_id'],
+                (int) $request->user()->id,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            app(MaeprodImportLockService::class)->release($data['upload_id']);
+
+            return response()->json([
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error al analizar el archivo Excel.',
+            ], 500);
+        }
+
+        return response()->json($prepared);
+    }
+
     public function processImportBatch(Request $request, MaeprodImportJobService $importJob): JsonResponse
     {
         $data = $request->validate([
@@ -323,12 +351,7 @@ class MaeprodController extends Controller
         ]);
 
         try {
-            $importJob->ensurePrepared(
-                $data['upload_id'],
-                (int) $request->user()->id,
-            );
-
-            $progress = $importJob->processAllBatches(
+            $progress = $importJob->processNextBatchWithRun(
                 $data['upload_id'],
                 (int) $request->user()->id,
             );

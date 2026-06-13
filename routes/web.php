@@ -82,6 +82,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('productos/carga-masiva/chunk', [MaeprodController::class, 'storeImportChunk'])->name('productos.import.chunk');
             Route::post('productos/carga-masiva/inicializar', [MaeprodController::class, 'initializeCustomImport'])->name('productos.import.initialize');
             Route::post('productos/carga-masiva/vista-previa', [MaeprodController::class, 'previewImportMapping'])->name('productos.import.preview');
+            Route::post('productos/carga-masiva/preparar-plantilla', [MaeprodController::class, 'prepareTemplateImport'])->name('productos.import.prepare.template');
             Route::post('productos/carga-masiva/preparar', [MaeprodController::class, 'prepareCustomImport'])->name('productos.import.prepare');
             Route::post('productos/carga-masiva/procesar', [MaeprodController::class, 'processImportBatch'])->name('productos.import.process');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');

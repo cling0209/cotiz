@@ -201,6 +201,7 @@
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
+const prepareTemplateImportUrl = @json(route('admin.productos.import.prepare.template', [], false));
 const processImportUrl = @json(route('admin.productos.import.process', [], false));
 const previewImportUrl = @json(route('admin.productos.import.preview', [], false));
 const prepareImportUrl = @json(route('admin.productos.import.prepare', [], false));
@@ -330,16 +331,60 @@ async function uploadCsvChunks(file, mode, progress) {
     throw new Error('No se completó la carga del archivo.');
 }
 
-async function processImportAll(uploadId, progress) {
-    progress.label.textContent = 'Analizando e importando productos en el servidor...';
-    progress.bar.style.width = '55%';
-    progress.percent.textContent = '55%';
+async function processImportBatches(uploadId, batchCount, progress) {
+    let processed = 0;
+    const totalBatches = Math.max(1, batchCount || 1);
+
+    while (processed < totalBatches) {
+        const formData = new FormData();
+        formData.append('upload_id', uploadId);
+        formData.append('_token', csrfToken);
+
+        const response = await fetch(processImportUrl, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            credentials: 'same-origin',
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
+
+        processed = payload.processed_batches ?? processed + 1;
+        const percent = 55 + Math.round((processed / totalBatches) * 45);
+        progress.bar.style.width = percent + '%';
+        progress.bar.setAttribute('aria-valuenow', String(percent));
+        progress.percent.textContent = percent + '%';
+        progress.label.textContent = `Importando productos (${processed}/${totalBatches} lotes)...`;
+
+        if (payload.finished && payload.redirect) {
+            progress.bar.style.width = '100%';
+            progress.percent.textContent = '100%';
+            progress.label.textContent = 'Importación completada, redirigiendo...';
+            window.location.href = payload.redirect;
+            return;
+        }
+
+        if (payload.finished) {
+            break;
+        }
+    }
+}
+
+async function prepareTemplateImport(uploadId, progress) {
+    progress.label.textContent = 'Analizando archivo Excel...';
+    progress.bar.style.width = '50%';
+    progress.percent.textContent = '50%';
 
     const formData = new FormData();
     formData.append('upload_id', uploadId);
     formData.append('_token', csrfToken);
 
-    const response = await fetch(processImportUrl, {
+    const response = await fetch(prepareTemplateImportUrl, {
         method: 'POST',
         body: formData,
         headers: {
@@ -353,13 +398,18 @@ async function processImportAll(uploadId, progress) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
-    progress.bar.style.width = '100%';
-    progress.percent.textContent = '100%';
-    progress.label.textContent = 'Importación completada, redirigiendo...';
+    return payload;
+}
 
-    if (payload.finished && payload.redirect) {
-        window.location.href = payload.redirect;
+async function processImportAll(uploadId, progress, options = {}) {
+    let batchCount = options.batchCount ?? 1;
+
+    if (options.pendingParse) {
+        const prepared = await prepareTemplateImport(uploadId, progress);
+        batchCount = prepared.batch_count ?? 1;
     }
+
+    await processImportBatches(uploadId, batchCount, progress);
 }
 
 function getCustomMapping() {
@@ -463,7 +513,10 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
     try {
         const payload = await uploadCsvChunks(file, 'template', progress);
         progress.label.textContent = 'Preparando importación...';
-        await processImportAll(payload.upload_id, progress);
+        await processImportAll(payload.upload_id, progress, {
+            pendingParse: payload.pending_parse === true,
+            batchCount: payload.batch_count,
+        });
     } catch (error) {
         await releaseImportLock();
         errorBox.textContent = error.message || 'Error inesperado.';
@@ -623,7 +676,9 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
         const preparePayload = await prepareResponse.json().catch(() => ({}));
         if (!prepareResponse.ok) throw new Error(importErrorMessage(preparePayload, prepareResponse.status));
 
-        await processImportAll(preparePayload.upload_id, progress);
+        await processImportAll(preparePayload.upload_id, progress, {
+            batchCount: preparePayload.batch_count,
+        });
     } catch (error) {
         errorBox.textContent = error.message || 'Error al importar.';
         errorBox.classList.remove('d-none');

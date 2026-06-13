@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MaeprodImportRun;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -242,6 +243,74 @@ class MaeprodImportJobService
             'total_batches' => $batchCount,
             'result' => $job['result'],
         ];
+    }
+
+    /**
+     * Procesa un lote por petición HTTP (evita timeouts en producción).
+     *
+     * @return array{
+     *     finished: bool,
+     *     processed_batches: int,
+     *     total_batches: int,
+     *     result: array{created: int, updated: int, skipped: int, errors: list<string>},
+     *     run_id?: int
+     * }
+     */
+    public function processNextBatchWithRun(string $uploadId, int $userId): array
+    {
+        $lock = app(MaeprodImportLockService::class);
+
+        if ($lock->isBlockedFor($uploadId)) {
+            $current = $lock->current();
+            $started = $current
+                ? \Illuminate\Support\Carbon::parse($current['started_at'])->timezone(config('app.timezone'))->format('d/m/Y H:i')
+                : '';
+
+            throw new \InvalidArgumentException(
+                "Hay una importación en curso iniciada por {$current['username']} el {$started}.",
+            );
+        }
+
+        $job = $this->readJob($uploadId);
+
+        if ((int) $job['user_id'] !== $userId) {
+            throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+        }
+
+        $runService = app(MaeprodImportRunService::class);
+        $runId = isset($job['run_id']) ? (int) $job['run_id'] : null;
+
+        if ($runId === null && (int) $job['next_batch'] === 0) {
+            $run = $runService->beginRun(
+                (string) ($job['username'] ?? 'import'),
+                (string) ($job['original_name'] ?? 'import.csv'),
+            );
+            $runId = $run->id;
+            $job['run_id'] = $runId;
+            $this->writeJob($uploadId, $job);
+        }
+
+        try {
+            $lock->touch($uploadId);
+            $progress = $this->processNextBatch($uploadId, $userId);
+
+            if ($progress['finished'] && $runId !== null) {
+                $run = $runService->completeRun(
+                    MaeprodImportRun::query()->findOrFail($runId),
+                    $progress['result'],
+                );
+
+                return array_merge($progress, [
+                    'run_id' => $run->id,
+                ]);
+            }
+
+            return $progress;
+        } finally {
+            if (isset($progress) && $progress['finished'] === true) {
+                $lock->release($uploadId);
+            }
+        }
     }
 
     /**

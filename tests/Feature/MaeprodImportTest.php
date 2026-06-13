@@ -126,15 +126,7 @@ class MaeprodImportTest extends TestCase
 
         $this->assertNotNull($jobUploadId);
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $jobUploadId,
-            ]);
-
-        $processResponse->assertOk()
-            ->assertJson(['finished' => true])
-            ->assertJsonStructure(['redirect']);
+        $this->processImportUntilFinished($admin, $jobUploadId, true);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'XLS003',
@@ -193,13 +185,7 @@ class MaeprodImportTest extends TestCase
 
         $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $prepareResponse->json('upload_id'),
-            ]);
-
-        $processResponse->assertOk()->assertJson(['finished' => true]);
+        $this->processImportUntilFinished($admin, (string) $prepareResponse->json('upload_id'));
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'XLS002',
@@ -581,13 +567,7 @@ class MaeprodImportTest extends TestCase
 
         $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $prepareResponse->json('upload_id'),
-            ]);
-
-        $processResponse->assertOk()->assertJson(['finished' => true]);
+        $this->processImportUntilFinished($admin, (string) $prepareResponse->json('upload_id'));
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'CUST002',
@@ -616,17 +596,7 @@ class MaeprodImportTest extends TestCase
 
         $jobUploadId = $chunkResponse->json('upload_id');
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $jobUploadId,
-            ]);
-
-        $processResponse->assertOk()
-            ->assertJson(['finished' => true])
-            ->assertJsonStructure(['redirect']);
-
-        return $processResponse;
+        return $this->processImportUntilFinished($admin, $jobUploadId);
     }
 
     /**
@@ -649,17 +619,38 @@ class MaeprodImportTest extends TestCase
 
         $chunkResponse->assertOk()->assertJson(['done' => true]);
 
-        $jobUploadId = $chunkResponse->json('upload_id');
+        return $this->processImportUntilFinished(
+            $admin,
+            (string) $chunkResponse->json('upload_id'),
+            $chunkResponse->json('pending_parse') === true,
+        );
+    }
 
-        $processResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.process'), [
-                'upload_id' => $jobUploadId,
-            ]);
+    private function processImportUntilFinished(User $admin, string $uploadId, bool $pendingParse = false): \Illuminate\Testing\TestResponse
+    {
+        if ($pendingParse) {
+            $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.prepare.template'), [
+                    'upload_id' => $uploadId,
+                ])
+                ->assertOk()
+                ->assertJsonStructure(['upload_id', 'batch_count']);
+        }
 
-        $processResponse->assertOk()
-            ->assertJson(['finished' => true])
-            ->assertJsonStructure(['redirect']);
+        $processResponse = null;
+
+        do {
+            $processResponse = $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.process'), [
+                    'upload_id' => $uploadId,
+                ]);
+
+            $processResponse->assertOk();
+        } while ($processResponse->json('finished') !== true);
+
+        $processResponse->assertJsonStructure(['redirect']);
 
         return $processResponse;
     }

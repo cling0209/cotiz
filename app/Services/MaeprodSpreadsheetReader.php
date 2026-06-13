@@ -32,6 +32,9 @@ class MaeprodSpreadsheetReader
         $highestColumn = $sheet->getHighestDataColumn();
 
         if ($highestRow < 1) {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
             return [];
         }
 
@@ -39,6 +42,9 @@ class MaeprodSpreadsheetReader
         $headerRow = $this->readSheetRow($sheet, 1, $highestColumnIndex);
 
         if ($this->isEmptyRow($headerRow)) {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
             return [];
         }
 
@@ -69,6 +75,9 @@ class MaeprodSpreadsheetReader
                 $rows[] = $row;
             }
         }
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
 
         return $rows;
     }
