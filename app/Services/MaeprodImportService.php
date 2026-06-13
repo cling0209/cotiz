@@ -189,11 +189,41 @@ class MaeprodImportService
             $pending[] = $row;
         }
 
+        $pending = $this->deduplicateRowsByItem($pending, $result);
+
         foreach (array_chunk($pending, self::UPSERT_CHUNK_SIZE) as $chunk) {
             $this->persistChunk($chunk, $usuarioUpd, $result);
         }
 
         return $result;
+    }
+
+    /**
+     * @param  list<array<string, string>>  $rows
+     * @param  array{created: int, updated: int, skipped: int, errors: list<string>}  $result
+     * @return list<array<string, string>>
+     */
+    private function deduplicateRowsByItem(array $rows, array &$result): array
+    {
+        /** @var array<string, array<string, string>> $unique */
+        $unique = [];
+        $duplicates = 0;
+
+        foreach ($rows as $row) {
+            $item = trim((string) $row['prod_item']);
+
+            if (isset($unique[$item])) {
+                $duplicates++;
+            }
+
+            $unique[$item] = $row;
+        }
+
+        if ($duplicates > 0 && count($result['errors']) < self::MAX_ERRORS) {
+            $result['errors'][] = "{$duplicates} fila(s) duplicada(s) en el CSV; se usó la última ocurrencia de cada código.";
+        }
+
+        return array_values($unique);
     }
 
     /**

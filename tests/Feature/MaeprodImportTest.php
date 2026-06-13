@@ -107,6 +107,29 @@ class MaeprodImportTest extends TestCase
         ]);
     }
 
+    public function test_import_uses_last_occurrence_when_csv_has_duplicate_codes(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $csv = "codigo;nombre;familia;precio;costo\n";
+        $csv .= "DUP001;PRIMERA VERSION;PAPEL;1000;800\n";
+        $csv .= "DUP001;SEGUNDA VERSION;PAPEL;2000;1500\n";
+
+        $this->importCsvAsAdmin($admin, $csv);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'DUP001',
+            'prod_nombre' => 'SEGUNDA VERSION',
+            'prod_valor' => 2000,
+            'prod_valor_costo' => 1500,
+        ]);
+
+        $this->assertSame(1, Maeprod::query()->where('prod_item', 'DUP001')->count());
+    }
+
     public function test_ejecutivo_cannot_access_bulk_import(): void
     {
         $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);
