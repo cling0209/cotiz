@@ -65,7 +65,7 @@
                             <label class="form-label">Archivo CSV *</label>
                             <input type="file" id="importFile" accept=".csv,text/csv" class="form-control" required>
                             <div class="form-text">
-                                Hasta 50 MB. Se sube en fragmentos de ~6 MB e importa en lotes de 250 productos.
+                                Hasta 50 MB. Se sube en fragmentos de ~6 MB y se importa en el servidor en una sola pasada.
                                 Si el c&oacute;digo ya existe, el producto se actualiza; si no, se crea.
                             </div>
                         </div>
@@ -112,42 +112,40 @@ function importErrorMessage(payload, status) {
     return `Error del servidor (${status}).`;
 }
 
-async function processImportBatches(uploadId, batchCount, progressBar, progressLabel, progressPercent) {
-    let processed = 0;
+async function processImportAll(uploadId, progressBar, progressLabel, progressPercent) {
+    progressLabel.textContent = 'Importando productos en el servidor...';
+    progressBar.style.width = '55%';
+    progressBar.setAttribute('aria-valuenow', '55');
+    progressPercent.textContent = '55%';
 
-    while (processed < batchCount) {
-        const formData = new FormData();
-        formData.append('upload_id', uploadId);
-        formData.append('_token', csrfToken);
+    const formData = new FormData();
+    formData.append('upload_id', uploadId);
+    formData.append('_token', csrfToken);
 
-        const response = await fetch(processImportUrl, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            credentials: 'same-origin',
-        });
+    const response = await fetch(processImportUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken,
+        },
+        credentials: 'same-origin',
+    });
 
-        const payload = await response.json().catch(() => ({}));
+    const payload = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-            throw new Error(importErrorMessage(payload, response.status));
-        }
+    if (!response.ok) {
+        throw new Error(importErrorMessage(payload, response.status));
+    }
 
-        processed = payload.processed_batches ?? processed + 1;
-        const percent = Math.round((processed / batchCount) * 100);
-        progressBar.style.width = percent + '%';
-        progressBar.setAttribute('aria-valuenow', String(percent));
-        progressPercent.textContent = percent + '%';
-        progressLabel.textContent = `Importando productos (${processed}/${batchCount} lotes)...`;
+    progressBar.style.width = '100%';
+    progressBar.setAttribute('aria-valuenow', '100');
+    progressPercent.textContent = '100%';
+    progressLabel.textContent = 'Importación completada, redirigiendo...';
 
-        if (payload.finished && payload.redirect) {
-            window.location.href = payload.redirect;
-            return;
-        }
+    if (payload.finished && payload.redirect) {
+        window.location.href = payload.redirect;
     }
 }
 
@@ -223,9 +221,8 @@ document.getElementById('importForm').addEventListener('submit', async (event) =
 
             if (payload.done && payload.upload_id) {
                 progressLabel.textContent = 'Preparando importación...';
-                await processImportBatches(
+                await processImportAll(
                     payload.upload_id,
-                    payload.batch_count,
                     progressBar,
                     progressLabel,
                     progressPercent

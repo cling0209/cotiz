@@ -160,7 +160,7 @@ class MaeprodController extends Controller
         ]);
 
         try {
-            $progress = $importJob->processNextBatch(
+            $progress = $importJob->processAllBatches(
                 $data['upload_id'],
                 (int) $request->user()->id,
             );

@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 
 class MaeprodImportJobService
 {
-    public const ROWS_PER_BATCH = 250;
+    public const ROWS_PER_BATCH = 1000;
 
     /**
      * @return array{upload_id: string, batch_count: int}
@@ -176,6 +176,30 @@ class MaeprodImportJobService
             'total_batches' => $batchCount,
             'result' => $job['result'],
         ];
+    }
+
+    /**
+     * @return array{
+     *     finished: bool,
+     *     processed_batches: int,
+     *     total_batches: int,
+     *     result: array{created: int, updated: int, skipped: int, errors: list<string>}
+     * }
+     */
+    public function processAllBatches(string $uploadId, int $userId): array
+    {
+        $progress = [
+            'finished' => false,
+            'processed_batches' => 0,
+            'total_batches' => 0,
+            'result' => $this->emptyResult(),
+        ];
+
+        while (! $progress['finished']) {
+            $progress = $this->processNextBatch($uploadId, $userId);
+        }
+
+        return $progress;
     }
 
     /**

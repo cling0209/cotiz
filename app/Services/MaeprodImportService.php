@@ -9,6 +9,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodImportService
 {
+    public const UPSERT_CHUNK_SIZE = 500;
+
+    private const MAX_ERRORS = 100;
     /** @var array<string, string> */
     private const HEADER_ALIASES = [
         'codigo' => 'prod_item',
@@ -136,6 +139,25 @@ class MaeprodImportService
     }
 
     /**
+     * @return array{created: int, updated: int, skipped: int, errors: list<string>}
+     */
+    public function importFromPath(string $path, ?string $usuarioUpd = null): array
+    {
+        $rows = $this->parseCsvFromPath($path);
+
+        if ($rows === []) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => ['El archivo no contiene filas de datos.'],
+            ];
+        }
+
+        return $this->importRows($rows, $usuarioUpd);
+    }
+
+    /**
      * @param  list<array<string, string>>  $rows
      * @return array{created: int, updated: int, skipped: int, errors: list<string>}
      */
@@ -148,34 +170,98 @@ class MaeprodImportService
             'errors' => [],
         ];
 
-        DB::transaction(function () use ($rows, $usuarioUpd, &$result) {
-            foreach ($rows as $lineNumber => $rawRow) {
-                $row = $this->mapRow($rawRow);
-                $fila = $lineNumber + 2;
+        $pending = [];
 
-                $validation = $this->validateRow($row, $fila);
-                if ($validation !== null) {
+        foreach ($rows as $lineNumber => $rawRow) {
+            $row = $this->mapRow($rawRow);
+            $fila = $lineNumber + 2;
+
+            $validation = $this->validateRow($row, $fila);
+            if ($validation !== null) {
+                if (count($result['errors']) < self::MAX_ERRORS) {
                     $result['errors'][] = $validation;
-                    $result['skipped']++;
-
-                    continue;
                 }
+                $result['skipped']++;
 
-                $item = trim((string) $row['prod_item']);
-                $existente = Maeprod::query()->find($item);
-                $atributos = $this->buildAttributes($row, $usuarioUpd, $existente);
-
-                if ($existente) {
-                    $existente->update($atributos);
-                    $result['updated']++;
-                } else {
-                    Maeprod::query()->create(array_merge(['prod_item' => $item], $atributos));
-                    $result['created']++;
-                }
+                continue;
             }
-        });
+
+            $pending[] = $row;
+        }
+
+        foreach (array_chunk($pending, self::UPSERT_CHUNK_SIZE) as $chunk) {
+            $this->persistChunk($chunk, $usuarioUpd, $result);
+        }
 
         return $result;
+    }
+
+    /**
+     * @param  list<array<string, string>>  $chunk
+     * @param  array{created: int, updated: int, skipped: int, errors: list<string>}  $result
+     */
+    private function persistChunk(array $chunk, ?string $usuarioUpd, array &$result): void
+    {
+        $items = array_map(
+            fn (array $row) => trim((string) $row['prod_item']),
+            $chunk,
+        );
+
+        /** @var \Illuminate\Support\Collection<string, Maeprod> $existing */
+        $existing = Maeprod::query()
+            ->whereIn('prod_item', $items)
+            ->get()
+            ->keyBy('prod_item');
+
+        $upsertRows = [];
+
+        foreach ($chunk as $row) {
+            $item = trim((string) $row['prod_item']);
+            $producto = $existing->get($item);
+            $atributos = $this->buildAttributes($row, $usuarioUpd, $producto);
+            $record = array_merge(['prod_item' => $item], $atributos);
+
+            if ($producto) {
+                if (! array_key_exists('prod_valor_fecha', $atributos)) {
+                    $record['prod_valor_fecha'] = $producto->prod_valor_fecha;
+                }
+                if (! array_key_exists('prod_item_softland_fecha', $atributos)) {
+                    $record['prod_item_softland_fecha'] = $producto->prod_item_softland_fecha;
+                }
+                if (! array_key_exists('prod_user_upd', $atributos)) {
+                    $record['prod_user_upd'] = $producto->prod_user_upd;
+                }
+                $result['updated']++;
+            } else {
+                $result['created']++;
+            }
+
+            $upsertRows[] = $record;
+        }
+
+        if ($upsertRows === []) {
+            return;
+        }
+
+        DB::transaction(function () use ($upsertRows) {
+            Maeprod::query()->upsert(
+                $upsertRows,
+                ['prod_item'],
+                [
+                    'prod_nombre',
+                    'prod_familia',
+                    'prod_imagen',
+                    'prod_gramaje',
+                    'prod_item_softland',
+                    'prod_valor',
+                    'prod_valor_costo',
+                    'prod_stock_real',
+                    'prod_valor_fecha',
+                    'prod_item_softland_fecha',
+                    'prod_user_upd',
+                ],
+            );
+        });
     }
 
     /**
@@ -289,6 +375,20 @@ class MaeprodImportService
     /**
      * @return list<array<string, string>>
      */
+    private function parseCsvFromPath(string $path): array
+    {
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $content = $this->readPathAsUtf8($path);
+
+        return $this->parseCsvContent($content);
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
     private function parseCsv(UploadedFile $file): array
     {
         $path = $file->getRealPath();
@@ -297,6 +397,18 @@ class MaeprodImportService
         }
 
         $content = $this->readPathAsUtf8($path);
+        if ($content === '') {
+            return [];
+        }
+
+        return $this->parseCsvContent($content);
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    private function parseCsvContent(string $content): array
+    {
         if ($content === '') {
             return [];
         }

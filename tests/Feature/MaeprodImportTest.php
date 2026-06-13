@@ -97,21 +97,15 @@ class MaeprodImportTest extends TestCase
         $chunkResponse->assertOk()->assertJson(['done' => true]);
 
         $jobUploadId = $chunkResponse->json('upload_id');
-        $batchCount = (int) $chunkResponse->json('batch_count');
 
-        for ($i = 0; $i < $batchCount; $i++) {
-            $processResponse = $this->withoutMiddleware()
-                ->actingAs($admin)
-                ->postJson(route('admin.productos.import.process'), [
-                    'upload_id' => $jobUploadId,
-                ]);
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $jobUploadId,
+            ]);
 
-            $processResponse->assertOk();
-
-            if ($processResponse->json('finished')) {
-                $processResponse->assertJsonStructure(['redirect']);
-                break;
-            }
-        }
+        $processResponse->assertOk()
+            ->assertJson(['finished' => true])
+            ->assertJsonStructure(['redirect']);
     }
 }
