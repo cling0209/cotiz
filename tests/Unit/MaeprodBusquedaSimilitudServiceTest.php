@@ -50,6 +50,37 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertGreaterThan($peor, $mejor);
     }
 
+    public function test_plural_cajas_genera_variante_caja(): void
+    {
+        $variantes = $this->service->tokenVariantes('CAJAS');
+        $this->assertContains('CAJA', $variantes);
+    }
+
+    public function test_stopword_para_se_filtra_en_tokens_sql(): void
+    {
+        $tokens = $this->service->tokensConsultaSql(
+            $this->service->extraerTokens('CAJAS PARA ARCHIVO MEGABOX')
+        );
+        $this->assertNotContains('PARA', $tokens);
+        $this->assertContains('MEGABOX', $tokens);
+    }
+
+    public function test_megabox_memphis_puntaje_supera_juguete_ruidoso(): void
+    {
+        $megabox = $this->service->scoreSimilitudFila(
+            'CAJAS MEGABOX MEMPHIS (CAJAS PARA 6 ARCHIVOS) 2',
+            'U438742',
+            'CAJA ARCHIVO MEGABOX - MEMPHIS'
+        );
+        $juguete = $this->service->scoreSimilitudFila(
+            'CAJAS MEGABOX MEMPHIS (CAJAS PARA 6 ARCHIVOS) 2',
+            'JUEGFUN063',
+            'SET DE COMIDA PARA PICNIC 63 PIEZAS #7020'
+        );
+
+        $this->assertGreaterThan($juguete, $megabox);
+    }
+
     public function test_codigo_exacto_tiene_maximo_puntaje(): void
     {
         $exacto = $this->service->scoreSimilitudFila('DEMO001', 'DEMO001', 'OTRO NOMBRE');

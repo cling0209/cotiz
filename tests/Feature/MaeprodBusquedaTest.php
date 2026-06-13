@@ -39,6 +39,22 @@ class MaeprodBusquedaTest extends TestCase
             'prod_valor_costo' => 250,
             'prod_familia' => 'LIBR',
         ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'U438742',
+            'prod_nombre' => 'CAJA ARCHIVO MEGABOX - MEMPHIS',
+            'prod_valor' => 8500,
+            'prod_valor_costo' => 6200,
+            'prod_familia' => 'ARCH',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'JUEGFUN063',
+            'prod_nombre' => 'SET DE COMIDA PARA PICNIC 63 PIEZAS #7020',
+            'prod_valor' => 34648,
+            'prod_valor_costo' => 28000,
+            'prod_familia' => 'LIBR',
+        ]);
     }
 
     public function test_buscar_productos_encuentra_similares_con_texto_cliente(): void
@@ -63,6 +79,19 @@ class MaeprodBusquedaTest extends TestCase
         $items = $response->json('productos');
         $this->assertNotEmpty($items);
         $this->assertSame('DEMO003', $items[0]['codigo']);
+    }
+
+    public function test_buscar_megabox_memphis_prioriza_caja_archivo(): void
+    {
+        $response = $this->actingAs($this->admin)->getJson(route('admin.productos.buscar', [
+            'q' => 'CAJAS MEGABOX MEMPHIS (CAJAS PARA 6 ARCHIVOS) 2',
+        ]));
+
+        $response->assertOk();
+        $items = $response->json('data');
+        $this->assertNotEmpty($items);
+        $this->assertSame('U438742', $items[0]['prod_item']);
+        $this->assertNotSame('JUEGFUN063', $items[0]['prod_item']);
     }
 
     public function test_buscar_productos_requiere_minimo_caracteres(): void

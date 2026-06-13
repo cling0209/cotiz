@@ -4,12 +4,19 @@ namespace App\Services;
 
 use App\Models\Maeprod;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Búsqueda de productos por similitud de texto (port de legacy maeprod_busqueda_similitud.php).
+ * Búsqueda de productos por similitud (port legacy: maeprod_busqueda_similitud + sp_maeprod buscarSimilitud).
  */
 class MaeprodBusquedaSimilitudService
 {
+    /** @var string[] */
+    private const STOPWORDS = [
+        'PARA', 'CON', 'SIN', 'DEL', 'DE', 'LA', 'LAS', 'LOS', 'EL', 'EN',
+        'UN', 'UNA', 'Y', 'AL', 'POR', 'QUE', 'THE', 'SET',
+    ];
+
     public function buscar(string $term, ?string $familia = null, int $limit = 15): Collection
     {
         $term = trim($term);
@@ -17,22 +24,29 @@ class MaeprodBusquedaSimilitudService
             return collect();
         }
 
-        $candidatosMax = max(50, (int) config('cotiz.buscar_productos_candidatos_max', 250));
-        $norm = $this->normalizarTexto($term);
-        $tokens = $this->tokensConsultaSql($this->extraerTokens($norm));
-        $patron = $this->patronLikeListadoPorTokens($term);
-
-        if ($norm === '' && $tokens === []) {
+        $limit = max(1, $limit);
+        $payload = $this->codificarPayloadBuscarSimilitud($term);
+        if ($payload === '') {
             return collect();
         }
 
-        $filas = $this->obtenerCandidatos($norm, $tokens, $patron, $familia, $candidatosMax);
-
-        if ($filas->isEmpty()) {
-            $filas = $this->obtenerCandidatosAmpliados($term, $familia, $candidatosMax);
+        $filas = $this->buscarSimilitudEnSql($payload, $familia, $limit);
+        if ($filas->isNotEmpty()) {
+            return $filas;
         }
 
-        return collect($this->rankTopSimilares($term, $filas->all(), $limit));
+        $candidatosMax = max(50, (int) config('cotiz.buscar_productos_candidatos_max', 250));
+        $tokens = $this->tokensSignificativos($this->normalizarTexto($term));
+        $patron = implode('%', $tokens);
+
+        if ($tokens === []) {
+            return collect();
+        }
+
+        $candidatos = $this->obtenerCandidatosPorPatron($patron, $tokens, $familia, $candidatosMax);
+        $ranked = $this->rankTopSimilares($term, $candidatos->all(), $limit);
+
+        return collect($this->filtrarPorPuntajeMinimo($ranked, $term));
     }
 
     public function normalizarTexto(string $texto): string
@@ -89,7 +103,10 @@ class MaeprodBusquedaSimilitudService
         $out = [];
         foreach ($tokens as $t) {
             $t = trim((string) $t);
-            if ($t === '') {
+            if ($t === '' || $this->esStopword($t)) {
+                continue;
+            }
+            if (preg_match('/^\d{1,2}$/', $t)) {
                 continue;
             }
             if (preg_match('/^\d/u', $t)) {
@@ -104,7 +121,63 @@ class MaeprodBusquedaSimilitudService
 
         $out = array_values(array_unique($out));
 
-        return count($out) > 0 ? $out : $tokens;
+        return count($out) > 0 ? $out : array_values(array_filter($tokens, fn (string $t) => ! $this->esStopword($t)));
+    }
+
+    /**
+     * @return string[]
+     */
+    public function tokensSignificativos(string $textoNormalizado): array
+    {
+        return $this->tokensConsultaSql($this->extraerTokens($textoNormalizado));
+    }
+
+    public function codificarPayloadBuscarSimilitud(string $textoBusqueda, int $maxLen = 255): string
+    {
+        $norm = $this->normalizarTexto($textoBusqueda);
+        if ($norm === '') {
+            return '';
+        }
+
+        $frase = $norm;
+        if (mb_strlen($frase, 'UTF-8') > 140) {
+            $frase = mb_substr($frase, 0, 140, 'UTF-8');
+        }
+
+        $tokens = $this->tokensConsultaSql($this->extraerTokens($norm));
+        $parts = [];
+        foreach ($tokens as $t) {
+            $t = trim((string) $t);
+            if ($t === '') {
+                continue;
+            }
+            $try = $frase.'||'.implode('|', array_merge($parts, [$t]));
+            if (strlen($try) > $maxLen) {
+                break;
+            }
+            $parts[] = $t;
+        }
+
+        return $frase.'||'.implode('|', $parts);
+    }
+
+    /**
+     * @return array{0: string, 1: string[]}
+     */
+    public function parsearPayloadSimilitud(string $payload): array
+    {
+        $payload = trim($payload);
+        if ($payload === '') {
+            return ['', []];
+        }
+
+        if (str_contains($payload, '||')) {
+            [$frase, $resto] = explode('||', $payload, 2);
+
+            return [trim($frase), array_values(array_filter(explode('|', trim($resto))))];
+        }
+
+        return [$payload, []];
     }
 
     /**
@@ -118,6 +191,14 @@ class MaeprodBusquedaSimilitudService
         }
 
         $vars = [$token];
+
+        if (mb_strlen($token, 'UTF-8') >= 5 && str_ends_with($token, 'S') && ! preg_match('/\d/u', $token)) {
+            $singular = mb_substr($token, 0, -1, 'UTF-8');
+            if (mb_strlen($singular, 'UTF-8') >= 4) {
+                $vars[] = $singular;
+            }
+        }
+
         if (mb_strlen($token, 'UTF-8') >= 6 && ! preg_match('/\d/u', $token)) {
             $suf = mb_substr($token, 1, null, 'UTF-8');
             if (mb_strlen($suf, 'UTF-8') >= 4 && $suf !== $token) {
@@ -141,17 +222,6 @@ class MaeprodBusquedaSimilitudService
         }
 
         return false;
-    }
-
-    public function patronLikeListadoPorTokens(string $textoBusqueda): string
-    {
-        $norm = $this->normalizarTexto($textoBusqueda);
-        $tokens = $this->tokensConsultaSql($this->extraerTokens($norm));
-        if ($tokens === []) {
-            return $norm;
-        }
-
-        return implode('%', $tokens);
     }
 
     public function pesoToken(string $palabra): float
@@ -180,7 +250,7 @@ class MaeprodBusquedaSimilitudService
     {
         $textoCrudo = trim($textoCrudo);
         $textoNorm = $this->normalizarTexto($textoCrudo);
-        $tokens = $this->extraerTokens($textoNorm);
+        $tokens = $this->tokensSignificativos($textoNorm);
         $nombreNorm = $this->normalizarTexto($prodNombre);
         $itemU = mb_strtoupper(trim($prodItem), 'UTF-8');
 
@@ -228,6 +298,11 @@ class MaeprodBusquedaSimilitudService
         return $score;
     }
 
+    public function puntajeSqlMinimo(): int
+    {
+        return max(1, (int) config('cotiz.buscar_productos_puntaje_minimo', 55));
+    }
+
     /**
      * @param  array<int, Maeprod>  $filas
      * @return array<int, Maeprod>
@@ -250,12 +325,6 @@ class MaeprodBusquedaSimilitudService
 
         usort($scored, function (array $a, array $b): int {
             if ($a['score'] == $b['score']) {
-                $va = (int) ($a['row']->prod_valor ?? 0);
-                $vb = (int) ($b['row']->prod_valor ?? 0);
-                if ($va !== $vb) {
-                    return $va <=> $vb;
-                }
-
                 return $a['idx'] <=> $b['idx'];
             }
 
@@ -271,65 +340,144 @@ class MaeprodBusquedaSimilitudService
         return $out;
     }
 
-    /**
-     * @param  string[]  $tokens
-     */
-    private function obtenerCandidatos(
-        string $norm,
-        array $tokens,
-        string $patron,
-        ?string $familia,
-        int $candidatosMax,
-    ): Collection {
-        $query = $this->baseQuery($familia);
-
-        $query->where(function ($q) use ($norm, $tokens, $patron) {
-            if ($norm !== '') {
-                $q->orWhere('prod_nombre', 'ilike', '%'.$norm.'%')
-                    ->orWhere('prod_item', 'ilike', '%'.$norm.'%');
-            }
-
-            foreach ($tokens as $token) {
-                foreach ($this->tokenVariantes($token) as $variante) {
-                    if (preg_match('/^\d{1,2}$/', $token)) {
-                        $q->orWhereRaw('prod_nombre ~* ?', ['\\m'.preg_quote($variante, '/').'\\M']);
-                    } else {
-                        $q->orWhere('prod_nombre', 'ilike', '%'.$variante.'%')
-                            ->orWhere('prod_item', 'ilike', '%'.$variante.'%');
-                    }
-                }
-            }
-
-            if ($patron !== '') {
-                $q->orWhere('prod_nombre', 'ilike', '%'.$patron.'%');
-            }
-        });
-
-        return $query->limit($candidatosMax)->get();
-    }
-
-    private function obtenerCandidatosAmpliados(string $term, ?string $familia, int $candidatosMax): Collection
+    private function buscarSimilitudEnSql(string $payload, ?string $familia, int $limit): Collection
     {
-        $words = preg_split('/\s+/u', mb_strtolower(trim($term)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if ($words === []) {
+        [$phrase, $tokens] = $this->parsearPayloadSimilitud($payload);
+        if ($phrase === '' && $tokens === []) {
             return collect();
         }
 
-        $query = $this->baseQuery($familia);
-        $query->where(function ($q) use ($words) {
-            foreach ($words as $word) {
-                if (mb_strlen($word) < 2) {
-                    continue;
-                }
-                $q->orWhere('prod_nombre', 'ilike', '%'.$word.'%')
-                    ->orWhere('prod_item', 'ilike', '%'.$word.'%');
-            }
-        });
+        $built = $this->construirExpresionPuntajeSql($phrase, $tokens);
+        if ($built === null) {
+            return collect();
+        }
 
-        return $query->limit($candidatosMax)->get();
+        [$scoreSql, $whereSql, $scoreBindings, $whereBindings] = $built;
+        $minPuntaje = $this->puntajeSqlMinimo();
+
+        $sql = 'SELECT prod_item, prod_nombre, prod_valor, prod_valor_costo, prod_stock_real, prod_familia, prod_imagen, '
+            .'('.$scoreSql.') AS puntaje '
+            .'FROM maeprod '
+            .'WHERE prod_nombre IS NOT NULL AND prod_nombre <> \'\' '
+            .'AND prod_item IS NOT NULL AND prod_item <> \'\' ';
+
+        $bindings = $scoreBindings;
+
+        if ($familia) {
+            $sql .= 'AND prod_familia = ? ';
+            $bindings[] = trim($familia);
+        }
+
+        $sql .= 'AND ('.$whereSql.') '
+            .'AND ('.$scoreSql.') >= ? '
+            .'ORDER BY puntaje DESC, prod_nombre ASC '
+            .'LIMIT ?';
+
+        $bindings = array_merge($bindings, $whereBindings, $scoreBindings);
+        $bindings[] = $minPuntaje;
+        $bindings[] = $limit;
+
+        $rows = DB::select($sql, $bindings);
+
+        return collect($rows)->map(function ($row) {
+            return Maeprod::query()->find($row->prod_item) ?? new Maeprod([
+                'prod_item' => $row->prod_item,
+                'prod_nombre' => $row->prod_nombre,
+                'prod_valor' => $row->prod_valor,
+                'prod_valor_costo' => $row->prod_valor_costo,
+                'prod_stock_real' => $row->prod_stock_real,
+                'prod_familia' => $row->prod_familia,
+                'prod_imagen' => $row->prod_imagen,
+            ]);
+        })->filter();
     }
 
-    private function baseQuery(?string $familia)
+    /**
+     * @param  string[]  $tokens
+     * @return array{0: string, 1: string, 2: array<int, mixed>, 3: array<int, mixed>}|null
+     */
+    private function construirExpresionPuntajeSql(string $phrase, array $tokens): ?array
+    {
+        $scoreParts = [];
+        $whereParts = [];
+        $scoreBindings = [];
+        $whereBindings = [];
+
+        if ($phrase !== '') {
+            $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 200 ELSE 0 END)';
+            $scoreBindings[] = '%'.$phrase.'%';
+            $scoreBindings[] = '%'.$phrase.'%';
+            $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+            $whereBindings[] = '%'.$phrase.'%';
+            $whereBindings[] = '%'.$phrase.'%';
+        }
+
+        $prevTok = '';
+        foreach ($tokens as $tok) {
+            $tok = trim($tok);
+            if ($tok === '') {
+                continue;
+            }
+
+            if ($prevTok !== '' && ! preg_match('/^\d+$/', $prevTok) && ! preg_match('/^\d+$/', $tok)) {
+                $bigram = $prevTok.' '.$tok;
+                $ordered = '%'.$prevTok.'%'.$tok.'%';
+                $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 75 '
+                    .'WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 55 ELSE 0 END)';
+                $scoreBindings[] = '%'.$bigram.'%';
+                $scoreBindings[] = '%'.$bigram.'%';
+                $scoreBindings[] = $ordered;
+                $scoreBindings[] = $ordered;
+                $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ? OR prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+                $whereBindings[] = '%'.$bigram.'%';
+                $whereBindings[] = '%'.$bigram.'%';
+                $whereBindings[] = $ordered;
+                $whereBindings[] = $ordered;
+            }
+
+            if (preg_match('/^\d+$/', $tok)) {
+                $tokLen = strlen($tok);
+                if ($tokLen <= 2) {
+                    $regex = '\\m'.preg_quote($tok, '/').'\\M';
+                    $scoreParts[] = '(CASE WHEN prod_nombre ~* ? THEN 30 ELSE 0 END)';
+                    $scoreBindings[] = $regex;
+                } else {
+                    $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? THEN 30 ELSE 0 END)';
+                    $scoreBindings[] = '%'.$tok.'%';
+                    $whereParts[] = 'prod_nombre ILIKE ?';
+                    $whereBindings[] = '%'.$tok.'%';
+                }
+            } else {
+                foreach ($this->tokenVariantes($tok) as $variante) {
+                    $w = 42 + min(27, max(0, mb_strlen($variante, 'UTF-8') - 5) * 3);
+                    $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN '.$w.' ELSE 0 END)';
+                    $scoreBindings[] = '%'.$variante.'%';
+                    $scoreBindings[] = '%'.$variante.'%';
+                    $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+                    $whereBindings[] = '%'.$variante.'%';
+                    $whereBindings[] = '%'.$variante.'%';
+                }
+            }
+
+            $prevTok = $tok;
+        }
+
+        if ($scoreParts === [] || $whereParts === []) {
+            return null;
+        }
+
+        return [
+            implode(' + ', $scoreParts),
+            implode(' OR ', $whereParts),
+            $scoreBindings,
+            $whereBindings,
+        ];
+    }
+
+    /**
+     * @param  string[]  $tokens
+     */
+    private function obtenerCandidatosPorPatron(string $patron, array $tokens, ?string $familia, int $candidatosMax): Collection
     {
         $query = Maeprod::query()
             ->whereNotNull('prod_nombre')
@@ -341,6 +489,44 @@ class MaeprodBusquedaSimilitudService
             $query->where('prod_familia', trim($familia));
         }
 
-        return $query;
+        $query->where(function ($q) use ($patron, $tokens) {
+            if ($patron !== '') {
+                $q->orWhere('prod_nombre', 'ilike', '%'.$patron.'%');
+            }
+            foreach ($tokens as $token) {
+                foreach ($this->tokenVariantes($token) as $variante) {
+                    $q->orWhere('prod_nombre', 'ilike', '%'.$variante.'%')
+                        ->orWhere('prod_item', 'ilike', '%'.$variante.'%');
+                }
+            }
+        });
+
+        return $query->limit($candidatosMax)->get();
+    }
+
+    /**
+     * @param  array<int, Maeprod>  $filas
+     * @return array<int, Maeprod>
+     */
+    private function filtrarPorPuntajeMinimo(array $filas, string $term): array
+    {
+        if ($filas === []) {
+            return [];
+        }
+
+        $minPhp = max(1000.0, (float) config('cotiz.buscar_productos_score_php_minimo', 5000));
+        $out = [];
+        foreach ($filas as $row) {
+            if ($this->scoreSimilitudFila($term, (string) $row->prod_item, (string) $row->prod_nombre) >= $minPhp) {
+                $out[] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    private function esStopword(string $token): bool
+    {
+        return in_array(mb_strtoupper($token, 'UTF-8'), self::STOPWORDS, true);
     }
 }
