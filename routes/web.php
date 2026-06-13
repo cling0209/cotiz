@@ -69,6 +69,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('cotizaciones/{nronota}/export/guia-ingreso', [CotizacionExportController::class, 'guiaIngreso'])->name('cotizaciones.export.guia-ingreso')->whereNumber('nronota');
 
         Route::middleware('superadmin')->group(function () {
+            Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
+            Route::get('productos/carga-masiva/plantilla', [MaeprodController::class, 'downloadImportTemplate'])->name('productos.import.template');
+            Route::post('productos/carga-masiva', [MaeprodController::class, 'storeImport'])->name('productos.import.store');
+            Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
+
             Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
             Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
             Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');

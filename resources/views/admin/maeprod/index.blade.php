@@ -9,10 +9,26 @@
             <h1 class="h3 mb-1">Mantenedor de productos</h1>
             <p class="text-muted mb-0 small">Cat&aacute;logo maestro (maeprod).</p>
         </div>
-        <a href="{{ route('admin.productos.create') }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg"></i> Nuevo producto
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ route('admin.productos.import') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-upload"></i> Carga masiva
+            </a>
+            <a href="{{ route('admin.productos.create') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg"></i> Nuevo producto
+            </a>
+        </div>
     </div>
+
+    @if(session('import_errors'))
+        <div class="alert alert-warning">
+            <strong>Algunas filas no se importaron:</strong>
+            <ul class="mb-0 mt-2">
+                @foreach(session('import_errors') as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
     <div class="card shadow-sm mb-3">
         <div class="card-body py-3">
