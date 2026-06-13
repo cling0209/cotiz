@@ -8,6 +8,9 @@ fi
 
 php artisan migrate --force 2>/dev/null || true
 
+mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/jobs
+chown -R www-data:www-data storage/app/imports 2>/dev/null || true
+
 if [ "${RUN_SEED:-false}" = "true" ]; then
   php artisan db:seed --force 2>/dev/null || true
 fi

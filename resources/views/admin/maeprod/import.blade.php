@@ -96,8 +96,8 @@
 @push('scripts')
 <script>
 const CHUNK_SIZE = 6 * 1024 * 1024;
-const chunkUploadUrl = @json(route('admin.productos.import.chunk'));
-const processImportUrl = @json(route('admin.productos.import.process'));
+const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
+const processImportUrl = @json(route('admin.productos.import.process', [], false));
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || @json(csrf_token());
 
 function importErrorMessage(payload, status) {
@@ -234,7 +234,10 @@ document.getElementById('importForm').addEventListener('submit', async (event) =
             }
         }
     } catch (error) {
-        errorBox.textContent = error.message || 'Error inesperado durante la carga.';
+        const message = error instanceof TypeError && error.message === 'Failed to fetch'
+            ? 'No se pudo conectar con el servidor. Verifique su conexión o que APP_URL coincida con la URL del sitio.'
+            : (error.message || 'Error inesperado durante la carga.');
+        errorBox.textContent = message;
         errorBox.classList.remove('d-none');
         submitBtn.disabled = false;
         fileInput.disabled = false;
