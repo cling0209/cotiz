@@ -275,6 +275,17 @@ class MaeprodImportService
         return $mapped;
     }
 
+    public function readPathAsUtf8(string $path): string
+    {
+        $raw = file_get_contents($path);
+
+        if ($raw === false) {
+            return '';
+        }
+
+        return $this->ensureUtf8($raw);
+    }
+
     /**
      * @return list<array<string, string>>
      */
@@ -285,7 +296,7 @@ class MaeprodImportService
             return [];
         }
 
-        $content = $this->ensureUtf8((string) file_get_contents($path));
+        $content = $this->readPathAsUtf8($path);
         if ($content === '') {
             return [];
         }

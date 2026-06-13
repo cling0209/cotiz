@@ -6,6 +6,7 @@ use App\Models\Maeprod;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class MaeprodImportTest extends TestCase
@@ -33,16 +34,7 @@ class MaeprodImportTest extends TestCase
         $csv = "codigo;nombre;familia;precio;costo;nombre_archivo;gramaje;stock;softland\n";
         $csv .= "IMP001;PRODUCTO IMPORTADO;PAPEL;5000;4000;IMP001_medium.jpg;75 GR;10;SL001\n";
 
-        $file = UploadedFile::fake()->createWithContent('productos.csv', "\xEF\xBB\xBF".$csv);
-
-        $response = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->post(route('admin.productos.import.store'), [
-                'archivo' => $file,
-            ]);
-
-        $response->assertRedirect(route('admin.productos.index'));
-        $response->assertSessionHas('success');
+        $this->importCsvAsAdmin($admin, "\xEF\xBB\xBF".$csv);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'IMP001',
@@ -67,16 +59,8 @@ class MaeprodImportTest extends TestCase
         ]);
 
         $csv = "codigo;nombre;familia;precio;costo\nIMP002;ACTUALIZADO;PAPEL;2500;2000\n";
-        $file = UploadedFile::fake()->createWithContent('productos.csv', $csv);
 
-        $response = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->post(route('admin.productos.import.store'), [
-                'archivo' => $file,
-            ]);
-
-        $response->assertRedirect(route('admin.productos.index'));
-        $response->assertSessionHas('success');
+        $this->importCsvAsAdmin($admin, $csv);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'IMP002',
@@ -93,5 +77,41 @@ class MaeprodImportTest extends TestCase
             ->actingAs($user)
             ->get(route('admin.productos.import'))
             ->assertForbidden();
+    }
+
+    private function importCsvAsAdmin(User $admin, string $csv): void
+    {
+        $uploadId = (string) Str::uuid();
+        $file = UploadedFile::fake()->createWithContent('productos.csv', $csv);
+
+        $chunkResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'productos.csv',
+                'chunk' => $file,
+            ]);
+
+        $chunkResponse->assertOk()->assertJson(['done' => true]);
+
+        $jobUploadId = $chunkResponse->json('upload_id');
+        $batchCount = (int) $chunkResponse->json('batch_count');
+
+        for ($i = 0; $i < $batchCount; $i++) {
+            $processResponse = $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.process'), [
+                    'upload_id' => $jobUploadId,
+                ]);
+
+            $processResponse->assertOk();
+
+            if ($processResponse->json('finished')) {
+                $processResponse->assertJsonStructure(['redirect']);
+                break;
+            }
+        }
     }
 }

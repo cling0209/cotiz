@@ -71,7 +71,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('superadmin')->group(function () {
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
             Route::get('productos/carga-masiva/plantilla', [MaeprodController::class, 'downloadImportTemplate'])->name('productos.import.template');
-            Route::post('productos/carga-masiva', [MaeprodController::class, 'storeImport'])->name('productos.import.store');
+            Route::post('productos/carga-masiva/chunk', [MaeprodController::class, 'storeImportChunk'])->name('productos.import.chunk');
+            Route::post('productos/carga-masiva/procesar', [MaeprodController::class, 'processImportBatch'])->name('productos.import.process');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
 
             Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
