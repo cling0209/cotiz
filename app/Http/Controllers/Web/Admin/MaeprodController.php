@@ -11,6 +11,8 @@ use App\Services\MaeprodImportJobService;
 use App\Services\MaeprodImportLockService;
 use App\Services\MaeprodImportRunService;
 use App\Services\MaeprodImportService;
+use App\Services\MaeprodImportStagingService;
+use App\Support\MaeprodImportColumnMapping;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,6 +94,7 @@ class MaeprodController extends Controller
     {
         return view('admin.maeprod.import', [
             'activeImport' => $importLock->current(),
+            'mappableFields' => MaeprodImportColumnMapping::fieldDefinitions(),
         ]);
     }
 
@@ -156,8 +159,11 @@ class MaeprodController extends Controller
             'chunk_index' => ['required', 'integer', 'min:0'],
             'total_chunks' => ['required', 'integer', 'min:1', 'max:500'],
             'original_name' => ['required', 'string', 'max:255'],
+            'mode' => ['nullable', 'in:template,custom'],
             'chunk' => ['required', 'file', 'max:7168'],
         ]);
+
+        $mode = $data['mode'] ?? 'template';
 
         try {
             $result = $chunkUpload->storeChunk(
@@ -168,6 +174,7 @@ class MaeprodController extends Controller
                 $request->file('chunk'),
                 (int) $request->user()->id,
                 $request->user()->username,
+                $mode,
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(
@@ -196,8 +203,69 @@ class MaeprodController extends Controller
 
         return response()->json([
             'done' => true,
+            'mode' => $result['mode'] ?? 'template',
             'upload_id' => $result['upload_id'],
-            'batch_count' => $result['batch_count'],
+            'batch_count' => $result['batch_count'] ?? null,
+            'columns' => $result['columns'] ?? null,
+            'total_rows' => $result['total_rows'] ?? null,
+            'suggested_mapping' => $result['suggested_mapping'] ?? null,
+        ]);
+    }
+
+    public function previewImportMapping(Request $request, MaeprodImportStagingService $staging): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+            'mapping' => ['required', 'array'],
+        ]);
+
+        try {
+            $mapping = $this->normalizeColumnMapping($data['mapping']);
+            $preview = $staging->preview(
+                $data['upload_id'],
+                (int) $request->user()->id,
+                $mapping,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($preview);
+    }
+
+    public function prepareCustomImport(Request $request, MaeprodImportStagingService $staging): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+            'mapping' => ['required', 'array'],
+        ]);
+
+        try {
+            $mapping = $this->normalizeColumnMapping($data['mapping']);
+            $prepared = $staging->prepareJob(
+                $data['upload_id'],
+                (int) $request->user()->id,
+                $mapping,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(
+                ['message' => $e->getMessage()],
+                $this->importConflictStatus($e),
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error al preparar la importación.',
+            ], 500);
+        }
+
+        return response()->json([
+            'ready' => true,
+            'upload_id' => $prepared['upload_id'],
+            'batch_count' => $prepared['batch_count'],
         ]);
     }
 
@@ -241,6 +309,24 @@ class MaeprodController extends Controller
         }
 
         return response()->json($payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $mapping
+     * @return array<string, string>
+     */
+    protected function normalizeColumnMapping(array $mapping): array
+    {
+        $normalized = [];
+
+        foreach (MaeprodImportColumnMapping::FIELDS as $field => $meta) {
+            $value = trim((string) ($mapping[$field] ?? ''));
+            $normalized[$field] = $value !== '' ? $value : '';
+        }
+
+        MaeprodImportColumnMapping::validate($normalized);
+
+        return $normalized;
     }
 
     protected function importConflictStatus(\InvalidArgumentException $exception): int

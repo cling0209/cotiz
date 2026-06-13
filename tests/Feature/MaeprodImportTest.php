@@ -287,6 +287,103 @@ class MaeprodImportTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_custom_csv_preview_does_not_persist_products(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $uploadId = (string) Str::uuid();
+
+        $csv = "sku;descripcion;categoria;pvp\nCUST001;PRODUCTO CUSTOM;PAPEL;3500\n";
+        $file = UploadedFile::fake()->createWithContent('custom.csv', $csv);
+
+        $chunkResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'custom.csv',
+                'mode' => 'custom',
+                'chunk' => $file,
+            ]);
+
+        $chunkResponse->assertOk()
+            ->assertJsonPath('mode', 'custom')
+            ->assertJsonPath('total_rows', 1);
+
+        $previewResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.preview'), [
+                'upload_id' => $uploadId,
+                'mapping' => [
+                    'codigo' => 'sku',
+                    'nombre' => 'descripcion',
+                    'familia' => 'categoria',
+                    'precio' => 'pvp',
+                ],
+            ]);
+
+        $previewResponse->assertOk()
+            ->assertJsonPath('summary.crear', 1)
+            ->assertJsonPath('rows.0.codigo', 'CUST001');
+
+        $this->assertDatabaseMissing('maeprod', ['prod_item' => 'CUST001']);
+    }
+
+    public function test_custom_csv_import_with_column_mapping(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $uploadId = (string) Str::uuid();
+        $csv = "sku;descripcion;categoria;pvp\nCUST002;OTRO PRODUCTO;LIBR;1200\n";
+        $file = UploadedFile::fake()->createWithContent('custom.csv', $csv);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'custom.csv',
+                'mode' => 'custom',
+                'chunk' => $file,
+            ])
+            ->assertOk();
+
+        $mapping = [
+            'codigo' => 'sku',
+            'nombre' => 'descripcion',
+            'familia' => 'categoria',
+            'precio' => 'pvp',
+        ];
+
+        $prepareResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.prepare'), [
+                'upload_id' => $uploadId,
+                'mapping' => $mapping,
+            ]);
+
+        $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
+
+        $processResponse = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.process'), [
+                'upload_id' => $prepareResponse->json('upload_id'),
+            ]);
+
+        $processResponse->assertOk()->assertJson(['finished' => true]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'CUST002',
+            'prod_nombre' => 'OTRO PRODUCTO',
+            'prod_familia' => 'LIBR',
+            'prod_valor' => 1200,
+        ]);
+    }
+
     private function importCsvAsAdmin(User $admin, string $csv): \Illuminate\Testing\TestResponse
     {
         $uploadId = (string) Str::uuid();

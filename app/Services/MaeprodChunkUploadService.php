@@ -23,6 +23,7 @@ class MaeprodChunkUploadService
         UploadedFile $chunk,
         int $userId,
         string $username,
+        string $mode = 'template',
     ): array {
         $this->assertValidUploadId($uploadId);
         $this->assertCsvFileName($originalName);
@@ -41,15 +42,8 @@ class MaeprodChunkUploadService
             throw new \InvalidArgumentException('El archivo completo supera el tamaño máximo permitido.');
         }
 
-        if ($chunkIndex === 0) {
-            app(MaeprodImportLockService::class)->acquire(
-                $userId,
-                $username,
-                $uploadId,
-                $originalName,
-            );
-        } else {
-            app(MaeprodImportLockService::class)->touch($uploadId);
+        if (! in_array($mode, ['template', 'custom'], true)) {
+            throw new \InvalidArgumentException('Modo de importación inválido.');
         }
 
         $dir = $this->uploadDirectory($uploadId);
@@ -62,11 +56,24 @@ class MaeprodChunkUploadService
                 'username' => $username,
                 'original_name' => $originalName,
                 'total_chunks' => $totalChunks,
+                'mode' => $mode,
                 'created_at' => now()->toIso8601String(),
             ], JSON_THROW_ON_ERROR));
         }
 
         $meta = $this->readMeta($uploadId);
+        $mode = (string) ($meta['mode'] ?? $mode);
+
+        if ($chunkIndex === 0 && $mode !== 'custom') {
+            app(MaeprodImportLockService::class)->acquire(
+                $userId,
+                $username,
+                $uploadId,
+                $originalName,
+            );
+        } elseif ($chunkIndex > 0 && $mode !== 'custom') {
+            app(MaeprodImportLockService::class)->touch($uploadId);
+        }
 
         if ((int) $meta['user_id'] !== $userId) {
             throw new \InvalidArgumentException('No autorizado para continuar esta carga.');
@@ -85,6 +92,25 @@ class MaeprodChunkUploadService
         $mergedPath = $this->mergeChunks($uploadId, $totalChunks);
 
         try {
+            if ($mode === 'custom') {
+                $staged = app(MaeprodImportStagingService::class)->storeFromMergedCsv(
+                    $uploadId,
+                    $mergedPath,
+                    $userId,
+                    $meta['username'],
+                    $meta['original_name'],
+                );
+
+                return [
+                    'ready' => true,
+                    'mode' => 'custom',
+                    'upload_id' => $staged['upload_id'],
+                    'columns' => $staged['columns'],
+                    'total_rows' => $staged['total_rows'],
+                    'suggested_mapping' => $staged['suggested_mapping'],
+                ];
+            }
+
             $prepared = app(MaeprodImportJobService::class)->prepareFromMergedCsv(
                 $uploadId,
                 $mergedPath,
@@ -102,6 +128,7 @@ class MaeprodChunkUploadService
 
         return [
             'ready' => true,
+            'mode' => 'template',
             'upload_id' => $prepared['upload_id'],
             'batch_count' => $prepared['batch_count'],
         ];

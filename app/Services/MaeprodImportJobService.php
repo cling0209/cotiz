@@ -19,6 +19,7 @@ class MaeprodImportJobService
         int $userId,
         string $username,
         string $originalName,
+        ?array $columnMapping = null,
     ): array {
         $this->assertValidUploadId($uploadId);
         $jobDir = $this->jobDirectory($uploadId);
@@ -82,7 +83,7 @@ class MaeprodImportJobService
             throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
         }
 
-        File::put($jobDir.'/job.json', json_encode([
+        $jobData = [
             'user_id' => $userId,
             'username' => $username,
             'original_name' => $originalName,
@@ -90,7 +91,13 @@ class MaeprodImportJobService
             'batch_count' => $batchCount,
             'result' => $this->emptyResult(),
             'created_at' => now()->toIso8601String(),
-        ], JSON_THROW_ON_ERROR));
+        ];
+
+        if ($columnMapping !== null) {
+            $jobData['column_mapping'] = $columnMapping;
+        }
+
+        File::put($jobDir.'/job.json', json_encode($jobData, JSON_THROW_ON_ERROR));
 
         return [
             'upload_id' => $uploadId,
@@ -141,9 +148,14 @@ class MaeprodImportJobService
             true
         );
 
+        $columnMapping = isset($job['column_mapping']) && is_array($job['column_mapping'])
+            ? $job['column_mapping']
+            : null;
+
         $batchResult = app(MaeprodImportService::class)->importFromUploadedFile(
             $uploaded,
             $job['username'] ?? null,
+            $columnMapping,
         );
         $job['result'] = $this->mergeResults($job['result'], $batchResult);
         $job['next_batch'] = $nextBatch + 1;

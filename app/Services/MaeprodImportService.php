@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Maeprod;
+use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -165,7 +166,7 @@ class MaeprodImportService
     /**
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importFromUploadedFile(UploadedFile $file, ?string $usuarioUpd = null): array
+    public function importFromUploadedFile(UploadedFile $file, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
         $rows = $this->parseCsv($file);
 
@@ -175,13 +176,13 @@ class MaeprodImportService
             ]);
         }
 
-        return $this->importRows($rows, $usuarioUpd);
+        return $this->importRows($rows, $usuarioUpd, $columnMapping);
     }
 
     /**
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importFromPath(string $path, ?string $usuarioUpd = null): array
+    public function importFromPath(string $path, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
         $rows = $this->parseCsvFromPath($path);
 
@@ -191,14 +192,94 @@ class MaeprodImportService
             ]);
         }
 
-        return $this->importRows($rows, $usuarioUpd);
+        return $this->importRows($rows, $usuarioUpd, $columnMapping);
+    }
+
+    /**
+     * @param  array<string, string|null>  $columnMapping
+     * @return array{
+     *     rows: list<array<string, mixed>>,
+     *     summary: array{crear: int, actualizar: int, error: int},
+     *     total_rows: int,
+     *     preview_limit: int
+     * }
+     */
+    public function previewFromPath(string $path, array $columnMapping, int $limit = 10): array
+    {
+        $rows = $this->parseCsvFromPath($path);
+
+        return $this->previewRows($rows, $columnMapping, $limit);
     }
 
     /**
      * @param  list<array<string, string>>  $rows
+     * @param  array<string, string|null>|null  $columnMapping
+     * @return array{
+     *     rows: list<array<string, mixed>>,
+     *     summary: array{crear: int, actualizar: int, error: int},
+     *     total_rows: int,
+     *     preview_limit: int
+     * }
+     */
+    public function previewRows(array $rows, ?array $columnMapping, int $limit = 10): array
+    {
+        $preview = [];
+        $summary = ['crear' => 0, 'actualizar' => 0, 'error' => 0];
+        $limit = max(1, min($limit, 50));
+
+        foreach (array_slice($rows, 0, $limit) as $lineNumber => $rawRow) {
+            $csvLine = (int) ($rawRow['_csv_line'] ?? ($lineNumber + 2));
+            $row = $this->mapRow($rawRow, $columnMapping);
+            $validation = $this->validateRow($row, $csvLine);
+
+            if ($validation !== null) {
+                $preview[] = [
+                    'fila' => $csvLine,
+                    'accion' => 'error',
+                    'codigo' => $row['prod_item'] ?? '',
+                    'nombre' => $row['prod_nombre'] ?? '',
+                    'familia' => $row['prod_familia'] ?? '',
+                    'precio' => $row['prod_valor'] ?? '',
+                    'mensaje' => $validation['mensaje'],
+                    'detalle' => $validation['detalle'],
+                ];
+                $summary['error']++;
+
+                continue;
+            }
+
+            $codigo = trim((string) $row['prod_item']);
+            $existe = Maeprod::query()->where('prod_item', $codigo)->exists();
+            $accion = $existe ? 'actualizar' : 'crear';
+            $summary[$accion]++;
+
+            $preview[] = [
+                'fila' => $csvLine,
+                'accion' => $accion,
+                'codigo' => $codigo,
+                'nombre' => mb_strtoupper(trim((string) $row['prod_nombre'])),
+                'familia' => trim((string) $row['prod_familia']),
+                'precio' => (int) $row['prod_valor'],
+                'costo' => $row['prod_valor_costo'] !== '' ? (int) $row['prod_valor_costo'] : null,
+                'mensaje' => null,
+                'detalle' => null,
+            ];
+        }
+
+        return [
+            'rows' => $preview,
+            'summary' => $summary,
+            'total_rows' => count($rows),
+            'preview_limit' => $limit,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, string>>  $rows
+     * @param  array<string, string|null>|null  $columnMapping
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importRows(array $rows, ?string $usuarioUpd = null): array
+    public function importRows(array $rows, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
         $result = $this->emptyResult();
 
@@ -206,7 +287,7 @@ class MaeprodImportService
 
         foreach ($rows as $lineNumber => $rawRow) {
             $csvLine = (int) ($rawRow['_csv_line'] ?? ($lineNumber + 2));
-            $row = $this->mapRow($rawRow);
+            $row = $this->mapRow($rawRow, $columnMapping);
 
             $validation = $this->validateRow($row, $csvLine);
             if ($validation !== null) {
@@ -481,10 +562,15 @@ class MaeprodImportService
 
     /**
      * @param  array<string, string>  $rawRow
+     * @param  array<string, string|null>|null  $columnMapping
      * @return array<string, string>
      */
-    private function mapRow(array $rawRow): array
+    private function mapRow(array $rawRow, ?array $columnMapping = null): array
     {
+        if ($columnMapping !== null) {
+            return $this->mapRowWithColumnMapping($rawRow, $columnMapping);
+        }
+
         $mapped = [];
 
         foreach ($rawRow as $header => $value) {
@@ -498,6 +584,37 @@ class MaeprodImportService
             }
         }
 
+        return $this->finalizeMappedRow($mapped);
+    }
+
+    /**
+     * @param  array<string, string>  $rawRow
+     * @param  array<string, string|null>  $columnMapping
+     * @return array<string, string>
+     */
+    private function mapRowWithColumnMapping(array $rawRow, array $columnMapping): array
+    {
+        $mapped = [];
+
+        foreach (MaeprodImportColumnMapping::FIELDS as $field => $meta) {
+            $source = trim((string) ($columnMapping[$field] ?? ''));
+
+            if ($source === '') {
+                continue;
+            }
+
+            $mapped[$meta['key']] = trim((string) ($rawRow[$source] ?? ''));
+        }
+
+        return $this->finalizeMappedRow($mapped);
+    }
+
+    /**
+     * @param  array<string, string>  $mapped
+     * @return array<string, string>
+     */
+    private function finalizeMappedRow(array $mapped): array
+    {
         foreach (['prod_valor_costo', 'prod_imagen', 'prod_gramaje', 'prod_stock_real', 'prod_item_softland'] as $optional) {
             $mapped[$optional] ??= '';
         }
