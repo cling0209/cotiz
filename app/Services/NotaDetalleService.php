@@ -13,6 +13,7 @@ class NotaDetalleService
 {
     public function __construct(
         protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
+        protected AgileMaeprodService $agileMaeprodService,
     ) {}
 
     public function lineasDeNota(Nota $nota): Collection
@@ -34,12 +35,15 @@ class NotaDetalleService
 
                 return [
                     'linea' => $linea,
-                    'prod_nombre' => $linea->producto?->prod_nombre ?? $linea->prod_item,
+                    'prod_nombre' => $linea->producto?->prod_nombre
+                        ?? ($linea->prod_descripcion_agile ?: $linea->prod_item),
                     'prod_familia' => $linea->producto?->prod_familia,
                     'prod_imagen' => $linea->producto?->imageUrl(),
                     'image_url' => $linea->producto?->imageUrl(),
                     'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
                     'prod_item_agile' => $linea->prod_item_agile ?? '',
+                    'prod_descripcion_agile' => $linea->prod_descripcion_agile ?? '',
+                    'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
                     'prod_valor_fecha' => $fechaFmt,
                     'prod_valor_fecha_antigua' => $fechaAntigua,
                     'total' => $linea->lineTotal(),
@@ -202,6 +206,149 @@ class NotaDetalleService
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
             ]);
+        });
+    }
+
+    public static function lineaPendienteVinculo(NotaDetalle $linea): bool
+    {
+        $agile = trim((string) ($linea->prod_item_agile ?? ''));
+        if ($agile === '') {
+            return false;
+        }
+
+        $codigo = trim((string) $linea->prod_item);
+        if ($codigo === '' || $codigo === '0' || $codigo === $agile) {
+            return true;
+        }
+
+        return $linea->producto === null;
+    }
+
+    public function agregarLineaAgilePendiente(
+        Nota $nota,
+        string $idAgile,
+        string $descripcionAgile,
+        int $cantidad,
+    ): NotaDetalle {
+        $id = trim($idAgile);
+
+        return $this->agregarLinea(
+            $nota,
+            $id,
+            max(1, $cantidad),
+            0,
+            0,
+            null,
+            $id,
+            $descripcionAgile,
+        );
+    }
+
+    /**
+     * @return array{
+     *   prod_item: string,
+     *   prod_nombre: string,
+     *   prod_valor: int,
+     *   prod_valor_costo: int,
+     *   prod_valor_fecha_fmt: string,
+     *   prod_valor_fecha_antigua: bool,
+     *   subtotal: int
+     * }
+     */
+    public function vincularLineaAgile(
+        Nota $nota,
+        int $orden,
+        string $prodItemAgile,
+        string $prodItemInterno,
+        ?string $usuarioUpd = null,
+        ?int $prodValor = null,
+    ): array {
+        $agileId = trim($prodItemAgile);
+        $codigo = trim($prodItemInterno);
+
+        if ($codigo === '' || $codigo === '0') {
+            throw new \InvalidArgumentException('Debe seleccionar un producto del maestro.');
+        }
+
+        $linea = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', $orden)
+            ->where('prod_item_agile', $agileId)
+            ->firstOrFail();
+
+        $producto = Maeprod::query()->find($codigo);
+        if (! $producto) {
+            throw new \InvalidArgumentException('Producto no encontrado.');
+        }
+
+        $costo = (int) ($producto->prod_valor_costo ?? 0);
+        if ($costo <= 0) {
+            $costo = (int) ($producto->prod_valor ?? 0);
+        }
+
+        $factor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta', 1.22));
+        $valor = $prodValor ?? ($costo > 0 ? (int) round($costo * $factor) : (int) ($producto->prod_valor ?? 0));
+
+        return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor, $usuarioUpd) {
+            $payload = [
+                'nronota' => $nota->nronota,
+                'prod_item' => $codigo,
+                'prod_valor' => $valor,
+                'cantidad' => (int) $linea->cantidad,
+                'fechahora' => $linea->fechahora ?? now(),
+                'orden' => (int) $linea->orden,
+                'prod_valor_costo' => $costo,
+                'prod_item_agile' => $linea->prod_item_agile,
+                'prod_descripcion_agile' => $linea->prod_descripcion_agile,
+            ];
+
+            if ($linea->prod_item !== $codigo) {
+                NotaDetalle::query()
+                    ->where('nronota', $nota->nronota)
+                    ->where('prod_item', $linea->prod_item)
+                    ->where('orden', $linea->orden)
+                    ->delete();
+
+                NotaDetalle::query()->create($payload);
+            } else {
+                NotaDetalle::query()
+                    ->where('nronota', $nota->nronota)
+                    ->where('prod_item', $codigo)
+                    ->where('orden', $linea->orden)
+                    ->update([
+                        'prod_valor' => $valor,
+                        'prod_valor_costo' => $costo,
+                    ]);
+            }
+
+            $this->agileMaeprodService->vincularCodigoInterno($agileId, $codigo);
+
+            $updates = [];
+            if ((int) ($producto->prod_valor ?? 0) !== $valor) {
+                $updates['prod_valor'] = $valor;
+                $updates['prod_valor_fecha'] = now();
+                $updates['prod_user_upd'] = $usuarioUpd;
+            }
+            if ((int) ($producto->prod_valor_costo ?? 0) !== $costo) {
+                $updates['prod_valor_costo'] = $costo;
+                $updates['prod_valor_fecha'] = now();
+                $updates['prod_user_upd'] = $usuarioUpd;
+            }
+            if ($updates !== []) {
+                $producto->update($updates);
+            }
+
+            [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua($producto->fresh()->prod_valor_fecha);
+
+            return [
+                'prod_item' => $codigo,
+                'prod_nombre' => (string) $producto->prod_nombre,
+                'prod_valor' => $valor,
+                'prod_valor_costo' => $costo,
+                'prod_valor_fecha_fmt' => $fechaFmt,
+                'prod_valor_fecha_antigua' => $fechaAntigua,
+                'subtotal' => $valor * (int) $linea->cantidad,
+            ];
         });
     }
 

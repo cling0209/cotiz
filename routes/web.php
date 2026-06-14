@@ -60,6 +60,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/preview', [CotizacionController::class, 'importarCompraAgilPreview'])->name('cotizaciones.importar-compra-agil.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil', [CotizacionController::class, 'importarCompraAgil'])->name('cotizaciones.importar-compra-agil')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/lineas/vincular-agile', [CotizacionController::class, 'vincularLineaAgile'])->name('cotizaciones.lineas.vincular-agile')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/lineas', [CotizacionController::class, 'agregarLinea'])->name('cotizaciones.lineas.store')->whereNumber('nronota');
         Route::patch('cotizaciones/{nronota}/lineas/orden', [CotizacionController::class, 'cambiarOrdenLinea'])->name('cotizaciones.lineas.orden')->whereNumber('nronota');
         Route::delete('cotizaciones/{nronota}/lineas', [CotizacionController::class, 'eliminarLinea'])->name('cotizaciones.lineas.destroy')->whereNumber('nronota');

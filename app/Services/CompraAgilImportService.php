@@ -26,22 +26,30 @@ class CompraAgilImportService
      *     cantidad: int,
      *     categoria: string,
      *     producto: ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int},
-     *     estado: string
+     *     estado: string,
+     *     es_sugerencia: bool
      *   }>,
-     *   resumen: array{total: int, con_producto: int, sin_producto: int}
+     *   resumen: array{total: int, vinculados: int, pendientes: int, con_sugerencia: int}
      * }
      */
     public function preview(string $texto): array
     {
         $parsed = $this->parser->parse($texto);
         $lineas = [];
-        $conProducto = 0;
+        $vinculados = 0;
+        $conSugerencia = 0;
 
         foreach ($parsed['lineas'] as $linea) {
-            $producto = $this->resolverProducto($linea['id_agile'], $linea['descripcion']);
-            $estado = $producto ? 'ok' : 'sin_match';
-            if ($producto) {
-                $conProducto++;
+            $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
+            $sugerencia = $vinculo ? null : $this->resolverSugerenciaSimilitud($linea['descripcion']);
+            $producto = $vinculo ?? $sugerencia;
+            $estado = $vinculo ? 'vinculado' : 'pendiente';
+
+            if ($vinculo) {
+                $vinculados++;
+            }
+            if (! $vinculo && $sugerencia) {
+                $conSugerencia++;
             }
 
             $lineas[] = [
@@ -51,6 +59,7 @@ class CompraAgilImportService
                 'categoria' => $linea['categoria'],
                 'producto' => $producto,
                 'estado' => $estado,
+                'es_sugerencia' => $vinculo === null && $sugerencia !== null,
             ];
         }
 
@@ -64,14 +73,15 @@ class CompraAgilImportService
             'lineas' => $lineas,
             'resumen' => [
                 'total' => count($lineas),
-                'con_producto' => $conProducto,
-                'sin_producto' => count($lineas) - $conProducto,
+                'vinculados' => $vinculados,
+                'pendientes' => count($lineas) - $vinculados,
+                'con_sugerencia' => $conSugerencia,
             ],
         ];
     }
 
     /**
-     * @return array{agregadas: int, omitidas: int, cabecera_actualizada: bool, mensajes: string[]}
+     * @return array{agregadas: int, vinculadas: int, pendientes: int, cabecera_actualizada: bool, mensajes: string[]}
      */
     public function aplicar(Nota $nota, string $texto, string $usuario): array
     {
@@ -111,41 +121,52 @@ class CompraAgilImportService
         }
 
         $agregadas = 0;
-        $omitidas = 0;
+        $vinculadas = 0;
+        $pendientes = 0;
 
         foreach ($preview['lineas'] as $linea) {
-            if ($linea['producto'] === null) {
-                $omitidas++;
-                $mensajes[] = 'Sin producto en maestro: '.$linea['descripcion'];
-
-                continue;
-            }
-
-            $p = $linea['producto'];
             $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $linea['descripcion']);
-            $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $p['prod_item']);
 
-            $this->detalleService->agregarLinea(
-                $nota,
-                $p['prod_item'],
-                (int) $linea['cantidad'],
-                (int) $p['prod_valor'],
-                (int) $p['prod_valor_costo'],
-                $usuario,
-                $linea['id_agile'],
-                $linea['descripcion'],
-            );
+            $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
+
+            if ($vinculo) {
+                $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $vinculo['prod_item']);
+
+                $this->detalleService->agregarLinea(
+                    $nota,
+                    $vinculo['prod_item'],
+                    (int) $linea['cantidad'],
+                    (int) $vinculo['prod_valor'],
+                    (int) $vinculo['prod_valor_costo'],
+                    $usuario,
+                    $linea['id_agile'],
+                    $linea['descripcion'],
+                );
+
+                $vinculadas++;
+            } else {
+                $this->detalleService->agregarLineaAgilePendiente(
+                    $nota,
+                    $linea['id_agile'],
+                    $linea['descripcion'],
+                    (int) $linea['cantidad'],
+                );
+
+                $pendientes++;
+                $mensajes[] = 'Pendiente de vincular: '.$linea['descripcion'];
+            }
 
             $agregadas++;
         }
 
-        if ($agregadas === 0 && $omitidas > 0) {
-            throw new RuntimeException('No se agregó ninguna línea: ningún producto del texto coincide con el maestro.');
+        if ($agregadas === 0) {
+            throw new RuntimeException('No se detectaron productos en el texto pegado.');
         }
 
         return [
             'agregadas' => $agregadas,
-            'omitidas' => $omitidas,
+            'vinculadas' => $vinculadas,
+            'pendientes' => $pendientes,
             'cabecera_actualizada' => $cabeceraActualizada,
             'mensajes' => $mensajes,
         ];
@@ -154,16 +175,26 @@ class CompraAgilImportService
     /**
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
-    private function resolverProducto(string $idAgile, string $descripcion): ?array
+    private function resolverVinculoExistente(string $idAgile): ?array
     {
         $vinculo = AgileMaeprod::query()->find(trim($idAgile));
-        if ($vinculo && trim((string) $vinculo->prod_item) !== '') {
-            $mae = Maeprod::query()->find($vinculo->prod_item);
-            if ($mae) {
-                return $this->maeprodArray($mae);
-            }
+        if (! $vinculo || trim((string) $vinculo->prod_item) === '') {
+            return null;
         }
 
+        $mae = Maeprod::query()->find($vinculo->prod_item);
+        if (! $mae) {
+            return null;
+        }
+
+        return $this->maeprodArray($mae);
+    }
+
+    /**
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function resolverSugerenciaSimilitud(string $descripcion): ?array
+    {
         $resultados = $this->busqueda->buscar($descripcion, null, 1);
         $mae = $resultados->first();
         if (! $mae instanceof Maeprod) {

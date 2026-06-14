@@ -7,6 +7,7 @@ use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
+use App\Services\NotaDetalleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -59,7 +60,7 @@ LIMPIADOR PISO FLOTANTE
 TXT;
     }
 
-    public function test_preview_detecta_cabecera_y_matches(): void
+    public function test_preview_detecta_cabecera_y_sugerencias(): void
     {
         $nota = $this->crearNota();
 
@@ -73,10 +74,11 @@ TXT;
         $response->assertJsonPath('cabecera.empresa', 'SERVICIO AGRICOLA Y GANADERO');
         $response->assertJsonPath('cabecera.rutempresa', '61303000-7');
         $response->assertJsonPath('resumen.total', 2);
-        $this->assertGreaterThanOrEqual(1, $response->json('resumen.con_producto'));
+        $response->assertJsonPath('resumen.pendientes', 2);
+        $this->assertGreaterThanOrEqual(1, $response->json('resumen.con_sugerencia'));
     }
 
-    public function test_importar_actualiza_cabecera_y_agrega_lineas(): void
+    public function test_importar_actualiza_cabecera_y_agrega_lineas_pendientes(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
 
@@ -87,7 +89,9 @@ TXT;
 
         $response->assertOk();
         $response->assertJsonPath('ok', true);
-        $this->assertGreaterThanOrEqual(1, $response->json('agregadas'));
+        $response->assertJsonPath('agregadas', 2);
+        $response->assertJsonPath('pendientes', 2);
+        $response->assertJsonPath('vinculadas', 0);
 
         $nota->refresh();
         $this->assertSame('1161-172-COT26', trim((string) $nota->encargado));
@@ -95,11 +99,78 @@ TXT;
         $this->assertSame('61303000-7', trim((string) $nota->rutempresa));
 
         $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->orderBy('orden')->get();
-        $this->assertGreaterThanOrEqual(1, $lineas->count());
-        $this->assertNotNull($lineas->first()->prod_item_agile);
+        $this->assertCount(2, $lineas);
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas->first()));
         $this->assertTrue(
             AgileMaeprod::query()->where('prod_item_agile', '31237835')->exists()
         );
+    }
+
+    public function test_importar_vincula_lineas_con_maestro_previo(): void
+    {
+        AgileMaeprod::query()->create([
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS',
+            'prod_item' => 'ASEO001',
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('vinculadas', 1);
+        $response->assertJsonPath('pendientes', 1);
+
+        $vinculada = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('prod_item_agile', '31237835')
+            ->first();
+
+        $this->assertSame('ASEO001', $vinculada->prod_item);
+        $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($vinculada));
+    }
+
+    public function test_vincular_linea_agile_asigna_producto_maestro(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => '31237835',
+            'prod_valor' => 0,
+            'cantidad' => 5,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+        ]);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota),
+            [
+                'orden' => 1,
+                'prod_item_agile' => '31237835',
+                'prod_item' => 'ASEO001',
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('linea.prod_item', 'ASEO001');
+
+        $linea = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', 1)
+            ->where('prod_item', 'ASEO001')
+            ->first();
+
+        $this->assertNotNull($linea);
+        $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
+        $this->assertSame('ASEO001', AgileMaeprod::query()->find('31237835')->prod_item);
     }
 
     public function test_importar_rechaza_sin_numero_cotizacion_si_texto_no_lo_trae(): void

@@ -323,9 +323,48 @@ class CotizacionController extends Controller
         return response()->json([
             'ok' => true,
             'agregadas' => $resultado['agregadas'],
-            'omitidas' => $resultado['omitidas'],
+            'vinculadas' => $resultado['vinculadas'],
+            'pendientes' => $resultado['pendientes'],
             'cabecera_actualizada' => $resultado['cabecera_actualizada'],
             'mensajes' => $resultado['mensajes'],
+        ]);
+    }
+
+    public function vincularLineaAgile(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        $datos = $request->validate([
+            'orden' => ['required', 'integer', 'min:1'],
+            'prod_item_agile' => ['required', 'string', 'max:50'],
+            'prod_item' => ['required', 'string', 'max:50'],
+            'prod_valor' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $resultado = $this->detalleService->vincularLineaAgile(
+                $nota,
+                (int) $datos['orden'],
+                $datos['prod_item_agile'],
+                $datos['prod_item'],
+                $request->user()->username,
+                isset($datos['prod_valor']) ? (int) $datos['prod_valor'] : null,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'linea' => $resultado,
         ]);
     }
 

@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=rep" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-import" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -21,7 +21,8 @@
 
     @if($requiereNumeroCotizacion)
         <div class="alert alert-danger py-2 mb-2" role="alert">
-            Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos u otras acciones.
+            Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos manualmente.
+            Puede usar <strong>Importar desde Compra &Aacute;gil</strong> para cargar cabecera y l&iacute;neas desde Mercado P&uacute;blico.
         </div>
     @endif
 
@@ -99,6 +100,13 @@
             @endif
         </fieldset>
 
+        <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
+                <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
+            </button>
+            <span class="small text-muted">Pegue texto de Mercado P&uacute;blico para cargar cabecera y l&iacute;neas (vincule productos con Buscar en cada fila).</span>
+        </div>
+
         <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion])>
             <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
                 <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
@@ -112,12 +120,9 @@
                 </span>
             </div>
 
-        <div class="cotiz-agregar mb-2 d-flex flex-wrap gap-2">
+        <div class="cotiz-agregar mb-2">
             <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
                 <i class="bi bi-plus-circle"></i> Agregar producto
-            </button>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
-                <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
             </button>
         </div>
 
@@ -144,10 +149,14 @@
                     @forelse($lineas as $idx => $row)
                         @php $linea = $row['linea']; @endphp
                         <tr
-                            @class(['linea-repetida' => $row['repetidos'] > 1])
+                            @class([
+                                'linea-repetida' => $row['repetidos'] > 1,
+                                'linea-pendiente-vinculo' => $row['pendiente_vinculo'],
+                            ])
                             data-linea="{{ $idx }}"
                             data-prod="{{ $linea->prod_item }}"
                             data-orden="{{ $linea->orden }}"
+                            @if($row['prod_item_agile'] !== '') data-prod-item-agile="{{ $row['prod_item_agile'] }}" @endif
                         >
                             <td class="text-center linea-drag-cell">
                                 <span class="linea-drag-handle" title="Arrastrar para reordenar" aria-label="Arrastrar fila">
@@ -170,7 +179,19 @@
                                 />
                             </td>
                             <td>
-                                {{ $linea->prod_item }}
+                                <div class="d-flex flex-wrap gap-1 align-items-center">
+                                    <span class="linea-codigo-interno @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ $linea->prod_item }}</span>
+                                    @if($row['pendiente_vinculo'])
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline-primary btn-sm btn-buscar-linea-agile"
+                                            data-fila="{{ $idx }}"
+                                            data-orden="{{ $linea->orden }}"
+                                            data-prod-item-agile="{{ $row['prod_item_agile'] }}"
+                                            data-descripcion-agile="{{ $row['prod_descripcion_agile'] }}"
+                                        >Buscar</button>
+                                    @endif
+                                </div>
                                 <input type="hidden" name="lineas[{{ $idx }}][prod_item]" value="{{ $linea->prod_item }}">
                                 <input type="hidden" name="lineas[{{ $idx }}][orden]" value="{{ $linea->orden }}">
                             </td>
@@ -178,7 +199,14 @@
                                 <input type="text" name="lineas[{{ $idx }}][prod_item_softland]" maxlength="20" value="{{ old('lineas.'.$idx.'.prod_item_softland', $row['prod_item_softland']) }}" title="C&oacute;digo Softland">
                             </td>
                             <td><span class="nv-fill">{{ $row['prod_item_agile'] }}</span></td>
-                            <td><span class="nv-fill">{{ $row['prod_nombre'] }}</span></td>
+                            <td>
+                                @if($row['pendiente_vinculo'] && $row['prod_descripcion_agile'] !== '')
+                                    <span class="nv-fill text-muted small d-block">{{ $row['prod_descripcion_agile'] }}</span>
+                                    <span class="nv-fill linea-prod-nombre text-warning-emphasis">Sin vincular</span>
+                                @else
+                                    <span class="nv-fill linea-prod-nombre">{{ $row['prod_nombre'] }}</span>
+                                @endif
+                            </td>
                             <td>
                                 <span @class(['nv-fill', 'fecha-precio-antigua' => $row['prod_valor_fecha_antigua']])>{{ $row['prod_valor_fecha'] }}</span>
                             </td>
@@ -218,7 +246,7 @@
                             <td class="text-center eliminar-cell" data-prod="{{ $linea->prod_item }}" data-orden="{{ $linea->orden }}"></td>
                         </tr>
                     @empty
-                        <tr><td colspan="13" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Agregar producto&raquo; para incorporar items.</td></tr>
+                        <tr><td colspan="13" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -365,6 +393,23 @@
                         <i class="bi bi-download"></i> Importar
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="popupVincularAgile" class="cotiz-popup-overlay" style="display:none">
+        <div class="cotiz-popup-content">
+            <div class="cotiz-popup-header">
+                <h5 class="mb-0">Buscar producto maestro</h5>
+                <button type="button" class="btn-close" id="cerrarPopupVincularAgile" aria-label="Cerrar"></button>
+            </div>
+            <div class="cotiz-popup-body">
+                <p class="small text-muted mb-2"><strong>Descripci&oacute;n Compra &Aacute;gil:</strong> <span id="popupVincularDescAgile"></span></p>
+                <div class="input-group input-group-sm mb-3">
+                    <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
+                    <button type="button" class="btn btn-secondary" id="btnPopupVincularBuscar">Buscar</button>
+                </div>
+                <div id="popupVincularResultados" class="cotiz-popup-resultados"></div>
             </div>
         </div>
     </div>
@@ -962,12 +1007,17 @@
         importarTablaWrap.classList.remove('d-none');
         importarResultados.innerHTML = lineas.map(ln => {
             const prod = ln.producto;
-            const estado = ln.estado === 'ok'
-                ? '<span class="text-success">OK</span>'
-                : '<span class="text-danger">Sin match</span>';
+            let estadoHtml;
+            if (ln.estado === 'vinculado') {
+                estadoHtml = '<span class="text-success">Vinculado</span>';
+            } else if (ln.es_sugerencia && prod) {
+                estadoHtml = '<span class="text-warning">Pendiente (sugerido)</span>';
+            } else {
+                estadoHtml = '<span class="text-danger">Pendiente</span>';
+            }
             const prodTxt = prod
-                ? escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre)
-                : '<span class="text-muted">—</span>';
+                ? escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre) + (ln.es_sugerencia ? ' <span class="text-muted">(sugerencia)</span>' : '')
+                : '<span class="text-muted">Buscar despu&eacute;s de importar</span>';
 
             return '<tr>'
                 + '<td>' + escHtml(ln.id_agile) + '</td>'
@@ -975,19 +1025,19 @@
                 + '<td class="text-end">' + escHtml(ln.cantidad) + '</td>'
                 + '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>'
                 + '<td>' + prodTxt + '</td>'
-                + '<td>' + estado + '</td>'
+                + '<td>' + estadoHtml + '</td>'
                 + '</tr>';
         }).join('');
 
         const res = data?.resumen || {};
         if (importarResumen) {
             importarResumen.textContent = (res.total || 0) + ' línea(s): '
-                + (res.con_producto || 0) + ' con producto, '
-                + (res.sin_producto || 0) + ' sin match.';
+                + (res.vinculados || 0) + ' vinculada(s), '
+                + (res.pendientes || 0) + ' pendiente(s).';
         }
 
         if (btnImportarConfirmar) {
-            if ((res.con_producto || 0) > 0) {
+            if ((res.total || 0) > 0) {
                 btnImportarConfirmar.classList.remove('d-none');
             } else {
                 btnImportarConfirmar.classList.add('d-none');
@@ -1043,10 +1093,10 @@
         const texto = String(importarTexto?.value || '').trim();
         if (!texto) return;
 
-        const sinMatch = importPreviewData?.resumen?.sin_producto || 0;
+        const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
             const ok = window.confirm(
-                'Hay ' + sinMatch + ' línea(s) sin producto en el maestro. Se importarán solo las que tienen match. ¿Continuar?'
+                'Hay ' + sinMatch + ' línea(s) pendientes de vincular. Se importarán todas; use Buscar en cada fila para asignar el producto del maestro. ¿Continuar?'
             );
             if (!ok) return;
         }
@@ -1094,6 +1144,132 @@
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
         importPreviewData = null;
+    });
+
+    const vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota));
+    const popupVincularEl = document.getElementById('popupVincularAgile');
+    const popupVincularDesc = document.getElementById('popupVincularDescAgile');
+    const popupVincularBusqueda = document.getElementById('popupVincularBusqueda');
+    const popupVincularResultados = document.getElementById('popupVincularResultados');
+    let vincularFilaActual = null;
+    let vincularOrdenActual = null;
+    let vincularAgileIdActual = null;
+
+    function formatMoneyCotiz(n) {
+        return Math.round(Number(n) || 0).toLocaleString('es-CL');
+    }
+
+    function abrirPopupVincularAgile(btn) {
+        vincularFilaActual = btn.dataset.fila;
+        vincularOrdenActual = btn.dataset.orden;
+        vincularAgileIdActual = btn.dataset.prodItemAgile || '';
+        const desc = btn.dataset.descripcionAgile || '';
+        if (popupVincularDesc) popupVincularDesc.textContent = desc;
+        if (popupVincularBusqueda) popupVincularBusqueda.value = desc;
+        if (popupVincularResultados) popupVincularResultados.innerHTML = '';
+        if (popupVincularEl) popupVincularEl.style.display = 'flex';
+        buscarProductosVincularPopup();
+    }
+
+    function cerrarPopupVincularAgile() {
+        if (popupVincularEl) popupVincularEl.style.display = 'none';
+        vincularFilaActual = null;
+        vincularOrdenActual = null;
+        vincularAgileIdActual = null;
+    }
+
+    function buscarProductosVincularPopup() {
+        const q = popupVincularBusqueda?.value?.trim() || '';
+        const cont = popupVincularResultados;
+        if (!cont) return;
+        if (q.length < buscarConfig.minChars) {
+            cont.innerHTML = '<p class="text-muted small">Escriba al menos ' + buscarConfig.minChars + ' caracteres.</p>';
+            return;
+        }
+
+        cont.innerHTML = '<p class="text-muted small">Buscando...</p>';
+        fetch(buscarConfig.url + '?q=' + encodeURIComponent(q) + '&limit=' + buscarConfig.limit, {
+            headers: { Accept: 'application/json' },
+        })
+            .then(r => r.json())
+            .then(data => {
+                const items = data.data || [];
+                if (!items.length) {
+                    cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
+                    return;
+                }
+                let html = '<table class="table table-sm table-hover mb-0"><thead><tr><th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th></tr></thead><tbody>';
+                items.forEach(p => {
+                    const nombre = String(p.prod_nombre || '').replace(/"/g, '&quot;');
+                    html += '<tr>'
+                        + '<td>' + escHtml(p.prod_item) + '</td>'
+                        + '<td>' + escHtml(p.prod_nombre) + '</td>'
+                        + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
+                        + '<td>' + formatMoneyCotiz(p.prod_valor) + '</td>'
+                        + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-codigo="' + escHtml(p.prod_item) + '" data-costo="' + (p.prod_valor_costo || 0) + '" data-venta="' + (p.prod_valor || 0) + '" data-nombre="' + nombre + '">Seleccionar</button></td>'
+                        + '</tr>';
+                });
+                html += '</tbody></table>';
+                cont.innerHTML = html;
+                cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
+                    b.addEventListener('click', () => seleccionarVinculoAgile(
+                        b.dataset.codigo,
+                        parseInt(b.dataset.costo, 10) || 0,
+                        parseInt(b.dataset.venta, 10) || 0,
+                        b.dataset.nombre,
+                    ));
+                });
+            })
+            .catch(() => {
+                cont.innerHTML = '<p class="text-danger small">Error al buscar.</p>';
+            });
+    }
+
+    async function seleccionarVinculoAgile(codigo, costo, venta, nombre) {
+        if (vincularOrdenActual == null || !vincularAgileIdActual) return;
+
+        try {
+            const res = await fetch(vincularAgileUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    orden: parseInt(vincularOrdenActual, 10),
+                    prod_item_agile: vincularAgileIdActual,
+                    prod_item: codigo,
+                    prod_valor: venta,
+                }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(json.error || 'No se pudo vincular el producto.');
+                return;
+            }
+            cerrarPopupVincularAgile();
+            mostrarLoaderCotiz();
+            window.location.reload();
+        } catch (err) {
+            alert('Error de conexión al vincular producto.');
+        }
+    }
+
+    document.querySelectorAll('.btn-buscar-linea-agile').forEach(btn => {
+        btn.addEventListener('click', () => abrirPopupVincularAgile(btn));
+    });
+    document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
+    document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
+    popupVincularBusqueda?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buscarProductosVincularPopup();
+        }
+    });
+    popupVincularEl?.addEventListener('click', e => {
+        if (e.target === popupVincularEl) cerrarPopupVincularAgile();
     });
 
     @if($lineas->contains(fn ($row) => $row['repetidos'] > 1))
