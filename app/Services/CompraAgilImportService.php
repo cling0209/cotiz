@@ -86,9 +86,9 @@ class CompraAgilImportService
      */
     public function aplicar(Nota $nota, string $texto, string $usuario): array
     {
-        $preview = $this->preview($texto);
-        $total = count($preview['lineas']);
-        $resultado = $this->aplicarConPreview($nota, $preview, $usuario, 0, $total);
+        $datos = $this->parseParaImport($texto);
+        $total = count($datos['lineas']);
+        $resultado = $this->aplicarConPreview($nota, $datos, $usuario, 0, $total);
         unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
 
         return $resultado;
@@ -110,11 +110,44 @@ class CompraAgilImportService
      */
     public function aplicarLote(Nota $nota, string $texto, string $usuario, int $desde, int $hasta): array
     {
-        $preview = $this->preview($texto);
-        $total = count($preview['lineas']);
+        $datos = $this->parseParaImport($texto);
+        $total = count($datos['lineas']);
         $hasta = max($desde, min($hasta, $total));
 
-        return $this->aplicarConPreview($nota, $preview, $usuario, $desde, $hasta);
+        return $this->aplicarConPreview($nota, $datos, $usuario, $desde, $hasta);
+    }
+
+    /**
+     * Parseo rápido para importar (sin búsqueda por similitud).
+     *
+     * @return array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }
+     */
+    private function parseParaImport(string $texto): array
+    {
+        $parsed = $this->parser->parse($texto);
+        $lineas = [];
+
+        foreach ($parsed['lineas'] as $linea) {
+            $lineas[] = [
+                'id_agile' => $linea['id_agile'],
+                'descripcion' => $linea['descripcion'],
+                'cantidad' => $linea['cantidad'],
+                'categoria' => $linea['categoria'],
+            ];
+        }
+
+        return [
+            'cabecera' => [
+                'codigo_cotizacion' => $parsed['codigo_cotizacion'],
+                'empresa' => $parsed['empresa'],
+                'rutempresa' => $parsed['rutempresa'],
+                'nombre' => $parsed['nombre'],
+            ],
+            'lineas' => $lineas,
+        ];
     }
 
     /**

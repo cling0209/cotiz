@@ -1022,7 +1022,15 @@
             .replace(/"/g, '&quot;');
     }
 
-    const IMPORT_LOTE_LINEAS = 3;
+    const IMPORT_LOTE_MIN = 10;
+    const IMPORT_LOTE_MAX = 25;
+
+    function tamanoLoteImportar(total) {
+        const n = Math.max(0, Number(total) || 0);
+        if (n <= IMPORT_LOTE_MIN) return n;
+        if (n <= 50) return IMPORT_LOTE_MIN;
+        return IMPORT_LOTE_MAX;
+    }
 
     function limpiarImportAlerta() {
         if (importarAlerta) importarAlerta.classList.add('d-none');
@@ -1274,8 +1282,9 @@
                     return;
                 }
             } else {
-                for (let desde = 0; desde < total; desde += IMPORT_LOTE_LINEAS) {
-                    const hasta = Math.min(desde + IMPORT_LOTE_LINEAS, total);
+                const lote = tamanoLoteImportar(total);
+                for (let desde = 0; desde < total; desde += lote) {
+                    const hasta = Math.min(desde + lote, total);
                     const textoProgreso = desde === 0
                         ? 'Actualizando cabecera e importando líneas...'
                         : null;
