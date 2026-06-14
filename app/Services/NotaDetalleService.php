@@ -38,40 +38,75 @@ class NotaDetalleService
                 ->whereIn('prod_item_agile', $agileIds)
                 ->pluck('prod_descripcion_agile', 'prod_item_agile');
 
+        $repetidosPorProd = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->selectRaw('prod_item, COUNT(*) as total')
+            ->groupBy('prod_item')
+            ->pluck('total', 'prod_item');
+
         return $lineas
-            ->map(function (NotaDetalle $linea) use ($nota, $descripcionesAgile) {
-                $repetidos = NotaDetalle::query()
-                    ->where('nronota', $nota->nronota)
-                    ->where('prod_item', $linea->prod_item)
-                    ->count();
-
-                [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua(
-                    $linea->producto?->prod_valor_fecha
+            ->map(function (NotaDetalle $linea) use ($descripcionesAgile, $repetidosPorProd) {
+                return $this->mapearFilaLinea(
+                    $linea,
+                    $descripcionesAgile,
+                    (int) ($repetidosPorProd[$linea->prod_item] ?? 0),
                 );
-
-                $agileId = trim((string) ($linea->prod_item_agile ?? ''));
-                $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
-                if ($descripcionAgile === '' && $agileId !== '') {
-                    $descripcionAgile = trim((string) ($descripcionesAgile[$agileId] ?? ''));
-                }
-
-                return [
-                    'linea' => $linea,
-                    'prod_nombre' => $linea->producto?->prod_nombre
-                        ?? ($linea->prod_descripcion_agile ?: $linea->prod_item),
-                    'prod_familia' => $linea->producto?->prod_familia,
-                    'prod_imagen' => $linea->producto?->imageUrl(),
-                    'image_url' => $linea->producto?->imageUrl(),
-                    'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
-                    'prod_item_agile' => $agileId,
-                    'prod_descripcion_agile' => $descripcionAgile,
-                    'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
-                    'prod_valor_fecha' => $fechaFmt,
-                    'prod_valor_fecha_antigua' => $fechaAntigua,
-                    'total' => $linea->lineTotal(),
-                    'repetidos' => $repetidos,
-                ];
             });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function filaLineaParaFormulario(Nota $nota, NotaDetalle $linea): array
+    {
+        $linea->loadMissing('producto');
+
+        $agileId = trim((string) ($linea->prod_item_agile ?? ''));
+        $descripcionesAgile = $agileId === ''
+            ? collect()
+            : AgileMaeprod::query()
+                ->where('prod_item_agile', $agileId)
+                ->pluck('prod_descripcion_agile', 'prod_item_agile');
+
+        $repetidos = (int) NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('prod_item', $linea->prod_item)
+            ->count();
+
+        return $this->mapearFilaLinea($linea, $descripcionesAgile, $repetidos);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapearFilaLinea(NotaDetalle $linea, Collection $descripcionesAgile, int $repetidos): array
+    {
+        [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua(
+            $linea->producto?->prod_valor_fecha
+        );
+
+        $agileId = trim((string) ($linea->prod_item_agile ?? ''));
+        $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
+        if ($descripcionAgile === '' && $agileId !== '') {
+            $descripcionAgile = trim((string) ($descripcionesAgile[$agileId] ?? ''));
+        }
+
+        return [
+            'linea' => $linea,
+            'prod_nombre' => $linea->producto?->prod_nombre
+                ?? ($linea->prod_descripcion_agile ?: $linea->prod_item),
+            'prod_familia' => $linea->producto?->prod_familia,
+            'prod_imagen' => $linea->producto?->imageUrl(),
+            'image_url' => $linea->producto?->imageUrl(),
+            'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
+            'prod_item_agile' => $agileId,
+            'prod_descripcion_agile' => $descripcionAgile,
+            'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
+            'prod_valor_fecha' => $fechaFmt,
+            'prod_valor_fecha_antigua' => $fechaAntigua,
+            'total' => $linea->lineTotal(),
+            'repetidos' => $repetidos,
+        ];
     }
 
     public function actualizarLinea(

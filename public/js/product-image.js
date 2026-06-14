@@ -70,5 +70,9 @@
         initAll();
     }
 
+    window.initProductImagesIn = function (root) {
+        (root || document).querySelectorAll('[data-product-image]').forEach(initProductImage);
+    };
+
     document.addEventListener('turbo:load', initAll);
 })();

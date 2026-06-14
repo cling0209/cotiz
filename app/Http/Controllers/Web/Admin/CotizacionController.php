@@ -193,7 +193,7 @@ class CotizacionController extends Controller
             return back()->with('error', 'Producto no encontrado.');
         }
 
-        $this->detalleService->agregarLinea(
+        $detalle = $this->detalleService->agregarLinea(
             $nota,
             $datos['prod_item'],
             (int) $datos['cantidad'],
@@ -203,7 +203,28 @@ class CotizacionController extends Controller
         );
 
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true]);
+            $totalLineas = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->count();
+            $idx = max(0, $totalLineas - 1);
+            $row = $this->detalleService->filaLineaParaFormulario($nota, $detalle);
+
+            return response()->json([
+                'ok' => true,
+                'idx' => $idx,
+                'orden' => $detalle->orden,
+                'html' => view('admin.cotizaciones.partials.linea-detalle-row', [
+                    'idx' => $idx,
+                    'row' => $row,
+                    'isFirst' => $idx === 0,
+                    'isLast' => true,
+                ])->render(),
+                'delete_form_html' => view('admin.cotizaciones.partials.linea-detalle-delete-form', [
+                    'nota' => $nota,
+                    'row' => $row,
+                ])->render(),
+                'resumen' => $this->detalleService->resumenLineasNota($nota),
+            ]);
         }
 
         return back()->with('success', 'Línea agregada.');
