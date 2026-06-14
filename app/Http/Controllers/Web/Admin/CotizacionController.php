@@ -254,7 +254,8 @@ class CotizacionController extends Controller
                     'idx' => $idx,
                     'row' => $row,
                     'isFirst' => $idx === 0,
-                    'isLast' => true,
+                    'isLast' => $idx === $totalLineas - 1,
+                    'totalLineas' => $totalLineas,
                 ])->render(),
                 'delete_form_html' => view('admin.cotizaciones.partials.linea-detalle-delete-form', [
                     'nota' => $nota,

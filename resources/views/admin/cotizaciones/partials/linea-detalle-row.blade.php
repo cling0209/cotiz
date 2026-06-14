@@ -1,5 +1,6 @@
 @php
     $linea = $row['linea'];
+    $totalLineas = $totalLineas ?? 1;
 @endphp
 <tr
     @class([
@@ -98,6 +99,24 @@
     <td class="text-center linea-orden-cell">
         <div class="linea-orden-controls">
             <span class="linea-orden-num">{{ $linea->orden }}</span>
+            <div class="linea-orden-ir-wrap">
+                <input
+                    type="number"
+                    class="linea-orden-destino"
+                    min="1"
+                    max="{{ $totalLineas }}"
+                    value="{{ $linea->orden }}"
+                    title="Ir a posición"
+                    aria-label="Posición destino"
+                >
+                <button
+                    type="button"
+                    class="btn btn-outline-primary btn-sm linea-orden-ir"
+                    data-prod="{{ $linea->prod_item }}"
+                    data-orden="{{ $linea->orden }}"
+                    title="Ir a posición"
+                >Ir</button>
+            </div>
             <div class="linea-orden-buttons">
                 <button
                     type="button"

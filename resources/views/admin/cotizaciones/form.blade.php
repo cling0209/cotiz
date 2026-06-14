@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-46" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-47" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -157,6 +157,7 @@
                             'row' => $row,
                             'isFirst' => $loop->first,
                             'isLast' => $loop->last,
+                            'totalLineas' => $lineas->count(),
                         ])
                     @empty
                         <tr><td colspan="14" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>
@@ -746,12 +747,21 @@
         const elimTd = row.querySelector('.eliminar-cell');
         if (elimTd) elimTd.dataset.orden = String(ordenDb);
 
-        row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar, .btn-buscar-linea-agile').forEach(btn => {
+        row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar, .linea-orden-ir, .btn-buscar-linea-agile').forEach(btn => {
             btn.dataset.orden = String(ordenDb);
         });
 
         const ordenHidden = row.querySelector('input[name*="[orden]"]');
         if (ordenHidden) ordenHidden.value = String(ordenDb);
+
+        const destinoInput = row.querySelector('.linea-orden-destino');
+        if (destinoInput && document.activeElement !== destinoInput) {
+            destinoInput.value = String(ordenDb);
+        }
+    }
+
+    function totalLineasGrilla() {
+        return document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').length;
     }
 
     function actualizarControlesOrdenVisual() {
@@ -759,8 +769,17 @@
         const total = rows.length;
 
         rows.forEach((row, idx) => {
+            const pos = idx + 1;
             const ordenNum = row.querySelector('.linea-orden-num');
-            if (ordenNum) ordenNum.textContent = String(idx + 1);
+            if (ordenNum) ordenNum.textContent = String(pos);
+
+            const destinoInput = row.querySelector('.linea-orden-destino');
+            if (destinoInput) {
+                destinoInput.max = String(total);
+                if (document.activeElement !== destinoInput) {
+                    destinoInput.value = String(pos);
+                }
+            }
 
             const btnSubir = row.querySelector('.linea-orden-subir');
             const btnBajar = row.querySelector('.linea-orden-bajar');
@@ -776,32 +795,35 @@
         }
 
         const sorted = [...lineas].sort((a, b) => a.orden - b.orden);
-        const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'));
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (!tbody) return;
 
+        const rows = Array.from(tbody.querySelectorAll('tr[data-linea]'));
         if (sorted.length !== rows.length) {
             actualizarControlesOrdenVisual();
             return;
         }
 
         const used = new Set();
-        rows.forEach((row, idx) => {
-            const prod = row.dataset.prod || '';
-            const agile = row.dataset.prodItemAgile || '';
-            let linea = sorted[idx];
-
-            if (!linea || linea.prod_item !== prod || used.has(linea.orden)) {
-                linea = sorted.find(l => ! used.has(l.orden)
-                    && l.prod_item === prod
-                    && String(l.prod_item_agile || '') === agile);
+        const orderedRows = sorted.map((linea, idx) => {
+            const prod = linea.prod_item;
+            const agile = String(linea.prod_item_agile || '');
+            let row = rows.find(r => ! used.has(r)
+                && r.dataset.prod === prod
+                && String(r.dataset.prodItemAgile || '') === agile);
+            if (!row) {
+                row = rows.find(r => ! used.has(r) && r.dataset.prod === prod);
             }
-            if (!linea) {
-                linea = sorted.find(l => ! used.has(l.orden) && l.prod_item === prod);
-            }
-            if (!linea) linea = sorted[idx];
-            if (!linea) return;
+            if (!row) row = rows[idx];
+            if (row) used.add(row);
+            return row;
+        }).filter(Boolean);
 
-            used.add(linea.orden);
-            sincronizarOrdenFila(row, parseInt(linea.orden, 10));
+        orderedRows.forEach(row => tbody.appendChild(row));
+
+        sorted.forEach((linea, idx) => {
+            const row = orderedRows[idx];
+            if (row) sincronizarOrdenFila(row, parseInt(linea.orden, 10));
         });
 
         actualizarControlesOrdenVisual();
@@ -849,7 +871,7 @@
         } catch (err) {
             ocultarLoaderCotiz();
             dlgAlert('Error de conexión al cambiar el orden.', { title: 'Error', type: 'danger' });
-            return false;
+            return null;
         } finally {
             ordenEnProceso = false;
         }
@@ -866,14 +888,14 @@
         });
 
         if (ok && row) {
-            if (direccion === 'up' && row.previousElementSibling) {
-                row.parentNode.insertBefore(row, row.previousElementSibling);
-            } else if (direccion === 'down' && row.nextElementSibling) {
-                row.parentNode.insertBefore(row.nextElementSibling, row);
-            }
             if (ok.lineas) {
                 aplicarOrdenDesdeServidor(ok.lineas);
             } else {
+                if (direccion === 'up' && row.previousElementSibling) {
+                    row.parentNode.insertBefore(row, row.previousElementSibling);
+                } else if (direccion === 'down' && row.nextElementSibling) {
+                    row.parentNode.insertBefore(row.nextElementSibling, row);
+                }
                 actualizarControlesOrdenVisual();
             }
         } else if (!ok) {
@@ -881,16 +903,71 @@
         }
     }
 
-    document.querySelectorAll('.linea-orden-subir').forEach(btn => {
-        btn.addEventListener('click', () => moverLineaOrden(btn, 'up'));
+    async function irAPosicionLinea(btn, inputOverride) {
+        if (!btn || ordenEnProceso) return;
+
+        const row = btn.closest('tr[data-linea]');
+        const input = inputOverride || row?.querySelector('.linea-orden-destino');
+        if (!row || !input) return;
+
+        const total = totalLineasGrilla();
+        const ordenNuevo = parseInt(input.value, 10);
+        const ordenActual = parseInt(btn.dataset.orden || row.dataset.orden, 10);
+
+        if (!Number.isFinite(ordenNuevo) || ordenNuevo < 1 || ordenNuevo > total) {
+            dlgAlert('Indique una posición entre 1 y ' + total + '.', { title: 'Posición inválida' });
+            input.focus();
+            input.select();
+            return;
+        }
+
+        if (ordenNuevo === ordenActual) {
+            input.value = String(ordenActual);
+            return;
+        }
+
+        const controles = row.querySelector('.linea-orden-controls');
+        controles?.querySelectorAll('button, input').forEach(el => { el.disabled = true; });
+
+        const result = await cambiarOrdenLinea(btn.dataset.prod, ordenActual, { orden_nuevo: ordenNuevo });
+
+        controles?.querySelectorAll('button, input').forEach(el => { el.disabled = false; });
+
+        if (result?.lineas) {
+            aplicarOrdenDesdeServidor(result.lineas);
+        }
+    }
+
+    document.getElementById('tabla_detalle')?.addEventListener('click', e => {
+        const subir = e.target.closest('.linea-orden-subir');
+        if (subir) {
+            e.preventDefault();
+            moverLineaOrden(subir, 'up');
+            return;
+        }
+        const bajar = e.target.closest('.linea-orden-bajar');
+        if (bajar) {
+            e.preventDefault();
+            moverLineaOrden(bajar, 'down');
+            return;
+        }
+        const ir = e.target.closest('.linea-orden-ir');
+        if (ir) {
+            e.preventDefault();
+            irAPosicionLinea(ir);
+        }
     });
 
-    document.querySelectorAll('.linea-orden-bajar').forEach(btn => {
-        btn.addEventListener('click', () => moverLineaOrden(btn, 'down'));
+    document.getElementById('tabla_detalle')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.matches('.linea-orden-destino')) {
+            e.preventDefault();
+            const row = e.target.closest('tr[data-linea]');
+            const ir = row?.querySelector('.linea-orden-ir');
+            if (ir) irAPosicionLinea(ir, e.target);
+        }
     });
 
     const detalleTbody = document.querySelector('#tabla_detalle tbody');
-    const detalleScrollWrap = document.getElementById('notaventa-tabla-detalle-wrap');
     if (detalleTbody && detalleTbody.querySelector('tr[data-linea]') && typeof Sortable !== 'undefined') {
         Sortable.create(detalleTbody, {
             animation: 160,
@@ -899,7 +976,7 @@
             ghostClass: 'linea-sortable-ghost',
             chosenClass: 'linea-sortable-chosen',
             dragClass: 'linea-sortable-drag',
-            scroll: detalleScrollWrap || true,
+            scroll: true,
             forceAutoScrollFallback: true,
             scrollSensitivity: 60,
             scrollSpeed: 20,

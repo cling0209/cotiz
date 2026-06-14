@@ -149,6 +149,36 @@ class CotizacionOrdenLineaTest extends TestCase
         ]);
     }
 
+    public function test_ir_a_posicion_salta_varias_lineas(): void
+    {
+        $nota = $this->crearNota();
+
+        $this->crearLinea($nota, ['prod_item' => 'PROD001', 'orden' => 1]);
+        $this->crearLinea($nota, ['prod_item' => 'PROD002', 'orden' => 2]);
+        $this->crearLinea($nota, ['prod_item' => 'PROD003', 'orden' => 3]);
+        $this->crearLinea($nota, ['prod_item' => 'PROD004', 'orden' => 4]);
+
+        $this->actingAs($this->admin)->patchJson(
+            route('admin.cotizaciones.lineas.orden', $nota->nronota),
+            [
+                'prod_item' => 'PROD001',
+                'orden' => 1,
+                'orden_nuevo' => 4,
+            ],
+        )->assertOk()->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD001',
+            'orden' => 4,
+        ]);
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD002',
+            'orden' => 1,
+        ]);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([
