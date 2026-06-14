@@ -165,6 +165,40 @@ class CotizacionController extends Controller
         return back()->with('success', $mensaje);
     }
 
+    public function aplicarFactor(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
+        if ($factor === null) {
+            return response()->json([
+                'error' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+            ], 422);
+        }
+
+        $result = $this->detalleService->aplicarFactorPrecioVenta(
+            $nota,
+            $factor,
+            $request->user()->username,
+        );
+
+        return response()->json([
+            'ok' => true,
+            'factor_precio_venta_fmt' => number_format($result['factor'], 2, ',', ''),
+            'ok_count' => $result['ok'],
+            'total' => $result['total'],
+            'lineas' => $result['lineas'],
+        ]);
+    }
+
     public function agregarLinea(Request $request, int $nronota): RedirectResponse|JsonResponse
     {
         $nota = Nota::query()->findOrFail($nronota);

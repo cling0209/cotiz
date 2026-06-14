@@ -181,7 +181,7 @@ class NotaDetalleService
     }
 
     /**
-     * @return array{ok: int, total: int, factor: float}
+     * @return array{ok: int, total: int, factor: float, lineas: array<int, array{orden: int, prod_item: string, prod_valor: int, prod_valor_costo: int, subtotal: int}>}
      */
     public function aplicarFactorPrecioVenta(Nota $nota, float $factor, ?string $usuarioUpd = null): array
     {
@@ -192,9 +192,12 @@ class NotaDetalleService
             $lineas = NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->with('producto')
+                ->orderBy('orden')
                 ->get();
 
             $okCount = 0;
+            $actualizadas = [];
+
             foreach ($lineas as $linea) {
                 $costo = (int) ($linea->prod_valor_costo ?? 0);
                 $valorActual = (int) $linea->prod_valor;
@@ -207,10 +210,23 @@ class NotaDetalleService
                     'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
                 ], $usuarioUpd);
 
+                $actualizadas[] = [
+                    'orden' => (int) $linea->orden,
+                    'prod_item' => (string) $linea->prod_item,
+                    'prod_valor' => $nuevoValor,
+                    'prod_valor_costo' => $costo,
+                    'subtotal' => $nuevoValor * (int) $linea->cantidad,
+                ];
+
                 $okCount++;
             }
 
-            return ['ok' => $okCount, 'total' => $lineas->count(), 'factor' => $factor];
+            return [
+                'ok' => $okCount,
+                'total' => $lineas->count(),
+                'factor' => $factor,
+                'lineas' => $actualizadas,
+            ];
         });
     }
 

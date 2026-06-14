@@ -120,7 +120,7 @@
                     @error('factor_precio_venta')
                         <span class="text-danger small">{{ $message }}</span>
                     @enderror
-                    <button type="submit" name="accion" value="aplicar_factor" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
                 </span>
             </div>
 
@@ -409,6 +409,8 @@
     const fmt = n => '$' + Math.round(n).toLocaleString('es-CL');
     const montototal = document.getElementById('montototal');
     const factorInput = document.getElementById('factor_precio_venta');
+    const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
+    const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
 
     function parseFactorChile(texto) {
         const t = String(texto || '').trim().replace(/\s/g, '');
@@ -438,7 +440,7 @@
     document.getElementById('form-cotizacion')?.addEventListener('submit', function (e) {
         const submitter = e.submitter;
         if (!submitter || submitter.name !== 'accion') return;
-        if (submitter.value !== 'aplicar_factor' && submitter.value !== 'grabar') return;
+        if (submitter.value !== 'grabar') return;
         if (!factorInput || String(factorInput.value || '').trim() === '') return;
         const parsed = parseFactorChile(factorInput.value);
         if (parsed === null) {
@@ -450,6 +452,101 @@
         }
         factorInput.value = formatFactorChile(parsed);
     });
+
+    function encontrarFilaPorOrdenProd(orden, prodItem) {
+        const porProd = document.querySelector(
+            '#tabla_detalle tbody tr[data-orden="' + orden + '"][data-prod="' + CSS.escape(String(prodItem || '')) + '"]'
+        );
+        if (porProd) return porProd;
+        return document.querySelector('#tabla_detalle tbody tr[data-orden="' + orden + '"]');
+    }
+
+    async function aplicarFactorAjax() {
+        if (!factorInput || !btnFactorAumento) return;
+        if (!asegurarNumeroCotizacion()) return;
+
+        const parsed = parseFactorChile(factorInput.value);
+        if (parsed === null) {
+            factorInput.classList.add('is-invalid');
+            factorInput.focus();
+            dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
+            return;
+        }
+
+        factorInput.classList.remove('is-invalid');
+        factorInput.value = formatFactorChile(parsed);
+
+        const labelOriginal = btnFactorAumento.textContent;
+        btnFactorAumento.disabled = true;
+        btnFactorAumento.textContent = 'Aplicando...';
+
+        try {
+            const res = await fetch(factorUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ factor_precio_venta: factorInput.value }),
+            });
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                dlgAlert(json.error || json.message || 'No se pudo aplicar el factor.', { title: 'Error', type: 'danger' });
+                return;
+            }
+
+            const factorMostrado = document.getElementById('factor_precio_venta_mostrado');
+            if (factorMostrado && json.factor_precio_venta_fmt) {
+                factorMostrado.textContent = json.factor_precio_venta_fmt;
+            }
+
+            let preciosCambiados = 0;
+            let lineasSinCosto = 0;
+
+            (json.lineas || []).forEach(linea => {
+                const tr = encontrarFilaPorOrdenProd(linea.orden, linea.prod_item);
+                if (!tr) return;
+
+                const costo = parseInt(linea.prod_valor_costo, 10) || 0;
+                if (costo <= 0) lineasSinCosto++;
+
+                const ventaInput = tr.querySelector('.linea-prod-valor');
+                const ventaAnterior = ventaInput ? parseInt(ventaInput.value || '0', 10) : 0;
+                const ventaNueva = parseInt(linea.prod_valor, 10) || 0;
+
+                if (ventaInput) ventaInput.value = ventaNueva;
+
+                const totalTd = tr.querySelector('.linea-total');
+                if (totalTd) totalTd.textContent = fmt(linea.subtotal ?? (ventaNueva * (parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1)));
+
+                if (ventaNueva !== ventaAnterior) preciosCambiados++;
+            });
+
+            recalcularMontoTotal();
+
+            let mensaje = 'Factor ' + (json.factor_precio_venta_fmt || factorInput.value) + ' guardado.';
+            if (preciosCambiados > 0) {
+                mensaje += ' ' + preciosCambiados + ' precio' + (preciosCambiados === 1 ? '' : 's') + ' actualizado' + (preciosCambiados === 1 ? '' : 's') + '.';
+            } else {
+                mensaje += ' Los precios ya coincidían con ese factor.';
+            }
+            if (lineasSinCosto > 0) {
+                mensaje += ' ' + lineasSinCosto + ' línea' + (lineasSinCosto === 1 ? '' : 's') + ' sin costo (no se recalcula venta).';
+            }
+
+            dlgAlert(mensaje, { title: 'Factor aplicado', type: 'success' });
+        } catch (err) {
+            dlgAlert('Error de conexión al aplicar el factor.', { title: 'Error', type: 'danger' });
+        } finally {
+            btnFactorAumento.disabled = false;
+            btnFactorAumento.textContent = labelOriginal;
+        }
+    }
+
+    btnFactorAumento?.addEventListener('click', aplicarFactorAjax);
 
     function marcarLineasRepetidas() {
         const rows = document.querySelectorAll('#tabla_detalle tbody tr[data-prod]');
