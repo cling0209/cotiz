@@ -136,6 +136,69 @@ class MaeprodImportTest extends TestCase
         ]);
     }
 
+    public function test_chunked_import_recovers_when_meta_file_is_lost_between_chunks(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $file = $this->makeExcelUpload('productos.xlsx', [
+            ['codigo', 'nombre', 'familia', 'precio'],
+            ['XLS004', 'EXCEL RECOVER', 'PAPEL', 3400],
+        ]);
+
+        $content = file_get_contents($file->getPathname());
+        $this->assertNotFalse($content);
+
+        $totalChunks = 2;
+        $splitAt = (int) floor(strlen($content) / 2);
+        $uploadId = (string) Str::uuid();
+
+        for ($chunkIndex = 0; $chunkIndex < $totalChunks; $chunkIndex++) {
+            if ($chunkIndex === 1) {
+                $metaPath = storage_path('app/imports/chunks/'.$uploadId.'/meta.json');
+                if (is_file($metaPath)) {
+                    unlink($metaPath);
+                }
+                Cache::forget('maeprod_import_chunk_meta:'.$uploadId);
+            }
+
+            $partPath = tempnam(sys_get_temp_dir(), 'maeprod_chunk_recover_');
+            $this->assertNotFalse($partPath);
+            $partBytes = $chunkIndex === 0
+                ? substr($content, 0, $splitAt)
+                : substr($content, $splitAt);
+            file_put_contents($partPath, $partBytes);
+
+            $chunk = new UploadedFile(
+                $partPath,
+                'chunk-'.$chunkIndex.'.part',
+                'application/octet-stream',
+                UPLOAD_ERR_OK,
+                true,
+            );
+
+            $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.chunk'), [
+                    'upload_id' => $uploadId,
+                    'chunk_index' => $chunkIndex,
+                    'total_chunks' => $totalChunks,
+                    'original_name' => 'productos.xlsx',
+                    'chunk' => $chunk,
+                ])
+                ->assertOk();
+        }
+
+        $this->processImportUntilFinished($admin, $uploadId, true);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'XLS004',
+            'prod_nombre' => 'EXCEL RECOVER',
+        ]);
+    }
+
     public function test_custom_excel_import_with_column_mapping(): void
     {
         $admin = User::factory()->create([

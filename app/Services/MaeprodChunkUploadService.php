@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Support\MaeprodImportFileTypes;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
@@ -12,6 +13,8 @@ class MaeprodChunkUploadService
     public const MAX_CHUNK_BYTES = 6291456;
 
     public const MAX_TOTAL_BYTES = 52428800;
+
+    public const META_CACHE_TTL_SECONDS = 7200;
 
     /**
      * @return array{ready: bool, upload_id?: string, batch_count?: int}
@@ -52,14 +55,24 @@ class MaeprodChunkUploadService
 
         if ($chunkIndex === 0) {
             File::cleanDirectory($dir);
-            File::put($dir.'/meta.json', json_encode([
+            $this->writeMeta($uploadId, [
                 'user_id' => $userId,
                 'username' => $username,
                 'original_name' => $originalName,
                 'total_chunks' => $totalChunks,
                 'mode' => $mode,
                 'created_at' => now()->toIso8601String(),
-            ], JSON_THROW_ON_ERROR));
+            ]);
+        } else {
+            $this->recoverMetaIfNeeded(
+                $uploadId,
+                $chunkIndex,
+                $totalChunks,
+                $originalName,
+                $userId,
+                $username,
+                $mode,
+            );
         }
 
         $meta = $this->readMeta($uploadId);
@@ -256,11 +269,93 @@ class MaeprodChunkUploadService
     }
 
     /**
-     * @return array{user_id: int, username: string, original_name: string, total_chunks: int, created_at: string}
+     * @param  array{user_id: int, username: string, original_name: string, total_chunks: int, mode: string, created_at: string}  $meta
+     */
+    protected function writeMeta(string $uploadId, array $meta): void
+    {
+        $metaPath = $this->metaFilePath($uploadId);
+        $encoded = json_encode($meta, JSON_THROW_ON_ERROR);
+
+        if (! File::put($metaPath, $encoded)) {
+            throw new \RuntimeException('No se pudo guardar el estado de la carga en el servidor. Verifique permisos de storage.');
+        }
+
+        Cache::put($this->metaCacheKey($uploadId), $meta, self::META_CACHE_TTL_SECONDS);
+    }
+
+    protected function recoverMetaIfNeeded(
+        string $uploadId,
+        int $chunkIndex,
+        int $totalChunks,
+        string $originalName,
+        int $userId,
+        string $username,
+        string $mode,
+    ): void {
+        if ($this->hasMeta($uploadId)) {
+            return;
+        }
+
+        if (! $this->canRecoverUploadState($uploadId, $chunkIndex, $originalName)) {
+            throw new \InvalidArgumentException(
+                'Se perdió el estado de la carga en el servidor. Pulse «Liberar carga atascada» e intente de nuevo sin cerrar esta ventana.',
+            );
+        }
+
+        $this->writeMeta($uploadId, [
+            'user_id' => $userId,
+            'username' => $username,
+            'original_name' => $originalName,
+            'total_chunks' => $totalChunks,
+            'mode' => $mode,
+            'created_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    protected function canRecoverUploadState(string $uploadId, int $chunkIndex, string $originalName): bool
+    {
+        if ($chunkIndex < 1) {
+            return false;
+        }
+
+        $mergedPath = $this->mergedPathFor($uploadId, $originalName);
+
+        if (File::exists($mergedPath) && (int) File::size($mergedPath) > 0) {
+            return true;
+        }
+
+        $dir = $this->uploadDirectory($uploadId);
+
+        for ($index = 0; $index < $chunkIndex; $index++) {
+            if (File::exists($dir.'/'.$this->chunkFilename($index))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function hasMeta(string $uploadId): bool
+    {
+        if (Cache::has($this->metaCacheKey($uploadId))) {
+            return true;
+        }
+
+        return File::exists($this->metaFilePath($uploadId));
+    }
+
+    /**
+     * @return array{user_id: int, username: string, original_name: string, total_chunks: int, created_at: string, mode?: string}
      */
     protected function readMeta(string $uploadId): array
     {
-        $metaPath = $this->uploadDirectory($uploadId).'/meta.json';
+        $cached = Cache::get($this->metaCacheKey($uploadId));
+
+        if (is_array($cached) && isset($cached['user_id'], $cached['username'], $cached['original_name'], $cached['total_chunks'])) {
+            return $cached;
+        }
+
+        $metaPath = $this->metaFilePath($uploadId);
 
         if (! File::exists($metaPath)) {
             throw new \InvalidArgumentException('La carga no fue iniciada correctamente.');
@@ -272,7 +367,19 @@ class MaeprodChunkUploadService
             throw new \InvalidArgumentException('Metadatos de carga inválidos.');
         }
 
+        Cache::put($this->metaCacheKey($uploadId), $meta, self::META_CACHE_TTL_SECONDS);
+
         return $meta;
+    }
+
+    protected function metaFilePath(string $uploadId): string
+    {
+        return $this->uploadDirectory($uploadId).'/meta.json';
+    }
+
+    protected function metaCacheKey(string $uploadId): string
+    {
+        return 'maeprod_import_chunk_meta:'.$uploadId;
     }
 
     protected function storeChunkFile(UploadedFile $chunk, string $destination): void
@@ -306,6 +413,8 @@ class MaeprodChunkUploadService
 
     protected function cleanup(string $uploadId): void
     {
+        Cache::forget($this->metaCacheKey($uploadId));
+
         $dir = $this->uploadDirectory($uploadId);
 
         if (File::isDirectory($dir)) {
