@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-desc" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -182,7 +182,7 @@
                             <td>
                                 <div class="d-flex flex-wrap gap-1 align-items-center">
                                     <span class="linea-codigo-interno @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ $linea->prod_item }}</span>
-                                    @if($row['pendiente_vinculo'])
+                                    @if($row['prod_item_agile'] !== '')
                                         <button
                                             type="button"
                                             class="btn btn-outline-primary btn-sm btn-buscar-linea-agile"
@@ -190,6 +190,7 @@
                                             data-orden="{{ $linea->orden }}"
                                             data-prod-item-agile="{{ $row['prod_item_agile'] }}"
                                             data-descripcion-agile="{{ $row['prod_descripcion_agile'] }}"
+                                            title="Buscar o cambiar producto del maestro"
                                         >Buscar</button>
                                     @endif
                                 </div>
@@ -367,6 +368,12 @@
                         rows="8"
                         placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;...&#10;Limpiadores de uso general ID: 31237835&#10;LIMPIADOR DE PISOS..."
                     ></textarea>
+                    <div id="importar-compra-agil-progreso-wrap" class="d-none mb-2">
+                        <div class="progress" style="height:10px">
+                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <p id="importar-compra-agil-progreso-texto" class="small text-muted mb-0 mt-1">Grabando cotizaci&oacute;n y l&iacute;neas...</p>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
                             <i class="bi bi-search"></i> Analizar
@@ -970,6 +977,8 @@
     const importarTablaWrap = document.getElementById('importar-compra-agil-tabla-wrap');
     const importarResultados = document.getElementById('importar-compra-agil-resultados');
     const importarResumen = document.getElementById('importar-compra-agil-resumen');
+    const importarProgresoWrap = document.getElementById('importar-compra-agil-progreso-wrap');
+    const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -1094,6 +1103,16 @@
         }
     }
 
+    function mostrarProgresoImportar(texto) {
+        if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
+        if (importarProgresoTexto) importarProgresoTexto.textContent = texto || 'Grabando cotización y líneas...';
+        if (importarEstado) importarEstado.textContent = '';
+    }
+
+    function ocultarProgresoImportar() {
+        if (importarProgresoWrap) importarProgresoWrap.classList.add('d-none');
+    }
+
     async function confirmarImportCompraAgil() {
         if (importandoCompraAgil || !importPreviewData) return;
 
@@ -1110,7 +1129,8 @@
 
         importandoCompraAgil = true;
         if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
-        if (importarEstado) importarEstado.textContent = 'Importando...';
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+        mostrarProgresoImportar('Importando cabecera y productos...');
 
         try {
             const body = new FormData();
@@ -1125,22 +1145,27 @@
 
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
+                ocultarProgresoImportar();
                 if (importarEstado) importarEstado.textContent = json.error || json.message || 'No se pudo importar.';
                 return;
             }
 
+            mostrarProgresoImportar('Importación lista. Actualizando pantalla...');
             mostrarLoaderCotiz();
             window.location.reload();
         } catch (err) {
+            ocultarProgresoImportar();
             if (importarEstado) importarEstado.textContent = 'Error de conexión.';
         } finally {
             importandoCompraAgil = false;
             if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
+            if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
         }
     }
 
     btnAbrirImportar?.addEventListener('click', () => {
         if (importarEstado) importarEstado.textContent = '';
+        ocultarProgresoImportar();
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
         bsModalImportar?.show();
         setTimeout(() => importarTexto?.focus(), 200);
@@ -1232,8 +1257,77 @@
             });
     }
 
+    function encontrarFilaAgile(orden, agileId) {
+        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-prod-item-agile]'))
+            .find(tr => String(tr.dataset.orden) === String(orden)
+                && String(tr.dataset.prodItemAgile || '') === String(agileId)) || null;
+    }
+
+    function actualizarFilaVinculada(orden, agileId, linea) {
+        const tr = encontrarFilaAgile(orden, agileId);
+        if (!tr || !linea) return;
+
+        const codigo = String(linea.prod_item || '').trim();
+        const prodAnterior = tr.dataset.prod || '';
+
+        const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
+        if (delForm) {
+            delForm.dataset.prod = codigo;
+            const delProdInput = delForm.querySelector('input[name="prod_item"]');
+            if (delProdInput) delProdInput.value = codigo;
+        }
+
+        tr.dataset.prod = codigo;
+        tr.classList.remove('linea-pendiente-vinculo');
+
+        const codigoSpan = tr.querySelector('.linea-codigo-interno');
+        if (codigoSpan) {
+            codigoSpan.textContent = codigo;
+            codigoSpan.classList.remove('text-warning', 'fw-semibold');
+        }
+
+        const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
+        if (hiddenProd) hiddenProd.value = codigo;
+
+        const nombreCell = tr.querySelector('.linea-prod-nombre');
+        if (nombreCell) {
+            nombreCell.textContent = linea.prod_nombre || codigo;
+            nombreCell.classList.remove('text-warning-emphasis');
+        }
+
+        const costoInput = tr.querySelector('.nv-precio-costo-sololectura');
+        if (costoInput) costoInput.value = linea.prod_valor_costo ?? 0;
+
+        const ventaInput = tr.querySelector('.linea-prod-valor');
+        if (ventaInput) ventaInput.value = linea.prod_valor ?? 0;
+
+        const fechaSpan = tr.querySelector('td:nth-child(8) .nv-fill');
+        if (fechaSpan && linea.prod_valor_fecha_fmt) {
+            fechaSpan.textContent = linea.prod_valor_fecha_fmt;
+            fechaSpan.classList.toggle('fecha-precio-antigua', !!linea.prod_valor_fecha_antigua);
+        }
+
+        const cantidad = parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1;
+        const totalTd = tr.querySelector('.linea-total');
+        if (totalTd) {
+            const subtotal = linea.subtotal ?? ((linea.prod_valor || 0) * cantidad);
+            totalTd.textContent = '$' + formatMoneyCotiz(subtotal);
+        }
+
+        tr.querySelectorAll('[data-prod]').forEach(el => {
+            if (el.classList.contains('eliminar-cell') || el.classList.contains('linea-orden-subir') || el.classList.contains('linea-orden-bajar')) {
+                el.dataset.prod = codigo;
+            }
+        });
+
+        recalcularMontoTotal();
+    }
+
     async function seleccionarVinculoAgile(codigo, costo, venta, nombre) {
         if (vincularOrdenActual == null || !vincularAgileIdActual) return;
+
+        const orden = parseInt(vincularOrdenActual, 10);
+        const agileId = vincularAgileIdActual;
 
         try {
             const res = await fetch(vincularAgileUrl, {
@@ -1245,8 +1339,8 @@
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 body: JSON.stringify({
-                    orden: parseInt(vincularOrdenActual, 10),
-                    prod_item_agile: vincularAgileIdActual,
+                    orden,
+                    prod_item_agile: agileId,
                     prod_item: codigo,
                     prod_valor: venta,
                 }),
@@ -1257,15 +1351,21 @@
                 return;
             }
             cerrarPopupVincularAgile();
-            mostrarLoaderCotiz();
-            window.location.reload();
+            actualizarFilaVinculada(orden, agileId, json.linea || {
+                prod_item: codigo,
+                prod_nombre: nombre,
+                prod_valor: venta,
+                prod_valor_costo: costo,
+                subtotal: venta * (parseInt(document.querySelector(`#tabla_detalle tbody tr[data-orden="${orden}"] .linea-cantidad`)?.value || '1', 10) || 1),
+            });
         } catch (err) {
             alert('Error de conexión al vincular producto.');
         }
     }
 
-    document.querySelectorAll('.btn-buscar-linea-agile').forEach(btn => {
-        btn.addEventListener('click', () => abrirPopupVincularAgile(btn));
+    document.getElementById('tabla_detalle')?.addEventListener('click', e => {
+        const btn = e.target.closest('.btn-buscar-linea-agile');
+        if (btn) abrirPopupVincularAgile(btn);
     });
     document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
     document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
