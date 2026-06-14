@@ -51,6 +51,10 @@ class MaeprodImportLockService
 
     public function hasActiveWork(string $uploadId): bool
     {
+        if (app(MaeprodImportProgressService::class)->isActive($uploadId)) {
+            return true;
+        }
+
         if (File::isDirectory(storage_path('app/imports/chunks/'.$uploadId))) {
             return true;
         }

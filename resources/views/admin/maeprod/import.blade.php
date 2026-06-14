@@ -203,10 +203,13 @@
 <script>
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const CLIENT_EXCEL_MAX_BYTES = 15 * 1024 * 1024;
+const BACKGROUND_IMPORT_ENABLED = @json((bool) config('cotiz.import.background', true));
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
 const prepareTemplateImportUrl = @json(route('admin.productos.import.prepare.template', [], false));
 const processImportUrl = @json(route('admin.productos.import.process', [], false));
+const startBackgroundImportUrl = @json(route('admin.productos.import.background', [], false));
+const importProgressUrl = @json(route('admin.productos.import.progress', [], false));
 const previewImportUrl = @json(route('admin.productos.import.preview', [], false));
 const prepareImportUrl = @json(route('admin.productos.import.prepare', [], false));
 const importStatusUrl = @json(route('admin.productos.import.status', [], false));
@@ -621,12 +624,99 @@ async function prepareTemplateImport(uploadId, progress) {
     );
 }
 
+async function startBackgroundImport(uploadId, mode = 'template', mapping = null) {
+    const body = { upload_id: uploadId, mode };
+    if (mapping) {
+        body.mapping = mapping;
+    }
+
+    const response = await fetch(startBackgroundImportUrl, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken,
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(importErrorMessage(payload, response.status));
+    }
+
+    return payload;
+}
+
+async function pollBackgroundImport(uploadId, progress, plan) {
+    const pollPlan = plan || { step: 2, totalSteps: 3, start: 12, span: 88 };
+
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const response = await fetch(`${importProgressUrl}?upload_id=${encodeURIComponent(uploadId)}`, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(importErrorMessage(payload, response.status));
+        }
+
+        const percent = typeof payload.percent === 'number'
+            ? payload.percent
+            : pollPlan.start + (pollPlan.span * 0.5);
+
+        setImportProgress(progress, {
+            step: payload.phase === 'process' ? (pollPlan.totalSteps >= 3 ? 3 : 2) : (pollPlan.totalSteps >= 3 ? 2 : 1),
+            totalSteps: pollPlan.totalSteps,
+            stage: payload.stage || 'Procesando en segundo plano',
+            percent,
+            detail: payload.detail || 'Procesando...',
+        });
+
+        if (payload.phase === 'completed') {
+            setImportProgress(progress, {
+                step: pollPlan.totalSteps,
+                totalSteps: pollPlan.totalSteps,
+                stage: 'Completado',
+                percent: 100,
+                detail: 'Importación finalizada. Redirigiendo...',
+            });
+
+            if (payload.redirect) {
+                window.location.href = payload.redirect;
+            }
+
+            return payload;
+        }
+
+        if (payload.phase === 'failed') {
+            throw new Error(payload.error || payload.detail || 'La importación en segundo plano falló.');
+        }
+    }
+}
+
 async function processImportAll(uploadId, progress, options = {}) {
     const pendingParse = options.pendingParse === true;
     const streamMode = options.streamMode === true;
     const totalSteps = pendingParse ? 3 : 2;
     let totalRows = options.totalRows ?? null;
     let batchCount = options.batchCount ?? 1;
+
+    if (BACKGROUND_IMPORT_ENABLED) {
+        await startBackgroundImport(uploadId, 'template');
+        await pollBackgroundImport(uploadId, progress, {
+            step: pendingParse ? 2 : 2,
+            totalSteps,
+            start: pendingParse ? 12 : 12,
+            span: 88,
+        });
+        return;
+    }
 
     if (pendingParse) {
         const prepared = await prepareTemplateImport(uploadId, progress);
@@ -942,6 +1032,19 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
     });
 
     try {
+        const mapping = getCustomMapping();
+
+        if (BACKGROUND_IMPORT_ENABLED) {
+            await startBackgroundImport(customUploadId, 'custom', mapping);
+            await pollBackgroundImport(customUploadId, progress, {
+                step: 1,
+                totalSteps: 2,
+                start: 0,
+                span: 100,
+            });
+            return;
+        }
+
         const preparePayload = await prepareImportUntilFinished(
             prepareImportUrl,
             {
@@ -955,7 +1058,7 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
                 credentials: 'same-origin',
                 body: JSON.stringify({
                     upload_id: customUploadId,
-                    mapping: getCustomMapping(),
+                    mapping,
                 }),
             },
             progress,

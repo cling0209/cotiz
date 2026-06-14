@@ -712,4 +712,54 @@ class MaeprodImportTest extends TestCase
             true,
         );
     }
+
+    public function test_template_import_via_background_worker_completes(): void
+    {
+        config(['queue.default' => 'sync']);
+
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $uploadId = (string) Str::uuid();
+        $file = $this->makeExcelUpload('productos.xlsx', [
+            ['codigo', 'nombre', 'familia', 'precio'],
+            ['BG001', 'PRODUCTO BG', 'PAPEL', 4100],
+        ]);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.chunk'), [
+                'upload_id' => $uploadId,
+                'chunk_index' => 0,
+                'total_chunks' => 1,
+                'original_name' => 'productos.xlsx',
+                'chunk' => $file,
+            ])
+            ->assertOk()
+            ->assertJson(['done' => true, 'pending_parse' => true]);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->postJson(route('admin.productos.import.background'), [
+                'upload_id' => $uploadId,
+                'mode' => 'template',
+            ])
+            ->assertOk()
+            ->assertJson(['queued' => true]);
+
+        $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->getJson(route('admin.productos.import.progress', ['upload_id' => $uploadId]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'completed');
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'BG001',
+            'prod_nombre' => 'PRODUCTO BG',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 4100,
+        ]);
+    }
 }

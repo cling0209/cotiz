@@ -9,6 +9,7 @@ use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
 use App\Services\MaeprodImportJobService;
 use App\Services\MaeprodImportLockService;
+use App\Services\MaeprodImportProgressService;
 use App\Services\MaeprodImportRunService;
 use App\Services\MaeprodImportService;
 use App\Services\MaeprodImportStagingService;
@@ -108,6 +109,58 @@ class MaeprodController extends Controller
         ]);
     }
 
+    public function importProgress(Request $request, MaeprodImportProgressService $progressService): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+        ]);
+
+        $progress = $progressService->read($data['upload_id']);
+
+        if ($progress === null) {
+            return response()->json(['message' => 'No hay progreso para esta importación.'], 404);
+        }
+
+        if ((int) ($progress['user_id'] ?? 0) !== (int) $request->user()->id) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        return response()->json($progress);
+    }
+
+    public function startBackgroundImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
+    {
+        $data = $request->validate([
+            'upload_id' => ['required', 'uuid'],
+            'mode' => ['nullable', 'in:template,custom'],
+            'mapping' => ['nullable', 'array'],
+        ]);
+
+        $mode = (string) ($data['mode'] ?? 'template');
+        $mapping = isset($data['mapping']) && is_array($data['mapping'])
+            ? $this->normalizeColumnMapping($data['mapping'])
+            : null;
+
+        try {
+            $importJob->queueBackgroundImport(
+                $data['upload_id'],
+                (int) $request->user()->id,
+                $mode,
+                $mapping,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(
+                ['message' => $e->getMessage()],
+                $this->importConflictStatus($e),
+            );
+        }
+
+        return response()->json([
+            'queued' => true,
+            'upload_id' => $data['upload_id'],
+        ]);
+    }
+
     public function releaseImportLock(Request $request, MaeprodImportLockService $importLock): JsonResponse
     {
         $data = $request->validate([
@@ -116,6 +169,7 @@ class MaeprodController extends Controller
 
         if (! empty($data['upload_id'])) {
             $importLock->release($data['upload_id']);
+            app(MaeprodImportProgressService::class)->forget($data['upload_id']);
         } else {
             $importLock->forceRelease();
         }

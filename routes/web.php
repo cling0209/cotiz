@@ -86,6 +86,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('productos/carga-masiva/preparar-plantilla', [MaeprodController::class, 'prepareTemplateImport'])->name('productos.import.prepare.template');
             Route::post('productos/carga-masiva/preparar', [MaeprodController::class, 'prepareCustomImport'])->name('productos.import.prepare');
             Route::post('productos/carga-masiva/procesar', [MaeprodController::class, 'processImportBatch'])->name('productos.import.process');
+            Route::post('productos/carga-masiva/procesar-background', [MaeprodController::class, 'startBackgroundImport'])->name('productos.import.background');
+            Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
 
             Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');

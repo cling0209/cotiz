@@ -83,6 +83,34 @@ services:
     networks:
       - cotiz
 
+  queue:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    command: php artisan queue:work redis --sleep=3 --tries=1 --timeout=3600
+    volumes:
+      - .:/var/www/html
+      - c:/Aplicaciones/php7/allproducts/imagenes/productos:/legacy-images:ro
+    env_file:
+      - .env
+    environment:
+      APP_ENV: local
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: cotiz
+      DB_USERNAME: cotiz
+      DB_PASSWORD: secret
+      REDIS_HOST: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: redis
+    depends_on:
+      - app
+      - redis
+    networks:
+      - cotiz
+
 volumes:
   postgres_data:
 

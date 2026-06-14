@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessMaeprodImportJob;
 use App\Models\MaeprodImportRun;
 use App\Support\MaeprodImportColumnMapping;
 use Illuminate\Http\UploadedFile;
@@ -362,6 +363,111 @@ class MaeprodImportJobService
             if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
                 File::deleteDirectory($jobDir);
             }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * @param  array<string, string|null>|null  $columnMapping
+     */
+    public function queueBackgroundImport(
+        string $uploadId,
+        int $userId,
+        string $mode = 'template',
+        ?array $columnMapping = null,
+    ): void {
+        $this->assertValidUploadId($uploadId);
+
+        $progress = app(MaeprodImportProgressService::class);
+
+        if ($progress->isActive($uploadId)) {
+            return;
+        }
+
+        $progress->beginQueued($uploadId, $userId, $mode, $columnMapping);
+
+        $meta = $this->resolveImportMetaForLock($uploadId, $userId, $mode);
+        app(MaeprodImportLockService::class)->acquire(
+            $userId,
+            $meta['username'],
+            $uploadId,
+            $meta['original_name'],
+        );
+
+        ProcessMaeprodImportJob::dispatch($uploadId, $userId, $mode, $columnMapping);
+    }
+
+    /**
+     * @param  array<string, string|null>|null  $columnMapping
+     */
+    public function runBackgroundImport(
+        string $uploadId,
+        int $userId,
+        string $mode = 'template',
+        ?array $columnMapping = null,
+    ): void {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $this->assertValidUploadId($uploadId);
+
+        $progress = app(MaeprodImportProgressService::class);
+        $lock = app(MaeprodImportLockService::class);
+
+        try {
+            $lock->touch($uploadId);
+
+            if (! File::exists($this->jobDirectory($uploadId).'/job.json')) {
+                $progress->setPhase(
+                    $uploadId,
+                    MaeprodImportProgressService::PHASE_PREPARE,
+                    'Convirtiendo Excel a CSV',
+                    'Preparando archivo en segundo plano...',
+                    12,
+                );
+
+                if ($this->needsSpreadsheetPrepare($uploadId)
+                    && $this->canUseFullOpenSpoutPrepare($uploadId, $userId, $mode)) {
+                    $this->prepareSpreadsheetInWorker($uploadId, $userId, $mode, $columnMapping);
+                    $progress->updateFromPrepare($uploadId, $this->buildPrepareFinishedResponse($uploadId));
+                } else {
+                    do {
+                        $lock->touch($uploadId);
+                        $prepare = $mode === 'custom'
+                            ? $this->continuePrepareCustom($uploadId, $userId, $columnMapping ?? [])
+                            : $this->continuePrepareTemplate($uploadId, $userId);
+                        $progress->updateFromPrepare($uploadId, $prepare);
+                    } while ($prepare['prepare_finished'] !== true);
+                }
+            }
+
+            $progress->setPhase(
+                $uploadId,
+                MaeprodImportProgressService::PHASE_PROCESS,
+                'Grabando en base de datos',
+                'Importando productos en segundo plano...',
+                38,
+            );
+
+            $result = [
+                'finished' => false,
+                'processed_batches' => 0,
+                'total_batches' => 0,
+                'result' => $this->emptyResult(),
+            ];
+
+            do {
+                $lock->touch($uploadId);
+                $result = $this->processNextBatchWithRun($uploadId, $userId);
+                $progress->updateFromProcess($uploadId, $result);
+            } while ($result['finished'] !== true);
+
+            $progress->complete($uploadId, $result);
+            $lock->release($uploadId);
+        } catch (\Throwable $e) {
+            $progress->fail($uploadId, $e->getMessage());
+            $lock->release($uploadId);
 
             throw $e;
         }
@@ -1394,6 +1500,179 @@ class MaeprodImportJobService
     {
         if (! Str::isUuid($uploadId)) {
             throw new \InvalidArgumentException('Identificador de carga inválido.');
+        }
+    }
+
+    /**
+     * @return array{username: string, original_name: string}
+     */
+    protected function resolveImportMetaForLock(string $uploadId, int $userId, string $mode): array
+    {
+        $source = $this->resolvePrepareSource($uploadId, $userId, $mode);
+
+        if ($source !== null) {
+            return [
+                'username' => $source['username'],
+                'original_name' => $source['original_name'],
+            ];
+        }
+
+        if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
+            $job = $this->readJob($uploadId);
+
+            return [
+                'username' => (string) ($job['username'] ?? 'import'),
+                'original_name' => (string) ($job['original_name'] ?? 'import.csv'),
+            ];
+        }
+
+        $metaPath = $this->jobDirectory($uploadId).'/upload-meta.json';
+        if (File::exists($metaPath)) {
+            $meta = json_decode(File::get($metaPath), true);
+
+            if (is_array($meta)) {
+                return [
+                    'username' => (string) ($meta['username'] ?? 'import'),
+                    'original_name' => (string) ($meta['original_name'] ?? 'import.csv'),
+                ];
+            }
+        }
+
+        return [
+            'username' => 'import',
+            'original_name' => 'import.csv',
+        ];
+    }
+
+    protected function needsSpreadsheetPrepare(string $uploadId): bool
+    {
+        if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
+            return false;
+        }
+
+        if (File::exists($this->prepareStatePath($uploadId))) {
+            return true;
+        }
+
+        if (app(MaeprodImportPendingService::class)->has($uploadId)) {
+            return true;
+        }
+
+        return $this->findSourceSpreadsheetInJobDir($uploadId) !== null;
+    }
+
+    protected function canUseFullOpenSpoutPrepare(string $uploadId, int $userId, string $mode): bool
+    {
+        $source = $this->resolvePrepareSource($uploadId, $userId, $mode);
+
+        if ($source === null) {
+            return false;
+        }
+
+        return app(MaeprodOpenSpoutReader::class)->supportsPath(
+            $source['path'],
+            $source['original_name'],
+        );
+    }
+
+    /**
+     * @return array{path: string, username: string, original_name: string}|null
+     */
+    protected function resolvePrepareSource(string $uploadId, int $userId, string $mode): ?array
+    {
+        $pendingService = app(MaeprodImportPendingService::class);
+
+        if ($pendingService->has($uploadId)) {
+            $pending = $pendingService->find($uploadId);
+
+            if ((int) $pending['user_id'] !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+            }
+
+            return [
+                'path' => (string) $pending['merged_path'],
+                'username' => (string) $pending['username'],
+                'original_name' => (string) $pending['original_name'],
+            ];
+        }
+
+        if ($mode === 'custom') {
+            $staging = app(MaeprodImportStagingService::class)->findStagingRecord($uploadId);
+
+            if ((int) $staging->user_id !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+            }
+
+            $sourcePath = $staging->source_path;
+
+            if ($sourcePath === null || $sourcePath === '') {
+                return null;
+            }
+
+            return [
+                'path' => $sourcePath,
+                'username' => (string) $staging->username,
+                'original_name' => (string) $staging->original_name,
+            ];
+        }
+
+        $sourceSpreadsheet = $this->findSourceSpreadsheetInJobDir($uploadId);
+
+        if ($sourceSpreadsheet === null) {
+            return null;
+        }
+
+        return [
+            'path' => $sourceSpreadsheet['path'],
+            'username' => $sourceSpreadsheet['username'],
+            'original_name' => $sourceSpreadsheet['original_name'],
+        ];
+    }
+
+    /**
+     * @param  array<string, string|null>|null  $columnMapping
+     */
+    protected function prepareSpreadsheetInWorker(
+        string $uploadId,
+        int $userId,
+        string $mode,
+        ?array $columnMapping = null,
+    ): void {
+        $source = $this->resolvePrepareSource($uploadId, $userId, $mode);
+
+        if ($source === null) {
+            throw new \InvalidArgumentException('No se encontró el archivo Excel a importar.');
+        }
+
+        $jobDir = $this->jobDirectory($uploadId);
+        File::ensureDirectoryExists($jobDir);
+        $csvPath = $jobDir.'/source.csv';
+        $openSpout = app(MaeprodOpenSpoutReader::class);
+        $exported = $openSpout->exportToCsvFile($source['path'], $csvPath);
+
+        $this->finalizeStreamJobFromCsvPath(
+            $uploadId,
+            $csvPath,
+            $userId,
+            $source['username'],
+            $source['original_name'],
+            $columnMapping,
+            $exported['rows_written'],
+        );
+
+        if (app(MaeprodImportPendingService::class)->has($uploadId)) {
+            app(MaeprodImportPendingService::class)->consume($uploadId);
+        } elseif ($mode === 'custom') {
+            app(MaeprodImportStagingService::class)->cleanup($uploadId);
+        }
+
+        if (is_file($source['path'])) {
+            File::delete($source['path']);
+        }
+
+        $statePath = $this->prepareStatePath($uploadId);
+        if (File::exists($statePath)) {
+            File::delete($statePath);
         }
     }
 }
