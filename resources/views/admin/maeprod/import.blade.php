@@ -80,7 +80,7 @@
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-white fw-semibold">2. Subir archivo</div>
                         <div class="card-body">
-                            <form id="importFormTemplate" enctype="multipart/form-data">
+                            <form id="importFormTemplate" enctype="multipart/form-data" data-no-loader>
                                 <div class="mb-3">
                                     <label class="form-label">Archivo CSV o Excel *</label>
                                     <input type="file" id="importFileTemplate" accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="form-control" required @if(!empty($activeImport)) disabled @endif>
@@ -111,7 +111,7 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white fw-semibold">1. Subir archivo con sus columnas</div>
                 <div class="card-body">
-                    <form id="importFormCustom" enctype="multipart/form-data">
+                    <form id="importFormCustom" enctype="multipart/form-data" data-no-loader>
                         <div class="mb-3">
                             <label class="form-label">Archivo CSV o Excel *</label>
                             <input type="file" id="importFileCustom" accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="form-control" @if(!empty($activeImport)) disabled @endif>
@@ -1016,6 +1016,18 @@ function renderPreviewRows(data) {
     document.getElementById('customPreviewCard').classList.remove('d-none');
 }
 
+function showImportProgressImmediate(progress, detail = 'Preparando importación...', totalSteps = 3) {
+    window.PageLoader?.hide();
+    progress.wrap.classList.remove('d-none');
+    setImportProgress(progress, {
+        step: 1,
+        totalSteps,
+        stage: 'Iniciando',
+        percent: 0,
+        detail,
+    });
+}
+
 document.getElementById('importFormTemplate').addEventListener('submit', async (event) => {
     event.preventDefault();
     const fileInput = document.getElementById('importFileTemplate');
@@ -1037,18 +1049,22 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
         return;
     }
 
-    await refreshImportStatus();
-    if (submitBtn.disabled) {
+    errorBox.classList.add('d-none');
+    submitBtn.disabled = true;
+    fileInput.disabled = true;
+    showImportProgressImmediate(progress);
+
+    const activeLock = await refreshImportStatus();
+    if (activeLock) {
         errorBox.textContent = 'Hay una importación en curso.';
         errorBox.classList.remove('d-none');
+        fileInput.disabled = false;
+        submitBtn.disabled = false;
+        progress.wrap.classList.add('d-none');
         return;
     }
 
-    submitBtn.disabled = true;
-    fileInput.disabled = true;
     setImportLocked(true, 'Su importación está en curso. No cierre esta ventana.');
-    errorBox.classList.add('d-none');
-    progress.wrap.classList.remove('d-none');
 
     setImportProgress(progress, {
         step: 1,
@@ -1115,15 +1131,7 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
     submitBtn.disabled = true;
     fileInput.disabled = true;
     errorBox.classList.add('d-none');
-    progress.wrap.classList.remove('d-none');
-
-    setImportProgress(progress, {
-        step: 1,
-        totalSteps: 2,
-        stage: 'Subiendo archivo',
-        percent: 0,
-        detail: 'Iniciando subida fragmentada...',
-    });
+    showImportProgressImmediate(progress, 'Iniciando subida fragmentada...', 2);
 
     document.getElementById('customPreviewCard').classList.add('d-none');
     document.getElementById('customMappingError').classList.add('d-none');
@@ -1239,15 +1247,7 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
     setImportLocked(true, 'Importación en curso. No cierre esta ventana.');
 
     const progress = buildProgressRefs('Custom');
-    progress.wrap.classList.remove('d-none');
-
-    setImportProgress(progress, {
-        step: 1,
-        totalSteps: 2,
-        stage: 'Preparando importación',
-        percent: 0,
-        detail: 'Validando mapeo de columnas...',
-    });
+    showImportProgressImmediate(progress, 'Validando mapeo de columnas...', 2);
 
     try {
         const mapping = getCustomMapping();
