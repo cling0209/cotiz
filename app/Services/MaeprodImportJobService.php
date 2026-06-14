@@ -14,7 +14,7 @@ class MaeprodImportJobService
 {
     public const ROWS_PER_BATCH = 1000;
 
-    public const ROWS_PER_STREAM_CHUNK = 8000;
+    public const ROWS_PER_STREAM_CHUNK = 10000;
 
     public const IMPORT_MODE_BATCH = 'batch';
 
