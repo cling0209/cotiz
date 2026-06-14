@@ -8,18 +8,30 @@
 
 @section('content')
 @php
+    $desdeAdjudicadas = $desdeAdjudicadas ?? false;
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
+    $detalleColspan = $desdeAdjudicadas ? 13 : 14;
 @endphp
 
 <div class="cotizacion-ingreso">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h1 class="h5 mb-0">Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}</h1>
-        <a href="{{ route('admin.cotizaciones.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+        <h1 class="h5 mb-0">
+            @if($desdeAdjudicadas)
+                Cotizaci&oacute;n adjudicada #{{ $nota->nronota }}
+            @else
+                Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
+            @endif
+        </h1>
+        @if($desdeAdjudicadas)
+            <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Adjudicadas</a>
+        @else
+            <a href="{{ route('admin.cotizaciones.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+        @endif
     </div>
 
-    @if($requiereNumeroCotizacion)
+    @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
         <div class="alert alert-danger py-2 mb-2" role="alert">
             Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos manualmente.
             Puede usar <strong>Importar desde Compra &Aacute;gil</strong> para cargar cabecera y l&iacute;neas desde Mercado P&uacute;blico.
@@ -100,35 +112,48 @@
             @endif
         </fieldset>
 
-        <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
-                <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
-            </button>
-            <span class="small text-muted" id="cotiz-resumen-lineas-actual">
+        @if($desdeAdjudicadas)
+            <p class="small text-muted mb-2" id="cotiz-resumen-lineas-actual">
                 {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                 ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
-            </span>
-            <span class="small text-muted">Pegue texto de Mercado P&uacute;blico para cargar cabecera y l&iacute;neas (vincule productos con Buscar en cada fila).</span>
-        </div>
-
-        <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion])>
-            <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
-                <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
-                    <span class="text-nowrap"><strong>&Uacute;ltimo factor guardado:</strong> <span id="factor_precio_venta_mostrado">{{ $factorMostrado }}</span></span>
-                    <label for="factor_precio_venta" class="mb-0 text-nowrap"><strong>Factor Aumento Precio Venta:</strong></label>
-                    <input type="text" name="factor_precio_venta" id="factor_precio_venta" size="7" maxlength="7" inputmode="decimal" autocomplete="off" title="Hasta 2 decimales (ej.: 1,30)" value="{{ $factorInput }}" @class(['is-invalid' => $errors->has('factor_precio_venta')])>
-                    @error('factor_precio_venta')
-                        <span class="text-danger small">{{ $message }}</span>
-                    @enderror
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
+            </p>
+        @else
+            <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
+                    <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
+                </button>
+                <span class="small text-muted" id="cotiz-resumen-lineas-actual">
+                    {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
+                    ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                 </span>
+                <span class="small text-muted">Pegue texto de Mercado P&uacute;blico para cargar cabecera y l&iacute;neas (vincule productos con Buscar en cada fila).</span>
             </div>
+        @endif
 
+        <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion && ! $desdeAdjudicadas])>
+            @unless($desdeAdjudicadas)
+                <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
+                    <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
+                        <span class="text-nowrap"><strong>&Uacute;ltimo factor guardado:</strong> <span id="factor_precio_venta_mostrado">{{ $factorMostrado }}</span></span>
+                        <label for="factor_precio_venta" class="mb-0 text-nowrap"><strong>Factor Aumento Precio Venta:</strong></label>
+                        <input type="text" name="factor_precio_venta" id="factor_precio_venta" size="7" maxlength="7" inputmode="decimal" autocomplete="off" title="Hasta 2 decimales (ej.: 1,30)" value="{{ $factorInput }}" @class(['is-invalid' => $errors->has('factor_precio_venta')])>
+                        @error('factor_precio_venta')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
+                    </span>
+                </div>
+            @else
+                <p class="small text-muted mb-2"><strong>Factor de aumento:</strong> {{ $factorMostrado }}</p>
+            @endunless
+
+        @unless($desdeAdjudicadas)
         <div class="cotiz-agregar mb-2">
             <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
                 <i class="bi bi-plus-circle"></i> Agregar producto
             </button>
         </div>
+        @endunless
 
         <div id="notaventa-tabla-detalle-wrap" data-max-orden="{{ $lineas->count() }}">
             <table id="tabla_detalle" class="table table-sm">
@@ -147,7 +172,9 @@
                         <th>Cantidad</th>
                         <th>Total</th>
                         <th>Orden</th>
-                        <th>Eliminar</th>
+                        @unless($desdeAdjudicadas)
+                            <th>Eliminar</th>
+                        @endunless
                     </tr>
                 </thead>
                 <tbody>
@@ -158,15 +185,16 @@
                             'isFirst' => $loop->first,
                             'isLast' => $loop->last,
                             'totalLineas' => $lineas->count(),
+                            'desdeAdjudicadas' => $desdeAdjudicadas,
                         ])
                     @empty
-                        <tr><td colspan="14" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>
+                        <tr><td colspan="{{ $detalleColspan }}" class="text-muted text-center py-3">@if($desdeAdjudicadas)Sin l&iacute;neas.@else Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.@endif</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
 
-        @if($lineas->isNotEmpty())
+        @if($lineas->isNotEmpty() && ! $desdeAdjudicadas)
         <div id="panelMercadoPublico" class="cotiz-panel-mp">
             <p class="cotiz-panel-mp__texto mb-2">
                 <strong>Mercado P&uacute;blico</strong> &mdash; <em>valor unitario</em> por l&iacute;nea (usa <strong>ID Agile</strong> del maestro; si falta, el prefijo num&eacute;rico del c&oacute;digo interno). El valor despacho en la copia es siempre <strong>0</strong> (sin despacho).
@@ -185,15 +213,20 @@
             <input type="hidden" name="nronota" id="nronota" value="{{ $nota->nronota }}">
             @if($lineas->isNotEmpty())
                 <a href="{{ route('admin.cotizaciones.export.pdf', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar PDF</a>
-                <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
+                @unless($desdeAdjudicadas)
+                    <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
+                @endunless
                 <a href="{{ route('admin.cotizaciones.export.excel', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Excel</a>
-                <a href="{{ route('admin.cotizaciones.export.guia', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a</a>
-                <a href="{{ route('admin.cotizaciones.export.guia-ingreso', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a Ingreso</a>
+                @unless($desdeAdjudicadas)
+                    <a href="{{ route('admin.cotizaciones.export.guia', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a</a>
+                    <a href="{{ route('admin.cotizaciones.export.guia-ingreso', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a Ingreso</a>
+                @endunless
             @endif
         </fieldset>
         </div>
     </form>
 
+    @unless($desdeAdjudicadas)
     <div id="cotiz-eliminar-lineas-forms">
     @foreach($lineas as $idx => $row)
         @include('admin.cotizaciones.partials.linea-detalle-delete-form', [
@@ -202,7 +235,9 @@
         ])
     @endforeach
     </div>
+    @endunless
 
+    @unless($desdeAdjudicadas)
     <div class="modal fade" id="modal-buscar-producto" tabindex="-1" aria-labelledby="modal-buscar-producto-label" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
@@ -258,7 +293,9 @@
             </div>
         </div>
     </div>
+    @endunless
 
+    @unless($desdeAdjudicadas)
     <div class="modal fade" id="modal-importar-compra-agil" tabindex="-1" aria-labelledby="modal-importar-compra-agil-label" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -331,6 +368,7 @@
             </div>
         </div>
     </div>
+    @endunless
 
     <div id="popupVincularAgile" class="cotiz-popup-overlay" style="display:none">
         <div class="cotiz-popup-content">
@@ -376,6 +414,11 @@
 <script>
 (function () {
     const requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
+    const desdeAdjudicadas = @json($desdeAdjudicadas);
+    const detalleColspan = @json($detalleColspan);
+    const mensajeSinLineas = desdeAdjudicadas
+        ? 'Sin líneas.'
+        : 'Sin líneas. Use «Importar desde Compra Ágil» o «Agregar producto».';
 
     function dlgAlert(message, opts = {}) {
         if (window.AdminDialog) {
@@ -623,7 +666,7 @@
     });
 
     document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
-        wireEliminarLinea(tr);
+        if (!desdeAdjudicadas) wireEliminarLinea(tr);
     });
 
     function quitarLineaDetalle(tr, delForm) {
@@ -632,7 +675,7 @@
 
         const tbody = document.querySelector('#tabla_detalle tbody');
         if (tbody && !tbody.querySelector('tr[data-linea]')) {
-            tbody.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + detalleColspan + '" class="text-muted text-center py-3">' + mensajeSinLineas + '</td></tr>';
         }
 
         marcarLineasRepetidas();
@@ -725,7 +768,7 @@
             formsContainer.insertAdjacentHTML('beforeend', json.delete_form_html);
         }
 
-        wireEliminarLinea(tr);
+        if (!desdeAdjudicadas) wireEliminarLinea(tr);
 
         const tituloImagen = (json.prod_item || tr.dataset.prod || '')
             + (json.prod_nombre ? ' — ' + json.prod_nombre : '');

@@ -102,6 +102,42 @@ class AdjudicadaListadoTest extends TestCase
         $this->assertStringContainsString('PROD301', $response->streamedContent());
     }
 
+    public function test_ver_cotizacion_desde_adjudicadas_oculta_controles_edicion(): void
+    {
+        $nota = $this->crearNota([
+            'nronota' => 401,
+            'estado' => 'aceptada',
+            'fechaentrega' => '2026-06-12',
+            'encargado' => 'COT-401',
+        ]);
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD401',
+            'prod_valor' => 1500,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 1000,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.edit', ['nronota' => 401, 'from' => 'adjudicadas']))
+            ->assertOk()
+            ->assertSee('Cotizaci&oacute;n adjudicada #401', false)
+            ->assertDontSee('id="btn-abrir-importar-compra-agil"', false)
+            ->assertDontSee('id="btn-abrir-buscar-producto"', false)
+            ->assertDontSee('id="btnFactorAumentoAceptar"', false)
+            ->assertDontSee('id="btnCopiarMP"', false)
+            ->assertDontSee('>Eliminar</th>', false)
+            ->assertDontSee('Descargar Archivo', false)
+            ->assertDontSee('Descargar Gu&iacute;a', false)
+            ->assertDontSee('Descargar Gu&iacute;a Ingreso', false)
+            ->assertSee('Factor de aumento:', false)
+            ->assertSee('Descargar PDF', false)
+            ->assertSee('Descargar Excel', false);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

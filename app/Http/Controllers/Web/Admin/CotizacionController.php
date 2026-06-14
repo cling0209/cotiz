@@ -71,6 +71,7 @@ class CotizacionController extends Controller
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
+            'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
         ]);
     }
 

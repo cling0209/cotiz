@@ -56,7 +56,7 @@
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->fechaentrega?->format('d/m/Y') ?: '—' }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">
+                                <a href="{{ route('admin.cotizaciones.edit', ['nronota' => $nota->nronota, 'from' => 'adjudicadas']) }}" class="btn btn-outline-primary btn-sm">
                                     Ver cotizaci&oacute;n
                                 </a>
                             </td>
