@@ -161,7 +161,7 @@ class MaeprodImportProgressService
             && in_array($phase, [self::PHASE_QUEUED, self::PHASE_PREPARE, self::PHASE_PROCESS], true)) {
             $minutes = max(1, (int) floor($secondsSinceUpdate / 60));
             $progress['stale_warning'] = "Sin actualización desde hace {$minutes} min. "
-                .'Cada lote procesa hasta 10.000 filas y en producción puede tardar varios minutos.';
+                .'Cada lote procesa hasta 5.000 filas y en producción puede tardar varios minutos.';
         }
 
         return $progress;

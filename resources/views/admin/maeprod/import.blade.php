@@ -640,7 +640,7 @@ function estimateImportBatchCount(totalRows) {
         return 1;
     }
 
-    return Math.max(1, Math.ceil(totalRows / 10000));
+    return Math.max(1, Math.ceil(totalRows / 5000));
 }
 
 async function processImportBatches(uploadId, batchCount, progress, importPlan, options = {}) {
