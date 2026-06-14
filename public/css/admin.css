@@ -34,6 +34,7 @@
 .admin-navbar {
     background: linear-gradient(90deg, #2563eb 0%, #0ea5e9 100%);
     box-shadow: 0 2px 16px rgba(37, 99, 235, 0.22);
+    z-index: 1030;
 }
 
 .nav-link-admin {
