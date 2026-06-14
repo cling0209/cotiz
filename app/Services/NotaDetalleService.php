@@ -406,6 +406,7 @@ class NotaDetalleService
                 'prod_valor_fecha_antigua' => $fechaAntigua,
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
+                'image_url' => $producto->imageUrl(),
                 'subtotal' => $valor * (int) $linea->cantidad,
             ];
         });

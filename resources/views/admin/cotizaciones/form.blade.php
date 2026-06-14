@@ -593,7 +593,7 @@
             const ordenNum = row.querySelector('.linea-orden-num');
             if (ordenNum) ordenNum.textContent = String(ordenNuevo);
 
-            row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar').forEach(btn => {
+            row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar, .btn-buscar-linea-agile').forEach(btn => {
                 btn.dataset.orden = String(ordenNuevo);
             });
 
@@ -1625,14 +1625,16 @@
     let vincularFilaActual = null;
     let vincularOrdenActual = null;
     let vincularAgileIdActual = null;
+    let vincularResultadosActuales = [];
 
     function formatMoneyCotiz(n) {
         return Math.round(Number(n) || 0).toLocaleString('es-CL');
     }
 
     function abrirPopupVincularAgile(btn) {
-        vincularFilaActual = btn.dataset.fila;
-        vincularOrdenActual = btn.dataset.orden;
+        const fila = btn.closest('tr[data-linea]');
+        vincularFilaActual = fila?.dataset.linea ?? btn.dataset.fila ?? null;
+        vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
         vincularAgileIdActual = btn.dataset.prodItemAgile || '';
         const desc = btn.dataset.descripcionAgile || '';
         if (popupVincularDesc) popupVincularDesc.textContent = desc;
@@ -1647,6 +1649,34 @@
         vincularFilaActual = null;
         vincularOrdenActual = null;
         vincularAgileIdActual = null;
+        vincularResultadosActuales = [];
+    }
+
+    function encontrarFilaVincular(filaIdx, orden, agileId) {
+        if (filaIdx != null && filaIdx !== '') {
+            const porIndice = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
+            if (porIndice) return porIndice;
+        }
+
+        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-prod-item-agile]'))
+            .find(tr => String(tr.dataset.orden) === String(orden)
+                && String(tr.dataset.prodItemAgile || '') === String(agileId)) || null;
+    }
+
+    function actualizarImagenLinea(tr, imageUrl, titulo) {
+        const cell = tr.querySelector('.linea-imagen-cell');
+        if (!cell) return;
+
+        const tituloEsc = escHtml(titulo || 'Imagen producto');
+        if (imageUrl) {
+            cell.innerHTML = '<button type="button" class="product-image-zoom-trigger" data-image-url="'
+                + escHtml(imageUrl) + '" data-image-title="' + tituloEsc + '" title="Ver imagen ampliada">'
+                + buscarProductoThumbHtml({ image_url: imageUrl }) + '</button>';
+        } else {
+            cell.innerHTML = buscarProductoThumbHtml({});
+        }
+
+        enlazarZoomImagenes(cell);
     }
 
     function buscarProductosVincularPopup() {
@@ -1665,6 +1695,7 @@
             .then(r => r.json())
             .then(data => {
                 const items = data.data || [];
+                vincularResultadosActuales = items;
                 if (!items.length) {
                     cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
                     return;
@@ -1673,27 +1704,32 @@
                     + '<th style="width:80px"></th>'
                     + '<th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th>'
                     + '</tr></thead><tbody>';
-                items.forEach(p => {
-                    const nombre = String(p.prod_nombre || '').replace(/"/g, '&quot;');
+                items.forEach((p, idx) => {
                     html += '<tr>'
                         + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
                         + '<td>' + escHtml(p.prod_item) + '</td>'
                         + '<td>' + escHtml(p.prod_nombre) + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor) + '</td>'
-                        + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-codigo="' + escHtml(p.prod_item) + '" data-costo="' + (p.prod_valor_costo || 0) + '" data-venta="' + (p.prod_valor || 0) + '" data-nombre="' + nombre + '">Seleccionar</button></td>'
+                        + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
                         + '</tr>';
                 });
                 html += '</tbody></table>';
                 cont.innerHTML = html;
                 enlazarZoomImagenes(cont);
                 cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                    b.addEventListener('click', () => seleccionarVinculoAgile(
-                        b.dataset.codigo,
-                        parseInt(b.dataset.costo, 10) || 0,
-                        parseInt(b.dataset.venta, 10) || 0,
-                        b.dataset.nombre,
-                    ));
+                    b.addEventListener('click', e => {
+                        e.stopPropagation();
+                        const p = vincularResultadosActuales[parseInt(b.dataset.vinculoIdx, 10)];
+                        if (!p) return;
+                        seleccionarVinculoAgile(
+                            p.prod_item,
+                            parseInt(p.prod_valor_costo, 10) || 0,
+                            parseInt(p.prod_valor, 10) || 0,
+                            p.prod_nombre || '',
+                            b,
+                        );
+                    });
                 });
             })
             .catch(() => {
@@ -1701,20 +1737,16 @@
             });
     }
 
-    function encontrarFilaAgile(orden, agileId) {
-        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-prod-item-agile]'))
-            .find(tr => String(tr.dataset.orden) === String(orden)
-                && String(tr.dataset.prodItemAgile || '') === String(agileId)) || null;
-    }
-
-    function actualizarFilaVinculada(orden, agileId, linea) {
-        const tr = encontrarFilaAgile(orden, agileId);
-        if (!tr || !linea) return;
+    function actualizarFilaVinculada(filaIdx, orden, agileId, linea) {
+        const tr = encontrarFilaVincular(filaIdx, orden, agileId);
+        if (!tr || !linea) return false;
 
         const codigo = String(linea.prod_item || '').trim();
         const prodAnterior = tr.dataset.prod || '';
+        const tituloImagen = codigo + (linea.prod_nombre ? ' — ' + linea.prod_nombre : '');
 
-        const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
+        const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + tr.dataset.orden + '"][data-prod="' + prodAnterior + '"]')
+            || document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
         if (delForm) {
             delForm.dataset.prod = codigo;
             const delProdInput = delForm.querySelector('input[name="prod_item"]');
@@ -1738,6 +1770,8 @@
             nombreCell.textContent = linea.prod_nombre || codigo;
             nombreCell.classList.remove('text-warning-emphasis');
         }
+
+        actualizarImagenLinea(tr, linea.image_url || '', tituloImagen);
 
         const descAgileTd = tr.querySelector('td .linea-desc-agile')?.closest('td')
             || tr.querySelector('.linea-id-agile')?.closest('tr')?.children[5];
@@ -1777,13 +1811,28 @@
         });
 
         recalcularMontoTotal();
+        marcarLineasRepetidas();
+
+        return true;
     }
 
-    async function seleccionarVinculoAgile(codigo, costo, venta, nombre) {
+    async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl) {
         if (vincularOrdenActual == null || !vincularAgileIdActual) return;
 
+        const filaIdx = vincularFilaActual;
         const orden = parseInt(vincularOrdenActual, 10);
         const agileId = vincularAgileIdActual;
+        const filaOrden = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]')?.dataset.orden;
+        const ordenEnvio = filaOrden ? parseInt(filaOrden, 10) : orden;
+
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = 'Vinculando...';
+            btnEl.closest('tr')?.classList.add('table-active');
+            popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
+                if (b !== btnEl) b.disabled = true;
+            });
+        }
 
         try {
             const res = await fetch(vincularAgileUrl, {
@@ -1795,7 +1844,7 @@
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 body: JSON.stringify({
-                    orden,
+                    orden: ordenEnvio,
                     prod_item_agile: agileId,
                     prod_item: codigo,
                     prod_valor: venta,
@@ -1803,18 +1852,37 @@
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
+                if (btnEl) {
+                    btnEl.disabled = false;
+                    btnEl.textContent = 'Seleccionar';
+                    btnEl.closest('tr')?.classList.remove('table-active');
+                }
+                popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => { b.disabled = false; });
                 dlgAlert(json.error || 'No se pudo vincular el producto.', { title: 'Error', type: 'danger' });
                 return;
             }
-            cerrarPopupVincularAgile();
-            actualizarFilaVinculada(orden, agileId, json.linea || {
+
+            const linea = json.linea || {
                 prod_item: codigo,
                 prod_nombre: nombre,
                 prod_valor: venta,
                 prod_valor_costo: costo,
-                subtotal: venta * (parseInt(document.querySelector(`#tabla_detalle tbody tr[data-orden="${orden}"] .linea-cantidad`)?.value || '1', 10) || 1),
-            });
+                subtotal: venta * (parseInt(document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"] .linea-cantidad')?.value || '1', 10) || 1),
+            };
+
+            const actualizado = actualizarFilaVinculada(filaIdx, ordenEnvio, agileId, linea);
+            cerrarPopupVincularAgile();
+
+            if (!actualizado) {
+                dlgAlert('Producto vinculado, pero no se pudo refrescar la fila. Recargue la página.', { title: 'Aviso', type: 'warning' });
+            }
         } catch (err) {
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.textContent = 'Seleccionar';
+                btnEl.closest('tr')?.classList.remove('table-active');
+            }
+            popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => { b.disabled = false; });
             dlgAlert('Error de conexión al vincular producto.', { title: 'Error', type: 'danger' });
         }
     }
