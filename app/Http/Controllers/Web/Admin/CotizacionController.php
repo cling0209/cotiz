@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
 use App\Models\Nota;
+use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\CompraAgilImportService;
 use App\Services\NotaDetalleService;
@@ -276,6 +277,17 @@ class CotizacionController extends Controller
         return response()->json([
             'ok' => true,
             'message' => 'Grabado con éxito.',
+            'lineas' => NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->orderBy('orden')
+                ->get(['prod_item', 'orden', 'prod_item_agile'])
+                ->map(fn (NotaDetalle $linea) => [
+                    'prod_item' => $linea->prod_item,
+                    'orden' => (int) $linea->orden,
+                    'prod_item_agile' => $linea->prod_item_agile,
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 

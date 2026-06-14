@@ -493,29 +493,36 @@ class NotaDetalleService
     }
 
     /**
+     * Reasigna orden sin borrar filas (la PK incluye orden; dos fases con valores negativos).
+     *
      * @param  Collection<int, NotaDetalle>  $lineasOrdenadas
      */
     private function persistirOrdenLineas(int $nronota, Collection $lineasOrdenadas): void
     {
-        $payloads = $lineasOrdenadas->map(function (NotaDetalle $linea) {
-            return [
-                'nronota' => $linea->nronota,
-                'prod_item' => $linea->prod_item,
-                'prod_valor' => $linea->prod_valor,
-                'cantidad' => $linea->cantidad,
-                'fechahora' => $linea->fechahora,
-                'prod_valor_costo' => $linea->prod_valor_costo,
-                'prod_item_agile' => $linea->prod_item_agile,
-            ];
-        })->all();
+        $lineas = $lineasOrdenadas->values();
 
-        NotaDetalle::query()->where('nronota', $nronota)->delete();
+        foreach ($lineas as $index => $linea) {
+            $tempOrden = -($index + 1);
+            $actualizado = NotaDetalle::query()
+                ->where('nronota', $nronota)
+                ->where('prod_item', $linea->prod_item)
+                ->where('orden', (int) $linea->orden)
+                ->update(['orden' => $tempOrden]);
 
-        foreach ($payloads as $index => $data) {
-            NotaDetalle::query()->create([
-                ...$data,
-                'orden' => $index + 1,
-            ]);
+            if ($actualizado === 0) {
+                throw new \InvalidArgumentException('Línea no encontrada al reordenar.');
+            }
+        }
+
+        foreach ($lineas as $index => $linea) {
+            $finalOrden = $index + 1;
+            $tempOrden = -($index + 1);
+
+            NotaDetalle::query()
+                ->where('nronota', $nronota)
+                ->where('prod_item', $linea->prod_item)
+                ->where('orden', $tempOrden)
+                ->update(['orden' => $finalOrden]);
         }
     }
 

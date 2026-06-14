@@ -592,11 +592,58 @@
         }
     }
 
+    function sincronizarOrdenGrilla() {
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr[data-linea]'));
+        const total = rows.length;
+
+        rows.forEach((row, idx) => {
+            const ordenNuevo = idx + 1;
+            const prod = row.dataset.prod;
+            const ordenAnterior = parseInt(row.dataset.orden, 10);
+
+            const delForm = document.querySelector(
+                '.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + ordenAnterior + '"]'
+            );
+            if (delForm) {
+                delForm.dataset.orden = String(ordenNuevo);
+                const ordenInput = delForm.querySelector('input[name="orden"]');
+                if (ordenInput) ordenInput.value = String(ordenNuevo);
+            }
+
+            row.dataset.orden = String(ordenNuevo);
+
+            const elimTd = row.querySelector('.eliminar-cell');
+            if (elimTd) elimTd.dataset.orden = String(ordenNuevo);
+
+            const ordenNum = row.querySelector('.linea-orden-num');
+            if (ordenNum) ordenNum.textContent = String(ordenNuevo);
+
+            row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar').forEach(btn => {
+                btn.dataset.orden = String(ordenNuevo);
+            });
+
+            const btnSubir = row.querySelector('.linea-orden-subir');
+            const btnBajar = row.querySelector('.linea-orden-bajar');
+            if (btnSubir) btnSubir.disabled = (idx === 0);
+            if (btnBajar) btnBajar.disabled = (idx === total - 1);
+        });
+    }
+
+    function revertirSortable(evt) {
+        const parent = evt.from;
+        const item = evt.item;
+        parent.removeChild(item);
+        const ref = parent.children[evt.oldIndex] || null;
+        parent.insertBefore(item, ref);
+    }
+
     async function cambiarOrdenLinea(prodItem, orden, payload) {
         if (ordenEnProceso) return false;
         ordenEnProceso = true;
         mostrarLoaderCotiz();
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
         try {
             const res = await fetch(ordenUrl, {
@@ -617,7 +664,7 @@
             const json = await res.json().catch(() => ({}));
 
             if (res.ok && json.ok) {
-                window.location.reload();
+                ocultarLoaderCotiz();
                 return true;
             }
 
@@ -636,13 +683,21 @@
     async function moverLineaOrden(btn, direccion) {
         if (!btn || btn.disabled || ordenEnProceso) return;
 
+        const row = btn.closest('tr[data-linea]');
         btn.closest('.linea-orden-buttons')?.querySelectorAll('button').forEach(b => { b.disabled = true; });
 
         const ok = await cambiarOrdenLinea(btn.dataset.prod, parseInt(btn.dataset.orden, 10), {
             direccion: direccion,
         });
 
-        if (!ok) {
+        if (ok && row) {
+            if (direccion === 'up' && row.previousElementSibling) {
+                row.parentNode.insertBefore(row, row.previousElementSibling);
+            } else if (direccion === 'down' && row.nextElementSibling) {
+                row.parentNode.insertBefore(row.nextElementSibling, row);
+            }
+            sincronizarOrdenGrilla();
+        } else if (!ok) {
             btn.closest('.linea-orden-buttons')?.querySelectorAll('button').forEach(b => { b.disabled = false; });
         }
     }
@@ -675,9 +730,10 @@
                 const ordenNuevo = evt.newIndex + 1;
 
                 const ok = await cambiarOrdenLinea(prodItem, orden, { orden_nuevo: ordenNuevo });
-                if (!ok) {
-                    mostrarLoaderCotiz();
-                    window.location.reload();
+                if (ok) {
+                    sincronizarOrdenGrilla();
+                } else {
+                    revertirSortable(evt);
                 }
             },
         });
