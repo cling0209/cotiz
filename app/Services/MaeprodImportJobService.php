@@ -262,65 +262,75 @@ class MaeprodImportJobService
         $preparer = app(MaeprodImportStreamPreparer::class);
         $jobDir = $this->jobDirectory($uploadId);
         File::ensureDirectoryExists($jobDir);
+        $statePath = $this->prepareStatePath($uploadId);
 
-        if (! $pendingService->has($uploadId)) {
+        if (! $pendingService->has($uploadId) && ! File::exists($statePath)) {
             throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
         }
 
-        $pending = $pendingService->find($uploadId);
+        if (File::exists($statePath)) {
+            $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
 
-        if ((int) $pending['user_id'] !== $userId) {
-            throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
-        }
+            if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+            }
+        } elseif ($pendingService->has($uploadId)) {
+            $pending = $pendingService->find($uploadId);
 
-        if (($pending['mode'] ?? 'template') !== 'template') {
+            if ((int) $pending['user_id'] !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+            }
+
+            if (($pending['mode'] ?? 'template') !== 'template') {
+                throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+            }
+
+            $sourcePath = (string) $pending['merged_path'];
+
+            if (! $preparer->isSpreadsheetPath($sourcePath, (string) $pending['original_name'])) {
+                try {
+                    $this->beginStreamJobFromPath(
+                        $uploadId,
+                        $sourcePath,
+                        $userId,
+                        (string) $pending['username'],
+                        (string) $pending['original_name'],
+                    );
+
+                    $pendingService->consume($uploadId);
+
+                    if (is_file($sourcePath)) {
+                        File::delete($sourcePath);
+                    }
+
+                    return $this->buildPrepareFinishedResponse($uploadId);
+                } catch (\Throwable $e) {
+                    if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
+                        File::deleteDirectory($jobDir);
+                    }
+
+                    throw $e;
+                }
+            }
+
+            $state = [
+                'user_id' => $userId,
+                'username' => (string) $pending['username'],
+                'original_name' => (string) $pending['original_name'],
+                'source_path' => $sourcePath,
+                'csv_path' => $jobDir.'/source.csv',
+                'next_row' => 2,
+                'processed_rows' => 0,
+                'csv_started' => false,
+                'pending' => true,
+            ];
+
+            File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+        } else {
             throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
         }
 
-        $sourcePath = (string) $pending['merged_path'];
-        $csvPath = $jobDir.'/source.csv';
-
-        try {
-            if ($preparer->isSpreadsheetPath($sourcePath, (string) $pending['original_name'])) {
-                $export = $preparer->exportExcelToCsvFile(
-                    $sourcePath,
-                    $csvPath,
-                    (string) $pending['original_name'],
-                );
-
-                $this->finalizeStreamJobFromCsvPath(
-                    $uploadId,
-                    $csvPath,
-                    $userId,
-                    (string) $pending['username'],
-                    (string) $pending['original_name'],
-                    null,
-                    $export['rows_written'],
-                );
-            } else {
-                $this->beginStreamJobFromPath(
-                    $uploadId,
-                    $sourcePath,
-                    $userId,
-                    (string) $pending['username'],
-                    (string) $pending['original_name'],
-                );
-            }
-
-            $pendingService->consume($uploadId);
-
-            if (is_file($sourcePath)) {
-                File::delete($sourcePath);
-            }
-
-            return $this->buildPrepareFinishedResponse($uploadId);
-        } catch (\Throwable $e) {
-            if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
-                File::deleteDirectory($jobDir);
-            }
-
-            throw $e;
-        }
+        return $this->runSpreadsheetPrepareChunk($uploadId, $state, $statePath, $pendingService);
     }
 
     /**
@@ -742,26 +752,10 @@ class MaeprodImportJobService
         $preparer = app(MaeprodImportStreamPreparer::class);
         $jobDir = $this->jobDirectory($uploadId);
         File::ensureDirectoryExists($jobDir);
-        $csvPath = $jobDir.'/source.csv';
+        $statePath = $this->prepareStatePath($uploadId);
 
-        try {
-            if ($preparer->isSpreadsheetPath($sourcePath, $staging->original_name)) {
-                $export = $preparer->exportExcelToCsvFile(
-                    $sourcePath,
-                    $csvPath,
-                    $staging->original_name,
-                );
-
-                $this->finalizeStreamJobFromCsvPath(
-                    $uploadId,
-                    $csvPath,
-                    $userId,
-                    $staging->username,
-                    $staging->original_name,
-                    $columnMapping,
-                    $export['rows_written'],
-                );
-            } else {
+        if (! $preparer->isSpreadsheetPath($sourcePath, $staging->original_name)) {
+            try {
                 $this->beginStreamJobFromPath(
                     $uploadId,
                     $sourcePath,
@@ -771,22 +765,46 @@ class MaeprodImportJobService
                     $columnMapping,
                     (int) $staging->total_rows,
                 );
+
+                $stagingService->cleanup($uploadId);
+
+                if (is_file($sourcePath)) {
+                    File::delete($sourcePath);
+                }
+
+                return $this->buildPrepareFinishedResponse($uploadId);
+            } catch (\Throwable $e) {
+                if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
+                    File::deleteDirectory($jobDir);
+                }
+
+                throw $e;
             }
-
-            $stagingService->cleanup($uploadId);
-
-            if (is_file($sourcePath)) {
-                File::delete($sourcePath);
-            }
-
-            return $this->buildPrepareFinishedResponse($uploadId);
-        } catch (\Throwable $e) {
-            if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
-                File::deleteDirectory($jobDir);
-            }
-
-            throw $e;
         }
+
+        if (! File::exists($statePath)) {
+            $state = [
+                'user_id' => $userId,
+                'username' => $staging->username,
+                'original_name' => $staging->original_name,
+                'source_path' => $sourcePath,
+                'csv_path' => $jobDir.'/source.csv',
+                'next_row' => 2,
+                'processed_rows' => 0,
+                'csv_started' => false,
+                'column_mapping' => $columnMapping,
+            ];
+
+            File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+        } else {
+            $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
+
+            if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
+                throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+            }
+        }
+
+        return $this->runSpreadsheetPrepareChunk($uploadId, $state, $statePath, $stagingService);
     }
 
     protected function jobDirectory(string $uploadId): string
@@ -913,6 +931,92 @@ class MaeprodImportJobService
         }
 
         $this->writeJob($uploadId, $jobData);
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array{
+     *     prepare_finished: bool,
+     *     upload_id: string,
+     *     batch_count: int,
+     *     processed_rows: int,
+     *     total_rows: int|null,
+     *     stream_mode: bool
+     * }
+     */
+    protected function runSpreadsheetPrepareChunk(
+        string $uploadId,
+        array $state,
+        string $statePath,
+        MaeprodImportPendingService|MaeprodImportStagingService $cleanupService,
+    ): array {
+        $jobDir = $this->jobDirectory($uploadId);
+        $csvPath = (string) ($state['csv_path'] ?? $jobDir.'/source.csv');
+        $preparer = app(MaeprodImportStreamPreparer::class);
+
+        try {
+            $chunk = $preparer->exportExcelChunkToCsv($state, $csvPath);
+
+            $state['next_row'] = $chunk['next_row'];
+            $state['processed_rows'] = $chunk['processed_rows'];
+            $state['csv_started'] = true;
+            $state['data_headers'] = $chunk['data_headers'];
+            $state['raw_headers'] = $chunk['raw_headers'];
+            $state['column_count'] = $chunk['column_count'];
+            $state['highest_row'] = $chunk['highest_row'];
+            $state['delimiter'] = $chunk['delimiter'];
+
+            if (! $chunk['finished']) {
+                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+
+                return [
+                    'prepare_finished' => false,
+                    'upload_id' => $uploadId,
+                    'batch_count' => $this->virtualBatchCount($chunk['total_rows']),
+                    'processed_rows' => $chunk['processed_rows'],
+                    'total_rows' => $chunk['total_rows'],
+                    'stream_mode' => true,
+                ];
+            }
+
+            $columnMapping = isset($state['column_mapping']) && is_array($state['column_mapping'])
+                ? $state['column_mapping']
+                : null;
+
+            $this->finalizeStreamJobFromCsvPath(
+                $uploadId,
+                $csvPath,
+                (int) $state['user_id'],
+                (string) $state['username'],
+                (string) $state['original_name'],
+                $columnMapping,
+                $chunk['processed_rows'],
+            );
+
+            $sourcePath = (string) ($state['source_path'] ?? '');
+
+            if ($cleanupService instanceof MaeprodImportPendingService) {
+                if (! empty($state['pending'])) {
+                    $cleanupService->consume($uploadId);
+                }
+            } else {
+                $cleanupService->cleanup($uploadId);
+            }
+
+            if ($sourcePath !== '' && is_file($sourcePath)) {
+                File::delete($sourcePath);
+            }
+
+            File::delete($statePath);
+
+            return $this->buildPrepareFinishedResponse($uploadId);
+        } catch (\Throwable $e) {
+            if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
+                File::deleteDirectory($jobDir);
+            }
+
+            throw $e;
+        }
     }
 
     /**

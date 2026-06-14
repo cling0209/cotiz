@@ -324,89 +324,150 @@ class MaeprodImportStreamPreparer
      */
     public function exportExcelToCsvFile(string $sourcePath, string $csvPath, ?string $originalName = null): array
     {
-        $openSpout = app(MaeprodOpenSpoutReader::class);
+        $state = [
+            'source_path' => $sourcePath,
+            'next_row' => 2,
+            'processed_rows' => 0,
+            'csv_started' => false,
+        ];
 
-        if ($openSpout->supportsPath($sourcePath, $originalName)) {
-            return $openSpout->exportToCsvFile($sourcePath, $csvPath);
-        }
+        do {
+            $chunk = $this->exportExcelChunkToCsv($state, $csvPath);
+            $state['next_row'] = $chunk['next_row'];
+            $state['processed_rows'] = $chunk['processed_rows'];
+            $state['csv_started'] = true;
+            $state['data_headers'] = $chunk['data_headers'];
+            $state['highest_row'] = $chunk['highest_row'];
+            $state['raw_headers'] = $chunk['raw_headers'];
+            $state['column_count'] = $chunk['column_count'];
+            $state['delimiter'] = $chunk['delimiter'];
+        } while (! $chunk['finished']);
 
-        return $this->exportExcelToCsvFileWithPhpSpreadsheet($sourcePath, $csvPath);
+        return [
+            'rows_written' => $chunk['processed_rows'],
+            'data_headers' => $chunk['data_headers'],
+            'delimiter' => $chunk['delimiter'],
+        ];
     }
 
     /**
+     * Exporta un tramo del Excel a CSV (acceso por rango, apto para peticiones HTTP repetidas).
+     *
+     * @param  array<string, mixed>  $state
      * @return array{
      *     rows_written: int,
+     *     processed_rows: int,
+     *     next_row: int,
+     *     finished: bool,
      *     data_headers: list<string>,
-     *     delimiter: string
+     *     raw_headers: list<string>,
+     *     column_count: int,
+     *     delimiter: string,
+     *     highest_row: int,
+     *     total_rows: int
      * }
      */
-    private function exportExcelToCsvFileWithPhpSpreadsheet(string $sourcePath, string $csvPath): array
+    public function exportExcelChunkToCsv(array $state, string $csvPath): array
     {
-        $handle = fopen($csvPath, 'wb');
+        $sourcePath = (string) ($state['source_path'] ?? '');
 
-        if ($handle === false) {
-            throw new \RuntimeException('No se pudo crear el archivo CSV de importación.');
+        if (! is_file($sourcePath)) {
+            throw new \InvalidArgumentException('No se encontró el archivo Excel a importar.');
         }
 
         $reader = app(MaeprodSpreadsheetReader::class);
-        $metadata = $reader->readMetadata($sourcePath);
-        $highestRow = (int) $metadata['highest_row'];
-        $rawHeaders = $metadata['headers'];
-        $columnCount = (int) $metadata['column_count'];
+        $nextRow = (int) ($state['next_row'] ?? 2);
+        $processedRows = (int) ($state['processed_rows'] ?? 0);
+        $csvStarted = (bool) ($state['csv_started'] ?? false);
 
-        if ($highestRow < 1 || $this->isEmptyCsvRow($rawHeaders)) {
-            fclose($handle);
-            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
-        }
+        if (! isset($state['data_headers'])) {
+            $metadata = $reader->readMetadata($sourcePath);
+            $highestRow = (int) $metadata['highest_row'];
+            $rawHeaders = $metadata['headers'];
+            $columnCount = (int) $metadata['column_count'];
 
-        $dataHeaders = array_values(array_filter($rawHeaders, fn (string $header) => $header !== ''));
-        $delimiter = ';';
-        $rowsWritten = 0;
+            if ($highestRow < 1 || $this->isEmptyCsvRow($rawHeaders)) {
+                throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+            }
 
-        try {
-            fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, $dataHeaders, $delimiter);
+            $dataHeaders = array_values(array_filter($rawHeaders, fn (string $header) => $header !== ''));
+
+            if ($dataHeaders === []) {
+                throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+            }
 
             if ($highestRow < 2) {
                 throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
             }
 
-            $nextRow = 2;
+            $state['data_headers'] = $dataHeaders;
+            $state['raw_headers'] = $rawHeaders;
+            $state['column_count'] = $columnCount;
+            $state['highest_row'] = $highestRow;
+            $state['delimiter'] = ';';
+        }
 
-            while ($nextRow <= $highestRow) {
-                $endRow = min($nextRow + self::EXCEL_ROWS_PER_PREPARE_REQUEST - 1, $highestRow);
-                $rows = $reader->readDataRows(
-                    $sourcePath,
-                    $nextRow,
-                    $endRow,
-                    $rawHeaders,
-                    $columnCount,
-                );
+        $dataHeaders = $state['data_headers'];
+        $rawHeaders = $state['raw_headers'];
+        $columnCount = (int) $state['column_count'];
+        $highestRow = (int) $state['highest_row'];
+        $delimiter = (string) ($state['delimiter'] ?? ';');
+        $endRow = min($nextRow + self::EXCEL_ROWS_PER_PREPARE_REQUEST - 1, $highestRow);
 
-                foreach ($rows as $row) {
-                    $lineValues = [];
-                    foreach ($dataHeaders as $header) {
-                        $lineValues[] = $row[$header] ?? '';
-                    }
+        $rows = $reader->readDataRows(
+            $sourcePath,
+            $nextRow,
+            $endRow,
+            $rawHeaders,
+            $columnCount,
+        );
 
-                    fputcsv($handle, $lineValues, $delimiter);
-                    $rowsWritten++;
+        $handle = fopen($csvPath, $csvStarted ? 'ab' : 'wb');
+
+        if ($handle === false) {
+            throw new \RuntimeException('No se pudo escribir el archivo CSV de importación.');
+        }
+
+        $rowsWritten = 0;
+
+        try {
+            if (! $csvStarted) {
+                fwrite($handle, "\xEF\xBB\xBF");
+                fputcsv($handle, $dataHeaders, $delimiter);
+            }
+
+            foreach ($rows as $row) {
+                $lineValues = [];
+                foreach ($dataHeaders as $header) {
+                    $lineValues[] = $row[$header] ?? '';
                 }
 
-                $nextRow = $endRow + 1;
+                fputcsv($handle, $lineValues, $delimiter);
+                $rowsWritten++;
             }
         } finally {
             fclose($handle);
         }
 
-        if ($rowsWritten === 0) {
+        $newProcessedRows = $processedRows + $rowsWritten;
+        $newNextRow = $endRow + 1;
+        $finished = $endRow >= $highestRow;
+
+        if ($newProcessedRows === 0 && $finished) {
             throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
         }
 
         return [
             'rows_written' => $rowsWritten,
+            'processed_rows' => $newProcessedRows,
+            'next_row' => $newNextRow,
+            'finished' => $finished,
             'data_headers' => $dataHeaders,
+            'raw_headers' => $rawHeaders,
+            'column_count' => $columnCount,
             'delimiter' => $delimiter,
+            'highest_row' => $highestRow,
+            'total_rows' => max(0, $highestRow - 1),
         ];
     }
 

@@ -502,13 +502,13 @@ function updatePrepareProgress(progress, payload, plan) {
 
     if (total && total > 0) {
         percent = plan.start + ((processed / total) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas preparadas`;
+        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas convertidas a CSV`;
     } else if (processed > 0) {
         percent = plan.start + (Math.min(0.85, processed / 50000) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} filas preparadas`;
+        detail = `${processed.toLocaleString('es-CL')} filas convertidas a CSV`;
     } else {
         percent = plan.start + (plan.span * 0.12);
-        detail = 'Leyendo el archivo en el servidor (puede tardar varios minutos en archivos grandes)...';
+        detail = 'Iniciando conversión de Excel a CSV en el servidor...';
     }
 
     setImportProgress(progress, {
@@ -531,7 +531,7 @@ async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
                 totalSteps: plan.totalSteps,
                 stage: plan.stage,
                 percent: plan.start + (plan.span * 0.08),
-                detail: 'Procesando en el servidor. No cierre esta ventana...',
+                detail: 'Convirtiendo Excel a CSV (primer trozo)...',
             });
             isFirstRequest = false;
         }
@@ -574,7 +574,7 @@ async function prepareTemplateImport(uploadId, progress) {
         {
             step: 2,
             totalSteps: 3,
-            stage: 'Analizando archivo',
+            stage: 'Convirtiendo Excel a CSV',
             start: 12,
             span: 26,
         },
