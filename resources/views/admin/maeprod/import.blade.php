@@ -279,14 +279,28 @@ async function normalizeImportFile(file, progress, plan) {
     }
 }
 
+function isTransientHttpStatus(status) {
+    return [502, 503, 504].includes(status);
+}
+
+function looksLikeHtmlResponse(text) {
+    const trimmed = text.trim().toLowerCase();
+    return trimmed.startsWith('<!doctype') || trimmed.startsWith('<html');
+}
+
 function importErrorMessage(payload, status) {
-    if (payload?.message) return payload.message;
+    if (payload?.message && !looksLikeHtmlResponse(payload.message)) {
+        return payload.message;
+    }
     if (payload?.errors) return Object.values(payload.errors).flat().join(' ');
     if (status === 502) {
-        return 'Error del servidor (502). Si el archivo Excel es muy grande, conviértalo a CSV o reintente tras el despliegue más reciente.';
+        return 'Error del servidor (502). La importación puede seguir en segundo plano: recargue la página para retomar el progreso.';
+    }
+    if (status === 503 || status === 504) {
+        return `Error del servidor (${status}). Espere unos segundos y recargue la página para retomar el progreso.`;
     }
     if (status === 500) {
-        return 'Error del servidor (500). Si usa Render, confirme QUEUE_CONNECTION=database y un Background Worker activo.';
+        return 'Error del servidor (500). Si usa Render, confirme QUEUE_CONNECTION=database y que el worker esté activo.';
     }
     return `Error del servidor (${status}).`;
 }
@@ -301,7 +315,12 @@ async function readJsonResponse(response) {
     try {
         return JSON.parse(text);
     } catch {
-        return { message: text.slice(0, 400) };
+        if (looksLikeHtmlResponse(text)) {
+            return {};
+        }
+
+        const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+        return { message: snippet };
     }
 }
 
@@ -814,19 +833,54 @@ async function startBackgroundImport(uploadId, mode = 'template', mapping = null
 
 async function pollBackgroundImport(uploadId, progress, plan) {
     const pollPlan = plan || { step: 2, totalSteps: 3, start: 12, span: 88 };
+    let transientFailures = 0;
+    const maxTransientFailures = 30;
 
     while (true) {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        const response = await fetch(`${importProgressUrl}?upload_id=${encodeURIComponent(uploadId)}`, {
-            headers: { 'Accept': 'application/json' },
-            credentials: 'same-origin',
-        });
+        let response;
+        let payload;
 
-        const payload = await readJsonResponse(response);
+        try {
+            response = await fetch(`${importProgressUrl}?upload_id=${encodeURIComponent(uploadId)}`, {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            });
+            payload = await readJsonResponse(response);
+        } catch (error) {
+            transientFailures++;
+            if (transientFailures >= maxTransientFailures) {
+                throw new Error('No se pudo consultar el progreso. La importación puede seguir en segundo plano: recargue la página para retomar.');
+            }
+
+            setImportProgress(progress, {
+                step: pollPlan.totalSteps >= 3 ? 3 : 2,
+                totalSteps: pollPlan.totalSteps,
+                stage: pollPlan.totalSteps >= 3 ? 'Grabando en base de datos' : 'Procesando en segundo plano',
+                percent: Math.max(0, progress.bar?.getAttribute('aria-valuenow') || pollPlan.start),
+                detail: `Conexión interrumpida, reintentando (${transientFailures}/${maxTransientFailures})...`,
+            });
+            continue;
+        }
+
         if (!response.ok) {
+            if (isTransientHttpStatus(response.status) && transientFailures < maxTransientFailures) {
+                transientFailures++;
+                setImportProgress(progress, {
+                    step: pollPlan.totalSteps >= 3 ? 3 : 2,
+                    totalSteps: pollPlan.totalSteps,
+                    stage: pollPlan.totalSteps >= 3 ? 'Grabando en base de datos' : 'Procesando en segundo plano',
+                    percent: Math.max(0, Number(progress.bar?.getAttribute('aria-valuenow') || pollPlan.start)),
+                    detail: `Servidor ocupado (${response.status}), reintentando progreso (${transientFailures}/${maxTransientFailures})...`,
+                });
+                continue;
+            }
+
             throw new Error(importErrorMessage(payload, response.status));
         }
+
+        transientFailures = 0;
 
         applyPollProgressPayload(payload, progress, pollPlan);
 
