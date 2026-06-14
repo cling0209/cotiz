@@ -15,6 +15,11 @@
             return;
         }
 
+        // Filas/thumbs insertados por AJAX suelen quedar con lazy sin disparar load.
+        if (img.loading === 'lazy' || img.getAttribute('loading') === 'lazy') {
+            img.loading = 'eager';
+        }
+
         function markLoaded() {
             wrap.classList.remove('is-error');
             wrap.classList.add('is-loaded');
@@ -58,6 +63,12 @@
 
         img.addEventListener('load', markLoaded);
         img.addEventListener('error', markError);
+
+        // Forzar carga tras insertar en el DOM (lazy + innerHTML).
+        if (img.src) {
+            var src = img.currentSrc || img.src;
+            img.src = src;
+        }
     }
 
     function initAll() {

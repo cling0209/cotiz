@@ -281,12 +281,21 @@ class CotizacionController extends Controller
             'orden' => ['required', 'integer'],
         ]);
 
-        $this->detalleService->eliminarLinea($nota, $datos['prod_item'], (int) $datos['orden']);
+        try {
+            $this->detalleService->eliminarLinea($nota, $datos['prod_item'], (int) $datos['orden']);
+        } catch (\InvalidArgumentException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => $e->getMessage()], 422);
+            }
+
+            return back()->with('error', $e->getMessage());
+        }
 
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,
                 'resumen' => $this->detalleService->resumenLineasNota($nota),
+                'lineas' => $this->detalleService->lineasOrdenJson($nota),
             ]);
         }
 
@@ -340,17 +349,7 @@ class CotizacionController extends Controller
         return response()->json([
             'ok' => true,
             'message' => 'Grabado con éxito.',
-            'lineas' => NotaDetalle::query()
-                ->where('nronota', $nota->nronota)
-                ->orderBy('orden')
-                ->get(['prod_item', 'orden', 'prod_item_agile'])
-                ->map(fn (NotaDetalle $linea) => [
-                    'prod_item' => $linea->prod_item,
-                    'orden' => (int) $linea->orden,
-                    'prod_item_agile' => $linea->prod_item_agile,
-                ])
-                ->values()
-                ->all(),
+            'lineas' => $this->detalleService->lineasOrdenJson($nota),
         ]);
     }
 

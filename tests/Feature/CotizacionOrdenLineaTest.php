@@ -82,6 +82,42 @@ class CotizacionOrdenLineaTest extends TestCase
         ]);
     }
 
+    public function test_eliminar_linea_renumera_y_permite_reordenar(): void
+    {
+        $nota = $this->crearNota();
+
+        $this->crearLinea($nota, ['prod_item' => 'PROD001', 'orden' => 1]);
+        $this->crearLinea($nota, ['prod_item' => 'PROD002', 'orden' => 2]);
+        $this->crearLinea($nota, ['prod_item' => 'PROD003', 'orden' => 3]);
+
+        $this->actingAs($this->admin)->deleteJson(
+            route('admin.cotizaciones.lineas.destroy', $nota->nronota),
+            ['prod_item' => 'PROD002', 'orden' => 2],
+        )->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonCount(2, 'lineas');
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD001',
+            'orden' => 1,
+        ]);
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD003',
+            'orden' => 2,
+        ]);
+
+        $this->actingAs($this->admin)->patchJson(
+            route('admin.cotizaciones.lineas.orden', $nota->nronota),
+            [
+                'prod_item' => 'PROD003',
+                'orden' => 2,
+                'orden_nuevo' => 1,
+            ],
+        )->assertOk()->assertJsonPath('ok', true);
+    }
+
     public function test_mover_linea_arriba_con_direccion(): void
     {
         $nota = $this->crearNota();

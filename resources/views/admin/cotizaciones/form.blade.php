@@ -597,7 +597,7 @@
         }
 
         marcarLineasRepetidas();
-        sincronizarOrdenGrilla();
+        actualizarControlesOrdenVisual();
         recalcularMontoTotal();
     }
 
@@ -637,6 +637,9 @@
             }
 
             quitarLineaDetalle(tr, delForm);
+            if (json.lineas) {
+                aplicarOrdenDesdeServidor(json.lineas);
+            }
             if (json.resumen) {
                 actualizarResumenLineas(json.resumen);
             }
@@ -687,12 +690,14 @@
         }
 
         wireEliminarLinea(tr);
-        if (window.initProductImagesIn) {
-            window.initProductImagesIn(tr);
-        }
-        enlazarZoomImagenes(tr);
+        requestAnimationFrame(function () {
+            if (window.initProductImagesIn) {
+                window.initProductImagesIn(tr);
+            }
+            enlazarZoomImagenes(tr);
+        });
         marcarLineasRepetidas();
-        sincronizarOrdenGrilla();
+        actualizarControlesOrdenVisual();
         recalcularMontoTotal();
 
         const wrapDetalle = document.getElementById('notaventa-tabla-detalle-wrap');
@@ -723,44 +728,86 @@
         }
     }
 
-    function sincronizarOrdenGrilla() {
-        const tbody = document.querySelector('#tabla_detalle tbody');
-        if (!tbody) return;
+    function sincronizarOrdenFila(row, ordenDb) {
+        const prod = row.dataset.prod;
+        const ordenAnterior = parseInt(row.dataset.orden, 10);
+        if (ordenAnterior === ordenDb) {
+            return;
+        }
 
-        const rows = Array.from(tbody.querySelectorAll('tr[data-linea]'));
+        const delForm = document.querySelector(
+            '.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + ordenAnterior + '"]'
+        );
+        if (delForm) {
+            delForm.dataset.orden = String(ordenDb);
+            const ordenInput = delForm.querySelector('input[name="orden"]');
+            if (ordenInput) ordenInput.value = String(ordenDb);
+        }
+
+        row.dataset.orden = String(ordenDb);
+
+        const elimTd = row.querySelector('.eliminar-cell');
+        if (elimTd) elimTd.dataset.orden = String(ordenDb);
+
+        row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar, .btn-buscar-linea-agile').forEach(btn => {
+            btn.dataset.orden = String(ordenDb);
+        });
+
+        const ordenHidden = row.querySelector('input[name*="[orden]"]');
+        if (ordenHidden) ordenHidden.value = String(ordenDb);
+    }
+
+    function actualizarControlesOrdenVisual() {
+        const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'));
         const total = rows.length;
 
         rows.forEach((row, idx) => {
-            const ordenNuevo = idx + 1;
-            const prod = row.dataset.prod;
-            const ordenAnterior = parseInt(row.dataset.orden, 10);
-
-            const delForm = document.querySelector(
-                '.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + ordenAnterior + '"]'
-            );
-            if (delForm) {
-                delForm.dataset.orden = String(ordenNuevo);
-                const ordenInput = delForm.querySelector('input[name="orden"]');
-                if (ordenInput) ordenInput.value = String(ordenNuevo);
-            }
-
-            row.dataset.orden = String(ordenNuevo);
-
-            const elimTd = row.querySelector('.eliminar-cell');
-            if (elimTd) elimTd.dataset.orden = String(ordenNuevo);
-
             const ordenNum = row.querySelector('.linea-orden-num');
-            if (ordenNum) ordenNum.textContent = String(ordenNuevo);
-
-            row.querySelectorAll('.linea-orden-subir, .linea-orden-bajar, .btn-buscar-linea-agile').forEach(btn => {
-                btn.dataset.orden = String(ordenNuevo);
-            });
+            if (ordenNum) ordenNum.textContent = String(idx + 1);
 
             const btnSubir = row.querySelector('.linea-orden-subir');
             const btnBajar = row.querySelector('.linea-orden-bajar');
             if (btnSubir) btnSubir.disabled = (idx === 0);
             if (btnBajar) btnBajar.disabled = (idx === total - 1);
         });
+    }
+
+    function aplicarOrdenDesdeServidor(lineas) {
+        if (!Array.isArray(lineas) || !lineas.length) {
+            actualizarControlesOrdenVisual();
+            return;
+        }
+
+        const sorted = [...lineas].sort((a, b) => a.orden - b.orden);
+        const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'));
+
+        if (sorted.length !== rows.length) {
+            actualizarControlesOrdenVisual();
+            return;
+        }
+
+        const used = new Set();
+        rows.forEach((row, idx) => {
+            const prod = row.dataset.prod || '';
+            const agile = row.dataset.prodItemAgile || '';
+            let linea = sorted[idx];
+
+            if (!linea || linea.prod_item !== prod || used.has(linea.orden)) {
+                linea = sorted.find(l => ! used.has(l.orden)
+                    && l.prod_item === prod
+                    && String(l.prod_item_agile || '') === agile);
+            }
+            if (!linea) {
+                linea = sorted.find(l => ! used.has(l.orden) && l.prod_item === prod);
+            }
+            if (!linea) linea = sorted[idx];
+            if (!linea) return;
+
+            used.add(linea.orden);
+            sincronizarOrdenFila(row, parseInt(linea.orden, 10));
+        });
+
+        actualizarControlesOrdenVisual();
     }
 
     function revertirSortable(evt) {
@@ -796,12 +843,12 @@
 
             if (res.ok && json.ok) {
                 ocultarLoaderCotiz();
-                return true;
+                return json;
             }
 
             ocultarLoaderCotiz();
             dlgAlert(json.error || json.message || 'No se pudo cambiar el orden.', { title: 'Error', type: 'danger' });
-            return false;
+            return null;
         } catch (err) {
             ocultarLoaderCotiz();
             dlgAlert('Error de conexión al cambiar el orden.', { title: 'Error', type: 'danger' });
@@ -827,7 +874,11 @@
             } else if (direccion === 'down' && row.nextElementSibling) {
                 row.parentNode.insertBefore(row.nextElementSibling, row);
             }
-            sincronizarOrdenGrilla();
+            if (ok.lineas) {
+                aplicarOrdenDesdeServidor(ok.lineas);
+            } else {
+                actualizarControlesOrdenVisual();
+            }
         } else if (!ok) {
             btn.closest('.linea-orden-buttons')?.querySelectorAll('button').forEach(b => { b.disabled = false; });
         }
@@ -850,19 +901,28 @@
             ghostClass: 'linea-sortable-ghost',
             chosenClass: 'linea-sortable-chosen',
             dragClass: 'linea-sortable-drag',
+            onStart: function (evt) {
+                evt.item.dataset.ordenAntesDrag = evt.item.dataset.orden;
+            },
             onEnd: async function (evt) {
                 if (evt.oldIndex === evt.newIndex || evt.oldIndex == null || evt.newIndex == null) {
+                    delete evt.item.dataset.ordenAntesDrag;
                     return;
                 }
 
                 const row = evt.item;
                 const prodItem = row.dataset.prod;
-                const orden = parseInt(row.dataset.orden, 10);
+                const orden = parseInt(row.dataset.ordenAntesDrag || row.dataset.orden, 10);
                 const ordenNuevo = evt.newIndex + 1;
+                delete row.dataset.ordenAntesDrag;
 
-                const ok = await cambiarOrdenLinea(prodItem, orden, { orden_nuevo: ordenNuevo });
-                if (ok) {
-                    sincronizarOrdenGrilla();
+                const result = await cambiarOrdenLinea(prodItem, orden, { orden_nuevo: ordenNuevo });
+                if (result) {
+                    if (result.lineas) {
+                        aplicarOrdenDesdeServidor(result.lineas);
+                    } else {
+                        actualizarControlesOrdenVisual();
+                    }
                 } else {
                     revertirSortable(evt);
                 }

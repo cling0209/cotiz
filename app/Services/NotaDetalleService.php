@@ -430,11 +430,42 @@ class NotaDetalleService
 
     public function eliminarLinea(Nota $nota, string $prodItem, int $orden): void
     {
-        NotaDetalle::query()
+        DB::transaction(function () use ($nota, $prodItem, $orden) {
+            $eliminadas = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('prod_item', $prodItem)
+                ->where('orden', $orden)
+                ->delete();
+
+            if ($eliminadas === 0) {
+                throw new \InvalidArgumentException('Línea no encontrada.');
+            }
+
+            $quedan = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->orderBy('orden')
+                ->get();
+
+            $this->persistirOrdenLineas($nota->nronota, $quedan);
+        });
+    }
+
+    /**
+     * @return list<array{prod_item: string, orden: int, prod_item_agile: string|null}>
+     */
+    public function lineasOrdenJson(Nota $nota): array
+    {
+        return NotaDetalle::query()
             ->where('nronota', $nota->nronota)
-            ->where('prod_item', $prodItem)
-            ->where('orden', $orden)
-            ->delete();
+            ->orderBy('orden')
+            ->get(['prod_item', 'orden', 'prod_item_agile'])
+            ->map(fn (NotaDetalle $linea) => [
+                'prod_item' => $linea->prod_item,
+                'orden' => (int) $linea->orden,
+                'prod_item_agile' => $linea->prod_item_agile,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
