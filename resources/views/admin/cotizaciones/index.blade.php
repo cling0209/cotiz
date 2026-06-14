@@ -104,7 +104,7 @@
 
                                     @if((int) $nota->enviadoapi === 0)
                                         <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"
-                                              onsubmit="return confirm('¿Enviar cotización #{{ $nota->nronota }} a la API?');">
+                                              data-confirm="¿Enviar cotización #{{ $nota->nronota }} a la API?">
                                             @csrf
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Enviar</button>
@@ -118,14 +118,14 @@
 
                                         @if(!$estaAceptada)
                                             <form method="post" action="{{ route('admin.cotizaciones.aceptar', $nota->nronota) }}" class="d-inline"
-                                                  onsubmit="return confirm('¿Marcar cotización #{{ $nota->nronota }} como aceptada?');">
+                                                  data-confirm="¿Marcar cotización #{{ $nota->nronota }} como aceptada?">
                                                 @csrf
                                                 @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                                 <button type="submit" class="btn btn-outline-success btn-sm">Aceptar</button>
                                             </form>
                                         @else
                                             <form method="post" action="{{ route('admin.cotizaciones.no-aceptar', $nota->nronota) }}" class="d-inline"
-                                                  onsubmit="return confirm('¿Quitar estado aceptada de la cotización #{{ $nota->nronota }}?');">
+                                                  data-confirm="¿Quitar estado aceptada de la cotización #{{ $nota->nronota }}?">
                                                 @csrf
                                                 @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                                 <button type="submit" class="btn btn-outline-warning btn-sm">No aceptar</button>

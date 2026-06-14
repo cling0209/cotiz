@@ -2,6 +2,20 @@
     const root = document.querySelector('.agile-recepcion');
     if (!root) return;
 
+    function dlgAlert(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.alert(message, { type: 'danger', ...opts });
+        }
+        alert(message);
+    }
+
+    function dlgConfirm(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.confirm(message, opts);
+        }
+        return Promise.resolve(confirm(message));
+    }
+
     const nronota = root.dataset.nronota;
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
@@ -133,7 +147,7 @@
     document.querySelectorAll('.venta-input').forEach((input) => {
         input.addEventListener('change', function () {
             const fila = this.id.replace('valor_venta_', '');
-            guardarPrecioFila(fila).catch((e) => alert(e.message));
+            guardarPrecioFila(fila).catch((e) => dlgAlert(e.message, { title: 'Error' }));
         });
     });
 
@@ -202,7 +216,7 @@
                     }
                     mostrarFactorOk(mensaje);
                 })
-                .catch((e) => alert(e.message))
+                .catch((e) => dlgAlert(e.message, { title: 'Error' }))
                 .finally(() => {
                     btnFactor.disabled = false;
                     btnFactor.textContent = btnFactorLabel;
@@ -288,12 +302,12 @@
 
         guardarPrecioFila(filaActual)
             .then(() => cerrarPopup())
-            .catch((e) => alert(e.message));
+            .catch((e) => dlgAlert(e.message, { title: 'Error' }));
     }
 
     const btnAprobar = document.getElementById('btnAprobar');
     if (btnAprobar) {
-        btnAprobar.addEventListener('click', () => {
+        btnAprobar.addEventListener('click', async () => {
             const filas = document.querySelectorAll('#tabla-agile-detalle tbody tr');
             const sinPrecio = [];
             filas.forEach((row) => {
@@ -305,23 +319,31 @@
                 }
             });
             if (sinPrecio.length) {
-                alert('No se puede aprobar: precio venta en cero:\n' + sinPrecio.join('\n'));
+                dlgAlert('No se puede aprobar: precio venta en cero:\n' + sinPrecio.join('\n'), { title: 'Precio en cero' });
                 return;
             }
 
             const hayAntigua = document.getElementById('detalle_hay_precio_no_actualizado')?.value === '1';
             if (hayAntigua) {
                 const m = document.getElementById('detalle_umbral_precio_meses')?.value || '?';
-                if (!confirm(`Hay precios con fecha antigua (umbral ${m} mes/es). ¿Aprobar de todas formas?`)) return;
+                const okAntigua = await dlgConfirm(
+                    `Hay precios con fecha antigua (umbral ${m} mes/es). ¿Aprobar de todas formas?`,
+                    { title: 'Precio antiguo', type: 'warning' },
+                );
+                if (!okAntigua) return;
             }
 
-            if (!confirm('¿Está seguro de aprobar? No se podrán hacer cambios.')) return;
+            const okAprobar = await dlgConfirm(
+                '¿Está seguro de aprobar? No se podrán hacer cambios.',
+                { title: 'Aprobar cotización', type: 'warning' },
+            );
+            if (!okAprobar) return;
 
             postJson(`/admin/agile-recepcion/${nronota}/aprobar`, {})
                 .then((j) => {
                     window.location.href = `/admin/cotizaciones/${j.nronota}`;
                 })
-                .catch((e) => alert(e.message));
+                .catch((e) => dlgAlert(e.message, { title: 'Error' }));
         });
     }
 })();

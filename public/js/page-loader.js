@@ -127,7 +127,11 @@
             const message = error instanceof Error && error.message
                 ? error.message
                 : 'No se pudo completar la descarga. Intente nuevamente.';
-            alert(message);
+            if (window.AdminDialog) {
+                AdminDialog.alert(message, { title: 'Descarga', type: 'danger' });
+            } else {
+                alert(message);
+            }
         } finally {
             downloadUntil = Date.now() + 1500;
             hideLoader();

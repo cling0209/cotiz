@@ -437,6 +437,20 @@
 (function () {
     const requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
 
+    function dlgAlert(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.alert(message, { type: 'warning', ...opts });
+        }
+        alert(message);
+    }
+
+    function dlgConfirm(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.confirm(message, opts);
+        }
+        return Promise.resolve(confirm(message));
+    }
+
     function asegurarNumeroCotizacion() {
         if (!requiereNumeroCotizacion) {
             return true;
@@ -444,11 +458,11 @@
         const enc = document.getElementById('encargado');
         const valor = String(enc?.value || '').trim();
         if (!valor) {
-            alert('Debe ingresar el número de cotización y guardarlo antes de continuar.');
+            dlgAlert('Debe ingresar el número de cotización y guardarlo antes de continuar.', { title: 'Número de cotización' });
             enc?.focus();
             return false;
         }
-        alert('Guarde el número de cotización con el botón «Guardar número» antes de continuar.');
+        dlgAlert('Guarde el número de cotización con el botón «Guardar número» antes de continuar.', { title: 'Número de cotización' });
         enc?.focus();
         return false;
     }
@@ -492,7 +506,7 @@
             e.preventDefault();
             factorInput.classList.add('is-invalid');
             factorInput.focus();
-            alert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).');
+            dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
             return;
         }
         factorInput.value = formatFactorChile(parsed);
@@ -545,7 +559,9 @@
             btn.className = 'btn btn-outline-danger btn-sm py-0 px-2';
             btn.textContent = 'Eliminar';
             btn.addEventListener('click', () => {
-                if (confirm('¿Eliminar línea?')) delForm.submit();
+                dlgConfirm('¿Eliminar línea?', { title: 'Eliminar línea', type: 'danger' }).then(ok => {
+                    if (ok) delForm.submit();
+                });
             });
             elimTd.appendChild(btn);
         }
@@ -600,11 +616,11 @@
             }
 
             ocultarLoaderCotiz();
-            alert(json.error || json.message || 'No se pudo cambiar el orden.');
+            dlgAlert(json.error || json.message || 'No se pudo cambiar el orden.', { title: 'Error', type: 'danger' });
             return false;
         } catch (err) {
             ocultarLoaderCotiz();
-            alert('Error de conexión al cambiar el orden.');
+            dlgAlert('Error de conexión al cambiar el orden.', { title: 'Error', type: 'danger' });
             return false;
         } finally {
             ordenEnProceso = false;
@@ -703,14 +719,14 @@
             try {
                 sessionStorage.removeItem('page-loader-pending');
             } catch (e) {}
-            alert(json.error || json.message || 'No se pudo agregar la línea.');
+            dlgAlert(json.error || json.message || 'No se pudo agregar la línea.', { title: 'Error', type: 'danger' });
             return false;
         } catch (err) {
             ocultarLoaderCotiz();
             try {
                 sessionStorage.removeItem('page-loader-pending');
             } catch (e) {}
-            alert('Error de conexión al agregar producto.');
+            dlgAlert('Error de conexión al agregar producto.', { title: 'Error', type: 'danger' });
             return false;
         } finally {
             agregandoLinea = false;
@@ -930,15 +946,19 @@
         });
     }
 
-    document.getElementById('btnCopiarMP')?.addEventListener('click', () => {
+    document.getElementById('btnCopiarMP')?.addEventListener('click', async () => {
         const items = recolectarItemsMercadoPublico();
         if (items.length === 0) {
-            alert('No hay filas válidas en la tabla de productos para copiar.');
+            dlgAlert('No hay filas válidas en la tabla de productos para copiar.', { title: 'Copiar para MP' });
             return;
         }
         const conPrecioCero = items.filter(it => it.valorUnitario <= 0);
-        if (conPrecioCero.length > 0 && !window.confirm('Hay ítems con precio unitario 0 o vacío. ¿Desea copiar igualmente para completar después en Mercado Público?')) {
-            return;
+        if (conPrecioCero.length > 0) {
+            const ok = await dlgConfirm(
+                'Hay ítems con precio unitario 0 o vacío. ¿Desea copiar igualmente para completar después en Mercado Público?',
+                { title: 'Precio en cero', type: 'warning' },
+            );
+            if (!ok) return;
         }
         const payload = {
             fuente: 'cotiz',
@@ -957,10 +977,10 @@
                 msg.hidden = false;
                 setTimeout(() => { msg.hidden = true; }, 5000);
             } else {
-                alert('Copiado al portapapeles (' + items.length + ' ítems).');
+                dlgAlert('Copiado al portapapeles (' + items.length + ' ítems).', { title: 'Copiado', type: 'success' });
             }
         }).catch(err => {
-            alert('No se pudo copiar (use HTTPS o localhost).\n' + (err?.message || ''));
+            dlgAlert('No se pudo copiar (use HTTPS o localhost).\n' + (err?.message || ''), { title: 'Error al copiar', type: 'danger' });
         });
     });
 
@@ -1121,8 +1141,9 @@
 
         const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
-            const ok = window.confirm(
-                'Hay ' + sinMatch + ' línea(s) pendientes de vincular. Se importarán todas; use Buscar en cada fila para asignar el producto del maestro. ¿Continuar?'
+            const ok = await dlgConfirm(
+                'Hay ' + sinMatch + ' línea(s) pendientes de vincular. Se importarán todas; use Buscar en cada fila para asignar el producto del maestro. ¿Continuar?',
+                { title: 'Importar con pendientes', type: 'warning' },
             );
             if (!ok) return;
         }
@@ -1347,7 +1368,7 @@
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
-                alert(json.error || 'No se pudo vincular el producto.');
+                dlgAlert(json.error || 'No se pudo vincular el producto.', { title: 'Error', type: 'danger' });
                 return;
             }
             cerrarPopupVincularAgile();
@@ -1359,7 +1380,7 @@
                 subtotal: venta * (parseInt(document.querySelector(`#tabla_detalle tbody tr[data-orden="${orden}"] .linea-cantidad`)?.value || '1', 10) || 1),
             });
         } catch (err) {
-            alert('Error de conexión al vincular producto.');
+            dlgAlert('Error de conexión al vincular producto.', { title: 'Error', type: 'danger' });
         }
     }
 
@@ -1380,7 +1401,10 @@
     });
 
     @if($lineas->contains(fn ($row) => $row['repetidos'] > 1))
-        alert('Existen productos que se repiten, estos están marcados con rojo, favor revisar si corresponde');
+        dlgAlert('Existen productos que se repiten, estos están marcados con rojo, favor revisar si corresponde', {
+            title: 'Productos repetidos',
+            type: 'warning',
+        });
     @endif
 })();
 </script>

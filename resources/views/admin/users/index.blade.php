@@ -64,7 +64,7 @@
                                 <a href="{{ route('admin.users.edit', $u) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
                                 @if($u->id !== auth()->id())
                                     <form method="post" action="{{ route('admin.users.destroy', $u) }}" class="d-inline"
-                                          onsubmit="return confirm('¿Eliminar usuario {{ $u->username }}?');">
+                                          data-confirm="¿Eliminar usuario {{ $u->username }}?">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>

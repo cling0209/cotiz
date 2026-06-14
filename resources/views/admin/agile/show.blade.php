@@ -113,7 +113,7 @@
         @if(!$estaAprobada)
             <div class="card-footer d-flex gap-2">
                 <button type="button" id="btnAprobar" class="btn btn-primary btn-sm">Aprobar</button>
-                <form method="post" action="{{ route('admin.agile.destroy', $nota->nronota) }}" class="d-inline" onsubmit="return confirm('¿Eliminar cotización {{ $nota->encargado }}?');">
+                <form method="post" action="{{ route('admin.agile.destroy', $nota->nronota) }}" class="d-inline" data-confirm="¿Eliminar cotización {{ $nota->encargado }}?">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
@@ -143,5 +143,5 @@
 @endsection
 
 @push('scripts')
-<script src="{{ asset('js/agile-recepcion.js') }}?v=4"></script>
+<script src="{{ asset('js/agile-recepcion.js') }}?v=5"></script>
 @endpush

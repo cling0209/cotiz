@@ -97,7 +97,27 @@
 
 <main class="admin-main">@yield('content')</main>
 
+<div class="modal fade" id="adminDialogModal" tabindex="-1" aria-labelledby="adminDialogTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content admin-dialog-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i id="adminDialogIcon" class="bi bi-info-circle-fill admin-dialog-icon admin-dialog-icon--info" aria-hidden="true"></i>
+                    <h5 class="modal-title mb-0" id="adminDialogTitle">Cotiz</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body" id="adminDialogBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="adminDialogBtnCancel">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-sm" id="adminDialogBtnOk">Aceptar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('js/admin-dialog.js') }}?v=2"></script>
 <script src="{{ asset('js/page-loader.js') }}?v=exportmsg" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>

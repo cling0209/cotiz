@@ -291,3 +291,37 @@
 .admin-main .alert {
     border-radius: 0.75rem;
 }
+
+.admin-dialog-content {
+    border: none;
+    border-radius: 0.85rem;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(37, 99, 235, 0.18);
+}
+
+.admin-dialog-content .modal-header {
+    background: linear-gradient(90deg, #eff6ff 0%, #f0f9ff 100%);
+    padding: 1rem 1.25rem 0.75rem;
+}
+
+.admin-dialog-content .modal-body {
+    padding: 0.75rem 1.25rem 1rem;
+    color: var(--admin-text);
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+.admin-dialog-content .modal-footer {
+    padding: 0.75rem 1.25rem 1rem;
+    background: #f8fafc;
+}
+
+.admin-dialog-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.admin-dialog-icon--info { color: var(--admin-primary); }
+.admin-dialog-icon--warning { color: #d97706; }
+.admin-dialog-icon--danger { color: #dc2626; }
+.admin-dialog-icon--success { color: #16a34a; }
