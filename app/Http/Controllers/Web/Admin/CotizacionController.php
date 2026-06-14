@@ -291,7 +291,24 @@ class CotizacionController extends Controller
             'texto' => ['required', 'string', 'max:50000'],
         ]);
 
-        return response()->json($this->compraAgilImport->preview($datos['texto']));
+        $preview = $this->compraAgilImport->preview($datos['texto']);
+        $errorCabecera = null;
+        $puedeImportar = true;
+
+        if ($preview['cabecera']['codigo_cotizacion'] !== '') {
+            $errorCabecera = $this->notaService->validarNumeroCotizacion(
+                $nota,
+                $preview['cabecera']['codigo_cotizacion'],
+            );
+            if ($errorCabecera !== null) {
+                $puedeImportar = false;
+            }
+        }
+
+        return response()->json(array_merge($preview, [
+            'error_cabecera' => $errorCabecera,
+            'puede_importar' => $puedeImportar,
+        ]));
     }
 
     public function importarCompraAgil(Request $request, int $nronota): JsonResponse
@@ -304,6 +321,8 @@ class CotizacionController extends Controller
 
         $datos = $request->validate([
             'texto' => ['required', 'string', 'max:50000'],
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $preview = $this->compraAgilImport->preview($datos['texto']);
@@ -315,19 +334,24 @@ class CotizacionController extends Controller
         }
 
         try {
-            $resultado = $this->compraAgilImport->aplicar($nota, $datos['texto'], $request->user()->username);
+            if (isset($datos['desde'], $datos['hasta'])) {
+                $resultado = $this->compraAgilImport->aplicarLote(
+                    $nota,
+                    $datos['texto'],
+                    $request->user()->username,
+                    (int) $datos['desde'],
+                    (int) $datos['hasta'],
+                );
+            } else {
+                $resultado = $this->compraAgilImport->aplicar($nota, $datos['texto'], $request->user()->username);
+            }
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
-            'agregadas' => $resultado['agregadas'],
-            'vinculadas' => $resultado['vinculadas'],
-            'pendientes' => $resultado['pendientes'],
-            'cabecera_actualizada' => $resultado['cabecera_actualizada'],
-            'mensajes' => $resultado['mensajes'],
-        ]);
+        ], $resultado));
     }
 
     public function vincularLineaAgile(Request $request, int $nronota): JsonResponse

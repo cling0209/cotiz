@@ -194,6 +194,48 @@ TXT;
         $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.');
     }
 
+    public function test_preview_advierte_cotizacion_duplicada(): void
+    {
+        $this->crearNota([
+            'nronota' => 2,
+            'encargado' => '1161-172-COT26',
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('puede_importar', false);
+        $response->assertJsonPath('error_cabecera', 'La cotización «1161-172-COT26» ya existe (nota #2). No se puede duplicar.');
+        $response->assertJsonPath('resumen.total', 2);
+    }
+
+    public function test_importar_por_lotes_agrega_todas_las_lineas(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response1 = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp, 'desde' => 0, 'hasta' => 1],
+        );
+        $response1->assertOk();
+        $response1->assertJsonPath('procesadas', 1);
+        $response1->assertJsonPath('completado', false);
+
+        $response2 = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp, 'desde' => 1, 'hasta' => 2],
+        );
+        $response2->assertOk();
+        $response2->assertJsonPath('completado', true);
+
+        $this->assertSame(2, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

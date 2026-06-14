@@ -369,10 +369,14 @@
                         placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;...&#10;Limpiadores de uso general ID: 31237835&#10;LIMPIADOR DE PISOS..."
                     ></textarea>
                     <div id="importar-compra-agil-progreso-wrap" class="d-none mb-2">
-                        <div class="progress" style="height:10px">
-                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                        <div class="progress" style="height:12px">
+                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                         </div>
-                        <p id="importar-compra-agil-progreso-texto" class="small text-muted mb-0 mt-1">Grabando cotizaci&oacute;n y l&iacute;neas...</p>
+                        <p id="importar-compra-agil-progreso-texto" class="small text-muted mb-0 mt-1">Preparando importaci&oacute;n...</p>
+                    </div>
+                    <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none" role="alert">
+                        <i class="bi bi-exclamation-octagon-fill me-1"></i>
+                        <span id="importar-compra-agil-alerta-texto"></span>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
@@ -998,7 +1002,10 @@
     const importarResultados = document.getElementById('importar-compra-agil-resultados');
     const importarResumen = document.getElementById('importar-compra-agil-resumen');
     const importarProgresoWrap = document.getElementById('importar-compra-agil-progreso-wrap');
+    const importarProgresoBar = document.getElementById('importar-compra-agil-progreso');
     const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
+    const importarAlerta = document.getElementById('importar-compra-agil-alerta');
+    const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -1013,8 +1020,63 @@
             .replace(/"/g, '&quot;');
     }
 
+    const IMPORT_LOTE_LINEAS = 3;
+
+    function limpiarImportAlerta() {
+        if (importarAlerta) importarAlerta.classList.add('d-none');
+        if (importarAlertaTexto) importarAlertaTexto.textContent = '';
+    }
+
+    function mostrarImportError(msg) {
+        if (importarAlerta && importarAlertaTexto) {
+            importarAlertaTexto.textContent = msg;
+            importarAlerta.classList.remove('d-none');
+        }
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+    }
+
+    function actualizarProgresoImportar(actual, total, textoExtra) {
+        const totalLineas = Math.max(0, Number(total) || 0);
+        const actualNum = Math.max(0, Number(actual) || 0);
+        const procesadas = totalLineas > 0 ? Math.min(actualNum, totalLineas) : actualNum;
+        const pct = totalLineas > 0 ? Math.round((procesadas / totalLineas) * 100) : (actualNum > 0 ? 100 : 0);
+
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = pct + '%';
+            importarProgresoBar.setAttribute('aria-valuenow', String(pct));
+            importarProgresoBar.textContent = pct + '%';
+        }
+
+        if (importarProgresoTexto) {
+            if (textoExtra) {
+                importarProgresoTexto.textContent = textoExtra;
+            } else if (totalLineas > 0) {
+                importarProgresoTexto.textContent = procesadas + ' de ' + totalLineas + ' líneas (' + pct + '%)';
+            } else {
+                importarProgresoTexto.textContent = 'Actualizando cabecera...';
+            }
+        }
+    }
+
     function renderImportPreview(data) {
         importPreviewData = data;
+
+        if (!data) {
+            if (importarCabecera) importarCabecera.classList.add('d-none');
+            if (importarTablaWrap) importarTablaWrap.classList.add('d-none');
+            if (importarResultados) importarResultados.innerHTML = '';
+            if (importarResumen) importarResumen.textContent = '';
+            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+            return;
+        }
+
+        if (data.error_cabecera) {
+            mostrarImportError(data.error_cabecera);
+        } else {
+            limpiarImportAlerta();
+        }
+
         const cab = data?.cabecera || {};
         const partes = [];
         if (cab.codigo_cotizacion) partes.push('Cotización: ' + cab.codigo_cotizacion);
@@ -1073,7 +1135,8 @@
         }
 
         if (btnImportarConfirmar) {
-            if ((res.total || 0) > 0) {
+            const puedeImportar = data?.puede_importar !== false;
+            if ((res.total || 0) > 0 && puedeImportar) {
                 btnImportarConfirmar.classList.remove('d-none');
             } else {
                 btnImportarConfirmar.classList.add('d-none');
@@ -1083,6 +1146,7 @@
 
     async function analizarImportCompraAgil() {
         const texto = String(importarTexto?.value || '').trim();
+        limpiarImportAlerta();
         if (!texto) {
             if (importarEstado) importarEstado.textContent = 'Pegue el texto de Compra Ágil.';
             return;
@@ -1104,33 +1168,44 @@
 
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (importarEstado) importarEstado.textContent = json.error || json.message || 'Error al analizar.';
+                mostrarImportError(json.error || json.message || 'Error al analizar.');
                 renderImportPreview(null);
                 return;
             }
 
             renderImportPreview(json);
             if (importarEstado) {
-                const total = json?.resumen?.total || 0;
-                importarEstado.textContent = total > 0
-                    ? 'Análisis listo.'
-                    : 'No se detectaron productos. Revise el texto pegado.';
+                if (json?.error_cabecera) {
+                    importarEstado.textContent = '';
+                } else {
+                    const total = json?.resumen?.total || 0;
+                    importarEstado.textContent = total > 0
+                        ? 'Análisis listo.'
+                        : 'No se detectaron productos. Revise el texto pegado.';
+                }
             }
         } catch (err) {
-            if (importarEstado) importarEstado.textContent = 'Error de conexión.';
+            mostrarImportError('Error de conexión.');
         } finally {
             if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
         }
     }
 
-    function mostrarProgresoImportar(texto) {
+    function mostrarProgresoImportar() {
         if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
-        if (importarProgresoTexto) importarProgresoTexto.textContent = texto || 'Grabando cotización y líneas...';
+        actualizarProgresoImportar(0, importPreviewData?.resumen?.total || 0, 'Preparando importación...');
         if (importarEstado) importarEstado.textContent = '';
+        limpiarImportAlerta();
     }
 
     function ocultarProgresoImportar() {
         if (importarProgresoWrap) importarProgresoWrap.classList.add('d-none');
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = '0%';
+            importarProgresoBar.setAttribute('aria-valuenow', '0');
+            importarProgresoBar.textContent = '0%';
+            importarProgresoBar.classList.add('progress-bar-animated');
+        }
     }
 
     async function confirmarImportCompraAgil() {
@@ -1151,32 +1226,69 @@
         importandoCompraAgil = true;
         if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
         if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
-        mostrarProgresoImportar('Importando cabecera y productos...');
+        mostrarProgresoImportar();
+
+        const total = importPreviewData?.resumen?.total || 0;
 
         try {
-            const body = new FormData();
-            body.append('_token', csrf);
-            body.append('texto', texto);
+            if (total === 0) {
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('texto', texto);
+                body.append('desde', '0');
+                body.append('hasta', '0');
 
-            const res = await fetch(importarMpUrls.importar, {
-                method: 'POST',
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body,
-            });
+                const res = await fetch(importarMpUrls.importar, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(json.error || json.message || 'No se pudo importar.');
+                    return;
+                }
+            } else {
+                for (let desde = 0; desde < total; desde += IMPORT_LOTE_LINEAS) {
+                    const hasta = Math.min(desde + IMPORT_LOTE_LINEAS, total);
+                    const textoProgreso = desde === 0
+                        ? 'Actualizando cabecera e importando líneas...'
+                        : null;
+                    actualizarProgresoImportar(desde, total, textoProgreso);
 
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                ocultarProgresoImportar();
-                if (importarEstado) importarEstado.textContent = json.error || json.message || 'No se pudo importar.';
-                return;
+                    const body = new FormData();
+                    body.append('_token', csrf);
+                    body.append('texto', texto);
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+
+                    const res = await fetch(importarMpUrls.importar, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    });
+
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        ocultarProgresoImportar();
+                        mostrarImportError(json.error || json.message || 'No se pudo importar.');
+                        return;
+                    }
+
+                    actualizarProgresoImportar(hasta, total);
+                }
             }
 
-            mostrarProgresoImportar('Importación lista. Actualizando pantalla...');
+            actualizarProgresoImportar(total, total, 'Importación lista. Actualizando pantalla...');
+            if (importarProgresoBar) {
+                importarProgresoBar.classList.remove('progress-bar-animated');
+            }
             mostrarLoaderCotiz();
             window.location.reload();
         } catch (err) {
             ocultarProgresoImportar();
-            if (importarEstado) importarEstado.textContent = 'Error de conexión.';
+            mostrarImportError('Error de conexión.');
         } finally {
             importandoCompraAgil = false;
             if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
@@ -1186,6 +1298,7 @@
 
     btnAbrirImportar?.addEventListener('click', () => {
         if (importarEstado) importarEstado.textContent = '';
+        limpiarImportAlerta();
         ocultarProgresoImportar();
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
         bsModalImportar?.show();

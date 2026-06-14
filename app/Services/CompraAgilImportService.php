@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Models\Nota;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class CompraAgilImportService
@@ -86,90 +87,149 @@ class CompraAgilImportService
     public function aplicar(Nota $nota, string $texto, string $usuario): array
     {
         $preview = $this->preview($texto);
-        $mensajes = [];
+        $total = count($preview['lineas']);
+        $resultado = $this->aplicarConPreview($nota, $preview, $usuario, 0, $total);
+        unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
 
-        if ($preview['cabecera']['codigo_cotizacion'] === '' && $preview['lineas'] === []) {
-            throw new RuntimeException('No se detectó información de Compra Ágil en el texto pegado.');
-        }
+        return $resultado;
+    }
 
-        $cabeceraActualizada = false;
-        $datosCabecera = [];
+    /**
+     * Importa un rango de líneas (0-based, hasta exclusivo). En el primer lote (desde=0) valida y actualiza cabecera.
+     *
+     * @return array{
+     *   agregadas: int,
+     *   vinculadas: int,
+     *   pendientes: int,
+     *   cabecera_actualizada: bool,
+     *   mensajes: string[],
+     *   total: int,
+     *   procesadas: int,
+     *   completado: bool
+     * }
+     */
+    public function aplicarLote(Nota $nota, string $texto, string $usuario, int $desde, int $hasta): array
+    {
+        $preview = $this->preview($texto);
+        $total = count($preview['lineas']);
+        $hasta = max($desde, min($hasta, $total));
 
-        if ($preview['cabecera']['codigo_cotizacion'] !== '') {
-            $datosCabecera['encargado'] = $preview['cabecera']['codigo_cotizacion'];
-        }
-        if ($preview['cabecera']['empresa'] !== '') {
-            $datosCabecera['empresa'] = $preview['cabecera']['empresa'];
-        }
-        if ($preview['cabecera']['rutempresa'] !== '') {
-            $datosCabecera['rutempresa'] = $preview['cabecera']['rutempresa'];
-        }
-        if ($preview['cabecera']['nombre'] !== '') {
-            $datosCabecera['descripcion'] = $preview['cabecera']['nombre'];
-        }
+        return $this->aplicarConPreview($nota, $preview, $usuario, $desde, $hasta);
+    }
 
-        if ($datosCabecera !== []) {
-            if (isset($datosCabecera['encargado'])) {
-                $error = $this->notaService->validarNumeroCotizacion($nota, $datosCabecera['encargado']);
-                if ($error !== null) {
-                    throw new RuntimeException($error);
+    /**
+     * @param  array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array<string, mixed>>,
+     *   resumen: array<string, int>
+     * }  $preview
+     * @return array{
+     *   agregadas: int,
+     *   vinculadas: int,
+     *   pendientes: int,
+     *   cabecera_actualizada: bool,
+     *   mensajes: string[],
+     *   total: int,
+     *   procesadas: int,
+     *   completado: bool
+     * }
+     */
+    private function aplicarConPreview(Nota $nota, array $preview, string $usuario, int $desde, int $hasta): array
+    {
+        return DB::transaction(function () use ($nota, $preview, $usuario, $desde, $hasta) {
+            $mensajes = [];
+            $total = count($preview['lineas']);
+
+            if ($desde === 0 && $preview['cabecera']['codigo_cotizacion'] === '' && $preview['lineas'] === []) {
+                throw new RuntimeException('No se detectó información de Compra Ágil en el texto pegado.');
+            }
+
+            $cabeceraActualizada = false;
+
+            if ($desde === 0) {
+                $datosCabecera = [];
+
+                if ($preview['cabecera']['codigo_cotizacion'] !== '') {
+                    $datosCabecera['encargado'] = $preview['cabecera']['codigo_cotizacion'];
+                }
+                if ($preview['cabecera']['empresa'] !== '') {
+                    $datosCabecera['empresa'] = $preview['cabecera']['empresa'];
+                }
+                if ($preview['cabecera']['rutempresa'] !== '') {
+                    $datosCabecera['rutempresa'] = $preview['cabecera']['rutempresa'];
+                }
+                if ($preview['cabecera']['nombre'] !== '') {
+                    $datosCabecera['descripcion'] = $preview['cabecera']['nombre'];
+                }
+
+                if ($datosCabecera !== []) {
+                    if (isset($datosCabecera['encargado'])) {
+                        $error = $this->notaService->validarNumeroCotizacion($nota, $datosCabecera['encargado']);
+                        if ($error !== null) {
+                            throw new RuntimeException($error);
+                        }
+                    }
+                    $this->notaService->modificarCabecera($nota, $datosCabecera);
+                    $cabeceraActualizada = true;
+                    $nota = $nota->fresh();
                 }
             }
-            $this->notaService->modificarCabecera($nota, $datosCabecera);
-            $cabeceraActualizada = true;
-            $nota = $nota->fresh();
-        }
 
-        $agregadas = 0;
-        $vinculadas = 0;
-        $pendientes = 0;
+            $agregadas = 0;
+            $vinculadas = 0;
+            $pendientes = 0;
 
-        foreach ($preview['lineas'] as $linea) {
-            $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $linea['descripcion']);
+            for ($i = $desde; $i < $hasta; $i++) {
+                $linea = $preview['lineas'][$i];
+                $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $linea['descripcion']);
 
-            $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
+                $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
 
-            if ($vinculo) {
-                $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $vinculo['prod_item']);
+                if ($vinculo) {
+                    $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $vinculo['prod_item']);
 
-                $this->detalleService->agregarLinea(
-                    $nota,
-                    $vinculo['prod_item'],
-                    (int) $linea['cantidad'],
-                    (int) $vinculo['prod_valor'],
-                    (int) $vinculo['prod_valor_costo'],
-                    $usuario,
-                    $linea['id_agile'],
-                    $linea['descripcion'],
-                );
+                    $this->detalleService->agregarLinea(
+                        $nota,
+                        $vinculo['prod_item'],
+                        (int) $linea['cantidad'],
+                        (int) $vinculo['prod_valor'],
+                        (int) $vinculo['prod_valor_costo'],
+                        $usuario,
+                        $linea['id_agile'],
+                        $linea['descripcion'],
+                    );
 
-                $vinculadas++;
-            } else {
-                $this->detalleService->agregarLineaAgilePendiente(
-                    $nota,
-                    $linea['id_agile'],
-                    $linea['descripcion'],
-                    (int) $linea['cantidad'],
-                );
+                    $vinculadas++;
+                } else {
+                    $this->detalleService->agregarLineaAgilePendiente(
+                        $nota,
+                        $linea['id_agile'],
+                        $linea['descripcion'],
+                        (int) $linea['cantidad'],
+                    );
 
-                $pendientes++;
-                $mensajes[] = 'Pendiente de vincular: '.$linea['descripcion'];
+                    $pendientes++;
+                    $mensajes[] = 'Pendiente de vincular: '.$linea['descripcion'];
+                }
+
+                $agregadas++;
             }
 
-            $agregadas++;
-        }
+            if ($desde === 0 && $hasta >= $total && $agregadas === 0) {
+                throw new RuntimeException('No se detectaron productos en el texto pegado.');
+            }
 
-        if ($agregadas === 0) {
-            throw new RuntimeException('No se detectaron productos en el texto pegado.');
-        }
-
-        return [
-            'agregadas' => $agregadas,
-            'vinculadas' => $vinculadas,
-            'pendientes' => $pendientes,
-            'cabecera_actualizada' => $cabeceraActualizada,
-            'mensajes' => $mensajes,
-        ];
+            return [
+                'agregadas' => $agregadas,
+                'vinculadas' => $vinculadas,
+                'pendientes' => $pendientes,
+                'cabecera_actualizada' => $cabeceraActualizada,
+                'mensajes' => $mensajes,
+                'total' => $total,
+                'procesadas' => $hasta,
+                'completado' => $hasta >= $total,
+            ];
+        });
     }
 
     /**
