@@ -59,6 +59,12 @@ class MaeprodImportLockService
             return true;
         }
 
+        $prepareStatePath = storage_path('app/imports/jobs/'.$uploadId.'/prepare-state.json');
+
+        if (File::exists($prepareStatePath)) {
+            return true;
+        }
+
         if (MaeprodImportStaging::query()->where('upload_id', $uploadId)->exists()) {
             return true;
         }
@@ -73,6 +79,17 @@ class MaeprodImportLockService
 
         if (! is_array($job)) {
             return false;
+        }
+
+        if (($job['import_mode'] ?? MaeprodImportJobService::IMPORT_MODE_BATCH) === MaeprodImportJobService::IMPORT_MODE_STREAM) {
+            $processedRows = (int) ($job['processed_rows'] ?? 0);
+            $totalRows = (int) ($job['total_rows'] ?? 0);
+
+            if ($totalRows < 1) {
+                return File::exists((string) ($job['source_path'] ?? ''));
+            }
+
+            return $processedRows < $totalRows;
         }
 
         return (int) ($job['next_batch'] ?? 0) < (int) ($job['batch_count'] ?? 0);

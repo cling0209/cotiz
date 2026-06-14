@@ -265,7 +265,25 @@ class MaeprodImportJobService
         $statePath = $this->prepareStatePath($uploadId);
 
         if (! $pendingService->has($uploadId) && ! File::exists($statePath)) {
-            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+            $sourceSpreadsheet = $this->findSourceSpreadsheetInJobDir($uploadId);
+
+            if ($sourceSpreadsheet !== null) {
+                $state = [
+                    'user_id' => $userId,
+                    'username' => (string) ($sourceSpreadsheet['username'] ?? 'import'),
+                    'original_name' => (string) ($sourceSpreadsheet['original_name'] ?? 'import.xlsx'),
+                    'source_path' => $sourceSpreadsheet['path'],
+                    'csv_path' => $jobDir.'/source.csv',
+                    'next_row' => 2,
+                    'processed_rows' => 0,
+                    'csv_started' => false,
+                    'pending' => false,
+                ];
+
+                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+            } else {
+                throw new \InvalidArgumentException('La importación no está lista o ya expiró. Vuelva a subir el archivo.');
+            }
         }
 
         if (File::exists($statePath)) {
@@ -327,7 +345,7 @@ class MaeprodImportJobService
 
             File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
         } else {
-            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró. Vuelva a subir el archivo.');
         }
 
         return $this->runSpreadsheetPrepareChunk($uploadId, $state, $statePath, $pendingService);
@@ -624,7 +642,11 @@ class MaeprodImportJobService
         $path = $this->jobDirectory($uploadId).'/job.json';
 
         if (! File::exists($path)) {
-            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+            if (File::exists($this->prepareStatePath($uploadId))) {
+                throw new \InvalidArgumentException('El archivo aún se está convirtiendo. Espere a que termine la preparación.');
+            }
+
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró. Vuelva a subir el archivo.');
         }
 
         $job = json_decode(File::get($path), true, flags: JSON_THROW_ON_ERROR);
@@ -1011,10 +1033,6 @@ class MaeprodImportJobService
 
             return $this->buildPrepareFinishedResponse($uploadId);
         } catch (\Throwable $e) {
-            if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
-                File::deleteDirectory($jobDir);
-            }
-
             throw $e;
         }
     }
@@ -1051,6 +1069,40 @@ class MaeprodImportJobService
         }
 
         return max(1, (int) ceil($totalRows / self::ROWS_PER_STREAM_CHUNK));
+    }
+
+    /**
+     * @return array{path: string, original_name: string, username: string}|null
+     */
+    protected function findSourceSpreadsheetInJobDir(string $uploadId): ?array
+    {
+        $jobDir = $this->jobDirectory($uploadId);
+        $metaPath = $jobDir.'/upload-meta.json';
+        $originalName = null;
+        $username = null;
+
+        if (File::exists($metaPath)) {
+            $meta = json_decode(File::get($metaPath), true);
+
+            if (is_array($meta)) {
+                $originalName = (string) ($meta['original_name'] ?? '');
+                $username = (string) ($meta['username'] ?? '');
+            }
+        }
+
+        foreach (['xlsx', 'xls'] as $extension) {
+            $path = $jobDir.'/source.'.$extension;
+
+            if (is_file($path)) {
+                return [
+                    'path' => $path,
+                    'original_name' => $originalName !== '' ? $originalName : 'import.'.$extension,
+                    'username' => $username !== '' ? $username : 'import',
+                ];
+            }
+        }
+
+        return null;
     }
 
     protected function assertValidUploadId(string $uploadId): void

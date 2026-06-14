@@ -94,9 +94,37 @@ class MaeprodChunkUploadService
         $isSpreadsheet = MaeprodImportFileTypes::isSpreadsheet((string) $meta['original_name']);
 
         if ($isSpreadsheet) {
+            $extension = MaeprodImportFileTypes::extensionFromName((string) $meta['original_name']);
+            $jobDir = storage_path('app/imports/jobs/'.$uploadId);
+            File::ensureDirectoryExists($jobDir);
+
+            if (File::isDirectory($jobDir)) {
+                foreach (File::glob($jobDir.'/*') ?: [] as $artifact) {
+                    if (is_file($artifact)) {
+                        File::delete($artifact);
+                    }
+                }
+            }
+
+            $stablePath = $jobDir.'/source.'.$extension;
+
+            if (! File::copy($mergedPath, $stablePath)) {
+                throw new \RuntimeException('No se pudo resguardar el archivo Excel para la importación.');
+            }
+
+            File::put($jobDir.'/upload-meta.json', json_encode([
+                'user_id' => $userId,
+                'username' => (string) $meta['username'],
+                'original_name' => (string) $meta['original_name'],
+            ], JSON_THROW_ON_ERROR));
+
+            if (File::exists($mergedPath)) {
+                File::delete($mergedPath);
+            }
+
             app(MaeprodImportPendingService::class)->register(
                 $uploadId,
-                $mergedPath,
+                $stablePath,
                 $userId,
                 (string) $meta['username'],
                 (string) $meta['original_name'],
