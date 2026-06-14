@@ -64,6 +64,33 @@ TXT;
         ];
     }
 
+    public function test_parsea_id_agile_pegado_sin_espacio_como_en_mp(): void
+    {
+        $texto = <<<'TXT'
+Detalle de la cotización 1057498-1637-COT26
+Nombre
+OA JERINGA DESECHABLE 50-60 ML PUNTA ROMA / SONDAS QUIRURGICAS
+SERVICIO DE SALUD SUR HOSPITAL SANATORIO EL PINO
+RUT 61.608.107-1
+Valor unitario
+$
+Subtotal
+Sondas quirúrgicasID: 39339378
+SONDA DE ASPIRACION 18 FR (JF016101018) (INTUBE) (BOLSA X 100 UN) PG 73235 PC 71142
+Cantidad
+10 Unidad
+TXT;
+
+        $result = $this->parser->parse($texto);
+
+        $this->assertSame('1057498-1637-COT26', $result['codigo_cotizacion']);
+        $this->assertCount(1, $result['lineas']);
+        $this->assertSame('39339378', $result['lineas'][0]['id_agile']);
+        $this->assertStringContainsString('SONDA DE ASPIRACION 18 FR', $result['lineas'][0]['descripcion']);
+        $this->assertSame(10, $result['lineas'][0]['cantidad']);
+        $this->assertStringContainsString('Sondas', $result['lineas'][0]['categoria']);
+    }
+
     public function test_texto_vacio_devuelve_estructura_vacia(): void
     {
         $result = $this->parser->parse('   ');

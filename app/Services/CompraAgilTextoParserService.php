@@ -115,7 +115,7 @@ class CompraAgilTextoParserService
             if ($l === '' || $this->esLineaEtiquetaCabecera($l)) {
                 continue;
             }
-            if (preg_match('/\bID:\s*\d+/i', $l)) {
+            if (preg_match('/ID:\s*\d+/iu', $l)) {
                 continue;
             }
             if (mb_strlen($l) >= 4) {
@@ -161,28 +161,33 @@ class CompraAgilTextoParserService
 
         while ($i < $count) {
             $linea = $lineas[$i];
-            if (! preg_match('/\bID:\s*(\d+)\b/i', $linea, $idMatch)) {
+            if (! $this->extraerIdAgileDeLinea($linea, $idMatch)) {
                 $i++;
 
                 continue;
             }
 
             $idAgile = trim($idMatch[1]);
-            $categoria = trim(preg_replace('/\s*ID:\s*\d+\s*$/i', '', $linea) ?? $linea);
+            $categoria = trim(preg_replace('/ID:\s*\d+.*$/iu', '', $linea) ?? '');
+            $descripcionEnLinea = '';
+            if (preg_match('/ID:\s*\d+\s+(.+)/iu', $linea, $descMatch)) {
+                $descripcionEnLinea = trim($descMatch[1]);
+            }
 
-            $descripcion = '';
+            $descripcion = $descripcionEnLinea;
             $cantidad = 1;
             $cantidadMatch = [];
+            $siguienteId = null;
             $i++;
 
             while ($i < $count) {
                 $l = $lineas[$i];
-                if ($l === '') {
+                if ($l === '' || $this->esLineaPrecioMp($l)) {
                     $i++;
 
                     continue;
                 }
-                if (preg_match('/\bID:\s*\d+\b/i', $l)) {
+                if ($this->extraerIdAgileDeLinea($l, $siguienteId)) {
                     break;
                 }
                 if ($this->esLineaCantidad($l, $cantidadMatch)) {
@@ -201,6 +206,10 @@ class CompraAgilTextoParserService
                 $i++;
             }
 
+            if ($descripcion === '') {
+                $descripcion = $categoria;
+            }
+
             if ($descripcion !== '') {
                 $out[] = [
                     'id_agile' => $idAgile,
@@ -212,6 +221,39 @@ class CompraAgilTextoParserService
         }
 
         return $out;
+    }
+
+    /**
+     * MP suele pegar "CategoríaID: 12345" sin espacio; \bID: no coincide ahí.
+     *
+     * @param  array<int, string>  $match
+     */
+    private function extraerIdAgileDeLinea(string $linea, ?array &$match): bool
+    {
+        if (preg_match('/ID:\s*(\d+)/iu', $linea, $m)) {
+            $match = $m;
+
+            return true;
+        }
+
+        $match = null;
+
+        return false;
+    }
+
+    private function esLineaPrecioMp(string $linea): bool
+    {
+        $t = trim($linea);
+
+        if ($t === '$') {
+            return true;
+        }
+
+        if (preg_match('/^\$\s*[\d.,]+$/u', $t)) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[\d]{1,3}(\.[\d]{3})+$/u', $t);
     }
 
     private function esLineaEtiquetaCabecera(string $linea): bool
@@ -235,7 +277,7 @@ class CompraAgilTextoParserService
      */
     private function esLineaCantidad(string $linea, ?array &$cantidadMatch): bool
     {
-        if (preg_match('/^(\d+)\s*(Litro|litros?|Unidad|unidades?|Pack|packs?|Metro|metros?|Kilo|kilos?|Caja|cajas?|Par|pares?|Rollo|rollos?)\b/iu', $linea, $m)) {
+        if (preg_match('/^(\d+)\s*(Litro|litros?|Unidad|unidades?|Pack|packs?|Metro|metros?|Kilo|kilos?|Caja|cajas?|Par|pares?|Rollo|rollos?|Bolsa|bolsas?)\b/iu', $linea, $m)) {
             $cantidadMatch = $m;
 
             return true;
