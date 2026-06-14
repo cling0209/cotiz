@@ -30,5 +30,10 @@ fi
 
 php artisan l5-swagger:generate 2>/dev/null || true
 
+if [ "$RUN_QUEUE_WORKER" = "true" ]; then
+  echo "Iniciando queue worker en segundo plano (mismo contenedor que la web)..."
+  php artisan queue:work database --sleep=3 --tries=1 --timeout=3600 >> storage/logs/queue-worker.log 2>&1 &
+fi
+
 php-fpm -D
 exec nginx -g 'daemon off;'
