@@ -490,6 +490,68 @@
         wireEliminarLinea(tr);
     });
 
+    function quitarLineaDetalle(tr, delForm) {
+        tr?.remove();
+        delForm?.remove();
+
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (tbody && !tbody.querySelector('tr[data-linea]')) {
+            tbody.innerHTML = '<tr><td colspan="14" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>';
+        }
+
+        marcarLineasRepetidas();
+        sincronizarOrdenGrilla();
+        recalcularMontoTotal();
+    }
+
+    async function eliminarLineaAjax(tr, delForm) {
+        const prod = delForm.dataset.prod;
+        const orden = delForm.dataset.orden;
+        const btn = tr.querySelector('.eliminar-cell button');
+
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Eliminando...';
+        }
+
+        try {
+            const res = await fetch(delForm.action, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    prod_item: prod,
+                    orden: parseInt(orden, 10),
+                }),
+            });
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Eliminar';
+                }
+                dlgAlert(json.error || json.message || 'No se pudo eliminar la línea.', { title: 'Error', type: 'danger' });
+                return;
+            }
+
+            quitarLineaDetalle(tr, delForm);
+            if (json.resumen) {
+                actualizarResumenLineas(json.resumen);
+            }
+        } catch (err) {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Eliminar';
+            }
+            dlgAlert('Error de conexión al eliminar la línea.', { title: 'Error', type: 'danger' });
+        }
+    }
+
     function wireEliminarLinea(tr) {
         const elimTd = tr.querySelector('.eliminar-cell');
         if (!elimTd || elimTd.querySelector('button')) return;
@@ -503,7 +565,7 @@
         btn.textContent = 'Eliminar';
         btn.addEventListener('click', () => {
             dlgConfirm('¿Eliminar línea?', { title: 'Eliminar línea', type: 'danger' }).then(ok => {
-                if (ok) delForm.submit();
+                if (ok) eliminarLineaAjax(tr, delForm);
             });
         });
         elimTd.appendChild(btn);

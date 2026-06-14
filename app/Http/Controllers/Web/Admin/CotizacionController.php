@@ -230,7 +230,7 @@ class CotizacionController extends Controller
         return back()->with('success', 'Línea agregada.');
     }
 
-    public function eliminarLinea(Request $request, int $nronota): RedirectResponse
+    public function eliminarLinea(Request $request, int $nronota): RedirectResponse|JsonResponse
     {
         $nota = Nota::query()->findOrFail($nronota);
 
@@ -248,6 +248,13 @@ class CotizacionController extends Controller
         ]);
 
         $this->detalleService->eliminarLinea($nota, $datos['prod_item'], (int) $datos['orden']);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'resumen' => $this->detalleService->resumenLineasNota($nota),
+            ]);
+        }
 
         return back()->with('success', 'Línea eliminada.');
     }
