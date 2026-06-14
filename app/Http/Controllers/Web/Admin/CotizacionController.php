@@ -67,6 +67,7 @@ class CotizacionController extends Controller
             'nota' => $nota,
             'lineas' => $lineas,
             'total' => $lineas->sum(fn ($row) => $row['total']),
+            'resumenLineas' => $this->detalleService->resumenLineasNota($nota),
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
@@ -359,16 +360,16 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        $datos = $request->validate([
-            'texto' => ['required', 'string', 'max:50000'],
+        $request->validate([
+            'texto' => ['nullable', 'string', 'max:50000'],
         ]);
 
-        $ids = $this->compraAgilImport->idsAgileDelTexto($datos['texto']);
-        $coincidencias = $this->detalleService->idsAgileExistentesEnNota($nota, $ids);
+        $detalle = $this->detalleService->resumenLineasNota($nota);
 
         return response()->json([
-            'coincidencias' => $coincidencias,
-            'total' => count($coincidencias),
+            'con_agile' => $detalle['con_agile'],
+            'total' => $detalle['con_agile'],
+            'detalle' => $detalle,
         ]);
     }
 
@@ -380,18 +381,12 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        $datos = $request->validate([
-            'texto' => ['required', 'string', 'max:50000'],
-        ]);
-
-        $ids = $this->compraAgilImport->idsAgileDelTexto($datos['texto']);
-        $coincidencias = $this->detalleService->idsAgileExistentesEnNota($nota, $ids);
-        $eliminadas = $this->detalleService->eliminarLineasPorAgileIds($nota, $coincidencias);
+        $eliminadas = $this->detalleService->eliminarTodasLineasAgile($nota);
 
         return response()->json([
             'ok' => true,
-            'coincidencias' => $coincidencias,
             'eliminadas' => $eliminadas,
+            'detalle' => $this->detalleService->resumenLineasNota($nota->fresh()),
         ]);
     }
 

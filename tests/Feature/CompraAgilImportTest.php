@@ -262,7 +262,7 @@ TXT;
         $response2->assertJsonCount(1, 'lineas');
     }
 
-    public function test_limpiar_lineas_agile_coincidentes_al_reanalizar(): void
+    public function test_limpiar_elimina_todas_las_lineas_agile_al_reanalizar(): void
     {
         $nota = $this->crearNota();
 
@@ -278,22 +278,41 @@ TXT;
             'prod_descripcion_agile' => 'LIMPIADOR DE PISOS',
         ]);
 
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DEMO001',
+            'prod_valor' => 1000,
+            'cantidad' => 2,
+            'fechahora' => now(),
+            'orden' => 2,
+            'prod_valor_costo' => 800,
+            'prod_item_agile' => null,
+        ]);
+
         $coincidencias = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota),
             ['texto' => $this->textoMp],
         );
         $coincidencias->assertOk();
-        $coincidencias->assertJsonPath('total', 1);
-        $coincidencias->assertJsonPath('coincidencias.0', '31237835');
+        $coincidencias->assertJsonPath('con_agile', 1);
+        $coincidencias->assertJsonPath('detalle.total', 2);
+        $coincidencias->assertJsonPath('detalle.sin_agile', 1);
 
         $limpiar = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota),
-            ['texto' => $this->textoMp],
         );
         $limpiar->assertOk();
         $limpiar->assertJsonPath('eliminadas', 1);
+        $limpiar->assertJsonPath('detalle.total', 1);
+        $limpiar->assertJsonPath('detalle.sin_agile', 1);
+        $limpiar->assertJsonPath('detalle.con_agile', 0);
 
-        $this->assertSame(0, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
+        $this->assertSame(1, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DEMO001',
+            'orden' => 1,
+        ]);
     }
 
     public function test_importar_guarda_descripcion_agile_en_linea(): void

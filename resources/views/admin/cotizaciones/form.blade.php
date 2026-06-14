@@ -104,6 +104,10 @@
             <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
                 <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
             </button>
+            <span class="small text-muted" id="cotiz-resumen-lineas-actual">
+                {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
+                ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
+            </span>
             <span class="small text-muted">Pegue texto de Mercado P&uacute;blico para cargar cabecera y l&iacute;neas (vincule productos con Buscar en cada fila).</span>
         </div>
 
@@ -361,6 +365,13 @@
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
                         Copie y pegue el texto de la p&aacute;gina de Compra &Aacute;gil (Mercado P&uacute;blico): cabecera con n&uacute;mero de cotizaci&oacute;n, cliente, RUT y listado de productos con ID.
+                    </p>
+                    <p class="small mb-2" id="importar-compra-agil-detalle-actual">
+                        <strong>Cotizaci&oacute;n actual:</strong>
+                        <span id="importar-compra-agil-detalle-actual-texto">
+                            {{ $resumenLineas['total'] }} l&iacute;nea(s)
+                            ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
+                        </span>
                     </p>
                     <textarea
                         id="importar-compra-agil-texto"
@@ -1046,6 +1057,7 @@
         });
     });
 
+    const resumenLineasInicial = @json($resumenLineas);
     const importarMpUrls = {
         preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota)),
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
@@ -1128,6 +1140,21 @@
             importarAlerta.classList.add('alert-warning');
             importarAlertaTexto.textContent = msg;
         }
+    }
+
+    function textoResumenLineas(detalle) {
+        const total = Math.max(0, Number(detalle?.total) || 0);
+        const conAgile = Math.max(0, Number(detalle?.con_agile) || 0);
+        const sinAgile = Math.max(0, Number(detalle?.sin_agile) ?? (total - conAgile));
+        return total + ' línea(s) en la cotización (' + conAgile + ' con ID Agile, ' + sinAgile + ' sin ID Agile).';
+    }
+
+    function actualizarResumenLineas(detalle) {
+        const texto = textoResumenLineas(detalle);
+        const modalTxt = document.getElementById('importar-compra-agil-detalle-actual-texto');
+        const formTxt = document.getElementById('cotiz-resumen-lineas-actual');
+        if (modalTxt) modalTxt.textContent = texto.replace(' en la cotización', '');
+        if (formTxt) formTxt.textContent = texto;
     }
 
     function mensajeErrorImportJson(json, fallback) {
@@ -1311,10 +1338,13 @@
                 return;
             }
 
-            if ((coin.total || 0) > 0) {
+            if ((coin.con_agile || coin.total || 0) > 0) {
+                const det = coin.detalle || {};
                 const okReemplazo = await dlgConfirm(
-                    'Hay ' + coin.total + ' línea(s) en la cotización con el mismo ID Agile del texto pegado. Se eliminarán antes de analizar. ¿Continuar?',
-                    { title: 'Reemplazar líneas', type: 'warning' },
+                    'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile'
+                        + (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '')
+                        + '. Al analizar se eliminarán todas las líneas con ID Agile (las manuales se conservan). ¿Continuar?',
+                    { title: 'Reemplazar líneas Agile', type: 'warning' },
                 );
                 if (!okReemplazo) {
                     ocultarProgresoImportar();
@@ -1323,7 +1353,6 @@
 
                 const bodyLimp = new FormData();
                 bodyLimp.append('_token', csrf);
-                bodyLimp.append('texto', texto);
                 const resLimp = await fetch(importarMpUrls.limpiarAgile, {
                     method: 'POST',
                     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -1332,10 +1361,11 @@
                 const limp = await resLimp.json().catch(() => ({}));
                 if (!resLimp.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas previas.');
+                    mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas Agile.');
                     return;
                 }
-                mostrarImportAviso('Se eliminaron ' + (limp.eliminadas || 0) + ' línea(s) con ID Agile repetido. Analizando texto nuevo...');
+                if (limp.detalle) actualizarResumenLineas(limp.detalle);
+                mostrarImportAviso('Se eliminaron ' + (limp.eliminadas || 0) + ' línea(s) con ID Agile. Analizando texto nuevo...');
             }
 
             let todasLineas = [];
@@ -1533,6 +1563,7 @@
 
     btnAbrirImportar?.addEventListener('click', () => {
         resetImportCompraAgilModal();
+        actualizarResumenLineas(resumenLineasInicial);
         bsModalImportar?.show();
         setTimeout(() => importarTexto?.focus(), 200);
     });

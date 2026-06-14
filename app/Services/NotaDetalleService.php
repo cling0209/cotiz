@@ -386,6 +386,64 @@ class NotaDetalleService
     }
 
     /**
+     * @return array{total: int, con_agile: int, sin_agile: int}
+     */
+    public function resumenLineasNota(Nota $nota): array
+    {
+        $lineas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->get(['prod_item_agile']);
+
+        $conAgile = $lineas->filter(
+            fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')) !== ''
+        )->count();
+        $total = $lineas->count();
+
+        return [
+            'total' => $total,
+            'con_agile' => $conAgile,
+            'sin_agile' => $total - $conAgile,
+        ];
+    }
+
+    public function eliminarTodasLineasAgile(Nota $nota): int
+    {
+        $lineas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->orderBy('orden')
+            ->get();
+
+        $aEliminar = $lineas->filter(function (NotaDetalle $linea) {
+            return trim((string) ($linea->prod_item_agile ?? '')) !== '';
+        });
+
+        $eliminadas = $aEliminar->count();
+        if ($eliminadas === 0) {
+            return 0;
+        }
+
+        $quedan = $lineas->reject(
+            fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')) !== ''
+        )->values();
+
+        DB::transaction(function () use ($nota, $aEliminar, $quedan) {
+            foreach ($aEliminar as $linea) {
+                NotaDetalle::query()
+                    ->where('nronota', $nota->nronota)
+                    ->where('prod_item', $linea->prod_item)
+                    ->where('orden', (int) $linea->orden)
+                    ->delete();
+            }
+
+            if ($quedan->isNotEmpty()) {
+                $this->persistirOrdenLineas($nota->nronota, $quedan);
+            }
+        });
+
+        return $eliminadas;
+    }
+
+    /**
      * @param  array<int, string>  $idsAgile
      * @return array<int, string>
      */
@@ -441,7 +499,25 @@ class NotaDetalleService
             return 0;
         }
 
-        DB::transaction(fn () => $this->persistirOrdenLineas($nota->nronota, $quedan));
+        $aEliminar = $lineas->reject(function (NotaDetalle $linea) use ($ids) {
+            $agile = trim((string) ($linea->prod_item_agile ?? ''));
+
+            return $agile === '' || ! in_array($agile, $ids, true);
+        });
+
+        DB::transaction(function () use ($nota, $aEliminar, $quedan) {
+            foreach ($aEliminar as $linea) {
+                NotaDetalle::query()
+                    ->where('nronota', $nota->nronota)
+                    ->where('prod_item', $linea->prod_item)
+                    ->where('orden', (int) $linea->orden)
+                    ->delete();
+            }
+
+            if ($quedan->isNotEmpty()) {
+                $this->persistirOrdenLineas($nota->nronota, $quedan);
+            }
+        });
 
         return $eliminadas;
     }
