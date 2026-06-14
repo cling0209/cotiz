@@ -431,6 +431,14 @@ class CotizacionController extends Controller
             }
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error interno al importar. Intente con menos líneas o contacte al administrador.',
+            ], 500);
         }
 
         return response()->json(array_merge([

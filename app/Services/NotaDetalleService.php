@@ -501,6 +501,12 @@ class NotaDetalleService
     {
         $lineas = $lineasOrdenadas->values();
 
+        if ($lineas->isEmpty()) {
+            NotaDetalle::query()->where('nronota', $nronota)->delete();
+
+            return;
+        }
+
         foreach ($lineas as $index => $linea) {
             $tempOrden = -($index + 1);
             $actualizado = NotaDetalle::query()

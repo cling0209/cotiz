@@ -1130,6 +1130,21 @@
         }
     }
 
+    function mensajeErrorImportJson(json, fallback) {
+        if (json?.error) return json.error;
+        if (json?.message && typeof json.message === 'string') return json.message;
+        if (json?.errors && typeof json.errors === 'object') {
+            const partes = [];
+            Object.values(json.errors).forEach((msgs) => {
+                (Array.isArray(msgs) ? msgs : [msgs]).forEach((m) => {
+                    if (m) partes.push(String(m));
+                });
+            });
+            if (partes.length) return partes.join(' ');
+        }
+        return fallback;
+    }
+
     function mostrarImportError(msg) {
         if (importarAlerta && importarAlertaTexto) {
             importarAlerta.classList.remove('d-none', 'alert-warning');
@@ -1465,7 +1480,7 @@
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(json.error || json.message || 'No se pudo importar.');
+                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                     return;
                 }
             } else {
@@ -1492,7 +1507,7 @@
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok) {
                         ocultarProgresoImportar();
-                        mostrarImportError(json.error || json.message || 'No se pudo importar.');
+                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
                     }
 
