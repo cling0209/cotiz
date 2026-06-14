@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-import" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-desc" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -135,7 +135,8 @@
                         <th>C&oacute;digo</th>
                         <th>Cod. Softland</th>
                         <th>ID Agile</th>
-                        <th>Descripci&oacute;n del producto</th>
+                        <th>Descripci&oacute;n MP</th>
+                        <th>Descripci&oacute;n maestro</th>
                         <th>Fecha<br>act.&nbsp;precio</th>
                         <th>Precio Costo</th>
                         <th>Precio Unitario</th>
@@ -198,10 +199,16 @@
                             <td>
                                 <input type="text" name="lineas[{{ $idx }}][prod_item_softland]" maxlength="20" value="{{ old('lineas.'.$idx.'.prod_item_softland', $row['prod_item_softland']) }}" title="C&oacute;digo Softland">
                             </td>
-                            <td><span class="nv-fill">{{ $row['prod_item_agile'] }}</span></td>
+                            <td><span class="nv-fill linea-id-agile">{{ $row['prod_item_agile'] }}</span></td>
                             <td>
-                                @if($row['pendiente_vinculo'] && $row['prod_descripcion_agile'] !== '')
-                                    <span class="nv-fill text-muted small d-block">{{ $row['prod_descripcion_agile'] }}</span>
+                                @if($row['prod_item_agile'] !== '' && $row['prod_descripcion_agile'] !== '')
+                                    <span class="nv-fill linea-desc-agile small">{{ $row['prod_descripcion_agile'] }}</span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($row['pendiente_vinculo'])
                                     <span class="nv-fill linea-prod-nombre text-warning-emphasis">Sin vincular</span>
                                 @else
                                     <span class="nv-fill linea-prod-nombre">{{ $row['prod_nombre'] }}</span>
@@ -246,7 +253,7 @@
                             <td class="text-center eliminar-cell" data-prod="{{ $linea->prod_item }}" data-orden="{{ $linea->orden }}"></td>
                         </tr>
                     @empty
-                        <tr><td colspan="13" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>
+                        <tr><td colspan="14" class="text-muted text-center py-3">Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -883,7 +890,7 @@
         const items = [];
         document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
             const codigo = String(tr.dataset.prod || '').trim();
-            const idAgileCell = String(tr.querySelector('td:nth-child(5) .nv-fill')?.textContent || '').trim().replace(/\s/g, '');
+            const idAgileCell = String(tr.querySelector('td .linea-id-agile')?.textContent || '').trim().replace(/\s/g, '');
             const idMp = idAgileCell || idAgileParaMercadoPublico(codigo) || codigo;
             const precioNum = parseInt(tr.querySelector('.linea-prod-valor')?.value || '0', 10) || 0;
             if (codigo) {

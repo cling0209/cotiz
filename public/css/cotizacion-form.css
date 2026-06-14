@@ -420,3 +420,8 @@
 .cotiz-popup-resultados table {
     font-size: 0.875rem;
 }
+
+.cotizacion-ingreso .linea-desc-agile {
+    color: #495057;
+    line-height: 1.3;
+}
