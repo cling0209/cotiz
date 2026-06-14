@@ -232,9 +232,25 @@ class MaeprodImportService
      *     preview_limit: int
      * }
      */
-    public function previewFromPath(string $path, array $columnMapping, int $limit = 10): array
+    public function previewFromPath(string $path, array $columnMapping, int $limit = 10, ?string $originalName = null): array
     {
-        $rows = $this->parseCsvFromPath($path);
+        $extension = MaeprodImportFileTypes::extensionFromName($originalName ?? basename($path));
+
+        if (in_array($extension, MaeprodImportFileTypes::SPREADSHEET_EXTENSIONS, true)) {
+            $metadata = app(MaeprodSpreadsheetReader::class)->readMetadata($path);
+            $rows = app(MaeprodSpreadsheetReader::class)->readDataRows(
+                $path,
+                2,
+                min(2 + max($limit, 1) + 20, max(2, (int) $metadata['highest_row'])),
+                $metadata['headers'],
+                (int) $metadata['column_count'],
+            );
+            $rows = array_slice($rows, 0, $limit);
+
+            return $this->previewRows($rows, $columnMapping, $limit, max(0, (int) $metadata['highest_row'] - 1));
+        }
+
+        $rows = $this->parseCsvFromPathLimited($path, $limit + 20);
 
         return $this->previewRows($rows, $columnMapping, $limit);
     }
@@ -265,7 +281,7 @@ class MaeprodImportService
      *     preview_limit: int
      * }
      */
-    public function previewRows(array $rows, ?array $columnMapping, int $limit = 10): array
+    public function previewRows(array $rows, ?array $columnMapping, int $limit = 10, ?int $totalRows = null): array
     {
         $preview = [];
         $summary = ['crear' => 0, 'actualizar' => 0, 'error' => 0];
@@ -313,7 +329,7 @@ class MaeprodImportService
         return [
             'rows' => $preview,
             'summary' => $summary,
-            'total_rows' => count($rows),
+            'total_rows' => $totalRows ?? count($rows),
             'preview_limit' => $limit,
         ];
     }
@@ -794,6 +810,65 @@ class MaeprodImportService
         }
 
         return $this->parseRowsFromPath($path, $file->getClientOriginalName());
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    private function parseCsvFromPathLimited(string $path, int $maxRows): array
+    {
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return [];
+        }
+
+        try {
+            $firstLine = fgets($handle);
+
+            if ($firstLine === false || trim($firstLine) === '') {
+                return [];
+            }
+
+            $firstLine = $this->ensureUtf8($firstLine);
+            $delimiter = str_contains($firstLine, ';') ? ';' : ',';
+            $headers = array_map(
+                fn (string $h) => mb_strtolower(trim($this->stripBom($h))),
+                str_getcsv($this->stripBom($firstLine), $delimiter),
+            );
+
+            $rows = [];
+            $physicalLine = 1;
+
+            while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+                $physicalLine++;
+
+                if ($this->isEmptyRow($data)) {
+                    continue;
+                }
+
+                $row = ['_csv_line' => (string) $physicalLine];
+                foreach ($headers as $columnIndex => $header) {
+                    if ($header === '') {
+                        continue;
+                    }
+
+                    $row[$header] = trim((string) ($data[$columnIndex] ?? ''));
+                }
+
+                if (count($row) > 1) {
+                    $rows[] = $row;
+                }
+
+                if (count($rows) >= $maxRows) {
+                    break;
+                }
+            }
+
+            return $rows;
+        } finally {
+            fclose($handle);
+        }
     }
 
     /**

@@ -19,6 +19,7 @@ class MaeprodImportStaging extends Model
         'user_id',
         'username',
         'original_name',
+        'source_path',
         'columns',
         'total_rows',
         'csv_content',

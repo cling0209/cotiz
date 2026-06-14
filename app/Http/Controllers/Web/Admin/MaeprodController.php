@@ -280,7 +280,7 @@ class MaeprodController extends Controller
         return response()->json($preview);
     }
 
-    public function prepareCustomImport(Request $request, MaeprodImportStagingService $staging): JsonResponse
+    public function prepareCustomImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
     {
         $data = $request->validate([
             'upload_id' => ['required', 'uuid'],
@@ -289,7 +289,7 @@ class MaeprodController extends Controller
 
         try {
             $mapping = $this->normalizeColumnMapping($data['mapping']);
-            $prepared = $staging->prepareJob(
+            $prepared = $importJob->continuePrepareCustom(
                 $data['upload_id'],
                 (int) $request->user()->id,
                 $mapping,
@@ -309,11 +309,7 @@ class MaeprodController extends Controller
             ], 500);
         }
 
-        return response()->json([
-            'ready' => true,
-            'upload_id' => $prepared['upload_id'],
-            'batch_count' => $prepared['batch_count'],
-        ]);
+        return response()->json($prepared);
     }
 
     public function prepareTemplateImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
@@ -323,7 +319,7 @@ class MaeprodController extends Controller
         ]);
 
         try {
-            $prepared = $importJob->ensurePrepared(
+            $prepared = $importJob->continuePrepareTemplate(
                 $data['upload_id'],
                 (int) $request->user()->id,
             );

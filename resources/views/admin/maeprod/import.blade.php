@@ -375,30 +375,61 @@ async function processImportBatches(uploadId, batchCount, progress) {
     }
 }
 
-async function prepareTemplateImport(uploadId, progress) {
-    progress.label.textContent = 'Analizando archivo Excel...';
-    progress.bar.style.width = '50%';
-    progress.percent.textContent = '50%';
+function updatePrepareProgress(progress, payload, labelPrefix = 'Preparando archivo') {
+    const processed = payload.processed_rows ?? 0;
+    const total = payload.total_rows ?? null;
+    const percent = total && total > 0
+        ? Math.min(99, Math.round((processed / total) * 100))
+        : Math.min(95, 20 + (processed > 0 ? 10 : 0));
 
+    progress.bar.style.width = `${percent}%`;
+    progress.percent.textContent = `${percent}%`;
+
+    if (total && total > 0) {
+        progress.label.textContent = `${labelPrefix}: ${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas`;
+    } else if (processed > 0) {
+        progress.label.textContent = `${labelPrefix}: ${processed.toLocaleString('es-CL')} filas procesadas`;
+    } else {
+        progress.label.textContent = labelPrefix + '...';
+    }
+}
+
+async function prepareImportUntilFinished(url, fetchOptions, progress, labelPrefix = 'Preparando archivo') {
+    let payload = null;
+
+    do {
+        const response = await fetch(url, fetchOptions);
+        payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
+        updatePrepareProgress(progress, payload, labelPrefix);
+    } while (payload.prepare_finished !== true);
+
+    progress.bar.style.width = '100%';
+    progress.percent.textContent = '100%';
+
+    return payload;
+}
+
+async function prepareTemplateImport(uploadId, progress) {
     const formData = new FormData();
     formData.append('upload_id', uploadId);
     formData.append('_token', csrfToken);
 
-    const response = await fetch(prepareTemplateImportUrl, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': csrfToken,
+    return prepareImportUntilFinished(
+        prepareTemplateImportUrl,
+        {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            credentials: 'same-origin',
         },
-        credentials: 'same-origin',
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
-
-    return payload;
+        progress,
+        'Analizando archivo',
+    );
 }
 
 async function processImportAll(uploadId, progress, options = {}) {
@@ -658,23 +689,25 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
     progress.label.textContent = 'Preparando importación...';
 
     try {
-        const prepareResponse = await fetch(prepareImportUrl, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken,
+        const preparePayload = await prepareImportUntilFinished(
+            prepareImportUrl,
+            {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    upload_id: customUploadId,
+                    mapping: getCustomMapping(),
+                }),
             },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                upload_id: customUploadId,
-                mapping: getCustomMapping(),
-            }),
-        });
-
-        const preparePayload = await prepareResponse.json().catch(() => ({}));
-        if (!prepareResponse.ok) throw new Error(importErrorMessage(preparePayload, prepareResponse.status));
+            progress,
+            'Preparando importación',
+        );
 
         await processImportAll(preparePayload.upload_id, progress, {
             batchCount: preparePayload.batch_count,

@@ -176,22 +176,37 @@ class MaeprodImportTest extends TestCase
             'precio' => 'pvp',
         ];
 
-        $prepareResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.prepare'), [
-                'upload_id' => $uploadId,
-                'mapping' => $mapping,
-            ]);
+        $prepared = $this->prepareCustomUntilFinished($admin, $uploadId, $mapping);
 
-        $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
-
-        $this->processImportUntilFinished($admin, (string) $prepareResponse->json('upload_id'));
+        $this->processImportUntilFinished($admin, (string) $prepared['upload_id']);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'XLS002',
             'prod_nombre' => 'EXCEL CUSTOM',
             'prod_familia' => 'LIBR',
             'prod_valor' => 2200,
+        ]);
+    }
+
+    public function test_streaming_csv_import_handles_many_rows(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $lines = ['codigo;nombre;familia;precio'];
+        for ($i = 1; $i <= 2500; $i++) {
+            $lines[] = "BLK{$i};PRODUCTO {$i};PAPEL;1000";
+        }
+
+        $this->importCsvAsAdmin($admin, "\xEF\xBB\xBF".implode("\n", $lines));
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'BLK2500',
+            'prod_nombre' => 'PRODUCTO 2500',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 1000,
         ]);
     }
 
@@ -558,16 +573,9 @@ class MaeprodImportTest extends TestCase
             'precio' => 'pvp',
         ];
 
-        $prepareResponse = $this->withoutMiddleware()
-            ->actingAs($admin)
-            ->postJson(route('admin.productos.import.prepare'), [
-                'upload_id' => $uploadId,
-                'mapping' => $mapping,
-            ]);
+        $prepared = $this->prepareCustomUntilFinished($admin, $uploadId, $mapping);
 
-        $prepareResponse->assertOk()->assertJsonStructure(['upload_id', 'batch_count']);
-
-        $this->processImportUntilFinished($admin, (string) $prepareResponse->json('upload_id'));
+        $this->processImportUntilFinished($admin, (string) $prepared['upload_id']);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'CUST002',
@@ -626,16 +634,40 @@ class MaeprodImportTest extends TestCase
         );
     }
 
+    /**
+     * @param  array<string, string>  $mapping
+     * @return array<string, mixed>
+     */
+    private function prepareCustomUntilFinished(User $admin, string $uploadId, array $mapping): array
+    {
+        do {
+            $prepareResponse = $this->withoutMiddleware()
+                ->actingAs($admin)
+                ->postJson(route('admin.productos.import.prepare'), [
+                    'upload_id' => $uploadId,
+                    'mapping' => $mapping,
+                ]);
+
+            $prepareResponse->assertOk()
+                ->assertJsonStructure(['upload_id', 'batch_count', 'prepare_finished', 'processed_rows']);
+        } while ($prepareResponse->json('prepare_finished') !== true);
+
+        return $prepareResponse->json();
+    }
+
     private function processImportUntilFinished(User $admin, string $uploadId, bool $pendingParse = false): \Illuminate\Testing\TestResponse
     {
         if ($pendingParse) {
-            $this->withoutMiddleware()
-                ->actingAs($admin)
-                ->postJson(route('admin.productos.import.prepare.template'), [
-                    'upload_id' => $uploadId,
-                ])
-                ->assertOk()
-                ->assertJsonStructure(['upload_id', 'batch_count']);
+            do {
+                $prepareResponse = $this->withoutMiddleware()
+                    ->actingAs($admin)
+                    ->postJson(route('admin.productos.import.prepare.template'), [
+                        'upload_id' => $uploadId,
+                    ]);
+
+                $prepareResponse->assertOk()
+                    ->assertJsonStructure(['upload_id', 'batch_count', 'prepare_finished', 'processed_rows']);
+            } while ($prepareResponse->json('prepare_finished') !== true);
         }
 
         $processResponse = null;

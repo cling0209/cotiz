@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
+use App\Support\MaeprodImportFileTypes;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 class MaeprodImportStagingService
@@ -22,16 +24,73 @@ class MaeprodImportStagingService
     ): array {
         $this->assertValidUploadId($uploadId);
 
-        $importService = app(MaeprodImportService::class);
-        $content = $importService->readAndNormalizePath($mergedPath, $originalName);
-
-        return $this->storeFromCsvContent(
+        return $this->storeFromMergedPath(
             $uploadId,
-            $content,
+            $mergedPath,
             $userId,
             $username,
             $originalName,
         );
+    }
+
+    /**
+     * @return array{upload_id: string, columns: list<string>, total_rows: int, suggested_mapping: array<string, string>}
+     */
+    public function storeFromMergedPath(
+        string $uploadId,
+        string $mergedPath,
+        int $userId,
+        string $username,
+        string $originalName,
+    ): array {
+        $this->assertValidUploadId($uploadId);
+
+        if (! is_file($mergedPath)) {
+            throw new \InvalidArgumentException('No se encontró el archivo subido.');
+        }
+
+        $preparer = app(MaeprodImportStreamPreparer::class);
+        $stagingPath = $this->stagingFilePath($uploadId, $originalName);
+        File::ensureDirectoryExists(dirname($stagingPath));
+        File::copy($mergedPath, $stagingPath);
+
+        if ($preparer->isSpreadsheetPath($mergedPath, $originalName)) {
+            $metadata = app(MaeprodSpreadsheetReader::class)->readMetadata($stagingPath);
+            $columns = array_values(array_filter(
+                $metadata['headers'],
+                fn (string $header) => $header !== '',
+            ));
+            $totalRows = max(0, (int) $metadata['highest_row'] - 1);
+        } else {
+            $parsed = $preparer->readCsvHeaders($stagingPath);
+            $columns = $parsed['data_headers'];
+            $totalRows = $preparer->countCsvDataRows($stagingPath, $parsed['delimiter']);
+        }
+
+        if ($columns === []) {
+            File::delete($stagingPath);
+            throw new \InvalidArgumentException('El archivo no contiene encabezados válidos.');
+        }
+
+        MaeprodImportStaging::query()->where('upload_id', $uploadId)->delete();
+
+        MaeprodImportStaging::query()->create([
+            'upload_id' => $uploadId,
+            'user_id' => $userId,
+            'username' => $username,
+            'original_name' => $originalName,
+            'source_path' => $stagingPath,
+            'columns' => $columns,
+            'total_rows' => $totalRows,
+            'csv_content' => '',
+        ]);
+
+        return [
+            'upload_id' => $uploadId,
+            'columns' => $columns,
+            'total_rows' => $totalRows,
+            'suggested_mapping' => MaeprodImportColumnMapping::suggest($columns),
+        ];
     }
 
     /**
@@ -66,7 +125,7 @@ class MaeprodImportStagingService
         }
 
         try {
-            return $this->storeFromMergedCsv(
+            return $this->storeFromMergedPath(
                 $uploadId,
                 (string) $pending['merged_path'],
                 $userId,
@@ -109,6 +168,7 @@ class MaeprodImportStagingService
             'user_id' => $userId,
             'username' => $username,
             'original_name' => $originalName,
+            'source_path' => null,
             'columns' => $columns,
             'total_rows' => count($rows),
             'csv_content' => $content,
@@ -128,26 +188,21 @@ class MaeprodImportStagingService
      */
     public function prepareJob(string $uploadId, int $userId, array $mapping): array
     {
-        $staging = $this->findStaging($uploadId);
+        $progress = app(MaeprodImportJobService::class)->continuePrepareCustom($uploadId, $userId, $mapping);
 
-        if ((int) $staging->user_id !== $userId) {
-            throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+        if (! $progress['prepare_finished']) {
+            throw new \RuntimeException('La preparación del archivo aún no ha finalizado.');
         }
 
-        MaeprodImportColumnMapping::validate($mapping);
+        return [
+            'upload_id' => $progress['upload_id'],
+            'batch_count' => $progress['batch_count'],
+        ];
+    }
 
-        $prepared = app(MaeprodImportJobService::class)->prepareFromCsvContent(
-            $uploadId,
-            $staging->csv_content,
-            $userId,
-            $staging->username,
-            $staging->original_name,
-            $mapping,
-        );
-
-        $this->cleanup($uploadId);
-
-        return $prepared;
+    public function findStagingRecord(string $uploadId): MaeprodImportStaging
+    {
+        return $this->findStaging($uploadId);
     }
 
     /**
@@ -169,8 +224,19 @@ class MaeprodImportStagingService
 
         MaeprodImportColumnMapping::validate($mapping);
 
-        return app(MaeprodImportService::class)->previewFromContent(
-            $staging->csv_content,
+        $importService = app(MaeprodImportService::class);
+
+        if ($staging->source_path) {
+            return $importService->previewFromPath(
+                $staging->source_path,
+                $mapping,
+                $limit,
+                $staging->original_name,
+            );
+        }
+
+        return $importService->previewFromContent(
+            $staging->csv_content ?? '',
             $mapping,
             $limit,
         );
@@ -178,6 +244,12 @@ class MaeprodImportStagingService
 
     public function cleanup(string $uploadId): void
     {
+        $staging = MaeprodImportStaging::query()->find($uploadId);
+
+        if ($staging !== null && $staging->source_path && is_file($staging->source_path)) {
+            File::delete($staging->source_path);
+        }
+
         MaeprodImportStaging::query()->where('upload_id', $uploadId)->delete();
     }
 
@@ -195,11 +267,22 @@ class MaeprodImportStagingService
         return $staging;
     }
 
+    protected function stagingFilePath(string $uploadId, string $originalName): string
+    {
+        $extension = MaeprodImportFileTypes::extensionFromName($originalName);
+
+        return storage_path('app/imports/staging/'.$uploadId.'.'.$extension);
+    }
+
     protected function purgeExpired(): void
     {
-        MaeprodImportStaging::query()
+        $expired = MaeprodImportStaging::query()
             ->where('created_at', '<', now()->subHours(self::MAX_AGE_HOURS))
-            ->delete();
+            ->get();
+
+        foreach ($expired as $staging) {
+            $this->cleanup($staging->upload_id);
+        }
     }
 
     protected function assertValidUploadId(string $uploadId): void

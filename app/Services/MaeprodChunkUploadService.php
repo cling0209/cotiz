@@ -142,7 +142,7 @@ class MaeprodChunkUploadService
                 ];
             }
 
-            $prepared = app(MaeprodImportJobService::class)->prepareFromMergedCsv(
+            $prepared = app(MaeprodImportJobService::class)->prepareFromMergedFile(
                 $uploadId,
                 $mergedPath,
                 $userId,

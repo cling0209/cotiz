@@ -2,11 +2,95 @@
 
 namespace App\Services;
 
+use App\Support\MaeprodSpreadsheetRowReadFilter;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class MaeprodSpreadsheetReader
 {
+    /**
+     * @return array{highest_row: int, headers: list<string>, column_count: int}
+     */
+    public function readMetadata(string $path): array
+    {
+        if (! is_file($path)) {
+            return ['highest_row' => 0, 'headers' => [], 'column_count' => 0];
+        }
+
+        $reader = $this->createReader($path);
+        $worksheetInfo = $reader->listWorksheetInfo($path)[0] ?? null;
+        $highestRow = max(0, (int) ($worksheetInfo['totalRows'] ?? 0));
+        $highestColumn = (string) ($worksheetInfo['lastColumnLetter'] ?? '');
+        $columnCount = $highestColumn !== ''
+            ? Coordinate::columnIndexFromString($highestColumn)
+            : 0;
+
+        $reader->setReadFilter(new MaeprodSpreadsheetRowReadFilter(1, 1));
+        $spreadsheet = $reader->load($path);
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headerRow = $columnCount > 0
+            ? $this->readSheetRow($sheet, 1, $columnCount)
+            : [];
+
+        $headers = [];
+        foreach ($headerRow as $header) {
+            $headers[] = mb_strtolower(trim($this->stripBom((string) $header)));
+        }
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return [
+            'highest_row' => $highestRow,
+            'headers' => $headers,
+            'column_count' => $columnCount,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $headers
+     * @return list<array<string, string>>
+     */
+    public function readDataRows(string $path, int $startRow, int $endRow, array $headers, int $columnCount): array
+    {
+        if (! is_file($path) || $startRow > $endRow || $columnCount < 1) {
+            return [];
+        }
+
+        $reader = $this->createReader($path);
+        $reader->setReadFilter(new MaeprodSpreadsheetRowReadFilter($startRow, $endRow));
+        $spreadsheet = $reader->load($path);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = [];
+
+        for ($rowIndex = $startRow; $rowIndex <= $endRow; $rowIndex++) {
+            $data = $this->readSheetRow($sheet, $rowIndex, $columnCount);
+
+            if ($this->isEmptyRow($data)) {
+                continue;
+            }
+
+            $row = ['_csv_line' => (string) $rowIndex];
+            foreach ($headers as $columnIndex => $header) {
+                if ($header === '') {
+                    continue;
+                }
+
+                $row[$header] = trim((string) ($data[$columnIndex] ?? ''));
+            }
+
+            if (count($row) > 1) {
+                $rows[] = $row;
+            }
+        }
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return $rows;
+    }
+
     /**
      * @return list<array<string, string>>
      */
@@ -16,16 +100,7 @@ class MaeprodSpreadsheetReader
             return [];
         }
 
-        $reader = IOFactory::createReaderForFile($path);
-
-        if (method_exists($reader, 'setReadDataOnly')) {
-            $reader->setReadDataOnly(true);
-        }
-
-        if (method_exists($reader, 'setReadEmptyCells')) {
-            $reader->setReadEmptyCells(false);
-        }
-
+        $reader = $this->createReader($path);
         $spreadsheet = $reader->load($path);
         $sheet = $spreadsheet->getActiveSheet();
         $highestRow = $sheet->getHighestDataRow();
@@ -147,5 +222,20 @@ class MaeprodSpreadsheetReader
         }
 
         return $value;
+    }
+
+    private function createReader(string $path): \PhpOffice\PhpSpreadsheet\Reader\IReader
+    {
+        $reader = IOFactory::createReaderForFile($path);
+
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+
+        return $reader;
     }
 }
