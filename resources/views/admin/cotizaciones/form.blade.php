@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-41" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-42" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -438,13 +438,15 @@
                 <button type="button" class="btn-close" id="cerrarPopupVincularAgile" aria-label="Cerrar"></button>
             </div>
             <div class="cotiz-popup-body">
-                <p class="small text-muted mb-2"><strong>Descripci&oacute;n Compra &Aacute;gil:</strong> <span id="popupVincularDescAgile"></span></p>
-                <div class="input-group input-group-sm mb-3">
-                    <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
-                    <button type="button" class="btn btn-outline-secondary" id="btnPopupVincularLimpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
-                    <button type="button" class="btn btn-secondary" id="btnPopupVincularBuscar">Buscar</button>
+                <div class="cotiz-popup-buscar">
+                    <p class="small text-muted mb-2"><strong>Descripci&oacute;n Compra &Aacute;gil:</strong> <span id="popupVincularDescAgile"></span></p>
+                    <div class="input-group input-group-sm mb-0">
+                        <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
+                        <button type="button" class="btn btn-outline-secondary" id="btnPopupVincularLimpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="btnPopupVincularBuscar">Buscar</button>
+                    </div>
                 </div>
                 <div id="popupVincularResultados" class="cotiz-popup-resultados"></div>
             </div>

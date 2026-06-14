@@ -400,6 +400,8 @@
 }
 
 .cotiz-popup-content {
+    display: flex;
+    flex-direction: column;
     background: #fff;
     border-radius: 8px;
     width: min(900px, 100%);
@@ -417,8 +419,24 @@
 }
 
 .cotiz-popup-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
     padding: 1rem;
-    max-height: calc(90vh - 60px);
+    overflow: hidden;
+}
+
+.cotiz-popup-buscar {
+    flex-shrink: 0;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.cotiz-popup-resultados {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 
