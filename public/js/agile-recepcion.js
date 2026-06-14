@@ -22,10 +22,16 @@
     let filaActual = null;
 
     function parseFactor(text) {
-        const t = String(text || '').trim().replace(',', '.');
-        if (!/^\d+(?:\.\d{1,2})?$/.test(t)) return null;
-        const n = parseFloat(t);
-        return n > 0 ? n : null;
+        let t = String(text ?? '').trim().replace(/\s/g, '');
+        if (!t) return null;
+        if (/^\d+[,.]$/.test(t)) {
+            t = t.slice(0, -1);
+        }
+        if (!t) return null;
+        const norm = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+        if (!/^\d+(?:\.\d{1,2})?$/.test(norm)) return null;
+        const n = parseFloat(norm);
+        return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
     }
 
     function parseEntero(text) {
@@ -152,6 +158,26 @@
     });
 
     const btnFactor = document.getElementById('btnAceptarPorcentaje');
+    const factorInputAgile = document.getElementById('porcentaje');
+    if (factorInputAgile) {
+        factorInputAgile.addEventListener('input', function () {
+            let out = '';
+            let sepUsed = false;
+            for (const ch of String(this.value || '')) {
+                if (ch >= '0' && ch <= '9') {
+                    out += ch;
+                } else if ((ch === ',' || ch === '.') && !sepUsed) {
+                    out += ch;
+                    sepUsed = true;
+                }
+            }
+            if (out !== this.value) {
+                this.value = out;
+            }
+            const err = document.getElementById('porcentajeError');
+            if (err) err.style.display = 'none';
+        });
+    }
     if (btnFactor) {
         const btnFactorLabel = btnFactor.textContent;
 

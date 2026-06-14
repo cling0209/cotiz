@@ -179,6 +179,27 @@ class CotizacionOrdenLineaTest extends TestCase
         ]);
     }
 
+    public function test_aplicar_factor_acepta_coma_decimal(): void
+    {
+        $nota = $this->crearNota();
+        $this->crearLinea($nota, [
+            'prod_item' => 'PROD001',
+            'orden' => 1,
+            'prod_valor_costo' => 1000,
+            'prod_valor' => 1220,
+        ]);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.factor', $nota->nronota),
+            ['factor_precio_venta' => '1,50'],
+        )
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('factor_precio_venta_fmt', '1,50');
+
+        $this->assertEquals(1.50, (float) $nota->fresh()->factor_precio_venta);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

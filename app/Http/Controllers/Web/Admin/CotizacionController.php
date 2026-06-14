@@ -247,7 +247,7 @@ class CotizacionController extends Controller
                 'ok' => true,
                 'idx' => $idx,
                 'orden' => $detalle->orden,
-                'prod_item' => $detalle->prod_item,
+                'prod_item' => (string) $detalle->prod_item,
                 'prod_nombre' => $row['prod_nombre'],
                 'image_url' => $row['image_url'] ?? '',
                 'html' => view('admin.cotizaciones.partials.linea-detalle-row', [
@@ -559,7 +559,7 @@ class CotizacionController extends Controller
 
         return response()->json([
             'data' => $productos->map(fn (Maeprod $p) => [
-                'prod_item' => $p->prod_item,
+                'prod_item' => (string) $p->prod_item,
                 'prod_nombre' => $p->prod_nombre,
                 'prod_valor' => $p->prod_valor,
                 'prod_valor_costo' => $p->prod_valor_costo,

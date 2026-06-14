@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ProductCodeNormalizer;
 use App\Support\MaeprodSpreadsheetRowReadFilter;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -174,22 +175,6 @@ class MaeprodSpreadsheetReader
 
     private function formatCellValue(mixed $value): string
     {
-        if ($value === null) {
-            return '';
-        }
-
-        if (is_string($value)) {
-            return trim($value);
-        }
-
-        if (is_int($value) || is_float($value)) {
-            if (is_float($value) && floor($value) === $value) {
-                return (string) (int) $value;
-            }
-
-            return rtrim(rtrim(sprintf('%.10F', (float) $value), '0'), '.');
-        }
-
         if ($value instanceof \DateTimeInterface) {
             return $value->format('Y-m-d H:i:s');
         }
@@ -198,7 +183,7 @@ class MaeprodSpreadsheetReader
             return $value ? '1' : '0';
         }
 
-        return trim((string) $value);
+        return ProductCodeNormalizer::normalize($value);
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Models\Maeprod;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
 use App\Support\MaeprodImportFileTypes;
+use App\Support\ProductCodeNormalizer;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -777,6 +778,7 @@ class MaeprodImportService
         $mapped['prod_valor'] = $this->normalizeNumericField($mapped['prod_valor'] ?? '');
         $mapped['prod_valor_costo'] = $this->normalizeNumericField($mapped['prod_valor_costo'] ?? '');
         $mapped['prod_stock_real'] = $this->normalizeNumericField($mapped['prod_stock_real'] ?? '');
+        $mapped['prod_item'] = ProductCodeNormalizer::normalize($mapped['prod_item'] ?? '');
 
         return $mapped;
     }

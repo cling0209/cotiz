@@ -408,23 +408,61 @@
     }
 
     const fmt = n => '$' + Math.round(n).toLocaleString('es-CL');
+
+    function codigoProductoTexto(val) {
+        if (val == null || val === '') return '';
+        if (typeof val === 'number' && Number.isFinite(val)) {
+            return Number.isInteger(val)
+                ? String(val)
+                : val.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+        }
+        const s = String(val).trim();
+        const m = s.replace(/\s/g, '').match(/^([\d]+(?:[,\.]\d+)?)[eE]([+\-]?\d+)$/);
+        if (!m) return s;
+        const mantissa = parseFloat(m[1].replace(',', '.'));
+        const exp = parseInt(m[2], 10);
+        if (!Number.isFinite(mantissa) || !Number.isFinite(exp)) return s;
+        return (mantissa * Math.pow(10, exp)).toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+    }
+
     const montototal = document.getElementById('montototal');
     const factorInput = document.getElementById('factor_precio_venta');
     const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
     const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
 
     function parseFactorChile(texto) {
-        const t = String(texto || '').trim().replace(/\s/g, '');
+        let t = String(texto ?? '').trim().replace(/\s/g, '');
         if (!t) return null;
-        const norm = t.indexOf(',') >= 0 ? t.replace(/\./g, '').replace(',', '.') : t;
+        if (/^\d+[,.]$/.test(t)) {
+            t = t.slice(0, -1);
+        }
+        if (!t) return null;
+        const norm = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
         if (!/^\d+(?:\.\d{1,2})?$/.test(norm)) return null;
         const f = parseFloat(norm);
-        return Number.isFinite(f) && f > 0 ? f : null;
+        return Number.isFinite(f) && f > 0 ? Math.round(f * 100) / 100 : null;
     }
 
     function formatFactorChile(f) {
         return f.toFixed(2).replace('.', ',');
     }
+
+    factorInput?.addEventListener('input', function () {
+        let out = '';
+        let sepUsed = false;
+        for (const ch of String(this.value || '')) {
+            if (ch >= '0' && ch <= '9') {
+                out += ch;
+            } else if ((ch === ',' || ch === '.') && !sepUsed) {
+                out += ch;
+                sepUsed = true;
+            }
+        }
+        if (out !== this.value) {
+            this.value = out;
+        }
+        this.classList.remove('is-invalid');
+    });
 
     factorInput?.addEventListener('blur', function () {
         const parsed = parseFactorChile(this.value);
@@ -1065,7 +1103,7 @@
 
     function buscarProductoThumbHtml(p) {
         const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
-        const titulo = escHtml((p.prod_item || '') + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
+        const titulo = escHtml(codigoProductoTexto(p.prod_item) + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
         const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="lazy" '
             + 'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
 
@@ -1162,7 +1200,7 @@
             tr.tabIndex = 0;
             tr.innerHTML =
                 '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
-                '<td class="align-middle"><code class="small">' + (p.prod_item || '') + '</code></td>' +
+                '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
                 '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
                 '<td class="align-middle small text-muted">' + (p.prod_familia || '') + '</td>' +
                 '<td class="align-middle text-end fw-semibold">' + fmtPrecio(p.prod_valor) + '</td>';
@@ -1997,33 +2035,34 @@
         const tr = encontrarFilaVincular(filaIdx, orden, agileId);
         if (!tr || !linea) return false;
 
-        const codigo = String(linea.prod_item || '').trim();
+        const codigoRaw = String(linea.prod_item || '').trim();
+        const codigoMostrar = codigoProductoTexto(linea.prod_item);
         const prodAnterior = tr.dataset.prod || '';
-        const tituloImagen = codigo + (linea.prod_nombre ? ' — ' + linea.prod_nombre : '');
+        const tituloImagen = codigoMostrar + (linea.prod_nombre ? ' — ' + linea.prod_nombre : '');
 
         const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + tr.dataset.orden + '"][data-prod="' + prodAnterior + '"]')
             || document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
         if (delForm) {
-            delForm.dataset.prod = codigo;
+            delForm.dataset.prod = codigoRaw;
             const delProdInput = delForm.querySelector('input[name="prod_item"]');
-            if (delProdInput) delProdInput.value = codigo;
+            if (delProdInput) delProdInput.value = codigoRaw;
         }
 
-        tr.dataset.prod = codigo;
+        tr.dataset.prod = codigoRaw;
         tr.classList.remove('linea-pendiente-vinculo');
 
         const codigoSpan = tr.querySelector('.linea-codigo-interno');
         if (codigoSpan) {
-            codigoSpan.textContent = codigo;
+            codigoSpan.textContent = codigoMostrar;
             codigoSpan.classList.remove('text-warning', 'fw-semibold');
         }
 
         const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
-        if (hiddenProd) hiddenProd.value = codigo;
+        if (hiddenProd) hiddenProd.value = codigoRaw;
 
         const nombreCell = tr.querySelector('.linea-prod-nombre');
         if (nombreCell) {
-            nombreCell.textContent = linea.prod_nombre || codigo;
+            nombreCell.textContent = linea.prod_nombre || codigoMostrar;
             nombreCell.classList.remove('text-warning-emphasis');
         }
 
@@ -2062,7 +2101,7 @@
 
         tr.querySelectorAll('[data-prod]').forEach(el => {
             if (el.classList.contains('eliminar-cell')) {
-                el.dataset.prod = codigo;
+                el.dataset.prod = codigoRaw;
             }
         });
 

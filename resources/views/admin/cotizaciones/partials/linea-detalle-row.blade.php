@@ -49,7 +49,7 @@
     </td>
     <td>
         <div class="d-flex flex-wrap gap-1 align-items-center">
-            <span class="linea-codigo-interno @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ $linea->prod_item }}</span>
+            <span class="linea-codigo-interno @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ \App\Support\ProductCodeNormalizer::normalize($linea->prod_item) }}</span>
             @if($row['prod_item_agile'] !== '')
                 <button
                     type="button"

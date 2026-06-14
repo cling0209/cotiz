@@ -151,8 +151,31 @@ class NotaService
             return null;
         }
 
-        $texto = trim(str_replace(',', '.', (string) $valor));
-        if ($texto === '' || ! preg_match('/^\d+(?:\.\d{1,2})?$/', $texto)) {
+        if (is_int($valor) || is_float($valor)) {
+            $factor = round((float) $valor, 2);
+
+            return $factor > 0 ? $factor : null;
+        }
+
+        $texto = trim(str_replace([' ', "\xc2\xa0"], '', (string) $valor));
+        if ($texto === '') {
+            return null;
+        }
+
+        if (str_ends_with($texto, ',') || str_ends_with($texto, '.')) {
+            $texto = substr($texto, 0, -1);
+        }
+
+        if ($texto === '') {
+            return null;
+        }
+
+        if (str_contains($texto, ',')) {
+            $texto = str_replace('.', '', $texto);
+            $texto = str_replace(',', '.', $texto);
+        }
+
+        if (! preg_match('/^\d+(?:\.\d{1,2})?$/', $texto)) {
             return null;
         }
 
