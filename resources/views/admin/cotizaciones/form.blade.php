@@ -710,17 +710,15 @@
         elimTd.appendChild(btn);
     }
 
-    function insertarLineaDetalle(json) {
+    function insertarLineaDetalle(json, productoBusqueda) {
         const tbody = document.querySelector('#tabla_detalle tbody');
         if (!tbody || !json?.html) return;
 
         tbody.querySelector('tr:not([data-linea])')?.remove();
 
-        const idxAttr = json.idx != null ? String(json.idx) : '';
         tbody.insertAdjacentHTML('beforeend', json.html.trim());
-        const tr = (idxAttr !== '' && tbody.querySelector('tr[data-linea="' + idxAttr + '"]'))
-            || tbody.querySelector('tr[data-linea]:last-child');
-        if (!tr) return;
+        const tr = tbody.lastElementChild;
+        if (!tr || !tr.matches('tr[data-linea]')) return;
 
         const formsContainer = document.getElementById('cotiz-eliminar-lineas-forms');
         if (formsContainer && json.delete_form_html) {
@@ -731,7 +729,8 @@
 
         const tituloImagen = (json.prod_item || tr.dataset.prod || '')
             + (json.prod_nombre ? ' — ' + json.prod_nombre : '');
-        actualizarImagenLinea(tr, json.image_url || '', tituloImagen);
+        const imageUrl = String(json.image_url || productoBusqueda?.image_url || '').trim();
+        actualizarImagenLinea(tr, imageUrl, tituloImagen);
         marcarLineasRepetidas();
         actualizarControlesOrdenVisual();
         recalcularMontoTotal();
@@ -1039,7 +1038,7 @@
             const json = await res.json().catch(() => ({}));
 
             if (res.ok && json.ok) {
-                insertarLineaDetalle(json);
+                insertarLineaDetalle(json, p);
                 ocultarLoaderCotiz();
                 try {
                     sessionStorage.removeItem('page-loader-pending');
@@ -1104,7 +1103,8 @@
     function buscarProductoThumbHtml(p) {
         const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
         const titulo = escHtml(codigoProductoTexto(p.prod_item) + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
-        const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="lazy" '
+        const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="eager" '
+            + 'decoding="async" referrerpolicy="no-referrer" '
             + 'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
 
         if (p?.image_url) {

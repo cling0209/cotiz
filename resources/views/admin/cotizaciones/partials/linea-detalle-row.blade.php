@@ -25,26 +25,32 @@
         </span>
     </td>
     <td class="linea-imagen-cell" onclick="event.stopPropagation();">
-        @if(! empty($row['image_url']))
+        @php
+            $lineaImagenUrl = trim((string) ($row['image_url'] ?? ''));
+            $lineaImagenTitulo = \App\Support\ProductCodeNormalizer::normalize($linea->prod_item)
+                . ' — '
+                . ($row['prod_nombre'] ?? '');
+        @endphp
+        @if($lineaImagenUrl !== '')
             <button type="button"
-                    class="product-image-zoom-trigger"
-                    data-image-url="{{ $row['image_url'] }}"
-                    data-image-title="{{ $linea->prod_item }} — {{ $row['prod_nombre'] }}"
+                    class="product-image-zoom-trigger cotiz-buscar-thumb-btn"
+                    data-image-url="{{ $lineaImagenUrl }}"
+                    data-image-title="{{ $lineaImagenTitulo }}"
                     title="Ver imagen ampliada">
-                <x-product-image
-                    :maeprod="$linea->producto"
-                    :alt="$row['prod_nombre']"
-                    variant="admin-thumb"
-                    wrapperClass="imagen"
-                />
+                <img src="{{ $lineaImagenUrl }}"
+                     alt=""
+                     class="cotiz-buscar-thumb"
+                     loading="eager"
+                     decoding="async"
+                     referrerpolicy="no-referrer"
+                     onerror="this.onerror=null;this.src='{{ asset('images/no-image.svg') }}'">
             </button>
         @else
-            <x-product-image
-                :maeprod="$linea->producto"
-                :alt="$row['prod_nombre']"
-                variant="admin-thumb"
-                wrapperClass="imagen"
-            />
+            <img src="{{ asset('images/no-image.svg') }}"
+                 alt=""
+                 class="cotiz-buscar-thumb"
+                 loading="eager"
+                 decoding="async">
         @endif
     </td>
     <td>
