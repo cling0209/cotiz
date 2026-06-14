@@ -426,13 +426,26 @@ async function uploadCsvChunks(file, mode, progress, uploadPlan) {
     throw new Error('No se completó la carga del archivo.');
 }
 
+function estimateImportBatchCount(totalRows) {
+    if (!totalRows || totalRows < 1) {
+        return 1;
+    }
+
+    return Math.max(1, Math.ceil(totalRows / 2000));
+}
+
 async function processImportBatches(uploadId, batchCount, progress, importPlan, options = {}) {
     let processed = 0;
-    const totalBatches = Math.max(1, batchCount || 1);
+    let totalBatches = Math.max(1, batchCount || 1);
     const plan = importPlan || { step: 1, totalSteps: 1, stage: 'Grabando productos', start: 0, span: 100 };
-    const streamMode = options.streamMode === true;
-    const totalRows = options.totalRows ?? null;
-    let processedRows = 0;
+    let streamMode = options.streamMode === true;
+    let rowsTotal = options.totalRows ?? null;
+
+    if (streamMode && rowsTotal > 0 && totalBatches <= 1) {
+        totalBatches = estimateImportBatchCount(rowsTotal);
+    }
+
+    const maxStepPercent = plan.start + plan.span;
 
     while (true) {
         const formData = new FormData();
@@ -453,20 +466,27 @@ async function processImportBatches(uploadId, batchCount, progress, importPlan, 
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
+        if (payload.import_mode === 'stream') {
+            streamMode = true;
+        }
+
+        if (payload.total_batches) {
+            totalBatches = Math.max(1, payload.total_batches);
+        }
+
+        if (payload.total_rows) {
+            rowsTotal = payload.total_rows;
+        }
+
         processed = payload.processed_batches ?? processed + 1;
-        processedRows = payload.processed_rows ?? processedRows;
         const result = payload.result || {};
         const created = result.created ?? 0;
         const updated = result.updated ?? 0;
         const skipped = result.skipped ?? 0;
-        const rowsTotal = payload.total_rows ?? totalRows;
-        const useRowProgress = streamMode && rowsTotal && rowsTotal > 0;
-        const percent = useRowProgress
-            ? plan.start + ((processedRows / rowsTotal) * plan.span)
-            : plan.start + ((processed / totalBatches) * plan.span);
-        const detail = useRowProgress
-            ? `${processedRows.toLocaleString('es-CL')} de ${rowsTotal.toLocaleString('es-CL')} filas — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`
-            : `Lote ${processed} de ${totalBatches} — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`;
+        const percent = payload.finished
+            ? maxStepPercent
+            : Math.min(maxStepPercent - 1, plan.start + ((processed / totalBatches) * plan.span));
+        const detail = `Lote ${processed} de ${totalBatches} — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`;
 
         setImportProgress(progress, {
             step: plan.step,
@@ -590,9 +610,11 @@ async function processImportAll(uploadId, progress, options = {}) {
 
     if (pendingParse) {
         const prepared = await prepareTemplateImport(uploadId, progress);
-        batchCount = prepared.batch_count ?? 1;
+        batchCount = prepared.batch_count ?? estimateImportBatchCount(prepared.total_rows);
         totalRows = prepared.total_rows ?? totalRows;
         options.streamMode = prepared.stream_mode === true || streamMode;
+    } else if (streamMode && totalRows > 0 && batchCount <= 1) {
+        batchCount = estimateImportBatchCount(totalRows);
     }
 
     await processImportBatches(uploadId, batchCount, progress, {
@@ -733,7 +755,7 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
             pendingParse: payload.pending_parse === true,
             streamMode: payload.stream_mode === true,
             totalRows: payload.total_rows ?? null,
-            batchCount: payload.batch_count ?? 1,
+            batchCount: payload.batch_count ?? estimateImportBatchCount(payload.total_rows),
         });
     } catch (error) {
         await releaseImportLock();

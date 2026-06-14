@@ -157,13 +157,16 @@ class MaeprodChunkUploadService
             }
         }
 
+        $totalRows = (int) $prepared['total_rows'];
+
         return [
             'ready' => true,
             'mode' => 'template',
             'upload_id' => $prepared['upload_id'],
             'stream_mode' => true,
             'ready_to_process' => true,
-            'total_rows' => $prepared['total_rows'],
+            'total_rows' => $totalRows,
+            'batch_count' => max(1, (int) ceil($totalRows / MaeprodImportJobService::ROWS_PER_STREAM_CHUNK)),
         ];
     }
 

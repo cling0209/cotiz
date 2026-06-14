@@ -226,6 +226,8 @@ class MaeprodController extends Controller
             'mode' => $result['mode'] ?? 'template',
             'upload_id' => $result['upload_id'],
             'pending_parse' => $result['pending_parse'] ?? false,
+            'stream_mode' => $result['stream_mode'] ?? false,
+            'ready_to_process' => $result['ready_to_process'] ?? false,
             'batch_count' => $result['batch_count'] ?? null,
             'columns' => $result['columns'] ?? null,
             'total_rows' => $result['total_rows'] ?? null,
