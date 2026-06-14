@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Web\Admin\AdjudicadaListadoController;
 use App\Http\Controllers\Web\Admin\AgileRecepcionController;
 use App\Http\Controllers\Web\Admin\AuthController;
 use App\Http\Controllers\Web\Admin\AccountController;
@@ -75,6 +76,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('cotizaciones/{nronota}/export/guia-ingreso', [CotizacionExportController::class, 'guiaIngreso'])->name('cotizaciones.export.guia-ingreso')->whereNumber('nronota');
 
         Route::middleware('superadmin')->group(function () {
+            Route::get('cotizaciones/adjudicadas', [AdjudicadaListadoController::class, 'index'])->name('cotizaciones.adjudicadas.index');
+            Route::get('cotizaciones/adjudicadas/export/detalle', [AdjudicadaListadoController::class, 'exportDetalle'])->name('cotizaciones.adjudicadas.export.detalle');
+            Route::get('cotizaciones/adjudicadas/export/sin-codigo-softland', [AdjudicadaListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.adjudicadas.export.sin-codigo-softland');
+
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
             Route::get('productos/carga-masiva/estado', [MaeprodController::class, 'importStatus'])->name('productos.import.status');
             Route::post('productos/carga-masiva/liberar', [MaeprodController::class, 'releaseImportLock'])->name('productos.import.unlock');

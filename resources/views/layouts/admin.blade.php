@@ -38,6 +38,9 @@
                 <i class="bi bi-arrow-repeat"></i> Retomar
             </a>
             @if(auth()->user()->isSuperAdmin())
+                <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') ? 'active' : '' }}">
+                    <i class="bi bi-check2-circle"></i> Adjudicadas
+                </a>
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
                 </a>
