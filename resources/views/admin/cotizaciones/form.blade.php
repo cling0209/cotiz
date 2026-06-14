@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-40" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -185,7 +185,7 @@
                                     @if($row['prod_item_agile'] !== '')
                                         <button
                                             type="button"
-                                            class="btn btn-outline-primary btn-sm btn-buscar-linea-agile"
+                                            class="btn btn-outline-primary btn-sm btn-buscar-linea-agile text-nowrap flex-shrink-0"
                                             data-fila="{{ $idx }}"
                                             data-orden="{{ $linea->orden }}"
                                             data-prod-item-agile="{{ $row['prod_item_agile'] }}"
@@ -1080,16 +1080,14 @@
             .replace(/"/g, '&quot;');
     }
 
-    const IMPORT_LOTE_MIN = 10;
-    const IMPORT_LOTE_MAX = 25;
+    const IMPORT_LOTE_SIZE = 40;
     const PREVIEW_LOTE_MIN = 5;
     const PREVIEW_LOTE_MAX = 8;
 
     function tamanoLoteImportar(total) {
         const n = Math.max(0, Number(total) || 0);
-        if (n <= IMPORT_LOTE_MIN) return n;
-        if (n <= 50) return IMPORT_LOTE_MIN;
-        return IMPORT_LOTE_MAX;
+        if (n === 0) return IMPORT_LOTE_SIZE;
+        return Math.min(IMPORT_LOTE_SIZE, n);
     }
 
     function tamanoLotePreview(total) {
