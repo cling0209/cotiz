@@ -142,7 +142,7 @@ class MaeprodChunkUploadService
                 ];
             }
 
-            $prepared = app(MaeprodImportJobService::class)->prepareFromMergedFile(
+            $prepared = app(MaeprodImportJobService::class)->beginStreamJobFromMergedFile(
                 $uploadId,
                 $mergedPath,
                 $userId,
@@ -161,7 +161,9 @@ class MaeprodChunkUploadService
             'ready' => true,
             'mode' => 'template',
             'upload_id' => $prepared['upload_id'],
-            'batch_count' => $prepared['batch_count'],
+            'stream_mode' => true,
+            'ready_to_process' => true,
+            'total_rows' => $prepared['total_rows'],
         ];
     }
 

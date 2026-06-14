@@ -224,6 +224,101 @@ class MaeprodImportService
     }
 
     /**
+     * Lee un tramo del CSV e importa fila a fila sin cargar el archivo completo en memoria.
+     *
+     * @param  list<string>  $dataHeaders
+     * @return array{
+     *     chunk_result: array{created: int, updated: int, skipped: int, errors: list<array<string, mixed>>},
+     *     rows_read: int,
+     *     next_physical_row: int,
+     *     exhausted: bool
+     * }
+     */
+    public function importFromCsvStreamPath(
+        string $path,
+        int $nextPhysicalRow,
+        int $maxRows,
+        ?string $usuarioUpd = null,
+        ?array $columnMapping = null,
+        array $dataHeaders = [],
+        string $delimiter = ';',
+    ): array {
+        if ($maxRows < 1) {
+            throw new \InvalidArgumentException('El tamaño del tramo de importación debe ser mayor que cero.');
+        }
+
+        if (! is_file($path)) {
+            throw new \InvalidArgumentException('No se encontró el archivo CSV a importar.');
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new \RuntimeException('No se pudo abrir el archivo CSV a importar.');
+        }
+
+        try {
+            if ($nextPhysicalRow < 2) {
+                $nextPhysicalRow = 2;
+            }
+
+            $this->seekCsvPhysicalLine($handle, $delimiter, $nextPhysicalRow);
+
+            $rows = [];
+            $rowsRead = 0;
+            $physicalLine = $nextPhysicalRow - 1;
+            $exhausted = false;
+
+            while ($rowsRead < $maxRows) {
+                $data = fgetcsv($handle, 0, $delimiter);
+
+                if ($data === false) {
+                    $exhausted = true;
+                    break;
+                }
+
+                $physicalLine++;
+
+                if ($this->isEmptyRow($data)) {
+                    continue;
+                }
+
+                $row = ['_csv_line' => (string) $physicalLine];
+                foreach ($dataHeaders as $columnIndex => $header) {
+                    if ($header === '') {
+                        continue;
+                    }
+
+                    $row[$header] = trim((string) ($data[$columnIndex] ?? ''));
+                }
+
+                if (count($row) > 1) {
+                    $rows[] = $row;
+                    $rowsRead++;
+                }
+            }
+
+            if ($rows === [] && $exhausted) {
+                return [
+                    'chunk_result' => $this->emptyResult(),
+                    'rows_read' => 0,
+                    'next_physical_row' => $physicalLine + 1,
+                    'exhausted' => true,
+                ];
+            }
+
+            return [
+                'chunk_result' => $this->importRows($rows, $usuarioUpd, $columnMapping),
+                'rows_read' => $rowsRead,
+                'next_physical_row' => $physicalLine + 1,
+                'exhausted' => $exhausted,
+            ];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
      * @param  array<string, string|null>  $columnMapping
      * @return array{
      *     rows: list<array<string, mixed>>,
@@ -983,5 +1078,24 @@ class MaeprodImportService
         }
 
         return true;
+    }
+
+    /**
+     * @param  resource  $handle
+     */
+    private function seekCsvPhysicalLine($handle, string $delimiter, int $targetPhysicalLine): void
+    {
+        rewind($handle);
+        fgets($handle);
+
+        $currentLine = 1;
+
+        while ($currentLine < $targetPhysicalLine - 1) {
+            if (fgetcsv($handle, 0, $delimiter) === false) {
+                return;
+            }
+
+            $currentLine++;
+        }
     }
 }

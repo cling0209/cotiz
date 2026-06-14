@@ -315,6 +315,101 @@ class MaeprodImportStreamPreparer
         }
     }
 
+    /**
+     * @return array{
+     *     rows_written: int,
+     *     data_headers: list<string>,
+     *     delimiter: string
+     * }
+     */
+    public function exportExcelToCsvFile(string $sourcePath, string $csvPath, ?string $originalName = null): array
+    {
+        $openSpout = app(MaeprodOpenSpoutReader::class);
+
+        if ($openSpout->supportsPath($sourcePath, $originalName)) {
+            return $openSpout->exportToCsvFile($sourcePath, $csvPath);
+        }
+
+        return $this->exportExcelToCsvFileWithPhpSpreadsheet($sourcePath, $csvPath);
+    }
+
+    /**
+     * @return array{
+     *     rows_written: int,
+     *     data_headers: list<string>,
+     *     delimiter: string
+     * }
+     */
+    private function exportExcelToCsvFileWithPhpSpreadsheet(string $sourcePath, string $csvPath): array
+    {
+        $handle = fopen($csvPath, 'wb');
+
+        if ($handle === false) {
+            throw new \RuntimeException('No se pudo crear el archivo CSV de importación.');
+        }
+
+        $reader = app(MaeprodSpreadsheetReader::class);
+        $metadata = $reader->readMetadata($sourcePath);
+        $highestRow = (int) $metadata['highest_row'];
+        $rawHeaders = $metadata['headers'];
+        $columnCount = (int) $metadata['column_count'];
+
+        if ($highestRow < 1 || $this->isEmptyCsvRow($rawHeaders)) {
+            fclose($handle);
+            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+        }
+
+        $dataHeaders = array_values(array_filter($rawHeaders, fn (string $header) => $header !== ''));
+        $delimiter = ';';
+        $rowsWritten = 0;
+
+        try {
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, $dataHeaders, $delimiter);
+
+            if ($highestRow < 2) {
+                throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+            }
+
+            $nextRow = 2;
+
+            while ($nextRow <= $highestRow) {
+                $endRow = min($nextRow + self::EXCEL_ROWS_PER_PREPARE_REQUEST - 1, $highestRow);
+                $rows = $reader->readDataRows(
+                    $sourcePath,
+                    $nextRow,
+                    $endRow,
+                    $rawHeaders,
+                    $columnCount,
+                );
+
+                foreach ($rows as $row) {
+                    $lineValues = [];
+                    foreach ($dataHeaders as $header) {
+                        $lineValues[] = $row[$header] ?? '';
+                    }
+
+                    fputcsv($handle, $lineValues, $delimiter);
+                    $rowsWritten++;
+                }
+
+                $nextRow = $endRow + 1;
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        if ($rowsWritten === 0) {
+            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+        }
+
+        return [
+            'rows_written' => $rowsWritten,
+            'data_headers' => $dataHeaders,
+            'delimiter' => $delimiter,
+        ];
+    }
+
     public function isSpreadsheetPath(string $path, ?string $originalName = null): bool
     {
         return MaeprodImportFileTypes::isSpreadsheet($originalName ?? basename($path));

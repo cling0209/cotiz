@@ -372,7 +372,24 @@ class MaeprodController extends Controller
             'finished' => $progress['finished'],
             'processed_batches' => $progress['processed_batches'],
             'total_batches' => $progress['total_batches'],
+            'import_mode' => $progress['import_mode'] ?? MaeprodImportJobService::IMPORT_MODE_BATCH,
         ];
+
+        if (isset($progress['processed_rows'])) {
+            $payload['processed_rows'] = $progress['processed_rows'];
+        }
+
+        if (isset($progress['total_rows'])) {
+            $payload['total_rows'] = $progress['total_rows'];
+        }
+
+        if (isset($progress['result']) && is_array($progress['result'])) {
+            $payload['result'] = [
+                'created' => (int) ($progress['result']['created'] ?? 0),
+                'updated' => (int) ($progress['result']['updated'] ?? 0),
+                'skipped' => (int) ($progress['result']['skipped'] ?? 0),
+            ];
+        }
 
         if ($progress['finished'] && isset($progress['run_id'])) {
             $run = MaeprodImportRun::query()->findOrFail($progress['run_id']);

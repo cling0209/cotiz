@@ -152,6 +152,93 @@ class MaeprodOpenSpoutReader
         ];
     }
 
+    /**
+     * @return array{
+     *     rows_written: int,
+     *     data_headers: list<string>,
+     *     delimiter: string
+     * }
+     */
+    public function exportToCsvFile(string $sourcePath, string $csvPath): array
+    {
+        if (! is_file($sourcePath)) {
+            throw new \InvalidArgumentException('No se encontró el archivo Excel a importar.');
+        }
+
+        $handle = fopen($csvPath, 'wb');
+
+        if ($handle === false) {
+            throw new \RuntimeException('No se pudo crear el archivo CSV de importación.');
+        }
+
+        $reader = $this->createReader($sourcePath);
+        $reader->open($sourcePath);
+
+        $delimiter = ';';
+        $dataHeaders = [];
+        $rowsWritten = 0;
+
+        try {
+            fwrite($handle, "\xEF\xBB\xBF");
+
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $physicalLine = 0;
+
+                foreach ($sheet->getRowIterator() as $row) {
+                    $physicalLine++;
+                    $values = $this->rowToValues($row);
+
+                    if ($physicalLine === 1) {
+                        $headers = array_map(
+                            fn (string $header) => mb_strtolower(trim($this->stripBom($header))),
+                            $values,
+                        );
+                        $dataHeaders = array_values(array_filter($headers, fn (string $header) => $header !== ''));
+
+                        if ($dataHeaders === []) {
+                            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+                        }
+
+                        fputcsv($handle, $dataHeaders, $delimiter);
+
+                        continue;
+                    }
+
+                    if ($this->isEmptyCsvRow($values)) {
+                        continue;
+                    }
+
+                    $lineValues = [];
+                    foreach ($dataHeaders as $columnIndex => $header) {
+                        $lineValues[] = trim((string) ($values[$columnIndex] ?? ''));
+                    }
+
+                    fputcsv($handle, $lineValues, $delimiter);
+                    $rowsWritten++;
+                }
+
+                break;
+            }
+        } finally {
+            $reader->close();
+            fclose($handle);
+        }
+
+        if ($dataHeaders === []) {
+            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+        }
+
+        if ($rowsWritten === 0) {
+            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+        }
+
+        return [
+            'rows_written' => $rowsWritten,
+            'data_headers' => $dataHeaders,
+            'delimiter' => $delimiter,
+        ];
+    }
+
     public function supportsPath(string $path, ?string $originalName = null): bool
     {
         $extension = MaeprodImportFileTypes::extensionFromName($originalName ?? basename($path));

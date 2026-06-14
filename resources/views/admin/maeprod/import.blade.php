@@ -199,8 +199,10 @@
 @endsection
 
 @push('scripts')
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 const CHUNK_SIZE = 6 * 1024 * 1024;
+const CLIENT_EXCEL_MAX_BYTES = 15 * 1024 * 1024;
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
 const prepareTemplateImportUrl = @json(route('admin.productos.import.prepare.template', [], false));
@@ -222,6 +224,53 @@ function fileExtension(name) {
 
 function isAllowedImportFile(name) {
     return ALLOWED_IMPORT_EXTENSIONS.includes(fileExtension(name));
+}
+
+async function convertExcelToCsvFile(file, progress, plan) {
+    if (typeof XLSX === 'undefined') {
+        throw new Error('No se pudo cargar la librería de conversión Excel.');
+    }
+
+    setImportProgress(progress, {
+        step: plan.step,
+        totalSteps: plan.totalSteps,
+        stage: plan.stage,
+        percent: plan.start + (plan.span * 0.15),
+        detail: 'Convirtiendo Excel a CSV en el navegador...',
+    });
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', dense: true });
+    const sheetName = workbook.SheetNames[0];
+
+    if (!sheetName) {
+        throw new Error('El archivo Excel no contiene hojas.');
+    }
+
+    const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { FS: ';' });
+    const baseName = file.name.replace(/\.(xlsx|xls)$/i, '');
+    const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
+
+    return new File([blob], `${baseName}.csv`, { type: 'text/csv' });
+}
+
+async function normalizeImportFile(file, progress, plan) {
+    const extension = fileExtension(file.name);
+
+    if (!['xlsx', 'xls'].includes(extension)) {
+        return file;
+    }
+
+    if (file.size > CLIENT_EXCEL_MAX_BYTES) {
+        return file;
+    }
+
+    try {
+        return await convertExcelToCsvFile(file, progress, plan);
+    } catch (error) {
+        console.warn('Conversión Excel en navegador falló; se usará el servidor.', error);
+        return file;
+    }
 }
 
 function importErrorMessage(payload, status) {
@@ -377,12 +426,15 @@ async function uploadCsvChunks(file, mode, progress, uploadPlan) {
     throw new Error('No se completó la carga del archivo.');
 }
 
-async function processImportBatches(uploadId, batchCount, progress, importPlan) {
+async function processImportBatches(uploadId, batchCount, progress, importPlan, options = {}) {
     let processed = 0;
     const totalBatches = Math.max(1, batchCount || 1);
     const plan = importPlan || { step: 1, totalSteps: 1, stage: 'Grabando productos', start: 0, span: 100 };
+    const streamMode = options.streamMode === true;
+    const totalRows = options.totalRows ?? null;
+    let processedRows = 0;
 
-    while (processed < totalBatches) {
+    while (true) {
         const formData = new FormData();
         formData.append('upload_id', uploadId);
         formData.append('_token', csrfToken);
@@ -402,17 +454,26 @@ async function processImportBatches(uploadId, batchCount, progress, importPlan) 
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
         processed = payload.processed_batches ?? processed + 1;
+        processedRows = payload.processed_rows ?? processedRows;
         const result = payload.result || {};
         const created = result.created ?? 0;
         const updated = result.updated ?? 0;
         const skipped = result.skipped ?? 0;
+        const rowsTotal = payload.total_rows ?? totalRows;
+        const useRowProgress = streamMode && rowsTotal && rowsTotal > 0;
+        const percent = useRowProgress
+            ? plan.start + ((processedRows / rowsTotal) * plan.span)
+            : plan.start + ((processed / totalBatches) * plan.span);
+        const detail = useRowProgress
+            ? `${processedRows.toLocaleString('es-CL')} de ${rowsTotal.toLocaleString('es-CL')} filas — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`
+            : `Lote ${processed} de ${totalBatches} — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`;
 
         setImportProgress(progress, {
             step: plan.step,
             totalSteps: plan.totalSteps,
             stage: plan.stage,
-            percent: plan.start + ((processed / totalBatches) * plan.span),
-            detail: `Lote ${processed} de ${totalBatches} — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`,
+            percent,
+            detail,
         });
 
         if (payload.finished && payload.redirect) {
@@ -521,19 +582,28 @@ async function prepareTemplateImport(uploadId, progress) {
 }
 
 async function processImportAll(uploadId, progress, options = {}) {
+    const pendingParse = options.pendingParse === true;
+    const streamMode = options.streamMode === true;
+    const totalSteps = pendingParse ? 3 : 2;
+    let totalRows = options.totalRows ?? null;
     let batchCount = options.batchCount ?? 1;
 
-    if (options.pendingParse) {
+    if (pendingParse) {
         const prepared = await prepareTemplateImport(uploadId, progress);
         batchCount = prepared.batch_count ?? 1;
+        totalRows = prepared.total_rows ?? totalRows;
+        options.streamMode = prepared.stream_mode === true || streamMode;
     }
 
     await processImportBatches(uploadId, batchCount, progress, {
-        step: 3,
-        totalSteps: 3,
+        step: pendingParse ? 3 : 2,
+        totalSteps,
         stage: 'Grabando en base de datos',
-        start: 38,
-        span: 62,
+        start: pendingParse ? 38 : 12,
+        span: pendingParse ? 62 : 88,
+    }, {
+        streamMode: options.streamMode === true,
+        totalRows,
     });
 }
 
@@ -632,24 +702,38 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
 
     setImportProgress(progress, {
         step: 1,
-        totalSteps: 3,
+        totalSteps: 2,
         stage: 'Subiendo archivo',
         percent: 0,
         detail: 'Iniciando subida fragmentada...',
     });
 
     try {
-        const payload = await uploadCsvChunks(file, 'template', progress, {
+        const uploadPlan = {
             step: 1,
-            totalSteps: 3,
+            totalSteps: 2,
             stage: 'Subiendo archivo',
             start: 0,
             span: 12,
+        };
+        const normalizedFile = await normalizeImportFile(file, progress, uploadPlan);
+        const willParseOnServer = ['xlsx', 'xls'].includes(fileExtension(file.name))
+            && fileExtension(normalizedFile.name) !== 'csv';
+        const totalSteps = willParseOnServer ? 3 : 2;
+
+        const payload = await uploadCsvChunks(normalizedFile, 'template', progress, {
+            step: 1,
+            totalSteps,
+            stage: 'Subiendo archivo',
+            start: 0,
+            span: willParseOnServer ? 12 : 12,
         });
 
         await processImportAll(payload.upload_id, progress, {
             pendingParse: payload.pending_parse === true,
-            batchCount: payload.batch_count,
+            streamMode: payload.stream_mode === true,
+            totalRows: payload.total_rows ?? null,
+            batchCount: payload.batch_count ?? 1,
         });
     } catch (error) {
         await releaseImportLock();
@@ -848,6 +932,9 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
             stage: 'Grabando en base de datos',
             start: 35,
             span: 65,
+        }, {
+            streamMode: preparePayload.stream_mode === true,
+            totalRows: preparePayload.total_rows ?? null,
         });
     } catch (error) {
         errorBox.textContent = error.message || 'Error al importar.';

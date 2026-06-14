@@ -12,6 +12,169 @@ class MaeprodImportJobService
 {
     public const ROWS_PER_BATCH = 1000;
 
+    public const ROWS_PER_STREAM_CHUNK = 2000;
+
+    public const IMPORT_MODE_BATCH = 'batch';
+
+    public const IMPORT_MODE_STREAM = 'stream';
+
+    /**
+     * @return array{upload_id: string, stream_mode: bool, total_rows: int, ready_to_process: bool}
+     */
+    public function beginStreamJobFromMergedFile(
+        string $uploadId,
+        string $mergedPath,
+        int $userId,
+        string $username,
+        string $originalName,
+        ?array $columnMapping = null,
+    ): array {
+        return $this->beginStreamJobFromPath(
+            $uploadId,
+            $mergedPath,
+            $userId,
+            $username,
+            $originalName,
+            $columnMapping,
+        );
+    }
+
+    /**
+     * @return array{upload_id: string, stream_mode: bool, total_rows: int, ready_to_process: bool}
+     */
+    public function beginStreamJobFromPath(
+        string $uploadId,
+        string $sourcePath,
+        int $userId,
+        string $username,
+        string $originalName,
+        ?array $columnMapping = null,
+        ?int $totalRows = null,
+    ): array {
+        $this->assertValidUploadId($uploadId);
+
+        $jobDir = $this->jobDirectory($uploadId);
+        $destPath = $jobDir.'/source.csv';
+        $sourceInJobDir = realpath($sourcePath) !== false
+            && realpath($jobDir) !== false
+            && str_starts_with(realpath($sourcePath), realpath($jobDir));
+
+        if (! $sourceInJobDir) {
+            if (File::isDirectory($jobDir)) {
+                File::deleteDirectory($jobDir);
+            }
+
+            File::ensureDirectoryExists($jobDir);
+
+            if (! File::copy($sourcePath, $destPath)) {
+                throw new \RuntimeException('No se pudo preparar el archivo de importación.');
+            }
+        } else {
+            $destPath = $sourcePath;
+            File::ensureDirectoryExists($jobDir);
+        }
+
+        return $this->finalizeStreamJobFromCsvPath(
+            $uploadId,
+            $destPath,
+            $userId,
+            $username,
+            $originalName,
+            $columnMapping,
+            $totalRows,
+        );
+    }
+
+    /**
+     * @return array{upload_id: string, stream_mode: bool, total_rows: int, ready_to_process: bool}
+     */
+    public function beginStreamJobFromCsvContent(
+        string $uploadId,
+        string $content,
+        int $userId,
+        string $username,
+        string $originalName,
+        ?array $columnMapping = null,
+    ): array {
+        $this->assertValidUploadId($uploadId);
+
+        $jobDir = $this->jobDirectory($uploadId);
+
+        if (File::isDirectory($jobDir)) {
+            File::deleteDirectory($jobDir);
+        }
+
+        File::ensureDirectoryExists($jobDir);
+
+        $destPath = $jobDir.'/source.csv';
+
+        if (str_starts_with($content, "\xEF\xBB\xBF")) {
+            File::put($destPath, $content);
+        } else {
+            File::put($destPath, "\xEF\xBB\xBF".$content);
+        }
+
+        return $this->finalizeStreamJobFromCsvPath(
+            $uploadId,
+            $destPath,
+            $userId,
+            $username,
+            $originalName,
+            $columnMapping,
+        );
+    }
+
+    /**
+     * @return array{upload_id: string, stream_mode: bool, total_rows: int, ready_to_process: bool}
+     */
+    protected function finalizeStreamJobFromCsvPath(
+        string $uploadId,
+        string $destPath,
+        int $userId,
+        string $username,
+        string $originalName,
+        ?array $columnMapping = null,
+        ?int $totalRows = null,
+    ): array {
+        $preparer = app(MaeprodImportStreamPreparer::class);
+        $parsed = $preparer->readCsvHeaders($destPath);
+        $delimiter = $parsed['delimiter'];
+        $dataHeaders = $parsed['data_headers'];
+
+        if ($dataHeaders === []) {
+            File::deleteDirectory($this->jobDirectory($uploadId));
+            throw new \InvalidArgumentException('El archivo no contiene encabezados válidos.');
+        }
+
+        if ($totalRows === null) {
+            $totalRows = $preparer->countCsvDataRows($destPath, $delimiter);
+        }
+
+        if ($totalRows < 1) {
+            File::deleteDirectory($this->jobDirectory($uploadId));
+            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+        }
+
+        $this->writeStreamJob(
+            $uploadId,
+            $userId,
+            $username,
+            $originalName,
+            $destPath,
+            $dataHeaders,
+            $delimiter,
+            $totalRows,
+            $columnMapping,
+        );
+
+        return [
+            'upload_id' => $uploadId,
+            'stream_mode' => true,
+            'total_rows' => $totalRows,
+            'ready_to_process' => true,
+        ];
+    }
+
     /**
      * @return array{upload_id: string, batch_count: int}
      */
@@ -92,121 +255,65 @@ class MaeprodImportJobService
         $this->assertValidUploadId($uploadId);
 
         if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
-            $job = $this->readJob($uploadId);
-
-            return [
-                'prepare_finished' => true,
-                'upload_id' => $uploadId,
-                'batch_count' => (int) $job['batch_count'],
-                'processed_rows' => (int) ($job['prepared_rows'] ?? 0),
-                'total_rows' => isset($job['total_rows']) ? (int) $job['total_rows'] : null,
-            ];
+            return $this->buildPrepareFinishedResponse($uploadId);
         }
 
-        $statePath = $this->prepareStatePath($uploadId);
-        $preparer = app(MaeprodImportStreamPreparer::class);
         $pendingService = app(MaeprodImportPendingService::class);
+        $preparer = app(MaeprodImportStreamPreparer::class);
         $jobDir = $this->jobDirectory($uploadId);
         File::ensureDirectoryExists($jobDir);
 
-        if (! File::exists($statePath)) {
-            if (! $pendingService->has($uploadId)) {
-                throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
-            }
-
-            $pending = $pendingService->find($uploadId);
-
-            if ((int) $pending['user_id'] !== $userId) {
-                throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
-            }
-
-            if (($pending['mode'] ?? 'template') !== 'template') {
-                throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
-            }
-
-            $isSpreadsheet = $preparer->isSpreadsheetPath(
-                (string) $pending['merged_path'],
-                (string) $pending['original_name'],
-            );
-
-            $state = [
-                'user_id' => $userId,
-                'username' => (string) $pending['username'],
-                'original_name' => (string) $pending['original_name'],
-                'source_path' => (string) $pending['merged_path'],
-                'file_kind' => $isSpreadsheet ? 'spreadsheet' : 'csv',
-                'next_row' => 2,
-                'processed_rows' => 0,
-                'batch_count' => 0,
-                'highest_row' => null,
-                'pending' => true,
-            ];
-
-            File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
-        } else {
-            $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
-
-            if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
-                throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
-            }
+        if (! $pendingService->has($uploadId)) {
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
         }
 
+        $pending = $pendingService->find($uploadId);
+
+        if ((int) $pending['user_id'] !== $userId) {
+            throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+        }
+
+        if (($pending['mode'] ?? 'template') !== 'template') {
+            throw new \InvalidArgumentException('La importación no está lista o ya expiró.');
+        }
+
+        $sourcePath = (string) $pending['merged_path'];
+        $csvPath = $jobDir.'/source.csv';
+
         try {
-            if (($state['file_kind'] ?? 'csv') === 'csv') {
-                $result = $preparer->streamCsvFile(
-                    (string) $state['source_path'],
-                    $jobDir,
-                    self::ROWS_PER_BATCH,
+            if ($preparer->isSpreadsheetPath($sourcePath, (string) $pending['original_name'])) {
+                $export = $preparer->exportExcelToCsvFile(
+                    $sourcePath,
+                    $csvPath,
+                    (string) $pending['original_name'],
                 );
 
-                $state['processed_rows'] = $result['rows_written'];
-                $state['batch_count'] = $result['batch_count'];
-                $state['finished'] = true;
-                $state['total_rows'] = $result['rows_written'];
-            } else {
-                $result = $preparer->streamExcelFile(
-                    (string) $state['source_path'],
-                    $jobDir,
-                    self::ROWS_PER_BATCH,
-                    (string) $state['original_name'],
-                );
-
-                $state['processed_rows'] = $result['rows_written'];
-                $state['batch_count'] = $result['batch_count'];
-                $state['finished'] = true;
-                $state['total_rows'] = $result['rows_written'];
-            }
-
-            $prepareFinished = (bool) ($state['finished'] ?? false);
-
-            if ($prepareFinished) {
-                $this->writePreparedJob(
+                $this->finalizeStreamJobFromCsvPath(
                     $uploadId,
+                    $csvPath,
                     $userId,
-                    (string) $state['username'],
-                    (string) $state['original_name'],
-                    (int) $state['batch_count'],
+                    (string) $pending['username'],
+                    (string) $pending['original_name'],
                     null,
-                    (int) $state['processed_rows'],
-                    isset($state['total_rows']) ? (int) $state['total_rows'] : null,
+                    $export['rows_written'],
                 );
-
-                if (! empty($state['pending'])) {
-                    $pendingService->consume($uploadId);
-                }
-
-                File::delete($statePath);
             } else {
-                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+                $this->beginStreamJobFromPath(
+                    $uploadId,
+                    $sourcePath,
+                    $userId,
+                    (string) $pending['username'],
+                    (string) $pending['original_name'],
+                );
             }
 
-            return [
-                'prepare_finished' => $prepareFinished,
-                'upload_id' => $uploadId,
-                'batch_count' => (int) $state['batch_count'],
-                'processed_rows' => (int) $state['processed_rows'],
-                'total_rows' => isset($state['total_rows']) ? (int) $state['total_rows'] : null,
-            ];
+            $pendingService->consume($uploadId);
+
+            if (is_file($sourcePath)) {
+                File::delete($sourcePath);
+            }
+
+            return $this->buildPrepareFinishedResponse($uploadId);
         } catch (\Throwable $e) {
             if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
                 File::deleteDirectory($jobDir);
@@ -244,86 +351,18 @@ class MaeprodImportJobService
         string $originalName,
         ?array $columnMapping = null,
     ): array {
-        $this->assertValidUploadId($uploadId);
-        $jobDir = $this->jobDirectory($uploadId);
-
-        if (File::isDirectory($jobDir)) {
-            File::deleteDirectory($jobDir);
-        }
-
-        File::ensureDirectoryExists($jobDir);
-
-        $importService = app(MaeprodImportService::class);
-        $rows = $importService->parseCsvText($content);
-
-        if ($rows === []) {
-            File::deleteDirectory($jobDir);
-            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
-        }
-
-        $dataHeaders = array_values(array_filter(
-            array_keys($rows[0]),
-            fn (string $header) => $header !== '_csv_line',
-        ));
-        $headerRow = array_merge(['_csv_line'], $dataHeaders);
-        $delimiter = str_contains($content, ';') ? ';' : ',';
-        $batchCount = 0;
-        $batchHandle = null;
-
-        foreach ($rows as $index => $row) {
-            if ($index % self::ROWS_PER_BATCH === 0) {
-                if ($batchHandle !== null) {
-                    fclose($batchHandle);
-                }
-
-                $batchPath = $jobDir.'/batch-'.str_pad((string) $batchCount, 6, '0', STR_PAD_LEFT).'.csv';
-                $batchHandle = fopen($batchPath, 'wb');
-
-                if ($batchHandle === false) {
-                    throw new \RuntimeException('No se pudo crear un lote de importación.');
-                }
-
-                fwrite($batchHandle, "\xEF\xBB\xBF");
-                fputcsv($batchHandle, $headerRow, $delimiter);
-                $batchCount++;
-            }
-
-            $line = [(string) ($row['_csv_line'] ?? '')];
-            foreach ($dataHeaders as $header) {
-                $line[] = $row[$header] ?? '';
-            }
-
-            fputcsv($batchHandle, $line, $delimiter);
-        }
-
-        if ($batchHandle !== null) {
-            fclose($batchHandle);
-        }
-
-        if ($batchCount === 0) {
-            File::deleteDirectory($jobDir);
-            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
-        }
-
-        $jobData = [
-            'user_id' => $userId,
-            'username' => $username,
-            'original_name' => $originalName,
-            'next_batch' => 0,
-            'batch_count' => $batchCount,
-            'result' => $this->emptyResult(),
-            'created_at' => now()->toIso8601String(),
-        ];
-
-        if ($columnMapping !== null) {
-            $jobData['column_mapping'] = $columnMapping;
-        }
-
-        File::put($jobDir.'/job.json', json_encode($jobData, JSON_THROW_ON_ERROR));
+        $prepared = $this->beginStreamJobFromCsvContent(
+            $uploadId,
+            $content,
+            $userId,
+            $username,
+            $originalName,
+            $columnMapping,
+        );
 
         return [
-            'upload_id' => $uploadId,
-            'batch_count' => $batchCount,
+            'upload_id' => $prepared['upload_id'],
+            'batch_count' => $this->virtualBatchCount($prepared['total_rows']),
         ];
     }
 
@@ -342,6 +381,10 @@ class MaeprodImportJobService
 
         if ((int) $job['user_id'] !== $userId) {
             throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+        }
+
+        if (($job['import_mode'] ?? self::IMPORT_MODE_BATCH) === self::IMPORT_MODE_STREAM) {
+            return $this->processNextStreamChunk($uploadId, $job);
         }
 
         $nextBatch = (int) $job['next_batch'];
@@ -433,8 +476,12 @@ class MaeprodImportJobService
 
         $runService = app(MaeprodImportRunService::class);
         $runId = isset($job['run_id']) ? (int) $job['run_id'] : null;
+        $isStream = ($job['import_mode'] ?? self::IMPORT_MODE_BATCH) === self::IMPORT_MODE_STREAM;
+        $atStart = $isStream
+            ? (int) ($job['processed_rows'] ?? 0) === 0
+            : (int) $job['next_batch'] === 0;
 
-        if ($runId === null && (int) $job['next_batch'] === 0) {
+        if ($runId === null && $atStart) {
             $run = $runService->beginRun(
                 (string) ($job['username'] ?? 'import'),
                 (string) ($job['original_name'] ?? 'import.csv'),
@@ -666,21 +713,13 @@ class MaeprodImportJobService
         $this->assertValidUploadId($uploadId);
 
         if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
-            $job = $this->readJob($uploadId);
-
-            return [
-                'prepare_finished' => true,
-                'upload_id' => $uploadId,
-                'batch_count' => (int) $job['batch_count'],
-                'processed_rows' => (int) ($job['prepared_rows'] ?? 0),
-                'total_rows' => isset($job['total_rows']) ? (int) $job['total_rows'] : null,
-            ];
+            return $this->buildPrepareFinishedResponse($uploadId);
         }
 
         $sourcePath = $staging->source_path;
 
         if ($sourcePath === null || $sourcePath === '') {
-            $prepared = $this->prepareFromCsvContent(
+            $prepared = $this->beginStreamJobFromCsvContent(
                 $uploadId,
                 $staging->csv_content ?? '',
                 $userId,
@@ -693,98 +732,54 @@ class MaeprodImportJobService
             return [
                 'prepare_finished' => true,
                 'upload_id' => $prepared['upload_id'],
-                'batch_count' => $prepared['batch_count'],
+                'batch_count' => $this->virtualBatchCount($prepared['total_rows']),
                 'processed_rows' => 0,
-                'total_rows' => (int) $staging->total_rows,
+                'total_rows' => $prepared['total_rows'],
+                'stream_mode' => true,
             ];
         }
 
-        $statePath = $this->prepareStatePath($uploadId);
         $preparer = app(MaeprodImportStreamPreparer::class);
         $jobDir = $this->jobDirectory($uploadId);
         File::ensureDirectoryExists($jobDir);
-
-        if (! File::exists($statePath)) {
-            $isSpreadsheet = $preparer->isSpreadsheetPath($sourcePath, $staging->original_name);
-            $state = [
-                'user_id' => $userId,
-                'username' => $staging->username,
-                'original_name' => $staging->original_name,
-                'source_path' => $sourcePath,
-                'file_kind' => $isSpreadsheet ? 'spreadsheet' : 'csv',
-                'next_row' => 2,
-                'processed_rows' => 0,
-                'batch_count' => 0,
-                'highest_row' => null,
-                'column_mapping' => $columnMapping,
-                'total_rows' => (int) $staging->total_rows,
-            ];
-
-            File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
-        } else {
-            $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
-
-            if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
-                throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
-            }
-        }
+        $csvPath = $jobDir.'/source.csv';
 
         try {
-            if (($state['file_kind'] ?? 'csv') === 'csv') {
-                $result = $preparer->streamCsvFile(
-                    (string) $state['source_path'],
-                    $jobDir,
-                    self::ROWS_PER_BATCH,
+            if ($preparer->isSpreadsheetPath($sourcePath, $staging->original_name)) {
+                $export = $preparer->exportExcelToCsvFile(
+                    $sourcePath,
+                    $csvPath,
+                    $staging->original_name,
                 );
 
-                $state['processed_rows'] = $result['rows_written'];
-                $state['batch_count'] = $result['batch_count'];
-                $state['finished'] = true;
-            } else {
-                $result = $preparer->streamExcelFile(
-                    (string) $state['source_path'],
-                    $jobDir,
-                    self::ROWS_PER_BATCH,
-                    (string) $state['original_name'],
-                );
-
-                $state['processed_rows'] = $result['rows_written'];
-                $state['batch_count'] = $result['batch_count'];
-                $state['finished'] = true;
-            }
-
-            $prepareFinished = (bool) ($state['finished'] ?? false);
-
-            if ($prepareFinished) {
-                $this->writePreparedJob(
+                $this->finalizeStreamJobFromCsvPath(
                     $uploadId,
+                    $csvPath,
                     $userId,
-                    (string) $state['username'],
-                    (string) $state['original_name'],
-                    (int) $state['batch_count'],
+                    $staging->username,
+                    $staging->original_name,
                     $columnMapping,
-                    (int) $state['processed_rows'],
-                    isset($state['total_rows']) ? (int) $state['total_rows'] : null,
+                    $export['rows_written'],
                 );
-
-                $stagingService->cleanup($uploadId);
-
-                if (is_file((string) $state['source_path'])) {
-                    File::delete((string) $state['source_path']);
-                }
-
-                File::delete($statePath);
             } else {
-                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+                $this->beginStreamJobFromPath(
+                    $uploadId,
+                    $sourcePath,
+                    $userId,
+                    $staging->username,
+                    $staging->original_name,
+                    $columnMapping,
+                    (int) $staging->total_rows,
+                );
             }
 
-            return [
-                'prepare_finished' => $prepareFinished,
-                'upload_id' => $uploadId,
-                'batch_count' => (int) $state['batch_count'],
-                'processed_rows' => (int) $state['processed_rows'],
-                'total_rows' => isset($state['total_rows']) ? (int) $state['total_rows'] : null,
-            ];
+            $stagingService->cleanup($uploadId);
+
+            if (is_file($sourcePath)) {
+                File::delete($sourcePath);
+            }
+
+            return $this->buildPrepareFinishedResponse($uploadId);
         } catch (\Throwable $e) {
             if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
                 File::deleteDirectory($jobDir);
@@ -805,6 +800,153 @@ class MaeprodImportJobService
     protected function emptyResult(): array
     {
         return app(MaeprodImportService::class)->emptyResult();
+    }
+
+    /**
+     * @return array{
+     *     finished: bool,
+     *     processed_batches: int,
+     *     total_batches: int,
+     *     processed_rows: int,
+     *     total_rows: int,
+     *     import_mode: string,
+     *     result: array{created: int, updated: int, skipped: int, errors: list<string>}
+     * }
+     */
+    protected function processNextStreamChunk(string $uploadId, array $job): array
+    {
+        $totalRows = (int) ($job['total_rows'] ?? 0);
+        $processedRows = (int) ($job['processed_rows'] ?? 0);
+        $totalBatches = $this->virtualBatchCount($totalRows);
+
+        if ($processedRows >= $totalRows && $totalRows > 0) {
+            return [
+                'finished' => true,
+                'processed_batches' => $totalBatches,
+                'total_batches' => $totalBatches,
+                'processed_rows' => $processedRows,
+                'total_rows' => $totalRows,
+                'import_mode' => self::IMPORT_MODE_STREAM,
+                'result' => $job['result'],
+            ];
+        }
+
+        $sourcePath = (string) ($job['source_path'] ?? '');
+
+        if ($sourcePath === '' || ! File::exists($sourcePath)) {
+            throw new \InvalidArgumentException('No se encontró el archivo CSV de la importación.');
+        }
+
+        $columnMapping = isset($job['column_mapping']) && is_array($job['column_mapping'])
+            ? $job['column_mapping']
+            : null;
+
+        $streamResult = app(MaeprodImportService::class)->importFromCsvStreamPath(
+            $sourcePath,
+            (int) ($job['next_physical_row'] ?? 2),
+            self::ROWS_PER_STREAM_CHUNK,
+            $job['username'] ?? null,
+            $columnMapping,
+            $job['data_headers'] ?? [],
+            (string) ($job['delimiter'] ?? ';'),
+        );
+
+        $job['result'] = $this->mergeResults($job['result'], $streamResult['chunk_result']);
+        $job['processed_rows'] = $processedRows + $streamResult['rows_read'];
+        $job['next_physical_row'] = $streamResult['next_physical_row'];
+
+        $finished = $streamResult['exhausted'];
+
+        if ($finished) {
+            File::delete($sourcePath);
+            $this->writeJob($uploadId, $job);
+            $this->cleanup($uploadId);
+        } else {
+            $this->writeJob($uploadId, $job);
+        }
+
+        $processedBatches = max(1, (int) ceil($job['processed_rows'] / self::ROWS_PER_STREAM_CHUNK));
+
+        return [
+            'finished' => $finished,
+            'processed_batches' => min($processedBatches, $totalBatches),
+            'total_batches' => $totalBatches,
+            'processed_rows' => (int) $job['processed_rows'],
+            'total_rows' => $totalRows,
+            'import_mode' => self::IMPORT_MODE_STREAM,
+            'result' => $job['result'],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $dataHeaders
+     * @param  array<string, string|null>|null  $columnMapping
+     */
+    protected function writeStreamJob(
+        string $uploadId,
+        int $userId,
+        string $username,
+        string $originalName,
+        string $sourcePath,
+        array $dataHeaders,
+        string $delimiter,
+        int $totalRows,
+        ?array $columnMapping = null,
+    ): void {
+        $jobData = [
+            'import_mode' => self::IMPORT_MODE_STREAM,
+            'user_id' => $userId,
+            'username' => $username,
+            'original_name' => $originalName,
+            'source_path' => $sourcePath,
+            'next_physical_row' => 2,
+            'processed_rows' => 0,
+            'total_rows' => $totalRows,
+            'data_headers' => $dataHeaders,
+            'delimiter' => $delimiter,
+            'result' => $this->emptyResult(),
+            'created_at' => now()->toIso8601String(),
+        ];
+
+        if ($columnMapping !== null) {
+            $jobData['column_mapping'] = $columnMapping;
+        }
+
+        $this->writeJob($uploadId, $jobData);
+    }
+
+    /**
+     * @return array{
+     *     prepare_finished: bool,
+     *     upload_id: string,
+     *     batch_count: int,
+     *     processed_rows: int,
+     *     total_rows: int|null,
+     *     stream_mode: bool
+     * }
+     */
+    protected function buildPrepareFinishedResponse(string $uploadId): array
+    {
+        $job = $this->readJob($uploadId);
+        $totalRows = isset($job['total_rows']) ? (int) $job['total_rows'] : null;
+
+        return [
+            'prepare_finished' => true,
+            'upload_id' => $uploadId,
+            'batch_count' => $this->virtualBatchCount($totalRows),
+            'processed_rows' => (int) ($job['processed_rows'] ?? 0),
+            'total_rows' => $totalRows,
+            'stream_mode' => ($job['import_mode'] ?? self::IMPORT_MODE_BATCH) === self::IMPORT_MODE_STREAM,
+        ];
+    }
+
+    protected function virtualBatchCount(?int $totalRows): int
+    {
+        if ($totalRows === null || $totalRows < 1) {
+            return 1;
+        }
+
+        return max(1, (int) ceil($totalRows / self::ROWS_PER_STREAM_CHUNK));
     }
 
     protected function assertValidUploadId(string $uploadId): void
