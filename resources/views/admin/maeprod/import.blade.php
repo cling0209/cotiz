@@ -87,12 +87,13 @@
                                     <div class="form-text">CSV o Excel (.xlsx, .xls) hasta 50 MB (subida fragmentada en trozos de 6 MB).</div>
                                 </div>
                                 <div id="importProgressWrapTemplate" class="mb-3 d-none">
-                                    <div class="d-flex justify-content-between small mb-1">
-                                        <span id="importProgressLabelTemplate">Subiendo archivo...</span>
-                                        <span id="importProgressPercentTemplate">0%</span>
+                                    <div class="d-flex justify-content-between align-items-center small mb-1 gap-2">
+                                        <span id="importProgressStageTemplate" class="badge text-bg-primary">Paso 1 de 3</span>
+                                        <span id="importProgressPercentTemplate" class="fw-semibold">0%</span>
                                     </div>
-                                    <div class="progress">
-                                        <div id="importProgressBarTemplate" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                                    <div id="importProgressLabelTemplate" class="small text-muted mb-2">Iniciando...</div>
+                                    <div class="progress" style="height:1.25rem">
+                                        <div id="importProgressBarTemplate" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                                     </div>
                                 </div>
                                 <div id="importErrorTemplate" class="alert alert-danger d-none mb-3"></div>
@@ -117,12 +118,13 @@
                             <div class="form-text">Primera fila = encabezados. CSV o Excel (.xlsx, .xls) hasta 50 MB (subida fragmentada).</div>
                         </div>
                         <div id="importProgressWrapCustom" class="mb-3 d-none">
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span id="importProgressLabelCustom">Subiendo archivo...</span>
-                                <span id="importProgressPercentCustom">0%</span>
+                            <div class="d-flex justify-content-between align-items-center small mb-1 gap-2">
+                                <span id="importProgressStageCustom" class="badge text-bg-primary">Paso 1 de 2</span>
+                                <span id="importProgressPercentCustom" class="fw-semibold">0%</span>
                             </div>
-                            <div class="progress">
-                                <div id="importProgressBarCustom" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                            <div id="importProgressLabelCustom" class="small text-muted mb-2">Iniciando...</div>
+                            <div class="progress" style="height:1.25rem">
+                                <div id="importProgressBarCustom" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                             </div>
                         </div>
                         <div id="importErrorCustom" class="alert alert-danger d-none mb-0"></div>
@@ -231,6 +233,35 @@ function importErrorMessage(payload, status) {
     return `Error del servidor (${status}).`;
 }
 
+function formatBytes(bytes) {
+    if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function setImportProgress(progress, { step, totalSteps, stage, percent, detail }) {
+    const pct = Math.max(0, Math.min(100, Math.round(percent)));
+
+    if (progress.stage) {
+        progress.stage.textContent = `Paso ${step} de ${totalSteps}: ${stage}`;
+    }
+
+    progress.percent.textContent = `${pct}%`;
+    progress.bar.style.width = `${pct}%`;
+    progress.bar.setAttribute('aria-valuenow', String(pct));
+    progress.label.textContent = detail || stage;
+}
+
+function buildProgressRefs(prefix) {
+    return {
+        wrap: document.getElementById(`importProgressWrap${prefix}`),
+        stage: document.getElementById(`importProgressStage${prefix}`),
+        bar: document.getElementById(`importProgressBar${prefix}`),
+        label: document.getElementById(`importProgressLabel${prefix}`),
+        percent: document.getElementById(`importProgressPercent${prefix}`),
+    };
+}
+
 function setImportLocked(locked, message = '') {
     const banner = document.getElementById('importLockBanner');
     const messageEl = document.getElementById('importLockMessage');
@@ -288,15 +319,24 @@ async function refreshImportStatus() {
     } catch (error) { /* ignore */ }
 }
 
-async function uploadCsvChunks(file, mode, progress) {
+async function uploadCsvChunks(file, mode, progress, uploadPlan) {
     const extension = fileExtension(file.name);
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const uploadId = crypto.randomUUID();
+    const plan = uploadPlan || { step: 1, totalSteps: 1, stage: 'Subiendo archivo', start: 0, span: 100 };
 
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const start = chunkIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const blob = file.slice(start, end);
+
+        setImportProgress(progress, {
+            step: plan.step,
+            totalSteps: plan.totalSteps,
+            stage: plan.stage,
+            percent: plan.start + (((chunkIndex + 1) / totalChunks) * plan.span),
+            detail: `Fragmento ${chunkIndex + 1} de ${totalChunks} (${formatBytes(end)} de ${formatBytes(file.size)})`,
+        });
 
         const formData = new FormData();
         formData.append('upload_id', uploadId);
@@ -321,12 +361,15 @@ async function uploadCsvChunks(file, mode, progress) {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
-        const uploadPercent = Math.round(((chunkIndex + 1) / totalChunks) * (mode === 'custom' ? 100 : 45));
-        progress.bar.style.width = uploadPercent + '%';
-        progress.bar.setAttribute('aria-valuenow', String(uploadPercent));
-        progress.percent.textContent = uploadPercent + '%';
-
         if (payload.done && payload.upload_id) {
+            setImportProgress(progress, {
+                step: plan.step,
+                totalSteps: plan.totalSteps,
+                stage: plan.stage,
+                percent: plan.start + plan.span,
+                detail: 'Archivo recibido en el servidor.',
+            });
+
             return payload;
         }
     }
@@ -334,9 +377,10 @@ async function uploadCsvChunks(file, mode, progress) {
     throw new Error('No se completó la carga del archivo.');
 }
 
-async function processImportBatches(uploadId, batchCount, progress) {
+async function processImportBatches(uploadId, batchCount, progress, importPlan) {
     let processed = 0;
     const totalBatches = Math.max(1, batchCount || 1);
+    const plan = importPlan || { step: 1, totalSteps: 1, stage: 'Grabando productos', start: 0, span: 100 };
 
     while (processed < totalBatches) {
         const formData = new FormData();
@@ -358,16 +402,27 @@ async function processImportBatches(uploadId, batchCount, progress) {
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
         processed = payload.processed_batches ?? processed + 1;
-        const percent = 55 + Math.round((processed / totalBatches) * 45);
-        progress.bar.style.width = percent + '%';
-        progress.bar.setAttribute('aria-valuenow', String(percent));
-        progress.percent.textContent = percent + '%';
-        progress.label.textContent = `Importando productos (${processed}/${totalBatches} lotes)...`;
+        const result = payload.result || {};
+        const created = result.created ?? 0;
+        const updated = result.updated ?? 0;
+        const skipped = result.skipped ?? 0;
+
+        setImportProgress(progress, {
+            step: plan.step,
+            totalSteps: plan.totalSteps,
+            stage: plan.stage,
+            percent: plan.start + ((processed / totalBatches) * plan.span),
+            detail: `Lote ${processed} de ${totalBatches} — creados: ${created.toLocaleString('es-CL')}, actualizados: ${updated.toLocaleString('es-CL')}, omitidos: ${skipped.toLocaleString('es-CL')}`,
+        });
 
         if (payload.finished && payload.redirect) {
-            progress.bar.style.width = '100%';
-            progress.percent.textContent = '100%';
-            progress.label.textContent = 'Importación completada, redirigiendo...';
+            setImportProgress(progress, {
+                step: plan.totalSteps,
+                totalSteps: plan.totalSteps,
+                stage: 'Completado',
+                percent: 100,
+                detail: 'Importación finalizada. Redirigiendo al resultado...',
+            });
             window.location.href = payload.redirect;
             return;
         }
@@ -378,37 +433,61 @@ async function processImportBatches(uploadId, batchCount, progress) {
     }
 }
 
-function updatePrepareProgress(progress, payload, labelPrefix = 'Preparando archivo') {
+function updatePrepareProgress(progress, payload, plan) {
     const processed = payload.processed_rows ?? 0;
     const total = payload.total_rows ?? null;
-    const percent = total && total > 0
-        ? Math.min(99, Math.round((processed / total) * 100))
-        : Math.min(95, 20 + (processed > 0 ? 10 : 0));
-
-    progress.bar.style.width = `${percent}%`;
-    progress.percent.textContent = `${percent}%`;
+    let percent;
+    let detail;
 
     if (total && total > 0) {
-        progress.label.textContent = `${labelPrefix}: ${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas`;
+        percent = plan.start + ((processed / total) * plan.span);
+        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas preparadas`;
     } else if (processed > 0) {
-        progress.label.textContent = `${labelPrefix}: ${processed.toLocaleString('es-CL')} filas procesadas`;
+        percent = plan.start + (Math.min(0.85, processed / 50000) * plan.span);
+        detail = `${processed.toLocaleString('es-CL')} filas preparadas`;
     } else {
-        progress.label.textContent = labelPrefix + '...';
+        percent = plan.start + (plan.span * 0.12);
+        detail = 'Leyendo el archivo en el servidor (puede tardar varios minutos en archivos grandes)...';
     }
+
+    setImportProgress(progress, {
+        step: plan.step,
+        totalSteps: plan.totalSteps,
+        stage: plan.stage,
+        percent,
+        detail,
+    });
 }
 
-async function prepareImportUntilFinished(url, fetchOptions, progress, labelPrefix = 'Preparando archivo') {
+async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
     let payload = null;
+    let isFirstRequest = true;
 
     do {
+        if (isFirstRequest) {
+            setImportProgress(progress, {
+                step: plan.step,
+                totalSteps: plan.totalSteps,
+                stage: plan.stage,
+                percent: plan.start + (plan.span * 0.08),
+                detail: 'Procesando en el servidor. No cierre esta ventana...',
+            });
+            isFirstRequest = false;
+        }
+
         const response = await fetch(url, fetchOptions);
         payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
-        updatePrepareProgress(progress, payload, labelPrefix);
+        updatePrepareProgress(progress, payload, plan);
     } while (payload.prepare_finished !== true);
 
-    progress.bar.style.width = '100%';
-    progress.percent.textContent = '100%';
+    setImportProgress(progress, {
+        step: plan.step,
+        totalSteps: plan.totalSteps,
+        stage: plan.stage,
+        percent: plan.start + plan.span,
+        detail: `${(payload.processed_rows ?? payload.total_rows ?? 0).toLocaleString('es-CL')} filas listas para importar.`,
+    });
 
     return payload;
 }
@@ -431,7 +510,13 @@ async function prepareTemplateImport(uploadId, progress) {
             credentials: 'same-origin',
         },
         progress,
-        'Analizando archivo',
+        {
+            step: 2,
+            totalSteps: 3,
+            stage: 'Analizando archivo',
+            start: 12,
+            span: 26,
+        },
     );
 }
 
@@ -443,7 +528,13 @@ async function processImportAll(uploadId, progress, options = {}) {
         batchCount = prepared.batch_count ?? 1;
     }
 
-    await processImportBatches(uploadId, batchCount, progress);
+    await processImportBatches(uploadId, batchCount, progress, {
+        step: 3,
+        totalSteps: 3,
+        stage: 'Grabando en base de datos',
+        start: 38,
+        span: 62,
+    });
 }
 
 function getCustomMapping() {
@@ -515,12 +606,7 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
     event.preventDefault();
     const fileInput = document.getElementById('importFileTemplate');
     const submitBtn = document.getElementById('importSubmitBtnTemplate');
-    const progress = {
-        wrap: document.getElementById('importProgressWrapTemplate'),
-        bar: document.getElementById('importProgressBarTemplate'),
-        label: document.getElementById('importProgressLabelTemplate'),
-        percent: document.getElementById('importProgressPercentTemplate'),
-    };
+    const progress = buildProgressRefs('Template');
     const errorBox = document.getElementById('importErrorTemplate');
     const file = fileInput.files[0];
     if (!file) return;
@@ -544,9 +630,23 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
     errorBox.classList.add('d-none');
     progress.wrap.classList.remove('d-none');
 
+    setImportProgress(progress, {
+        step: 1,
+        totalSteps: 3,
+        stage: 'Subiendo archivo',
+        percent: 0,
+        detail: 'Iniciando subida fragmentada...',
+    });
+
     try {
-        const payload = await uploadCsvChunks(file, 'template', progress);
-        progress.label.textContent = 'Preparando importación...';
+        const payload = await uploadCsvChunks(file, 'template', progress, {
+            step: 1,
+            totalSteps: 3,
+            stage: 'Subiendo archivo',
+            start: 0,
+            span: 12,
+        });
+
         await processImportAll(payload.upload_id, progress, {
             pendingParse: payload.pending_parse === true,
             batchCount: payload.batch_count,
@@ -567,12 +667,7 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
     event.preventDefault();
     const fileInput = document.getElementById('importFileCustom');
     const submitBtn = document.getElementById('importSubmitBtnCustom');
-    const progress = {
-        wrap: document.getElementById('importProgressWrapCustom'),
-        bar: document.getElementById('importProgressBarCustom'),
-        label: document.getElementById('importProgressLabelCustom'),
-        percent: document.getElementById('importProgressPercentCustom'),
-    };
+    const progress = buildProgressRefs('Custom');
     const errorBox = document.getElementById('importErrorCustom');
     const file = fileInput.files[0];
     if (!file) return;
@@ -587,18 +682,38 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
     fileInput.disabled = true;
     errorBox.classList.add('d-none');
     progress.wrap.classList.remove('d-none');
-    progress.label.textContent = 'Subiendo archivo...';
+
+    setImportProgress(progress, {
+        step: 1,
+        totalSteps: 2,
+        stage: 'Subiendo archivo',
+        percent: 0,
+        detail: 'Iniciando subida fragmentada...',
+    });
 
     document.getElementById('customPreviewCard').classList.add('d-none');
     document.getElementById('customMappingError').classList.add('d-none');
 
     try {
-        const payload = await uploadCsvChunks(file, 'custom', progress);
+        const payload = await uploadCsvChunks(file, 'custom', progress, {
+            step: 1,
+            totalSteps: 2,
+            stage: 'Subiendo archivo',
+            start: 0,
+            span: 80,
+        });
         customUploadId = payload.upload_id;
 
         let staging = payload;
         if (payload.pending_parse) {
-            progress.label.textContent = 'Analizando columnas del archivo Excel...';
+            setImportProgress(progress, {
+                step: 2,
+                totalSteps: 2,
+                stage: 'Leyendo columnas',
+                percent: 82,
+                detail: 'Analizando encabezados del archivo Excel...',
+            });
+
             const initResponse = await fetch(initializeImportUrl, {
                 method: 'POST',
                 headers: {
@@ -620,7 +735,14 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
         document.getElementById('customTotalRows').textContent = staging.total_rows || 0;
         populateMappingSelects(customColumns, staging.suggested_mapping || {});
         document.getElementById('customMappingCard').classList.remove('d-none');
-        progress.label.textContent = 'Archivo listo. Indique el mapeo de columnas.';
+
+        setImportProgress(progress, {
+            step: 2,
+            totalSteps: 2,
+            stage: 'Listo para mapear',
+            percent: 100,
+            detail: `Archivo recibido: ${(staging.total_rows || 0).toLocaleString('es-CL')} filas, ${customColumns.length} columnas detectadas.`,
+        });
     } catch (error) {
         errorBox.textContent = error.message || 'Error al subir el archivo.';
         errorBox.classList.remove('d-none');
@@ -682,14 +804,16 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
     btn.disabled = true;
     setImportLocked(true, 'Importación en curso. No cierre esta ventana.');
 
-    const progress = {
-        wrap: document.getElementById('importProgressWrapCustom'),
-        bar: document.getElementById('importProgressBarCustom'),
-        label: document.getElementById('importProgressLabelCustom'),
-        percent: document.getElementById('importProgressPercentCustom'),
-    };
+    const progress = buildProgressRefs('Custom');
     progress.wrap.classList.remove('d-none');
-    progress.label.textContent = 'Preparando importación...';
+
+    setImportProgress(progress, {
+        step: 1,
+        totalSteps: 2,
+        stage: 'Preparando importación',
+        percent: 0,
+        detail: 'Validando mapeo de columnas...',
+    });
 
     try {
         const preparePayload = await prepareImportUntilFinished(
@@ -709,11 +833,21 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
                 }),
             },
             progress,
-            'Preparando importación',
+            {
+                step: 1,
+                totalSteps: 2,
+                stage: 'Preparando importación',
+                start: 0,
+                span: 35,
+            },
         );
 
-        await processImportAll(preparePayload.upload_id, progress, {
-            batchCount: preparePayload.batch_count,
+        await processImportBatches(preparePayload.upload_id, preparePayload.batch_count, progress, {
+            step: 2,
+            totalSteps: 2,
+            stage: 'Grabando en base de datos',
+            start: 35,
+            span: 65,
         });
     } catch (error) {
         errorBox.textContent = error.message || 'Error al importar.';
