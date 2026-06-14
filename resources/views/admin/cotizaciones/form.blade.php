@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-42" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-43" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -827,6 +827,20 @@
     const modalBody = document.getElementById('modal-buscar-resultados');
     const btnAbrirBuscar = document.getElementById('btn-abrir-buscar-producto');
     const btnModalBuscar = document.getElementById('btn-modal-buscar');
+
+    function setModalBuscarEstado(texto, cargando) {
+        if (!modalEstado) return;
+        modalEstado.textContent = texto;
+        modalEstado.classList.toggle('cotiz-buscar-loading', !!cargando);
+        modalEstado.classList.toggle('text-muted', !cargando);
+    }
+
+    function buscarLoadingHtml(texto) {
+        return '<p class="small cotiz-buscar-loading mb-0">'
+            + '<i class="bi bi-search me-1" aria-hidden="true"></i>'
+            + (texto || 'Buscando...') + '</p>';
+    }
+
     const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
     let buscarAbort = null;
     let resultadosActuales = [];
@@ -852,7 +866,7 @@
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
         if (modalEstado) {
-            modalEstado.textContent = 'Agregando producto...';
+            setModalBuscarEstado('Agregando producto...', false);
         }
         bsModal?.hide();
         agregarProducto(p);
@@ -874,9 +888,9 @@
         if (!resultadosActuales.length) {
             modalBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-3">Sin resultados.</td></tr>';
             if (modalEstado) {
-                modalEstado.textContent = meta?.q
+                setModalBuscarEstado(meta?.q
                     ? 'No se encontraron productos similares para «' + meta.q + '».'
-                    : 'Escriba el texto del cliente o descripción y pulse Buscar.';
+                    : 'Escriba el texto del cliente o descripción y pulse Buscar.', false);
             }
             return;
         }
@@ -905,7 +919,7 @@
         });
 
         if (modalEstado && meta) {
-            modalEstado.textContent = meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).';
+            setModalBuscarEstado(meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).', false);
         }
 
         marcarFilaActiva(0);
@@ -918,12 +932,12 @@
         if (q.length < buscarConfig.minChars) {
             renderResultados([], { q });
             if (modalEstado) {
-                modalEstado.textContent = 'Escriba al menos ' + buscarConfig.minChars + ' caracteres para buscar.';
+                setModalBuscarEstado('Escriba al menos ' + buscarConfig.minChars + ' caracteres para buscar.', false);
             }
             return;
         }
 
-        if (modalEstado) modalEstado.textContent = 'Buscando...';
+        setModalBuscarEstado('Buscando...', true);
 
         try {
             const params = new URLSearchParams({
@@ -938,7 +952,7 @@
             renderResultados(json.data || [], json.meta || { q, count: (json.data || []).length });
         } catch (err) {
             if (err.name === 'AbortError') return;
-            if (modalEstado) modalEstado.textContent = 'Error al buscar. Intente de nuevo.';
+            if (modalEstado) setModalBuscarEstado('Error al buscar. Intente de nuevo.', false);
         }
     }
 
@@ -948,7 +962,7 @@
         modalInput.value = '';
         renderResultados([], {});
         if (modalEstado) {
-            modalEstado.textContent = 'Escriba el texto del cliente o descripción y pulse Buscar.';
+            setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
         }
         bsModal.show();
         setTimeout(() => {
@@ -968,7 +982,7 @@
         }
         renderResultados([], {});
         if (modalEstado) {
-            modalEstado.textContent = 'Escriba el texto del cliente o descripción y pulse Buscar.';
+            setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
         }
     }
 
@@ -1639,7 +1653,7 @@
             return;
         }
 
-        cont.innerHTML = '<p class="text-muted small">Buscando...</p>';
+        cont.innerHTML = buscarLoadingHtml('Buscando...');
         fetch(buscarConfig.url + '?q=' + encodeURIComponent(q) + '&limit=' + buscarConfig.limit, {
             headers: { Accept: 'application/json' },
         })
