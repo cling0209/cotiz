@@ -7,6 +7,7 @@ use App\Models\MaeprodImportErrorLog;
 use App\Models\MaeprodImportRun;
 use App\Models\User;
 use App\Services\MaeprodImportLockService;
+use App\Services\MaeprodImportProgressService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -774,6 +775,37 @@ class MaeprodImportTest extends TestCase
             UPLOAD_ERR_OK,
             true,
         );
+    }
+
+    public function test_import_status_and_progress_allow_resuming_active_import(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $uploadId = (string) Str::uuid();
+
+        app(MaeprodImportLockService::class)->acquire(
+            $admin->id,
+            'admin',
+            $uploadId,
+            'productos.xlsx',
+        );
+
+        app(MaeprodImportProgressService::class)->beginQueued($uploadId, $admin->id, 'template');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.productos.import.status'))
+            ->assertOk()
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('lock.upload_id', $uploadId);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.productos.import.progress', ['upload_id' => $uploadId]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'queued')
+            ->assertJsonPath('upload_id', $uploadId);
     }
 
     public function test_template_import_via_background_worker_completes(): void

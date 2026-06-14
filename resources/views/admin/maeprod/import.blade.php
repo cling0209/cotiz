@@ -216,9 +216,11 @@ const prepareImportUrl = @json(route('admin.productos.import.prepare', [], false
 const importStatusUrl = @json(route('admin.productos.import.status', [], false));
 const unlockImportUrl = @json(route('admin.productos.import.unlock', [], false));
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || @json(csrf_token());
+const currentUserId = @json((int) auth()->id());
 
 let customUploadId = null;
 let customColumns = [];
+let importResumeRunning = false;
 
 const ALLOWED_IMPORT_EXTENSIONS = ['csv', 'txt', 'xlsx', 'xls'];
 
@@ -378,15 +380,157 @@ async function refreshImportStatus() {
     try {
         const response = await fetch(importStatusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
         const payload = await readJsonResponse(response);
-        if (!response.ok) return;
+        if (!response.ok) return null;
 
         if (payload.active && payload.lock) {
             const started = payload.lock.started_at ? new Date(payload.lock.started_at).toLocaleString('es-CL') : '';
-            setImportLocked(true, `Iniciada por ${payload.lock.username}${started ? ' (' + started + ')' : ''}. Espere a que termine.`);
-        } else {
-            setImportLocked(false);
+            const fileLabel = payload.lock.original_name ? ` (${payload.lock.original_name})` : '';
+            setImportLocked(
+                true,
+                `Iniciada por ${payload.lock.username}${started ? ' (' + started + ')' : ''}${fileLabel}. Puede seguir el progreso abajo.`,
+            );
+            return payload.lock;
         }
-    } catch (error) { /* ignore */ }
+
+        setImportLocked(false);
+        return null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function resolveResumePollPlan(progressPayload) {
+    const phase = progressPayload.phase || 'queued';
+    const mode = progressPayload.mode || 'template';
+    const totalSteps = mode === 'custom' ? 2 : 3;
+
+    if (phase === 'process') {
+        return {
+            step: mode === 'custom' ? 2 : 3,
+            totalSteps,
+            start: 12,
+            span: 88,
+        };
+    }
+
+    return {
+        step: 2,
+        totalSteps,
+        start: 12,
+        span: 88,
+    };
+}
+
+function activateImportTabForMode(mode) {
+    if (mode !== 'custom') {
+        return;
+    }
+
+    const customTab = document.getElementById('tab-custom');
+    if (customTab && typeof bootstrap !== 'undefined') {
+        bootstrap.Tab.getOrCreateInstance(customTab).show();
+    } else {
+        customTab?.click();
+    }
+}
+
+function applyPollProgressPayload(payload, progress, pollPlan) {
+    const percent = typeof payload.percent === 'number'
+        ? payload.percent
+        : pollPlan.start + (pollPlan.span * 0.5);
+
+    setImportProgress(progress, {
+        step: payload.phase === 'process'
+            ? (pollPlan.totalSteps >= 3 ? 3 : 2)
+            : (pollPlan.totalSteps >= 3 ? 2 : 1),
+        totalSteps: pollPlan.totalSteps,
+        stage: payload.stage || 'Procesando en segundo plano',
+        percent,
+        detail: payload.detail || 'Procesando...',
+    });
+}
+
+async function fetchImportProgress(uploadId) {
+    const response = await fetch(`${importProgressUrl}?upload_id=${encodeURIComponent(uploadId)}`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+    });
+
+    return {
+        response,
+        payload: await readJsonResponse(response),
+    };
+}
+
+async function resumeActiveImport(lock) {
+    if (!lock?.upload_id || importResumeRunning) {
+        return;
+    }
+
+    if (lock.user_id && Number(lock.user_id) !== Number(currentUserId)) {
+        return;
+    }
+
+    importResumeRunning = true;
+    const uploadId = lock.upload_id;
+
+    try {
+        const { response, payload } = await fetchImportProgress(uploadId);
+
+        if (response.status === 404) {
+            const fileLabel = lock.original_name ? ` (${lock.original_name})` : '';
+            setImportLocked(true, `Importación en curso${fileLabel}. Si acaba de subir el archivo, espere unos segundos y recargue la página.`);
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(importErrorMessage(payload, response.status));
+        }
+
+        if (payload.phase === 'completed') {
+            if (payload.redirect) {
+                window.location.href = payload.redirect;
+                return;
+            }
+
+            setImportLocked(false);
+            return;
+        }
+
+        if (payload.phase === 'failed') {
+            const mode = payload.mode || 'template';
+            const errorBox = document.getElementById(mode === 'custom' ? 'importErrorCustom' : 'importErrorTemplate');
+            if (errorBox) {
+                errorBox.textContent = payload.error || payload.detail || 'La importación falló.';
+                errorBox.classList.remove('d-none');
+            }
+            return;
+        }
+
+        const mode = payload.mode || 'template';
+        activateImportTabForMode(mode);
+
+        if (mode === 'custom') {
+            customUploadId = uploadId;
+        }
+
+        const progress = buildProgressRefs(mode === 'custom' ? 'Custom' : 'Template');
+        const plan = resolveResumePollPlan(payload);
+
+        progress.wrap.classList.remove('d-none');
+        applyPollProgressPayload(payload, progress, plan);
+
+        await pollBackgroundImport(uploadId, progress, plan);
+    } catch (error) {
+        const errorBox = document.getElementById('importErrorTemplate');
+        if (errorBox) {
+            errorBox.textContent = error.message || 'No se pudo retomar la importación.';
+            errorBox.classList.remove('d-none');
+        }
+    } finally {
+        importResumeRunning = false;
+        await refreshImportStatus();
+    }
 }
 
 async function uploadCsvChunks(file, mode, progress, uploadPlan) {
@@ -684,17 +828,7 @@ async function pollBackgroundImport(uploadId, progress, plan) {
             throw new Error(importErrorMessage(payload, response.status));
         }
 
-        const percent = typeof payload.percent === 'number'
-            ? payload.percent
-            : pollPlan.start + (pollPlan.span * 0.5);
-
-        setImportProgress(progress, {
-            step: payload.phase === 'process' ? (pollPlan.totalSteps >= 3 ? 3 : 2) : (pollPlan.totalSteps >= 3 ? 2 : 1),
-            totalSteps: pollPlan.totalSteps,
-            stage: payload.stage || 'Procesando en segundo plano',
-            percent,
-            detail: payload.detail || 'Procesando...',
-        });
+        applyPollProgressPayload(payload, progress, pollPlan);
 
         if (payload.phase === 'completed') {
             setImportProgress(progress, {
@@ -709,6 +843,7 @@ async function pollBackgroundImport(uploadId, progress, plan) {
                 window.location.href = payload.redirect;
             }
 
+            setImportLocked(false);
             return payload;
         }
 
@@ -1126,6 +1261,10 @@ document.getElementById('importUnlockBtn')?.addEventListener('click', async () =
     }
 });
 
-refreshImportStatus();
+refreshImportStatus().then(lock => {
+    if (lock) {
+        resumeActiveImport(lock);
+    }
+});
 </script>
 @endpush
