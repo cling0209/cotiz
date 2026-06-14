@@ -90,8 +90,8 @@ TXT;
         $response->assertOk();
         $response->assertJsonPath('ok', true);
         $response->assertJsonPath('agregadas', 2);
-        $response->assertJsonPath('pendientes', 2);
-        $response->assertJsonPath('vinculadas', 0);
+        $response->assertJsonPath('vinculadas', 2);
+        $response->assertJsonPath('pendientes', 0);
 
         $nota->refresh();
         $this->assertSame('1161-172-COT26', trim((string) $nota->encargado));
@@ -100,7 +100,9 @@ TXT;
 
         $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->orderBy('orden')->get();
         $this->assertCount(2, $lineas);
-        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas->first()));
+        $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($lineas->first()));
+        $this->assertSame('ASEO001', $lineas->first()->prod_item);
+        $this->assertSame('ASEO002', $lineas->get(1)->prod_item);
         $this->assertTrue(
             AgileMaeprod::query()->where('prod_item_agile', '31237835')->exists()
         );
@@ -122,8 +124,8 @@ TXT;
         );
 
         $response->assertOk();
-        $response->assertJsonPath('vinculadas', 1);
-        $response->assertJsonPath('pendientes', 1);
+        $response->assertJsonPath('vinculadas', 2);
+        $response->assertJsonPath('pendientes', 0);
 
         $vinculada = NotaDetalle::query()
             ->where('nronota', $nota->nronota)

@@ -301,7 +301,7 @@ class CompraAgilImportService
                 $linea = $preview['lineas'][$i];
                 $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $linea['descripcion']);
 
-                $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
+                $vinculo = $this->resolverProductoParaImportar($linea['id_agile'], $linea['descripcion']);
 
                 if ($vinculo) {
                     $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $vinculo['prod_item']);
@@ -348,6 +348,21 @@ class CompraAgilImportService
                 'completado' => $hasta >= $total,
             ];
         });
+    }
+
+    /**
+     * Vínculo en agilemaeprod o, si no existe, sugerencia por similitud (igual que en el análisis).
+     *
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function resolverProductoParaImportar(string $idAgile, string $descripcion): ?array
+    {
+        $vinculo = $this->resolverVinculoExistente($idAgile);
+        if ($vinculo !== null) {
+            return $vinculo;
+        }
+
+        return $this->resolverSugerenciaSimilitud($descripcion);
     }
 
     /**
