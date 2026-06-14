@@ -167,8 +167,8 @@
 }
 
 .cotizacion-ingreso #tabla_detalle td .imagen.product-image {
-    width: 72px;
-    height: 72px;
+    width: 80px;
+    height: 80px;
     max-width: 100%;
     margin: 0 auto;
 }
@@ -361,11 +361,26 @@
 }
 
 .cotiz-buscar-tabla .cotiz-buscar-thumb {
-    width: 48px;
-    height: 48px;
+    width: 72px;
+    height: 72px;
     object-fit: contain;
     display: block;
     margin: 0 auto;
+}
+
+.cotiz-buscar-thumb-btn {
+    display: block;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    line-height: 0;
+}
+
+.cotiz-buscar-thumb-btn:hover .cotiz-buscar-thumb {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+    border-radius: 0.35rem;
 }
 
 .cotiz-buscar-loading {
@@ -464,8 +479,8 @@
 }
 
 .cotiz-popup-resultados .cotiz-buscar-thumb {
-    width: 48px;
-    height: 48px;
+    width: 72px;
+    height: 72px;
     object-fit: contain;
     display: block;
     margin: 0 auto;

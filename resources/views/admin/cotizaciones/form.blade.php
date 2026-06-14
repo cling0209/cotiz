@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-43" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-44" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -176,12 +176,27 @@
                                 </span>
                             </td>
                             <td class="linea-imagen-cell" onclick="event.stopPropagation();">
-                                <x-product-image
-                                    :maeprod="$linea->producto"
-                                    :alt="$row['prod_nombre']"
-                                    variant="admin-thumb"
-                                    wrapperClass="imagen"
-                                />
+                                @if(! empty($row['image_url']))
+                                    <button type="button"
+                                            class="product-image-zoom-trigger"
+                                            data-image-url="{{ $row['image_url'] }}"
+                                            data-image-title="{{ $linea->prod_item }} — {{ $row['prod_nombre'] }}"
+                                            title="Ver imagen ampliada">
+                                        <x-product-image
+                                            :maeprod="$linea->producto"
+                                            :alt="$row['prod_nombre']"
+                                            variant="admin-thumb"
+                                            wrapperClass="imagen"
+                                        />
+                                    </button>
+                                @else
+                                    <x-product-image
+                                        :maeprod="$linea->producto"
+                                        :alt="$row['prod_nombre']"
+                                        variant="admin-thumb"
+                                        wrapperClass="imagen"
+                                    />
+                                @endif
                             </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-1 align-items-center">
@@ -337,7 +352,7 @@
                         <table class="table table-sm table-hover mb-0 cotiz-buscar-tabla" id="tabla-buscar-productos">
                             <thead class="table-light sticky-top">
                                 <tr>
-                                    <th style="width:56px"></th>
+                                    <th style="width:80px"></th>
                                     <th style="width:90px">C&oacute;digo</th>
                                     <th>Descripci&oacute;n</th>
                                     <th style="width:80px">Familia</th>
@@ -449,6 +464,20 @@
                     </div>
                 </div>
                 <div id="popupVincularResultados" class="cotiz-popup-resultados"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modal-imagen-producto-cotiz" tabindex="-1" aria-labelledby="modal-imagen-producto-cotiz-titulo" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h2 class="modal-title fs-6" id="modal-imagen-producto-cotiz-titulo"></h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body text-center p-2 bg-light">
+                    <img id="modal-imagen-producto-cotiz-img" src="" alt="" class="img-fluid rounded shadow-sm product-image-zoom-preview">
+                </div>
             </div>
         </div>
     </div>
@@ -852,10 +881,56 @@
 
     function buscarProductoThumbHtml(p) {
         const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
-
-        return '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="lazy" '
+        const titulo = escHtml((p.prod_item || '') + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
+        const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="lazy" '
             + 'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
+
+        if (p?.image_url) {
+            return '<button type="button" class="product-image-zoom-trigger cotiz-buscar-thumb-btn" '
+                + 'data-image-url="' + escHtml(p.image_url) + '" '
+                + 'data-image-title="' + titulo + '" '
+                + 'title="Ver imagen ampliada">' + img + '</button>';
+        }
+
+        return img;
     }
+
+    const modalImagenEl = document.getElementById('modal-imagen-producto-cotiz');
+    const modalImagenImg = document.getElementById('modal-imagen-producto-cotiz-img');
+    const modalImagenTitle = document.getElementById('modal-imagen-producto-cotiz-titulo');
+    const bsModalImagen = modalImagenEl ? bootstrap.Modal.getOrCreateInstance(modalImagenEl) : null;
+
+    function abrirImagenAmpliada(trigger) {
+        const url = trigger?.dataset?.imageUrl;
+        if (!url || !bsModalImagen || !modalImagenImg) return;
+        modalImagenImg.src = url;
+        modalImagenImg.alt = trigger.dataset.imageTitle || 'Imagen producto';
+        if (modalImagenTitle) {
+            modalImagenTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
+        }
+        bsModalImagen.show();
+    }
+
+    function enlazarZoomImagenes(contenedor) {
+        const root = contenedor || document;
+        root.querySelectorAll('.product-image-zoom-trigger:not([data-zoom-bound])').forEach(trigger => {
+            trigger.dataset.zoomBound = '1';
+            trigger.addEventListener('click', e => {
+                e.stopPropagation();
+                e.preventDefault();
+                abrirImagenAmpliada(trigger);
+            });
+        });
+    }
+
+    enlazarZoomImagenes(document.querySelector('.cotizacion-ingreso'));
+
+    modalImagenEl?.addEventListener('hidden.bs.modal', () => {
+        if (modalImagenImg) {
+            modalImagenImg.removeAttribute('src');
+            modalImagenImg.alt = '';
+        }
+    });
 
     async function seleccionarProducto(p) {
         if (agregandoLinea) {
@@ -917,6 +992,8 @@
             });
             modalBody.appendChild(tr);
         });
+
+        enlazarZoomImagenes(modalBody);
 
         if (modalEstado && meta) {
             setModalBuscarEstado(meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).', false);
@@ -1665,7 +1742,7 @@
                     return;
                 }
                 let html = '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
-                    + '<th style="width:56px"></th>'
+                    + '<th style="width:80px"></th>'
                     + '<th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th>'
                     + '</tr></thead><tbody>';
                 items.forEach(p => {
@@ -1681,6 +1758,7 @@
                 });
                 html += '</tbody></table>';
                 cont.innerHTML = html;
+                enlazarZoomImagenes(cont);
                 cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
                     b.addEventListener('click', () => seleccionarVinculoAgile(
                         b.dataset.codigo,
