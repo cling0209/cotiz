@@ -14,7 +14,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodImportService
 {
-    public const UPSERT_CHUNK_SIZE = 500;
+    public const UPSERT_CHUNK_SIZE = 2000;
     /** @var array<string, string> */
     private const HEADER_ALIASES = [
         'codigo' => 'prod_item',
