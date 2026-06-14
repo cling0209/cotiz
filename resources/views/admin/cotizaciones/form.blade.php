@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-40" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-41" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -320,6 +320,9 @@
                                 placeholder="Texto del cliente, c&oacute;digo o descripci&oacute;n..."
                                 autocomplete="off"
                             >
+                            <button type="button" class="btn btn-outline-secondary" id="btn-modal-buscar-limpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                             <button type="button" class="btn btn-primary" id="btn-modal-buscar">
                                 Buscar
                             </button>
@@ -438,6 +441,9 @@
                 <p class="small text-muted mb-2"><strong>Descripci&oacute;n Compra &Aacute;gil:</strong> <span id="popupVincularDescAgile"></span></p>
                 <div class="input-group input-group-sm mb-3">
                     <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
+                    <button type="button" class="btn btn-outline-secondary" id="btnPopupVincularLimpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
                     <button type="button" class="btn btn-secondary" id="btnPopupVincularBuscar">Buscar</button>
                 </div>
                 <div id="popupVincularResultados" class="cotiz-popup-resultados"></div>
@@ -828,6 +834,13 @@
         return '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
     }
 
+    function buscarProductoThumbHtml(p) {
+        const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
+
+        return '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="lazy" '
+            + 'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
+    }
+
     async function seleccionarProducto(p) {
         if (agregandoLinea) {
             return;
@@ -873,11 +886,7 @@
             tr.className = 'cotiz-buscar-fila';
             tr.tabIndex = 0;
             tr.innerHTML =
-                '<td class="text-center p-1">' +
-                    (p.image_url
-                        ? '<img src="' + p.image_url + '" alt="" class="cotiz-buscar-thumb" onerror="this.src=\'' + buscarConfig.placeholderImg + '\'">'
-                        : '<img src="' + buscarConfig.placeholderImg + '" alt="" class="cotiz-buscar-thumb">') +
-                '</td>' +
+                '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
                 '<td class="align-middle"><code class="small">' + (p.prod_item || '') + '</code></td>' +
                 '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
                 '<td class="align-middle small text-muted">' + (p.prod_familia || '') + '</td>' +
@@ -950,8 +959,20 @@
         ejecutarBusqueda(modalInput.value.trim());
     }
 
+    function limpiarBusquedaModal() {
+        if (modalInput) {
+            modalInput.value = '';
+            modalInput.focus();
+        }
+        renderResultados([], {});
+        if (modalEstado) {
+            modalEstado.textContent = 'Escriba el texto del cliente o descripción y pulse Buscar.';
+        }
+    }
+
     btnAbrirBuscar?.addEventListener('click', () => abrirModalBuscar());
     btnModalBuscar?.addEventListener('click', () => lanzarBusquedaModal());
+    document.getElementById('btn-modal-buscar-limpiar')?.addEventListener('click', limpiarBusquedaModal);
 
     modalInput?.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
@@ -1627,10 +1648,14 @@
                     cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
                     return;
                 }
-                let html = '<table class="table table-sm table-hover mb-0"><thead><tr><th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th></tr></thead><tbody>';
+                let html = '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
+                    + '<th style="width:56px"></th>'
+                    + '<th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th>'
+                    + '</tr></thead><tbody>';
                 items.forEach(p => {
                     const nombre = String(p.prod_nombre || '').replace(/"/g, '&quot;');
                     html += '<tr>'
+                        + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
                         + '<td>' + escHtml(p.prod_item) + '</td>'
                         + '<td>' + escHtml(p.prod_nombre) + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
@@ -1778,6 +1803,15 @@
     });
     document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
     document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
+    document.getElementById('btnPopupVincularLimpiar')?.addEventListener('click', () => {
+        if (popupVincularBusqueda) {
+            popupVincularBusqueda.value = '';
+            popupVincularBusqueda.focus();
+        }
+        if (popupVincularResultados) {
+            popupVincularResultados.innerHTML = '';
+        }
+    });
     popupVincularBusqueda?.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
             e.preventDefault();

@@ -426,6 +426,14 @@
     font-size: 0.875rem;
 }
 
+.cotiz-popup-resultados .cotiz-buscar-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
+
 .cotizacion-ingreso .linea-desc-agile {
     color: #495057;
     line-height: 1.3;
