@@ -480,6 +480,13 @@ class MaeprodImportJobService
 
             do {
                 $lock->touch($uploadId);
+                $batchInfo = $this->resolveNextBatchInfo($uploadId);
+                $progress->beginBatch(
+                    $uploadId,
+                    $batchInfo['batch_number'],
+                    $batchInfo['total_batches'],
+                    $batchInfo['result'],
+                );
                 $result = $this->processNextBatchWithRun($uploadId, $userId);
                 $progress->updateFromProcess($uploadId, $result);
             } while ($result['finished'] !== true);
@@ -1481,6 +1488,42 @@ class MaeprodImportJobService
         }
 
         return max(1, (int) ceil($totalRows / self::ROWS_PER_STREAM_CHUNK));
+    }
+
+    /**
+     * @return array{
+     *     batch_number: int,
+     *     total_batches: int,
+     *     result: array{created: int, updated: int, skipped: int, errors: list<string>}
+     * }
+     */
+    protected function resolveNextBatchInfo(string $uploadId): array
+    {
+        $job = $this->readJob($uploadId);
+        $importMode = $job['import_mode'] ?? self::IMPORT_MODE_BATCH;
+        $result = is_array($job['result'] ?? null) ? $job['result'] : $this->emptyResult();
+
+        if (in_array($importMode, [self::IMPORT_MODE_STREAM, self::IMPORT_MODE_EXCEL_DIRECT], true)) {
+            $totalRows = (int) ($job['total_rows'] ?? 0);
+            $processedRows = (int) ($job['processed_rows'] ?? 0);
+            $totalBatches = $this->virtualBatchCount($totalRows);
+            $batchNumber = min($totalBatches, max(1, (int) floor($processedRows / self::ROWS_PER_STREAM_CHUNK) + 1));
+
+            return [
+                'batch_number' => $batchNumber,
+                'total_batches' => $totalBatches,
+                'result' => $result,
+            ];
+        }
+
+        $nextBatch = (int) ($job['next_batch'] ?? 0);
+        $batchCount = max(1, (int) ($job['batch_count'] ?? 1));
+
+        return [
+            'batch_number' => $nextBatch + 1,
+            'total_batches' => $batchCount,
+            'result' => $result,
+        ];
     }
 
     /**

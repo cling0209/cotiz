@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Services\MaeprodImportJobService;
+use App\Services\MaeprodImportLockService;
+use App\Services\MaeprodImportProgressService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -47,5 +49,11 @@ class ProcessMaeprodImportJob implements ShouldBeUnique, ShouldQueue
             'upload_id' => $this->uploadId,
             'message' => $exception?->getMessage(),
         ]);
+
+        app(MaeprodImportProgressService::class)->fail(
+            $this->uploadId,
+            $exception?->getMessage() ?: 'La importación en segundo plano falló.',
+        );
+        app(MaeprodImportLockService::class)->release($this->uploadId);
     }
 }

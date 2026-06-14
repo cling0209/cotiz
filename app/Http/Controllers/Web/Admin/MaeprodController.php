@@ -125,7 +125,7 @@ class MaeprodController extends Controller
             return response()->json(['message' => 'No autorizado.'], 403);
         }
 
-        return response()->json($progress);
+        return response()->json($progressService->enrichForPoll($data['upload_id'], $progress));
     }
 
     public function startBackgroundImport(Request $request, MaeprodImportJobService $importJob): JsonResponse

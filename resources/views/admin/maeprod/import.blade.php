@@ -457,6 +457,11 @@ function applyPollProgressPayload(payload, progress, pollPlan) {
     const percent = typeof payload.percent === 'number'
         ? payload.percent
         : pollPlan.start + (pollPlan.span * 0.5);
+    let detail = payload.detail || 'Procesando...';
+
+    if (payload.stale_warning) {
+        detail = `${detail} — ${payload.stale_warning}`;
+    }
 
     setImportProgress(progress, {
         step: payload.phase === 'process'
@@ -465,7 +470,7 @@ function applyPollProgressPayload(payload, progress, pollPlan) {
         totalSteps: pollPlan.totalSteps,
         stage: payload.stage || 'Procesando en segundo plano',
         percent,
-        detail: payload.detail || 'Procesando...',
+        detail,
     });
 }
 

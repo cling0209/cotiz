@@ -3,11 +3,17 @@
 namespace App\Services;
 
 use App\Models\MaeprodImportRun;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class MaeprodImportProgressService
 {
     public const TTL_SECONDS = 7200;
+
+    public const STALE_WARNING_SECONDS = 480;
+
+    public const ZOMBIE_FAIL_SECONDS = 2700;
 
     public const PHASE_QUEUED = 'queued';
 
@@ -90,6 +96,114 @@ class MaeprodImportProgressService
             'total_batches' => isset($prepare['batch_count']) ? (int) $prepare['batch_count'] : ($current['total_batches'] ?? null),
             'updated_at' => now()->toIso8601String(),
         ]));
+    }
+
+    /**
+     * @param  array{created?: int, updated?: int, skipped?: int}|null  $currentResult
+     */
+    public function beginBatch(
+        string $uploadId,
+        int $batchNumber,
+        int $totalBatches,
+        ?array $currentResult = null,
+    ): void {
+        $current = $this->read($uploadId) ?? [];
+        $result = $currentResult ?? ($current['result'] ?? []);
+        $created = (int) ($result['created'] ?? 0);
+        $updated = (int) ($result['updated'] ?? 0);
+        $skipped = (int) ($result['skipped'] ?? 0);
+
+        $detail = sprintf(
+            'Procesando lote %d de %d — creados: %s, actualizados: %s, omitidos: %s',
+            $batchNumber,
+            $totalBatches,
+            number_format($created, 0, '', '.'),
+            number_format($updated, 0, '', '.'),
+            number_format($skipped, 0, '', '.'),
+        );
+
+        $percent = 38 + ((max(0, $batchNumber - 1) / max(1, $totalBatches)) * 62);
+
+        $this->write($uploadId, array_merge($current, [
+            'phase' => self::PHASE_PROCESS,
+            'stage' => 'Grabando en base de datos',
+            'detail' => $detail,
+            'percent' => min(99, $percent),
+            'processing_batch' => $batchNumber,
+            'total_batches' => $totalBatches,
+            'updated_at' => now()->toIso8601String(),
+        ]));
+    }
+
+    /**
+     * @param  array<string, mixed>  $progress
+     * @return array<string, mixed>
+     */
+    public function enrichForPoll(string $uploadId, array $progress): array
+    {
+        $updatedAt = isset($progress['updated_at'])
+            ? Carbon::parse($progress['updated_at'])
+            : null;
+        $secondsSinceUpdate = $updatedAt !== null ? (int) $updatedAt->diffInSeconds(now()) : null;
+        $progress['seconds_since_update'] = $secondsSinceUpdate;
+
+        if ($this->shouldFailAsZombie($uploadId, $progress, $secondsSinceUpdate)) {
+            $message = 'La importación dejó de avanzar (el worker en segundo plano puede haberse detenido). '
+                .'Recargue la página; si no retoma, use «Liberar bloqueo» e intente de nuevo.';
+            $this->fail($uploadId, $message);
+
+            return $this->read($uploadId) ?? $progress;
+        }
+
+        $phase = (string) ($progress['phase'] ?? '');
+        if ($secondsSinceUpdate !== null
+            && $secondsSinceUpdate >= self::STALE_WARNING_SECONDS
+            && in_array($phase, [self::PHASE_QUEUED, self::PHASE_PREPARE, self::PHASE_PROCESS], true)) {
+            $minutes = max(1, (int) floor($secondsSinceUpdate / 60));
+            $progress['stale_warning'] = "Sin actualización desde hace {$minutes} min. "
+                .'Cada lote procesa hasta 10.000 filas y en producción puede tardar varios minutos.';
+        }
+
+        return $progress;
+    }
+
+    /**
+     * @param  array<string, mixed>  $progress
+     */
+    protected function shouldFailAsZombie(string $uploadId, array $progress, ?int $secondsSinceUpdate): bool
+    {
+        if ($secondsSinceUpdate === null || $secondsSinceUpdate < self::ZOMBIE_FAIL_SECONDS) {
+            return false;
+        }
+
+        $phase = (string) ($progress['phase'] ?? '');
+        if (in_array($phase, [self::PHASE_COMPLETED, self::PHASE_FAILED], true)) {
+            return false;
+        }
+
+        if ($this->hasFailedQueueJob($uploadId)) {
+            return true;
+        }
+
+        if (! app(MaeprodImportLockService::class)->hasActiveWork($uploadId)) {
+            return false;
+        }
+
+        return ! $this->hasPendingQueueJob($uploadId);
+    }
+
+    protected function hasPendingQueueJob(string $uploadId): bool
+    {
+        return DB::table(config('queue.connections.database.table', 'jobs'))
+            ->where('payload', 'like', '%'.$uploadId.'%')
+            ->exists();
+    }
+
+    protected function hasFailedQueueJob(string $uploadId): bool
+    {
+        return DB::table('failed_jobs')
+            ->where('payload', 'like', '%'.$uploadId.'%')
+            ->exists();
     }
 
     /**

@@ -823,6 +823,43 @@ class MaeprodImportTest extends TestCase
             ->assertJsonPath('upload_id', $uploadId);
     }
 
+    public function test_progress_reports_stale_warning_after_long_inactivity(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $uploadId = (string) Str::uuid();
+        $progressService = app(MaeprodImportProgressService::class);
+        $progressService->beginQueued($uploadId, $admin->id, 'template');
+        $progressService->setPhase(
+            $uploadId,
+            MaeprodImportProgressService::PHASE_PROCESS,
+            'Grabando en base de datos',
+            'Lote 10 de 13',
+            86,
+        );
+
+        Cache::put(
+            'maeprod_import_progress:'.$uploadId,
+            array_merge($progressService->read($uploadId) ?? [], [
+                'updated_at' => now()->subMinutes(10)->toIso8601String(),
+            ]),
+            MaeprodImportProgressService::TTL_SECONDS,
+        );
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.productos.import.progress', ['upload_id' => $uploadId]))
+            ->assertOk()
+            ->assertJsonPath('phase', 'process')
+            ->assertJson(fn ($json) => $json
+                ->where('seconds_since_update', fn ($value) => $value >= 600)
+                ->where('stale_warning', fn ($value) => is_string($value) && $value !== '')
+                ->etc()
+            );
+    }
+
     public function test_template_import_via_background_worker_completes(): void
     {
         config(['queue.default' => 'sync']);
