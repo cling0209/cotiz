@@ -37,9 +37,6 @@
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="nav-link-admin">
                 <i class="bi bi-arrow-repeat"></i> Retomar
             </a>
-            <a href="{{ route('admin.agile.index') }}" class="nav-link-admin {{ request()->routeIs('admin.agile.*') ? 'active' : '' }}">
-                <i class="bi bi-cloud-download"></i> Recepción Agile
-            </a>
             @if(auth()->user()->isSuperAdmin())
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
