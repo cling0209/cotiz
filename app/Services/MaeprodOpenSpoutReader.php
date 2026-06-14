@@ -62,6 +62,147 @@ class MaeprodOpenSpoutReader
     }
 
     /**
+     * Convierte un tramo del Excel (.xlsx) a CSV usando lectura secuencial (bajo uso de memoria).
+     *
+     * @param  array<string, mixed>  $state
+     * @return array{
+     *     rows_written: int,
+     *     processed_rows: int,
+     *     next_row: int,
+     *     next_physical_line: int,
+     *     finished: bool,
+     *     data_headers: list<string>,
+     *     raw_headers: list<string>,
+     *     column_count: int,
+     *     delimiter: string,
+     *     highest_row: int,
+     *     total_rows: int
+     * }
+     */
+    public function appendExcelChunkToCsv(array $state, string $sourcePath, string $csvPath, int $maxDataRows): array
+    {
+        if (! is_file($sourcePath)) {
+            throw new \InvalidArgumentException('No se encontró el archivo Excel a importar.');
+        }
+
+        $nextPhysicalLine = max(1, (int) ($state['next_physical_line'] ?? 1));
+        $csvStarted = (bool) ($state['csv_started'] ?? false);
+        $processedRows = (int) ($state['processed_rows'] ?? 0);
+        $highestRow = (int) ($state['highest_row'] ?? 0);
+        $delimiter = ';';
+
+        $reader = $this->createReader($sourcePath);
+        $reader->open($sourcePath);
+
+        $handle = fopen($csvPath, $csvStarted ? 'ab' : 'wb');
+
+        if ($handle === false) {
+            $reader->close();
+            throw new \RuntimeException('No se pudo escribir el archivo CSV de importación.');
+        }
+
+        $dataHeaders = $state['data_headers'] ?? [];
+        $rawHeaders = $state['raw_headers'] ?? [];
+        $rowsWrittenThisChunk = 0;
+        $sheetEnded = false;
+        $lastConsumedLine = $nextPhysicalLine - 1;
+
+        try {
+            if (! $csvStarted) {
+                fwrite($handle, "\xEF\xBB\xBF");
+            }
+
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $physicalLine = 0;
+
+                foreach ($sheet->getRowIterator() as $row) {
+                    $physicalLine++;
+
+                    if ($physicalLine < $nextPhysicalLine) {
+                        continue;
+                    }
+
+                    $lastConsumedLine = $physicalLine;
+                    $values = $this->rowToValues($row);
+
+                    if ($physicalLine === 1) {
+                        $rawHeaders = array_map(
+                            fn (string $header) => mb_strtolower(trim($this->stripBom($header))),
+                            $values,
+                        );
+
+                        if ($this->isEmptyCsvRow($rawHeaders)) {
+                            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+                        }
+
+                        $dataHeaders = array_values(array_filter($rawHeaders, fn (string $header) => $header !== ''));
+
+                        if ($dataHeaders === []) {
+                            throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+                        }
+
+                        if (! $csvStarted) {
+                            fputcsv($handle, $dataHeaders, $delimiter);
+                            $csvStarted = true;
+                        }
+
+                        continue;
+                    }
+
+                    if ($this->isEmptyCsvRow($values)) {
+                        continue;
+                    }
+
+                    $lineValues = [];
+                    foreach ($dataHeaders as $columnIndex => $header) {
+                        $lineValues[] = trim((string) ($values[$columnIndex] ?? ''));
+                    }
+
+                    fputcsv($handle, $lineValues, $delimiter);
+                    $rowsWrittenThisChunk++;
+                    $processedRows++;
+
+                    if ($rowsWrittenThisChunk >= $maxDataRows) {
+                        break 2;
+                    }
+                }
+
+                $sheetEnded = true;
+                break;
+            }
+        } finally {
+            $reader->close();
+            fclose($handle);
+        }
+
+        $hitRowCap = $rowsWrittenThisChunk >= $maxDataRows;
+        $finished = $sheetEnded && ! $hitRowCap;
+        $newNextLine = $lastConsumedLine + 1;
+
+        if ($processedRows === 0 && $finished) {
+            throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+        }
+
+        if ($highestRow < 1) {
+            $highestRow = max($lastConsumedLine, 1);
+        }
+
+        return [
+            'rows_written' => $rowsWrittenThisChunk,
+            'processed_rows' => $processedRows,
+            'next_row' => $newNextLine,
+            'next_physical_line' => $newNextLine,
+            'finished' => $finished,
+            'data_headers' => $dataHeaders,
+            'raw_headers' => $rawHeaders,
+            'column_count' => count($rawHeaders),
+            'delimiter' => $delimiter,
+            'highest_row' => $highestRow,
+            'total_rows' => max(0, $highestRow - 1),
+        ];
+    }
+
+    /**
      * @return array{
      *     rows_written: int,
      *     batch_count: int,

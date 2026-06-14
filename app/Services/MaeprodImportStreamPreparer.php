@@ -6,7 +6,7 @@ use App\Support\MaeprodImportFileTypes;
 
 class MaeprodImportStreamPreparer
 {
-    public const EXCEL_ROWS_PER_PREPARE_REQUEST = 3000;
+    public const EXCEL_ROWS_PER_PREPARE_REQUEST = 5000;
 
     /**
      * @return array{
@@ -373,6 +373,29 @@ class MaeprodImportStreamPreparer
 
         if (! is_file($sourcePath)) {
             throw new \InvalidArgumentException('No se encontró el archivo Excel a importar.');
+        }
+
+        $originalName = isset($state['original_name']) ? (string) $state['original_name'] : null;
+        $openSpout = app(MaeprodOpenSpoutReader::class);
+
+        if ($openSpout->supportsPath($sourcePath, $originalName)) {
+            if (! isset($state['highest_row'])) {
+                $metadata = app(MaeprodSpreadsheetReader::class)->readMetadata($sourcePath);
+                $highestRow = (int) $metadata['highest_row'];
+
+                if ($highestRow < 2) {
+                    throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+                }
+
+                $state['highest_row'] = $highestRow;
+            }
+
+            return $openSpout->appendExcelChunkToCsv(
+                $state,
+                $sourcePath,
+                $csvPath,
+                self::EXCEL_ROWS_PER_PREPARE_REQUEST,
+            );
         }
 
         $reader = app(MaeprodSpreadsheetReader::class);

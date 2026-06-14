@@ -396,18 +396,38 @@ async function uploadCsvChunks(file, mode, progress, uploadPlan) {
         formData.append('chunk', blob, `chunk-${chunkIndex}.part`);
         formData.append('_token', csrfToken);
 
-        const response = await fetch(chunkUploadUrl, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            credentials: 'same-origin',
-        });
+        let response = null;
+        let payload = {};
 
-        const payload = await response.json().catch(() => ({}));
+        for (let attempt = 0; attempt < 3; attempt++) {
+            response = await fetch(chunkUploadUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                credentials: 'same-origin',
+            });
+
+            payload = await response.json().catch(() => ({}));
+
+            if (response.ok || ![502, 503, 504].includes(response.status)) {
+                break;
+            }
+
+            setImportProgress(progress, {
+                step: plan.step,
+                totalSteps: plan.totalSteps,
+                stage: plan.stage,
+                percent: plan.start + (((chunkIndex + 0.5) / totalChunks) * plan.span),
+                detail: `Reintentando fragmento ${chunkIndex + 1} (intento ${attempt + 2} de 3)...`,
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+        }
+
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
         if (payload.done && payload.upload_id) {
@@ -522,13 +542,13 @@ function updatePrepareProgress(progress, payload, plan) {
 
     if (total && total > 0) {
         percent = plan.start + ((processed / total) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas listas para importar`;
+        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas convertidas a CSV`;
     } else if (processed > 0) {
         percent = plan.start + (Math.min(0.85, processed / 50000) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} filas listas para importar`;
+        detail = `${processed.toLocaleString('es-CL')} filas convertidas a CSV`;
     } else {
         percent = plan.start + (plan.span * 0.12);
-        detail = 'Analizando estructura del archivo Excel...';
+        detail = 'Convirtiendo Excel a CSV en el servidor (por trozos)...';
     }
 
     setImportProgress(progress, {
@@ -551,7 +571,7 @@ async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
                 totalSteps: plan.totalSteps,
                 stage: plan.stage,
                 percent: plan.start + (plan.span * 0.08),
-                detail: 'Preparando archivo Excel en el servidor...',
+                detail: 'Convirtiendo Excel a CSV (primer trozo)...',
             });
             isFirstRequest = false;
         }
@@ -594,7 +614,7 @@ async function prepareTemplateImport(uploadId, progress) {
         {
             step: 2,
             totalSteps: 3,
-            stage: 'Preparando archivo Excel',
+            stage: 'Convirtiendo Excel a CSV',
             start: 12,
             span: 26,
         },

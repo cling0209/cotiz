@@ -253,7 +253,7 @@ class MaeprodImportJobService
      */
     public function continuePrepareTemplate(string $uploadId, int $userId): array
     {
-        @set_time_limit(120);
+        @set_time_limit(180);
         @ini_set('memory_limit', '512M');
         $this->assertValidUploadId($uploadId);
 
@@ -322,19 +322,42 @@ class MaeprodImportJobService
         }
 
         try {
-            $this->beginExcelDirectJob(
-                $uploadId,
-                $sourcePath,
-                $userId,
-                $username,
-                $originalName,
-                $columnMapping,
-            );
+            if (! File::exists($statePath)) {
+                $metadata = app(MaeprodSpreadsheetReader::class)->readMetadata($sourcePath);
+                $highestRow = (int) ($metadata['highest_row'] ?? 0);
 
-            $pendingService->consume($uploadId);
-            $this->cleanupLegacyPrepareArtifacts($uploadId, $sourcePath, $statePath);
+                if ($highestRow < 1 || $this->isEmptyCsvRow($metadata['headers'] ?? [])) {
+                    throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+                }
 
-            return $this->buildPrepareFinishedResponse($uploadId);
+                if ($highestRow < 2) {
+                    throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+                }
+
+                $state = [
+                    'user_id' => $userId,
+                    'username' => $username,
+                    'original_name' => $originalName,
+                    'source_path' => $sourcePath,
+                    'csv_path' => $jobDir.'/source.csv',
+                    'next_row' => 2,
+                    'next_physical_line' => 1,
+                    'processed_rows' => 0,
+                    'csv_started' => false,
+                    'highest_row' => $highestRow,
+                    'pending' => $pendingService->has($uploadId),
+                ];
+
+                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+            } else {
+                $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
+
+                if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
+                    throw new \InvalidArgumentException('No autorizado para procesar esta importación.');
+                }
+            }
+
+            return $this->runSpreadsheetPrepareChunk($uploadId, $state, $statePath, $pendingService);
         } catch (\Throwable $e) {
             if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
                 File::deleteDirectory($jobDir);
@@ -733,7 +756,7 @@ class MaeprodImportJobService
         int $userId,
         array $columnMapping,
     ): array {
-        @set_time_limit(120);
+        @set_time_limit(180);
         @ini_set('memory_limit', '512M');
         $stagingService = app(MaeprodImportStagingService::class);
         $staging = $stagingService->findStagingRecord($uploadId);
@@ -804,19 +827,42 @@ class MaeprodImportJobService
         }
 
         try {
-            $this->beginExcelDirectJob(
-                $uploadId,
-                $sourcePath,
-                $userId,
-                $staging->username,
-                $staging->original_name,
-                $columnMapping,
-            );
+            if (! File::exists($statePath)) {
+                $metadata = app(MaeprodSpreadsheetReader::class)->readMetadata($sourcePath);
+                $highestRow = (int) ($metadata['highest_row'] ?? 0);
 
-            $stagingService->cleanup($uploadId);
-            $this->cleanupLegacyPrepareArtifacts($uploadId, $sourcePath, $statePath);
+                if ($highestRow < 1 || $this->isEmptyCsvRow($metadata['headers'] ?? [])) {
+                    throw new \InvalidArgumentException('El archivo Excel no contiene encabezados válidos.');
+                }
 
-            return $this->buildPrepareFinishedResponse($uploadId);
+                if ($highestRow < 2) {
+                    throw new \InvalidArgumentException('El archivo no contiene filas de productos.');
+                }
+
+                $state = [
+                    'user_id' => $userId,
+                    'username' => $staging->username,
+                    'original_name' => $staging->original_name,
+                    'source_path' => $sourcePath,
+                    'csv_path' => $jobDir.'/source.csv',
+                    'next_row' => 2,
+                    'next_physical_line' => 1,
+                    'processed_rows' => 0,
+                    'csv_started' => false,
+                    'highest_row' => $highestRow,
+                    'column_mapping' => $columnMapping,
+                ];
+
+                File::put($statePath, json_encode($state, JSON_THROW_ON_ERROR));
+            } else {
+                $state = json_decode(File::get($statePath), true, flags: JSON_THROW_ON_ERROR);
+
+                if (! is_array($state) || (int) ($state['user_id'] ?? 0) !== $userId) {
+                    throw new \InvalidArgumentException('No autorizado para preparar esta importación.');
+                }
+            }
+
+            return $this->runSpreadsheetPrepareChunk($uploadId, $state, $statePath, $stagingService);
         } catch (\Throwable $e) {
             if (File::isDirectory($jobDir) && ! File::exists($jobDir.'/job.json')) {
                 File::deleteDirectory($jobDir);
@@ -977,6 +1023,7 @@ class MaeprodImportJobService
             $chunk = $preparer->exportExcelChunkToCsv($state, $csvPath);
 
             $state['next_row'] = $chunk['next_row'];
+            $state['next_physical_line'] = $chunk['next_physical_line'] ?? $chunk['next_row'];
             $state['processed_rows'] = $chunk['processed_rows'];
             $state['csv_started'] = true;
             $state['data_headers'] = $chunk['data_headers'];

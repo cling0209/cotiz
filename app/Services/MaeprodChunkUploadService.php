@@ -85,15 +85,21 @@ class MaeprodChunkUploadService
         }
 
         $this->storeChunkFile($chunk, $dir.'/'.$this->chunkFilename($chunkIndex));
+        $this->appendChunkToMergedFile(
+            $uploadId,
+            (string) $meta['original_name'],
+            $dir.'/'.$this->chunkFilename($chunkIndex),
+            $chunkIndex === 0,
+        );
 
         if ($chunkIndex !== $totalChunks - 1) {
             return ['ready' => false];
         }
 
-        @set_time_limit(300);
+        @set_time_limit(120);
         @ini_set('memory_limit', '512M');
 
-        $mergedPath = $this->mergeChunks($uploadId, $totalChunks);
+        $mergedPath = $this->mergedPathFor($uploadId, (string) $meta['original_name']);
         $isSpreadsheet = MaeprodImportFileTypes::isSpreadsheet((string) $meta['original_name']);
 
         if ($isSpreadsheet) {
@@ -111,19 +117,18 @@ class MaeprodChunkUploadService
 
             $stablePath = $jobDir.'/source.'.$extension;
 
-            if (! File::copy($mergedPath, $stablePath)) {
-                throw new \RuntimeException('No se pudo resguardar el archivo Excel para la importación.');
-            }
+            if (! @rename($mergedPath, $stablePath)) {
+                if (! File::copy($mergedPath, $stablePath)) {
+                    throw new \RuntimeException('No se pudo resguardar el archivo Excel para la importación.');
+                }
 
+                File::delete($mergedPath);
+            }
             File::put($jobDir.'/upload-meta.json', json_encode([
                 'user_id' => $userId,
                 'username' => (string) $meta['username'],
                 'original_name' => (string) $meta['original_name'],
             ], JSON_THROW_ON_ERROR));
-
-            if (File::exists($mergedPath)) {
-                File::delete($mergedPath);
-            }
 
             app(MaeprodImportPendingService::class)->register(
                 $uploadId,
@@ -203,41 +208,51 @@ class MaeprodChunkUploadService
 
     protected function mergeChunks(string $uploadId, int $totalChunks): string
     {
-        $dir = $this->uploadDirectory($uploadId);
+        $meta = $this->readMeta($uploadId);
+        $mergedPath = $this->mergedPathFor($uploadId, (string) $meta['original_name']);
+
+        if (! File::exists($mergedPath)) {
+            throw new \InvalidArgumentException('El archivo fusionado no está completo.');
+        }
+
+        return $mergedPath;
+    }
+
+    protected function mergedPathFor(string $uploadId, string $originalName): string
+    {
         File::ensureDirectoryExists(storage_path('app/imports/merged'));
 
-        $extension = MaeprodImportFileTypes::extensionFromName($this->readMeta($uploadId)['original_name'] ?? 'csv');
-        $mergedPath = storage_path('app/imports/merged/'.$uploadId.'.'.$extension);
-        $output = fopen($mergedPath, 'wb');
+        $extension = MaeprodImportFileTypes::extensionFromName($originalName);
+
+        return storage_path('app/imports/merged/'.$uploadId.'.'.$extension);
+    }
+
+    protected function appendChunkToMergedFile(
+        string $uploadId,
+        string $originalName,
+        string $partPath,
+        bool $truncate,
+    ): void {
+        $mergedPath = $this->mergedPathFor($uploadId, $originalName);
+        $output = fopen($mergedPath, $truncate ? 'wb' : 'ab');
 
         if ($output === false) {
             throw new \RuntimeException('No se pudo crear el archivo temporal.');
         }
 
-        for ($index = 0; $index < $totalChunks; $index++) {
-            $partPath = $dir.'/'.$this->chunkFilename($index);
+        $input = fopen($partPath, 'rb');
 
-            if (! File::exists($partPath)) {
-                fclose($output);
-                File::delete($mergedPath);
-                throw new \InvalidArgumentException('Falta el fragmento '.($index + 1).' de '.$totalChunks.'.');
-            }
-
-            $input = fopen($partPath, 'rb');
-
-            if ($input === false) {
-                fclose($output);
-                File::delete($mergedPath);
-                throw new \RuntimeException('No se pudo leer un fragmento de la carga.');
-            }
-
-            stream_copy_to_stream($input, $output);
-            fclose($input);
+        if ($input === false) {
+            fclose($output);
+            throw new \RuntimeException('No se pudo leer un fragmento de la carga.');
         }
 
-        fclose($output);
-
-        return $mergedPath;
+        try {
+            stream_copy_to_stream($input, $output);
+        } finally {
+            fclose($input);
+            fclose($output);
+        }
     }
 
     /**
@@ -268,10 +283,24 @@ class MaeprodChunkUploadService
             throw new \InvalidArgumentException('No se recibió el fragmento del archivo.');
         }
 
-        $bytes = file_get_contents($source);
+        $input = fopen($source, 'rb');
 
-        if ($bytes === false || File::put($destination, $bytes) === false) {
+        if ($input === false) {
+            throw new \RuntimeException('No se pudo leer el fragmento del archivo.');
+        }
+
+        $output = fopen($destination, 'wb');
+
+        if ($output === false) {
+            fclose($input);
             throw new \RuntimeException('No se pudo guardar el fragmento en el servidor.');
+        }
+
+        try {
+            stream_copy_to_stream($input, $output);
+        } finally {
+            fclose($input);
+            fclose($output);
         }
     }
 
