@@ -1059,6 +1059,25 @@
         }
     }
 
+    function resetImportCompraAgilModal() {
+        importPreviewData = null;
+        importandoCompraAgil = false;
+        if (importarTexto) importarTexto.value = '';
+        if (importarEstado) importarEstado.textContent = '';
+        if (importarCabecera) importarCabecera.classList.add('d-none');
+        if (importarCabeceraTexto) importarCabeceraTexto.textContent = '';
+        if (importarTablaWrap) importarTablaWrap.classList.add('d-none');
+        if (importarResultados) importarResultados.innerHTML = '';
+        if (importarResumen) importarResumen.textContent = '';
+        limpiarImportAlerta();
+        ocultarProgresoImportar();
+        if (btnImportarConfirmar) {
+            btnImportarConfirmar.classList.add('d-none');
+            btnImportarConfirmar.disabled = false;
+        }
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+    }
+
     function renderImportPreview(data) {
         importPreviewData = data;
 
@@ -1297,10 +1316,7 @@
     }
 
     btnAbrirImportar?.addEventListener('click', () => {
-        if (importarEstado) importarEstado.textContent = '';
-        limpiarImportAlerta();
-        ocultarProgresoImportar();
-        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        resetImportCompraAgilModal();
         bsModalImportar?.show();
         setTimeout(() => importarTexto?.focus(), 200);
     });
@@ -1309,7 +1325,7 @@
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
-        importPreviewData = null;
+        resetImportCompraAgilModal();
     });
 
     const vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota));
