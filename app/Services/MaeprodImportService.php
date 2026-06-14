@@ -790,21 +790,47 @@ class MaeprodImportService
 
         $value = str_replace([' ', "\xc2\xa0"], '', $value);
 
-        if (preg_match('/,\d{1,2}$/', $value)) {
-            $value = str_replace('.', '', $value);
-            $value = str_replace(',', '.', $value);
+        if (str_contains($value, ',') && ! str_contains($value, '.')) {
+            $parts = explode(',', $value);
+            if (count($parts) > 1 && strlen((string) end($parts)) === 3) {
+                return str_replace(',', '', $value);
+            }
 
-            return $value;
+            if (preg_match('/,\d{1,2}$/', $value)) {
+                return $this->truncateDecimalString(str_replace(',', '.', $value));
+            }
         }
 
         if (str_contains($value, '.') && ! str_contains($value, ',')) {
             $parts = explode('.', $value);
-            if (count($parts) > 1 && strlen(end($parts)) === 3) {
-                return str_replace('.', '', $value);
+            if (count($parts) > 1) {
+                if (strlen((string) end($parts)) === 3) {
+                    return str_replace('.', '', $value);
+                }
+
+                if (count($parts) === 2 && strlen((string) end($parts)) <= 2) {
+                    return $this->truncateDecimalString($value);
+                }
             }
         }
 
+        if (preg_match('/,\d{1,2}$/', $value) && str_contains($value, '.')) {
+            $value = str_replace('.', '', $value);
+            $value = str_replace(',', '.', $value);
+
+            return $this->truncateDecimalString($value);
+        }
+
         return $value;
+    }
+
+    private function truncateDecimalString(string $value): string
+    {
+        if (! str_contains($value, '.')) {
+            return $value;
+        }
+
+        return explode('.', $value, 2)[0];
     }
 
     public function readPathAsUtf8(string $path): string

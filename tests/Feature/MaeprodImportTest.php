@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class MaeprodImportTest extends TestCase
@@ -507,20 +508,34 @@ class MaeprodImportTest extends TestCase
         $this->assertSame(3, $error->fila);
     }
 
-    public function test_import_accepts_chilean_thousands_price_format(): void
+    /**
+     * @return array<string, array{0: string, 1: int}>
+     */
+    public static function chileanPriceFormatsProvider(): array
+    {
+        return [
+            'punto miles largo' => ['2.480.000', 2480000],
+            'punto miles corto' => ['11.200', 11200],
+            'coma miles corto' => ['11,200', 11200],
+            'coma miles medio' => ['23,866', 23866],
+        ];
+    }
+
+    #[DataProvider('chileanPriceFormatsProvider')]
+    public function test_import_accepts_chilean_thousands_price_format(string $precio, int $esperado): void
     {
         $admin = User::factory()->create([
             'perfil' => User::PERFIL_SUPERADMIN,
             'username' => 'admin',
         ]);
 
-        $csv = "codigo;nombre;familia;precio\nCH001;PRODUCTO CARO;PAPEL;2.480.000\n";
+        $csv = "codigo;nombre;familia;precio\nCH001;PRODUCTO CARO;PAPEL;{$precio}\n";
 
         $processResponse = $this->importCsvAsAdmin($admin, $csv);
 
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'CH001',
-            'prod_valor' => 2480000,
+            'prod_valor' => $esperado,
         ]);
 
         $redirect = (string) $processResponse->json('redirect');
