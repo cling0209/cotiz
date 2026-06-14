@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-44" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-45" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -677,12 +677,11 @@
 
         tbody.querySelector('tr:not([data-linea])')?.remove();
 
-        const temp = document.createElement('tbody');
-        temp.innerHTML = json.html.trim();
-        const tr = temp.querySelector('tr[data-linea]');
+        const idxAttr = json.idx != null ? String(json.idx) : '';
+        tbody.insertAdjacentHTML('beforeend', json.html.trim());
+        const tr = (idxAttr !== '' && tbody.querySelector('tr[data-linea="' + idxAttr + '"]'))
+            || tbody.querySelector('tr[data-linea]:last-child');
         if (!tr) return;
-
-        tbody.appendChild(tr);
 
         const formsContainer = document.getElementById('cotiz-eliminar-lineas-forms');
         if (formsContainer && json.delete_form_html) {
@@ -690,12 +689,10 @@
         }
 
         wireEliminarLinea(tr);
-        requestAnimationFrame(function () {
-            if (window.initProductImagesIn) {
-                window.initProductImagesIn(tr);
-            }
-            enlazarZoomImagenes(tr);
-        });
+
+        const tituloImagen = (json.prod_item || tr.dataset.prod || '')
+            + (json.prod_nombre ? ' — ' + json.prod_nombre : '');
+        actualizarImagenLinea(tr, json.image_url || '', tituloImagen);
         marcarLineasRepetidas();
         actualizarControlesOrdenVisual();
         recalcularMontoTotal();

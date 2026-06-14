@@ -247,6 +247,9 @@ class CotizacionController extends Controller
                 'ok' => true,
                 'idx' => $idx,
                 'orden' => $detalle->orden,
+                'prod_item' => $detalle->prod_item,
+                'prod_nombre' => $row['prod_nombre'],
+                'image_url' => $row['image_url'] ?? '',
                 'html' => view('admin.cotizaciones.partials.linea-detalle-row', [
                     'idx' => $idx,
                     'row' => $row,

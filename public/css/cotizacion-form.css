@@ -166,6 +166,23 @@
     padding: 4px !important;
 }
 
+.cotizacion-ingreso #tabla_detalle .linea-imagen-cell .cotiz-buscar-thumb {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-imagen-cell .cotiz-buscar-thumb-btn {
+    display: block;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    line-height: 0;
+}
+
 .cotizacion-ingreso #tabla_detalle td .imagen.product-image {
     width: 80px;
     height: 80px;

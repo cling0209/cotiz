@@ -64,11 +64,22 @@
         img.addEventListener('load', markLoaded);
         img.addEventListener('error', markError);
 
-        // Forzar carga tras insertar en el DOM (lazy + innerHTML).
+        // Forzar carga: innerHTML en nodo detached puede perder el evento load.
         if (img.src) {
-            var src = img.currentSrc || img.src;
+            var src = img.getAttribute('src');
+            img.removeAttribute('src');
             img.src = src;
         }
+
+        if (checkComplete()) {
+            return;
+        }
+
+        window.setTimeout(function () {
+            if (!wrap.classList.contains('is-loaded') && !wrap.classList.contains('is-error')) {
+                checkComplete();
+            }
+        }, 2500);
     }
 
     function initAll() {
