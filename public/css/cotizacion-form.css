@@ -112,11 +112,30 @@
 .cotizacion-ingreso #tabla_detalle th:nth-child(10),
 .cotizacion-ingreso #tabla_detalle td:nth-child(10) { width: 7%; min-width: 3.25rem; text-align: center; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(11),
-.cotizacion-ingreso #tabla_detalle td:nth-child(11) { width: 6%; min-width: 4rem; text-align: right; white-space: nowrap; }
+.cotizacion-ingreso #tabla_detalle td:nth-child(11) { width: 6%; min-width: 3.25rem; text-align: center; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(12),
-.cotizacion-ingreso #tabla_detalle td:nth-child(12) { width: 5%; min-width: 3rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle td:nth-child(12) { width: 6%; min-width: 4rem; text-align: right; white-space: nowrap; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(13),
-.cotizacion-ingreso #tabla_detalle td:nth-child(13) { width: 10%; min-width: 6.75rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle td:nth-child(13) { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(14),
+.cotizacion-ingreso #tabla_detalle td:nth-child(14) {
+    width: 4.75rem;
+    min-width: 4.75rem;
+    max-width: 4.75rem;
+    white-space: nowrap;
+    text-align: center;
+    overflow: visible;
+}
+
+.cotizacion-ingreso #tabla_detalle .eliminar-cell {
+    overflow: visible;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+}
+
+.cotizacion-ingreso #tabla_detalle .eliminar-cell .btn {
+    white-space: nowrap;
+}
 
 .cotizacion-ingreso #tabla_detalle th,
 .cotizacion-ingreso #tabla_detalle td {
@@ -271,7 +290,7 @@
 }
 
 .cotizacion-ingreso #tabla_detalle .linea-orden-cell {
-    width: 6.75rem;
+    width: 5.5rem;
     vertical-align: middle;
 }
 
@@ -301,18 +320,6 @@
     line-height: 1;
     padding: 0.05rem 0.35rem;
     font-size: 0.65rem;
-}
-
-.cotizacion-ingreso #tabla_detalle .linea-orden-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-}
-
-.cotizacion-ingreso #tabla_detalle .linea-orden-buttons .btn {
-    line-height: 1;
-    padding: 0.05rem 0.35rem;
-    font-size: 0.7rem;
 }
 
 .cotizacion-ingreso #tabla_detalle input {

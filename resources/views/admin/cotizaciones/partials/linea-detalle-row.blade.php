@@ -117,24 +117,6 @@
                     title="Ir a posición"
                 >Ir</button>
             </div>
-            <div class="linea-orden-buttons">
-                <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm linea-orden-subir"
-                    data-prod="{{ $linea->prod_item }}"
-                    data-orden="{{ $linea->orden }}"
-                    title="Subir"
-                    @disabled($isFirst)
-                ><i class="bi bi-chevron-up"></i></button>
-                <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm linea-orden-bajar"
-                    data-prod="{{ $linea->prod_item }}"
-                    data-orden="{{ $linea->orden }}"
-                    title="Bajar"
-                    @disabled($isLast)
-                ><i class="bi bi-chevron-down"></i></button>
-            </div>
         </div>
     </td>
     <td class="text-center eliminar-cell" data-prod="{{ $linea->prod_item }}" data-orden="{{ $linea->orden }}"></td>
