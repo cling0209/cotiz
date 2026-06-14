@@ -81,7 +81,8 @@ class MaeprodImportLockService
             return false;
         }
 
-        if (($job['import_mode'] ?? MaeprodImportJobService::IMPORT_MODE_BATCH) === MaeprodImportJobService::IMPORT_MODE_STREAM) {
+        if (($job['import_mode'] ?? MaeprodImportJobService::IMPORT_MODE_BATCH) === MaeprodImportJobService::IMPORT_MODE_STREAM
+            || ($job['import_mode'] ?? MaeprodImportJobService::IMPORT_MODE_BATCH) === MaeprodImportJobService::IMPORT_MODE_EXCEL_DIRECT) {
             $processedRows = (int) ($job['processed_rows'] ?? 0);
             $totalRows = (int) ($job['total_rows'] ?? 0);
 

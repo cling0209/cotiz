@@ -80,8 +80,14 @@ class MaeprodImportPendingService
         try {
             $pending = $this->find($uploadId);
             $mergedPath = (string) $pending['merged_path'];
+            $jobDir = storage_path('app/imports/jobs/'.$uploadId);
+            $mergedReal = realpath($mergedPath);
+            $jobReal = is_dir($jobDir) ? realpath($jobDir) : false;
+            $mergedIsJobSource = $mergedReal !== false
+                && $jobReal !== false
+                && str_starts_with($mergedReal, $jobReal);
 
-            if (File::exists($mergedPath)) {
+            if (! $mergedIsJobSource && File::exists($mergedPath)) {
                 File::delete($mergedPath);
             }
         } catch (\InvalidArgumentException) {

@@ -466,7 +466,7 @@ async function processImportBatches(uploadId, batchCount, progress, importPlan, 
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
-        if (payload.import_mode === 'stream') {
+        if (payload.import_mode === 'stream' || payload.import_mode === 'excel_direct') {
             streamMode = true;
         }
 
@@ -522,13 +522,13 @@ function updatePrepareProgress(progress, payload, plan) {
 
     if (total && total > 0) {
         percent = plan.start + ((processed / total) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas convertidas a CSV`;
+        detail = `${processed.toLocaleString('es-CL')} de ${total.toLocaleString('es-CL')} filas listas para importar`;
     } else if (processed > 0) {
         percent = plan.start + (Math.min(0.85, processed / 50000) * plan.span);
-        detail = `${processed.toLocaleString('es-CL')} filas convertidas a CSV`;
+        detail = `${processed.toLocaleString('es-CL')} filas listas para importar`;
     } else {
         percent = plan.start + (plan.span * 0.12);
-        detail = 'Iniciando conversión de Excel a CSV en el servidor...';
+        detail = 'Analizando estructura del archivo Excel...';
     }
 
     setImportProgress(progress, {
@@ -551,7 +551,7 @@ async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
                 totalSteps: plan.totalSteps,
                 stage: plan.stage,
                 percent: plan.start + (plan.span * 0.08),
-                detail: 'Convirtiendo Excel a CSV (primer trozo)...',
+                detail: 'Preparando archivo Excel en el servidor...',
             });
             isFirstRequest = false;
         }
@@ -594,7 +594,7 @@ async function prepareTemplateImport(uploadId, progress) {
         {
             step: 2,
             totalSteps: 3,
-            stage: 'Convirtiendo Excel a CSV',
+            stage: 'Preparando archivo Excel',
             start: 12,
             span: 26,
         },

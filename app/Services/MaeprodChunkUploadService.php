@@ -90,6 +90,9 @@ class MaeprodChunkUploadService
             return ['ready' => false];
         }
 
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
         $mergedPath = $this->mergeChunks($uploadId, $totalChunks);
         $isSpreadsheet = MaeprodImportFileTypes::isSpreadsheet((string) $meta['original_name']);
 
