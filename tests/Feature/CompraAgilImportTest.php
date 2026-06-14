@@ -296,6 +296,25 @@ TXT;
         $this->assertSame(0, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
     }
 
+    public function test_importar_guarda_descripcion_agile_en_linea(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )->assertOk();
+
+        $linea = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('prod_item_agile', '31237835')
+            ->first();
+
+        $this->assertNotNull($linea);
+        $this->assertNotSame('', trim((string) $linea->prod_descripcion_agile));
+        $this->assertStringContainsString('LIMPIADOR', (string) $linea->prod_descripcion_agile);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

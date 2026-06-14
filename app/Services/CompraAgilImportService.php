@@ -299,7 +299,8 @@ class CompraAgilImportService
 
             for ($i = $desde; $i < $hasta; $i++) {
                 $linea = $preview['lineas'][$i];
-                $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $linea['descripcion']);
+                $descripcionMp = $this->descripcionAgileParaLinea($linea['id_agile'], $linea['descripcion']);
+                $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $descripcionMp);
 
                 $vinculo = $this->resolverProductoParaImportar($linea['id_agile'], $linea['descripcion']);
 
@@ -314,7 +315,7 @@ class CompraAgilImportService
                         (int) $vinculo['prod_valor_costo'],
                         $usuario,
                         $linea['id_agile'],
-                        $linea['descripcion'],
+                        $descripcionMp,
                     );
 
                     $vinculadas++;
@@ -322,7 +323,7 @@ class CompraAgilImportService
                     $this->detalleService->agregarLineaAgilePendiente(
                         $nota,
                         $linea['id_agile'],
-                        $linea['descripcion'],
+                        $descripcionMp,
                         (int) $linea['cantidad'],
                     );
 
@@ -348,6 +349,21 @@ class CompraAgilImportService
                 'completado' => $hasta >= $total,
             ];
         });
+    }
+
+    /**
+     * Descripción Mercado Público: texto parseado o, si falta, la guardada en agilemaeprod.
+     */
+    private function descripcionAgileParaLinea(string $idAgile, string $descripcionParseada): string
+    {
+        $desc = trim($descripcionParseada);
+        if ($desc !== '') {
+            return $desc;
+        }
+
+        $row = AgileMaeprod::query()->find(trim($idAgile));
+
+        return trim((string) ($row->prod_descripcion_agile ?? ''));
     }
 
     /**

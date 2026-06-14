@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
@@ -18,12 +19,27 @@ class NotaDetalleService
 
     public function lineasDeNota(Nota $nota): Collection
     {
-        return NotaDetalle::query()
+        $lineas = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
             ->with('producto')
             ->orderBy('orden')
-            ->get()
-            ->map(function (NotaDetalle $linea) use ($nota) {
+            ->get();
+
+        $agileIds = $lineas
+            ->map(fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $descripcionesAgile = $agileIds === []
+            ? collect()
+            : AgileMaeprod::query()
+                ->whereIn('prod_item_agile', $agileIds)
+                ->pluck('prod_descripcion_agile', 'prod_item_agile');
+
+        return $lineas
+            ->map(function (NotaDetalle $linea) use ($nota, $descripcionesAgile) {
                 $repetidos = NotaDetalle::query()
                     ->where('nronota', $nota->nronota)
                     ->where('prod_item', $linea->prod_item)
@@ -33,6 +49,12 @@ class NotaDetalleService
                     $linea->producto?->prod_valor_fecha
                 );
 
+                $agileId = trim((string) ($linea->prod_item_agile ?? ''));
+                $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
+                if ($descripcionAgile === '' && $agileId !== '') {
+                    $descripcionAgile = trim((string) ($descripcionesAgile[$agileId] ?? ''));
+                }
+
                 return [
                     'linea' => $linea,
                     'prod_nombre' => $linea->producto?->prod_nombre
@@ -41,8 +63,8 @@ class NotaDetalleService
                     'prod_imagen' => $linea->producto?->imageUrl(),
                     'image_url' => $linea->producto?->imageUrl(),
                     'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
-                    'prod_item_agile' => $linea->prod_item_agile ?? '',
-                    'prod_descripcion_agile' => $linea->prod_descripcion_agile ?? '',
+                    'prod_item_agile' => $agileId,
+                    'prod_descripcion_agile' => $descripcionAgile,
                     'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
                     'prod_valor_fecha' => $fechaFmt,
                     'prod_valor_fecha_antigua' => $fechaAntigua,
@@ -347,6 +369,8 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
                 'prod_valor_fecha_fmt' => $fechaFmt,
                 'prod_valor_fecha_antigua' => $fechaAntigua,
+                'prod_item_agile' => $linea->prod_item_agile,
+                'prod_descripcion_agile' => $linea->prod_descripcion_agile,
                 'subtotal' => $valor * (int) $linea->cantidad,
             ];
         });

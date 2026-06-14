@@ -135,7 +135,7 @@
                         <th>C&oacute;digo</th>
                         <th>Cod. Softland</th>
                         <th>ID Agile</th>
-                        <th>Descripci&oacute;n MP</th>
+                        <th>Descripci&oacute;n Agile (MP)</th>
                         <th>Descripci&oacute;n maestro</th>
                         <th>Fecha<br>act.&nbsp;precio</th>
                         <th>Precio Costo</th>
@@ -1590,6 +1590,18 @@
         if (nombreCell) {
             nombreCell.textContent = linea.prod_nombre || codigo;
             nombreCell.classList.remove('text-warning-emphasis');
+        }
+
+        const descAgileTd = tr.querySelector('td .linea-desc-agile')?.closest('td')
+            || tr.querySelector('.linea-id-agile')?.closest('tr')?.children[5];
+        if (descAgileTd && linea.prod_descripcion_agile) {
+            descAgileTd.innerHTML = '<span class="nv-fill linea-desc-agile small">'
+                + escHtml(linea.prod_descripcion_agile) + '</span>';
+        }
+
+        const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
+        if (buscarBtn && linea.prod_descripcion_agile) {
+            buscarBtn.dataset.descripcionAgile = linea.prod_descripcion_agile;
         }
 
         const costoInput = tr.querySelector('.nv-precio-costo-sololectura');
