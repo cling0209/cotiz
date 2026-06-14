@@ -88,6 +88,7 @@ class MaeprodImportJobService
      */
     public function continuePrepareTemplate(string $uploadId, int $userId): array
     {
+        @set_time_limit(600);
         $this->assertValidUploadId($uploadId);
 
         if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
@@ -163,16 +164,17 @@ class MaeprodImportJobService
                 $state['finished'] = true;
                 $state['total_rows'] = $result['rows_written'];
             } else {
-                $result = $preparer->streamExcelChunk($state, $jobDir, self::ROWS_PER_BATCH);
+                $result = $preparer->streamExcelFile(
+                    (string) $state['source_path'],
+                    $jobDir,
+                    self::ROWS_PER_BATCH,
+                    (string) $state['original_name'],
+                );
+
                 $state['processed_rows'] = $result['rows_written'];
                 $state['batch_count'] = $result['batch_count'];
-                $state['next_row'] = $result['next_row'];
-                $state['highest_row'] = $result['highest_row'];
-                $state['data_headers'] = $result['data_headers'];
-                $state['header_row'] = $result['header_row'];
-                $state['delimiter'] = $result['delimiter'];
-                $state['finished'] = $result['finished'];
-                $state['total_rows'] = max(0, $result['highest_row'] - 1);
+                $state['finished'] = true;
+                $state['total_rows'] = $result['rows_written'];
             }
 
             $prepareFinished = (bool) ($state['finished'] ?? false);
@@ -651,6 +653,7 @@ class MaeprodImportJobService
         int $userId,
         array $columnMapping,
     ): array {
+        @set_time_limit(600);
         $stagingService = app(MaeprodImportStagingService::class);
         $staging = $stagingService->findStagingRecord($uploadId);
 
@@ -738,15 +741,16 @@ class MaeprodImportJobService
                 $state['batch_count'] = $result['batch_count'];
                 $state['finished'] = true;
             } else {
-                $result = $preparer->streamExcelChunk($state, $jobDir, self::ROWS_PER_BATCH);
+                $result = $preparer->streamExcelFile(
+                    (string) $state['source_path'],
+                    $jobDir,
+                    self::ROWS_PER_BATCH,
+                    (string) $state['original_name'],
+                );
+
                 $state['processed_rows'] = $result['rows_written'];
                 $state['batch_count'] = $result['batch_count'];
-                $state['next_row'] = $result['next_row'];
-                $state['highest_row'] = $result['highest_row'];
-                $state['data_headers'] = $result['data_headers'];
-                $state['header_row'] = $result['header_row'];
-                $state['delimiter'] = $result['delimiter'];
-                $state['finished'] = $result['finished'];
+                $state['finished'] = true;
             }
 
             $prepareFinished = (bool) ($state['finished'] ?? false);

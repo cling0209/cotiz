@@ -17,6 +17,70 @@ class MaeprodImportStreamPreparer
      *     delimiter: string
      * }
      */
+    public function streamExcelFile(
+        string $sourcePath,
+        string $jobDir,
+        int $rowsPerBatch,
+        ?string $originalName = null,
+    ): array {
+        $openSpout = app(MaeprodOpenSpoutReader::class);
+
+        if ($openSpout->supportsPath($sourcePath, $originalName)) {
+            return $openSpout->streamExcelFile($sourcePath, $jobDir, $rowsPerBatch);
+        }
+
+        return $this->streamExcelFileWithPhpSpreadsheet($sourcePath, $jobDir, $rowsPerBatch);
+    }
+
+    /**
+     * @return array{
+     *     rows_written: int,
+     *     batch_count: int,
+     *     data_headers: list<string>,
+     *     header_row: list<string>,
+     *     delimiter: string
+     * }
+     */
+    private function streamExcelFileWithPhpSpreadsheet(string $sourcePath, string $jobDir, int $rowsPerBatch): array
+    {
+        $state = [
+            'source_path' => $sourcePath,
+            'next_row' => 2,
+            'processed_rows' => 0,
+            'highest_row' => null,
+        ];
+
+        do {
+            $chunk = $this->streamExcelChunk($state, $jobDir, $rowsPerBatch);
+            $state['processed_rows'] = $chunk['rows_written'];
+            $state['next_row'] = $chunk['next_row'];
+            $state['highest_row'] = $chunk['highest_row'];
+            $state['data_headers'] = $chunk['data_headers'];
+            $state['header_row'] = $chunk['header_row'];
+            $state['delimiter'] = $chunk['delimiter'];
+            $state['raw_headers'] = $chunk['data_headers'];
+            $state['column_count'] = count($chunk['data_headers']);
+            $finished = $chunk['finished'];
+        } while (! $finished);
+
+        return [
+            'rows_written' => $chunk['rows_written'],
+            'batch_count' => $chunk['batch_count'],
+            'data_headers' => $chunk['data_headers'],
+            'header_row' => $chunk['header_row'],
+            'delimiter' => $chunk['delimiter'],
+        ];
+    }
+
+    /**
+     * @return array{
+     *     rows_written: int,
+     *     batch_count: int,
+     *     data_headers: list<string>,
+     *     header_row: list<string>,
+     *     delimiter: string
+     * }
+     */
     public function streamCsvFile(
         string $sourcePath,
         string $jobDir,

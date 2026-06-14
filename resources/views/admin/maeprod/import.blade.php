@@ -225,6 +225,9 @@ function isAllowedImportFile(name) {
 function importErrorMessage(payload, status) {
     if (payload?.message) return payload.message;
     if (payload?.errors) return Object.values(payload.errors).flat().join(' ');
+    if (status === 502) {
+        return 'Error del servidor (502). Si el archivo Excel es muy grande, conviértalo a CSV o reintente tras el despliegue más reciente.';
+    }
     return `Error del servidor (${status}).`;
 }
 
