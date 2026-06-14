@@ -8,7 +8,7 @@ fi
 
 php artisan migrate --force 2>/dev/null || true
 
-mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/jobs storage/app/imports/errors
+mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging
 chown -R www-data:www-data storage/app/imports 2>/dev/null || true
 
 if [ "${RUN_SEED:-false}" = "true" ]; then

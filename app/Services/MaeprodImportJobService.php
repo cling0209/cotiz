@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\ProcessMaeprodImportJob;
 use App\Models\MaeprodImportRun;
+use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -379,7 +380,10 @@ class MaeprodImportJobService
     ): void {
         $this->assertValidUploadId($uploadId);
 
+        $this->assertReadyForBackgroundImport($uploadId, $userId, $mode);
+
         $progress = app(MaeprodImportProgressService::class);
+        $lock = app(MaeprodImportLockService::class);
 
         if ($progress->isActive($uploadId)) {
             return;
@@ -387,15 +391,32 @@ class MaeprodImportJobService
 
         $progress->beginQueued($uploadId, $userId, $mode, $columnMapping);
 
-        $meta = $this->resolveImportMetaForLock($uploadId, $userId, $mode);
-        app(MaeprodImportLockService::class)->acquire(
-            $userId,
-            $meta['username'],
-            $uploadId,
-            $meta['original_name'],
-        );
+        try {
+            $meta = $this->resolveImportMetaForLock($uploadId, $userId, $mode);
+            $lock->acquire(
+                $userId,
+                $meta['username'],
+                $uploadId,
+                $meta['original_name'],
+            );
 
-        ProcessMaeprodImportJob::dispatch($uploadId, $userId, $mode, $columnMapping);
+            if (config('queue.default') === 'sync' && app()->isProduction()) {
+                throw new \InvalidArgumentException(
+                    'La importación en segundo plano requiere QUEUE_CONNECTION=database (o redis) y un worker activo. No use sync en producción.',
+                );
+            }
+
+            $dispatch = ProcessMaeprodImportJob::dispatch($uploadId, $userId, $mode, $columnMapping);
+
+            if (config('queue.default') !== 'sync') {
+                $dispatch->afterResponse();
+            }
+        } catch (\Throwable $e) {
+            $progress->fail($uploadId, $e->getMessage());
+            $lock->release($uploadId);
+
+            throw $e;
+        }
     }
 
     /**
@@ -1494,6 +1515,23 @@ class MaeprodImportJobService
         }
 
         return null;
+    }
+
+    protected function assertReadyForBackgroundImport(string $uploadId, int $userId, string $mode): void
+    {
+        if (File::exists($this->jobDirectory($uploadId).'/job.json')) {
+            return;
+        }
+
+        if (app(MaeprodImportPendingService::class)->has($uploadId)) {
+            return;
+        }
+
+        if ($mode === 'custom' && MaeprodImportStaging::query()->where('upload_id', $uploadId)->exists()) {
+            return;
+        }
+
+        throw new \InvalidArgumentException('La importación no está lista o el archivo subido ya no está en el servidor. Vuelva a cargarlo.');
     }
 
     protected function assertValidUploadId(string $uploadId): void

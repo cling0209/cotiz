@@ -203,6 +203,7 @@
 <script>
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const CLIENT_EXCEL_MAX_BYTES = 15 * 1024 * 1024;
+const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 const BACKGROUND_IMPORT_ENABLED = @json((bool) config('cotiz.import.background', true));
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
@@ -282,7 +283,24 @@ function importErrorMessage(payload, status) {
     if (status === 502) {
         return 'Error del servidor (502). Si el archivo Excel es muy grande, conviértalo a CSV o reintente tras el despliegue más reciente.';
     }
+    if (status === 500) {
+        return 'Error del servidor (500). Si usa Render, confirme QUEUE_CONNECTION=database y un Background Worker activo.';
+    }
     return `Error del servidor (${status}).`;
+}
+
+async function readJsonResponse(response) {
+    const text = await response.text();
+
+    if (!text) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        return { message: text.slice(0, 400) };
+    }
 }
 
 function formatBytes(bytes) {
@@ -359,7 +377,7 @@ async function releaseImportLock(uploadId = null) {
 async function refreshImportStatus() {
     try {
         const response = await fetch(importStatusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
+        const payload = await readJsonResponse(response);
         if (!response.ok) return;
 
         if (payload.active && payload.lock) {
@@ -414,7 +432,7 @@ async function uploadCsvChunks(file, mode, progress, uploadPlan) {
                 credentials: 'same-origin',
             });
 
-            payload = await response.json().catch(() => ({}));
+            payload = await readJsonResponse(response);
 
             if (response.ok || ![502, 503, 504].includes(response.status)) {
                 break;
@@ -486,7 +504,7 @@ async function processImportBatches(uploadId, batchCount, progress, importPlan, 
             credentials: 'same-origin',
         });
 
-        const payload = await response.json().catch(() => ({}));
+        const payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
         if (payload.import_mode === 'stream' || payload.import_mode === 'excel_direct') {
@@ -580,7 +598,7 @@ async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
         }
 
         const response = await fetch(url, fetchOptions);
-        payload = await response.json().catch(() => ({}));
+        payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
         updatePrepareProgress(progress, payload, plan);
     } while (payload.prepare_finished !== true);
@@ -642,7 +660,7 @@ async function startBackgroundImport(uploadId, mode = 'template', mapping = null
         body: JSON.stringify(body),
     });
 
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readJsonResponse(response);
     if (!response.ok) {
         throw new Error(importErrorMessage(payload, response.status));
     }
@@ -661,7 +679,7 @@ async function pollBackgroundImport(uploadId, progress, plan) {
             credentials: 'same-origin',
         });
 
-        const payload = await response.json().catch(() => ({}));
+        const payload = await readJsonResponse(response);
         if (!response.ok) {
             throw new Error(importErrorMessage(payload, response.status));
         }
@@ -819,6 +837,12 @@ document.getElementById('importFormTemplate').addEventListener('submit', async (
         return;
     }
 
+    if (file.size > MAX_IMPORT_BYTES) {
+        errorBox.textContent = 'El archivo supera el máximo de 50 MB. Exporte a CSV o divida el archivo.';
+        errorBox.classList.remove('d-none');
+        return;
+    }
+
     await refreshImportStatus();
     if (submitBtn.disabled) {
         errorBox.textContent = 'Hay una importación en curso.';
@@ -941,7 +965,7 @@ document.getElementById('importFormCustom').addEventListener('submit', async (ev
                 credentials: 'same-origin',
                 body: JSON.stringify({ upload_id: customUploadId }),
             });
-            const initPayload = await initResponse.json().catch(() => ({}));
+            const initPayload = await readJsonResponse(initResponse);
             if (!initResponse.ok) throw new Error(importErrorMessage(initPayload, initResponse.status));
             staging = initPayload;
         }
@@ -998,7 +1022,7 @@ document.getElementById('customPreviewBtn').addEventListener('click', async () =
             }),
         });
 
-        const payload = await response.json().catch(() => ({}));
+        const payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(importErrorMessage(payload, response.status));
 
         renderPreviewRows(payload);

@@ -153,6 +153,20 @@ class MaeprodController extends Controller
                 ['message' => $e->getMessage()],
                 $this->importConflictStatus($e),
             );
+        } catch (\Throwable $e) {
+            report($e);
+
+            app(MaeprodImportProgressService::class)->fail(
+                $data['upload_id'],
+                config('app.debug') ? $e->getMessage() : 'No se pudo encolar la importación en segundo plano.',
+            );
+            app(MaeprodImportLockService::class)->release($data['upload_id']);
+
+            return response()->json([
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'No se pudo iniciar la importación en segundo plano. Verifique QUEUE_CONNECTION=database y que el worker esté activo.',
+            ], 500);
         }
 
         return response()->json([
