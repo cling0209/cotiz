@@ -361,6 +361,67 @@ class NotaDetalleService
             ->delete();
     }
 
+    /**
+     * @param  array<int, string>  $idsAgile
+     * @return array<int, string>
+     */
+    public function idsAgileExistentesEnNota(Nota $nota, array $idsAgile): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $idsAgile,
+        ))));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->whereNotNull('prod_item_agile')
+            ->get()
+            ->map(fn (NotaDetalle $linea) => trim((string) $linea->prod_item_agile))
+            ->filter(fn (string $agile) => $agile !== '' && in_array($agile, $ids, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $idsAgile
+     */
+    public function eliminarLineasPorAgileIds(Nota $nota, array $idsAgile): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $idsAgile,
+        ))));
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        $lineas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->orderBy('orden')
+            ->get();
+
+        $quedan = $lineas->filter(function (NotaDetalle $linea) use ($ids) {
+            $agile = trim((string) ($linea->prod_item_agile ?? ''));
+
+            return $agile === '' || ! in_array($agile, $ids, true);
+        })->values();
+
+        $eliminadas = $lineas->count() - $quedan->count();
+        if ($eliminadas === 0) {
+            return 0;
+        }
+
+        DB::transaction(fn () => $this->persistirOrdenLineas($nota->nronota, $quedan));
+
+        return $eliminadas;
+    }
+
     public function cambiarOrden(Nota $nota, string $prodItem, int $ordenAnterior, int $ordenNuevo): void
     {
         if ($ordenNuevo < 1) {

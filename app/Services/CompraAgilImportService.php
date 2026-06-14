@@ -35,49 +35,134 @@ class CompraAgilImportService
      */
     public function preview(string $texto): array
     {
+        $total = count($this->parser->parse($texto)['lineas']);
+        $resultado = $this->previewLote($texto, 0, $total);
+        unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
+
+        return $resultado;
+    }
+
+    /**
+     * Analiza un rango de líneas con sugerencias por similitud (0-based, hasta exclusivo).
+     *
+     * @return array{
+     *   cabecera?: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array<string, mixed>>,
+     *   resumen: array{total: int, vinculados: int, pendientes: int, con_sugerencia: int},
+     *   total: int,
+     *   procesadas: int,
+     *   completado: bool
+     * }
+     */
+    public function previewLote(string $texto, int $desde, int $hasta): array
+    {
         $parsed = $this->parser->parse($texto);
+        $total = count($parsed['lineas']);
+        $hasta = max($desde, min($hasta, $total));
+
         $lineas = [];
-        $vinculados = 0;
-        $conSugerencia = 0;
-
-        foreach ($parsed['lineas'] as $linea) {
-            $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
-            $sugerencia = $vinculo ? null : $this->resolverSugerenciaSimilitud($linea['descripcion']);
-            $producto = $vinculo ?? $sugerencia;
-            $estado = $vinculo ? 'vinculado' : 'pendiente';
-
-            if ($vinculo) {
-                $vinculados++;
-            }
-            if (! $vinculo && $sugerencia) {
-                $conSugerencia++;
-            }
-
-            $lineas[] = [
-                'id_agile' => $linea['id_agile'],
-                'descripcion' => $linea['descripcion'],
-                'cantidad' => $linea['cantidad'],
-                'categoria' => $linea['categoria'],
-                'producto' => $producto,
-                'estado' => $estado,
-                'es_sugerencia' => $vinculo === null && $sugerencia !== null,
-            ];
+        for ($i = $desde; $i < $hasta; $i++) {
+            $lineas[] = $this->construirLineaPreview($parsed['lineas'][$i]);
         }
 
-        return [
-            'cabecera' => [
+        $resultado = [
+            'lineas' => $lineas,
+            'total' => $total,
+            'procesadas' => $hasta,
+            'completado' => $hasta >= $total,
+            'resumen' => $this->resumenDesdeLineasPreview($lineas),
+        ];
+
+        if ($desde === 0) {
+            $resultado['cabecera'] = [
                 'codigo_cotizacion' => $parsed['codigo_cotizacion'],
                 'empresa' => $parsed['empresa'],
                 'rutempresa' => $parsed['rutempresa'],
                 'nombre' => $parsed['nombre'],
-            ],
-            'lineas' => $lineas,
-            'resumen' => [
-                'total' => count($lineas),
-                'vinculados' => $vinculados,
-                'pendientes' => count($lineas) - $vinculados,
-                'con_sugerencia' => $conSugerencia,
-            ],
+            ];
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function idsAgileDelTexto(string $texto): array
+    {
+        $parsed = $this->parser->parse($texto);
+
+        return array_values(array_map(
+            static fn (array $linea) => (string) $linea['id_agile'],
+            $parsed['lineas'],
+        ));
+    }
+
+    /**
+     * @return array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }
+     */
+    public function parseTexto(string $texto): array
+    {
+        return $this->parseParaImport($texto);
+    }
+
+    /**
+     * @param  array{id_agile: string, descripcion: string, cantidad: int, categoria: string}  $linea
+     * @return array{
+     *   id_agile: string,
+     *   descripcion: string,
+     *   cantidad: int,
+     *   categoria: string,
+     *   producto: ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int},
+     *   estado: string,
+     *   es_sugerencia: bool
+     * }
+     */
+    private function construirLineaPreview(array $linea): array
+    {
+        $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
+        $sugerencia = $vinculo ? null : $this->resolverSugerenciaSimilitud($linea['descripcion']);
+        $producto = $vinculo ?? $sugerencia;
+
+        return [
+            'id_agile' => $linea['id_agile'],
+            'descripcion' => $linea['descripcion'],
+            'cantidad' => $linea['cantidad'],
+            'categoria' => $linea['categoria'],
+            'producto' => $producto,
+            'estado' => $vinculo ? 'vinculado' : 'pendiente',
+            'es_sugerencia' => $vinculo === null && $sugerencia !== null,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lineas
+     * @return array{total: int, vinculados: int, pendientes: int, con_sugerencia: int}
+     */
+    public function resumenDesdeLineasPreview(array $lineas): array
+    {
+        $vinculados = 0;
+        $conSugerencia = 0;
+
+        foreach ($lineas as $linea) {
+            if (($linea['estado'] ?? '') === 'vinculado') {
+                $vinculados++;
+            }
+            if (! empty($linea['es_sugerencia'])) {
+                $conSugerencia++;
+            }
+        }
+
+        $total = count($lineas);
+
+        return [
+            'total' => $total,
+            'vinculados' => $vinculados,
+            'pendientes' => $total - $vinculados,
+            'con_sugerencia' => $conSugerencia,
         ];
     }
 

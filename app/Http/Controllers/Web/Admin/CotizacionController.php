@@ -289,7 +289,35 @@ class CotizacionController extends Controller
 
         $datos = $request->validate([
             'texto' => ['required', 'string', 'max:50000'],
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        if (isset($datos['desde'], $datos['hasta'])) {
+            $resultado = $this->compraAgilImport->previewLote(
+                $datos['texto'],
+                (int) $datos['desde'],
+                (int) $datos['hasta'],
+            );
+
+            $errorCabecera = null;
+            $puedeImportar = true;
+
+            if ((int) $datos['desde'] === 0 && ($resultado['cabecera']['codigo_cotizacion'] ?? '') !== '') {
+                $errorCabecera = $this->notaService->validarNumeroCotizacion(
+                    $nota,
+                    $resultado['cabecera']['codigo_cotizacion'],
+                );
+                if ($errorCabecera !== null) {
+                    $puedeImportar = false;
+                }
+            }
+
+            return response()->json(array_merge($resultado, [
+                'error_cabecera' => $errorCabecera,
+                'puede_importar' => $puedeImportar,
+            ]));
+        }
 
         $preview = $this->compraAgilImport->preview($datos['texto']);
         $errorCabecera = null;
@@ -311,6 +339,50 @@ class CotizacionController extends Controller
         ]));
     }
 
+    public function coincidenciasCompraAgil(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        $datos = $request->validate([
+            'texto' => ['required', 'string', 'max:50000'],
+        ]);
+
+        $ids = $this->compraAgilImport->idsAgileDelTexto($datos['texto']);
+        $coincidencias = $this->detalleService->idsAgileExistentesEnNota($nota, $ids);
+
+        return response()->json([
+            'coincidencias' => $coincidencias,
+            'total' => count($coincidencias),
+        ]);
+    }
+
+    public function limpiarLineasAgileCompraAgil(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        $datos = $request->validate([
+            'texto' => ['required', 'string', 'max:50000'],
+        ]);
+
+        $ids = $this->compraAgilImport->idsAgileDelTexto($datos['texto']);
+        $coincidencias = $this->detalleService->idsAgileExistentesEnNota($nota, $ids);
+        $eliminadas = $this->detalleService->eliminarLineasPorAgileIds($nota, $coincidencias);
+
+        return response()->json([
+            'ok' => true,
+            'coincidencias' => $coincidencias,
+            'eliminadas' => $eliminadas,
+        ]);
+    }
+
     public function importarCompraAgil(Request $request, int $nronota): JsonResponse
     {
         $nota = Nota::query()->findOrFail($nronota);
@@ -325,9 +397,9 @@ class CotizacionController extends Controller
             'hasta' => ['nullable', 'integer', 'min:0'],
         ]);
 
-        $preview = $this->compraAgilImport->preview($datos['texto']);
+        $parseado = $this->compraAgilImport->parseTexto($datos['texto']);
 
-        if ($nota->requiereNumeroCotizacion() && $preview['cabecera']['codigo_cotizacion'] === '') {
+        if ($nota->requiereNumeroCotizacion() && $parseado['cabecera']['codigo_cotizacion'] === '') {
             return response()->json([
                 'error' => 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.',
             ], 422);

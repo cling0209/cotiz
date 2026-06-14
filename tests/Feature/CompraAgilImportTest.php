@@ -236,6 +236,64 @@ TXT;
         $this->assertSame(2, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
     }
 
+    public function test_preview_por_lotes_analiza_todas_las_lineas(): void
+    {
+        $nota = $this->crearNota();
+
+        $response1 = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp, 'desde' => 0, 'hasta' => 1],
+        );
+
+        $response1->assertOk();
+        $response1->assertJsonPath('total', 2);
+        $response1->assertJsonPath('completado', false);
+        $response1->assertJsonCount(1, 'lineas');
+
+        $response2 = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp, 'desde' => 1, 'hasta' => 2],
+        );
+
+        $response2->assertOk();
+        $response2->assertJsonPath('completado', true);
+        $response2->assertJsonCount(1, 'lineas');
+    }
+
+    public function test_limpiar_lineas_agile_coincidentes_al_reanalizar(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => '31237835',
+            'prod_valor' => 0,
+            'cantidad' => 5,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS',
+        ]);
+
+        $coincidencias = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+        $coincidencias->assertOk();
+        $coincidencias->assertJsonPath('total', 1);
+        $coincidencias->assertJsonPath('coincidencias.0', '31237835');
+
+        $limpiar = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+        $limpiar->assertOk();
+        $limpiar->assertJsonPath('eliminadas', 1);
+
+        $this->assertSame(0, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

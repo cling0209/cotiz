@@ -993,6 +993,8 @@
     const importarMpUrls = {
         preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota)),
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
+        coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
+        limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
     };
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
@@ -1024,6 +1026,8 @@
 
     const IMPORT_LOTE_MIN = 10;
     const IMPORT_LOTE_MAX = 25;
+    const PREVIEW_LOTE_MIN = 5;
+    const PREVIEW_LOTE_MAX = 8;
 
     function tamanoLoteImportar(total) {
         const n = Math.max(0, Number(total) || 0);
@@ -1032,15 +1036,51 @@
         return IMPORT_LOTE_MAX;
     }
 
+    function tamanoLotePreview(total) {
+        const n = Math.max(0, Number(total) || 0);
+        if (n <= PREVIEW_LOTE_MIN) return Math.max(n, 1);
+        if (n <= 40) return PREVIEW_LOTE_MIN;
+        return PREVIEW_LOTE_MAX;
+    }
+
+    function construirResumenPreview(lineas) {
+        let vinculados = 0;
+        let conSugerencia = 0;
+        (lineas || []).forEach((ln) => {
+            if (ln.estado === 'vinculado') vinculados++;
+            if (ln.es_sugerencia) conSugerencia++;
+        });
+        const total = lineas.length;
+        return {
+            total,
+            vinculados,
+            pendientes: total - vinculados,
+            con_sugerencia: conSugerencia,
+        };
+    }
+
     function limpiarImportAlerta() {
-        if (importarAlerta) importarAlerta.classList.add('d-none');
+        if (importarAlerta) {
+            importarAlerta.classList.add('d-none');
+            importarAlerta.classList.remove('alert-warning');
+            importarAlerta.classList.add('alert-danger');
+        }
         if (importarAlertaTexto) importarAlertaTexto.textContent = '';
+    }
+
+    function mostrarImportAviso(msg) {
+        if (importarAlerta && importarAlertaTexto) {
+            importarAlerta.classList.remove('d-none', 'alert-danger');
+            importarAlerta.classList.add('alert-warning');
+            importarAlertaTexto.textContent = msg;
+        }
     }
 
     function mostrarImportError(msg) {
         if (importarAlerta && importarAlertaTexto) {
+            importarAlerta.classList.remove('d-none', 'alert-warning');
+            importarAlerta.classList.add('alert-danger');
             importarAlertaTexto.textContent = msg;
-            importarAlerta.classList.remove('d-none');
         }
         if (importarEstado) importarEstado.textContent = '';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
@@ -1102,8 +1142,6 @@
 
         if (data.error_cabecera) {
             mostrarImportError(data.error_cabecera);
-        } else {
-            limpiarImportAlerta();
         }
 
         const cab = data?.cabecera || {};
@@ -1181,39 +1219,134 @@
             return;
         }
 
-        if (importarEstado) importarEstado.textContent = 'Analizando...';
+        if (importarEstado) importarEstado.textContent = '';
         if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
 
         try {
-            const body = new FormData();
-            body.append('_token', csrf);
-            body.append('texto', texto);
+            const bodyCoin = new FormData();
+            bodyCoin.append('_token', csrf);
+            bodyCoin.append('texto', texto);
 
-            const res = await fetch(importarMpUrls.preview, {
+            const resCoin = await fetch(importarMpUrls.coincidencias, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body,
+                body: bodyCoin,
             });
-
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                mostrarImportError(json.error || json.message || 'Error al analizar.');
-                renderImportPreview(null);
+            const coin = await resCoin.json().catch(() => ({}));
+            if (!resCoin.ok) {
+                ocultarProgresoImportar();
+                mostrarImportError(coin.error || coin.message || 'Error al verificar coincidencias.');
                 return;
             }
 
-            renderImportPreview(json);
+            if ((coin.total || 0) > 0) {
+                const okReemplazo = await dlgConfirm(
+                    'Hay ' + coin.total + ' línea(s) en la cotización con el mismo ID Agile del texto pegado. Se eliminarán antes de analizar. ¿Continuar?',
+                    { title: 'Reemplazar líneas', type: 'warning' },
+                );
+                if (!okReemplazo) {
+                    ocultarProgresoImportar();
+                    return;
+                }
+
+                const bodyLimp = new FormData();
+                bodyLimp.append('_token', csrf);
+                bodyLimp.append('texto', texto);
+                const resLimp = await fetch(importarMpUrls.limpiarAgile, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: bodyLimp,
+                });
+                const limp = await resLimp.json().catch(() => ({}));
+                if (!resLimp.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas previas.');
+                    return;
+                }
+                mostrarImportAviso('Se eliminaron ' + (limp.eliminadas || 0) + ' línea(s) con ID Agile repetido. Analizando texto nuevo...');
+            }
+
+            let todasLineas = [];
+            let cabecera = null;
+            let total = 0;
+            let errorCabecera = null;
+            let puedeImportar = true;
+            let desde = 0;
+
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+
+                actualizarProgresoImportar(
+                    desde,
+                    total || hasta,
+                    total > 0 ? 'Analizando productos...' : 'Detectando productos...',
+                );
+
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('texto', texto);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
+
+                const res = await fetch(importarMpUrls.preview, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(json.error || json.message || 'Error al analizar.');
+                    renderImportPreview(null);
+                    return;
+                }
+
+                if (json.cabecera) cabecera = json.cabecera;
+                if (json.error_cabecera) {
+                    errorCabecera = json.error_cabecera;
+                    puedeImportar = false;
+                }
+                if (json.puede_importar === false) puedeImportar = false;
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+
+                actualizarProgresoImportar(desde, total, 'Analizando productos...');
+
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+
+            const previewFinal = {
+                cabecera: cabecera || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: errorCabecera,
+                puede_importar: puedeImportar,
+            };
+
+            renderImportPreview(previewFinal);
+
             if (importarEstado) {
-                if (json?.error_cabecera) {
+                if (errorCabecera) {
                     importarEstado.textContent = '';
                 } else {
-                    const total = json?.resumen?.total || 0;
-                    importarEstado.textContent = total > 0
+                    const n = previewFinal.resumen.total || 0;
+                    importarEstado.textContent = n > 0
                         ? 'Análisis listo.'
                         : 'No se detectaron productos. Revise el texto pegado.';
                 }
             }
         } catch (err) {
+            ocultarProgresoImportar();
             mostrarImportError('Error de conexión.');
         } finally {
             if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
