@@ -3,7 +3,7 @@
 @section('title', 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-45" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-46" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -890,6 +890,7 @@
     });
 
     const detalleTbody = document.querySelector('#tabla_detalle tbody');
+    const detalleScrollWrap = document.getElementById('notaventa-tabla-detalle-wrap');
     if (detalleTbody && detalleTbody.querySelector('tr[data-linea]') && typeof Sortable !== 'undefined') {
         Sortable.create(detalleTbody, {
             animation: 160,
@@ -898,6 +899,11 @@
             ghostClass: 'linea-sortable-ghost',
             chosenClass: 'linea-sortable-chosen',
             dragClass: 'linea-sortable-drag',
+            scroll: detalleScrollWrap || true,
+            forceAutoScrollFallback: true,
+            scrollSensitivity: 60,
+            scrollSpeed: 20,
+            bubbleScroll: true,
             onStart: function (evt) {
                 evt.item.dataset.ordenAntesDrag = evt.item.dataset.orden;
             },

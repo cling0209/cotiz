@@ -72,7 +72,9 @@
 
 .cotizacion-ingreso #notaventa-tabla-detalle-wrap {
     width: 100%;
+    max-height: min(70vh, 720px);
     overflow-x: auto;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     margin-bottom: 0.75rem;
 }
@@ -129,6 +131,13 @@
     background: #f1f3f5;
     font-weight: 600;
     line-height: 1.2;
+}
+
+.cotizacion-ingreso #notaventa-tabla-detalle-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-shadow: 0 1px 0 #dee2e6;
 }
 
 .cotizacion-ingreso #tabla_detalle tbody tr:hover {
