@@ -368,12 +368,6 @@
                         rows="8"
                         placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;...&#10;Limpiadores de uso general ID: 31237835&#10;LIMPIADOR DE PISOS..."
                     ></textarea>
-                    <div id="importar-compra-agil-progreso-wrap" class="d-none mb-2">
-                        <div class="progress" style="height:12px">
-                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                        </div>
-                        <p id="importar-compra-agil-progreso-texto" class="small text-muted mb-0 mt-1">Preparando importaci&oacute;n...</p>
-                    </div>
                     <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none" role="alert">
                         <i class="bi bi-exclamation-octagon-fill me-1"></i>
                         <span id="importar-compra-agil-alerta-texto"></span>
@@ -404,12 +398,20 @@
                         </table>
                     </div>
                 </div>
-                <div class="modal-footer py-2">
-                    <span class="small text-muted me-auto" id="importar-compra-agil-resumen"></span>
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-                    <button type="button" class="btn btn-success btn-sm d-none" id="btn-importar-compra-agil-confirmar">
-                        <i class="bi bi-download"></i> Importar
-                    </button>
+                <div class="modal-footer flex-column align-items-stretch gap-2 py-2">
+                    <div id="importar-compra-agil-progreso-wrap" class="d-none w-100">
+                        <div class="progress" style="height:14px">
+                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <p id="importar-compra-agil-progreso-texto" class="small text-primary fw-semibold mb-0 mt-1">Preparando importaci&oacute;n...</p>
+                    </div>
+                    <div class="d-flex w-100 flex-wrap align-items-center gap-2">
+                        <span class="small text-muted me-auto" id="importar-compra-agil-resumen"></span>
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                        <button type="button" class="btn btn-success btn-sm d-none" id="btn-importar-compra-agil-confirmar">
+                            <i class="bi bi-download"></i> Importar
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1211,7 +1213,10 @@
     }
 
     function mostrarProgresoImportar() {
-        if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
+        if (importarProgresoWrap) {
+            importarProgresoWrap.classList.remove('d-none');
+            importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
         actualizarProgresoImportar(0, importPreviewData?.resumen?.total || 0, 'Preparando importación...');
         if (importarEstado) importarEstado.textContent = '';
         limpiarImportAlerta();

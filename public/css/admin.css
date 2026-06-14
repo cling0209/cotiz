@@ -325,3 +325,8 @@
 .admin-dialog-icon--warning { color: #d97706; }
 .admin-dialog-icon--danger { color: #dc2626; }
 .admin-dialog-icon--success { color: #16a34a; }
+
+#modal-importar-compra-agil .modal-footer {
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
