@@ -10,7 +10,6 @@
                 <span class="admin-login-icon" aria-hidden="true"><i class="bi bi-calculator"></i></span>
                 <div>
                     <h1 class="h4 fw-bold mb-0">{{ config('app.name', 'Cotiz') }}</h1>
-                    <p class="admin-login-subtitle mb-0 small">Sistema de cotizaciones Romulo</p>
                 </div>
             </div>
 
