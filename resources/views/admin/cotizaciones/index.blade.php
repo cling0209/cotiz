@@ -67,6 +67,7 @@
                             <a href="{{ $sortLink('nronota', 'ASC') }}" class="text-white-50 small">&#9650;</a>
                             <a href="{{ $sortLink('nronota', 'DESC') }}" class="text-white-50 small">&#9660;</a>
                         </th>
+                        <th>Nota origen</th>
                         <th>
                             Fecha
                             <a href="{{ $sortLink('fecha', 'ASC') }}" class="text-white-50 small">&#9650;</a>
@@ -92,6 +93,13 @@
                         @endphp
                         <tr>
                             <td>{{ $nota->nronota }}</td>
+                            <td>
+                                @if($nota->fueRecibidaPorApi())
+                                    {{ $nota->notaorigen }}
+                                @else
+                                    &mdash;
+                                @endif
+                            </td>
                             <td>{{ $nota->fecha?->format('d/m/Y') }}</td>
                             <td>{{ $nota->empresa }}</td>
                             <td class="text-end">${{ number_format($nota->total_calculado ?? 0, 0, ',', '.') }}</td>
@@ -102,7 +110,7 @@
                                 <div class="d-flex flex-wrap gap-1 justify-content-end">
                                     <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
 
-                                    @if((int) $nota->enviadoapi === 0)
+                                    @if((int) $nota->enviadoapi === 0 && ! $nota->fueRecibidaPorApi())
                                         <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"
                                               data-confirm="¿Enviar cotización #{{ $nota->nronota }} a la API?">
                                             @csrf
@@ -136,7 +144,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center text-muted py-4">Sin cotizaciones.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted py-4">Sin cotizaciones.</td></tr>
                     @endforelse
                 </tbody>
             </table>

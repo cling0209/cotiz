@@ -56,4 +56,9 @@ class Nota extends Model
     {
         return trim((string) $this->encargado) === '';
     }
+
+    public function fueRecibidaPorApi(): bool
+    {
+        return (int) $this->notaorigen > 0;
+    }
 }

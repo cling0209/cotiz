@@ -80,6 +80,28 @@ class CotizacionListadoAccionesTest extends TestCase
         ]);
     }
 
+    public function test_no_puede_enviar_cotizacion_recibida_por_api(): void
+    {
+        Http::fake();
+
+        $nota = $this->crearNota([
+            'usuario' => 'ejecutivo',
+            'enviadoapi' => 0,
+            'notaorigen' => 99,
+            'sistema' => 'Reicol',
+        ]);
+
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.enviar', $nota->nronota));
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+        $response->assertSessionHas('error', 'No se puede enviar una cotización recibida de otra instancia.');
+        $this->assertDatabaseHas('notas', [
+            'nronota' => $nota->nronota,
+            'enviadoapi' => 0,
+        ]);
+        Http::assertNothingSent();
+    }
+
     public function test_enviar_relay_usa_usuario_logueado_no_credencial_api(): void
     {
         config([

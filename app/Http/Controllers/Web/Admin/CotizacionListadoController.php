@@ -44,6 +44,10 @@ class CotizacionListadoController extends Controller
             abort(403);
         }
 
+        if ($nota->fueRecibidaPorApi()) {
+            return $this->volverListado($request)->with('error', 'No se puede enviar una cotización recibida de otra instancia.');
+        }
+
         if ((int) $nota->enviadoapi !== 0) {
             return $this->volverListado($request)->with('error', 'La cotización ya fue enviada.');
         }
