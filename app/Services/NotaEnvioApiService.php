@@ -15,12 +15,12 @@ class NotaEnvioApiService
     /**
      * Envía cotización al destino configurado (apinotaenvio legacy o relay interno).
      */
-    public function enviar(Nota $nota): void
+    public function enviar(Nota $nota, ?string $usuarioEnvio = null): void
     {
         $urlEnvio = trim((string) config('cotiz.api_nota_envio.url', ''));
 
         if ($urlEnvio === '') {
-            $this->relayService->relay($nota);
+            $this->relayService->relay($nota, $usuarioEnvio);
 
             return;
         }

@@ -205,7 +205,8 @@ class NotaApiTest extends TestCase
             return $request->url() === 'https://destino.test/api/v1/nota'
                 && ($data['accion'] ?? '') === 'graba_resumen'
                 && ($data['notaorigen'] ?? null) === 5
-                && ($data['encargado'] ?? '') === 'COT-ENVIO-001';
+                && ($data['encargado'] ?? '') === 'COT-ENVIO-001'
+                && ($data['usuario'] ?? '') === 'ejecutivo1';
         });
 
         Http::assertSent(function ($request) {

@@ -80,6 +80,53 @@ class CotizacionListadoAccionesTest extends TestCase
         ]);
     }
 
+    public function test_enviar_relay_usa_usuario_logueado_no_credencial_api(): void
+    {
+        config([
+            'cotiz.api_nota.url' => 'https://destino.test/api/v1/nota',
+            'cotiz.api_nota.user' => 'api_nota_user',
+            'cotiz.api_nota.password' => 'api_nota_secret',
+            'cotiz.api_nota_envio.url' => '',
+            'products.image_base_url' => '',
+        ]);
+
+        Http::fake([
+            'destino.test/*' => Http::response(['resultado' => 'OK', 'nronota' => 88], 200),
+        ]);
+
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'enviadoapi' => 0]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'DEMO001',
+            'prod_nombre' => 'Papel bond',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DEMO001',
+            'prod_valor' => 1000,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 800,
+        ]);
+
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.enviar', $nota->nronota));
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+
+        Http::assertSent(function ($request) {
+            $data = $request->data();
+
+            return $request->url() === 'https://destino.test/api/v1/nota'
+                && ($data['accion'] ?? '') === 'graba_resumen'
+                && ($data['usuario'] ?? '') === 'admin';
+        });
+    }
+
     public function test_export_aceptadas_requiere_superadmin(): void
     {
         $this->actingAs($this->ejecutivo)

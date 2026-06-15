@@ -51,7 +51,7 @@ class CotizacionListadoController extends Controller
         $this->notaService->marcarEnviadoApi($nota, 1);
 
         try {
-            $this->envioApiService->enviar($nota->fresh());
+            $this->envioApiService->enviar($nota->fresh(), $user->username);
         } catch (RuntimeException $e) {
             $this->notaService->marcarEnviadoApi($nota, 0);
 

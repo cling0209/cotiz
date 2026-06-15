@@ -25,7 +25,7 @@ class NotaEnvioApiController extends Controller
         }
 
         try {
-            $this->relayService->relayDesdeSolicitud($payload, $request->getUser());
+            $this->relayService->relayDesdeSolicitud($payload);
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage());
         }

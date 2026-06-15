@@ -16,7 +16,7 @@ class NotaEnvioRelayService
     /**
      * Equivalente legacy apinotaenvio.php: lee la nota local y la reenvía a apinota remoto.
      */
-    public function relay(Nota $nota, ?string $usuarioApi = null): void
+    public function relay(Nota $nota, ?string $usuarioEnvio = null): void
     {
         $destino = trim((string) config('cotiz.api_nota.url', ''));
         if ($destino === '') {
@@ -29,9 +29,9 @@ class NotaEnvioRelayService
             throw new RuntimeException('La cotización no tiene líneas de detalle.');
         }
 
-        $usuarioRelay = trim((string) ($usuarioApi ?: config('cotiz.api_nota.user', '')));
+        $usuarioRelay = trim((string) ($usuarioEnvio ?: $nota->usuario));
         if ($usuarioRelay === '') {
-            $usuarioRelay = (string) $nota->usuario;
+            throw new RuntimeException('La cotización no tiene usuario asignado.');
         }
 
         $resumen = $nota->toArray();
@@ -56,7 +56,7 @@ class NotaEnvioRelayService
     /**
      * Recibe petición apinotaenvio (solo nronota) y ejecuta relay local → remoto.
      */
-    public function relayDesdeSolicitud(array $payload, ?string $usuarioApi = null): void
+    public function relayDesdeSolicitud(array $payload): void
     {
         $nronota = (int) ($payload['nronota'] ?? 0);
         if ($nronota <= 0) {
@@ -68,7 +68,7 @@ class NotaEnvioRelayService
             throw new RuntimeException('La cotización no existe.');
         }
 
-        $this->relay($nota, $usuarioApi);
+        $this->relay($nota);
     }
 
     private function enviarDetalle(string $destino, Nota $nota, NotaDetalle $linea, int $nronotaDestino): void
