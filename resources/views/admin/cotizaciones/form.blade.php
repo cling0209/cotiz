@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Cotización '.$nota->nronota)
+@section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : 'Cotización '.$nota->nronota)
 
 @push('head')
 <link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-49" rel="stylesheet">
@@ -19,7 +19,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <h1 class="h5 mb-0">
             @if($desdeAdjudicadas)
-                Cotizaci&oacute;n adjudicada #{{ $nota->nronota }}
+                Cotizaciones adjudicadas
             @else
                 Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
             @endif

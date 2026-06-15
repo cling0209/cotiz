@@ -124,7 +124,7 @@ class AdjudicadaListadoTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.cotizaciones.edit', ['nronota' => 401, 'from' => 'adjudicadas']))
             ->assertOk()
-            ->assertSee('Cotizaci&oacute;n adjudicada #401', false)
+            ->assertSee('Cotizaciones adjudicadas', false)
             ->assertDontSee('id="btn-abrir-importar-compra-agil"', false)
             ->assertDontSee('id="btn-abrir-buscar-producto"', false)
             ->assertDontSee('id="btnFactorAumentoAceptar"', false)
