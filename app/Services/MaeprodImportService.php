@@ -6,6 +6,7 @@ use App\Models\Maeprod;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
 use App\Support\MaeprodImportFileTypes;
+use App\Support\MaeprodSchemaSupport;
 use App\Support\ProductCodeNormalizer;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -437,6 +438,8 @@ class MaeprodImportService
      */
     public function importRows(array $rows, ?string $usuarioUpd = null, ?array $columnMapping = null): array
     {
+        MaeprodSchemaSupport::ensurePostgresStringColumnWidths();
+
         $result = $this->emptyResult();
 
         $pending = [];
@@ -683,11 +686,11 @@ class MaeprodImportService
         $nuevoCosto = $row['prod_valor_costo'] !== '' ? (int) $row['prod_valor_costo'] : 0;
 
         $atributos = [
-            'prod_nombre' => mb_strtoupper(trim((string) $row['prod_nombre'])),
-            'prod_familia' => trim((string) $row['prod_familia']),
-            'prod_imagen' => $this->nullableString($row['prod_imagen'] ?? ''),
-            'prod_gramaje' => $this->nullableString($row['prod_gramaje'] ?? ''),
-            'prod_item_softland' => $this->nullableString($row['prod_item_softland'] ?? ''),
+            'prod_nombre' => $this->clipString(mb_strtoupper(trim((string) $row['prod_nombre'])), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_nombre']),
+            'prod_familia' => $this->clipString(trim((string) $row['prod_familia']), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_familia']),
+            'prod_imagen' => $this->clipString($this->nullableString($row['prod_imagen'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_imagen']),
+            'prod_gramaje' => $this->clipString($this->nullableString($row['prod_gramaje'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_gramaje']),
+            'prod_item_softland' => $this->clipString($this->nullableString($row['prod_item_softland'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_item_softland']),
             'prod_valor' => $nuevoValor,
             'prod_valor_costo' => $nuevoCosto,
             'prod_stock_real' => $row['prod_stock_real'] !== '' ? (int) $row['prod_stock_real'] : null,
@@ -778,9 +781,30 @@ class MaeprodImportService
         $mapped['prod_valor'] = $this->normalizeNumericField($mapped['prod_valor'] ?? '');
         $mapped['prod_valor_costo'] = $this->normalizeNumericField($mapped['prod_valor_costo'] ?? '');
         $mapped['prod_stock_real'] = $this->normalizeNumericField($mapped['prod_stock_real'] ?? '');
-        $mapped['prod_item'] = ProductCodeNormalizer::normalize($mapped['prod_item'] ?? '');
+        $mapped['prod_item'] = $this->clipString(
+            ProductCodeNormalizer::normalize($mapped['prod_item'] ?? ''),
+            MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_item'],
+        );
 
         return $mapped;
+    }
+
+    private function clipString(?string $value, int $maxLength): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (mb_strlen($value) <= $maxLength) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $maxLength);
     }
 
     private function normalizeNumericField(string $value): string
