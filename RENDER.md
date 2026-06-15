@@ -1,6 +1,6 @@
-# Desplegar Tienda Rómulo en Render + Neon + Resend
+# Desplegar Cotiz en Render + Neon + Resend
 
-Misma imagen Docker que Koyeb (`Dockerfile` en la raíz). Dominio: `https://tienda.romulo.cl`.
+Imagen Docker en la raíz (`Dockerfile`). Dominio: `https://cotiz.romulo.cl`.
 
 ## Arquitectura (recomendada — Render **free**)
 
@@ -33,6 +33,21 @@ Prueba sin dominio verificado: Resend solo permite enviar desde `onboarding@rese
 3. **Dockerfile path:** `./Dockerfile`
 4. **Instance type:** Free (OK con Resend).
 5. **Health check path:** `/up`
+6. **Auto-Deploy:** `Yes` (rama `main`)
+
+## 2.1 Deploy automático (push a `main`)
+
+Render puede redeployar solo con **Auto-Deploy**, pero si el webhook de GitHub falla, el repo incluye un respaldo con **Deploy Hook**:
+
+1. Render → tu Web Service → **Settings** → **Deploy Hook** → copiar la URL.
+2. GitHub → repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+   - **Name:** `RENDER_DEPLOY_HOOK`
+   - **Value:** la URL del paso 1
+3. Cada push a `main` ejecuta `.github/workflows/render-deploy.yml` y llama al hook.
+
+Verificar: GitHub → **Actions** → workflow *Deploy to Render* (debe quedar en verde). Render → **Events** → debe aparecer un deploy nuevo.
+
+Si el secret no está configurado, el workflow avisa con warning y no falla el CI.
 
 ## 3. Variables en Render
 
@@ -118,7 +133,6 @@ En free verás: `Unable to connect to ssl://mail.romulo.cl:465 (Operation timed 
 
 | Recurso | URL |
 |---------|-----|
-| Tienda | `https://tienda.romulo.cl/` |
-| Admin | `https://tienda.romulo.cl/admin/login` |
-| Swagger | `https://tienda.romulo.cl/api/documentation` |
-| Health | `https://tienda.romulo.cl/up` |
+| App | `https://cotiz.romulo.cl/` |
+| Admin login | `https://cotiz.romulo.cl/admin/login` |
+| Health | `https://cotiz.romulo.cl/up` |
