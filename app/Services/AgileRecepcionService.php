@@ -426,7 +426,7 @@ class AgileRecepcionService
 
     private function consultaCotizacionRemota(string $codigo): string
     {
-        $url = trim((string) config('cotiz.agile.api_nota_consulta', ''));
+        $url = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
         if ($url === '') {
             return '';
         }
@@ -440,8 +440,8 @@ class AgileRecepcionService
         try {
             $response = Http::timeout(15)
                 ->withBasicAuth(
-                    (string) config('cotiz.agile.api_nota_user', ''),
-                    (string) config('cotiz.agile.api_nota_password', '')
+                    (string) config('cotiz.api_nota.user', ''),
+                    (string) config('cotiz.api_nota.password', '')
                 )
                 ->post($url, [
                     'accion' => 'cotizacion',

@@ -8,32 +8,39 @@ use RuntimeException;
 
 class NotaEnvioApiService
 {
+    public function __construct(
+        protected NotaEnvioRelayService $relayService,
+    ) {}
+
+    /**
+     * Envía cotización al destino configurado (apinotaenvio legacy o relay interno).
+     */
     public function enviar(Nota $nota): void
     {
-        $url = trim((string) config('cotiz.api_nota_envio.url', ''));
+        $urlEnvio = trim((string) config('cotiz.api_nota_envio.url', ''));
 
-        if ($url === '') {
-            throw new RuntimeException('No está configurada la URL de envío API (COTIZ_API_NOTA_ENVIO_URL).');
+        if ($urlEnvio === '') {
+            $this->relayService->relay($nota);
+
+            return;
         }
 
-        $nota->load('detalle');
-
-        $payload = array_merge($nota->toArray(), [
+        $payload = [
             'nronota' => $nota->nronota,
             'enviadoapi' => 1,
             'diashabiles' => 0,
             'notaorigen' => 0,
-        ]);
+        ];
 
-        $request = Http::timeout(30)->asJson();
+        $request = Http::timeout(60)->asJson();
 
-        $user = config('cotiz.api_nota_envio.user');
-        $password = config('cotiz.api_nota_envio.password');
+        $user = config('cotiz.api_nota_envio.user') ?: config('cotiz.api_nota.user');
+        $password = config('cotiz.api_nota_envio.password') ?? config('cotiz.api_nota.password');
         if ($user !== null && $user !== '' && $password !== null) {
             $request = $request->withBasicAuth((string) $user, (string) $password);
         }
 
-        $response = $request->post($url, $payload);
+        $response = $request->post($urlEnvio, $payload);
 
         if (! $response->successful()) {
             throw new RuntimeException('Error HTTP al enviar la cotización a la API.');

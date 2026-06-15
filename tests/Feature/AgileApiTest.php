@@ -24,7 +24,7 @@ class AgileApiTest extends TestCase
             'cotiz.agile.user' => 'test_agile',
             'cotiz.agile.password' => 'secret',
             'cotiz.agile.sistema' => 'API',
-            'cotiz.agile.api_nota_consulta' => '',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
         User::factory()->create([
@@ -75,7 +75,7 @@ class AgileApiTest extends TestCase
         config([
             'cotiz.agile.user' => 'test_agile',
             'cotiz.agile.password' => 'secret',
-            'cotiz.agile.api_nota_consulta' => '',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
         User::factory()->create(['username' => 'ejecutivo1', 'perfil' => User::PERFIL_EJECUTIVO]);

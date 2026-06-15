@@ -14,6 +14,19 @@ return [
     'prod_valor_fecha_meses' => (int) env('COTIZ_PROD_VALOR_FECHA_MESES', 1),
     'listado_por_pagina' => (int) env('COTIZ_LISTADO_POR_PAGINA', 20),
 
+    // Recepción / consulta (apinota.php, apiconsulta.php) y destino del relay
+    'api_nota' => [
+        'url' => env('COTIZ_API_NOTA_URL', ''),
+        'user' => env('COTIZ_API_NOTA_USER', ''),
+        'password' => env('COTIZ_API_NOTA_PASSWORD', ''),
+        // URL remota apiconsulta (satélite → central). Vacío = no consulta externa.
+        'consulta_nro_cotizacion' => env(
+            'COTIZ_API_CONSULTA_NRO_COTIZACION',
+            env('COTIZ_AGILE_API_NOTA_CONS', '')
+        ),
+    ],
+
+    // Envío desde listado (notaventalis → apinotaenvio.php o relay interno)
     'api_nota_envio' => [
         'url' => env('COTIZ_API_NOTA_ENVIO_URL', ''),
         'user' => env('COTIZ_API_NOTA_ENVIO_USER', ''),
@@ -37,8 +50,5 @@ return [
         'password' => env('COTIZ_AGILE_PASSWORD', 'Rsdfh_jghagi'),
         'sistema' => env('COTIZ_AGILE_SISTEMA', 'API'),
         'maeprod_factor_precio_venta' => (float) env('COTIZ_AGILE_MAEPROD_FACTOR', 1.22),
-        'api_nota_consulta' => env('COTIZ_AGILE_API_NOTA_CONS', ''),
-        'api_nota_user' => env('COTIZ_AGILE_API_NOTA_USER', ''),
-        'api_nota_password' => env('COTIZ_AGILE_API_NOTA_PASSWORD', ''),
     ],
 ];

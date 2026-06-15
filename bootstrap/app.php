@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureAgileBasicAuth;
+use App\Http\Middleware\EnsureNotaApiBasicAuth;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
             'agile.basic' => EnsureAgileBasicAuth::class,
+            'nota.basic' => EnsureNotaApiBasicAuth::class,
         ]);
         $middleware->api(prepend: [
             HandleCors::class,
