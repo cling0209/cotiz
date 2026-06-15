@@ -47,6 +47,10 @@
                 <a href="{{ route('admin.users.index') }}" class="nav-link-admin {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
                     <i class="bi bi-people"></i> Usuarios
                 </a>
+            @elseif(auth()->user()->isEjecutivo())
+                <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
+                    <i class="bi bi-box-seam"></i> Productos
+                </a>
             @endif
             <span class="text-white-50 small d-none d-md-inline">{{ auth()->user()->fullName() ?: auth()->user()->username }}</span>
             <a href="{{ route('admin.account.password') }}" class="nav-link-admin {{ request()->routeIs('admin.account.password') ? 'active' : '' }}" title="Cambiar contraseña">

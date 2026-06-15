@@ -1,6 +1,7 @@
 @php
     $linea = $row['linea'];
     $totalLineas = $totalLineas ?? 1;
+    $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
 @endphp
 <tr
     @class([
@@ -71,9 +72,11 @@
         <input type="hidden" name="lineas[{{ $idx }}][prod_item]" value="{{ $linea->prod_item }}">
         <input type="hidden" name="lineas[{{ $idx }}][orden]" value="{{ $linea->orden }}">
     </td>
+    @if($mostrarSoftland)
     <td>
         <input type="text" name="lineas[{{ $idx }}][prod_item_softland]" maxlength="20" value="{{ old('lineas.'.$idx.'.prod_item_softland', $row['prod_item_softland']) }}" title="C&oacute;digo Softland">
     </td>
+    @endif
     <td><span class="nv-fill linea-id-agile">{{ $row['prod_item_agile'] }}</span></td>
     <td>
         @if($row['prod_item_agile'] !== '' && $row['prod_descripcion_agile'] !== '')

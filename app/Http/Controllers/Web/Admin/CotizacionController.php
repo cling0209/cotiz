@@ -72,6 +72,7 @@ class CotizacionController extends Controller
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
             'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
+            'mostrarSoftland' => $request->user()->isSuperAdmin(),
         ]);
     }
 
@@ -150,6 +151,13 @@ class CotizacionController extends Controller
 
         $lineas = $datos['lineas'] ?? [];
         unset($datos['lineas']);
+
+        if ($request->user()->isEjecutivo()) {
+            foreach ($lineas as &$linea) {
+                unset($linea['prod_item_softland']);
+            }
+            unset($linea);
+        }
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
@@ -257,6 +265,7 @@ class CotizacionController extends Controller
                     'isFirst' => $idx === 0,
                     'isLast' => $idx === $totalLineas - 1,
                     'totalLineas' => $totalLineas,
+                    'mostrarSoftland' => $request->user()->isSuperAdmin(),
                 ])->render(),
                 'delete_form_html' => view('admin.cotizaciones.partials.linea-detalle-delete-form', [
                     'nota' => $nota,

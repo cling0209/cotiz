@@ -9,10 +9,11 @@
 @section('content')
 @php
     $desdeAdjudicadas = $desdeAdjudicadas ?? false;
+    $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
-    $detalleColspan = $desdeAdjudicadas ? 13 : 14;
+    $detalleColspan = ($desdeAdjudicadas ? 13 : 14) - ($mostrarSoftland ? 0 : 1);
 @endphp
 
 <div class="cotizacion-ingreso">
@@ -148,10 +149,15 @@
             @endunless
 
         @unless($desdeAdjudicadas)
-        <div class="cotiz-agregar mb-2">
+        <div class="cotiz-agregar mb-2 d-flex flex-wrap gap-2 align-items-center">
             <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
                 <i class="bi bi-plus-circle"></i> Agregar producto
             </button>
+            @if(auth()->user()->isEjecutivo())
+                <a href="{{ route('admin.productos.create') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-box-seam"></i> Crear producto en maestro
+                </a>
+            @endif
         </div>
         @endunless
 
@@ -162,7 +168,9 @@
                         <th class="linea-drag-col" title="Arrastrar para reordenar"></th>
                         <th>Imagen</th>
                         <th>C&oacute;digo</th>
+                        @if($mostrarSoftland)
                         <th>Cod. Softland</th>
+                        @endif
                         <th>ID Agile</th>
                         <th>Descripci&oacute;n Agile (MP)</th>
                         <th>Descripci&oacute;n maestro</th>
@@ -186,6 +194,7 @@
                             'isLast' => $loop->last,
                             'totalLineas' => $lineas->count(),
                             'desdeAdjudicadas' => $desdeAdjudicadas,
+                            'mostrarSoftland' => $mostrarSoftland,
                         ])
                     @empty
                         <tr><td colspan="{{ $detalleColspan }}" class="text-muted text-center py-3">@if($desdeAdjudicadas)Sin l&iacute;neas.@else Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.@endif</td></tr>

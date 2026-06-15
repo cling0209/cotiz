@@ -57,6 +57,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::match(['get', 'post'], 'cotizaciones/nueva', [CotizacionController::class, 'create'])->name('cotizaciones.create');
         Route::get('cotizaciones/retomar', [CotizacionController::class, 'retomar'])->name('cotizaciones.retomar');
         Route::get('productos/buscar', [CotizacionController::class, 'buscarProductos'])->name('productos.buscar');
+        Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
+        Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
+        Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
         Route::put('cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/factor', [CotizacionController::class, 'aplicarFactor'])->name('cotizaciones.factor')->whereNumber('nronota');
@@ -98,9 +101,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
 
-            Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
-            Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
-            Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
             Route::get('productos/{prod_item}', [MaeprodController::class, 'edit'])->name('productos.edit')->where('prod_item', '[^/]+');
             Route::put('productos/{prod_item}', [MaeprodController::class, 'update'])->name('productos.update')->where('prod_item', '[^/]+');
 

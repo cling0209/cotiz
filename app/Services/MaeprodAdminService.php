@@ -157,7 +157,7 @@ class MaeprodAdminService
     /**
      * @return array<string, mixed>
      */
-    public function reglasValidacion(bool $esNuevo): array
+    public function reglasValidacion(bool $esNuevo, bool $incluirSoftland = true): array
     {
         $reglasFamilia = $esNuevo
             ? ['required', 'string', 'max:120']
@@ -176,8 +176,11 @@ class MaeprodAdminService
             'prod_stock_real' => ['nullable', 'integer', 'min:0'],
             'prod_gramaje' => ['nullable', 'string', 'max:120'],
             'prod_familia' => $reglasFamilia,
-            'prod_item_softland' => ['nullable', 'string', 'max:50'],
         ];
+
+        if ($incluirSoftland) {
+            $reglas['prod_item_softland'] = ['nullable', 'string', 'max:50'];
+        }
 
         if ($esNuevo) {
             $reglas['prod_item'] = ['required', 'string', 'max:50', 'unique:maeprod,prod_item'];

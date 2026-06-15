@@ -29,6 +29,12 @@ class MaeprodController extends Controller
 
     public function index(Request $request): View
     {
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         $productos = $this->maeprodService->listado(
             $request->string('q')->trim()->toString() ?: null,
             $request->string('familia')->trim()->toString() ?: null,
@@ -42,24 +48,48 @@ class MaeprodController extends Controller
                 'q' => $request->string('q')->toString(),
                 'familia' => $request->string('familia')->toString(),
             ],
+            'puedeModificar' => $request->user()->isSuperAdmin(),
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         return view('admin.maeprod.form', [
             'producto' => null,
             'familias' => $this->maeprodService->familias(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
+            'puedeEditarSoftland' => $request->user()->isSuperAdmin(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $datos = $request->validate($this->maeprodService->reglasValidacion(true));
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
+        $datos = $request->validate($this->maeprodService->reglasValidacion(true, $request->user()->isSuperAdmin()));
         $datos = $this->maeprodService->normalizarDatosConImagen($datos, $request->file('imagen'));
 
+        if ($request->user()->isEjecutivo()) {
+            unset($datos['prod_item_softland']);
+        }
+
         $this->maeprodService->crear($datos, $request->user()->username);
+
+        if ($request->user()->isEjecutivo()) {
+            return redirect()
+                ->route('admin.productos.index')
+                ->with('success', 'Producto creado.');
+        }
 
         return redirect()
             ->route('admin.productos.index')
@@ -74,6 +104,7 @@ class MaeprodController extends Controller
             'producto' => $producto,
             'familias' => $this->maeprodService->familias(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
+            'puedeEditarSoftland' => true,
         ]);
     }
 

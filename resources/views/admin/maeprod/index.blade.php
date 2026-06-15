@@ -3,6 +3,9 @@
 @section('title', 'Productos')
 
 @section('content')
+@php
+    $puedeModificar = $puedeModificar ?? auth()->user()?->isSuperAdmin();
+@endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
@@ -10,9 +13,11 @@
             <p class="text-muted mb-0 small">Cat&aacute;logo maestro (maeprod).</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <a href="{{ route('admin.productos.import') }}" class="btn btn-outline-primary btn-sm">
-                <i class="bi bi-upload"></i> Carga masiva
-            </a>
+            @if($puedeModificar)
+                <a href="{{ route('admin.productos.import') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-upload"></i> Carga masiva
+                </a>
+            @endif
             <a href="{{ route('admin.productos.create') }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg"></i> Nuevo producto
             </a>
@@ -57,7 +62,9 @@
                         <th>Familia</th>
                         <th class="text-end">Precio</th>
                         <th class="text-end">Costo</th>
+                        @if($puedeModificar)
                         <th></th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody>
@@ -82,12 +89,14 @@
                             <td class="text-muted small">{{ $producto->prod_familia }}</td>
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
+                            @if($puedeModificar)
                             <td class="text-end">
                                 <a href="{{ route('admin.productos.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
                             </td>
+                            @endif
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted py-4">Sin productos.</td></tr>
+                        <tr><td colspan="{{ $puedeModificar ? 7 : 6 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
                     @endforelse
                 </tbody>
             </table>

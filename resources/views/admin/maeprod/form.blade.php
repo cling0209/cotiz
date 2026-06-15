@@ -5,6 +5,7 @@
 @section('content')
 @php
     $esNuevo = ! $producto;
+    $puedeEditarSoftland = $puedeEditarSoftland ?? auth()->user()?->isSuperAdmin();
     $action = $esNuevo
         ? route('admin.productos.store')
         : route('admin.productos.update', $producto->prod_item);
@@ -13,7 +14,11 @@
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h4 mb-0">{{ $esNuevo ? 'Nuevo producto' : 'Editar producto' }}</h1>
-        <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+        @if(auth()->user()->isSuperAdmin() || auth()->user()->isEjecutivo())
+            <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+        @else
+            <a href="{{ route('admin.cotizaciones.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Cotizaciones</a>
+        @endif
     </div>
 
     <div class="row">
@@ -101,11 +106,13 @@
                                 <input type="number" name="prod_stock_real" class="form-control form-control-sm"
                                        value="{{ old('prod_stock_real', $producto?->prod_stock_real) }}" min="0">
                             </div>
+                            @if($puedeEditarSoftland)
                             <div class="col-md-4">
                                 <label class="form-label">C&oacute;d. Softland</label>
                                 <input type="text" name="prod_item_softland" class="form-control form-control-sm"
                                        value="{{ old('prod_item_softland', $producto?->prod_item_softland) }}" maxlength="50">
                             </div>
+                            @endif
                             @if($producto)
                             <div class="col-12">
                                 <p class="small text-muted mb-0">
