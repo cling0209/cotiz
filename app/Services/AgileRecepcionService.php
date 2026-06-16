@@ -10,7 +10,6 @@ use App\Support\ProdValorFechaUi;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class AgileRecepcionService
@@ -19,6 +18,7 @@ class AgileRecepcionService
         protected NotaService $notaService,
         protected AgileMaeprodService $agileMaeprodService,
         protected NotaDetalleService $detalleService,
+        protected NotaConsultaRemotaService $consultaRemotaService,
     ) {}
 
     public function esNotaAgile(Nota $nota): bool
@@ -123,7 +123,10 @@ class AgileRecepcionService
             throw new RuntimeException('La cotización ya existe en notas: '.$codigo);
         }
 
-        $errRemoto = $this->consultaCotizacionRemota($codigo);
+        $errRemoto = $this->consultaRemotaService->errorSiEncargadoExisteEnPar(
+            $codigo,
+            'La cotización ya existe registrada en el sitio central, favor verificar.',
+        );
         if ($errRemoto !== '') {
             throw new RuntimeException($errRemoto);
         }
@@ -422,45 +425,6 @@ class AgileRecepcionService
         }
 
         $query->where('usuario', $user->username);
-    }
-
-    private function consultaCotizacionRemota(string $codigo): string
-    {
-        $url = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
-        if ($url === '') {
-            return '';
-        }
-
-        $hostRemoto = parse_url($url, PHP_URL_HOST);
-        $hostLocal = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
-        if ($hostRemoto && $hostLocal && strtolower($hostRemoto) === $hostLocal) {
-            return '';
-        }
-
-        try {
-            $response = Http::timeout(15)
-                ->withBasicAuth(
-                    (string) config('cotiz.api_nota.user', ''),
-                    (string) config('cotiz.api_nota.password', '')
-                )
-                ->post($url, [
-                    'accion' => 'cotizacion',
-                    'encargado' => $codigo,
-                ]);
-
-            if (! $response->successful()) {
-                return 'Error al consultar cotización en sitio central.';
-            }
-
-            $data = $response->json();
-            if (isset($data['resultado']) && $data['resultado'] === 'OK') {
-                return 'La cotización ya existe registrada en el sitio central, favor verificar.';
-            }
-        } catch (\Throwable) {
-            return 'Error al consultar cotización en sitio central.';
-        }
-
-        return '';
     }
 
     private function siguienteNronota(): int

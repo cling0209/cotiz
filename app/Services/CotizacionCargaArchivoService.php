@@ -6,7 +6,6 @@ use App\Models\Maeprod;
 use App\Models\Nota;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class CotizacionCargaArchivoService
@@ -16,6 +15,7 @@ class CotizacionCargaArchivoService
     public function __construct(
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
+        protected NotaConsultaRemotaService $consultaRemotaService,
     ) {}
 
     public function validarArchivo(UploadedFile $archivo): void
@@ -149,7 +149,10 @@ class CotizacionCargaArchivoService
             return (int) $notaExistente->nronota;
         }
 
-        $errorRemoto = $this->consultaCotizacionRemota($encargado);
+        $errorRemoto = $this->consultaRemotaService->errorSiEncargadoExisteEnPar(
+            $encargado,
+            'La Orden ya existe en otro sitio, favor verificar.',
+        );
         if ($errorRemoto !== '') {
             throw new RuntimeException($errorRemoto);
         }
@@ -525,45 +528,6 @@ class CotizacionCargaArchivoService
         $factor = (float) $texto;
 
         return $factor > 0 ? round($factor, 4) : 0.0;
-    }
-
-    private function consultaCotizacionRemota(string $encargado): string
-    {
-        $url = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
-        if ($url === '') {
-            return '';
-        }
-
-        $hostRemoto = parse_url($url, PHP_URL_HOST);
-        $hostLocal = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
-        if ($hostRemoto && $hostLocal && strtolower((string) $hostRemoto) === $hostLocal) {
-            return '';
-        }
-
-        try {
-            $response = Http::timeout(15)
-                ->withBasicAuth(
-                    (string) config('cotiz.api_nota.user', ''),
-                    (string) config('cotiz.api_nota.password', ''),
-                )
-                ->post($url, [
-                    'accion' => 'cotizacion',
-                    'encargado' => $encargado,
-                ]);
-
-            if (! $response->successful()) {
-                return 'Error al consultar cotización en sitio central.';
-            }
-
-            $data = $response->json();
-            if (isset($data['resultado']) && $data['resultado'] === 'OK') {
-                return 'La Orden ya existe en otro sitio, favor verificar.';
-            }
-        } catch (\Throwable) {
-            return 'Error al consultar cotización en sitio central.';
-        }
-
-        return '';
     }
 
     private function aUtf8(string $valor): string
