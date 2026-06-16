@@ -248,9 +248,9 @@
     position: absolute;
     inset: 0;
     background: url("/images/login-bg.jpg") center center / cover no-repeat;
-    opacity: 0.58;
-    transform: scale(1.03);
-    filter: saturate(0.85) brightness(1.02);
+    opacity: 0.92;
+    transform: scale(1.02);
+    filter: saturate(0.95) brightness(1.04);
     z-index: 0;
 }
 
@@ -259,9 +259,9 @@
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.18) 0%, transparent 42%),
-        radial-gradient(circle at 88% 82%, rgba(250, 204, 21, 0.12) 0%, transparent 40%),
-        linear-gradient(145deg, rgba(255, 255, 255, 0.62) 0%, rgba(240, 249, 255, 0.55) 48%, rgba(254, 252, 232, 0.6) 100%);
+        radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.12) 0%, transparent 42%),
+        radial-gradient(circle at 88% 82%, rgba(250, 204, 21, 0.08) 0%, transparent 40%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.38) 0%, rgba(240, 249, 255, 0.32) 48%, rgba(254, 252, 232, 0.36) 100%);
     z-index: 1;
 }
 
@@ -278,8 +278,8 @@
     border-top: 4px solid #3b82f6;
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(37, 99, 235, 0.1);
     overflow: hidden;
-    backdrop-filter: blur(10px);
-    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.97);
 }
 
 .admin-login-brand {
