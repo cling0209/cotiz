@@ -33,14 +33,12 @@ class CotizacionCargaArchivoController extends Controller
             $archivo = $request->file('archivo');
             $this->cargaService->validarArchivo($archivo);
 
-            $rutaTemp = $archivo->storeAs(
-                'temp_carga_cotiz',
-                'preview_'.uniqid('', true).'.csv',
-            );
-            $rutaAbs = storage_path('app/'.$rutaTemp);
+            $rutaAbs = $archivo->getRealPath();
+            if ($rutaAbs === false || ! is_readable($rutaAbs)) {
+                throw new RuntimeException('No se pudo leer el archivo subido');
+            }
 
             $datos = $this->cargaService->parseCsv($rutaAbs);
-            @unlink($rutaAbs);
 
             $this->cargaService->validarEstructura($datos);
             $nronotaExistente = $this->cargaService->validarResumen($datos['resumen'], $request->user()->username);
