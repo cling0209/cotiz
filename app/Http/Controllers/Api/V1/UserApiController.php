@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\UserRecepcionApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class UserApiController extends Controller
@@ -31,6 +32,10 @@ class UserApiController extends Controller
                 'graba' => $this->graba($payload),
                 default => $this->error('Accion no existe: '.$accion),
             };
+        } catch (ValidationException $e) {
+            $mensaje = collect($e->errors())->flatten()->first();
+
+            return $this->error($mensaje ?: 'Datos inválidos');
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage());
         }

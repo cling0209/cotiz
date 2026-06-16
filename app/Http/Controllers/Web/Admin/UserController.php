@@ -61,24 +61,24 @@ class UserController extends Controller
             'perfil' => (int) $datos['perfil'],
             'password' => $datos['password'],
         ]);
-        $advertenciaRemoto = null;
+
+        $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
+        $mensajeLocal = 'Usuario creado en '.$local.'.';
 
         try {
-            $this->userRelay->replicarDesdeLocal($usuarioCreado, $datos['password']);
+            $mensajeRemoto = $this->userRelay->replicarDesdeLocal($usuarioCreado, $datos['password']);
+
+            return redirect()
+                ->route('admin.users.index')
+                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
         } catch (\Throwable $e) {
             report($e);
-            $advertenciaRemoto = 'Usuario creado localmente, pero no se replicó en la otra instancia: '.$e->getMessage();
+
+            return redirect()
+                ->route('admin.users.index')
+                ->with('success', $mensajeLocal)
+                ->with('error', $e->getMessage());
         }
-
-        $redirect = redirect()
-            ->route('admin.users.index')
-            ->with('success', 'Usuario creado.');
-
-        if ($advertenciaRemoto !== null) {
-            $redirect->with('warning', $advertenciaRemoto);
-        }
-
-        return $redirect;
     }
 
     public function edit(User $usuario): View

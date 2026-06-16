@@ -97,7 +97,7 @@ class UserSyncTest extends TestCase
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
-        $this->actingAs($admin)->post(route('admin.users.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
             'username' => 'sync01',
             'nombre' => 'Sync',
             'apellidop' => 'Test',
@@ -105,8 +105,12 @@ class UserSyncTest extends TestCase
             'perfil' => User::PERFIL_EJECUTIVO,
             'password' => 'Clave1234',
             'password_confirmation' => 'Clave1234',
-        ])->assertRedirect(route('admin.users.index'))
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'))
             ->assertSessionHas('success');
+
+        $this->assertStringContainsString('También fue creado', (string) $response->getSession()->get('success'));
 
         Http::assertSent(function ($request) {
             return $request->url() === 'https://peer.test/api/v1/usuario'
@@ -119,7 +123,7 @@ class UserSyncTest extends TestCase
         $this->assertDatabaseHas('users', ['username' => 'sync01']);
     }
 
-    public function test_admin_store_shows_warning_when_peer_replication_fails(): void
+    public function test_admin_store_shows_error_when_peer_replication_fails(): void
     {
         Http::fake([
             'https://peer.test/api/v1/usuario' => Http::response([
@@ -133,15 +137,19 @@ class UserSyncTest extends TestCase
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
-        $this->actingAs($admin)->post(route('admin.users.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.users.store'), [
             'username' => 'local01',
             'nombre' => 'Local',
             'perfil' => User::PERFIL_EJECUTIVO,
             'password' => 'Clave1234',
             'password_confirmation' => 'Clave1234',
-        ])->assertRedirect(route('admin.users.index'))
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'))
             ->assertSessionHas('success')
-            ->assertSessionHas('warning');
+            ->assertSessionHas('error');
+
+        $this->assertStringContainsString('Peer caído', (string) $response->getSession()->get('error'));
 
         $this->assertDatabaseHas('users', ['username' => 'local01']);
     }
