@@ -248,7 +248,7 @@
     position: absolute;
     inset: 0;
     background: url("/images/login-bg.jpg") center center / cover no-repeat;
-    filter: saturate(1.35) contrast(1.12) brightness(0.88);
+    filter: saturate(1.2) contrast(1.08) brightness(0.94);
     z-index: 0;
 }
 
