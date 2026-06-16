@@ -17,6 +17,9 @@
                 </form>
             @endif
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="btn btn-outline-secondary btn-sm">Retomar &uacute;ltima</a>
+            <a href="{{ route('admin.cotizaciones.carga-archivo.index') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-upload"></i> Carga archivo
+            </a>
         </div>
     </div>
 

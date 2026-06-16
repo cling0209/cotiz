@@ -37,6 +37,9 @@
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="nav-link-admin">
                 <i class="bi bi-arrow-repeat"></i> Retomar
             </a>
+            <a href="{{ route('admin.cotizaciones.carga-archivo.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.carga-archivo.*') ? 'active' : '' }}">
+                <i class="bi bi-upload"></i> Carga archivo
+            </a>
             @if(auth()->user()->isSuperAdmin())
                 <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') ? 'active' : '' }}">
                     <i class="bi bi-check2-circle"></i> Adjudicadas

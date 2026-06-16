@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\Admin\AdjudicadaListadoController;
 use App\Http\Controllers\Web\Admin\AgileRecepcionController;
 use App\Http\Controllers\Web\Admin\AuthController;
 use App\Http\Controllers\Web\Admin\AccountController;
+use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
 use App\Http\Controllers\Web\Admin\CotizacionListadoController;
@@ -56,6 +57,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('cotizaciones/export/aceptadas', [CotizacionListadoController::class, 'exportAceptadas'])->name('cotizaciones.export.aceptadas');
         Route::match(['get', 'post'], 'cotizaciones/nueva', [CotizacionController::class, 'create'])->name('cotizaciones.create');
         Route::get('cotizaciones/retomar', [CotizacionController::class, 'retomar'])->name('cotizaciones.retomar');
+        Route::get('cotizaciones/carga-archivo', [CotizacionCargaArchivoController::class, 'index'])->name('cotizaciones.carga-archivo.index');
+        Route::post('cotizaciones/carga-archivo/previsualizar', [CotizacionCargaArchivoController::class, 'previsualizar'])->name('cotizaciones.carga-archivo.previsualizar');
+        Route::post('cotizaciones/carga-archivo/confirmar', [CotizacionCargaArchivoController::class, 'confirmar'])->name('cotizaciones.carga-archivo.confirmar');
+        Route::get('cotizaciones/carga-archivo/plantilla', [CotizacionCargaArchivoController::class, 'plantilla'])->name('cotizaciones.carga-archivo.plantilla');
         Route::get('productos/buscar', [CotizacionController::class, 'buscarProductos'])->name('productos.buscar');
         Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
         Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
