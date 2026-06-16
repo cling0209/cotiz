@@ -66,6 +66,7 @@ class CotizacionCargaArchivoTest extends TestCase
         $preview->assertOk()
             ->assertSee('Previsualización')
             ->assertSee('PRODCSV01')
+            ->assertSee('Producto CSV')
             ->assertSee('Confirmar carga');
 
         preg_match('/name="previewToken" value="([^"]+)"/', $preview->getContent(), $tokenMatch);

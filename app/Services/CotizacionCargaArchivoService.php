@@ -166,11 +166,28 @@ class CotizacionCargaArchivoService
         $factor = $this->factorDesdeDetalle($detalle);
         $preview = [];
 
+        $codigos = [];
+        foreach ($detalle as $producto) {
+            $codigo = trim((string) ($producto['codigo'] ?? ''));
+            if ($codigo !== '') {
+                $codigos[] = $codigo;
+            }
+        }
+
+        $maeprods = Maeprod::query()
+            ->whereIn('prod_item', array_values(array_unique($codigos)))
+            ->get()
+            ->keyBy('prod_item');
+
         foreach ($detalle as $index => $producto) {
             $lineaCsv = $index + 2;
             $codigo = trim((string) ($producto['codigo'] ?? ''));
-            $nombre = trim((string) ($producto['nombre'] ?? ''));
+            $nombreCsv = trim((string) ($producto['nombre'] ?? ''));
             $cantidad = (int) ($producto['cantidad'] ?? 0);
+            /** @var Maeprod|null $maeprod */
+            $maeprod = $codigo !== '' ? $maeprods->get($codigo) : null;
+            $prodNombre = trim((string) ($maeprod?->prod_nombre ?? $nombreCsv));
+            $imageUrl = $maeprod ? trim($maeprod->imageUrl()) : '';
 
             $valido = true;
             $motivo = '';
@@ -184,14 +201,16 @@ class CotizacionCargaArchivoService
             } elseif ($cantidad <= 0) {
                 $valido = false;
                 $motivo = 'Cantidad no válida';
-            } elseif (! Maeprod::query()->find($codigo)) {
+            } elseif (! $maeprod) {
                 $valido = false;
                 $motivo = "Código «{$codigo}» no existe en maeprod";
             }
 
             $preview[] = [
                 'codigo' => $codigo,
-                'nombre' => $nombre,
+                'nombre' => $nombreCsv,
+                'prod_nombre' => $prodNombre,
+                'image_url' => $imageUrl,
                 'cantidad' => $cantidad,
                 'factor' => $factor,
                 'valido' => $valido,

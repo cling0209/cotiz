@@ -95,6 +95,7 @@
                     <table class="table table-sm table-hover align-middle mb-0">
                         <thead class="table-dark">
                             <tr>
+                                <th class="text-center" style="width:4rem">Imagen</th>
                                 <th>Código</th>
                                 <th>Producto</th>
                                 <th class="text-end">Cantidad</th>
@@ -105,9 +106,37 @@
                         </thead>
                         <tbody>
                             @foreach($preview['detalle'] as $fila)
+                                @php
+                                    $imagenUrl = trim((string) ($fila['image_url'] ?? ''));
+                                    $prodNombre = trim((string) ($fila['prod_nombre'] ?? $fila['nombre'] ?? ''));
+                                    $imagenTitulo = ($fila['codigo'] ?? '') . ($prodNombre !== '' ? ' — ' . $prodNombre : '');
+                                @endphp
                                 <tr class="{{ ($fila['valido'] ?? false) ? 'text-success' : 'text-danger' }}">
+                                    <td class="text-center p-1">
+                                        @if($imagenUrl !== '')
+                                            <button type="button"
+                                                    class="product-image-zoom-trigger cotiz-buscar-thumb-btn border-0 bg-transparent p-0"
+                                                    data-image-url="{{ $imagenUrl }}"
+                                                    data-image-title="{{ $imagenTitulo }}"
+                                                    title="Ver imagen ampliada">
+                                                <img src="{{ $imagenUrl }}"
+                                                     alt=""
+                                                     class="cotiz-buscar-thumb"
+                                                     loading="eager"
+                                                     decoding="async"
+                                                     referrerpolicy="no-referrer"
+                                                     onerror="this.onerror=null;this.src='{{ asset('images/no-image.svg') }}'">
+                                            </button>
+                                        @else
+                                            <img src="{{ asset('images/no-image.svg') }}"
+                                                 alt=""
+                                                 class="cotiz-buscar-thumb"
+                                                 loading="eager"
+                                                 decoding="async">
+                                        @endif
+                                    </td>
                                     <td>{{ $fila['codigo'] }}</td>
-                                    <td>{{ $fila['nombre'] }}</td>
+                                    <td>{{ $prodNombre !== '' ? $prodNombre : '—' }}</td>
                                     <td class="text-end tabular-nums">{{ $fila['cantidad'] }}</td>
                                     <td class="text-end tabular-nums">{{ $fila['factor'] }}</td>
                                     <td>{{ ($fila['valido'] ?? false) ? 'OK' : 'Omitido' }}</td>
@@ -128,9 +157,52 @@
                 </form>
             </div>
         </div>
+        <div class="modal fade" id="modal-imagen-carga-archivo" tabindex="-1" aria-labelledby="modal-imagen-carga-archivo-titulo" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header py-2">
+                        <h2 class="modal-title fs-6" id="modal-imagen-carga-archivo-titulo"></h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body text-center p-2 bg-light">
+                        <img id="modal-imagen-carga-archivo-img" src="" alt="" class="img-fluid rounded shadow-sm product-image-zoom-preview">
+                    </div>
+                </div>
+            </div>
+        </div>
         @push('scripts')
         <script>
             document.getElementById('previewSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            (function () {
+                const modalEl = document.getElementById('modal-imagen-carga-archivo');
+                const modalImg = document.getElementById('modal-imagen-carga-archivo-img');
+                const modalTitle = document.getElementById('modal-imagen-carga-archivo-titulo');
+                if (!modalEl || !modalImg) return;
+
+                const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+                document.querySelectorAll('#previewSection .product-image-zoom-trigger:not([data-zoom-bound])').forEach(function (trigger) {
+                    trigger.dataset.zoomBound = '1';
+                    trigger.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const url = trigger.dataset.imageUrl;
+                        if (!url) return;
+                        modalImg.src = url;
+                        modalImg.alt = trigger.dataset.imageTitle || 'Imagen producto';
+                        if (modalTitle) {
+                            modalTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
+                        }
+                        bsModal.show();
+                    });
+                });
+
+                modalEl.addEventListener('hidden.bs.modal', function () {
+                    modalImg.removeAttribute('src');
+                    modalImg.alt = '';
+                });
+            })();
         </script>
         @endpush
     @endif
