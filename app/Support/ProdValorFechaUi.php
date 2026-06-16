@@ -8,9 +8,9 @@ class ProdValorFechaUi
 {
     public static function umbralMeses(): int
     {
-        $meses = (int) config('cotiz.prod_valor_fecha_meses', 1);
+        $meses = (int) config('cotiz.prod_valor_fecha_meses', 3);
 
-        return $meses > 0 ? $meses : 1;
+        return $meses > 0 ? $meses : 3;
     }
 
     /**

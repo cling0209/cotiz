@@ -53,7 +53,7 @@ class AgileRecepcionController extends Controller
         $lineas = $detalle['lineas'];
 
         $hayPrecioAntiguo = $lineas->contains(fn (array $row) => $row['prod_valor_fecha_antigua']);
-        $umbralMeses = (int) config('cotiz.prod_valor_fecha_meses', 1);
+        $umbralMeses = (int) config('cotiz.prod_valor_fecha_meses', 3);
 
         $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
         $factorMostrado = number_format($factorValor, 2, ',', '');

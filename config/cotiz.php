@@ -11,7 +11,8 @@ return [
     'concepto_bodega' => env('COTIZ_CONCEPTO_BODEGA', '26'),
     'codigo_proveedor' => env('COTIZ_CODIGO_PROVEEDOR', '76185139'),
     'factor_precio_venta' => (float) env('COTIZ_FACTOR_PRECIO_VENTA', 1.22),
-    'prod_valor_fecha_meses' => (int) env('COTIZ_PROD_VALOR_FECHA_MESES', 1),
+    // Umbral (meses) para marcar prod_valor_fecha en rojo (cotización y recepción Agile). Legacy: AGILERECEPCION_PROD_VALOR_FECHA_MESES.
+    'prod_valor_fecha_meses' => (int) env('COTIZ_PROD_VALOR_FECHA_MESES', 3),
     'listado_por_pagina' => (int) env('COTIZ_LISTADO_POR_PAGINA', 20),
 
     // Recepción / consulta (apinota.php, apiconsulta.php) y destino del relay

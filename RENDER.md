@@ -88,6 +88,18 @@ No uses `MAIL_HOST` / `MAIL_PASSWORD` con Resend. El remitente debe estar en un 
 | `LOG_CHANNEL` | `stderr` |
 | `LOG_LEVEL` | `error` |
 
+### Cotiz — negocio (Softland / alertas precio)
+
+Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
+
+| Variable | Uso | Valor típico |
+|----------|-----|--------------|
+| `COTIZ_PROD_VALOR_FECHA_MESES` | Meses sin actualizar precio → fecha en **rojo** en cotización y recepción Agile | `3` |
+| `COTIZ_CODIGO_BODEGA` | Columna 1 CSV **Guía ingreso** Softland | `01` |
+| `COTIZ_CONCEPTO_BODEGA` | Columna 4 CSV guía ingreso | `26` |
+| `COTIZ_CODIGO_PROVEEDOR` | Columna 6 CSV guía ingreso (RUT/código proveedor) | `76185139` |
+| `COTIZ_FACTOR_PRECIO_VENTA` | Factor costo → venta en cotizaciones | `1.22` |
+
 Tras cambiar variables: **Manual Deploy**.
 
 ## 4. Local vs producción
