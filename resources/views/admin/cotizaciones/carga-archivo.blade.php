@@ -2,6 +2,38 @@
 
 @section('title', 'Carga de cotización desde archivo')
 
+@push('head')
+<style>
+.carga-archivo-preview .linea-imagen-cell {
+    width: 88px;
+    max-width: 88px;
+    padding: 4px !important;
+    text-align: center;
+    vertical-align: middle;
+}
+.carga-archivo-preview .linea-imagen-cell .cotiz-buscar-thumb {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
+.carga-archivo-preview .linea-imagen-cell .cotiz-buscar-thumb-btn {
+    display: block;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    line-height: 0;
+}
+.carga-archivo-preview .linea-imagen-cell .cotiz-buscar-thumb-btn:hover .cotiz-buscar-thumb {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+    border-radius: 0.35rem;
+}
+</style>
+@endpush
+
 @section('content')
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -91,11 +123,11 @@
                 @endif
 
                 <h2 class="h6 text-muted mb-3">Detalle de productos</h2>
-                <div class="table-responsive">
+                <div class="table-responsive carga-archivo-preview">
                     <table class="table table-sm table-hover align-middle mb-0">
                         <thead class="table-dark">
                             <tr>
-                                <th class="text-center" style="width:4rem">Imagen</th>
+                                <th class="text-center">Imagen</th>
                                 <th>Código</th>
                                 <th>Producto</th>
                                 <th class="text-end">Cantidad</th>
@@ -112,10 +144,10 @@
                                     $imagenTitulo = ($fila['codigo'] ?? '') . ($prodNombre !== '' ? ' — ' . $prodNombre : '');
                                 @endphp
                                 <tr class="{{ ($fila['valido'] ?? false) ? 'text-success' : 'text-danger' }}">
-                                    <td class="text-center p-1">
+                                    <td class="linea-imagen-cell">
                                         @if($imagenUrl !== '')
                                             <button type="button"
-                                                    class="product-image-zoom-trigger cotiz-buscar-thumb-btn border-0 bg-transparent p-0"
+                                                    class="product-image-zoom-trigger cotiz-buscar-thumb-btn"
                                                     data-image-url="{{ $imagenUrl }}"
                                                     data-image-title="{{ $imagenTitulo }}"
                                                     title="Ver imagen ampliada">
