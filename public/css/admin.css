@@ -240,7 +240,16 @@
     justify-content: center;
     padding: 1.5rem;
     overflow: hidden;
-    background: #dbeafe url("/images/login-bg.jpg") center center / cover no-repeat;
+    background-color: #cbd5e1;
+}
+
+.admin-login-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("/images/login-bg.jpg") center center / cover no-repeat;
+    filter: saturate(1.35) contrast(1.12) brightness(0.88);
+    z-index: 0;
 }
 
 .admin-login-wrap > .admin-login-card {
