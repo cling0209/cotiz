@@ -16,6 +16,10 @@ return [
     'listado_por_pagina' => (int) env('COTIZ_LISTADO_POR_PAGINA', 20),
 
     // Recepción / consulta (apinota.php, apiconsulta.php) y destino del relay
+    'sistema' => env('COTIZ_SISTEMA', env('APP_NAME', 'Cotiz')),
+    'api_usuario' => [
+        'url' => env('COTIZ_API_USUARIO_URL', ''),
+    ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),
         'user' => env('COTIZ_API_NOTA_USER', ''),

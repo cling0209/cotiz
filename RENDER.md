@@ -99,6 +99,9 @@ Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
 | `COTIZ_CONCEPTO_BODEGA` | Columna 4 CSV guía ingreso | `26` |
 | `COTIZ_CODIGO_PROVEEDOR` | Columna 6 CSV guía ingreso (RUT/código proveedor) | `76185139` |
 | `COTIZ_FACTOR_PRECIO_VENTA` | Factor costo → venta en cotizaciones | `1.22` |
+| `COTIZ_SISTEMA` | Nombre de esta instancia (Romulo / Reicol) | `Romulo` |
+| `COTIZ_API_USUARIO_URL` | URL del par para replicar usuarios al crear | Romulo: `https://cotiza.reicol.cl/api/v1/usuario` — Reicol: `https://cotiza.romulo.cl/api/v1/usuario` |
+| `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | mismas credenciales en ambas instancias |
 
 Tras cambiar variables: **Manual Deploy**.
 

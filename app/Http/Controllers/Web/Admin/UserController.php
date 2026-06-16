@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\UserRelayService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,6 +14,10 @@ use Illuminate\View\View;
 class UserController extends Controller
 {
     public const PASSWORD_MAX_LENGTH = 20;
+
+    public function __construct(
+        protected UserRelayService $userRelay,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -47,7 +52,7 @@ class UserController extends Controller
     {
         $datos = $request->validate($this->reglasUsuario(true));
 
-        User::query()->create([
+        $usuarioCreado = User::query()->create([
             'username' => $datos['username'],
             'nombre' => $datos['nombre'],
             'apellidop' => $datos['apellidop'] ?? null,
@@ -56,10 +61,24 @@ class UserController extends Controller
             'perfil' => (int) $datos['perfil'],
             'password' => $datos['password'],
         ]);
+        $advertenciaRemoto = null;
 
-        return redirect()
+        try {
+            $this->userRelay->replicarDesdeLocal($usuarioCreado, $datos['password']);
+        } catch (\Throwable $e) {
+            report($e);
+            $advertenciaRemoto = 'Usuario creado localmente, pero no se replicó en la otra instancia: '.$e->getMessage();
+        }
+
+        $redirect = redirect()
             ->route('admin.users.index')
             ->with('success', 'Usuario creado.');
+
+        if ($advertenciaRemoto !== null) {
+            $redirect->with('warning', $advertenciaRemoto);
+        }
+
+        return $redirect;
     }
 
     public function edit(User $usuario): View

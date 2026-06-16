@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AgileController;
 use App\Http\Controllers\Api\V1\NotaApiController;
 use App\Http\Controllers\Api\V1\NotaConsultaApiController;
 use App\Http\Controllers\Api\V1\NotaEnvioApiController;
+use App\Http\Controllers\Api\V1\UserApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -20,6 +21,9 @@ Route::prefix('v1')->group(function () {
 
     Route::post('/nota-consulta', [NotaConsultaApiController::class, 'store'])
         ->middleware('nota.basic');
+
+    Route::post('/usuario', [UserApiController::class, 'store'])
+        ->middleware('nota.basic');
 });
 
 // Alias legacy
@@ -33,4 +37,7 @@ Route::post('/nota-envio', [NotaEnvioApiController::class, 'store'])
     ->middleware('nota.basic');
 
 Route::post('/nota-consulta', [NotaConsultaApiController::class, 'store'])
+    ->middleware('nota.basic');
+
+Route::post('/usuario', [UserApiController::class, 'store'])
     ->middleware('nota.basic');
