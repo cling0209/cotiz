@@ -240,46 +240,23 @@
     justify-content: center;
     padding: 1.5rem;
     overflow: hidden;
-    background-color: #dbeafe;
-}
-
-.admin-login-wrap::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: url("/images/login-bg.jpg") center center / cover no-repeat;
-    opacity: 1;
-    transform: scale(1.02);
-    filter: saturate(1) brightness(1.06) contrast(1.04);
-    z-index: 0;
-}
-
-.admin-login-wrap::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-        radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.08) 0%, transparent 42%),
-        radial-gradient(circle at 88% 82%, rgba(250, 204, 21, 0.05) 0%, transparent 40%),
-        linear-gradient(145deg, rgba(255, 255, 255, 0.26) 0%, rgba(240, 249, 255, 0.22) 48%, rgba(254, 252, 232, 0.24) 100%);
-    z-index: 1;
+    background: #dbeafe url("/images/login-bg.jpg") center center / cover no-repeat;
 }
 
 .admin-login-wrap > .admin-login-card {
     position: relative;
-    z-index: 2;
+    z-index: 1;
 }
 
 .admin-login-card {
     width: 100%;
     max-width: 420px;
-    border: 1px solid rgba(59, 130, 246, 0.14);
+    border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 1.1rem;
     border-top: 4px solid #3b82f6;
-    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(37, 99, 235, 0.1);
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.28), 0 12px 32px rgba(37, 99, 235, 0.18);
     overflow: hidden;
-    backdrop-filter: blur(12px);
-    background: rgba(255, 255, 255, 0.97);
+    background: #fff;
 }
 
 .admin-login-brand {
