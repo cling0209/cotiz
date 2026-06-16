@@ -252,9 +252,17 @@
     z-index: 0;
 }
 
+.admin-login-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.2);
+    z-index: 1;
+}
+
 .admin-login-wrap > .admin-login-card {
     position: relative;
-    z-index: 1;
+    z-index: 2;
 }
 
 .admin-login-card {
