@@ -6,6 +6,7 @@ use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
+use App\Services\NotaDetalleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -99,6 +100,8 @@ class CotizacionCargaArchivoTest extends TestCase
         $this->assertNotNull($linea);
         $this->assertSame(2, (int) $linea->cantidad);
         $this->assertSame(1040, (int) $linea->prod_valor);
+        $this->assertNull($linea->prod_item_agile);
+        $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
     }
 
     public function test_rechaza_orden_duplicada_de_otro_usuario(): void

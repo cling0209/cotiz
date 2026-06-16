@@ -301,7 +301,6 @@ class CotizacionCargaArchivoService
                     $prodValor,
                     $costo,
                     $username,
-                    $codigo,
                 );
 
                 $detalleCount++;
