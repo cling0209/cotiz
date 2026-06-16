@@ -68,6 +68,32 @@
                                 @error('prod_familia')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
+                                <label class="form-label">Gramaje @if($gramajes->isNotEmpty() && $esNuevo)<span class="text-danger">*</span>@endif</label>
+                                @php
+                                    $gramajeActual = old('prod_gramaje', $producto?->prod_gramaje);
+                                    $nombresGramaje = $gramajes->pluck('nombre');
+                                @endphp
+                                @if($gramajes->isNotEmpty())
+                                    <select name="prod_gramaje" id="prod_gramaje"
+                                            class="form-select form-select-sm @error('prod_gramaje') is-invalid @enderror"
+                                            @if($esNuevo) required @endif>
+                                        <option value="">— Seleccione —</option>
+                                        @foreach($gramajes as $gramaje)
+                                            <option value="{{ $gramaje->nombre }}" @selected($gramajeActual === $gramaje->nombre)>
+                                                {{ $gramaje->nombre }}
+                                            </option>
+                                        @endforeach
+                                        @if($gramajeActual && ! $nombresGramaje->contains($gramajeActual))
+                                            <option value="{{ $gramajeActual }}" selected>{{ $gramajeActual }}</option>
+                                        @endif
+                                    </select>
+                                @else
+                                    <input type="text" name="prod_gramaje" id="prod_gramaje" class="form-control form-control-sm @error('prod_gramaje') is-invalid @enderror"
+                                           value="{{ $gramajeActual }}" maxlength="120">
+                                @endif
+                                @error('prod_gramaje')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-4">
                                 <label class="form-label">Archivo imagen</label>
                                 <input type="text" name="prod_imagen" id="prod_imagen" class="form-control form-control-sm"
                                        value="{{ old('prod_imagen', $producto?->prod_imagen) }}" maxlength="255"
@@ -84,11 +110,6 @@
                                 @else
                                     <div class="form-text">Se guarda en {{ config('products.r2_prefix') }}/familia/c&oacute;digo.ext</div>
                                 @endif
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Gramaje</label>
-                                <input type="text" name="prod_gramaje" class="form-control form-control-sm"
-                                       value="{{ old('prod_gramaje', $producto?->prod_gramaje) }}" maxlength="120">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Precio venta <span class="text-danger">*</span></label>

@@ -63,6 +63,7 @@ class MaeprodController extends Controller
         return view('admin.maeprod.form', [
             'producto' => null,
             'familias' => $this->maeprodService->familias(),
+            'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
             'puedeEditarSoftland' => $request->user()->isSuperAdmin(),
         ]);
@@ -103,6 +104,7 @@ class MaeprodController extends Controller
         return view('admin.maeprod.form', [
             'producto' => $producto,
             'familias' => $this->maeprodService->familias(),
+            'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
             'puedeEditarSoftland' => true,
         ]);
@@ -112,7 +114,7 @@ class MaeprodController extends Controller
     {
         $producto = Maeprod::query()->findOrFail($prod_item);
 
-        $datos = $request->validate($this->maeprodService->reglasValidacion(false));
+        $datos = $request->validate($this->maeprodService->reglasValidacion(false, true, $producto->prod_gramaje));
         $datos = $this->maeprodService->normalizarDatosConImagen($datos, $request->file('imagen'), $producto);
 
         $this->maeprodService->actualizar($producto, $datos, $request->user()->username);

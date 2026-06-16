@@ -6,6 +6,8 @@ use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
+use Database\Seeders\FamprodSeeder;
+use Database\Seeders\GramajeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,6 +21,9 @@ class MaeprodEjecutivoTest extends TestCase
     {
         parent::setUp();
 
+        $this->seed(GramajeSeeder::class);
+        $this->seed(FamprodSeeder::class);
+
         $this->ejecutivo = User::factory()->create([
             'username' => 'ejecutivo',
             'perfil' => User::PERFIL_EJECUTIVO,
@@ -30,6 +35,9 @@ class MaeprodEjecutivoTest extends TestCase
         $this->actingAs($this->ejecutivo)
             ->get(route('admin.productos.create'))
             ->assertOk()
+            ->assertSee('name="prod_gramaje"', false)
+            ->assertSee('unidad', false)
+            ->assertSee('resma', false)
             ->assertDontSee('name="prod_item_softland"', false);
     }
 
@@ -39,6 +47,7 @@ class MaeprodEjecutivoTest extends TestCase
             'prod_item' => 'EJEC001',
             'prod_nombre' => 'Producto ejecutivo',
             'prod_familia' => 'PAPEL',
+            'prod_gramaje' => 'unidad',
             'prod_valor' => 5000,
             'prod_valor_costo' => 4000,
             'prod_item_softland' => 'SL-IGNORAR',
@@ -49,6 +58,7 @@ class MaeprodEjecutivoTest extends TestCase
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'EJEC001',
             'prod_nombre' => 'PRODUCTO EJECUTIVO',
+            'prod_gramaje' => 'unidad',
             'prod_valor' => 5000,
             'prod_item_softland' => null,
         ]);

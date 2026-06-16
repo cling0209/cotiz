@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Famprod;
+use App\Models\Gramaje;
 use App\Models\Maeprod;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -62,6 +63,32 @@ class MaeprodAdminService
                     'codigo' => $codigo,
                     'nombre' => $codigo,
                 ]))
+                ->all()
+        );
+    }
+
+    public function gramajes(): Collection
+    {
+        $catalogo = Gramaje::query()
+            ->orderBy('nombre')
+            ->get();
+
+        if ($catalogo->isNotEmpty()) {
+            return $catalogo;
+        }
+
+        return new Collection(
+            Maeprod::query()
+                ->whereNotNull('prod_gramaje')
+                ->where('prod_gramaje', '!=', '')
+                ->distinct()
+                ->orderBy('prod_gramaje')
+                ->pluck('prod_gramaje')
+                ->map(fn (string $nombre, int $idx) => new Gramaje([
+                    'codigo' => $idx + 1,
+                    'nombre' => $nombre,
+                ]))
+                ->values()
                 ->all()
         );
     }
@@ -157,7 +184,7 @@ class MaeprodAdminService
     /**
      * @return array<string, mixed>
      */
-    public function reglasValidacion(bool $esNuevo, bool $incluirSoftland = true): array
+    public function reglasValidacion(bool $esNuevo, bool $incluirSoftland = true, ?string $gramajeActual = null): array
     {
         $reglasFamilia = $esNuevo
             ? ['required', 'string', 'max:120']
@@ -167,6 +194,20 @@ class MaeprodAdminService
             $reglasFamilia[] = Rule::exists('famprod', 'codigo');
         }
 
+        $reglasGramaje = ['nullable', 'string', 'max:120'];
+        if (Gramaje::query()->exists()) {
+            $permitidos = Gramaje::query()->orderBy('nombre')->pluck('nombre');
+            if (! $esNuevo && $gramajeActual && ! $permitidos->contains($gramajeActual)) {
+                $permitidos->push($gramajeActual);
+            }
+            $reglasGramaje = [
+                'required',
+                'string',
+                'max:120',
+                Rule::in($permitidos->all()),
+            ];
+        }
+
         $reglas = [
             'prod_nombre' => ['required', 'string', 'max:255'],
             'prod_imagen' => ['nullable', 'string', 'max:255'],
@@ -174,7 +215,7 @@ class MaeprodAdminService
             'prod_valor' => ['required', 'integer', 'min:0'],
             'prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'prod_stock_real' => ['nullable', 'integer', 'min:0'],
-            'prod_gramaje' => ['nullable', 'string', 'max:120'],
+            'prod_gramaje' => $reglasGramaje,
             'prod_familia' => $reglasFamilia,
         ];
 

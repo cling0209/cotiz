@@ -9,6 +9,7 @@ class DemoDataSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(GramajeSeeder::class);
         $this->call(FamprodSeeder::class);
 
         $productos = [
@@ -19,7 +20,7 @@ class DemoDataSeeder extends Seeder
                 'prod_valor' => 4500,
                 'prod_valor_costo' => 3600,
                 'prod_familia' => 'PAPEL',
-                'prod_gramaje' => '75 GR',
+                'prod_gramaje' => 'resma',
             ],
             [
                 'prod_item' => 'DEMO002',
@@ -28,7 +29,7 @@ class DemoDataSeeder extends Seeder
                 'prod_valor' => 1200,
                 'prod_valor_costo' => 900,
                 'prod_familia' => 'PAPEL',
-                'prod_gramaje' => '',
+                'prod_gramaje' => 'unidad',
             ],
             [
                 'prod_item' => 'DEMO003',
@@ -37,7 +38,7 @@ class DemoDataSeeder extends Seeder
                 'prod_valor' => 350,
                 'prod_valor_costo' => 250,
                 'prod_familia' => 'LIBR',
-                'prod_gramaje' => '',
+                'prod_gramaje' => 'unidad',
             ],
         ];
 
