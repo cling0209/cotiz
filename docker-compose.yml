@@ -17,6 +17,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/var/www/html
+      - cotiz_imports:/var/www/html/storage/app/imports
+      - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - c:/Aplicaciones/php7/allproducts/imagenes/productos:/legacy-images:ro
     env_file:
       - .env
@@ -24,6 +26,7 @@ services:
       APP_ENV: local
       APP_DEBUG: "true"
       APP_URL: http://localhost:8082
+      SESSION_SECURE_COOKIE: "false"
       APP_TIMEZONE: America/Santiago
       DB_CONNECTION: pgsql
       DB_HOST: postgres
@@ -38,6 +41,9 @@ services:
       QUEUE_CONNECTION: redis
       ADMIN_OTP_ENABLED: "false"
       L5_SWAGGER_GENERATE_ALWAYS: "false"
+      # Migraciones: solo schema pendiente (no borra datos). Seed: nunca en reinicios normales.
+      RUN_MIGRATIONS: "true"
+      RUN_SEED: "false"
       R2_BUCKET: romulo-imagenes
       R2_ENDPOINT: https://0d252868f15b7d133851046e6302d540.r2.cloudflarestorage.com
       R2_IMAGE_PREFIX: productos
@@ -90,11 +96,14 @@ services:
     command: php artisan queue:work redis --sleep=3 --tries=1 --timeout=3600
     volumes:
       - .:/var/www/html
+      - cotiz_imports:/var/www/html/storage/app/imports
+      - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
       - c:/Aplicaciones/php7/allproducts/imagenes/productos:/legacy-images:ro
     env_file:
       - .env
     environment:
       APP_ENV: local
+      SESSION_SECURE_COOKIE: "false"
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -113,6 +122,7 @@ services:
 
 volumes:
   postgres_data:
+  cotiz_imports:
 
 networks:
   cotiz:

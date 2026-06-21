@@ -90,8 +90,14 @@
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
                             @if($puedeModificar)
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 <a href="{{ route('admin.productos.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
+                                <form method="post" action="{{ route('admin.productos.destroy', $producto->prod_item) }}" class="d-inline"
+                                      data-confirm="¿Eliminar el producto {{ $producto->prod_item }}? Las cotizaciones existentes conservan sus líneas.">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
+                                </form>
                             </td>
                             @endif
                         </tr>

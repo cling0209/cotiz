@@ -25,6 +25,7 @@ RUN apk add --no-cache \
     && apk del $PHPIZE_DEPS
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 WORKDIR /var/www/html
 

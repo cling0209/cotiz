@@ -293,6 +293,12 @@ function importErrorMessage(payload, status) {
         return payload.message;
     }
     if (payload?.errors) return Object.values(payload.errors).flat().join(' ');
+    if (status === 401) {
+        return 'Sesión expirada. Recargue la página (Ctrl+F5) e inicie sesión nuevamente.';
+    }
+    if (status === 419) {
+        return 'Token de seguridad expirado. Recargue la página (Ctrl+F5) e intente de nuevo.';
+    }
     if (status === 502) {
         return 'Error del servidor (502). La importación puede seguir en segundo plano: recargue la página para retomar el progreso.';
     }
@@ -303,6 +309,16 @@ function importErrorMessage(payload, status) {
         return 'Error del servidor (500). Si usa Render, confirme QUEUE_CONNECTION=database y que el worker esté activo.';
     }
     return `Error del servidor (${status}).`;
+}
+
+function rethrowFetchNetworkError(error) {
+    if (error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message || '')) {
+        throw new Error(
+            'No se pudo conectar con el servidor durante la subida. Recargue la página (Ctrl+F5), confirme que está en http://localhost:8082 e intente de nuevo.',
+        );
+    }
+
+    throw error;
 }
 
 async function readJsonResponse(response) {
@@ -397,8 +413,17 @@ async function releaseImportLock(uploadId = null) {
 
 async function refreshImportStatus() {
     try {
-        const response = await fetch(importStatusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+        const response = await fetch(importStatusUrl, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        });
         const payload = await readJsonResponse(response);
+        if (response.status === 401) {
+            return null;
+        }
         if (!response.ok) return null;
 
         if (payload.active && payload.lock) {
@@ -589,16 +614,24 @@ async function uploadCsvChunks(file, mode, progress, uploadPlan) {
         let payload = {};
 
         for (let attempt = 0; attempt < 3; attempt++) {
-            response = await fetch(chunkUploadUrl, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-                credentials: 'same-origin',
-            });
+            try {
+                response = await fetch(chunkUploadUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    credentials: 'same-origin',
+                });
+            } catch (networkError) {
+                rethrowFetchNetworkError(networkError);
+            }
+
+            if (response.redirected && response.url.includes('/admin/login')) {
+                throw new Error('Sesión expirada. Recargue la página (Ctrl+F5) e inicie sesión nuevamente.');
+            }
 
             payload = await readJsonResponse(response);
 

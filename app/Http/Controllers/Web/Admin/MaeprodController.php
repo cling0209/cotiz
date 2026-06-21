@@ -124,6 +124,16 @@ class MaeprodController extends Controller
             ->with('success', 'Producto actualizado.');
     }
 
+    public function destroy(string $prod_item): RedirectResponse
+    {
+        $producto = Maeprod::query()->findOrFail($prod_item);
+        $producto->delete();
+
+        return redirect()
+            ->route('admin.productos.index')
+            ->with('success', 'Producto eliminado del catálogo.');
+    }
+
     public function importForm(MaeprodImportLockService $importLock): View
     {
         return view('admin.maeprod.import', [
@@ -271,7 +281,7 @@ class MaeprodController extends Controller
     {
         if (! $request->hasFile('chunk') || ! $request->file('chunk')->isValid()) {
             return response()->json([
-                'message' => 'El fragmento no llegó al servidor. Reintenta la carga.',
+                'message' => $this->mensajeErrorChunkImport($request),
             ], 422);
         }
 
@@ -523,5 +533,27 @@ class MaeprodController extends Controller
     protected function importConflictStatus(\InvalidArgumentException $exception): int
     {
         return str_contains($exception->getMessage(), 'importación en curso') ? 409 : 422;
+    }
+
+    protected function mensajeErrorChunkImport(Request $request): string
+    {
+        if (! config('app.debug')) {
+            return 'El fragmento no llegó al servidor. Reintenta la carga.';
+        }
+
+        if (! $request->hasFile('chunk')) {
+            return 'El fragmento no llegó al servidor (campo chunk ausente). Revise post_max_size/upload_max_filesize en PHP (local Docker: docker compose up -d --build).';
+        }
+
+        $chunk = $request->file('chunk');
+
+        return match ($chunk?->getError()) {
+            UPLOAD_ERR_INI_SIZE => 'Fragmento excede upload_max_filesize de PHP. En local: reconstruya Docker (docker compose up -d --build) para aplicar docker/php/uploads.ini.',
+            UPLOAD_ERR_FORM_SIZE => 'Fragmento excede el límite del formulario (post_max_size).',
+            UPLOAD_ERR_PARTIAL => 'La subida del fragmento quedó incompleta. Reintente.',
+            UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'PHP no puede escribir el archivo temporal. Revise permisos de /tmp y storage/app/imports.',
+            UPLOAD_ERR_NO_FILE => 'No se recibió ningún archivo en el fragmento.',
+            default => 'Fragmento inválido: '.($chunk?->getErrorMessage() ?: 'error desconocido'),
+        };
     }
 }
