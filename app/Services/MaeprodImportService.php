@@ -810,7 +810,7 @@ class MaeprodImportService
     private function normalizeNumericField(string $value): string
     {
         $value = trim($value);
-        if ($value === '') {
+        if ($value === '' || $this->isNullPlaceholder($value)) {
             return '';
         }
 
@@ -848,6 +848,11 @@ class MaeprodImportService
         }
 
         return $value;
+    }
+
+    private function isNullPlaceholder(string $value): bool
+    {
+        return preg_match('/^\[?NULL\]?$/i', $value) === 1;
     }
 
     private function truncateDecimalString(string $value): string

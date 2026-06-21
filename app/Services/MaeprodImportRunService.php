@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\MaeprodImportErrorLog;
 use App\Models\MaeprodImportRun;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodImportRunService
@@ -15,15 +14,11 @@ class MaeprodImportRunService
      */
     public function beginRun(string $usuario, string $archivo): MaeprodImportRun
     {
-        return DB::transaction(function () use ($usuario, $archivo) {
-            MaeprodImportRun::query()->delete();
-
-            return MaeprodImportRun::query()->create([
-                'usuario' => $usuario,
-                'archivo' => $archivo,
-                'estado' => MaeprodImportRun::ESTADO_OK,
-            ]);
-        });
+        return MaeprodImportRun::query()->create([
+            'usuario' => $usuario,
+            'archivo' => $archivo,
+            'estado' => MaeprodImportRun::ESTADO_OK,
+        ]);
     }
 
     /**
@@ -69,9 +64,9 @@ class MaeprodImportRunService
                 $rows[] = [
                     'run_id' => $run->id,
                     'fila' => $error['fila'],
-                    'codigo' => $error['codigo'] !== '' ? $error['codigo'] : null,
+                    'codigo' => $error['codigo'] !== '' ? mb_substr($error['codigo'], 0, 50) : null,
                     'nombre' => $error['nombre'] !== '' ? mb_substr($error['nombre'], 0, 255) : null,
-                    'familia' => $error['familia'] !== '' ? $error['familia'] : null,
+                    'familia' => $error['familia'] !== '' ? mb_substr($error['familia'], 0, 120) : null,
                     'mensaje' => mb_substr($error['mensaje'], 0, 255),
                     'detalle' => $error['detalle'] !== null && $error['detalle'] !== ''
                         ? mb_substr($error['detalle'], 0, 255)

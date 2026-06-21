@@ -508,6 +508,42 @@ class MaeprodImportTest extends TestCase
         $this->assertSame(3, $error->fila);
     }
 
+    public function test_import_persists_errors_with_long_familia_truncated(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $longFamilia = str_repeat('A', 150);
+
+        $this->importCsvAsAdmin($admin, "codigo;nombre;familia;precio\nBAD001;PRODUCTO;{$longFamilia};no-es-numero\n");
+
+        $error = MaeprodImportErrorLog::query()->first();
+        $this->assertNotNull($error);
+        $this->assertSame(120, mb_strlen((string) $error->familia));
+        $this->assertSame(str_repeat('A', 120), $error->familia);
+    }
+
+    public function test_import_treats_null_placeholder_in_optional_numeric_fields_as_empty(): void
+    {
+        $admin = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+            'username' => 'admin',
+        ]);
+
+        $csv = "codigo;nombre;familia;precio;costo;stock\n";
+        $csv .= "OK001;PRODUCTO OK;PAPEL;1500;[NULL];NULL\n";
+
+        $this->importCsvAsAdmin($admin, $csv);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'OK001',
+            'prod_valor' => 1500,
+            'prod_valor_costo' => 0,
+        ]);
+
+        $producto = Maeprod::query()->where('prod_item', 'OK001')->first();
+        $this->assertNotNull($producto);
+        $this->assertNull($producto->prod_stock_real);
+    }
+
     /**
      * @return array<string, array{0: string, 1: int}>
      */
