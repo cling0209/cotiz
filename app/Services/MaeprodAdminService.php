@@ -147,6 +147,39 @@ class MaeprodAdminService
         return $producto->fresh();
     }
 
+    public function actualizarImagen(
+        Maeprod $producto,
+        ?UploadedFile $imagen,
+        ?string $prodImagenManual,
+        ?string $usuarioUpd = null,
+    ): Maeprod {
+        $datos = [
+            'prod_item' => $producto->prod_item,
+            'prod_familia' => $producto->prod_familia,
+            'prod_imagen' => $prodImagenManual ?? $producto->prod_imagen,
+        ];
+
+        $datos = $this->normalizarDatosConImagen($datos, $imagen, $producto);
+
+        $producto->update([
+            'prod_imagen' => trim((string) ($datos['prod_imagen'] ?? '')) ?: null,
+            'prod_user_upd' => $usuarioUpd,
+        ]);
+
+        return $producto->fresh();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function reglasValidacionImagen(): array
+    {
+        return [
+            'prod_imagen' => ['nullable', 'string', 'max:255'],
+            'imagen' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp,gif', 'max:5120'],
+        ];
+    }
+
     /**
      * @param  array<string, mixed>  $datos
      * @return array<string, mixed>

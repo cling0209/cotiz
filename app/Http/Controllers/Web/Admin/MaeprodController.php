@@ -49,6 +49,7 @@ class MaeprodController extends Controller
                 'familia' => $request->string('familia')->toString(),
             ],
             'puedeModificar' => $request->user()->isSuperAdmin(),
+            'puedeEditarImagen' => $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
         ]);
     }
 
@@ -95,6 +96,46 @@ class MaeprodController extends Controller
         return redirect()
             ->route('admin.productos.index')
             ->with('success', 'Producto creado.');
+    }
+
+    public function editImagen(Request $request, string $prod_item): View
+    {
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
+        $producto = Maeprod::query()->findOrFail($prod_item);
+
+        return view('admin.maeprod.imagen', [
+            'producto' => $producto,
+            'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
+        ]);
+    }
+
+    public function updateImagen(Request $request, string $prod_item): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
+        $producto = Maeprod::query()->findOrFail($prod_item);
+
+        $datos = $request->validate($this->maeprodService->reglasValidacionImagen());
+
+        $this->maeprodService->actualizarImagen(
+            $producto,
+            $request->file('imagen'),
+            array_key_exists('prod_imagen', $datos) ? (string) $datos['prod_imagen'] : null,
+            $request->user()->username,
+        );
+
+        return redirect()
+            ->route('admin.productos.imagen.edit', $producto->prod_item)
+            ->with('success', 'Imagen actualizada.');
     }
 
     public function edit(string $prod_item): View

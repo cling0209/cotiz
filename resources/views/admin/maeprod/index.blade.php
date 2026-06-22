@@ -5,6 +5,8 @@
 @section('content')
 @php
     $puedeModificar = $puedeModificar ?? auth()->user()?->isSuperAdmin();
+    $puedeEditarImagen = $puedeEditarImagen ?? ($puedeModificar || auth()->user()?->isEjecutivo());
+    $mostrarAcciones = $puedeModificar || $puedeEditarImagen;
 @endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -62,7 +64,7 @@
                         <th>Familia</th>
                         <th class="text-end">Precio</th>
                         <th class="text-end">Costo</th>
-                        @if($puedeModificar)
+                        @if($mostrarAcciones)
                         <th></th>
                         @endif
                     </tr>
@@ -89,20 +91,24 @@
                             <td class="text-muted small">{{ $producto->prod_familia }}</td>
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
-                            @if($puedeModificar)
+                            @if($mostrarAcciones)
                             <td class="text-end text-nowrap">
-                                <a href="{{ route('admin.productos.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
-                                <form method="post" action="{{ route('admin.productos.destroy', $producto->prod_item) }}" class="d-inline"
-                                      data-confirm="¿Eliminar el producto {{ $producto->prod_item }}? Las cotizaciones existentes conservan sus líneas.">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
-                                </form>
+                                @if($puedeModificar)
+                                    <a href="{{ route('admin.productos.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
+                                    <form method="post" action="{{ route('admin.productos.destroy', $producto->prod_item) }}" class="d-inline"
+                                          data-confirm="¿Eliminar el producto {{ $producto->prod_item }}? Las cotizaciones existentes conservan sus líneas.">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
+                                    </form>
+                                @else
+                                    <a href="{{ route('admin.productos.imagen.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Imagen</a>
+                                @endif
                             </td>
                             @endif
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $puedeModificar ? 7 : 6 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
+                        <tr><td colspan="{{ $mostrarAcciones ? 7 : 6 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
                     @endforelse
                 </tbody>
             </table>

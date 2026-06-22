@@ -67,6 +67,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
         Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
+        Route::get('productos/{prod_item}/imagen', [MaeprodController::class, 'editImagen'])->name('productos.imagen.edit')->where('prod_item', '[^/]+');
+        Route::put('productos/{prod_item}/imagen', [MaeprodController::class, 'updateImagen'])->name('productos.imagen.update')->where('prod_item', '[^/]+');
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
         Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/cabecera', [CotizacionController::class, 'guardarCabecera'])->name('cotizaciones.cabecera.store')->whereNumber('nronota');

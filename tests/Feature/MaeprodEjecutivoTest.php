@@ -78,8 +78,52 @@ class MaeprodEjecutivoTest extends TestCase
             ->assertOk()
             ->assertSee('LIST01')
             ->assertSee('PARA LISTAR')
+            ->assertSee('Imagen')
             ->assertDontSee('Carga masiva')
-            ->assertDontSee('Editar');
+            ->assertDontSee('>Editar<', false);
+    }
+
+    public function test_ejecutivo_puede_acceder_formulario_solo_imagen(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'IMG01',
+            'prod_nombre' => 'CON IMAGEN',
+            'prod_valor' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $this->actingAs($this->ejecutivo)
+            ->get(route('admin.productos.imagen.edit', 'IMG01'))
+            ->assertOk()
+            ->assertSee('IMG01')
+            ->assertSee('CON IMAGEN')
+            ->assertSee('Guardar imagen')
+            ->assertDontSee('name="prod_nombre"', false)
+            ->assertDontSee('name="prod_valor"', false);
+    }
+
+    public function test_ejecutivo_puede_actualizar_solo_imagen(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'IMG02',
+            'prod_nombre' => 'ORIGINAL',
+            'prod_valor' => 1000,
+            'prod_familia' => 'PAPEL',
+            'prod_imagen' => 'vieja.jpg',
+        ]);
+
+        $this->actingAs($this->ejecutivo)->put(route('admin.productos.imagen.update', 'IMG02'), [
+            'prod_imagen' => 'nueva.jpg',
+            'prod_nombre' => 'MODIFICADO',
+            'prod_valor' => 99999,
+        ])->assertRedirect(route('admin.productos.imagen.edit', 'IMG02'));
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'IMG02',
+            'prod_nombre' => 'ORIGINAL',
+            'prod_valor' => 1000,
+            'prod_imagen' => 'nueva.jpg',
+        ]);
     }
 
     public function test_ejecutivo_no_puede_editar_productos(): void
