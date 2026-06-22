@@ -45,9 +45,8 @@
         </div>
     @endif
 
-    <form method="post" action="{{ route('admin.cotizaciones.update', $nota->nronota) }}" id="form-cotizacion">
+    <form method="post" action="{{ route('admin.cotizaciones.update', $nota->nronota) }}" id="form-cotizacion" data-no-loader>
         @csrf
-        @method('PUT')
 
         <fieldset class="cotiz-cabecera">
             <table id="tabla_datos1">
@@ -500,6 +499,9 @@
     const montototal = document.getElementById('montototal');
     const factorInput = document.getElementById('factor_precio_venta');
     const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
+    const cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
+    const lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
+    const lineasPorLote = 10;
     const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
 
     function parseFactorChile(texto) {
@@ -548,20 +550,172 @@
         this.value = formatFactorChile(parsed);
     });
 
+    function setLoaderMensaje(texto) {
+        const loader = document.getElementById('page-loader');
+        if (!loader) return;
+        let msg = loader.querySelector('.page-loader__msg');
+        if (!msg) {
+            msg = document.createElement('p');
+            msg.className = 'page-loader__msg small text-white mt-2 mb-0 text-center px-3';
+            loader.querySelector('.page-loader__scene')?.appendChild(msg);
+        }
+        msg.textContent = texto || '';
+        msg.hidden = !texto;
+    }
+
+    function extraerMensajeError(json, fallback) {
+        if (json?.error) return json.error;
+        if (json?.message) return json.message;
+        if (json?.errors) {
+            const first = Object.values(json.errors)[0];
+            if (Array.isArray(first) && first[0]) return first[0];
+        }
+        return fallback;
+    }
+
+    function collectCabeceraFromForm() {
+        const form = document.getElementById('form-cotizacion');
+        const val = (name) => form?.querySelector('[name="' + name + '"]')?.value ?? '';
+        const payload = {
+            descripcion: val('descripcion'),
+            empresa: val('empresa'),
+            encargado: val('encargado'),
+            celular: val('celular'),
+            contacto: val('contacto'),
+            contactocorreo: val('contactocorreo'),
+            rutempresa: val('rutempresa'),
+            diashabiles: val('diashabiles') !== '' ? parseInt(val('diashabiles'), 10) : null,
+            ocompra: val('ocompra'),
+            fechaentrega: val('fechaentrega') || null,
+        };
+        if (factorInput && String(factorInput.value || '').trim() !== '') {
+            payload.factor_precio_venta = factorInput.value;
+        }
+        return payload;
+    }
+
+    function collectLineasFromTable() {
+        const lineas = [];
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
+            const prodItem = tr.querySelector('input[name*="[prod_item]"]')?.value;
+            const ordenRaw = tr.querySelector('input[name*="[orden]"]')?.value || tr.dataset.orden;
+            const orden = parseInt(String(ordenRaw || ''), 10);
+            if (!prodItem || Number.isNaN(orden)) return;
+
+            const linea = { prod_item: prodItem, orden: orden };
+            const softland = tr.querySelector('input[name*="[prod_item_softland]"]');
+            const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
+            const valor = tr.querySelector('input[name*="[prod_valor]"]');
+            const cantidad = tr.querySelector('input[name*="[cantidad]"]');
+            if (softland) linea.prod_item_softland = softland.value;
+            if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
+            if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
+            if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
+            lineas.push(linea);
+        });
+        return lineas;
+    }
+
+    function chunkArray(items, size) {
+        const chunks = [];
+        for (let i = 0; i < items.length; i += size) {
+            chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+    }
+
+    async function postJson(url, body) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        return { res, json };
+    }
+
+    let grabandoCotizacion = false;
+
+    async function grabarCotizacionAjax() {
+        if (grabandoCotizacion) return;
+        grabandoCotizacion = true;
+
+        const form = document.getElementById('form-cotizacion');
+        const botonesGrabar = form?.querySelectorAll('button[name="accion"][value="grabar"]') ?? [];
+        botonesGrabar.forEach((btn) => { btn.disabled = true; });
+
+        mostrarLoaderCotiz();
+        setLoaderMensaje('Guardando cabecera…');
+
+        try {
+            const cabecera = collectCabeceraFromForm();
+            const { res: resCab, json: jsonCab } = await postJson(cabeceraUrl, cabecera);
+            if (!resCab.ok) {
+                throw new Error(extraerMensajeError(jsonCab, 'No se pudo guardar la cabecera.'));
+            }
+
+            const lineas = collectLineasFromTable();
+            const lotes = chunkArray(lineas, lineasPorLote);
+            let guardadasTotal = 0;
+
+            for (let i = 0; i < lotes.length; i++) {
+                setLoaderMensaje('Guardando detalle ' + (i + 1) + ' de ' + lotes.length + '…');
+                const { res, json } = await postJson(lineasLoteUrl, { lineas: lotes[i] });
+                if (!res.ok) {
+                    const parcial = guardadasTotal > 0
+                        ? ' Se guardaron ' + guardadasTotal + ' de ' + lineas.length + ' líneas.'
+                        : '';
+                    throw new Error(extraerMensajeError(json, 'No se pudo guardar el detalle.') + parcial);
+                }
+                guardadasTotal += json.guardadas ?? lotes[i].length;
+            }
+
+            setLoaderMensaje('');
+            ocultarLoaderCotiz();
+            try {
+                sessionStorage.setItem('page-loader-pending', '1');
+            } catch (e) {}
+            dlgAlert(jsonCab.mensaje || 'Cotización guardada.', { title: 'Guardado', type: 'success' });
+            window.location.reload();
+        } catch (err) {
+            setLoaderMensaje('');
+            ocultarLoaderCotiz();
+            dlgAlert(err?.message || 'Error al guardar la cotización.', { title: 'Error', type: 'danger' });
+            botonesGrabar.forEach((btn) => { btn.disabled = false; });
+            grabandoCotizacion = false;
+        }
+    }
+
     document.getElementById('form-cotizacion')?.addEventListener('submit', function (e) {
         const submitter = e.submitter;
         if (!submitter || submitter.name !== 'accion') return;
         if (submitter.value !== 'grabar') return;
-        if (!factorInput || String(factorInput.value || '').trim() === '') return;
-        const parsed = parseFactorChile(factorInput.value);
-        if (parsed === null) {
-            e.preventDefault();
-            factorInput.classList.add('is-invalid');
-            factorInput.focus();
-            dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
+
+        e.preventDefault();
+
+        if (!this.checkValidity()) {
+            this.reportValidity();
             return;
         }
-        factorInput.value = formatFactorChile(parsed);
+
+        if (factorInput && String(factorInput.value || '').trim() !== '') {
+            const parsed = parseFactorChile(factorInput.value);
+            if (parsed === null) {
+                factorInput.classList.add('is-invalid');
+                factorInput.focus();
+                dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
+                return;
+            }
+            factorInput.value = formatFactorChile(parsed);
+        }
+
+        grabarCotizacionAjax();
     });
 
     function encontrarFilaPorOrdenProd(orden, prodItem) {

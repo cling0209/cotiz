@@ -139,18 +139,13 @@ class CotizacionController extends Controller
             $request->merge(['factor_precio_venta' => $factor]);
         }
 
-        $datos = $request->validate([
-            'descripcion' => ['required', 'string', 'max:500'],
-            'empresa' => ['nullable', 'string', 'max:100'],
-            'encargado' => ['required', 'string', 'max:100'],
-            'celular' => ['nullable', 'string', 'max:15'],
-            'contacto' => ['nullable', 'string', 'max:100'],
-            'contactocorreo' => ['nullable', 'string', 'max:60'],
-            'rutempresa' => ['nullable', 'string', 'max:10'],
-            'diashabiles' => ['nullable', 'integer', 'min:0'],
-            'ocompra' => ['nullable', 'string', 'max:20'],
-            'fechaentrega' => ['nullable', 'date'],
-            'factor_precio_venta' => ['nullable', 'numeric', 'min:0'],
+        $lineasJson = $this->lineasDesdeJson($request);
+        if ($lineasJson !== null) {
+            $request->merge(['lineas' => $lineasJson]);
+        }
+
+        $datos = $request->validate(array_merge($this->reglasCabecera(), [
+            'lineas_json' => ['nullable', 'string', 'max:500000'],
             'lineas' => ['nullable', 'array'],
             'lineas.*.prod_item' => ['required_with:lineas', 'string', 'max:50'],
             'lineas.*.orden' => ['required_with:lineas', 'integer'],
@@ -158,7 +153,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
-        ]);
+        ]));
 
         if ($error = $this->notaService->validarNumeroCotizacion($nota, $datos['encargado'])) {
             return back()->withInput()->withErrors(['encargado' => $error]);
@@ -187,6 +182,93 @@ class CotizacionController extends Controller
             : 'Cotización guardada.';
 
         return $this->redirectTrasGuardar($request, $nronota, $mensaje);
+    }
+
+    public function guardarCabecera(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->find($nronota);
+
+        if (! $nota) {
+            return response()->json([
+                'error' => "La cotización #{$nronota} no existe.",
+            ], 404);
+        }
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if (array_key_exists('factor_precio_venta', $request->all())
+            && trim((string) $request->input('factor_precio_venta')) !== '') {
+            $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
+            if ($factor === null) {
+                return response()->json([
+                    'error' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                    'errors' => ['factor_precio_venta' => ['El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).']],
+                ], 422);
+            }
+            $request->merge(['factor_precio_venta' => $factor]);
+        }
+
+        $datos = $request->validate($this->reglasCabecera());
+
+        if ($error = $this->notaService->validarNumeroCotizacion($nota, $datos['encargado'])) {
+            return response()->json([
+                'error' => $error,
+                'errors' => ['encargado' => [$error]],
+            ], 422);
+        }
+
+        $eraSinNumero = $nota->requiereNumeroCotizacion();
+
+        $this->notaService->modificarCabecera($nota, $datos);
+
+        $mensaje = $eraSinNumero
+            ? 'Número de cotización guardado. Ya puede agregar productos.'
+            : 'Cotización guardada.';
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => $mensaje,
+            'era_sin_numero' => $eraSinNumero,
+        ]);
+    }
+
+    public function guardarLineasLote(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->find($nronota);
+
+        if (! $nota) {
+            return response()->json([
+                'error' => "La cotización #{$nronota} no existe.",
+            ], 404);
+        }
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        $datos = $request->validate($this->reglasLineasLote());
+
+        $lineas = $datos['lineas'];
+
+        if ($request->user()->isEjecutivo()) {
+            foreach ($lineas as &$linea) {
+                unset($linea['prod_item_softland']);
+            }
+            unset($linea);
+        }
+
+        $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
+
+        return response()->json([
+            'ok' => true,
+            'guardadas' => count($lineas),
+        ]);
     }
 
     public function aplicarFactor(Request $request, int $nronota): JsonResponse
@@ -621,6 +703,77 @@ class CotizacionController extends Controller
         return redirect()
             ->route('admin.cotizaciones.edit', $params)
             ->with('success', $mensaje);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reglasCabecera(): array
+    {
+        return [
+            'descripcion' => ['required', 'string', 'max:500'],
+            'empresa' => ['nullable', 'string', 'max:100'],
+            'encargado' => ['required', 'string', 'max:100'],
+            'celular' => ['nullable', 'string', 'max:15'],
+            'contacto' => ['nullable', 'string', 'max:100'],
+            'contactocorreo' => ['nullable', 'string', 'max:60'],
+            'rutempresa' => ['nullable', 'string', 'max:10'],
+            'diashabiles' => ['nullable', 'integer', 'min:0'],
+            'ocompra' => ['nullable', 'string', 'max:20'],
+            'fechaentrega' => ['nullable', 'date'],
+            'factor_precio_venta' => ['nullable', 'numeric', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reglasLineasLote(): array
+    {
+        return [
+            'lineas' => ['required', 'array', 'min:1', 'max:10'],
+            'lineas.*.prod_item' => ['required', 'string', 'max:50'],
+            'lineas.*.orden' => ['required', 'integer'],
+            'lineas.*.cantidad' => ['nullable', 'integer', 'min:1'],
+            'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
+            'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
+            'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
+        ];
+    }
+
+    /**
+     * Líneas empaquetadas en JSON (1 campo POST) para evitar truncado por max_input_vars.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function lineasDesdeJson(Request $request): ?array
+    {
+        $json = $request->string('lineas_json')->trim()->toString();
+        if ($json === '') {
+            return null;
+        }
+
+        $decoded = json_decode($json, true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        $lineas = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item) || empty($item['prod_item']) || ! isset($item['orden'])) {
+                continue;
+            }
+            $lineas[] = [
+                'prod_item' => (string) $item['prod_item'],
+                'orden' => (int) $item['orden'],
+                'cantidad' => isset($item['cantidad']) ? (int) $item['cantidad'] : null,
+                'prod_valor' => isset($item['prod_valor']) ? (int) $item['prod_valor'] : null,
+                'prod_valor_costo' => isset($item['prod_valor_costo']) ? (int) $item['prod_valor_costo'] : null,
+                'prod_item_softland' => isset($item['prod_item_softland']) ? (string) $item['prod_item_softland'] : null,
+            ];
+        }
+
+        return $lineas === [] ? null : $lineas;
     }
 
     private function puedeVer(Request $request, Nota $nota): bool

@@ -69,6 +69,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
         Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/cabecera', [CotizacionController::class, 'guardarCabecera'])->name('cotizaciones.cabecera.store')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/factor', [CotizacionController::class, 'aplicarFactor'])->name('cotizaciones.factor')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/preview', [CotizacionController::class, 'importarCompraAgilPreview'])->name('cotizaciones.importar-compra-agil.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/coincidencias', [CotizacionController::class, 'coincidenciasCompraAgil'])->name('cotizaciones.importar-compra-agil.coincidencias')->whereNumber('nronota');
@@ -77,6 +78,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('cotizaciones/{nronota}/compra-agil-api/buscar', [CompraAgilBusquedaController::class, 'buscar'])->name('cotizaciones.compra-agil-api.buscar')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/compra-agil-api/preview', [CompraAgilBusquedaController::class, 'previewCodigo'])->name('cotizaciones.compra-agil-api.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/compra-agil-api/importar', [CompraAgilBusquedaController::class, 'importarCodigo'])->name('cotizaciones.compra-agil-api.importar')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/lineas/lote', [CotizacionController::class, 'guardarLineasLote'])->name('cotizaciones.lineas.lote')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/lineas/vincular-agile', [CotizacionController::class, 'vincularLineaAgile'])->name('cotizaciones.lineas.vincular-agile')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/lineas', [CotizacionController::class, 'agregarLinea'])->name('cotizaciones.lineas.store')->whereNumber('nronota');
         Route::patch('cotizaciones/{nronota}/lineas/orden', [CotizacionController::class, 'cambiarOrdenLinea'])->name('cotizaciones.lineas.orden')->whereNumber('nronota');
