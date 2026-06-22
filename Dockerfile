@@ -1,7 +1,8 @@
 # Producción: Laravel + Blade + Nginx + PHP-FPM — Render / Koyeb (puerto 8000)
 
 FROM php:8.4-cli-alpine AS composer-build
-RUN apk add --no-cache git unzip libzip-dev libpng-dev postgresql-dev icu-dev oniguruma-dev \
+RUN apk add --no-cache git unzip libzip-dev libpng-dev libjpeg-turbo-dev freetype-dev postgresql-dev icu-dev oniguruma-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install zip intl mbstring gd \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
     && pecl install redis \
@@ -18,11 +19,14 @@ FROM php:8.4-fpm-alpine
 RUN apk add --no-cache \
     nginx \
     libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
     libzip-dev \
     postgresql-dev \
     icu-dev \
     oniguruma-dev \
     $PHPIZE_DEPS \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
     pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip intl opcache \
     && pecl install redis \

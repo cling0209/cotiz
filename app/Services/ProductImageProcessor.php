@@ -8,7 +8,16 @@ class ProductImageProcessor
 {
     public function isAvailable(): bool
     {
-        return extension_loaded('gd') && function_exists('imagecreatetruecolor');
+        if (! extension_loaded('gd')
+            || ! function_exists('imagecreatetruecolor')
+            || ! function_exists('imagecreatefromstring')
+            || ! function_exists('imagejpeg')) {
+            return false;
+        }
+
+        $info = \gd_info();
+
+        return ! empty($info['JPEG Support']);
     }
 
     /**
@@ -32,7 +41,7 @@ class ProductImageProcessor
             return null;
         }
 
-        $source = @imagecreatefromstring($contents);
+        $source = @\imagecreatefromstring($contents);
 
         if ($source === false) {
             return null;
@@ -41,23 +50,23 @@ class ProductImageProcessor
         $canvasSize = max(64, (int) config('products.image_listing_size', 400));
         $quality = min(100, max(50, (int) config('products.image_jpeg_quality', 85)));
 
-        $canvas = imagecreatetruecolor($canvasSize, $canvasSize);
+        $canvas = \imagecreatetruecolor($canvasSize, $canvasSize);
 
         if ($canvas === false) {
-            imagedestroy($source);
+            \imagedestroy($source);
 
             return null;
         }
 
-        $white = imagecolorallocate($canvas, 255, 255, 255);
-        imagefilledrectangle($canvas, 0, 0, $canvasSize, $canvasSize, $white);
+        $white = \imagecolorallocate($canvas, 255, 255, 255);
+        \imagefilledrectangle($canvas, 0, 0, $canvasSize, $canvasSize, $white);
 
-        $sourceWidth = imagesx($source);
-        $sourceHeight = imagesy($source);
+        $sourceWidth = \imagesx($source);
+        $sourceHeight = \imagesy($source);
 
         if ($sourceWidth <= 0 || $sourceHeight <= 0) {
-            imagedestroy($source);
-            imagedestroy($canvas);
+            \imagedestroy($source);
+            \imagedestroy($canvas);
 
             return null;
         }
@@ -68,8 +77,8 @@ class ProductImageProcessor
         $offsetX = (int) round(($canvasSize - $targetWidth) / 2);
         $offsetY = (int) round(($canvasSize - $targetHeight) / 2);
 
-        imagealphablending($canvas, true);
-        imagecopyresampled(
+        \imagealphablending($canvas, true);
+        \imagecopyresampled(
             $canvas,
             $source,
             $offsetX,
@@ -83,11 +92,11 @@ class ProductImageProcessor
         );
 
         ob_start();
-        $saved = imagejpeg($canvas, null, $quality);
+        $saved = \imagejpeg($canvas, null, $quality);
         $output = ob_get_clean();
 
-        imagedestroy($source);
-        imagedestroy($canvas);
+        \imagedestroy($source);
+        \imagedestroy($canvas);
 
         if ($saved === false || $output === false || $output === '') {
             return null;

@@ -10,8 +10,8 @@ class ProductImageProcessorTest extends TestCase
 {
     public function test_redimensiona_imagen_grande_a_cuadrado_jpeg(): void
     {
-        if (! extension_loaded('gd')) {
-            $this->markTestSkipped('GD extension not available.');
+        if (! extension_loaded('gd') || ! function_exists('imagejpeg')) {
+            $this->markTestSkipped('GD with JPEG support not available.');
         }
 
         config([
@@ -45,8 +45,8 @@ class ProductImageProcessorTest extends TestCase
 
     public function test_no_ampliar_imagen_pequena(): void
     {
-        if (! extension_loaded('gd')) {
-            $this->markTestSkipped('GD extension not available.');
+        if (! extension_loaded('gd') || ! function_exists('imagejpeg')) {
+            $this->markTestSkipped('GD with JPEG support not available.');
         }
 
         config([
