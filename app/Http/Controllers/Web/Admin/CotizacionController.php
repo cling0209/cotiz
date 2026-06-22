@@ -392,12 +392,16 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'prod_item' => ['required', 'string'],
-            'orden' => ['required', 'integer'],
+            'prod_item' => ['nullable', 'string'],
+            'orden' => ['required', 'integer', 'min:1'],
         ]);
 
         try {
-            $this->detalleService->eliminarLinea($nota, $datos['prod_item'], (int) $datos['orden']);
+            $this->detalleService->eliminarLinea(
+                $nota,
+                (int) $datos['orden'],
+                $datos['prod_item'] ?? null,
+            );
         } catch (\InvalidArgumentException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => $e->getMessage()], 422);

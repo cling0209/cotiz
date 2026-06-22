@@ -118,6 +118,32 @@ class CotizacionOrdenLineaTest extends TestCase
         )->assertOk()->assertJsonPath('ok', true);
     }
 
+    public function test_eliminar_linea_por_orden_aunque_prod_item_no_coincida(): void
+    {
+        $nota = $this->crearNota();
+
+        $this->crearLinea($nota, ['prod_item' => 'CARPUSI013', 'orden' => 6, 'cantidad' => 6]);
+        $this->crearLinea($nota, ['prod_item' => 'REYSOL41', 'orden' => 7]);
+
+        $this->actingAs($this->admin)->deleteJson(
+            route('admin.cotizaciones.lineas.destroy', $nota->nronota),
+            ['prod_item' => 'CODIGO_DESACTUALIZADO', 'orden' => 6],
+        )->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonCount(1, 'lineas');
+
+        $this->assertDatabaseMissing('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARPUSI013',
+            'orden' => 6,
+        ]);
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'REYSOL41',
+            'orden' => 1,
+        ]);
+    }
+
     public function test_mover_linea_arriba_con_direccion(): void
     {
         $nota = $this->crearNota();

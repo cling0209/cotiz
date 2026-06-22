@@ -426,13 +426,15 @@ class NotaDetalleService
         });
     }
 
-    public function eliminarLinea(Nota $nota, string $prodItem, int $orden): void
+    public function eliminarLinea(Nota $nota, int $orden, ?string $prodItem = null): void
     {
-        DB::transaction(function () use ($nota, $prodItem, $orden) {
+        DB::transaction(function () use ($nota, $orden, $prodItem) {
+            $linea = $this->resolverLineaPorOrden($nota, $orden, $prodItem);
+
             $eliminadas = NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
-                ->where('prod_item', $prodItem)
-                ->where('orden', $orden)
+                ->where('prod_item', $linea->prod_item)
+                ->where('orden', (int) $linea->orden)
                 ->delete();
 
             if ($eliminadas === 0) {
@@ -625,8 +627,11 @@ class NotaDetalleService
             return;
         }
 
+        $lineaObjetivo = $this->resolverLineaPorOrden($nota, $ordenAnterior, $prodItem);
+
         $fromIndex = $lineas->search(
-            fn (NotaDetalle $linea) => $linea->prod_item === $prodItem && (int) $linea->orden === $ordenAnterior
+            fn (NotaDetalle $linea) => $linea->prod_item === $lineaObjetivo->prod_item
+                && (int) $linea->orden === (int) $lineaObjetivo->orden
         );
 
         if ($fromIndex === false) {
@@ -687,6 +692,36 @@ class NotaDetalleService
                 ->where('orden', $tempOrden)
                 ->update(['orden' => $finalOrden]);
         }
+    }
+
+    /**
+     * Localiza una línea del detalle por posición (orden) dentro de la cotización.
+     * prod_item es opcional y solo se usa si hubiera más de una fila con el mismo orden.
+     */
+    private function resolverLineaPorOrden(Nota $nota, int $orden, ?string $prodItem = null): NotaDetalle
+    {
+        $candidatas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', $orden)
+            ->get();
+
+        if ($candidatas->isEmpty()) {
+            throw new \InvalidArgumentException('Línea no encontrada.');
+        }
+
+        if ($candidatas->count() === 1) {
+            return $candidatas->first();
+        }
+
+        $prodItem = trim((string) $prodItem);
+        if ($prodItem !== '') {
+            $porProd = $candidatas->first(fn (NotaDetalle $linea) => $linea->prod_item === $prodItem);
+            if ($porProd) {
+                return $porProd;
+            }
+        }
+
+        throw new \InvalidArgumentException('Línea no encontrada.');
     }
 
     /**
