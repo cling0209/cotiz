@@ -135,6 +135,43 @@ class CotizacionUpdateTest extends TestCase
         ]);
     }
 
+    public function test_lote_resuelve_linea_por_orden_si_prod_item_desactualizado(): void
+    {
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'REYSOL25',
+            'orden' => 3,
+            'cantidad' => 1,
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'fechahora' => now(),
+        ]);
+
+        $response = $this->actingAs($this->ejecutivo)->postJson(
+            route('admin.cotizaciones.lineas.lote', $nota->nronota),
+            [
+                'lineas' => [[
+                    'prod_item' => 'ID-AGILE-VIEJO',
+                    'orden' => 3,
+                    'cantidad' => 4,
+                    'prod_valor' => 1500,
+                    'prod_valor_costo' => 800,
+                ]],
+            ],
+        );
+
+        $response->assertOk()->assertJson(['ok' => true, 'guardadas' => 1]);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'REYSOL25',
+            'orden' => 3,
+            'cantidad' => 4,
+            'prod_valor' => 1500,
+        ]);
+    }
+
     public function test_lote_rechaza_mas_de_diez_lineas(): void
     {
         $nota = $this->crearNota();

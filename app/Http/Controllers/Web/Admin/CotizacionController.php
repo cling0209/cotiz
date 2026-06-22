@@ -263,7 +263,11 @@ class CotizacionController extends Controller
             unset($linea);
         }
 
-        $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
+        try {
+            $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'ok' => true,

@@ -117,11 +117,9 @@ class NotaDetalleService
         ?string $usuarioUpd = null,
     ): void {
         DB::transaction(function () use ($nota, $prodItem, $orden, $datos, $usuarioUpd) {
-            $linea = NotaDetalle::query()
-                ->where('nronota', $nota->nronota)
-                ->where('prod_item', $prodItem)
-                ->where('orden', $orden)
-                ->firstOrFail();
+            $linea = $this->resolverLineaParaGuardar($nota, $prodItem, $orden);
+            $prodItem = $linea->prod_item;
+            $orden = (int) $linea->orden;
 
             $producto = Maeprod::query()->find($prodItem);
             $prodValor = (int) ($datos['prod_valor'] ?? $linea->prod_valor);
@@ -689,6 +687,48 @@ class NotaDetalleService
                 ->where('orden', $tempOrden)
                 ->update(['orden' => $finalOrden]);
         }
+    }
+
+    /**
+     * Resuelve la fila a actualizar tolerando desajustes prod_item/orden tras vincular Agile o reordenar.
+     */
+    private function resolverLineaParaGuardar(Nota $nota, string $prodItem, int $orden): NotaDetalle
+    {
+        $prodItem = trim($prodItem);
+
+        $porClave = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('prod_item', $prodItem)
+            ->where('orden', $orden)
+            ->first();
+
+        if ($porClave) {
+            return $porClave;
+        }
+
+        $porOrden = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', $orden)
+            ->get();
+
+        if ($porOrden->count() === 1) {
+            return $porOrden->first();
+        }
+
+        if ($prodItem !== '') {
+            $porProd = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('prod_item', $prodItem)
+                ->get();
+
+            if ($porProd->count() === 1) {
+                return $porProd->first();
+            }
+        }
+
+        throw new \InvalidArgumentException(
+            'No se encontró la línea (producto «'.$prodItem.'», orden '.$orden.'). Recargue la página e intente de nuevo.',
+        );
     }
 
     public function buscarProductos(?string $term, ?string $familia = null, ?int $limit = null): Collection

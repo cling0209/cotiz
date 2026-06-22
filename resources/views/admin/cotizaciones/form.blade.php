@@ -595,10 +595,11 @@
     }
 
     function collectLineasFromTable() {
+        syncLineasHiddenDesdeDataset();
         const lineas = [];
         document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
-            const prodItem = tr.querySelector('input[name*="[prod_item]"]')?.value;
-            const ordenRaw = tr.querySelector('input[name*="[orden]"]')?.value || tr.dataset.orden;
+            const prodItem = String(tr.dataset.prod || tr.querySelector('input[name*="[prod_item]"]')?.value || '').trim();
+            const ordenRaw = tr.dataset.orden || tr.querySelector('input[name*="[orden]"]')?.value;
             const orden = parseInt(String(ordenRaw || ''), 10);
             if (!prodItem || Number.isNaN(orden)) return;
 
@@ -614,6 +615,17 @@
             lineas.push(linea);
         });
         return lineas;
+    }
+
+    function syncLineasHiddenDesdeDataset() {
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
+            const prod = String(tr.dataset.prod || '').trim();
+            const orden = String(tr.dataset.orden || '').trim();
+            const prodHidden = tr.querySelector('input[name*="[prod_item]"]');
+            const ordenHidden = tr.querySelector('input[name*="[orden]"]');
+            if (prodHidden && prod !== '') prodHidden.value = prod;
+            if (ordenHidden && orden !== '') ordenHidden.value = orden;
+        });
     }
 
     function chunkArray(items, size) {
