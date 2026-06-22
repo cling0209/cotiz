@@ -66,7 +66,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
-        Route::put('cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
+        Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/factor', [CotizacionController::class, 'aplicarFactor'])->name('cotizaciones.factor')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/preview', [CotizacionController::class, 'importarCompraAgilPreview'])->name('cotizaciones.importar-compra-agil.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/coincidencias', [CotizacionController::class, 'coincidenciasCompraAgil'])->name('cotizaciones.importar-compra-agil.coincidencias')->whereNumber('nronota');

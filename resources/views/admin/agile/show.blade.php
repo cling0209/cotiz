@@ -7,7 +7,7 @@
 @endpush
 
 @section('content')
-<div class="container-fluid py-4 agile-recepcion" data-nronota="{{ $nota->nronota }}">
+<div class="container-fluid py-4 agile-recepcion" data-nronota="{{ $nota->nronota }}" data-cotizacion-edit-url="{{ route('admin.cotizaciones.edit', $nota->nronota) }}">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h1 class="h4 mb-0">Detalle cotización Agile #{{ $nota->nronota }}</h1>
         <a href="{{ route('admin.agile.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado Agile</a>

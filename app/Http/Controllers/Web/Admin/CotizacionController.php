@@ -31,7 +31,7 @@ class CotizacionController extends Controller
         if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
             return redirect()
                 ->route('admin.cotizaciones.edit', $pendiente->nronota)
-                ->with('error', 'Debe ingresar el número de cotización en la nota #'.$pendiente->nronota.' antes de crear una nueva.');
+                ->with('error', 'Complete el número de cotización de la nota #'.$pendiente->nronota.' antes de crear otra.');
         }
 
         $nota = $this->notaService->crear($usuario);
@@ -107,8 +107,9 @@ class CotizacionController extends Controller
 
             $factorFmt = number_format($result['factor'], 2, ',', '');
 
-            return back()->with(
-                'success',
+            return $this->redirectTrasGuardar(
+                $request,
+                $nronota,
                 'Se actualizaron '.$result['ok'].' de '.$result['total'].' filas. Factor guardado ('.$factorFmt.').',
             );
         }
@@ -171,7 +172,7 @@ class CotizacionController extends Controller
             ? 'Número de cotización guardado. Ya puede agregar productos.'
             : 'Cotización guardada.';
 
-        return back()->with('success', $mensaje);
+        return $this->redirectTrasGuardar($request, $nronota, $mensaje);
     }
 
     public function aplicarFactor(Request $request, int $nronota): JsonResponse
@@ -584,6 +585,18 @@ class CotizacionController extends Controller
                 'min_chars' => (int) config('cotiz.buscar_productos_min_chars', 2),
             ],
         ]);
+    }
+
+    private function redirectTrasGuardar(Request $request, int $nronota, string $mensaje): RedirectResponse
+    {
+        $params = ['nronota' => $nronota];
+        if ($request->query('from') === 'adjudicadas') {
+            $params['from'] = 'adjudicadas';
+        }
+
+        return redirect()
+            ->route('admin.cotizaciones.edit', $params)
+            ->with('success', $mensaje);
     }
 
     private function puedeVer(Request $request, Nota $nota): bool

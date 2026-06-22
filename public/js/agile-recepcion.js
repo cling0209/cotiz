@@ -367,7 +367,8 @@
 
             postJson(`/admin/agile-recepcion/${nronota}/aprobar`, {})
                 .then((j) => {
-                    window.location.href = `/admin/cotizaciones/${j.nronota}`;
+                    const root = document.querySelector('.agile-recepcion');
+                    window.location.href = root?.dataset.cotizacionEditUrl || `/admin/cotizaciones/${j.nronota}`;
                 })
                 .catch((e) => dlgAlert(e.message, { title: 'Error' }));
         });
