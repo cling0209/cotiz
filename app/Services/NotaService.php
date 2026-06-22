@@ -87,7 +87,7 @@ class NotaService
 
         $existente = Nota::query()
             ->where('nronota', '!=', $nota->nronota)
-            ->whereRaw('trim(encargado) ilike ?', [$numero])
+            ->whereRaw('lower(trim(encargado)) = lower(?)', [$numero])
             ->first(['nronota', 'encargado']);
 
         if ($existente) {
@@ -186,18 +186,22 @@ class NotaService
 
     private function siguienteNronota(): int
     {
-        $row = DB::table('nronota_seq')->lockForUpdate()->first();
+        return DB::transaction(function () {
+            $row = DB::table('nronota_seq')->lockForUpdate()->first();
+            $maxExistente = (int) Nota::query()->max('nronota');
 
-        if (! $row) {
-            DB::table('nronota_seq')->insert(['ultimo' => 1]);
+            if (! $row) {
+                $next = max($maxExistente, 0) + 1;
+                DB::table('nronota_seq')->insert(['ultimo' => $next]);
 
-            return 1;
-        }
+                return $next;
+            }
 
-        $next = ((int) $row->ultimo) + 1;
-        DB::table('nronota_seq')->update(['ultimo' => $next]);
+            $next = max((int) $row->ultimo, $maxExistente) + 1;
+            DB::table('nronota_seq')->update(['ultimo' => $next]);
 
-        return $next;
+            return $next;
+        });
     }
 
     private function siguienteNotaSoftland(): int

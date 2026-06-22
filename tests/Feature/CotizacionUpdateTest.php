@@ -62,6 +62,14 @@ class CotizacionUpdateTest extends TestCase
         $response->assertSessionHas('success');
     }
 
+    public function test_edit_nota_inexistente_redirige_al_listado(): void
+    {
+        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.edit', 99999));
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+        $response->assertSessionHas('error');
+    }
+
     private function crearNota(): Nota
     {
         return Nota::query()->create([

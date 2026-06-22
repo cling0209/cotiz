@@ -47,8 +47,8 @@ class NotaListadoService
         if (! empty($filtros['nronota'])) {
             $query->where('notas.nronota', (int) $filtros['nronota']);
         } elseif (! empty($filtros['cotizacion'])) {
-            $term = '%'.trim($filtros['cotizacion']).'%';
-            $query->where('notas.encargado', 'ilike', $term);
+            $term = trim($filtros['cotizacion']);
+            $query->whereRaw('lower(trim(notas.encargado)) like lower(?)', ['%'.$term.'%']);
         } else {
             if (! empty($filtros['fechadesde'])) {
                 $query->whereDate('notas.fecha', '>=', $filtros['fechadesde']);

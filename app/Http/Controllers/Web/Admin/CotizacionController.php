@@ -36,6 +36,12 @@ class CotizacionController extends Controller
 
         $nota = $this->notaService->crear($usuario);
 
+        if (! Nota::query()->whereKey($nota->nronota)->exists()) {
+            return redirect()
+                ->route('admin.cotizaciones.index')
+                ->with('error', 'No se pudo crear la cotización. Intente nuevamente o contacte al administrador.');
+        }
+
         return redirect()->route('admin.cotizaciones.edit', $nota->nronota)
             ->with('info', 'Ingrese el número de cotización para continuar.');
     }
@@ -54,7 +60,11 @@ class CotizacionController extends Controller
 
     public function edit(Request $request, int $nronota): View|RedirectResponse
     {
-        $nota = Nota::query()->with('detalle.producto')->findOrFail($nronota);
+        $nota = Nota::query()->with('detalle.producto')->find($nronota);
+
+        if (! $nota) {
+            return $this->notaNoEncontrada($nronota);
+        }
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
@@ -78,7 +88,11 @@ class CotizacionController extends Controller
 
     public function update(Request $request, int $nronota): RedirectResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        $nota = Nota::query()->find($nronota);
+
+        if (! $nota) {
+            return $this->notaNoEncontrada($nronota);
+        }
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
@@ -585,6 +599,16 @@ class CotizacionController extends Controller
                 'min_chars' => (int) config('cotiz.buscar_productos_min_chars', 2),
             ],
         ]);
+    }
+
+    private function notaNoEncontrada(int $nronota): RedirectResponse
+    {
+        return redirect()
+            ->route('admin.cotizaciones.index')
+            ->with(
+                'error',
+                "La cotización #{$nronota} no existe. Use el listado para abrirla o cree una nueva.",
+            );
     }
 
     private function redirectTrasGuardar(Request $request, int $nronota, string $mensaje): RedirectResponse
