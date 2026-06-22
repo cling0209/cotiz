@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ForceRequestRootUrl;
 use App\Http\Middleware\EnsureCompraAgilAnalisisAdmin;
 use App\Http\Middleware\EnsureAgileBasicAuth;
 use App\Http\Middleware\EnsureNotaApiBasicAuth;
@@ -27,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $middleware->redirectGuestsTo(fn (Request $request) => route('admin.login'));
+        $middleware->web(prepend: [
+            ForceRequestRootUrl::class,
+        ]);
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
             'compra-agil-analisis' => EnsureCompraAgilAnalisisAdmin::class,
