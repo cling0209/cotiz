@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureCompraAgilAnalisisAdmin;
 use App\Http\Middleware\EnsureAgileBasicAuth;
 use App\Http\Middleware\EnsureNotaApiBasicAuth;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => route('admin.login'));
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
+            'compra-agil-analisis' => EnsureCompraAgilAnalisisAdmin::class,
             'agile.basic' => EnsureAgileBasicAuth::class,
             'nota.basic' => EnsureNotaApiBasicAuth::class,
         ]);

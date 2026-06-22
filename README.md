@@ -17,8 +17,27 @@ copy .env.example .env
 docker compose run --rm app php artisan key:generate
 docker compose build
 docker compose up -d
-docker compose exec app php artisan migrate --seed --force
+docker compose exec app php artisan migrate --force
+# Primera vez con datos demo (opcional): docker compose exec app php artisan db:seed --force
 ```
+
+**Preservar datos (local, Neon QA y producción)**
+
+- `php artisan migrate` solo aplica migraciones **pendientes**; no vacía tablas.
+- **Nunca** uses `migrate:fresh`, `migrate:refresh` ni `db:wipe` en ambientes con datos reales.
+- En Docker local, **no** uses `docker compose down -v` (el flag `-v` borra el volumen `postgres_data`).
+- `RUN_SEED=false` en `.env` y en el panel de producción (Koyeb/Render) después del primer despliegue.
+- `RUN_MIGRATIONS=true` aplica solo cambios de schema nuevos; los productos y cotizaciones existentes se mantienen.
+
+**Tests (crítico si `.env` apunta a Neon QA)**
+
+Los tests usan `RefreshDatabase` (= `migrate:fresh`). Si se ejecutan contra PostgreSQL/Neon, **borran toda la base**.
+
+- **Usar siempre:** `docker compose run --rm test php artisan test`
+- **Filtro:** `docker compose run --rm test php artisan test --filter=CompraAgil`
+- **Prohibido:** `docker compose exec app php artisan test` (el contenedor `app` tiene credenciales Neon del `.env`)
+- Fuera de Docker: `php artisan test` (usa `.env.testing` + SQLite en memoria; `phpunit.xml` fuerza la conexión)
+- Protecciones en código: `phpunit.xml` (`force="true"`), `tests/TestCase.php` (aborta si no es SQLite `:memory:`)
 
 | Servicio | URL |
 |----------|-----|

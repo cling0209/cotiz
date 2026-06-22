@@ -43,6 +43,84 @@ class CompraAgilImportService
     }
 
     /**
+     * Preview desde datos estructurados (API Mercado Público).
+     *
+     * @param  array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }  $datos
+     */
+    public function previewDesdeDatos(array $datos): array
+    {
+        $total = count($datos['lineas']);
+        $resultado = $this->previewLoteDesdeDatos($datos, 0, $total);
+        unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }  $datos
+     */
+    public function previewLoteDesdeDatos(array $datos, int $desde, int $hasta): array
+    {
+        $total = count($datos['lineas']);
+        $hasta = max($desde, min($hasta, $total));
+
+        $lineas = [];
+        for ($i = $desde; $i < $hasta; $i++) {
+            $lineas[] = $this->construirLineaPreview($datos['lineas'][$i]);
+        }
+
+        $resultado = [
+            'lineas' => $lineas,
+            'total' => $total,
+            'procesadas' => $hasta,
+            'completado' => $hasta >= $total,
+            'resumen' => $this->resumenDesdeLineasPreview($lineas),
+        ];
+
+        if ($desde === 0) {
+            $resultado['cabecera'] = $datos['cabecera'];
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }  $datos
+     * @return array{agregadas: int, vinculadas: int, pendientes: int, cabecera_actualizada: bool, mensajes: string[]}
+     */
+    public function aplicarDesdeDatos(Nota $nota, array $datos, string $usuario): array
+    {
+        $total = count($datos['lineas']);
+        $resultado = $this->aplicarConPreview($nota, $datos, $usuario, 0, $total);
+        unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
+     * }  $datos
+     */
+    public function aplicarLoteDesdeDatos(Nota $nota, array $datos, string $usuario, int $desde, int $hasta): array
+    {
+        $total = count($datos['lineas']);
+        $hasta = max($desde, min($hasta, $total));
+
+        return $this->aplicarConPreview($nota, $datos, $usuario, $desde, $hasta);
+    }
+
+    /**
      * Analiza un rango de líneas con sugerencias por similitud (0-based, hasta exclusivo).
      *
      * @return array{
@@ -259,7 +337,7 @@ class CompraAgilImportService
             $total = count($preview['lineas']);
 
             if ($desde === 0 && $preview['cabecera']['codigo_cotizacion'] === '' && $preview['lineas'] === []) {
-                throw new RuntimeException('No se detectó información de Compra Ágil en el texto pegado.');
+                throw new RuntimeException('No se detectó información de Compra Ágil para importar.');
             }
 
             $cabeceraActualizada = false;
@@ -335,7 +413,7 @@ class CompraAgilImportService
             }
 
             if ($desde === 0 && $hasta >= $total && $agregadas === 0) {
-                throw new RuntimeException('No se detectaron productos en el texto pegado.');
+                throw new RuntimeException('No se detectaron productos para importar.');
             }
 
             return [

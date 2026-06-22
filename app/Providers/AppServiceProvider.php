@@ -38,8 +38,8 @@ class AppServiceProvider extends ServiceProvider
             $pendiente = null;
 
             if (auth()->check()) {
-                $pendiente = app(NotaService::class)
-                    ->pendienteSinNumeroCotizacion(auth()->user()->username);
+                $notaService = app(NotaService::class);
+                $pendiente = $notaService->pendienteSinNumeroCotizacion(auth()->user()->username);
             }
 
             $view->with('cotizacionPendienteSinNumero', $pendiente);

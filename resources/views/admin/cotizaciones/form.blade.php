@@ -313,9 +313,14 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Copie y pegue el texto de la p&aacute;gina de Compra &Aacute;gil (Mercado P&uacute;blico): cabecera con n&uacute;mero de cotizaci&oacute;n, cliente, RUT y listado de productos con ID.
-                    </p>
+                    <ul class="nav nav-tabs nav-tabs-sm mb-2" id="importar-ca-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-ca-codigo" data-bs-toggle="tab" data-bs-target="#panel-ca-codigo" type="button" role="tab">Por n&uacute;mero</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-ca-pegar" data-bs-toggle="tab" data-bs-target="#panel-ca-pegar" type="button" role="tab">Pegar texto</button>
+                        </li>
+                    </ul>
                     <p class="small mb-2" id="importar-compra-agil-detalle-actual">
                         <strong>Cotizaci&oacute;n actual:</strong>
                         <span id="importar-compra-agil-detalle-actual-texto">
@@ -323,20 +328,35 @@
                             ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                         </span>
                     </p>
-                    <textarea
-                        id="importar-compra-agil-texto"
-                        class="form-control form-control-sm font-monospace mb-2"
-                        rows="8"
-                        placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;...&#10;Limpiadores de uso general ID: 31237835&#10;LIMPIADOR DE PISOS..."
-                    ></textarea>
-                    <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none" role="alert">
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="panel-ca-codigo" role="tabpanel">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-6">
+                                    <input type="text" id="ca-api-codigo" class="form-control form-control-sm font-monospace" placeholder="1161-172-COT26">
+                                </div>
+                                <div class="col-md-auto">
+                                    <button type="button" class="btn btn-primary btn-sm" id="btn-ca-buscar-codigo"><i class="bi bi-hash"></i> Cargar</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="panel-ca-pegar" role="tabpanel">
+                            <p class="small text-muted mb-2">Copie el texto desde la p&aacute;gina de Mercado P&uacute;blico.</p>
+                            <textarea
+                                id="importar-compra-agil-texto"
+                                class="form-control form-control-sm font-monospace mb-2"
+                                rows="8"
+                                placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;..."
+                            ></textarea>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
+                                <i class="bi bi-search"></i> Analizar texto pegado
+                            </button>
+                        </div>
+                    </div>
+                    <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none mt-2" role="alert">
                         <i class="bi bi-exclamation-octagon-fill me-1"></i>
                         <span id="importar-compra-agil-alerta-texto"></span>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
-                            <i class="bi bi-search"></i> Analizar
-                        </button>
                         <span id="importar-compra-agil-estado" class="small text-muted"></span>
                     </div>
                     <div id="importar-compra-agil-cabecera" class="small mb-2 d-none">
@@ -1451,7 +1471,10 @@
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
         coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
         limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
+        apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
+        apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
     };
+    const cotizNronotaActual = @json($nota->nronota);
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
     const importarTexto = document.getElementById('importar-compra-agil-texto');
@@ -1471,6 +1494,7 @@
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
     let importPreviewData = null;
     let importandoCompraAgil = false;
+    let importCodigoApi = null;
 
     function escHtml(s) {
         return String(s ?? '')
@@ -1595,8 +1619,10 @@
 
     function resetImportCompraAgilModal() {
         importPreviewData = null;
+        importCodigoApi = null;
         importandoCompraAgil = false;
         if (importarTexto) importarTexto.value = '';
+        document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
         if (importarEstado) importarEstado.textContent = '';
         if (importarCabecera) importarCabecera.classList.add('d-none');
         if (importarCabeceraTexto) importarCabeceraTexto.textContent = '';
@@ -1697,6 +1723,7 @@
 
     async function analizarImportCompraAgil() {
         const texto = String(importarTexto?.value || '').trim();
+        importCodigoApi = null;
         limpiarImportAlerta();
         if (!texto) {
             if (importarEstado) importarEstado.textContent = 'Pegue el texto de Compra Ágil.';
@@ -1840,6 +1867,125 @@
         }
     }
 
+    async function prepararImportAgileAntesPreview() {
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        const bodyCoin = new FormData();
+        bodyCoin.append('_token', csrf);
+        bodyCoin.append('texto', '');
+        const resCoin = await fetch(importarMpUrls.coincidencias, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: bodyCoin,
+        });
+        const coin = await resCoin.json().catch(() => ({}));
+        if (!resCoin.ok) {
+            ocultarProgresoImportar();
+            mostrarImportError(coin.error || coin.message || 'Error al verificar coincidencias.');
+            return false;
+        }
+        if ((coin.con_agile || coin.total || 0) > 0) {
+            const det = coin.detalle || {};
+            const okReemplazo = await dlgConfirm(
+                'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile'
+                    + (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '')
+                    + '. Al importar se eliminarán las líneas con ID Agile (las manuales se conservan). ¿Continuar?',
+                { title: 'Reemplazar líneas Agile', type: 'warning' },
+            );
+            if (!okReemplazo) {
+                ocultarProgresoImportar();
+                return false;
+            }
+            const bodyLimp = new FormData();
+            bodyLimp.append('_token', csrf);
+            const resLimp = await fetch(importarMpUrls.limpiarAgile, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: bodyLimp,
+            });
+            const limp = await resLimp.json().catch(() => ({}));
+            if (!resLimp.ok) {
+                ocultarProgresoImportar();
+                mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas Agile.');
+                return false;
+            }
+            if (limp.detalle) actualizarResumenLineas(limp.detalle);
+        }
+        return true;
+    }
+
+    async function analizarCodigoApi(codigo) {
+        codigo = String(codigo || '').trim().toUpperCase();
+        if (!codigo) return;
+        importCodigoApi = codigo;
+        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = 'Cargando detalle...';
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+
+        const ok = await prepararImportAgileAntesPreview();
+        if (!ok) return;
+
+        try {
+            let todasLineas = [];
+            let cabecera = null;
+            let total = 0;
+            let errorCabecera = null;
+            let puedeImportar = true;
+            let desde = 0;
+
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando productos...');
+
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('codigo', codigo);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
+
+                const res = await fetch(importarMpUrls.apiPreview, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(json.error || 'Error al analizar.');
+                    return;
+                }
+                if (json.cabecera) cabecera = json.cabecera;
+                if (json.error_cabecera) { errorCabecera = json.error_cabecera; puedeImportar = false; }
+                if (json.puede_importar === false) puedeImportar = false;
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            renderImportPreview({
+                cabecera: cabecera || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: errorCabecera,
+                puede_importar: puedeImportar,
+            });
+            if (importarEstado) {
+                importarEstado.textContent = errorCabecera ? '' : 'Análisis listo (API).';
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        }
+    }
+
+    document.getElementById('btn-ca-buscar-codigo')?.addEventListener('click', () => {
+        analizarCodigoApi(document.getElementById('ca-api-codigo')?.value || '');
+    });
+
     function mostrarProgresoImportar() {
         if (importarProgresoWrap) {
             importarProgresoWrap.classList.remove('d-none');
@@ -1864,7 +2010,9 @@
         if (importandoCompraAgil || !importPreviewData) return;
 
         const texto = String(importarTexto?.value || '').trim();
-        if (!texto) return;
+        const usarApi = !!importCodigoApi;
+
+        if (!usarApi && !texto) return;
 
         const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
@@ -1883,7 +2031,30 @@
         const total = importPreviewData?.resumen?.total || 0;
 
         try {
-            if (total === 0) {
+            if (usarApi) {
+                const total = importPreviewData?.resumen?.total || 0;
+                const lote = tamanoLoteImportar(total);
+                for (let desde = 0; desde < total; desde += lote) {
+                    const hasta = Math.min(desde + lote, total);
+                    actualizarProgresoImportar(desde, total);
+                    const body = new FormData();
+                    body.append('_token', csrf);
+                    body.append('codigo', importCodigoApi);
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+                    const res = await fetch(importarMpUrls.apiImportar, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        ocultarProgresoImportar();
+                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                        return;
+                    }
+                }
+            } else if (total === 0) {
                 const body = new FormData();
                 body.append('_token', csrf);
                 body.append('texto', texto);

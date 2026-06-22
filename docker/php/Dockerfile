@@ -6,12 +6,14 @@ RUN apk add --no-cache \
     libpng-dev \
     libzip-dev \
     postgresql-dev \
+    sqlite-dev \
     icu-dev \
     oniguruma-dev \
     $PHPIZE_DEPS \
     && docker-php-ext-install \
     pdo_pgsql \
     pgsql \
+    pdo_sqlite \
     mbstring \
     exif \
     pcntl \

@@ -7,8 +7,14 @@ if [ ! -f vendor/autoload.php ]; then
 fi
 
 # Solo migraciones pendientes (nunca migrate:fresh). Activar con RUN_MIGRATIONS=true en .env / docker-compose.
-if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+# Nunca migrar en APP_ENV=testing (servicio test usa SQLite en memoria).
+if [ "${RUN_MIGRATIONS:-false}" = "true" ] && [ "${APP_ENV:-local}" != "testing" ]; then
   php artisan migrate --force
+fi
+
+# Permite: docker compose run --rm test  (sin levantar php-fpm)
+if [ "$#" -gt 0 ]; then
+  exec "$@"
 fi
 
 mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging

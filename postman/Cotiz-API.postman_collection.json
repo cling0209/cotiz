@@ -1,0 +1,332 @@
+{
+  "info": {
+    "_postman_id": "cotiz-api-collection",
+    "name": "Cotiz API",
+    "description": "API REST de cotizaciones (Cotiz / Romulo / Reicol).\n\nEquivalentes legacy:\n- POST /api/v1/nota → apinota.php\n- POST /api/v1/nota-consulta → apiconsulta.php\n- POST /api/v1/nota-envio → apinotaenvio.php\n- POST /api/v1/usuario → replicación de usuarios entre instancias\n- POST /api/v1/agile → apiagile.php\n\nAutenticación Basic Auth (variables de entorno del servidor):\n- Nota / Consulta / Envío / Usuario: COTIZ_API_NOTA_USER + COTIZ_API_NOTA_PASSWORD\n- Agile: COTIZ_AGILE_USER + COTIZ_AGILE_PASSWORD\n\nRespuesta OK: `{ \"resultado\": \"OK\", ... }`\nRespuesta error: `{ \"resultado\": \"ERROR\", \"mensaje\": \"...\" }` (HTTP 400 o 401)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "apiNotaUser",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiNotaPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agileUser",
+      "value": "AGI2025",
+      "type": "string"
+    },
+    {
+      "key": "agilePassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nronota",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "health"]
+            },
+            "description": "Verifica que la API responde. No requiere autenticación."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Nota (apinota)",
+      "description": "Recepción de cotizaciones remotas.\n\nBasic Auth: `apiNotaUser` / `apiNotaPassword` (COTIZ_API_NOTA_USER / COTIZ_API_NOTA_PASSWORD).\n\nFlujo típico:\n1. `graba_resumen` → devuelve `nronota`\n2. `graba_detalle` (una o más veces) con ese `nronota`",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{apiNotaUser}}", "type": "string" },
+          { "key": "password", "value": "{{apiNotaPassword}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Graba resumen (cabecera)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.nronota) {",
+                  "        pm.collectionVariables.set('nronota', String(json.nronota));",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba_resumen\",\n  \"usuario\": \"ejecutivo1\",\n  \"descripcion\": \"Cotización remota\",\n  \"encargado\": \"COT-REMOTE-001\",\n  \"empresa\": \"Cliente API\",\n  \"rutempresa\": \"76356855\",\n  \"celular\": \"\",\n  \"contacto\": \"\",\n  \"contactocorreo\": \"\",\n  \"diashabiles\": 2,\n  \"notaorigen\": 99,\n  \"nota_softland\": 0,\n  \"sistema\": \"Reicol\",\n  \"fecha\": \"2026-06-21\",\n  \"fechaentrega\": null,\n  \"estado\": \"\",\n  \"ocompra\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nota",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "nota"]
+            },
+            "description": "Crea la cabecera de una cotización.\n\nCampos requeridos:\n- `accion`: `graba_resumen`\n- `usuario`: username existente en `users`\n\nCampos opcionales: descripcion, encargado, empresa, rutempresa, celular, contacto, contactocorreo, diashabiles, notaorigen, nota_softland, sistema, fecha, fechaentrega, estado, ocompra.\n\nRespuesta OK:\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"\", \"nronota\": 123 }\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Graba detalle (línea producto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba_detalle\",\n  \"nronota\": {{nronota}},\n  \"prod_item\": \"PROD001\",\n  \"prod_nombre\": \"Producto remoto\",\n  \"prod_familia\": \"PAPEL\",\n  \"prod_gramaje\": \"\",\n  \"prod_imagen\": \"\",\n  \"prod_valor\": 1500,\n  \"prod_valor_costo\": 1200,\n  \"prod_item_softland\": \"\",\n  \"cantidad\": 3,\n  \"orden\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nota",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "nota"]
+            },
+            "description": "Agrega una línea de producto a una cotización existente.\n\nCampos requeridos:\n- `accion`: `graba_detalle`\n- `nronota`: número devuelto por graba_resumen\n- `prod_item`: código de producto\n\nSi el producto no existe en `maeprod`, se crea automáticamente.\n\nRespuesta OK:\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"\", \"nronota\": 123 }\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Graba resumen (legacy /api/nota)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba_resumen\",\n  \"usuario\": \"ejecutivo1\",\n  \"descripcion\": \"Cotización remota\",\n  \"encargado\": \"COT-LEGACY-001\",\n  \"empresa\": \"Cliente API\",\n  \"diashabiles\": 2,\n  \"notaorigen\": 0,\n  \"sistema\": \"Reicol\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/nota",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "nota"]
+            },
+            "description": "Alias legacy sin prefijo `/v1`. Mismo comportamiento que POST /api/v1/nota."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Nota consulta (apiconsulta)",
+      "description": "Consulta el número interno de cotización (`nronota`) a partir del código externo (`encargado`).\n\nBasic Auth: `apiNotaUser` / `apiNotaPassword`.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{apiNotaUser}}", "type": "string" },
+          { "key": "password", "value": "{{apiNotaPassword}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Consultar por encargado",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"cotizacion\",\n  \"encargado\": \"COT-CONSULTA\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nota-consulta",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "nota-consulta"]
+            },
+            "description": "Busca una cotización por el campo `encargado` (código externo / nº cotización).\n\nRespuesta OK:\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"\", \"nronota\": 10 }\n```\n\nSi no existe: HTTP 400 con `resultado: ERROR`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Nota envío (apinotaenvio)",
+      "description": "Relay de envío de cotización hacia otra instancia (Romulo ↔ Reicol).\n\nRequiere `COTIZ_API_NOTA_URL` configurada en el servidor destino.\n\nBasic Auth: `apiNotaUser` / `apiNotaPassword`.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{apiNotaUser}}", "type": "string" },
+          { "key": "password", "value": "{{apiNotaPassword}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Enviar cotización (relay)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nronota\": {{nronota}},\n  \"enviadoapi\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nota-envio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "nota-envio"]
+            },
+            "description": "Reenvía cabecera y detalle de la cotización local hacia la URL configurada en `COTIZ_API_NOTA_URL`.\n\nEl servidor hace internamente:\n1. POST graba_resumen al destino\n2. POST graba_detalle por cada línea\n\nRespuesta OK:\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"\" }\n```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Usuario (replicación)",
+      "description": "Replica usuarios entre instancias Romulo ↔ Reicol.\n\nBasic Auth: `apiNotaUser` / `apiNotaPassword` (mismas credenciales que Nota).\n\nPerfiles válidos: 3 = Superadmin, 4 = Ejecutivo.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{apiNotaUser}}", "type": "string" },
+          { "key": "password", "value": "{{apiNotaPassword}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Graba usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba\",\n  \"replicacion\": true,\n  \"origen_sistema\": \"Reicol\",\n  \"username\": \"nuevo1\",\n  \"nombre\": \"Nuevo\",\n  \"apellidop\": \"Usuario\",\n  \"apellidom\": \"\",\n  \"correo\": \"nuevo@test.cl\",\n  \"perfil\": 4,\n  \"password\": \"Clave1234\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/usuario",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "usuario"]
+            },
+            "description": "Crea un usuario si no existe (idempotente por `username`).\n\nCampos requeridos:\n- `accion`: `graba`\n- `username`, `nombre`, `perfil`, `password`\n\nPassword: mínimo 8 caracteres, letras y números.\n\nRespuesta OK (creado):\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"Usuario creado\", \"username\": \"nuevo1\", \"created\": true }\n```\n\nRespuesta OK (ya existía):\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"Usuario ya existía\", \"username\": \"nuevo1\", \"created\": false }\n```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Agile (apiagile)",
+      "description": "Recepción de cotizaciones desde Compra Ágil / sistema externo.\n\nBasic Auth: `agileUser` / `agilePassword` (COTIZ_AGILE_USER / COTIZ_AGILE_PASSWORD).\n\nAcción soportada: `graba`.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{agileUser}}", "type": "string" },
+          { "key": "password", "value": "{{agilePassword}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Graba cotización Agile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.nroenvio) {",
+                  "        pm.collectionVariables.set('nronota', String(json.nroenvio));",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba\",\n  \"usuario\": \"ejecutivo1\",\n  \"codigo_cotizacion\": \"COT-AGILE-TEST-001\",\n  \"rut_empresa\": \"76356855\",\n  \"nombre_empresa\": \"Cliente Test\",\n  \"productos\": [\n    {\n      \"id\": \"AG001\",\n      \"descripcion\": \"Producto agile\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agile"]
+            },
+            "description": "Recibe una cotización Agile y la deja en estado Pendiente.\n\nCampos requeridos:\n- `accion`: `graba`\n- `usuario`: username existente\n- `codigo_cotizacion`: código único (se guarda en `encargado`)\n- `productos`: array con `id`, `descripcion`, `cantidad`\n\nRespuesta OK:\n```json\n{ \"resultado\": \"OK\", \"mensaje\": \"Datos guardados correctamente\", \"nroenvio\": 42 }\n```\n\nError si `codigo_cotizacion` ya existe."
+          },
+          "response": []
+        },
+        {
+          "name": "Graba cotización Agile (legacy /api/agile)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accion\": \"graba\",\n  \"usuario\": \"ejecutivo1\",\n  \"codigo_cotizacion\": \"COT-AGILE-LEGACY-001\",\n  \"rut_empresa\": \"76356855\",\n  \"nombre_empresa\": \"Cliente Test\",\n  \"productos\": [\n    { \"id\": \"AG001\", \"descripcion\": \"Producto agile\", \"cantidad\": 1 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agile"]
+            },
+            "description": "Alias legacy sin prefijo `/v1`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

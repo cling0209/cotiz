@@ -4,6 +4,8 @@ use App\Http\Controllers\Web\Admin\AdjudicadaListadoController;
 use App\Http\Controllers\Web\Admin\AgileRecepcionController;
 use App\Http\Controllers\Web\Admin\AuthController;
 use App\Http\Controllers\Web\Admin\AccountController;
+use App\Http\Controllers\Web\Admin\CompraAgilAnalisisController;
+use App\Http\Controllers\Web\Admin\CompraAgilBusquedaController;
 use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
@@ -72,6 +74,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/importar-compra-agil/coincidencias', [CotizacionController::class, 'coincidenciasCompraAgil'])->name('cotizaciones.importar-compra-agil.coincidencias')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/limpiar-agile', [CotizacionController::class, 'limpiarLineasAgileCompraAgil'])->name('cotizaciones.importar-compra-agil.limpiar-agile')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil', [CotizacionController::class, 'importarCompraAgil'])->name('cotizaciones.importar-compra-agil')->whereNumber('nronota');
+        Route::get('cotizaciones/{nronota}/compra-agil-api/buscar', [CompraAgilBusquedaController::class, 'buscar'])->name('cotizaciones.compra-agil-api.buscar')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/compra-agil-api/preview', [CompraAgilBusquedaController::class, 'previewCodigo'])->name('cotizaciones.compra-agil-api.preview')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/compra-agil-api/importar', [CompraAgilBusquedaController::class, 'importarCodigo'])->name('cotizaciones.compra-agil-api.importar')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/lineas/vincular-agile', [CotizacionController::class, 'vincularLineaAgile'])->name('cotizaciones.lineas.vincular-agile')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/lineas', [CotizacionController::class, 'agregarLinea'])->name('cotizaciones.lineas.store')->whereNumber('nronota');
         Route::patch('cotizaciones/{nronota}/lineas/orden', [CotizacionController::class, 'cambiarOrdenLinea'])->name('cotizaciones.lineas.orden')->whereNumber('nronota');
@@ -87,6 +92,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('cotizaciones/adjudicadas', [AdjudicadaListadoController::class, 'index'])->name('cotizaciones.adjudicadas.index');
             Route::get('cotizaciones/adjudicadas/export/detalle', [AdjudicadaListadoController::class, 'exportDetalle'])->name('cotizaciones.adjudicadas.export.detalle');
             Route::get('cotizaciones/adjudicadas/export/sin-codigo-softland', [AdjudicadaListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.adjudicadas.export.sin-codigo-softland');
+
+            Route::middleware('compra-agil-analisis')->group(function () {
+                Route::get('compra-agil/analisis', [CompraAgilAnalisisController::class, 'index'])->name('compra-agil.analisis.index');
+                Route::post('compra-agil/analisis/sync', [CompraAgilAnalisisController::class, 'sincronizar'])->name('compra-agil.analisis.sync');
+                Route::get('compra-agil/analisis/producto/{prodItem}', [CompraAgilAnalisisController::class, 'detalleProducto'])->name('compra-agil.analisis.producto')->where('prodItem', '[^/]+');
+            });
 
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
             Route::get('productos/carga-masiva/estado', [MaeprodController::class, 'importStatus'])->name('productos.import.status');

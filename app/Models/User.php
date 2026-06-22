@@ -55,6 +55,12 @@ class User extends Authenticatable
         return $this->canAccessPanel();
     }
 
+    public function canAccessCompraAgilAnalisis(): bool
+    {
+        return $this->username === 'admin'
+            && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
+    }
+
     public function getEmailForPasswordReset(): string
     {
         return (string) ($this->correo ?? '');

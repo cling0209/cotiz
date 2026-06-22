@@ -56,4 +56,21 @@ return [
         'sistema' => env('COTIZ_AGILE_SISTEMA', 'API'),
         'maeprod_factor_precio_venta' => (float) env('COTIZ_AGILE_MAEPROD_FACTOR', 1.22),
     ],
+
+    'mercadopublico' => [
+        'base_url' => env('MERCADOPUBLICO_BASE_URL', 'https://api2.mercadopublico.cl'),
+        'ticket' => env('MERCADOPUBLICO_TICKET', ''),
+        'regiones' => array_values(array_filter(array_map(
+            'intval',
+            array_map('trim', explode(',', (string) env(
+                'MERCADOPUBLICO_REGIONES',
+                '1,2,3,4,5,6,7,8,9,10,11,13,14,15,16',
+            ))),
+        ))),
+        'analisis_admin_habilitado' => filter_var(env('MERCADOPUBLICO_ANALISIS_ADMIN', false), FILTER_VALIDATE_BOOL),
+        'sync_dias' => max(1, (int) env('MERCADOPUBLICO_SYNC_DIAS', 30)),
+        'sync_dias_inicial' => max(1, (int) env('MERCADOPUBLICO_SYNC_DIAS_INICIAL', 180)),
+        'sync_max_detalle' => (int) env('MERCADOPUBLICO_SYNC_MAX_DETALLE', 50),
+        'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
+    ],
 ];

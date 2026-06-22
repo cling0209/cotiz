@@ -1,0 +1,349 @@
+{
+  "info": {
+    "_postman_id": "mercadopublico-compra-agil",
+    "name": "Mercado Público — Compra Ágil",
+    "description": "Colección para probar **directamente** la API de Mercado Público (ChileCompra).\n\n## Autenticación\n\n### Compra Ágil v2 (`api2.mercadopublico.cl`)\nUsada por Cotiz. El **ticket va en el header HTTP**:\n```\nticket: {{ticket}}\n```\n\nObtén el ticket en: https://www.chilecompra.cl/api/\n\n### API clásica v1 (`api.mercadopublico.cl`)\nLicitaciones y órdenes de compra. El ticket va como **query param** `?ticket={{ticket}}`.\n\n## Respuesta Compra Ágil v2\n```json\n{\n  \"success\": \"OK\",\n  \"payload\": { ... },\n  \"errors\": null\n}\n```\n\n## Errores habituales\n- **401/403**: ticket inválido o vencido\n- **429**: cuota diaria agotada\n- **404**: código Compra Ágil no existe\n\n## Regiones (código MP)\n1 Tarapacá · 2 Antofagasta · 3 Atacama · 4 Coquimbo · 5 Valparaíso · 6 O'Higgins · 7 Maule · 8 Biobío · 9 Araucanía · 10 Los Lagos · 11 Aysén · **12 Magallanes** · 13 Metropolitana · 14 Los Ríos · 15 Arica · 16 Ñuble\n\nDocumentación: https://www.chilecompra.cl/api/",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('ticket')) {",
+          "    console.warn('Configure la variable ticket en el entorno o en la colección');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrlV2",
+      "value": "https://api2.mercadopublico.cl",
+      "type": "string"
+    },
+    {
+      "key": "baseUrlV1",
+      "value": "https://api.mercadopublico.cl/servicios/v1/publico",
+      "type": "string"
+    },
+    {
+      "key": "ticket",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "codigoCompraAgil",
+      "value": "1161-172-COT26",
+      "type": "string"
+    },
+    {
+      "key": "region",
+      "value": "13",
+      "type": "string"
+    },
+    {
+      "key": "fechaDdmmaaaa",
+      "value": "21062026",
+      "type": "string"
+    },
+    {
+      "key": "codigoProveedor",
+      "value": "17793",
+      "type": "string"
+    },
+    {
+      "key": "codigoLicitacion",
+      "value": "1509-5-L114",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Compra Ágil v2 (api2)",
+      "description": "API moderna de Compra Ágil. **Ticket en header** `ticket`.\n\nBase URL Cotiz: `MERCADOPUBLICO_BASE_URL=https://api2.mercadopublico.cl`",
+      "item": [
+        {
+          "name": "Listar — publicadas (RM)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil?estado=publicada&region={{region}}&tamano_pagina=15&numero_pagina=1&ordenar_por=FechaPublicacion",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil"],
+              "query": [
+                { "key": "estado", "value": "publicada", "description": "publicada | proveedor_seleccionado | ..." },
+                { "key": "region", "value": "{{region}}", "description": "Código región MP (13 = RM)" },
+                { "key": "tamano_pagina", "value": "15", "description": "Máx 50" },
+                { "key": "numero_pagina", "value": "1" },
+                { "key": "ordenar_por", "value": "FechaPublicacion" },
+                { "key": "q", "value": "papel", "description": "Búsqueda por texto (opcional)", "disabled": true }
+              ]
+            },
+            "description": "Lista compras ágiles **publicadas**. Mismo uso que Cotiz al buscar oportunidades.\n\nParámetros opcionales:\n- `q`: texto libre\n- `region`: filtrar por región\n\nRespuesta en `payload.items` y `payload.paginacion`."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar — publicadas con búsqueda (q)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil?estado=publicada&region={{region}}&q=papel&tamano_pagina=15&numero_pagina=1&ordenar_por=FechaPublicacion",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil"],
+              "query": [
+                { "key": "estado", "value": "publicada" },
+                { "key": "region", "value": "{{region}}" },
+                { "key": "q", "value": "papel" },
+                { "key": "tamano_pagina", "value": "15" },
+                { "key": "numero_pagina", "value": "1" },
+                { "key": "ordenar_por", "value": "FechaPublicacion" }
+              ]
+            },
+            "description": "Búsqueda por texto en compras publicadas (modo texto en Cotiz).\n\n**Obligatorio:** `region` + `q`. La API no devuelve resultados útiles sin región."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar — cerradas / adjudicadas (recomendado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil?estado=cerrada&region={{region}}&tamano_pagina=50&numero_pagina=1&cambio_desde=2026-01-01T00:00:00Z&cambio_hasta=2026-06-21T23:59:59Z",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil"],
+              "query": [
+                { "key": "estado", "value": "cerrada", "description": "En la práctica devuelve procesos cerrados/adjudicados. Usar este en lugar de proveedor_seleccionado." },
+                { "key": "region", "value": "{{region}}" },
+                { "key": "tamano_pagina", "value": "50" },
+                { "key": "numero_pagina", "value": "1" },
+                { "key": "cambio_desde", "value": "2026-01-01T00:00:00Z", "description": "ISO8601 UTC — obligatorio para listar" },
+                { "key": "cambio_hasta", "value": "2026-06-21T23:59:59Z", "description": "ISO8601 UTC" }
+              ]
+            },
+            "description": "**Usa este request.** Probado con ticket real: RM región 13 ene-jun 2026 devuelve miles de resultados (`total_resultados` ~5854).\n\nLas compras adjudicadas aparecen en la API con estado **`cerrada`**, no `proveedor_seleccionado`.\n\nLuego abre **Detalle por código** para ver `proveedores_cotizando` y el ganador."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar — sin filtro estado (todas con cambios)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil?region={{region}}&tamano_pagina=50&numero_pagina=1&cambio_desde=2026-01-01T00:00:00Z&cambio_hasta=2026-06-21T23:59:59Z",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil"],
+              "query": [
+                { "key": "region", "value": "{{region}}" },
+                { "key": "tamano_pagina", "value": "50" },
+                { "key": "numero_pagina", "value": "1" },
+                { "key": "cambio_desde", "value": "2026-01-01T00:00:00Z" },
+                { "key": "cambio_hasta", "value": "2026-06-21T23:59:59Z" }
+              ]
+            },
+            "description": "Sin `estado`: mezcla publicada + cerrada. Útil para explorar. RM ene-jun 2026: ~10000 resultados."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar — proveedor_seleccionado (suele venir vacío)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil?estado=proveedor_seleccionado&region={{region}}&tamano_pagina=50&numero_pagina=1&cambio_desde=2026-03-01T00:00:00Z&cambio_hasta=2026-06-21T23:59:59Z",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil"],
+              "query": [
+                { "key": "estado", "value": "proveedor_seleccionado", "description": "Estado del proceso (ya adjudicado). NO es el código/RUT del proveedor." },
+                { "key": "region", "value": "{{region}}" },
+                { "key": "tamano_pagina", "value": "50" },
+                { "key": "numero_pagina", "value": "1" },
+                { "key": "cambio_desde", "value": "2026-03-01T00:00:00Z", "description": "ISO8601 UTC" },
+                { "key": "cambio_hasta", "value": "2026-06-21T23:59:59Z", "description": "ISO8601 UTC" }
+              ]
+            },
+            "description": "**Atención:** con el ticket actual este filtro devuelve `items: []` (0 resultados) aunque HTTP sea 200.\n\nEn la API real las adjudicadas están como **`estado=cerrada`**. Usa el request **Listar — cerradas / adjudicadas (recomendado)**.\n\nCotiz usa `proveedor_seleccionado` en el sync; puede explicar por qué el análisis MP no trae datos."
+          },
+          "response": []
+        },
+        {
+          "name": "Detalle por código",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV2}}/v2/compra-agil/{{codigoCompraAgil}}",
+              "host": ["{{baseUrlV2}}"],
+              "path": ["v2", "compra-agil", "{{codigoCompraAgil}}"]
+            },
+            "description": "Detalle completo de una Compra Ágil por código (ej. `1161-172-COT26`).\n\n**Proveedor ganador** (si está adjudicada):\n```json\n\"proveedores_cotizando\": [\n  {\n    \"rut_proveedor\": \"76.356.855-5\",\n    \"razon_social\": \"...\",\n    \"seleccion\": { \"proveedor_seleccionado\": true },\n    \"productos_cotizados\": [ ... ]\n  }\n]\n```\n\nTambién incluye `productos_solicitados`, `institucion`, `presupuesto`, `fechas`, `id_orden_compra`, etc."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "API clásica v1 (documentación ChileCompra)",
+      "description": "Endpoints legacy documentados en https://www.chilecompra.cl/api/\n\n**Ticket como query param** `?ticket={{ticket}}`\n\nFormato fecha: `ddmmaaaa` (ej: 21062026 = 21-jun-2026)",
+      "item": [
+        {
+          "name": "Licitaciones",
+          "item": [
+            {
+              "name": "Licitaciones del día (por fecha)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/licitaciones.json?fecha={{fechaDdmmaaaa}}&ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["licitaciones.json"],
+                  "query": [
+                    { "key": "fecha", "value": "{{fechaDdmmaaaa}}", "description": "ddmmaaaa" },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Licitaciones activas (hoy)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/licitaciones.json?estado=activas&ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["licitaciones.json"],
+                  "query": [
+                    { "key": "estado", "value": "activas" },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Licitaciones adjudicadas (fecha)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/licitaciones.json?fecha={{fechaDdmmaaaa}}&estado=adjudicada&ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["licitaciones.json"],
+                  "query": [
+                    { "key": "fecha", "value": "{{fechaDdmmaaaa}}" },
+                    { "key": "estado", "value": "adjudicada" },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Licitaciones por código de proveedor (v1)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/licitaciones.json?fecha={{fechaDdmmaaaa}}&CodigoProveedor={{codigoProveedor}}&ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["licitaciones.json"],
+                  "query": [
+                    { "key": "fecha", "value": "{{fechaDdmmaaaa}}", "description": "ddmmaaaa" },
+                    { "key": "CodigoProveedor", "value": "{{codigoProveedor}}", "description": "Código numérico del proveedor en MP (no RUT). Ej. doc ChileCompra: 17793" },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
+                },
+                "description": "Solo en **API clásica v1** (licitaciones tradicionales, no Compra Ágil v2).\n\nAquí sí se filtra por `CodigoProveedor` (ID interno Mercado Público, no el RUT).\n\nPara Compra Ágil adjudicada: listar con `estado=proveedor_seleccionado` y luego detalle por código."
+              },
+              "response": []
+            },
+            {
+              "name": "Licitación por código",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/licitaciones/{{codigoLicitacion}}.json?ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["licitaciones", "{{codigoLicitacion}}.json"],
+                  "query": [{ "key": "ticket", "value": "{{ticket}}" }]
+                },
+                "description": "Detalle de licitación. Ejemplo código: 1509-5-L114"
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Órdenes de compra",
+          "item": [
+            {
+              "name": "OC del día (por fecha)",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/ordenesdecompra.json?fecha={{fechaDdmmaaaa}}&ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["ordenesdecompra.json"],
+                  "query": [
+                    { "key": "fecha", "value": "{{fechaDdmmaaaa}}" },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "OC por código",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Accept", "value": "application/json" }],
+                "url": {
+                  "raw": "{{baseUrlV1}}/ordenesdecompra/{{codigoLicitacion}}.json?ticket={{ticket}}",
+                  "host": ["{{baseUrlV1}}"],
+                  "path": ["ordenesdecompra", "{{codigoLicitacion}}.json"],
+                  "query": [{ "key": "ticket", "value": "{{ticket}}" }]
+                },
+                "description": "Reemplace codigoLicitacion por el código de OC real."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

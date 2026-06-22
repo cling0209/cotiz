@@ -45,8 +45,8 @@ Variables en Koyeb (`.env.koyeb.example`):
 | `APP_KEY` | `base64:...` |
 | `APP_URL` | `https://tu-app.koyeb.app` |
 | `TRANSBANK_RETURN_URL` | `https://tu-app.koyeb.app/checkout/webpay/return` |
-| `RUN_MIGRATIONS` | `true` (primer deploy; crea tablas cache/sessions/jobs) |
-| `RUN_SEED` | `true` (demo, solo una vez) |
+| `RUN_MIGRATIONS` | `true` (solo migraciones pendientes; no borra datos) |
+| `RUN_SEED` | `true` **solo el primer deploy** en BD vacía; luego `false` |
 | `CACHE_STORE` | `database` |
 | `SESSION_DRIVER` | `database` |
 | `QUEUE_CONNECTION` | `database` (o `sync` si no usas jobs async) |

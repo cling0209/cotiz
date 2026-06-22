@@ -44,6 +44,11 @@
                 <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') ? 'active' : '' }}">
                     <i class="bi bi-check2-circle"></i> Adjudicadas
                 </a>
+                @if(auth()->user()->canAccessCompraAgilAnalisis())
+                    <a href="{{ route('admin.compra-agil.analisis.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.*') ? 'active' : '' }}">
+                        <i class="bi bi-graph-up"></i> Análisis MP
+                    </a>
+                @endif
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
                 </a>

@@ -28,12 +28,6 @@ services:
       APP_URL: http://localhost:8082
       SESSION_SECURE_COOKIE: "false"
       APP_TIMEZONE: America/Santiago
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: cotiz
-      DB_USERNAME: cotiz
-      DB_PASSWORD: secret
       REDIS_HOST: redis
       CACHE_STORE: redis
       # Sesiones en Postgres (volumen persistente); Redis se pierde al reiniciar contenedores
@@ -89,6 +83,34 @@ services:
     networks:
       - cotiz
 
+  # Tests: SQLite en memoria; nunca usa Neon aunque .env apunte a QA remoto.
+  test:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    volumes:
+      - .:/var/www/html
+    env_file:
+      - .env
+    environment:
+      APP_ENV: testing
+      RUN_MIGRATIONS: "false"
+      RUN_SEED: "false"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      DB_HOST: ""
+      DB_PORT: ""
+      DB_USERNAME: ""
+      DB_PASSWORD: ""
+      DB_URL: ""
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+    command: ["php", "artisan", "test"]
+    networks:
+      - cotiz
+
   queue:
     build:
       context: ./docker/php
@@ -104,12 +126,6 @@ services:
     environment:
       APP_ENV: local
       SESSION_SECURE_COOKIE: "false"
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: cotiz
-      DB_USERNAME: cotiz
-      DB_PASSWORD: secret
       REDIS_HOST: redis
       CACHE_STORE: redis
       SESSION_DRIVER: database
