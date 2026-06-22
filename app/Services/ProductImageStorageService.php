@@ -7,6 +7,10 @@ use Illuminate\Support\Facades\Storage;
 
 class ProductImageStorageService
 {
+    public function __construct(
+        protected ProductImageProcessor $processor,
+    ) {}
+
     public function disk(): string
     {
         return (string) config('products.storage_disk', 'r2');
@@ -32,22 +36,38 @@ class ProductImageStorageService
 
     public function upload(UploadedFile $file, string $familia, string $prodItem): string
     {
-        $filename = $this->buildFilename($prodItem, $file);
+        $processed = $this->processor->processUploadedFile($file);
+
+        if ($processed !== null) {
+            $filename = $this->buildFilename($prodItem, $processed['extension']);
+            $contents = $processed['contents'];
+            $mime = $processed['mime'];
+        } else {
+            $filename = $this->buildFilename($prodItem, $file);
+            $contents = $file->get();
+            $mime = $file->getMimeType() ?: 'image/jpeg';
+        }
+
         $key = $this->objectKey($familia, $filename);
 
-        Storage::disk($this->disk())->put($key, $file->get(), [
+        Storage::disk($this->disk())->put($key, $contents, [
             'visibility' => 'public',
             'CacheControl' => 'public, max-age=31536000, immutable',
-            'ContentType' => $file->getMimeType() ?: 'image/jpeg',
+            'ContentType' => $mime,
         ]);
 
         return $filename;
     }
 
-    public function buildFilename(string $prodItem, UploadedFile $file): string
+    public function buildFilename(string $prodItem, UploadedFile|string $source): string
     {
         $safeItem = preg_replace('/[^a-zA-Z0-9._-]+/', '_', trim($prodItem)) ?: 'producto';
-        $extension = strtolower($file->extension() ?: $file->guessExtension() ?: 'jpg');
+
+        if ($source instanceof UploadedFile) {
+            $extension = strtolower($source->extension() ?: $source->guessExtension() ?: 'jpg');
+        } else {
+            $extension = strtolower($source);
+        }
 
         if (! in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
             $extension = 'jpg';

@@ -35,4 +35,12 @@ return [
 
     'legacy_images_path' => env('LEGACY_PRODUCT_IMAGES_PATH'),
 
+    /*
+    | Al subir imagen: se redimensiona a un cuadrado con fondo blanco (contain, sin ampliar).
+    | Optimizado para miniaturas en listados (48–80 px) y zoom en pantalla.
+    */
+    'image_listing_size' => (int) env('PRODUCT_IMAGE_LISTING_SIZE', 400),
+
+    'image_jpeg_quality' => (int) env('PRODUCT_IMAGE_JPEG_QUALITY', 85),
+
 ];

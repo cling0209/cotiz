@@ -108,7 +108,7 @@
                                 @if(empty($storageImagenConfigurado))
                                     <div class="form-text text-warning">R2 no configurado: complete credenciales y R2_PUBLIC_URL en .env.</div>
                                 @else
-                                    <div class="form-text">Se guarda en {{ config('products.r2_prefix') }}/familia/c&oacute;digo.ext</div>
+                                    <div class="form-text">Se guarda en {{ config('products.r2_prefix') }}/familia/c&oacute;digo.jpg. Al subir, se ajusta a {{ config('products.image_listing_size') }}&times;{{ config('products.image_listing_size') }} px para listados.</div>
                                 @endif
                             </div>
                             <div class="col-md-4">
@@ -210,7 +210,7 @@
         var codigo = codigoProducto();
         if (!codigo) return;
         var file = imagenInput && imagenInput.files && imagenInput.files[0] ? imagenInput.files[0] : null;
-        var ext = file ? extensionArchivo(file) : null;
+        var ext = file && extensionArchivo(file) ? 'jpg' : null;
         nombreInput.value = ext ? codigo + '.' + ext : codigo;
     }
 
