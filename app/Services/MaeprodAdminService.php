@@ -203,7 +203,8 @@ class MaeprodAdminService
             ]);
         }
 
-        $familia = trim((string) ($datos['prod_familia'] ?? $producto?->prod_familia ?? '')) ?: 'OTRO';
+        $familiaRaw = trim((string) ($datos['prod_familia'] ?? $producto?->prod_familia ?? '')) ?: 'OTRO';
+        $familia = Maeprod::resolveFamiliaFolderFor($familiaRaw) ?: 'OTRO';
         $datos['prod_imagen'] = $this->imageStorage->upload($imagen, $familia, $item);
 
         return $datos;

@@ -83,9 +83,9 @@ class Maeprod extends Model
         return array_values(array_unique($urls));
     }
 
-    private function resolveFamiliaFolder(): string
+    public static function resolveFamiliaFolderFor(?string $prodFamilia): string
     {
-        $familia = trim((string) $this->prod_familia);
+        $familia = trim((string) $prodFamilia);
 
         if ($familia === '') {
             return '';
@@ -105,6 +105,11 @@ class Maeprod extends Model
             'LIBRERIA' => 'LIBR',
             default => $familia,
         };
+    }
+
+    private function resolveFamiliaFolder(): string
+    {
+        return self::resolveFamiliaFolderFor($this->prod_familia);
     }
 
     private function guessImageFilename(): string
