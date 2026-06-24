@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : 'Cotización '.$nota->nronota)
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=mp-buscar-49" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=img-zoom-50" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -1368,7 +1368,17 @@
         if (modalImagenTitle) {
             modalImagenTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
         }
+        if (modalImagenEl) {
+            modalImagenEl.dataset.zoomAbovePopup = trigger?.closest('.cotiz-popup-overlay') ? '1' : '0';
+        }
         bsModalImagen.show();
+    }
+
+    function ajustarBackdropImagenAmpliada() {
+        if (!modalImagenEl || modalImagenEl.dataset.zoomAbovePopup !== '1') return;
+        document.querySelectorAll('.modal-backdrop.show').forEach(backdrop => {
+            backdrop.style.zIndex = '1085';
+        });
     }
 
     function enlazarZoomImagenes(contenedor) {
@@ -1385,10 +1395,15 @@
 
     enlazarZoomImagenes(document.querySelector('.cotizacion-ingreso'));
 
+    modalImagenEl?.addEventListener('shown.bs.modal', ajustarBackdropImagenAmpliada);
+
     modalImagenEl?.addEventListener('hidden.bs.modal', () => {
         if (modalImagenImg) {
             modalImagenImg.removeAttribute('src');
             modalImagenImg.alt = '';
+        }
+        if (modalImagenEl) {
+            delete modalImagenEl.dataset.zoomAbovePopup;
         }
     });
 
@@ -2350,11 +2365,13 @@
         const cell = tr.querySelector('.linea-imagen-cell');
         if (!cell) return;
 
-        const tituloEsc = escHtml(titulo || 'Imagen producto');
         if (imageUrl) {
-            cell.innerHTML = '<button type="button" class="product-image-zoom-trigger" data-image-url="'
-                + escHtml(imageUrl) + '" data-image-title="' + tituloEsc + '" title="Ver imagen ampliada">'
-                + buscarProductoThumbHtml({ image_url: imageUrl }) + '</button>';
+            const partesTitulo = String(titulo || '').split(' — ');
+            cell.innerHTML = buscarProductoThumbHtml({
+                image_url: imageUrl,
+                prod_item: partesTitulo[0] || tr.dataset.prod || '',
+                prod_nombre: partesTitulo.slice(1).join(' — ') || '',
+            });
         } else {
             cell.innerHTML = buscarProductoThumbHtml({});
         }
