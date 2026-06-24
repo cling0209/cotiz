@@ -22,7 +22,27 @@ class CotizInstanciaPar
         'rómulo' => 'https://cotiza.reicol.cl',
     ];
 
+    /** @var array<string, string> COTIZ_SISTEMA => host canónico local */
+    private const HOST_POR_SISTEMA = [
+        'reicol' => 'cotiza.reicol.cl',
+        'romulo' => 'cotiza.romulo.cl',
+        'rómulo' => 'cotiza.romulo.cl',
+    ];
+
+    /**
+     * Host de esta instancia. Prioriza COTIZ_SISTEMA sobre APP_URL (Render a veces tiene APP_URL incorrecto).
+     */
     public static function hostLocal(): string
+    {
+        $sistema = self::normalizarSistema((string) config('cotiz.sistema', ''));
+        if (isset(self::HOST_POR_SISTEMA[$sistema])) {
+            return self::HOST_POR_SISTEMA[$sistema];
+        }
+
+        return strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+    }
+
+    public static function hostAppUrl(): string
     {
         return strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
     }
@@ -67,7 +87,15 @@ class CotizInstanciaPar
     }
 
     /**
-     * @return array{url_env: string|null, url_utilizada: string, nota_url: string|null}
+     * @return array{
+     *     url_env: string|null,
+     *     url_utilizada: string,
+     *     nota_url: string|null,
+     *     app_url: string,
+     *     host_local: string,
+     *     host_app_url: string,
+     *     cotiz_sistema: string
+     * }
      */
     public static function resolucionUrlConsulta(): array
     {
@@ -77,18 +105,22 @@ class CotizInstanciaPar
 
         if ($env === '') {
             $nota = $utilizada !== ''
-                ? 'COTIZ_API_CONSULTA_NRO_COTIZACION vacía: URL inferida de APP_URL / COTIZ_SISTEMA.'
+                ? 'COTIZ_API_CONSULTA_NRO_COTIZACION vacía: URL inferida de COTIZ_SISTEMA / APP_URL.'
                 : null;
         } elseif ($env !== $utilizada) {
             $nota = self::urlApuntaAlHostLocal($env)
                 ? 'COTIZ_API_CONSULTA_NRO_COTIZACION apunta a este mismo sitio y se ignoró; se usó el par automático.'
-                : 'Se usó otra URL distinta a la del entorno (revisar APP_URL / COTIZ_SISTEMA).';
+                : null;
         }
 
         return [
             'url_env' => $env !== '' ? $env : null,
             'url_utilizada' => $utilizada,
             'nota_url' => $nota,
+            'app_url' => (string) config('app.url'),
+            'host_local' => self::hostLocal(),
+            'host_app_url' => self::hostAppUrl(),
+            'cotiz_sistema' => (string) config('cotiz.sistema', ''),
         ];
     }
 

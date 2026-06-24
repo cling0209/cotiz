@@ -69,6 +69,8 @@ abstract class TestCase extends BaseTestCase
     {
         $overrides = [
             'APP_ENV' => 'testing',
+            'APP_URL' => 'http://localhost',
+            'COTIZ_SISTEMA' => 'Cotiz',
             'DB_CONNECTION' => 'sqlite',
             'DB_DATABASE' => ':memory:',
             'DB_HOST' => '',

@@ -24,7 +24,11 @@ class CompraAgilImportTest extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware();
-        config(['cotiz.api_nota.consulta_nro_cotizacion' => '']);
+        config([
+            'app.url' => 'http://localhost',
+            'cotiz.sistema' => 'Cotiz',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+        ]);
 
         $this->admin = User::factory()->create([
             'username' => 'admin',
@@ -293,6 +297,7 @@ TXT;
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
             'cotiz.api_nota.user' => 'api_user',
             'cotiz.api_nota.password' => 'api_pass',
@@ -320,6 +325,7 @@ TXT;
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
             'cotiz.api_nota.user' => 'api_user',
             'cotiz.api_nota.password' => 'api_pass',

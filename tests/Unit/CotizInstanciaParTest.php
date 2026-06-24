@@ -11,6 +11,7 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
@@ -25,6 +26,7 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
@@ -38,6 +40,7 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://custom.test/api/v1/nota-consulta',
         ]);
 
@@ -48,6 +51,7 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
         ]);
 
@@ -67,6 +71,7 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.romulo.cl/api/v1/nota-consulta',
         ]);
 
@@ -117,5 +122,24 @@ class CotizInstanciaParTest extends TestCase
             'https://cotiza.romulo.cl/api/v1/nota-consulta',
             CotizInstanciaPar::urlConsultaEncargado(),
         );
+    }
+
+    public function test_reicol_con_app_url_romulo_usa_env_hacia_romulo(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.romulo.cl/api/v1/nota-consulta',
+        ]);
+
+        $this->assertSame('cotiza.reicol.cl', CotizInstanciaPar::hostLocal());
+        $this->assertSame(
+            'https://cotiza.romulo.cl/api/v1/nota-consulta',
+            CotizInstanciaPar::urlConsultaEncargado(),
+        );
+
+        $resolucion = CotizInstanciaPar::resolucionUrlConsulta();
+        $this->assertSame($resolucion['url_env'], $resolucion['url_utilizada']);
+        $this->assertNull($resolucion['nota_url']);
     }
 }

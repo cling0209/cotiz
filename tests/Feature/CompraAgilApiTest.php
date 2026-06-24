@@ -21,6 +21,8 @@ class CompraAgilApiTest extends TestCase
         parent::setUp();
         $this->withoutMiddleware();
         config([
+            'app.url' => 'http://localhost',
+            'cotiz.sistema' => 'Cotiz',
             'cotiz.mercadopublico.ticket' => 'test-ticket',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
@@ -242,6 +244,7 @@ class CompraAgilApiTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
             'cotiz.api_nota.user' => 'api_user',
             'cotiz.api_nota.password' => 'api_pass',
@@ -275,6 +278,7 @@ class CompraAgilApiTest extends TestCase
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
             'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
             'cotiz.api_nota.user' => 'api_user',
             'cotiz.api_nota.password' => 'api_pass',
