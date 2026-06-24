@@ -337,16 +337,6 @@
                                     <button type="button" class="btn btn-primary btn-sm" id="btn-ca-buscar-codigo"><i class="bi bi-hash"></i> Cargar</button>
                                 </div>
                             </div>
-                            <div id="ca-api-resultado-wrap" class="d-none">
-                                <div id="ca-api-resultado-loading" class="alert alert-secondary py-2 px-3 small mb-2 d-none" role="status">
-                                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                                    Consultando en el otro sitio…
-                                </div>
-                                <div id="ca-api-resultado-panel" class="border rounded p-2 mb-2 bg-light d-none">
-                                    <div id="ca-api-resultado-titulo" class="small fw-semibold mb-1"></div>
-                                    <pre id="ca-api-resultado-json" class="small mb-0 font-monospace bg-white border rounded p-2" style="white-space: pre-wrap; word-break: break-word;"></pre>
-                                </div>
-                            </div>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pegar" role="tabpanel">
                             <p class="small text-muted mb-2">Copie el texto desde la p&aacute;gina de Mercado P&uacute;blico.</p>
@@ -364,12 +354,10 @@
                     <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none mt-2" role="alert">
                         <i class="bi bi-exclamation-octagon-fill me-1"></i>
                         <span id="importar-compra-agil-alerta-texto"></span>
-                        <div id="importar-compra-agil-alerta-api" class="mt-2 mb-0 d-none"></div>
                     </div>
                     <div id="importar-compra-agil-consulta-par" class="alert alert-info py-2 px-3 small mb-2 d-none mt-2" role="status">
                         <i class="bi bi-cloud-check me-1"></i>
                         <span id="importar-compra-agil-consulta-par-texto"></span>
-                        <div id="importar-compra-agil-consulta-par-api" class="mt-2 mb-0 d-none"></div>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="importar-compra-agil-estado" class="small text-muted"></span>
@@ -1687,15 +1675,8 @@
     const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
     const importarAlerta = document.getElementById('importar-compra-agil-alerta');
     const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
-    const importarAlertaApi = document.getElementById('importar-compra-agil-alerta-api');
     const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
     const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
-    const importarConsultaParApi = document.getElementById('importar-compra-agil-consulta-par-api');
-    const caApiResultadoWrap = document.getElementById('ca-api-resultado-wrap');
-    const caApiResultadoLoading = document.getElementById('ca-api-resultado-loading');
-    const caApiResultadoPanel = document.getElementById('ca-api-resultado-panel');
-    const caApiResultadoTitulo = document.getElementById('ca-api-resultado-titulo');
-    const caApiResultadoJson = document.getElementById('ca-api-resultado-json');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -1751,99 +1732,8 @@
             importarAlerta.classList.add('alert-danger');
         }
         if (importarAlertaTexto) importarAlertaTexto.textContent = '';
-        if (importarAlertaApi) {
-            importarAlertaApi.classList.add('d-none');
-            importarAlertaApi.innerHTML = '';
-        }
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
         if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
-        if (importarConsultaParApi) {
-            importarConsultaParApi.classList.add('d-none');
-            importarConsultaParApi.innerHTML = '';
-        }
-    }
-
-    function limpiarCaApiResultado() {
-        if (caApiResultadoWrap) caApiResultadoWrap.classList.add('d-none');
-        if (caApiResultadoLoading) caApiResultadoLoading.classList.add('d-none');
-        if (caApiResultadoPanel) caApiResultadoPanel.classList.add('d-none');
-        if (caApiResultadoTitulo) caApiResultadoTitulo.textContent = '';
-        if (caApiResultadoJson) caApiResultadoJson.textContent = '';
-    }
-
-    function mostrarCaApiResultadoCargando() {
-        limpiarCaApiResultado();
-        if (caApiResultadoWrap) caApiResultadoWrap.classList.remove('d-none');
-        if (caApiResultadoLoading) caApiResultadoLoading.classList.remove('d-none');
-        caApiResultadoWrap?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-
-    function payloadConsultaParVisible(consultaPar, extra) {
-        const base = consultaPar && typeof consultaPar === 'object' ? { ...consultaPar } : {};
-        if (extra && typeof extra === 'object') {
-            Object.assign(base, extra);
-        }
-        return base;
-    }
-
-    function mostrarCaApiResultado(consultaPar, extra) {
-        const payload = payloadConsultaParVisible(consultaPar, extra);
-        if (!caApiResultadoWrap || !Object.keys(payload).length) return;
-
-        if (caApiResultadoLoading) caApiResultadoLoading.classList.add('d-none');
-        caApiResultadoWrap.classList.remove('d-none');
-        if (caApiResultadoPanel) caApiResultadoPanel.classList.remove('d-none');
-
-        const sitio = payload.sitio || 'sitio par';
-        let titulo = 'Consulta API ' + sitio;
-        if (payload.existe === true || payload.resultado === 'OK') {
-            titulo += ' — ya existe';
-        } else if (payload.existe === false || payload.resultado === 'ERROR') {
-            titulo += ' — no existe';
-        } else if (payload.error) {
-            titulo += ' — error';
-        }
-
-        if (caApiResultadoTitulo) caApiResultadoTitulo.textContent = titulo;
-        if (caApiResultadoJson) {
-            caApiResultadoJson.textContent = JSON.stringify(payload, null, 2);
-        }
-        caApiResultadoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-
-    function htmlRespuestaApiPar(consultaPar) {
-        if (!consultaPar || typeof consultaPar !== 'object') return '';
-        const filas = [
-            ['Sitio', consultaPar.sitio],
-            ['URL', consultaPar.url],
-            ['HTTP', consultaPar.http_status],
-            ['resultado', consultaPar.resultado],
-            ['mensaje', consultaPar.mensaje],
-            ['nronota', consultaPar.nronota],
-            ['encargado', consultaPar.encargado],
-        ].filter(([, v]) => v !== null && v !== undefined && v !== '');
-
-        if (filas.length === 0) return '';
-
-        const items = filas.map(([k, v]) =>
-            '<dt class="col-sm-3 text-uppercase">' + k + '</dt><dd class="col-sm-9">' + String(v).replace(/</g, '&lt;') + '</dd>'
-        ).join('');
-
-        return '<dl class="row g-1 mb-0 small">' + items + '</dl>';
-    }
-
-    function mostrarConsultaParOk(consultaPar) {
-        if (!importarConsultaPar || !consultaPar) return;
-        const sitio = consultaPar.sitio || 'sitio par';
-        if (importarConsultaParTexto) {
-            importarConsultaParTexto.textContent = 'Consultado en ' + sitio + ': la cotización no existe allí. Puede continuar.';
-        }
-        const htmlApi = htmlRespuestaApiPar(consultaPar);
-        if (importarConsultaParApi && htmlApi) {
-            importarConsultaParApi.innerHTML = htmlApi;
-            importarConsultaParApi.classList.remove('d-none');
-        }
-        importarConsultaPar.classList.remove('d-none');
     }
 
     function mostrarImportAviso(msg) {
@@ -1884,25 +1774,12 @@
         return fallback;
     }
 
-    function mostrarImportError(msg, consultaPar, extraConsulta) {
+    function mostrarImportError(msg) {
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
-        if (consultaPar || extraConsulta) {
-            mostrarCaApiResultado(consultaPar, extraConsulta);
-        }
         if (importarAlerta && importarAlertaTexto) {
             importarAlerta.classList.remove('d-none', 'alert-warning');
             importarAlerta.classList.add('alert-danger');
             importarAlertaTexto.textContent = msg;
-            const htmlApi = htmlRespuestaApiPar(consultaPar);
-            if (importarAlertaApi) {
-                if (htmlApi) {
-                    importarAlertaApi.innerHTML = '<strong class="d-block mb-1">Respuesta API ' + (consultaPar?.sitio || 'sitio par') + ':</strong>' + htmlApi;
-                    importarAlertaApi.classList.remove('d-none');
-                } else {
-                    importarAlertaApi.classList.add('d-none');
-                    importarAlertaApi.innerHTML = '';
-                }
-            }
         }
         if (importarEstado) importarEstado.textContent = '';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
@@ -1944,7 +1821,6 @@
         if (importarResultados) importarResultados.innerHTML = '';
         if (importarResumen) importarResumen.textContent = '';
         limpiarImportAlerta();
-        limpiarCaApiResultado();
         ocultarProgresoImportar();
         if (btnImportarConfirmar) {
             btnImportarConfirmar.classList.add('d-none');
@@ -2234,12 +2110,8 @@
         if (!codigo) return;
         importCodigoApi = codigo;
         limpiarImportAlerta();
-        limpiarCaApiResultado();
-        mostrarCaApiResultadoCargando();
         if (importarEstado) importarEstado.textContent = 'Consultando en el otro sitio…';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-
-        let consultaParGuardada = null;
 
         try {
             const bodyVal = new FormData();
@@ -2251,24 +2123,15 @@
                 body: bodyVal,
             });
             const jsonVal = await resVal.json().catch(() => ({}));
-            consultaParGuardada = jsonVal.consulta_par || null;
-            mostrarCaApiResultado(consultaParGuardada, {
-                validar_ok: resVal.ok,
-                error_app: jsonVal.error || null,
-                origen: jsonVal.origen || null,
-            });
 
             if (!resVal.ok) {
                 mostrarImportError(
                     jsonVal.error || 'No se puede importar esta cotización.',
-                    consultaParGuardada,
-                    { validar_ok: false, error_app: jsonVal.error || null, origen: jsonVal.origen || null },
                 );
                 if (importarEstado) importarEstado.textContent = '';
                 return;
             }
         } catch (err) {
-            mostrarCaApiResultado(null, { validar_ok: false, error_app: 'Error de conexión al verificar duplicados.' });
             mostrarImportError('Error de conexión al verificar duplicados.');
             if (importarEstado) importarEstado.textContent = '';
             return;
@@ -2347,7 +2210,6 @@
         }
         actualizarProgresoImportar(0, importPreviewData?.resumen?.total || 0, 'Preparando importación...');
         if (importarEstado) importarEstado.textContent = importarEstado.textContent || '';
-        // No limpiar alertas ni resultado API consulta par al continuar con Mercado Público.
     }
 
     function ocultarProgresoImportar() {
