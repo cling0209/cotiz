@@ -74,6 +74,19 @@ class CotizInstanciaPar
         return strtolower((string) parse_url(self::urlConsultaEncargado(), PHP_URL_HOST));
     }
 
+    public static function nombrePar(): string
+    {
+        $host = self::hostRemotoConsulta();
+        if (str_contains($host, 'romulo')) {
+            return 'Rómulo';
+        }
+        if (str_contains($host, 'reicol')) {
+            return 'Reicol';
+        }
+
+        return $host !== '' ? $host : 'sitio par';
+    }
+
     public static function debeConsultarPar(): bool
     {
         $url = self::urlConsultaEncargado();

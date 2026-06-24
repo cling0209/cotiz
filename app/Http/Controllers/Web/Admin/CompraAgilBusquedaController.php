@@ -180,11 +180,21 @@ class CompraAgilBusquedaController extends Controller
             return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
         }
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
-            return response()->json(['error' => $error], 422);
+        $validacion = $this->notaService->validarNumeroCotizacionDisponibleConDetalle($nota, $codigo, true);
+
+        if ($validacion['error'] !== null) {
+            return response()->json([
+                'error' => $validacion['error'],
+                'origen' => $validacion['origen'],
+                'consulta_par' => $validacion['consulta_par'],
+            ], 422);
         }
 
-        return response()->json(['ok' => true, 'codigo' => $codigo]);
+        return response()->json([
+            'ok' => true,
+            'codigo' => $codigo,
+            'consulta_par' => $validacion['consulta_par'],
+        ]);
     }
 
     /**

@@ -49,19 +49,28 @@ class NotaConsultaRemotaServiceTest extends TestCase
         Http::fake([
             'cotiza.reicol.cl/*' => Http::response([
                 'resultado' => 'OK',
+                'mensaje' => 'La cotización «OC-EXISTE» ya existe (nota #42).',
                 'nronota' => 42,
+                'encargado' => 'OC-EXISTE',
             ], 200),
         ]);
 
+        $consulta = $this->service->consultarEncargadoEnPar('OC-EXISTE');
+
+        $this->assertTrue($consulta['existe']);
+        $this->assertSame(42, $consulta['nronota']);
+        $this->assertSame('OK', $consulta['resultado']);
+
         $error = $this->service->errorSiEncargadoExisteEnPar('OC-EXISTE', 'Ya existe en par');
 
-        $this->assertSame('Ya existe en par', $error);
+        $this->assertSame('La cotización «OC-EXISTE» ya existe (nota #42).', $error);
     }
 
     public function test_url_vacia_no_consulta(): void
     {
         config([
             'app.url' => 'http://localhost',
+            'cotiz.sistema' => 'Cotiz',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
@@ -102,13 +111,15 @@ class NotaConsultaRemotaServiceTest extends TestCase
         Http::fake([
             'cotiza.romulo.cl/*' => Http::response([
                 'resultado' => 'OK',
+                'mensaje' => 'La cotización «2686-279-COT26» ya existe (nota #13383).',
                 'nronota' => 13383,
+                'encargado' => '2686-279-COT26',
             ], 200),
         ]);
 
         $error = $this->service->errorSiEncargadoExisteEnPar('2686-279-COT26', 'Ya existe en Romulo');
 
-        $this->assertSame('Ya existe en Romulo', $error);
+        $this->assertSame('La cotización «2686-279-COT26» ya existe (nota #13383).', $error);
         Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.romulo.cl'));
     }
 }

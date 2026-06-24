@@ -354,6 +354,12 @@
                     <div id="importar-compra-agil-alerta" class="alert alert-danger py-2 px-3 small mb-2 d-none mt-2" role="alert">
                         <i class="bi bi-exclamation-octagon-fill me-1"></i>
                         <span id="importar-compra-agil-alerta-texto"></span>
+                        <div id="importar-compra-agil-alerta-api" class="mt-2 mb-0 d-none"></div>
+                    </div>
+                    <div id="importar-compra-agil-consulta-par" class="alert alert-info py-2 px-3 small mb-2 d-none mt-2" role="status">
+                        <i class="bi bi-cloud-check me-1"></i>
+                        <span id="importar-compra-agil-consulta-par-texto"></span>
+                        <div id="importar-compra-agil-consulta-par-api" class="mt-2 mb-0 d-none"></div>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="importar-compra-agil-estado" class="small text-muted"></span>
@@ -1671,6 +1677,10 @@
     const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
     const importarAlerta = document.getElementById('importar-compra-agil-alerta');
     const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
+    const importarAlertaApi = document.getElementById('importar-compra-agil-alerta-api');
+    const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
+    const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
+    const importarConsultaParApi = document.getElementById('importar-compra-agil-consulta-par-api');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -1726,6 +1736,51 @@
             importarAlerta.classList.add('alert-danger');
         }
         if (importarAlertaTexto) importarAlertaTexto.textContent = '';
+        if (importarAlertaApi) {
+            importarAlertaApi.classList.add('d-none');
+            importarAlertaApi.innerHTML = '';
+        }
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+        if (importarConsultaParApi) {
+            importarConsultaParApi.classList.add('d-none');
+            importarConsultaParApi.innerHTML = '';
+        }
+    }
+
+    function htmlRespuestaApiPar(consultaPar) {
+        if (!consultaPar || typeof consultaPar !== 'object') return '';
+        const filas = [
+            ['Sitio', consultaPar.sitio],
+            ['URL', consultaPar.url],
+            ['HTTP', consultaPar.http_status],
+            ['resultado', consultaPar.resultado],
+            ['mensaje', consultaPar.mensaje],
+            ['nronota', consultaPar.nronota],
+            ['encargado', consultaPar.encargado],
+        ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+
+        if (filas.length === 0) return '';
+
+        const items = filas.map(([k, v]) =>
+            '<dt class="col-sm-3 text-uppercase">' + k + '</dt><dd class="col-sm-9">' + String(v).replace(/</g, '&lt;') + '</dd>'
+        ).join('');
+
+        return '<dl class="row g-1 mb-0 small">' + items + '</dl>';
+    }
+
+    function mostrarConsultaParOk(consultaPar) {
+        if (!importarConsultaPar || !consultaPar) return;
+        const sitio = consultaPar.sitio || 'sitio par';
+        if (importarConsultaParTexto) {
+            importarConsultaParTexto.textContent = 'Consultado en ' + sitio + ': la cotización no existe allí. Puede continuar.';
+        }
+        const htmlApi = htmlRespuestaApiPar(consultaPar);
+        if (importarConsultaParApi && htmlApi) {
+            importarConsultaParApi.innerHTML = htmlApi;
+            importarConsultaParApi.classList.remove('d-none');
+        }
+        importarConsultaPar.classList.remove('d-none');
     }
 
     function mostrarImportAviso(msg) {
@@ -1766,11 +1821,22 @@
         return fallback;
     }
 
-    function mostrarImportError(msg) {
+    function mostrarImportError(msg, consultaPar) {
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
         if (importarAlerta && importarAlertaTexto) {
             importarAlerta.classList.remove('d-none', 'alert-warning');
             importarAlerta.classList.add('alert-danger');
             importarAlertaTexto.textContent = msg;
+            const htmlApi = htmlRespuestaApiPar(consultaPar);
+            if (importarAlertaApi) {
+                if (htmlApi) {
+                    importarAlertaApi.innerHTML = '<strong class="d-block mb-1">Respuesta API ' + (consultaPar?.sitio || 'sitio par') + ':</strong>' + htmlApi;
+                    importarAlertaApi.classList.remove('d-none');
+                } else {
+                    importarAlertaApi.classList.add('d-none');
+                    importarAlertaApi.innerHTML = '';
+                }
+            }
         }
         if (importarEstado) importarEstado.textContent = '';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
@@ -2115,8 +2181,11 @@
             });
             const jsonVal = await resVal.json().catch(() => ({}));
             if (!resVal.ok) {
-                mostrarImportError(jsonVal.error || 'No se puede importar esta cotización.');
+                mostrarImportError(jsonVal.error || 'No se puede importar esta cotización.', jsonVal.consulta_par);
                 return;
+            }
+            if (jsonVal.consulta_par) {
+                mostrarConsultaParOk(jsonVal.consulta_par);
             }
         } catch (err) {
             mostrarImportError('Error de conexión al verificar duplicados.');

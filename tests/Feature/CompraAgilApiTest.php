@@ -250,7 +250,9 @@ class CompraAgilApiTest extends TestCase
         Http::fake([
             'cotiza.reicol.cl/*' => Http::response([
                 'resultado' => 'OK',
+                'mensaje' => 'La cotización «1161-172-COT26» ya existe (nota #99).',
                 'nronota' => 99,
+                'encargado' => '1161-172-COT26',
             ], 200),
             'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
         ]);
@@ -294,7 +296,10 @@ class CompraAgilApiTest extends TestCase
                 'codigo' => '1161-172-COT26',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'))
+            ->assertJsonPath('consulta_par.existe', true)
+            ->assertJsonPath('consulta_par.nronota', 99)
+            ->assertJsonPath('consulta_par.sitio', 'Reicol');
 
         Http::assertSentCount(1);
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));

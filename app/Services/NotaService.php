@@ -133,6 +133,62 @@ class NotaService
     }
 
     /**
+     * @return array{error: string|null, origen: string|null, consulta_par: array<string, mixed>|null}
+     */
+    public function validarNumeroCotizacionDisponibleConDetalle(
+        Nota $nota,
+        ?string $encargado = null,
+        bool $forzarConsultaPar = false,
+    ): array {
+        $local = $this->validarNumeroCotizacion($nota, $encargado);
+        if ($local !== null) {
+            return [
+                'error' => $local,
+                'origen' => 'local',
+                'consulta_par' => null,
+            ];
+        }
+
+        $numero = trim($encargado ?? (string) $nota->encargado);
+        $actual = trim((string) $nota->encargado);
+
+        if (! $forzarConsultaPar && $actual !== '' && strcasecmp($actual, $numero) === 0) {
+            return [
+                'error' => null,
+                'origen' => null,
+                'consulta_par' => null,
+            ];
+        }
+
+        $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
+
+        if ($consultaPar['error'] !== null && $consultaPar['error'] !== '') {
+            return [
+                'error' => $consultaPar['error'],
+                'origen' => 'par',
+                'consulta_par' => $consultaPar,
+            ];
+        }
+
+        if ($consultaPar['existe'] === true) {
+            return [
+                'error' => $consultaPar['mensaje'] ?? sprintf(
+                    'La cotización «%s» ya existe registrada en el otro sitio, favor verificar.',
+                    $numero,
+                ),
+                'origen' => 'par',
+                'consulta_par' => $consultaPar,
+            ];
+        }
+
+        return [
+            'error' => null,
+            'origen' => null,
+            'consulta_par' => $consultaPar['existe'] === false ? $consultaPar : null,
+        ];
+    }
+
+    /**
      * Factor de precio venta: positivo, máximo 2 decimales (acepta coma o punto).
      */
     public function aceptar(Nota $nota, string $usuario): Nota
