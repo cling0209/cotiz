@@ -50,7 +50,7 @@ class CompraAgilBusquedaController extends Controller
                     return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
                 }
 
-                if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+                if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
                     return response()->json(['error' => $error], 422);
                 }
 
@@ -89,7 +89,7 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
                 return response()->json(['error' => $error], 422);
             }
 
@@ -127,7 +127,7 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
                 return response()->json(['error' => $error], 422);
             }
 
@@ -167,6 +167,26 @@ class CompraAgilBusquedaController extends Controller
         return response()->json(array_merge(['ok' => true], $resultado));
     }
 
+    public function validarCodigo(Request $request, int $nronota): JsonResponse
+    {
+        $nota = $this->notaAutorizada($request, $nronota);
+
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        $codigo = strtoupper(trim($datos['codigo']));
+        if ($codigo === '') {
+            return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
+        }
+
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        return response()->json(['ok' => true, 'codigo' => $codigo]);
+    }
+
     /**
      * @param  array<string, mixed>  $resultado
      * @return array<string, mixed>
@@ -180,6 +200,7 @@ class CompraAgilBusquedaController extends Controller
             $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                 $nota,
                 $resultado['cabecera']['codigo_cotizacion'],
+                true,
             );
             if ($errorCabecera !== null) {
                 $puedeImportar = false;

@@ -1652,6 +1652,7 @@
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
         coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
         limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
+        apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
     };
@@ -2100,8 +2101,29 @@
         if (!codigo) return;
         importCodigoApi = codigo;
         limpiarImportAlerta();
-        if (importarEstado) importarEstado.textContent = 'Cargando detalle...';
+        if (importarEstado) importarEstado.textContent = 'Verificando duplicados...';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+
+        try {
+            const bodyVal = new FormData();
+            bodyVal.append('_token', csrf);
+            bodyVal.append('codigo', codigo);
+            const resVal = await fetch(importarMpUrls.apiValidar, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: bodyVal,
+            });
+            const jsonVal = await resVal.json().catch(() => ({}));
+            if (!resVal.ok) {
+                mostrarImportError(jsonVal.error || 'No se puede importar esta cotización.');
+                return;
+            }
+        } catch (err) {
+            mostrarImportError('Error de conexión al verificar duplicados.');
+            return;
+        }
+
+        if (importarEstado) importarEstado.textContent = 'Cargando detalle...';
 
         const ok = await prepararImportAgileAntesPreview();
         if (!ok) return;

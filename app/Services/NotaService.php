@@ -104,8 +104,11 @@ class NotaService
     /**
      * Valida número de cotización en esta instancia y en el sitio par (Reicol/Romulo).
      */
-    public function validarNumeroCotizacionDisponible(Nota $nota, ?string $encargado = null): ?string
-    {
+    public function validarNumeroCotizacionDisponible(
+        Nota $nota,
+        ?string $encargado = null,
+        bool $forzarConsultaPar = false,
+    ): ?string {
         $error = $this->validarNumeroCotizacion($nota, $encargado);
         if ($error !== null) {
             return $error;
@@ -114,7 +117,7 @@ class NotaService
         $numero = trim($encargado ?? (string) $nota->encargado);
         $actual = trim((string) $nota->encargado);
 
-        if ($actual !== '' && strcasecmp($actual, $numero) === 0) {
+        if (! $forzarConsultaPar && $actual !== '' && strcasecmp($actual, $numero) === 0) {
             return null;
         }
 

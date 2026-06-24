@@ -360,7 +360,7 @@ class CompraAgilImportService
 
                 if ($datosCabecera !== []) {
                     if (isset($datosCabecera['encargado'])) {
-                        $error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datosCabecera['encargado']);
+                        $error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datosCabecera['encargado'], true);
                         if ($error !== null) {
                             throw new RuntimeException($error);
                         }

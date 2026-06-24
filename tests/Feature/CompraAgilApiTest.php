@@ -269,6 +269,37 @@ class CompraAgilApiTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
     }
 
+    public function test_validar_codigo_rechaza_duplicado_en_par_sin_llamar_api_mp(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'mensaje' => 'La cotización «1161-172-COT26» ya existe (nota #99).',
+                'nronota' => 99,
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
+    }
+
     public function test_buscar_por_codigo_rechaza_duplicado_local_sin_llamar_api_mp(): void
     {
         Http::fake([

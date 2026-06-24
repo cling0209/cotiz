@@ -20,6 +20,10 @@ class NotaConsultaRemotaService
         }
 
         if (! CotizInstanciaPar::debeConsultarPar()) {
+            if (CotizInstanciaPar::debeExigirConsultaPar()) {
+                return 'No se pudo verificar duplicados en el otro sitio: configure COTIZ_API_CONSULTA_NRO_COTIZACION con la URL del sitio par (Reicol ↔ Romulo).';
+            }
+
             return '';
         }
 

@@ -75,10 +75,42 @@ class CotizInstanciaParTest extends TestCase
     {
         config([
             'app.url' => 'http://localhost:8082',
+            'cotiz.sistema' => 'Cotiz',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
         ]);
 
         $this->assertSame('', CotizInstanciaPar::urlConsultaEncargado());
         $this->assertFalse(CotizInstanciaPar::debeConsultarPar());
+        $this->assertFalse(CotizInstanciaPar::debeExigirConsultaPar());
+    }
+
+    public function test_sistema_romulo_resuelve_par_sin_dominio_canonico(): void
+    {
+        config([
+            'app.url' => 'https://cotiz-app.onrender.com',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+        ]);
+
+        $this->assertSame(
+            'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            CotizInstanciaPar::urlConsultaEncargado(),
+        );
+        $this->assertTrue(CotizInstanciaPar::debeConsultarPar());
+        $this->assertTrue(CotizInstanciaPar::debeExigirConsultaPar());
+    }
+
+    public function test_sistema_reicol_resuelve_par_sin_dominio_canonico(): void
+    {
+        config([
+            'app.url' => 'https://cotiz-app.onrender.com',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+        ]);
+
+        $this->assertSame(
+            'https://cotiza.romulo.cl/api/v1/nota-consulta',
+            CotizInstanciaPar::urlConsultaEncargado(),
+        );
     }
 }

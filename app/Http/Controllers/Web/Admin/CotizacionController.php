@@ -500,6 +500,7 @@ class CotizacionController extends Controller
                 $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                     $nota,
                     $resultado['cabecera']['codigo_cotizacion'],
+                    true,
                 );
                 if ($errorCabecera !== null) {
                     $puedeImportar = false;
@@ -520,6 +521,7 @@ class CotizacionController extends Controller
             $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                 $nota,
                 $preview['cabecera']['codigo_cotizacion'],
+                true,
             );
             if ($errorCabecera !== null) {
                 $puedeImportar = false;
@@ -597,6 +599,7 @@ class CotizacionController extends Controller
             if ($error = $this->notaService->validarNumeroCotizacionDisponible(
                 $nota,
                 $parseado['cabecera']['codigo_cotizacion'],
+                true,
             )) {
                 return response()->json(['error' => $error], 422);
             }

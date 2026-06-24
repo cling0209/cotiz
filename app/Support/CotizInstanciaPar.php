@@ -15,6 +15,13 @@ class CotizInstanciaPar
         'www.cotiza.romulo.cl' => 'https://cotiza.reicol.cl',
     ];
 
+    /** Fallback cuando APP_URL no es el dominio canónico (Render, staging). */
+    private const BASE_PAR_POR_SISTEMA = [
+        'reicol' => 'https://cotiza.romulo.cl',
+        'romulo' => 'https://cotiza.reicol.cl',
+        'rómulo' => 'https://cotiza.reicol.cl',
+    ];
+
     public static function hostLocal(): string
     {
         return strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
@@ -22,7 +29,19 @@ class CotizInstanciaPar
 
     public static function basePar(): ?string
     {
-        return self::BASE_PAR_POR_HOST[self::hostLocal()] ?? null;
+        $porHost = self::BASE_PAR_POR_HOST[self::hostLocal()] ?? null;
+        if ($porHost !== null) {
+            return $porHost;
+        }
+
+        $sistema = self::normalizarSistema((string) config('cotiz.sistema', ''));
+
+        return self::BASE_PAR_POR_SISTEMA[$sistema] ?? null;
+    }
+
+    public static function debeExigirConsultaPar(): bool
+    {
+        return self::basePar() !== null;
     }
 
     public static function esInstanciaPar(): bool
@@ -66,5 +85,10 @@ class CotizInstanciaPar
         $hostLocal = self::hostLocal();
 
         return $hostRemoto !== '' && $hostLocal !== '' && $hostRemoto !== $hostLocal;
+    }
+
+    private static function normalizarSistema(string $sistema): string
+    {
+        return strtolower(trim($sistema));
     }
 }
