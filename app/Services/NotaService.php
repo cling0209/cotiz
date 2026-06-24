@@ -140,16 +140,20 @@ class NotaService
         ?string $encargado = null,
         bool $forzarConsultaPar = false,
     ): array {
+        $numero = trim($encargado ?? (string) $nota->encargado);
+        $consultaPar = ($forzarConsultaPar && $numero !== '')
+            ? app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero)
+            : null;
+
         $local = $this->validarNumeroCotizacion($nota, $encargado);
         if ($local !== null) {
             return [
                 'error' => $local,
                 'origen' => 'local',
-                'consulta_par' => null,
+                'consulta_par' => $consultaPar,
             ];
         }
 
-        $numero = trim($encargado ?? (string) $nota->encargado);
         $actual = trim((string) $nota->encargado);
 
         if (! $forzarConsultaPar && $actual !== '' && strcasecmp($actual, $numero) === 0) {
@@ -160,7 +164,9 @@ class NotaService
             ];
         }
 
-        $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
+        if ($consultaPar === null) {
+            $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
+        }
 
         if ($consultaPar['error'] !== null && $consultaPar['error'] !== '') {
             return [
@@ -184,7 +190,7 @@ class NotaService
         return [
             'error' => null,
             'origen' => null,
-            'consulta_par' => $consultaPar['existe'] === false ? $consultaPar : null,
+            'consulta_par' => $consultaPar,
         ];
     }
 

@@ -337,6 +337,16 @@
                                     <button type="button" class="btn btn-primary btn-sm" id="btn-ca-buscar-codigo"><i class="bi bi-hash"></i> Cargar</button>
                                 </div>
                             </div>
+                            <div id="ca-api-resultado-wrap" class="d-none">
+                                <div id="ca-api-resultado-loading" class="alert alert-secondary py-2 px-3 small mb-2 d-none" role="status">
+                                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                    Consultando en el otro sitio…
+                                </div>
+                                <div id="ca-api-resultado-panel" class="border rounded p-2 mb-2 bg-light d-none">
+                                    <div id="ca-api-resultado-titulo" class="small fw-semibold mb-1"></div>
+                                    <pre id="ca-api-resultado-json" class="small mb-0 font-monospace bg-white border rounded p-2" style="white-space: pre-wrap; word-break: break-word;"></pre>
+                                </div>
+                            </div>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pegar" role="tabpanel">
                             <p class="small text-muted mb-2">Copie el texto desde la p&aacute;gina de Mercado P&uacute;blico.</p>
@@ -1681,6 +1691,11 @@
     const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
     const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
     const importarConsultaParApi = document.getElementById('importar-compra-agil-consulta-par-api');
+    const caApiResultadoWrap = document.getElementById('ca-api-resultado-wrap');
+    const caApiResultadoLoading = document.getElementById('ca-api-resultado-loading');
+    const caApiResultadoPanel = document.getElementById('ca-api-resultado-panel');
+    const caApiResultadoTitulo = document.getElementById('ca-api-resultado-titulo');
+    const caApiResultadoJson = document.getElementById('ca-api-resultado-json');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -1746,6 +1761,54 @@
             importarConsultaParApi.classList.add('d-none');
             importarConsultaParApi.innerHTML = '';
         }
+    }
+
+    function limpiarCaApiResultado() {
+        if (caApiResultadoWrap) caApiResultadoWrap.classList.add('d-none');
+        if (caApiResultadoLoading) caApiResultadoLoading.classList.add('d-none');
+        if (caApiResultadoPanel) caApiResultadoPanel.classList.add('d-none');
+        if (caApiResultadoTitulo) caApiResultadoTitulo.textContent = '';
+        if (caApiResultadoJson) caApiResultadoJson.textContent = '';
+    }
+
+    function mostrarCaApiResultadoCargando() {
+        limpiarCaApiResultado();
+        if (caApiResultadoWrap) caApiResultadoWrap.classList.remove('d-none');
+        if (caApiResultadoLoading) caApiResultadoLoading.classList.remove('d-none');
+        caApiResultadoWrap?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    function payloadConsultaParVisible(consultaPar, extra) {
+        const base = consultaPar && typeof consultaPar === 'object' ? { ...consultaPar } : {};
+        if (extra && typeof extra === 'object') {
+            Object.assign(base, extra);
+        }
+        return base;
+    }
+
+    function mostrarCaApiResultado(consultaPar, extra) {
+        const payload = payloadConsultaParVisible(consultaPar, extra);
+        if (!caApiResultadoWrap || !Object.keys(payload).length) return;
+
+        if (caApiResultadoLoading) caApiResultadoLoading.classList.add('d-none');
+        caApiResultadoWrap.classList.remove('d-none');
+        if (caApiResultadoPanel) caApiResultadoPanel.classList.remove('d-none');
+
+        const sitio = payload.sitio || 'sitio par';
+        let titulo = 'Consulta API ' + sitio;
+        if (payload.existe === true || payload.resultado === 'OK') {
+            titulo += ' — ya existe';
+        } else if (payload.existe === false || payload.resultado === 'ERROR') {
+            titulo += ' — no existe';
+        } else if (payload.error) {
+            titulo += ' — error';
+        }
+
+        if (caApiResultadoTitulo) caApiResultadoTitulo.textContent = titulo;
+        if (caApiResultadoJson) {
+            caApiResultadoJson.textContent = JSON.stringify(payload, null, 2);
+        }
+        caApiResultadoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
     function htmlRespuestaApiPar(consultaPar) {
@@ -1821,8 +1884,11 @@
         return fallback;
     }
 
-    function mostrarImportError(msg, consultaPar) {
+    function mostrarImportError(msg, consultaPar, extraConsulta) {
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        if (consultaPar || extraConsulta) {
+            mostrarCaApiResultado(consultaPar, extraConsulta);
+        }
         if (importarAlerta && importarAlertaTexto) {
             importarAlerta.classList.remove('d-none', 'alert-warning');
             importarAlerta.classList.add('alert-danger');
@@ -1878,6 +1944,7 @@
         if (importarResultados) importarResultados.innerHTML = '';
         if (importarResumen) importarResumen.textContent = '';
         limpiarImportAlerta();
+        limpiarCaApiResultado();
         ocultarProgresoImportar();
         if (btnImportarConfirmar) {
             btnImportarConfirmar.classList.add('d-none');
@@ -2167,8 +2234,12 @@
         if (!codigo) return;
         importCodigoApi = codigo;
         limpiarImportAlerta();
-        if (importarEstado) importarEstado.textContent = 'Verificando duplicados...';
+        limpiarCaApiResultado();
+        mostrarCaApiResultadoCargando();
+        if (importarEstado) importarEstado.textContent = 'Consultando en el otro sitio…';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+
+        let consultaParGuardada = null;
 
         try {
             const bodyVal = new FormData();
@@ -2180,19 +2251,31 @@
                 body: bodyVal,
             });
             const jsonVal = await resVal.json().catch(() => ({}));
+            consultaParGuardada = jsonVal.consulta_par || null;
+            mostrarCaApiResultado(consultaParGuardada, {
+                http_status: resVal.status,
+                ok: resVal.ok,
+                error_app: jsonVal.error || null,
+                origen: jsonVal.origen || null,
+            });
+
             if (!resVal.ok) {
-                mostrarImportError(jsonVal.error || 'No se puede importar esta cotización.', jsonVal.consulta_par);
+                mostrarImportError(
+                    jsonVal.error || 'No se puede importar esta cotización.',
+                    consultaParGuardada,
+                    { http_status: resVal.status, ok: false, error_app: jsonVal.error || null, origen: jsonVal.origen || null },
+                );
+                if (importarEstado) importarEstado.textContent = '';
                 return;
             }
-            if (jsonVal.consulta_par) {
-                mostrarConsultaParOk(jsonVal.consulta_par);
-            }
         } catch (err) {
+            mostrarCaApiResultado(null, { ok: false, error_app: 'Error de conexión al verificar duplicados.' });
             mostrarImportError('Error de conexión al verificar duplicados.');
+            if (importarEstado) importarEstado.textContent = '';
             return;
         }
 
-        if (importarEstado) importarEstado.textContent = 'Cargando detalle...';
+        if (importarEstado) importarEstado.textContent = 'Cargando detalle Mercado Público…';
 
         const ok = await prepararImportAgileAntesPreview();
         if (!ok) return;
@@ -2264,8 +2347,8 @@
             importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
         actualizarProgresoImportar(0, importPreviewData?.resumen?.total || 0, 'Preparando importación...');
-        if (importarEstado) importarEstado.textContent = '';
-        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = importarEstado.textContent || '';
+        // No limpiar alertas ni resultado API consulta par al continuar con Mercado Público.
     }
 
     function ocultarProgresoImportar() {
