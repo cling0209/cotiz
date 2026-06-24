@@ -2190,6 +2190,11 @@
     async function confirmarImportCompraAgil() {
         if (importandoCompraAgil || !importPreviewData) return;
 
+        if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
+            mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
+            return;
+        }
+
         const texto = String(importarTexto?.value || '').trim();
         const usarApi = !!importCodigoApi;
 

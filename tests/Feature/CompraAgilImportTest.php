@@ -9,6 +9,7 @@ use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\NotaDetalleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CompraAgilImportTest extends TestCase
@@ -23,6 +24,7 @@ class CompraAgilImportTest extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware();
+        config(['cotiz.api_nota.consulta_nro_cotizacion' => '']);
 
         $this->admin = User::factory()->create([
             'username' => 'admin',
@@ -260,6 +262,84 @@ TXT;
         $response2->assertOk();
         $response2->assertJsonPath('completado', true);
         $response2->assertJsonCount(1, 'lineas');
+    }
+
+    public function test_preview_texto_rechaza_duplicado_local(): void
+    {
+        Nota::query()->create([
+            'nronota' => 300,
+            'descripcion' => 'Cotización existente',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => '',
+            'encargado' => '1161-172-COT26',
+            'nota_softland' => 30000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )
+            ->assertOk()
+            ->assertJsonPath('puede_importar', false)
+            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+    }
+
+    public function test_preview_texto_rechaza_duplicado_en_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'nronota' => 99,
+            ], 200),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )
+            ->assertOk()
+            ->assertJsonPath('puede_importar', false)
+            ->assertJsonPath('error_cabecera', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
+    }
+
+    public function test_importar_texto_rechaza_duplicado_en_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'nronota' => 99,
+            ], 200),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
     }
 
     public function test_limpiar_elimina_todas_las_lineas_agile_al_reanalizar(): void

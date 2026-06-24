@@ -497,7 +497,7 @@ class CotizacionController extends Controller
             $puedeImportar = true;
 
             if ((int) $datos['desde'] === 0 && ($resultado['cabecera']['codigo_cotizacion'] ?? '') !== '') {
-                $errorCabecera = $this->notaService->validarNumeroCotizacion(
+                $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                     $nota,
                     $resultado['cabecera']['codigo_cotizacion'],
                 );
@@ -517,7 +517,7 @@ class CotizacionController extends Controller
         $puedeImportar = true;
 
         if ($preview['cabecera']['codigo_cotizacion'] !== '') {
-            $errorCabecera = $this->notaService->validarNumeroCotizacion(
+            $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                 $nota,
                 $preview['cabecera']['codigo_cotizacion'],
             );
@@ -590,6 +590,16 @@ class CotizacionController extends Controller
             return response()->json([
                 'error' => 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.',
             ], 422);
+        }
+
+        if (($parseado['cabecera']['codigo_cotizacion'] ?? '') !== ''
+            && (! isset($datos['desde']) || (int) $datos['desde'] === 0)) {
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible(
+                $nota,
+                $parseado['cabecera']['codigo_cotizacion'],
+            )) {
+                return response()->json(['error' => $error], 422);
+            }
         }
 
         try {
