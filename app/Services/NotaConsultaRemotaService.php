@@ -41,7 +41,9 @@ class NotaConsultaRemotaService
 
             $data = $response->json();
             if (is_array($data) && ($data['resultado'] ?? '') === 'OK') {
-                return $mensajeDuplicado;
+                $mensajeApi = trim((string) ($data['mensaje'] ?? ''));
+
+                return $mensajeApi !== '' ? $mensajeApi : $mensajeDuplicado;
             }
 
             if (is_array($data) && ($data['resultado'] ?? '') === 'ERROR') {

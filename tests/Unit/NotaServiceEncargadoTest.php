@@ -54,7 +54,8 @@ class NotaServiceEncargadoTest extends TestCase
         Http::fake([
             'cotiza.reicol.cl/*' => Http::response([
                 'resultado' => 'OK',
-                'nronota' => 42,
+                'mensaje' => 'La cotización «2686-279-COT26» ya existe (nota #99).',
+                'nronota' => 99,
             ], 200),
         ]);
 
@@ -73,10 +74,7 @@ class NotaServiceEncargadoTest extends TestCase
         $service = app(NotaService::class);
         $error = $service->validarNumeroCotizacionDisponible($nota, '2686-279-COT26');
 
-        $this->assertSame(
-            'La cotización ya existe registrada en el otro sitio, favor verificar.',
-            $error,
-        );
+        $this->assertSame('La cotización «2686-279-COT26» ya existe (nota #99).', $error);
         Http::assertSentCount(1);
     }
 }

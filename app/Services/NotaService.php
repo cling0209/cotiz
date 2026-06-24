@@ -120,7 +120,10 @@ class NotaService
 
         $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
             $numero,
-            'La cotización ya existe registrada en el otro sitio, favor verificar.',
+            sprintf(
+                'La cotización «%s» ya existe registrada en el otro sitio, favor verificar.',
+                $numero,
+            ),
         );
 
         return $remoto !== '' ? $remoto : null;

@@ -120,7 +120,9 @@ class NotaApiTest extends TestCase
         $ok->assertJson([
             'resultado' => 'OK',
             'nronota' => 10,
+            'encargado' => 'COT-CONSULTA',
         ]);
+        $ok->assertJsonPath('mensaje', 'La cotización «COT-CONSULTA» ya existe (nota #10).');
 
         $fail = $this->withBasicAuth('api_nota_user', 'api_nota_secret')
             ->postJson('/api/v1/nota-consulta', [

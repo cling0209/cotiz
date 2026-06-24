@@ -34,15 +34,21 @@ class NotaConsultaApiController extends Controller
         }
 
         try {
-            $nronota = $this->recepcionService->consultarPorEncargado((string) ($payload['encargado'] ?? ''));
+            $encargado = trim((string) ($payload['encargado'] ?? ''));
+            $nronota = $this->recepcionService->consultarPorEncargado($encargado);
         } catch (RuntimeException $e) {
             return $this->error($e->getMessage());
         }
 
         return response()->json([
             'resultado' => 'OK',
-            'mensaje' => '',
+            'mensaje' => sprintf(
+                'La cotización «%s» ya existe (nota #%d).',
+                $encargado,
+                $nronota,
+            ),
             'nronota' => $nronota,
+            'encargado' => $encargado,
         ]);
     }
 

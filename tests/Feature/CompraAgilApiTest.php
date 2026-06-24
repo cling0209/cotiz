@@ -262,7 +262,7 @@ class CompraAgilApiTest extends TestCase
                 'codigo' => '1161-172-COT26',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('error', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
 
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.reicol.cl'));

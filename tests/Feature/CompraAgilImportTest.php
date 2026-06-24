@@ -313,7 +313,7 @@ TXT;
         )
             ->assertOk()
             ->assertJsonPath('puede_importar', false)
-            ->assertJsonPath('error_cabecera', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
+            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '2686-279-COT26'));
     }
 
     public function test_importar_texto_rechaza_duplicado_en_par(): void
@@ -339,7 +339,7 @@ TXT;
             ['texto' => $this->textoMp],
         )
             ->assertStatus(422)
-            ->assertJsonPath('error', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '2686-279-COT26'));
     }
 
     public function test_limpiar_elimina_todas_las_lineas_agile_al_reanalizar(): void

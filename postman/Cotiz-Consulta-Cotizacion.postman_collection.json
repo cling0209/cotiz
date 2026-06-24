@@ -1,0 +1,201 @@
+{
+  "info": {
+    "_postman_id": "cotiz-consulta-cotizacion",
+    "name": "Cotiz — Consultar si existe cotización",
+    "description": "Consulta si un número de cotización (`encargado`) ya está grabado en Romulo o Reicol.\n\nEquivalente legacy: `apiconsulta.php` → `POST /api/v1/nota-consulta`\n\n**Autenticación:** Basic Auth con `COTIZ_API_NOTA_USER` y `COTIZ_API_NOTA_PASSWORD` del servidor que consultás.\n\n**Respuestas:**\n- Existe → HTTP 200: `{ \"resultado\": \"OK\", \"mensaje\": \"La cotización «…» ya existe (nota #N).\", \"nronota\": 123 }`\n- No existe → HTTP 400: `{ \"resultado\": \"ERROR\", \"mensaje\": \"La cotización no existe en notas.\" }`\n- Auth inválida → HTTP 401\n\n**Importante:** `resultado: OK` significa que **ya existe** (duplicado). `resultado: ERROR` significa que **no está** y se puede usar ese número.\n\n**Uso típico (validar duplicado entre sitios):**\n1. Configurá `encargado` (ej. `2686-279-COT26`)\n2. Ejecutá «Consultar en Romulo» o «Consultar en Reicol» según dónde quieras verificar\n3. Revisá la pestaña **Test Results** del request",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrlRomulo",
+      "value": "https://cotiza.romulo.cl",
+      "type": "string"
+    },
+    {
+      "key": "baseUrlReicol",
+      "value": "https://cotiza.reicol.cl",
+      "type": "string"
+    },
+    {
+      "key": "encargado",
+      "value": "2686-279-COT26",
+      "type": "string"
+    },
+    {
+      "key": "apiNotaUser",
+      "value": "ROM2025",
+      "type": "string"
+    },
+    {
+      "key": "apiNotaPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8082",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "{{apiNotaUser}}", "type": "string" },
+      { "key": "password", "value": "{{apiNotaPassword}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Consultar en Romulo",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "const enc = pm.collectionVariables.get('encargado');",
+              "",
+              "if (pm.response.code === 200 && json.resultado === 'OK') {",
+              "    pm.test('Cotización EXISTE en Romulo', () => {",
+              "        pm.expect(json.nronota).to.be.a('number');",
+              "        pm.expect(json.mensaje).to.include('ya existe');",
+              "    });",
+              "    console.log(json.mensaje || ('EXISTE en Romulo — nronota #' + json.nronota));",
+              "} else if (pm.response.code === 400 && json.resultado === 'ERROR') {",
+              "    pm.test('Cotización NO existe en Romulo', () => {",
+              "        pm.expect(json.mensaje).to.be.a('string');",
+              "    });",
+              "    console.log('NO EXISTE en Romulo — encargado: ' + enc);",
+              "} else if (pm.response.code === 401) {",
+              "    pm.test('Error 401 — revisar apiNotaUser / apiNotaPassword en Romulo', () => {",
+              "        pm.expect.fail('Autenticación rechazada');",
+              "    });",
+              "} else {",
+              "    pm.test('Respuesta inesperada', () => {",
+              "        pm.expect.fail('HTTP ' + pm.response.code + ': ' + JSON.stringify(json));",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accion\": \"cotizacion\",\n  \"encargado\": \"{{encargado}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrlRomulo}}/api/v1/nota-consulta",
+          "host": ["{{baseUrlRomulo}}"],
+          "path": ["api", "v1", "nota-consulta"]
+        },
+        "description": "Consulta si `encargado` existe en la base de **Romulo**.\n\nUsar antes de importar en Reicol para detectar duplicados."
+      },
+      "response": []
+    },
+    {
+      "name": "Consultar en Reicol",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "const enc = pm.collectionVariables.get('encargado');",
+              "",
+              "if (pm.response.code === 200 && json.resultado === 'OK') {",
+              "    pm.test('Cotización EXISTE en Reicol', () => {",
+              "        pm.expect(json.nronota).to.be.a('number');",
+              "        pm.expect(json.mensaje).to.include('ya existe');",
+              "    });",
+              "    console.log(json.mensaje || ('EXISTE en Reicol — nronota #' + json.nronota));",
+              "} else if (pm.response.code === 400 && json.resultado === 'ERROR') {",
+              "    pm.test('Cotización NO existe en Reicol', () => {",
+              "        pm.expect(json.mensaje).to.be.a('string');",
+              "    });",
+              "    console.log('NO EXISTE en Reicol — encargado: ' + enc);",
+              "} else if (pm.response.code === 401) {",
+              "    pm.test('Error 401 — revisar apiNotaUser / apiNotaPassword en Reicol', () => {",
+              "        pm.expect.fail('Autenticación rechazada');",
+              "    });",
+              "} else {",
+              "    pm.test('Respuesta inesperada', () => {",
+              "        pm.expect.fail('HTTP ' + pm.response.code + ': ' + JSON.stringify(json));",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accion\": \"cotizacion\",\n  \"encargado\": \"{{encargado}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrlReicol}}/api/v1/nota-consulta",
+          "host": ["{{baseUrlReicol}}"],
+          "path": ["api", "v1", "nota-consulta"]
+        },
+        "description": "Consulta si `encargado` existe en la base de **Reicol**.\n\nUsar antes de importar en Romulo para detectar duplicados."
+      },
+      "response": []
+    },
+    {
+      "name": "Consultar en baseUrl custom",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "const enc = pm.collectionVariables.get('encargado');",
+              "",
+              "if (pm.response.code === 200 && json.resultado === 'OK') {",
+              "    pm.test('Cotización EXISTE', () => pm.expect(json.nronota).to.be.a('number'));",
+              "    console.log('EXISTE — nronota #' + json.nronota);",
+              "} else if (pm.response.code === 400 && json.resultado === 'ERROR') {",
+              "    pm.test('Cotización NO existe', () => pm.expect(json.mensaje).to.be.a('string'));",
+              "    console.log('NO EXISTE — encargado: ' + enc);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accion\": \"cotizacion\",\n  \"encargado\": \"{{encargado}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/nota-consulta",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "nota-consulta"]
+        },
+        "description": "Consulta contra `{{baseUrl}}` (localhost u otro entorno).\n\nDefiní variable de colección `baseUrl`, ej. `http://localhost:8082`."
+      },
+      "response": []
+    }
+  ]
+}
