@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\AgileDescripcion;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -38,5 +40,12 @@ class NotaDetalle extends Model
     public function lineTotal(): int
     {
         return $this->prod_valor * $this->cantidad;
+    }
+
+    protected function prodDescripcionAgile(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => AgileDescripcion::paraDetalle($value),
+        );
     }
 }

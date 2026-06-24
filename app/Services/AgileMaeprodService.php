@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AgileMaeprod;
+use App\Support\AgileDescripcion;
 
 class AgileMaeprodService
 {
@@ -13,11 +14,11 @@ class AgileMaeprodService
             return;
         }
 
-        $desc = str_replace("'", '´', trim($descripcionAgile));
+        $desc = AgileDescripcion::paraMaeprod($descripcionAgile);
 
         $existente = AgileMaeprod::query()->find($id);
         if ($existente) {
-            if ($desc !== '' && $existente->prod_descripcion_agile !== $desc) {
+            if ($desc !== null && $existente->prod_descripcion_agile !== $desc) {
                 $existente->update(['prod_descripcion_agile' => $desc]);
             }
 
