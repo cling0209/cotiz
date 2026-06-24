@@ -76,7 +76,7 @@ class CompraAgilSyncService
                 }
 
                 $existente = CompraAgilProceso::query()->find($codigo);
-                $payload = $this->api->detalle($codigo);
+                $payload = $this->api->detalle($codigo, usarCache: false);
                 $detalles++;
 
                 if (CompraAgilRegionScope::debeExcluirItem($payload)) {

@@ -164,6 +164,47 @@ class CompraAgilApiTest extends TestCase
             ->assertJsonPath('resumen.total', 1);
     }
 
+    public function test_preview_codigo_api_en_lotes_consulta_detalle_una_sola_vez(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1161-172-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '1161-172-COT26',
+                    'nombre' => 'Compra prueba',
+                    'institucion' => ['organismo_comprador' => 'Hospital', 'rut' => '61.303.000-7'],
+                    'productos_solicitados' => [
+                        ['codigo_producto' => '1', 'nombre' => 'Item 1', 'cantidad' => 1],
+                        ['codigo_producto' => '2', 'nombre' => 'Item 2', 'cantidad' => 1],
+                    ],
+                ],
+                'errors' => null,
+            ]),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+                'desde' => 0,
+                'hasta' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('total', 2);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+                'desde' => 1,
+                'hasta' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('completado', true);
+
+        Http::assertSentCount(1);
+    }
+
     public function test_analisis_admin_solo_usuario_admin(): void
     {
         config(['cotiz.mercadopublico.analisis_admin_habilitado' => true]);

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -85,14 +86,40 @@ class CompraAgilApiService
     /**
      * @return array<string, mixed>
      */
-    public function detalle(string $codigo): array
+    public function detalle(string $codigo, bool $usarCache = true): array
     {
         $codigo = trim($codigo);
         if ($codigo === '') {
             throw new RuntimeException('Debe indicar el código de Compra Ágil.');
         }
 
+        if (! $usarCache) {
+            return $this->requestDetalle($codigo);
+        }
+
+        return Cache::remember(
+            $this->detalleCacheKey($codigo),
+            $this->detalleCacheTtl(),
+            fn () => $this->requestDetalle($codigo),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requestDetalle(string $codigo): array
+    {
         return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo));
+    }
+
+    private function detalleCacheKey(string $codigo): string
+    {
+        return 'compra_agil_detalle:'.strtoupper($codigo);
+    }
+
+    private function detalleCacheTtl(): int
+    {
+        return max(60, (int) config('cotiz.mercadopublico.detalle_cache_segundos', 3600));
     }
 
     /**
@@ -121,7 +148,9 @@ class CompraAgilApiService
         $json = $response->json();
 
         if ($status === 429) {
-            throw new RuntimeException('Cuota diaria de Mercado Público agotada. Intente mañana o use pegar texto.');
+            throw new RuntimeException(
+                'Cuota diaria de Mercado Público agotada desde el servidor (la sincronización u otras consultas pueden haberla consumido). Intente mañana o use pegar texto.',
+            );
         }
 
         if ($status === 401 || $status === 403) {
@@ -138,6 +167,11 @@ class CompraAgilApiService
 
         if (! is_array($json) || ($json['success'] ?? '') !== 'OK') {
             $mensaje = $this->extraerErrores($json);
+            if ($this->mensajeIndicaCuotaAgotada($mensaje)) {
+                throw new RuntimeException(
+                    'Cuota diaria de Mercado Público agotada desde el servidor (la sincronización u otras consultas pueden haberla consumido). Intente mañana o use pegar texto.',
+                );
+            }
 
             throw new RuntimeException($mensaje ?: 'Respuesta inválida de Mercado Público.');
         }
@@ -189,5 +223,16 @@ class CompraAgilApiService
         }
 
         return implode(' ', $partes);
+    }
+
+    private function mensajeIndicaCuotaAgotada(string $mensaje): bool
+    {
+        $texto = mb_strtolower($mensaje);
+
+        return str_contains($texto, 'cuota')
+            || str_contains($texto, 'limite')
+            || str_contains($texto, 'límite')
+            || str_contains($texto, 'too many')
+            || str_contains($texto, 'rate limit');
     }
 }
