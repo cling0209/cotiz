@@ -102,6 +102,25 @@ class NotaService
     }
 
     /**
+     * Valida número de cotización en esta instancia y en el sitio par (Reicol/Romulo).
+     */
+    public function validarNumeroCotizacionDisponible(Nota $nota, ?string $encargado = null): ?string
+    {
+        $error = $this->validarNumeroCotizacion($nota, $encargado);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $numero = trim($encargado ?? (string) $nota->encargado);
+        $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
+            $numero,
+            'La cotización ya existe registrada en el otro sitio, favor verificar.',
+        );
+
+        return $remoto !== '' ? $remoto : null;
+    }
+
+    /**
      * Factor de precio venta: positivo, máximo 2 decimales (acepta coma o punto).
      */
     public function aceptar(Nota $nota, string $usuario): Nota

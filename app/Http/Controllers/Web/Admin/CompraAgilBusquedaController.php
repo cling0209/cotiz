@@ -50,6 +50,10 @@ class CompraAgilBusquedaController extends Controller
                     return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
                 }
 
+                if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+                    return response()->json(['error' => $error], 422);
+                }
+
                 $item = $this->oportunidad->enriquecerResumen(
                     $this->oportunidad->detalleResumen($codigo),
                 );
@@ -84,7 +88,12 @@ class CompraAgilBusquedaController extends Controller
         ]);
 
         try {
-            $payload = $this->api->detalle(strtoupper(trim($datos['codigo'])));
+            $codigo = strtoupper(trim($datos['codigo']));
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+                return response()->json(['error' => $error], 422);
+            }
+
+            $payload = $this->api->detalle($codigo);
             if (CompraAgilRegionScope::debeExcluirItem($payload)) {
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
@@ -117,7 +126,12 @@ class CompraAgilBusquedaController extends Controller
         ]);
 
         try {
-            $payload = $this->api->detalle(strtoupper(trim($datos['codigo'])));
+            $codigo = strtoupper(trim($datos['codigo']));
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo)) {
+                return response()->json(['error' => $error], 422);
+            }
+
+            $payload = $this->api->detalle($codigo);
             if (CompraAgilRegionScope::debeExcluirItem($payload)) {
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
@@ -163,7 +177,7 @@ class CompraAgilBusquedaController extends Controller
         $puedeImportar = true;
 
         if ($desde === 0 && ($resultado['cabecera']['codigo_cotizacion'] ?? '') !== '') {
-            $errorCabecera = $this->notaService->validarNumeroCotizacion(
+            $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
                 $nota,
                 $resultado['cabecera']['codigo_cotizacion'],
             );

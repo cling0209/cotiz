@@ -20,7 +20,10 @@ class CompraAgilApiTest extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware();
-        config(['cotiz.mercadopublico.ticket' => 'test-ticket']);
+        config([
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+        ]);
 
         $this->ejecutivo = User::factory()->create([
             'username' => 'ejecapi',
@@ -203,6 +206,98 @@ class CompraAgilApiTest extends TestCase
             ->assertJsonPath('completado', true);
 
         Http::assertSentCount(1);
+    }
+
+    public function test_preview_codigo_rechaza_duplicado_local_sin_llamar_api_mp(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 300,
+            'descripcion' => 'Cotización existente',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'ejecapi',
+            'empresa' => '',
+            'encargado' => '1161-172-COT26',
+            'nota_softland' => 30000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+
+        Http::assertNothingSent();
+    }
+
+    public function test_preview_codigo_rechaza_duplicado_en_par_sin_llamar_api_mp(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'nronota' => 99,
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'La cotización ya existe registrada en el otro sitio, favor verificar.');
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.reicol.cl'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
+    }
+
+    public function test_buscar_por_codigo_rechaza_duplicado_local_sin_llamar_api_mp(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 300,
+            'descripcion' => 'Cotización existente',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'ejecapi',
+            'empresa' => '',
+            'encargado' => '1161-172-COT26',
+            'nota_softland' => 30000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->getJson(route('admin.cotizaciones.compra-agil-api.buscar', [
+                'nronota' => $nota->nronota,
+                'modo' => 'codigo',
+                'codigo' => '1161-172-COT26',
+            ]))
+            ->assertStatus(422);
+
+        Http::assertNothingSent();
     }
 
     public function test_analisis_admin_solo_usuario_admin(): void
