@@ -112,6 +112,12 @@ class NotaService
         }
 
         $numero = trim($encargado ?? (string) $nota->encargado);
+        $actual = trim((string) $nota->encargado);
+
+        if ($actual !== '' && strcasecmp($actual, $numero) === 0) {
+            return null;
+        }
+
         $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
             $numero,
             'La cotización ya existe registrada en el otro sitio, favor verificar.',
