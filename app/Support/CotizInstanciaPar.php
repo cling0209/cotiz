@@ -33,13 +33,21 @@ class CotizInstanciaPar
     public static function urlConsultaEncargado(): string
     {
         $explicit = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
-        if ($explicit !== '') {
+        if ($explicit !== '' && ! self::urlApuntaAlHostLocal($explicit)) {
             return $explicit;
         }
 
         $base = self::basePar();
 
         return $base ? rtrim($base, '/').'/api/v1/nota-consulta' : '';
+    }
+
+    public static function urlApuntaAlHostLocal(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $local = self::hostLocal();
+
+        return $host !== '' && $local !== '' && $host === $local;
     }
 
     public static function hostRemotoConsulta(): string
