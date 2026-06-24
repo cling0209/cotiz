@@ -56,6 +56,11 @@ class CotizInstanciaParTest extends TestCase
             CotizInstanciaPar::urlConsultaEncargado(),
         );
         $this->assertTrue(CotizInstanciaPar::debeConsultarPar());
+
+        $resolucion = CotizInstanciaPar::resolucionUrlConsulta();
+        $this->assertSame('https://cotiza.reicol.cl/api/v1/nota-consulta', $resolucion['url_env']);
+        $this->assertSame('https://cotiza.romulo.cl/api/v1/nota-consulta', $resolucion['url_utilizada']);
+        $this->assertStringContainsString('mismo sitio', (string) $resolucion['nota_url']);
     }
 
     public function test_romulo_con_consulta_propia_usa_reicol(): void

@@ -2253,8 +2253,7 @@
             const jsonVal = await resVal.json().catch(() => ({}));
             consultaParGuardada = jsonVal.consulta_par || null;
             mostrarCaApiResultado(consultaParGuardada, {
-                http_status: resVal.status,
-                ok: resVal.ok,
+                validar_ok: resVal.ok,
                 error_app: jsonVal.error || null,
                 origen: jsonVal.origen || null,
             });
@@ -2263,13 +2262,13 @@
                 mostrarImportError(
                     jsonVal.error || 'No se puede importar esta cotización.',
                     consultaParGuardada,
-                    { http_status: resVal.status, ok: false, error_app: jsonVal.error || null, origen: jsonVal.origen || null },
+                    { validar_ok: false, error_app: jsonVal.error || null, origen: jsonVal.origen || null },
                 );
                 if (importarEstado) importarEstado.textContent = '';
                 return;
             }
         } catch (err) {
-            mostrarCaApiResultado(null, { ok: false, error_app: 'Error de conexión al verificar duplicados.' });
+            mostrarCaApiResultado(null, { validar_ok: false, error_app: 'Error de conexión al verificar duplicados.' });
             mostrarImportError('Error de conexión al verificar duplicados.');
             if (importarEstado) importarEstado.textContent = '';
             return;

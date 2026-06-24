@@ -49,9 +49,14 @@ class CotizInstanciaPar
         return self::basePar() !== null;
     }
 
+    public static function urlConsultaEncargadoEnv(): string
+    {
+        return trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
+    }
+
     public static function urlConsultaEncargado(): string
     {
-        $explicit = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
+        $explicit = self::urlConsultaEncargadoEnv();
         if ($explicit !== '' && ! self::urlApuntaAlHostLocal($explicit)) {
             return $explicit;
         }
@@ -59,6 +64,32 @@ class CotizInstanciaPar
         $base = self::basePar();
 
         return $base ? rtrim($base, '/').'/api/v1/nota-consulta' : '';
+    }
+
+    /**
+     * @return array{url_env: string|null, url_utilizada: string, nota_url: string|null}
+     */
+    public static function resolucionUrlConsulta(): array
+    {
+        $env = self::urlConsultaEncargadoEnv();
+        $utilizada = self::urlConsultaEncargado();
+        $nota = null;
+
+        if ($env === '') {
+            $nota = $utilizada !== ''
+                ? 'COTIZ_API_CONSULTA_NRO_COTIZACION vacía: URL inferida de APP_URL / COTIZ_SISTEMA.'
+                : null;
+        } elseif ($env !== $utilizada) {
+            $nota = self::urlApuntaAlHostLocal($env)
+                ? 'COTIZ_API_CONSULTA_NRO_COTIZACION apunta a este mismo sitio y se ignoró; se usó el par automático.'
+                : 'Se usó otra URL distinta a la del entorno (revisar APP_URL / COTIZ_SISTEMA).';
+        }
+
+        return [
+            'url_env' => $env !== '' ? $env : null,
+            'url_utilizada' => $utilizada,
+            'nota_url' => $nota,
+        ];
     }
 
     public static function urlApuntaAlHostLocal(string $url): bool

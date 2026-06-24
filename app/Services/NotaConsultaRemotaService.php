@@ -28,9 +28,13 @@ class NotaConsultaRemotaService
     public function consultarEncargadoEnPar(string $encargado): array
     {
         $codigo = trim($encargado);
+        $urlInfo = CotizInstanciaPar::resolucionUrlConsulta();
         $vacio = [
             'sitio' => CotizInstanciaPar::nombrePar(),
-            'url' => CotizInstanciaPar::urlConsultaEncargado(),
+            'url' => $urlInfo['url_utilizada'],
+            'url_env' => $urlInfo['url_env'],
+            'url_utilizada' => $urlInfo['url_utilizada'],
+            'nota_url' => $urlInfo['nota_url'],
             'http_status' => null,
             'existe' => null,
             'resultado' => null,
@@ -60,6 +64,7 @@ class NotaConsultaRemotaService
 
         $vacio['sitio'] = CotizInstanciaPar::nombrePar();
         $vacio['url'] = $url;
+        $vacio['url_utilizada'] = $url;
 
         if ($user === '' || $password === '') {
             $vacio['error'] = 'No se pudo verificar la cotización en el otro sitio: configure COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD en el servidor.';
@@ -78,7 +83,7 @@ class NotaConsultaRemotaService
             $data = $response->json();
             $resultado = is_array($data) ? (string) ($data['resultado'] ?? '') : '';
 
-            $base = [
+            $base = array_merge($urlInfo, [
                 'sitio' => CotizInstanciaPar::nombrePar(),
                 'url' => $url,
                 'http_status' => $response->status(),
@@ -88,7 +93,7 @@ class NotaConsultaRemotaService
                 'nronota' => is_array($data) && isset($data['nronota']) ? (int) $data['nronota'] : null,
                 'encargado' => is_array($data) ? trim((string) ($data['encargado'] ?? $codigo)) ?: $codigo : $codigo,
                 'error' => null,
-            ];
+            ]);
 
             if ($resultado === 'OK') {
                 $base['existe'] = true;
