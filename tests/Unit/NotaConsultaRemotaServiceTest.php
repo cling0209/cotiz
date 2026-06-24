@@ -60,7 +60,10 @@ class NotaConsultaRemotaServiceTest extends TestCase
 
     public function test_url_vacia_no_consulta(): void
     {
-        config(['cotiz.api_nota.consulta_nro_cotizacion' => '']);
+        config([
+            'app.url' => 'http://localhost',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+        ]);
 
         Http::fake();
 
@@ -68,5 +71,44 @@ class NotaConsultaRemotaServiceTest extends TestCase
 
         $this->assertSame('', $error);
         Http::assertNothingSent();
+    }
+
+    public function test_reicol_sin_credenciales_no_permite_continuar(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => '',
+            'cotiz.api_nota.password' => '',
+        ]);
+
+        Http::fake();
+
+        $error = $this->service->errorSiEncargadoExisteEnPar('2686-279-COT26', 'Duplicada');
+
+        $this->assertStringContainsString('COTIZ_API_NOTA_USER', $error);
+        Http::assertNothingSent();
+    }
+
+    public function test_reicol_auto_url_consulta_romulo(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.romulo.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'nronota' => 13383,
+            ], 200),
+        ]);
+
+        $error = $this->service->errorSiEncargadoExisteEnPar('2686-279-COT26', 'Ya existe en Romulo');
+
+        $this->assertSame('Ya existe en Romulo', $error);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.romulo.cl'));
     }
 }

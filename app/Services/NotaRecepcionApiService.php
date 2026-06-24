@@ -149,7 +149,7 @@ class NotaRecepcionApiService
         }
 
         $nota = Nota::query()
-            ->whereRaw('trim(encargado) ilike ?', [$codigo])
+            ->whereRaw('lower(trim(encargado)) = lower(?)', [$codigo])
             ->first(['nronota']);
 
         if (! $nota) {

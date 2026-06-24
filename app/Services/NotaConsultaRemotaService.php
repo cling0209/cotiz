@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Support\CotizInstanciaPar;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Cliente satélite → instancia par (apiconsulta legacy).
@@ -17,23 +19,21 @@ class NotaConsultaRemotaService
             return '';
         }
 
-        $url = trim((string) config('cotiz.api_nota.consulta_nro_cotizacion', ''));
-        if ($url === '') {
+        if (! CotizInstanciaPar::debeConsultarPar()) {
             return '';
         }
 
-        $hostRemoto = parse_url($url, PHP_URL_HOST);
-        $hostLocal = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
-        if ($hostRemoto && $hostLocal && strtolower((string) $hostRemoto) === $hostLocal) {
-            return '';
+        $url = CotizInstanciaPar::urlConsultaEncargado();
+        $user = trim((string) config('cotiz.api_nota.user', ''));
+        $password = (string) config('cotiz.api_nota.password', '');
+
+        if ($user === '' || $password === '') {
+            return 'No se pudo verificar la cotización en el otro sitio: configure COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD en el servidor.';
         }
 
         try {
             $response = Http::timeout(15)
-                ->withBasicAuth(
-                    (string) config('cotiz.api_nota.user', ''),
-                    (string) config('cotiz.api_nota.password', ''),
-                )
+                ->withBasicAuth($user, $password)
                 ->post($url, [
                     'accion' => 'cotizacion',
                     'encargado' => $codigo,
@@ -49,16 +49,28 @@ class NotaConsultaRemotaService
             }
 
             if ($response->status() === 401) {
-                return 'Error de autenticación al consultar cotización en sitio central.';
+                return 'Error de autenticación al consultar cotización en el otro sitio. Verifique COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD.';
             }
 
             if (! $response->successful()) {
-                return 'Error al consultar cotización en sitio central.';
+                Log::warning('Consulta encargado en sitio par falló', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                    'encargado' => $codigo,
+                ]);
+
+                return 'Error al consultar cotización en el otro sitio.';
             }
 
             return '';
-        } catch (\Throwable) {
-            return 'Error al consultar cotización en sitio central.';
+        } catch (\Throwable $e) {
+            Log::warning('Consulta encargado en sitio par: excepción', [
+                'url' => $url,
+                'encargado' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+
+            return 'Error al consultar cotización en el otro sitio.';
         }
     }
 }
