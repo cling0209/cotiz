@@ -29,6 +29,14 @@ return [
             'COTIZ_API_CONSULTA_NRO_COTIZACION',
             env('COTIZ_AGILE_API_NOTA_CONS', '')
         ),
+        // Consulta duplicados en sitio par (Render free: wake /up + reintentos)
+        'consulta_par_timeout' => (int) env('COTIZ_CONSULTA_PAR_TIMEOUT', 15),
+        'consulta_par_max_intentos' => max(1, (int) env('COTIZ_CONSULTA_PAR_MAX_INTENTOS', 8)),
+        'consulta_par_espera_segundos' => max(1, (int) env('COTIZ_CONSULTA_PAR_ESPERA_SEGUNDOS', 3)),
+        'consulta_par_mensaje_iniciando' => env(
+            'COTIZ_CONSULTA_PAR_MENSAJE_INICIANDO',
+            'Iniciando servicio de consulta, espere unos segundos.',
+        ),
     ],
 
     // Envío desde listado (notaventalis → apinotaenvio.php o relay interno)

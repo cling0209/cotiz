@@ -133,7 +133,7 @@ class NotaService
     }
 
     /**
-     * @return array{error: string|null, origen: string|null, consulta_par: array<string, mixed>|null}
+     * @return array{error: string|null, origen: string|null, cold_start?: bool, consulta_par: array<string, mixed>|null}
      */
     public function validarNumeroCotizacionDisponibleConDetalle(
         Nota $nota,
@@ -166,6 +166,15 @@ class NotaService
 
         if ($consultaPar === null) {
             $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
+        }
+
+        if (($consultaPar['cold_start'] ?? false) === true) {
+            return [
+                'error' => null,
+                'cold_start' => true,
+                'origen' => 'par',
+                'consulta_par' => $consultaPar,
+            ];
         }
 
         if ($consultaPar['error'] !== null && $consultaPar['error'] !== '') {

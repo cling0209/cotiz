@@ -86,6 +86,14 @@ class CotizInstanciaPar
         return $base ? rtrim($base, '/').'/api/v1/nota-consulta' : '';
     }
 
+    /** Health check Render (/up) para despertar el sitio par dormido. */
+    public static function urlDespertarSitioPar(): string
+    {
+        $base = self::basePar();
+
+        return $base ? rtrim($base, '/').'/up' : '';
+    }
+
     /**
      * @return array{
      *     url_env: string|null,

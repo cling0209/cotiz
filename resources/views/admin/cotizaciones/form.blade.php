@@ -505,6 +505,13 @@
     const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
     const cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
     const lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
+    const encargadoActual = @json(trim((string) $nota->encargado));
+    const consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
+    const consultaParConfig = {
+        mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
+        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 8)),
+        esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 3) * 1000),
+    };
     const lineasPorLote = 10;
     const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
 
@@ -656,6 +663,56 @@
         return { res, json };
     }
 
+    function sleepMs(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function necesitaConsultaParEncargado(encargado) {
+        const numero = String(encargado || '').trim();
+        if (numero === '') return false;
+
+        return numero.localeCompare(String(encargadoActual || '').trim(), undefined, { sensitivity: 'accent' }) !== 0;
+    }
+
+    async function fetchValidarEncargadoPar(codigo, csrfValue) {
+        const body = new FormData();
+        body.append('_token', csrfValue || '');
+        body.append('codigo', String(codigo || '').trim().toUpperCase());
+        const res = await fetch(consultaParValidarUrl, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
+        });
+        const json = await res.json().catch(() => ({}));
+
+        return { res, json };
+    }
+
+    async function validarEncargadoParConEspera(codigo, opciones = {}) {
+        const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const max = consultaParConfig.maxIntentos;
+
+        for (let intento = 1; intento <= max; intento++) {
+            opciones.onProgress?.(intento, max, consultaParConfig.mensaje);
+            const { res, json } = await fetchValidarEncargadoPar(codigo, token);
+            if (res.ok && json.ok) {
+                opciones.onSuccess?.(json);
+
+                return json;
+            }
+            if (json.cold_start) {
+                if (intento >= max) {
+                    throw new Error('No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.');
+                }
+                await sleepMs(consultaParConfig.esperaMs);
+                continue;
+            }
+            throw new Error(extraerMensajeError(json, 'No se puede usar este número de cotización.'));
+        }
+
+        throw new Error('No se pudo conectar con el servicio de consulta.');
+    }
+
     let grabandoCotizacion = false;
 
     async function grabarCotizacionAjax() {
@@ -671,6 +728,15 @@
 
         try {
             const cabecera = collectCabeceraFromForm();
+
+            if (necesitaConsultaParEncargado(cabecera.encargado)) {
+                setLoaderMensaje(consultaParConfig.mensaje);
+                await validarEncargadoParConEspera(cabecera.encargado, {
+                    onProgress: (_intento, _max, msg) => setLoaderMensaje(msg),
+                });
+            }
+
+            setLoaderMensaje('Guardando cabecera…');
             const { res: resCab, json: jsonCab } = await postJson(cabeceraUrl, cabecera);
             if (!resCab.ok) {
                 throw new Error(extraerMensajeError(jsonCab, 'No se pudo guardar la cabecera.'));
@@ -2105,35 +2171,51 @@
         return true;
     }
 
+    function ocultarProgresoConsultaPar() {
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+        ocultarProgresoImportar();
+    }
+
+    function mostrarProgresoConsultaPar(intento, max, mensaje) {
+        limpiarImportAlerta();
+        if (importarConsultaPar && importarConsultaParTexto) {
+            importarConsultaPar.classList.remove('d-none');
+            importarConsultaParTexto.textContent = mensaje;
+        }
+        if (importarProgresoWrap) {
+            importarProgresoWrap.classList.remove('d-none');
+            importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        const pct = Math.min(95, Math.round((intento / max) * 100));
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = pct + '%';
+            importarProgresoBar.setAttribute('aria-valuenow', String(pct));
+            importarProgresoBar.textContent = pct + '%';
+            importarProgresoBar.classList.add('progress-bar-animated');
+        }
+        if (importarProgresoTexto) {
+            importarProgresoTexto.textContent = mensaje + ' (' + intento + ' de ' + max + ')';
+        }
+        if (importarEstado) importarEstado.textContent = '';
+    }
+
     async function analizarCodigoApi(codigo) {
         codigo = String(codigo || '').trim().toUpperCase();
         if (!codigo) return;
         importCodigoApi = codigo;
         limpiarImportAlerta();
-        if (importarEstado) importarEstado.textContent = 'Consultando en el otro sitio…';
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
 
         try {
-            const bodyVal = new FormData();
-            bodyVal.append('_token', csrf);
-            bodyVal.append('codigo', codigo);
-            const resVal = await fetch(importarMpUrls.apiValidar, {
-                method: 'POST',
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body: bodyVal,
+            await validarEncargadoParConEspera(codigo, {
+                csrf,
+                onProgress: mostrarProgresoConsultaPar,
             });
-            const jsonVal = await resVal.json().catch(() => ({}));
-
-            if (!resVal.ok) {
-                mostrarImportError(
-                    jsonVal.error || 'No se puede importar esta cotización.',
-                );
-                if (importarEstado) importarEstado.textContent = '';
-                return;
-            }
+            ocultarProgresoConsultaPar();
         } catch (err) {
-            mostrarImportError('Error de conexión al verificar duplicados.');
-            if (importarEstado) importarEstado.textContent = '';
+            ocultarProgresoConsultaPar();
+            mostrarImportError(err?.message || 'No se puede importar esta cotización.');
             return;
         }
 

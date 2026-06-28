@@ -10,6 +10,7 @@ use App\Services\CompraAgilImportService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CompraAgilPayloadMapper;
 use App\Services\CompraAgilRegionScope;
+use App\Services\NotaConsultaRemotaService;
 use App\Services\NotaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -181,6 +182,18 @@ class CompraAgilBusquedaController extends Controller
         }
 
         $validacion = $this->notaService->validarNumeroCotizacionDisponibleConDetalle($nota, $codigo, true);
+
+        if ($validacion['cold_start'] ?? false) {
+            $consultaPar = $validacion['consulta_par'] ?? [];
+
+            return response()->json([
+                'cold_start' => true,
+                'message' => NotaConsultaRemotaService::mensajeIniciandoConsulta(),
+                'intento' => $consultaPar['intento'] ?? 1,
+                'max_intentos' => $consultaPar['max_intentos'] ?? (int) config('cotiz.api_nota.consulta_par_max_intentos', 8),
+                'consulta_par' => $consultaPar,
+            ], 503);
+        }
 
         if ($validacion['error'] !== null) {
             return response()->json([

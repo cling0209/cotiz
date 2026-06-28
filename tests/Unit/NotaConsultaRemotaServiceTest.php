@@ -62,6 +62,7 @@ class NotaConsultaRemotaServiceTest extends TestCase
         $this->assertTrue($consulta['existe']);
         $this->assertSame(42, $consulta['nronota']);
         $this->assertSame('OK', $consulta['resultado']);
+        $this->assertFalse($consulta['cold_start']);
 
         $error = $this->service->errorSiEncargadoExisteEnPar('OC-EXISTE', 'Ya existe en par');
 
@@ -124,6 +125,64 @@ class NotaConsultaRemotaServiceTest extends TestCase
         $error = $this->service->errorSiEncargadoExisteEnPar('2686-279-COT26', 'Ya existe en Romulo');
 
         $this->assertSame('La cotización «2686-279-COT26» ya existe (nota #13383).', $error);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.romulo.cl'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.romulo.cl/api/v1/nota-consulta'));
+    }
+
+    public function test_timeout_devuelve_cold_start_y_despierta_sitio_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.consulta_par_max_intentos' => 1,
+        ]);
+
+        Http::fake([
+            'cotiza.romulo.cl/api/v1/nota-consulta' => fn () => throw new \Illuminate\Http\Client\ConnectionException('Timeout'),
+            'cotiza.romulo.cl/up' => Http::response('OK', 200),
+        ]);
+
+        $consulta = $this->service->consultarEncargadoEnPar('2686-279-COT26');
+
+        $this->assertTrue($consulta['cold_start']);
+        $this->assertSame(NotaConsultaRemotaService::mensajeIniciandoConsulta(), $consulta['mensaje']);
+        $this->assertNull($consulta['error']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/up'));
+    }
+
+    public function test_con_espera_reintenta_hasta_responder(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.consulta_par_max_intentos' => 3,
+            'cotiz.api_nota.consulta_par_espera_segundos' => 0,
+        ]);
+
+        $intentos = 0;
+        Http::fake(function ($request) use (&$intentos) {
+            if (str_contains($request->url(), '/up')) {
+                return Http::response('OK', 200);
+            }
+            $intentos++;
+            if ($intentos < 2) {
+                return Http::response('', 503);
+            }
+
+            return Http::response([
+                'resultado' => 'ERROR',
+                'mensaje' => 'La cotización no existe en notas.',
+            ], 400);
+        });
+
+        $error = $this->service->errorSiEncargadoExisteEnPar('OC-NUEVA-002', 'Duplicada');
+
+        $this->assertSame('', $error);
+        $this->assertSame(2, $intentos);
     }
 }

@@ -240,3 +240,31 @@
     @endif
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    const mensajeConsultaPar = @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando'));
+
+    function activarLoaderConsultaPar() {
+        const loader = document.getElementById('page-loader');
+        if (!loader) return;
+        document.documentElement.classList.add('page-loader-active');
+        loader.classList.add('is-active');
+        loader.setAttribute('aria-hidden', 'false');
+        let msg = loader.querySelector('.page-loader__msg');
+        if (!msg) {
+            msg = document.createElement('p');
+            msg.className = 'page-loader__msg small text-white mt-2 mb-0 text-center px-3';
+            loader.querySelector('.page-loader__scene')?.appendChild(msg);
+        }
+        msg.textContent = mensajeConsultaPar;
+        msg.hidden = false;
+    }
+
+    document.querySelectorAll('form[action="{{ route('admin.cotizaciones.carga-archivo.previsualizar') }}"], form[action="{{ route('admin.cotizaciones.carga-archivo.confirmar') }}"]').forEach(function (form) {
+        form.addEventListener('submit', activarLoaderConsultaPar);
+    });
+})();
+</script>
+@endpush
