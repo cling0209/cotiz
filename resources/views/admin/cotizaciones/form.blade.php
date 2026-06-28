@@ -2125,8 +2125,12 @@
     }
 
     async function prepararImportAgileAntesPreview() {
+        if (importarEstado) {
+            importarEstado.textContent = 'Revisando líneas Agile en esta cotización…';
+        }
         mostrarProgresoImportar();
-        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        actualizarProgresoImportar(0, 0, 'Revisando líneas Agile en esta cotización…');
+
         const bodyCoin = new FormData();
         bodyCoin.append('_token', csrf);
         bodyCoin.append('texto', '');
@@ -2143,6 +2147,8 @@
         }
         if ((coin.con_agile || coin.total || 0) > 0) {
             const det = coin.detalle || {};
+            ocultarProgresoImportar();
+            if (importarEstado) importarEstado.textContent = '';
             const okReemplazo = await dlgConfirm(
                 'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile'
                     + (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '')
@@ -2150,9 +2156,13 @@
                 { title: 'Reemplazar líneas Agile', type: 'warning' },
             );
             if (!okReemplazo) {
-                ocultarProgresoImportar();
                 return false;
             }
+            if (importarEstado) {
+                importarEstado.textContent = 'Eliminando líneas Agile anteriores…';
+            }
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Eliminando líneas Agile anteriores…');
             const bodyLimp = new FormData();
             bodyLimp.append('_token', csrf);
             const resLimp = await fetch(importarMpUrls.limpiarAgile, {
@@ -2168,6 +2178,8 @@
             }
             if (limp.detalle) actualizarResumenLineas(limp.detalle);
         }
+
+        ocultarProgresoImportar();
         return true;
     }
 
@@ -2229,6 +2241,17 @@
             });
 
             ocultarSoloAlertaConsultaPar();
+            ocultarProgresoImportar();
+            if (importarEstado) {
+                importarEstado.textContent = 'Sitio par verificado.';
+            }
+
+            const ok = await prepararImportAgileAntesPreview();
+            if (!ok) {
+                ocultarProgresoConsultaPar();
+                return;
+            }
+
             if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
             if (importarProgresoBar) {
                 importarProgresoBar.style.width = '0%';
@@ -2237,16 +2260,10 @@
                 importarProgresoBar.classList.add('progress-bar-animated');
             }
             if (importarProgresoTexto) {
-                importarProgresoTexto.textContent = 'Sitio par verificado. Cargando Mercado Público…';
+                importarProgresoTexto.textContent = 'Cargando detalle Mercado Público…';
             }
             if (importarEstado) {
-                importarEstado.textContent = 'Sitio par verificado. Cargando Mercado Público…';
-            }
-
-            const ok = await prepararImportAgileAntesPreview();
-            if (!ok) {
-                ocultarProgresoConsultaPar();
-                return;
+                importarEstado.textContent = 'Cargando detalle Mercado Público…';
             }
 
             let todasLineas = [];
