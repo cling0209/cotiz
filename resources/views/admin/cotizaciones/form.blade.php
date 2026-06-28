@@ -2243,13 +2243,7 @@
             ocultarSoloAlertaConsultaPar();
             ocultarProgresoImportar();
             if (importarEstado) {
-                importarEstado.textContent = 'Sitio par verificado.';
-            }
-
-            const ok = await prepararImportAgileAntesPreview();
-            if (!ok) {
-                ocultarProgresoConsultaPar();
-                return;
+                importarEstado.textContent = 'Sitio par verificado. Cargando Mercado Público…';
             }
 
             if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
@@ -2261,9 +2255,6 @@
             }
             if (importarProgresoTexto) {
                 importarProgresoTexto.textContent = 'Cargando detalle Mercado Público…';
-            }
-            if (importarEstado) {
-                importarEstado.textContent = 'Cargando detalle Mercado Público…';
             }
 
             let todasLineas = [];
@@ -2306,6 +2297,11 @@
             }
 
             ocultarProgresoImportar();
+            if (!errorCabecera && (todasLineas.length === 0) && (total === 0)) {
+                ocultarProgresoConsultaPar();
+                mostrarImportError('No se encontró la cotización «' + codigo + '» en Mercado Público.');
+                return;
+            }
             renderImportPreview({
                 cabecera: cabecera || {},
                 lineas: todasLineas,
@@ -2367,6 +2363,11 @@
                 { title: 'Importar con pendientes', type: 'warning' },
             );
             if (!ok) return;
+        }
+
+        if (usarApi) {
+            const okAgile = await prepararImportAgileAntesPreview();
+            if (!okAgile) return;
         }
 
         importandoCompraAgil = true;
