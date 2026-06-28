@@ -155,7 +155,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
         ]));
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'])) {
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'], false, true)) {
             return back()->withInput()->withErrors(['encargado' => $error]);
         }
 
@@ -212,7 +212,7 @@ class CotizacionController extends Controller
 
         $datos = $request->validate($this->reglasCabecera());
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'])) {
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'], false, true)) {
             return response()->json([
                 'error' => $error,
                 'errors' => ['encargado' => [$error]],

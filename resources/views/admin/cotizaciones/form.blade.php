@@ -2171,10 +2171,15 @@
         return true;
     }
 
-    function ocultarProgresoConsultaPar() {
+    function ocultarSoloAlertaConsultaPar() {
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
         if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+    }
+
+    function ocultarProgresoConsultaPar() {
+        ocultarSoloAlertaConsultaPar();
         ocultarProgresoImportar();
+        if (importarEstado) importarEstado.textContent = '';
     }
 
     function mostrarProgresoConsultaPar(intento, max, mensaje) {
@@ -2200,31 +2205,50 @@
         if (importarEstado) importarEstado.textContent = '';
     }
 
+    let analizandoCodigoApi = false;
+
     async function analizarCodigoApi(codigo) {
         codigo = String(codigo || '').trim().toUpperCase();
-        if (!codigo) return;
+        if (!codigo || analizandoCodigoApi) return;
+
+        analizandoCodigoApi = true;
         importCodigoApi = codigo;
+        renderImportPreview(null);
         limpiarImportAlerta();
+        ocultarProgresoImportar();
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        if (importarEstado) importarEstado.textContent = '';
+
+        const btnBuscar = document.getElementById('btn-ca-buscar-codigo');
+        if (btnBuscar) btnBuscar.disabled = true;
 
         try {
             await validarEncargadoParConEspera(codigo, {
                 csrf,
                 onProgress: mostrarProgresoConsultaPar,
             });
-            ocultarProgresoConsultaPar();
-        } catch (err) {
-            ocultarProgresoConsultaPar();
-            mostrarImportError(err?.message || 'No se puede importar esta cotización.');
-            return;
-        }
 
-        if (importarEstado) importarEstado.textContent = 'Cargando detalle Mercado Público…';
+            ocultarSoloAlertaConsultaPar();
+            if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
+            if (importarProgresoBar) {
+                importarProgresoBar.style.width = '0%';
+                importarProgresoBar.setAttribute('aria-valuenow', '0');
+                importarProgresoBar.textContent = '0%';
+                importarProgresoBar.classList.add('progress-bar-animated');
+            }
+            if (importarProgresoTexto) {
+                importarProgresoTexto.textContent = 'Sitio par verificado. Cargando Mercado Público…';
+            }
+            if (importarEstado) {
+                importarEstado.textContent = 'Sitio par verificado. Cargando Mercado Público…';
+            }
 
-        const ok = await prepararImportAgileAntesPreview();
-        if (!ok) return;
+            const ok = await prepararImportAgileAntesPreview();
+            if (!ok) {
+                ocultarProgresoConsultaPar();
+                return;
+            }
 
-        try {
             let todasLineas = [];
             let cabecera = null;
             let total = 0;
@@ -2235,7 +2259,7 @@
             while (desde === 0 || desde < total) {
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                actualizarProgresoImportar(desde, total || hasta, 'Analizando productos...');
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando productos en Mercado Público…');
 
                 const body = new FormData();
                 body.append('_token', csrf);
@@ -2250,7 +2274,7 @@
                 });
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
-                    ocultarProgresoImportar();
+                    ocultarProgresoConsultaPar();
                     mostrarImportError(json.error || 'Error al analizar.');
                     return;
                 }
@@ -2276,8 +2300,11 @@
                 importarEstado.textContent = errorCabecera ? '' : 'Análisis listo (API).';
             }
         } catch (err) {
-            ocultarProgresoImportar();
-            mostrarImportError('Error de conexión.');
+            ocultarProgresoConsultaPar();
+            mostrarImportError(err?.message || 'No se puede importar esta cotización.');
+        } finally {
+            analizandoCodigoApi = false;
+            if (btnBuscar) btnBuscar.disabled = false;
         }
     }
 
@@ -2290,8 +2317,7 @@
             importarProgresoWrap.classList.remove('d-none');
             importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-        actualizarProgresoImportar(0, importPreviewData?.resumen?.total || 0, 'Preparando importación...');
-        if (importarEstado) importarEstado.textContent = importarEstado.textContent || '';
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
     }
 
     function ocultarProgresoImportar() {

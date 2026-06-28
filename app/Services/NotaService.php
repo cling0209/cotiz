@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class NotaService
 {
+    private const PAR_VERIFICADO_TTL_SEGUNDOS = 300;
+
     public function crear(string $usuario, ?string $descripcion = null, ?int $notaOrigen = null, ?string $sistema = null): Nota
     {
         return DB::transaction(function () use ($usuario, $descripcion, $notaOrigen, $sistema) {
@@ -101,6 +103,40 @@ class NotaService
         return null;
     }
 
+    public function marcarEncargadoVerificadoEnPar(int $nronota, string $encargado): void
+    {
+        $numero = trim($encargado);
+        if ($numero === '') {
+            return;
+        }
+
+        session()->put($this->claveParVerificado($nronota), [
+            'encargado' => $numero,
+            'verificado_at' => time(),
+        ]);
+    }
+
+    public function encargadoVerificadoRecientementeEnPar(int $nronota, string $encargado): bool
+    {
+        $numero = trim($encargado);
+        if ($numero === '') {
+            return false;
+        }
+
+        $data = session()->get($this->claveParVerificado($nronota));
+        if (! is_array($data)) {
+            return false;
+        }
+
+        $guardado = trim((string) ($data['encargado'] ?? ''));
+        $verificadoAt = (int) ($data['verificado_at'] ?? 0);
+
+        return $guardado !== ''
+            && strcasecmp($guardado, $numero) === 0
+            && $verificadoAt > 0
+            && (time() - $verificadoAt) < self::PAR_VERIFICADO_TTL_SEGUNDOS;
+    }
+
     /**
      * Valida número de cotización en esta instancia y en el sitio par (Reicol/Romulo).
      */
@@ -108,6 +144,7 @@ class NotaService
         Nota $nota,
         ?string $encargado = null,
         bool $forzarConsultaPar = false,
+        bool $omitirConsultaParSiVerificado = false,
     ): ?string {
         $error = $this->validarNumeroCotizacion($nota, $encargado);
         if ($error !== null) {
@@ -121,6 +158,10 @@ class NotaService
             return null;
         }
 
+        if ($omitirConsultaParSiVerificado && $this->encargadoVerificadoRecientementeEnPar($nota->nronota, $numero)) {
+            return null;
+        }
+
         $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
             $numero,
             sprintf(
@@ -128,6 +169,10 @@ class NotaService
                 $numero,
             ),
         );
+
+        if ($remoto === '' || str_contains($remoto, 'ya existe')) {
+            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
+        }
 
         return $remoto !== '' ? $remoto : null;
     }
@@ -139,18 +184,16 @@ class NotaService
         Nota $nota,
         ?string $encargado = null,
         bool $forzarConsultaPar = false,
+        bool $omitirConsultaParSiVerificado = false,
     ): array {
         $numero = trim($encargado ?? (string) $nota->encargado);
-        $consultaPar = ($forzarConsultaPar && $numero !== '')
-            ? app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero)
-            : null;
 
         $local = $this->validarNumeroCotizacion($nota, $encargado);
         if ($local !== null) {
             return [
                 'error' => $local,
                 'origen' => 'local',
-                'consulta_par' => $consultaPar,
+                'consulta_par' => null,
             ];
         }
 
@@ -164,9 +207,24 @@ class NotaService
             ];
         }
 
-        if ($consultaPar === null) {
-            $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
+        if ($omitirConsultaParSiVerificado && $this->encargadoVerificadoRecientementeEnPar($nota->nronota, $numero)) {
+            return [
+                'error' => null,
+                'origen' => null,
+                'consulta_par' => null,
+                'par_ya_verificado' => true,
+            ];
         }
+
+        if ($numero === '') {
+            return [
+                'error' => null,
+                'origen' => null,
+                'consulta_par' => null,
+            ];
+        }
+
+        $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
 
         if (($consultaPar['cold_start'] ?? false) === true) {
             return [
@@ -186,6 +244,8 @@ class NotaService
         }
 
         if ($consultaPar['existe'] === true) {
+            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
+
             return [
                 'error' => $consultaPar['mensaje'] ?? sprintf(
                     'La cotización «%s» ya existe registrada en el otro sitio, favor verificar.',
@@ -196,11 +256,20 @@ class NotaService
             ];
         }
 
+        if ($consultaPar !== null && $consultaPar['existe'] === false) {
+            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
+        }
+
         return [
             'error' => null,
             'origen' => null,
             'consulta_par' => $consultaPar,
         ];
+    }
+
+    private function claveParVerificado(int $nronota): string
+    {
+        return "cotiz.par_verificado.{$nronota}";
     }
 
     /**

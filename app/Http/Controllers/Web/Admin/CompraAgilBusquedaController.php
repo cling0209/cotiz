@@ -51,7 +51,7 @@ class CompraAgilBusquedaController extends Controller
                     return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
                 }
 
-                if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
+                if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true, true)) {
                     return response()->json(['error' => $error], 422);
                 }
 
@@ -90,7 +90,7 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
+            if ($error = $this->validarCodigoCabecera($nota, $codigo, true)) {
                 return response()->json(['error' => $error], 422);
             }
 
@@ -128,7 +128,7 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, true)) {
+            if ($error = $this->validarCodigoCabecera($nota, $codigo, true)) {
                 return response()->json(['error' => $error], 422);
             }
 
@@ -220,9 +220,9 @@ class CompraAgilBusquedaController extends Controller
         $puedeImportar = true;
 
         if ($desde === 0 && ($resultado['cabecera']['codigo_cotizacion'] ?? '') !== '') {
-            $errorCabecera = $this->notaService->validarNumeroCotizacionDisponible(
+            $errorCabecera = $this->validarCodigoCabecera(
                 $nota,
-                $resultado['cabecera']['codigo_cotizacion'],
+                (string) $resultado['cabecera']['codigo_cotizacion'],
                 true,
             );
             if ($errorCabecera !== null) {
@@ -235,6 +235,26 @@ class CompraAgilBusquedaController extends Controller
             'puede_importar' => $puedeImportar,
             'codigo_api' => $resultado['cabecera']['codigo_cotizacion'] ?? '',
         ]);
+    }
+
+    private function validarCodigoCabecera(Nota $nota, string $codigo, bool $omitirConsultaParSiVerificado = false): ?string
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return 'Indique el número de cotización Compra Ágil.';
+        }
+
+        if ($omitirConsultaParSiVerificado
+            && $this->notaService->encargadoVerificadoRecientementeEnPar($nota->nronota, $codigo)) {
+            return $this->notaService->validarNumeroCotizacion($nota, $codigo);
+        }
+
+        return $this->notaService->validarNumeroCotizacionDisponible(
+            $nota,
+            $codigo,
+            true,
+            $omitirConsultaParSiVerificado,
+        );
     }
 
     private function notaAutorizada(Request $request, int $nronota): Nota
