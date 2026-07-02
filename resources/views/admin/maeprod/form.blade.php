@@ -136,8 +136,7 @@
                             @endif
                             @if($producto)
                             <div class="col-12">
-                                <p class="small text-muted mb-0">
-                                    URL imagen:
+                                <p class="small mb-0">
                                     <code class="admin-image-url">{{ $producto->buildExternalImageUrl() ?: '—' }}</code>
                                 </p>
                             </div>
