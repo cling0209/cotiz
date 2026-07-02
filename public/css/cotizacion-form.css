@@ -413,6 +413,10 @@
     cursor: pointer;
 }
 
+.cotiz-buscar-tabla .cotiz-buscar-check {
+    cursor: pointer;
+}
+
 .cotiz-buscar-tabla .cotiz-buscar-thumb {
     width: 72px;
     height: 72px;

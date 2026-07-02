@@ -281,6 +281,9 @@
                         <table class="table table-sm table-hover mb-0 cotiz-buscar-tabla" id="tabla-buscar-productos">
                             <thead class="table-light sticky-top">
                                 <tr>
+                                    <th style="width:36px" class="text-center">
+                                        <input type="checkbox" class="form-check-input" id="modal-buscar-seleccionar-todos" title="Seleccionar todos" aria-label="Seleccionar todos">
+                                    </th>
                                     <th style="width:80px"></th>
                                     <th style="width:90px">C&oacute;digo</th>
                                     <th>Descripci&oacute;n</th>
@@ -289,13 +292,16 @@
                                 </tr>
                             </thead>
                             <tbody id="modal-buscar-resultados">
-                                <tr><td colspan="5" class="text-muted text-center py-3">Sin resultados.</td></tr>
+                                <tr><td colspan="6" class="text-muted text-center py-3">Sin resultados.</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
                 <div class="modal-footer py-2">
-                    <span class="small text-muted me-auto">Clic en fila para agregar al detalle.</span>
+                    <span class="small text-muted me-auto">Marque productos y pulse &laquo;Agregar seleccionados&raquo;.</span>
+                    <button type="button" class="btn btn-success btn-sm" id="btn-modal-agregar-seleccionados" disabled>
+                        <i class="bi bi-plus-circle"></i> Agregar seleccionados
+                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
@@ -1316,8 +1322,14 @@
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     let agregandoLinea = false;
 
-    async function agregarProducto(p) {
-        if (!p?.prod_item || agregandoLinea) {
+    async function agregarProducto(p, options = {}) {
+        const quiet = options.quiet === true;
+        const inBatch = options.inBatch === true;
+
+        if (!p?.prod_item) {
+            return false;
+        }
+        if (agregandoLinea && !inBatch) {
             return false;
         }
 
@@ -1325,7 +1337,9 @@
         const prodValor = p.prod_valor ?? 0;
         const prodValorCosto = p.prod_valor_costo ?? '';
 
-        agregandoLinea = true;
+        if (!inBatch) {
+            agregandoLinea = true;
+        }
 
         try {
             const body = new FormData();
@@ -1347,28 +1361,36 @@
 
             if (res.ok && json.ok) {
                 insertarLineaDetalle(json, p);
+                if (!quiet) {
+                    ocultarLoaderCotiz();
+                    try {
+                        sessionStorage.removeItem('page-loader-pending');
+                    } catch (e) {}
+                }
+                return true;
+            }
+
+            if (!quiet) {
                 ocultarLoaderCotiz();
                 try {
                     sessionStorage.removeItem('page-loader-pending');
                 } catch (e) {}
-                return true;
+                dlgAlert(json.error || json.message || 'No se pudo agregar la línea.', { title: 'Error', type: 'danger' });
             }
-
-            ocultarLoaderCotiz();
-            try {
-                sessionStorage.removeItem('page-loader-pending');
-            } catch (e) {}
-            dlgAlert(json.error || json.message || 'No se pudo agregar la línea.', { title: 'Error', type: 'danger' });
             return false;
         } catch (err) {
-            ocultarLoaderCotiz();
-            try {
-                sessionStorage.removeItem('page-loader-pending');
-            } catch (e) {}
-            dlgAlert('Error de conexión al agregar producto.', { title: 'Error', type: 'danger' });
+            if (!quiet) {
+                ocultarLoaderCotiz();
+                try {
+                    sessionStorage.removeItem('page-loader-pending');
+                } catch (e) {}
+                dlgAlert('Error de conexión al agregar producto.', { title: 'Error', type: 'danger' });
+            }
             return false;
         } finally {
-            agregandoLinea = false;
+            if (!inBatch) {
+                agregandoLinea = false;
+            }
         }
     }
 
@@ -1385,6 +1407,9 @@
     const modalBody = document.getElementById('modal-buscar-resultados');
     const btnAbrirBuscar = document.getElementById('btn-abrir-buscar-producto');
     const btnModalBuscar = document.getElementById('btn-modal-buscar');
+    const btnModalAgregarSeleccionados = document.getElementById('btn-modal-agregar-seleccionados');
+    const chkSeleccionarTodos = document.getElementById('modal-buscar-seleccionar-todos');
+    const productosMarcados = new Set();
 
     function setModalBuscarEstado(texto, cargando) {
         if (!modalEstado) return;
@@ -1477,19 +1502,103 @@
         }
     });
 
-    async function seleccionarProducto(p) {
-        if (agregandoLinea) {
+    function actualizarBotonAgregarSeleccionados() {
+        if (!btnModalAgregarSeleccionados) {
+            return;
+        }
+        const n = productosMarcados.size;
+        btnModalAgregarSeleccionados.disabled = n === 0 || agregandoLinea;
+        btnModalAgregarSeleccionados.innerHTML = n > 0
+            ? '<i class="bi bi-plus-circle"></i> Agregar seleccionados (' + n + ')'
+            : '<i class="bi bi-plus-circle"></i> Agregar seleccionados';
+    }
+
+    function sincronizarSeleccionarTodos() {
+        if (!chkSeleccionarTodos) {
+            return;
+        }
+        if (!resultadosActuales.length) {
+            chkSeleccionarTodos.checked = false;
+            chkSeleccionarTodos.indeterminate = false;
+            return;
+        }
+        const todos = resultadosActuales.every(p => productosMarcados.has(String(p.prod_item)));
+        const alguno = resultadosActuales.some(p => productosMarcados.has(String(p.prod_item)));
+        chkSeleccionarTodos.checked = todos;
+        chkSeleccionarTodos.indeterminate = alguno && !todos;
+    }
+
+    function togglearProductoMarcado(prodItem, marcado) {
+        const key = String(prodItem || '').trim();
+        if (!key) {
+            return;
+        }
+        if (marcado) {
+            productosMarcados.add(key);
+        } else {
+            productosMarcados.delete(key);
+        }
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    }
+
+    function limpiarProductosMarcados() {
+        productosMarcados.clear();
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    }
+
+    async function agregarProductosSeleccionados() {
+        const seleccionados = resultadosActuales.filter(p => productosMarcados.has(String(p.prod_item)));
+        if (!seleccionados.length || agregandoLinea) {
             return;
         }
 
+        agregandoLinea = true;
+        actualizarBotonAgregarSeleccionados();
         mostrarLoaderCotiz();
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
         if (modalEstado) {
-            setModalBuscarEstado('Agregando producto...', false);
+            setModalBuscarEstado('Agregando ' + seleccionados.length + ' producto(s)...', false);
         }
-        bsModal?.hide();
-        agregarProducto(p);
+
+        let ok = 0;
+        let fail = 0;
+        const errores = [];
+
+        for (const p of seleccionados) {
+            const result = await agregarProducto(p, { quiet: true, inBatch: true });
+            if (result) {
+                ok++;
+            } else {
+                fail++;
+                errores.push(codigoProductoTexto(p.prod_item));
+            }
+        }
+
+        agregandoLinea = false;
+        ocultarLoaderCotiz();
+        try {
+            sessionStorage.removeItem('page-loader-pending');
+        } catch (e) {}
+
+        limpiarProductosMarcados();
+        modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
+            chk.checked = false;
+        });
+
+        if (fail === 0) {
+            bsModal?.hide();
+            return;
+        }
+
+        const detalle = errores.length ? (' Productos con error: ' + errores.join(', ') + '.') : '';
+        dlgAlert('Agregados: ' + ok + '. Fallidos: ' + fail + '.' + detalle, {
+            title: 'Agregar productos',
+            type: fail === seleccionados.length ? 'danger' : 'warning',
+        });
+        if (modalEstado) {
+            setModalBuscarEstado('Algunos productos no se pudieron agregar. Revise la selección.', false);
+        }
     }
 
     function marcarFilaActiva(idx) {
@@ -1506,7 +1615,8 @@
         if (!modalBody) return;
 
         if (!resultadosActuales.length) {
-            modalBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center py-3">Sin resultados.</td></tr>';
+            modalBody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-3">Sin resultados.</td></tr>';
+            limpiarProductosMarcados();
             if (modalEstado) {
                 setModalBuscarEstado(meta?.q
                     ? 'No se encontraron productos similares para «' + meta.q + '».'
@@ -1515,30 +1625,54 @@
             return;
         }
 
+        productosMarcados.clear();
         modalBody.innerHTML = '';
         resultadosActuales.forEach((p, idx) => {
             const tr = document.createElement('tr');
             tr.dataset.idx = String(idx);
+            tr.dataset.prodItem = String(p.prod_item || '');
             tr.className = 'cotiz-buscar-fila';
             tr.tabIndex = 0;
             tr.innerHTML =
+                '<td class="text-center align-middle">' +
+                    '<input type="checkbox" class="form-check-input cotiz-buscar-check" aria-label="Seleccionar producto">' +
+                '</td>' +
                 '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
                 '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
                 '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
                 '<td class="align-middle small text-muted">' + (p.prod_familia || '') + '</td>' +
                 '<td class="align-middle text-end fw-semibold">' + fmtPrecio(p.prod_valor) + '</td>';
 
-            tr.addEventListener('click', () => seleccionarProducto(p));
+            const chk = tr.querySelector('.cotiz-buscar-check');
+            chk?.addEventListener('change', () => togglearProductoMarcado(p.prod_item, chk.checked));
+            chk?.addEventListener('click', e => e.stopPropagation());
+
+            tr.addEventListener('click', e => {
+                if (e.target.closest('.product-image-zoom-trigger') || e.target.closest('.cotiz-buscar-check')) {
+                    return;
+                }
+                if (!chk) {
+                    return;
+                }
+                chk.checked = !chk.checked;
+                togglearProductoMarcado(p.prod_item, chk.checked);
+            });
             tr.addEventListener('keydown', e => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    seleccionarProducto(p);
+                    if (!chk) {
+                        return;
+                    }
+                    chk.checked = !chk.checked;
+                    togglearProductoMarcado(p.prod_item, chk.checked);
                 }
             });
             modalBody.appendChild(tr);
         });
 
         enlazarZoomImagenes(modalBody);
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
 
         if (modalEstado && meta) {
             setModalBuscarEstado(meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).', false);
@@ -1582,6 +1716,7 @@
         if (!asegurarNumeroCotizacion()) return;
         if (!bsModal || !modalInput) return;
         modalInput.value = '';
+        limpiarProductosMarcados();
         renderResultados([], {});
         if (modalEstado) {
             setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
@@ -1610,7 +1745,24 @@
 
     btnAbrirBuscar?.addEventListener('click', () => abrirModalBuscar());
     btnModalBuscar?.addEventListener('click', () => lanzarBusquedaModal());
+    btnModalAgregarSeleccionados?.addEventListener('click', () => agregarProductosSeleccionados());
     document.getElementById('btn-modal-buscar-limpiar')?.addEventListener('click', limpiarBusquedaModal);
+
+    chkSeleccionarTodos?.addEventListener('change', () => {
+        const marcar = !!chkSeleccionarTodos.checked;
+        resultadosActuales.forEach(p => {
+            if (marcar) {
+                productosMarcados.add(String(p.prod_item));
+            } else {
+                productosMarcados.delete(String(p.prod_item));
+            }
+        });
+        modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
+            chk.checked = marcar;
+        });
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    });
 
     modalInput?.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
@@ -1632,6 +1784,7 @@
 
     modalEl?.addEventListener('hidden.bs.modal', () => {
         if (buscarAbort) buscarAbort.abort();
+        limpiarProductosMarcados();
     });
 
     function idAgileParaMercadoPublico(codigoInterno) {
