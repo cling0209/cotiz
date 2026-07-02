@@ -1684,6 +1684,7 @@
     async function ejecutarBusqueda(q) {
         if (buscarAbort) buscarAbort.abort();
         buscarAbort = new AbortController();
+        const signal = buscarAbort.signal;
 
         if (q.length < buscarConfig.minChars) {
             renderResultados([], { q });
@@ -1693,6 +1694,7 @@
             return;
         }
 
+        if (btnModalBuscar) btnModalBuscar.disabled = true;
         setModalBuscarEstado('Buscando...', true);
 
         try {
@@ -1702,13 +1704,17 @@
             });
             const res = await fetch(buscarConfig.url + '?' + params.toString(), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                signal: buscarAbort.signal,
+                signal,
             });
             const json = await res.json();
             renderResultados(json.data || [], json.meta || { q, count: (json.data || []).length });
         } catch (err) {
             if (err.name === 'AbortError') return;
             if (modalEstado) setModalBuscarEstado('Error al buscar. Intente de nuevo.', false);
+        } finally {
+            if (!signal.aborted && btnModalBuscar) {
+                btnModalBuscar.disabled = false;
+            }
         }
     }
 
