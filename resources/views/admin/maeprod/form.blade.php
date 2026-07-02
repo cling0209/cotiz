@@ -138,7 +138,7 @@
                             <div class="col-12">
                                 <p class="small text-muted mb-0">
                                     URL imagen:
-                                    <code class="user-select-all">{{ $producto->buildExternalImageUrl() ?: '—' }}</code>
+                                    <code class="admin-image-url">{{ $producto->buildExternalImageUrl() ?: '—' }}</code>
                                 </p>
                             </div>
                         @endif
