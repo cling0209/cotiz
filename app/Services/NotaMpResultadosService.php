@@ -66,7 +66,13 @@ class NotaMpResultadosService
         $total = max(0, (int) $corrida->total_notas);
         $sinJobActivo = $jobsPendientes === 0 && $jobsReservados === 0;
 
-        if (! $sinJobActivo || $segundos < $umbral) {
+        $umbralJobColgado = max($umbral, 900);
+
+        if ($sinJobActivo && $segundos >= $umbral) {
+            // sin job activo y pasó el umbral → liberar
+        } elseif ($segundos >= $umbralJobColgado) {
+            // job aún reservado pero sin avance hace >15 min → worker probablemente murió
+        } else {
             return false;
         }
 
