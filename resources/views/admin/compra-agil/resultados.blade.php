@@ -68,6 +68,25 @@
         <p class="small text-muted mb-3" id="banner-sin-corrida">Aún no se ha ejecutado ninguna consulta. Use «Consultar ahora».</p>
     @endif
 
+    <div class="d-flex gap-2 mb-3">
+        @if($ultimaCorrida)
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#seccion-resultado" aria-expanded="false">
+                <i class="bi bi-list-check"></i> Resultado último proceso
+                @php
+                    $detalleOk = $detalleCorrida->where('exito', true)->count();
+                    $detalleError = $detalleCorrida->where('exito', false)->count();
+                @endphp
+                @if($detalleCorrida->isNotEmpty())
+                    <span class="badge text-bg-secondary ms-1">{{ $detalleOk + $detalleError }}</span>
+                @endif
+            </button>
+        @endif
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#seccion-cerradas" aria-expanded="false">
+            <i class="bi bi-lock-fill"></i> Cerradas
+            <span class="badge text-bg-secondary ms-1">{{ $cerradas->total() }}</span>
+        </button>
+    </div>
+
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">
         <div class="card-body py-3">
             <div class="alert alert-warning small py-2 d-none mb-2" id="progreso-alerta"></div>
@@ -80,83 +99,6 @@
             </div>
         </div>
     </div>
-
-    @if($ultimaCorrida)
-        <div class="card shadow-sm mb-4">
-            <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <h2 class="h6 mb-0">Resultado por cotización — última consulta</h2>
-                @php
-                    $detalleOk = $detalleCorrida->where('exito', true)->count();
-                    $detalleError = $detalleCorrida->where('exito', false)->count();
-                @endphp
-                @if($detalleCorrida->isNotEmpty())
-                    <span class="small text-muted">
-                        {{ $detalleOk }} ok · {{ $detalleError }} con error
-                    </span>
-                @endif
-            </div>
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Nota</th>
-                            <th>Código CA</th>
-                            <th>Cliente</th>
-                            <th>Resultado</th>
-                            <th>Estado MP</th>
-                            <th>Ganador</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($detalleCorrida as $det)
-                            <tr data-nronota="{{ $det->nronota }}">
-                                <td>{{ $det->nronota }}</td>
-                                <td class="font-monospace small">{{ $det->codigo_proceso }}</td>
-                                <td class="small">{{ $det->empresa ?: '—' }}</td>
-                                <td>
-                                    @if($det->exito)
-                                        @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $det->resultado_propio])
-                                        @if($det->cambio)
-                                            <span class="badge text-bg-info ms-1">Cambio</span>
-                                        @endif
-                                    @else
-                                        <span class="badge text-bg-danger">Error</span>
-                                    @endif
-                                </td>
-                                <td class="small">
-                                    @if($det->exito)
-                                        {{ $det->estado_mp_glosa ?: '—' }}
-                                    @else
-                                        <span class="text-danger">{{ $det->mensaje }}</span>
-                                    @endif
-                                </td>
-                                <td class="small">
-                                    @if($det->razon_social_ganador)
-                                        {{ $det->razon_social_ganador }}<br>
-                                        <span class="text-muted">{{ $det->rut_ganador }}</span>
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td>
-                                    @if($det->exito)
-                                        <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $det->nronota }}">Detalle</button>
-                                    @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Sin detalle registrado en la última consulta.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    @endif
 
     <div class="card shadow-sm mb-4">
         <div class="card-header py-2 d-flex justify-content-between align-items-center">
@@ -208,59 +150,141 @@
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header py-2">
-            <h2 class="h6 mb-0">Cerradas</h2>
+    @if($ultimaCorrida)
+        <div class="collapse mb-4" id="seccion-resultado">
+            <div class="card shadow-sm">
+                <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h2 class="h6 mb-0">Resultado por cotización — última consulta</h2>
+                    @if($detalleCorrida->isNotEmpty())
+                        <span class="small text-muted">
+                            {{ $detalleOk }} ok · {{ $detalleError }} con error
+                        </span>
+                    @endif
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nota</th>
+                                <th>Código CA</th>
+                                <th>Cliente</th>
+                                <th>Resultado</th>
+                                <th>Estado MP</th>
+                                <th>Ganador</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($detalleCorrida as $det)
+                                <tr data-nronota="{{ $det->nronota }}">
+                                    <td>{{ $det->nronota }}</td>
+                                    <td class="font-monospace small">{{ $det->codigo_proceso }}</td>
+                                    <td class="small">{{ $det->empresa ?: '—' }}</td>
+                                    <td>
+                                        @if($det->exito)
+                                            @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $det->resultado_propio])
+                                            @if($det->cambio)
+                                                <span class="badge text-bg-info ms-1">Cambio</span>
+                                            @endif
+                                        @else
+                                            <span class="badge text-bg-danger">Error</span>
+                                        @endif
+                                    </td>
+                                    <td class="small">
+                                        @if($det->exito)
+                                            {{ $det->estado_mp_glosa ?: '—' }}
+                                        @else
+                                            <span class="text-danger">{{ $det->mensaje }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="small">
+                                        @if($det->razon_social_ganador)
+                                            {{ $det->razon_social_ganador }}<br>
+                                            <span class="text-muted">{{ $det->rut_ganador }}</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($det->exito)
+                                            <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $det->nronota }}">Detalle</button>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        Sin detalle registrado en la última consulta.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-        <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Nota</th>
-                        <th>Código CA</th>
-                        <th>Publicación</th>
-                        <th>Organismo</th>
-                        <th>Estado MP</th>
-                        <th>Seguimiento</th>
-                        <th>Ganador</th>
-                        <th class="text-end">Monto</th>
-                        <th>Consultado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="tbody-cerradas">
-                    @forelse($cerradas as $seg)
-                        <tr data-nronota="{{ $seg->nronota }}">
-                            <td>{{ $seg->nronota }}</td>
-                            <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
-                            <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
-                            <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
-                            <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
-                            <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
-                            <td class="small">
-                                @if($seg->razon_social_ganador)
-                                    {{ Str::limit($seg->razon_social_ganador, 30) }}
-                                @else
-                                    —
-                                @endif
-                            </td>
-                            <td class="text-end small">
-                                @if($seg->monto_total_ganador)
-                                    ${{ number_format($seg->monto_total_ganador, 0, ',', '.') }}
-                                @else
-                                    —
-                                @endif
-                            </td>
-                            <td class="small text-muted">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
-                            <td>
-                                <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
-                            </td>
+    @endif
+
+    <div class="collapse mb-4" id="seccion-cerradas">
+        <div class="card shadow-sm">
+            <div class="card-header py-2">
+                <h2 class="h6 mb-0">Cerradas</h2>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Nota</th>
+                            <th>Código CA</th>
+                            <th>Publicación</th>
+                            <th>Organismo</th>
+                            <th>Estado MP</th>
+                            <th>Seguimiento</th>
+                            <th>Ganador</th>
+                            <th class="text-end">Monto</th>
+                            <th>Consultado</th>
+                            <th></th>
                         </tr>
-                    @empty
-                        <tr><td colspan="10" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody id="tbody-cerradas">
+                        @forelse($cerradas as $seg)
+                            <tr data-nronota="{{ $seg->nronota }}">
+                                <td>{{ $seg->nronota }}</td>
+                                <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
+                                <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
+                                <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
+                                <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
+                                <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
+                                <td class="small">
+                                    @if($seg->razon_social_ganador)
+                                        {{ Str::limit($seg->razon_social_ganador, 30) }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="text-end small">
+                                    @if($seg->monto_total_ganador)
+                                        ${{ number_format($seg->monto_total_ganador, 0, ',', '.') }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="small text-muted">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="10" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            @if($cerradas->hasPages())
+                <div class="card-footer py-2 d-flex justify-content-center">
+                    {{ $cerradas->links() }}
+                </div>
+            @endif
         </div>
     </div>
 </div>
@@ -523,5 +547,12 @@
         }
     });
 })();
+
+if (new URLSearchParams(location.search).has('page') || location.hash === '#seccion-cerradas') {
+    const el = document.getElementById('seccion-cerradas');
+    if (el && typeof bootstrap !== 'undefined') {
+        new bootstrap.Collapse(el, { toggle: true });
+    }
+}
 </script>
 @endpush

@@ -642,6 +642,18 @@ class NotaMpResultadosService
             ->get();
     }
 
+    public function listadoCerradasPaginado(int $porPagina = 20): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        return NotaMpSeguimiento::query()
+            ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->whereRaw('finalizado IS TRUE')
+            ->orderByRaw('fecha_publicacion IS NULL')
+            ->orderByDesc('fecha_publicacion')
+            ->paginate($porPagina)
+            ->withQueryString()
+            ->fragment('seccion-cerradas');
+    }
+
     public function registrarDetalleFallo(
         NotaMpCorrida $corrida,
         int $nronota,
