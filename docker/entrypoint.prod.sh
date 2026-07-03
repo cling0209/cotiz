@@ -33,9 +33,15 @@ fi
 php artisan l5-swagger:generate 2>/dev/null || true
 
 if [ "$RUN_QUEUE_WORKER" = "true" ]; then
-  echo "Iniciando queue worker (database) en segundo plano..." >&2
-  php artisan queue:work database --sleep=3 --tries=1 --timeout=3600 >> storage/logs/queue-worker.log 2>&1 &
-  echo "Queue worker PID: $!" >&2
+  echo "Iniciando queue worker (database) con auto-restart..." >&2
+  (
+    while true; do
+      php artisan queue:work database --sleep=3 --tries=1 --timeout=3600 --max-time=3500 >> storage/logs/queue-worker.log 2>&1
+      echo "[$(date)] Queue worker terminó (exit $?). Reiniciando en 5s..." >&2
+      sleep 5
+    done
+  ) &
+  echo "Queue worker loop PID: $!" >&2
 fi
 
 php-fpm -D
