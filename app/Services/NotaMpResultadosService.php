@@ -83,6 +83,8 @@ class NotaMpResultadosService
         $minutos = (int) floor($segundos / 60);
         $codigo = trim((string) ($corrida->codigo_actual ?? ''));
 
+        $this->eliminarJobsResultadosMpPendientes();
+
         if ($procesadas === 0) {
             $mensaje = 'Consulta colgada liberada automáticamente tras '.$minutos.' min sin worker activo.';
             if ($codigo !== '') {
