@@ -69,6 +69,14 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             } catch (RuntimeException $e) {
                 $fallidas++;
                 $ultimoError = $e->getMessage();
+                $empresa = trim((string) ($item['empresa'] ?? ''));
+                $resultados->registrarDetalleFallo(
+                    $corrida,
+                    $nronota,
+                    $codigo,
+                    $ultimoError,
+                    $empresa !== '' ? $empresa : null,
+                );
                 Log::warning('ProcessNotaMpCorridaJob: nota omitida', [
                     'corrida_id' => $corrida->id,
                     'nronota' => $nronota,

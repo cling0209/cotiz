@@ -32,4 +32,9 @@ class NotaMpCorrida extends Model
     {
         return $this->hasMany(NotaMpCorridaCambio::class, 'corrida_id');
     }
+
+    public function detalle(): HasMany
+    {
+        return $this->hasMany(NotaMpCorridaDetalle::class, 'corrida_id');
+    }
 }

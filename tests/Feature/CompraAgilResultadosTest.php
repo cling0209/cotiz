@@ -100,6 +100,19 @@ class CompraAgilResultadosTest extends TestCase
             'notas_procesadas' => 1,
             'total_notas' => 1,
         ]);
+
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '3300-66-COT26',
+            'exito' => true,
+            'resultado_propio' => 'cerrada',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.index'))
+            ->assertOk()
+            ->assertSee('Resultado por cotización', false)
+            ->assertSee('3300-66-COT26', false);
     }
 
     public function test_no_permite_dos_corridas_en_paralelo(): void
@@ -207,6 +220,12 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertDatabaseMissing('nota_mp_seguimientos', [
             'nronota' => 502,
+        ]);
+
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
+            'nronota' => 502,
+            'exito' => false,
+            'mensaje' => 'No existe Compra Ágil con el código indicado.',
         ]);
     }
 

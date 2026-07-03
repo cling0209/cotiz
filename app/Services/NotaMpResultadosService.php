@@ -6,6 +6,7 @@ use App\Jobs\ProcessNotaMpCorridaJob;
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
+use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
@@ -439,6 +440,7 @@ class NotaMpResultadosService
             $corrida,
             $estadoAnterior,
             $anterior,
+            $nota,
         ) {
             NotaMpSeguimiento::query()->updateOrCreate(
                 ['nronota' => $nronota],
@@ -485,6 +487,23 @@ class NotaMpResultadosService
             }
 
             $corrida->increment('notas_procesadas');
+
+            NotaMpCorridaDetalle::query()->updateOrCreate(
+                ['corrida_id' => $corrida->id, 'nronota' => $nronota],
+                [
+                    'codigo_proceso' => $codigo,
+                    'empresa' => mb_substr(trim((string) ($nota->empresa ?? '')), 0, 200) ?: null,
+                    'exito' => true,
+                    'mensaje' => null,
+                    'estado_mp_glosa' => $estadoGlosa,
+                    'resultado_propio' => $resultadoPropio,
+                    'rut_ganador' => $rutGanador,
+                    'razon_social_ganador' => $ganadorProv !== null
+                        ? mb_substr(trim((string) ($ganadorProv['razon_social'] ?? '')), 0, 200)
+                        : null,
+                    'cambio' => $cambio,
+                ],
+            );
         });
 
         $corrida->refresh();
@@ -575,6 +594,45 @@ class NotaMpResultadosService
             ->whereRaw('finalizado IS TRUE')
             ->orderByDesc('ultimo_consultado_en')
             ->limit($limite)
+            ->get();
+    }
+
+    public function registrarDetalleFallo(
+        NotaMpCorrida $corrida,
+        int $nronota,
+        string $codigo,
+        string $mensaje,
+        ?string $empresa = null,
+    ): void {
+        NotaMpCorridaDetalle::query()->updateOrCreate(
+            ['corrida_id' => $corrida->id, 'nronota' => $nronota],
+            [
+                'codigo_proceso' => mb_substr(strtoupper(trim($codigo)), 0, 40),
+                'empresa' => $empresa !== null ? mb_substr(trim($empresa), 0, 200) : null,
+                'exito' => false,
+                'mensaje' => mb_substr(trim($mensaje), 0, 500),
+                'estado_mp_glosa' => null,
+                'resultado_propio' => null,
+                'rut_ganador' => null,
+                'razon_social_ganador' => null,
+                'cambio' => false,
+            ],
+        );
+    }
+
+    /**
+     * @return Collection<int, NotaMpCorridaDetalle>
+     */
+    public function detalleUltimaCorrida(?NotaMpCorrida $corrida = null): Collection
+    {
+        $corrida ??= $this->ultimaCorrida();
+        if ($corrida === null) {
+            return collect();
+        }
+
+        return NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->orderBy('nronota')
             ->get();
     }
 
