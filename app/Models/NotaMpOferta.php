@@ -39,7 +39,7 @@ class NotaMpOferta extends Model
         return $this->hasMany(NotaMpOfertaLinea::class, 'oferta_id');
     }
 
-    public function scopeProveedorSeleccionado(Builder $query): Builder
+    public function scopeWhereProveedorSeleccionado(Builder $query): Builder
     {
         return $query->whereRaw('proveedor_seleccionado IS TRUE');
     }

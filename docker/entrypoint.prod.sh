@@ -17,6 +17,7 @@ chown -R www-data:www-data storage/app/imports 2>/dev/null || true
 php artisan package:discover --ansi 2>/dev/null || true
 php artisan view:clear 2>/dev/null || true
 php -r 'echo "PHP max_input_vars=".ini_get("max_input_vars").PHP_EOL;'
+php artisan optimize:clear 2>/dev/null || true
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache

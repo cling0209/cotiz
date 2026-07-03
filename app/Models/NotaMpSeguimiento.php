@@ -49,12 +49,12 @@ class NotaMpSeguimiento extends Model
         return $this->belongsTo(NotaMpCorrida::class, 'ultima_corrida_id');
     }
 
-    public function scopeFinalizado(Builder $query): Builder
+    public function scopeWhereFinalizado(Builder $query): Builder
     {
         return $query->whereRaw('finalizado IS TRUE');
     }
 
-    public function scopePendiente(Builder $query): Builder
+    public function scopeWherePendiente(Builder $query): Builder
     {
         return $query->whereRaw('finalizado IS FALSE');
     }

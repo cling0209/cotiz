@@ -298,7 +298,7 @@ class NotaMpResultadosService
     public function resumenEstadistica(): array
     {
         $rows = NotaMpSeguimiento::query()
-            ->finalizado()
+            ->whereRaw('finalizado IS TRUE')
             ->selectRaw('resultado_propio, count(*) as total')
             ->groupBy('resultado_propio')
             ->pluck('total', 'resultado_propio');
@@ -311,7 +311,7 @@ class NotaMpResultadosService
             'total' => (int) $rows->sum(),
             'ganadas' => $ganadas,
             'perdidas' => $perdidas,
-            'pendientes' => (int) NotaMpSeguimiento::query()->pendiente()->count(),
+            'pendientes' => (int) NotaMpSeguimiento::query()->whereRaw('finalizado IS FALSE')->count(),
             'desiertas' => $desiertas,
         ];
     }
@@ -322,8 +322,8 @@ class NotaMpResultadosService
     public function listadoCerradas(int $limite = 50): Collection
     {
         return NotaMpSeguimiento::query()
-            ->with(['nota', 'ofertas' => fn ($q) => $q->proveedorSeleccionado()->with('lineas')])
-            ->finalizado()
+            ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->whereRaw('finalizado IS TRUE')
             ->orderByDesc('ultimo_consultado_en')
             ->limit($limite)
             ->get();
