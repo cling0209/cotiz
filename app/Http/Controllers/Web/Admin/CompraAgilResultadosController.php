@@ -27,7 +27,8 @@ class CompraAgilResultadosController extends Controller
             'novedades' => $this->resultados->novedadesUltimaCorrida(),
             'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
             'cerradas' => $this->resultados->listadoCerradas(100),
-            'pendientesCount' => $this->resultados->notasPendientesConsulta()->count(),
+            'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
+            'limiteCorridaMax' => $this->resultados->limiteCorridaMax(),
         ]);
     }
 
@@ -45,8 +46,10 @@ class CompraAgilResultadosController extends Controller
             ], 409);
         }
 
+        $limite = $this->resultados->normalizarLimiteConsulta((int) $request->input('limite', 5));
+
         try {
-            $this->resultados->encolarCorrida((string) $request->user()->username);
+            $this->resultados->encolarCorrida((string) $request->user()->username, $limite);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }

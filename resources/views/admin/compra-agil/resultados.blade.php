@@ -8,12 +8,29 @@
 @endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h1 class="h3 mb-0">Resultados Compra Ágil</h1>
+        <div>
+            <h1 class="h3 mb-0">Resultados Compra Ágil</h1>
+            @if($apiConfigurada && $pendientesCount > 0)
+                <p class="small text-muted mb-0 mt-1">
+                    {{ $pendientesCount }} cotización(es) pendiente(s) de consultar a MP.
+                </p>
+            @endif
+        </div>
         @if($apiConfigurada)
-            <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp"
-                @disabled($pendientesCount === 0 || $corridaActiva)>
-                <i class="bi bi-arrow-repeat"></i> Consultar ahora
-            </button>
+            <div class="d-flex flex-wrap align-items-end gap-2">
+                <div>
+                    <label for="input-limite-corrida" class="form-label small mb-1">Cantidad a consultar</label>
+                    <input type="number" class="form-control form-control-sm" id="input-limite-corrida"
+                        min="1" max="{{ $limiteCorridaMax }}"
+                        value="{{ min(5, $pendientesCount ?: 5) }}"
+                        style="width: 6rem;"
+                        @disabled($pendientesCount === 0 || $corridaActiva)>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp"
+                    @disabled($pendientesCount === 0 || $corridaActiva)>
+                    <i class="bi bi-arrow-repeat"></i> Consultar ahora
+                </button>
+            </div>
         @else
             <span class="badge text-bg-warning">Configure MERCADOPUBLICO_TICKET</span>
         @endif
@@ -271,6 +288,8 @@
     };
     const estadoInicial = @json($estadoCorrida);
     const btnConsultar = document.getElementById('btn-consultar-mp');
+    const inputLimite = document.getElementById('input-limite-corrida');
+    const limiteCorridaMax = @json($limiteCorridaMax);
     const btnCancelar = document.getElementById('btn-cancelar-mp');
     const cardProgreso = document.getElementById('card-progreso');
     const progresoBar = document.getElementById('progreso-bar');
@@ -387,7 +406,12 @@
         cardProgreso.classList.remove('d-none');
         actualizarProgreso({ procesadas: 0, total: 1, porcentaje: 0 });
 
-        const { res, data } = await postJson(urls.iniciar, {});
+        const limite = parseInt(inputLimite?.value ?? '5', 10);
+        const body = {
+            limite: Number.isNaN(limite) ? 5 : Math.min(limiteCorridaMax, Math.max(1, limite)),
+        };
+
+        const { res, data } = await postJson(urls.iniciar, body);
         if (res.status === 409 && data.estado?.en_curso) {
             iniciarPolling();
             return;

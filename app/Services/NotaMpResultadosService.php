@@ -17,6 +17,8 @@ use RuntimeException;
 
 class NotaMpResultadosService
 {
+    private const LIMITE_CORRIDA_MAX = 500;
+
     public function __construct(
         protected CompraAgilApiService $api,
         protected CompraAgilGanadorResolver $ganador,
@@ -107,12 +109,37 @@ class NotaMpResultadosService
         return $codigo !== '' && (bool) preg_match('/^\d+-\d+-COT\d+$/', $codigo);
     }
 
+    public function limiteCorridaMax(): int
+    {
+        return self::LIMITE_CORRIDA_MAX;
+    }
+
+    public function normalizarLimiteConsulta(int $limite): int
+    {
+        return max(1, min(self::LIMITE_CORRIDA_MAX, $limite));
+    }
+
+    public function contarNotasPendientesConsulta(): int
+    {
+        return Nota::query()
+            ->select(['notas.nronota', 'notas.encargado'])
+            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
+            ->where(function ($q) {
+                $q->whereNull('seg.nronota')
+                    ->orWhereRaw('seg.finalizado IS FALSE');
+            })
+            ->get()
+            ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
+            ->count();
+    }
+
     /**
      * @return Collection<int, array{nronota: int, codigo: string, fecha: ?string, empresa: string}>
      */
-    public function notasPendientesConsulta(?int $limite = null): Collection
+    public function notasPendientesConsulta(int $limite): Collection
     {
-        $limite = $limite ?? max(1, (int) config('cotiz.mercadopublico.resultados_max_por_corrida', 50));
+        $limite = max(1, min(self::LIMITE_CORRIDA_MAX, $limite));
 
         $query = Nota::query()
             ->select(['notas.nronota', 'notas.encargado', 'notas.fecha', 'notas.empresa'])
@@ -138,13 +165,14 @@ class NotaMpResultadosService
             ]);
     }
 
-    public function encolarCorrida(string $usuario): NotaMpCorrida
+    public function encolarCorrida(string $usuario, int $limiteSolicitado): NotaMpCorrida
     {
         if ($this->corridaEnCurso() !== null) {
             throw new RuntimeException('Ya hay una consulta en curso.');
         }
 
-        $pendientes = $this->notasPendientesConsulta();
+        $limite = $this->normalizarLimiteConsulta($limiteSolicitado);
+        $pendientes = $this->notasPendientesConsulta($limite);
         if ($pendientes->isEmpty()) {
             throw new RuntimeException('No hay cotizaciones pendientes de consultar (sin código CA o ya finalizadas).');
         }
@@ -323,9 +351,9 @@ class NotaMpResultadosService
     }
 
     /** @deprecated Use encolarCorrida() */
-    public function iniciarCorrida(string $usuario): NotaMpCorrida
+    public function iniciarCorrida(string $usuario, int $limite = 5): NotaMpCorrida
     {
-        return $this->encolarCorrida($usuario);
+        return $this->encolarCorrida($usuario, $limite);
     }
 
     public function finalizarCorrida(NotaMpCorrida $corrida, string $estado = 'ok', ?string $mensaje = null): NotaMpCorrida

@@ -229,6 +229,47 @@ class CompraAgilResultadosTest extends TestCase
         ]);
     }
 
+    public function test_encolar_corrida_respeta_limite_solicitado(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        foreach ([601, 602, 603] as $i => $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Test limite '.$nronota,
+                'fecha' => now()->subDays(3 - $i)->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente '.$nronota,
+                'encargado' => '3300-66-COT2'.$i,
+                'nota_softland' => 60000 + $nronota,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '3300-66-COT26',
+                    'estado' => ['codigo' => 'publicada', 'glosa' => 'Publicada'],
+                    'institucion' => ['organismo_comprador' => 'Test'],
+                    'proveedores_cotizando' => [],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'), ['limite' => 1])
+            ->assertOk();
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
+        ]);
+    }
+
     public function test_corrida_colgada_se_libera_automaticamente(): void
     {
         config(['cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600]);
