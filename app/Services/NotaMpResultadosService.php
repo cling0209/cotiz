@@ -657,6 +657,10 @@ class NotaMpResultadosService
             $query->where('nronota', (int) $filtros['nronota']);
         }
 
+        if (! empty($filtros['codigo_proceso'])) {
+            $query->where('codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
+        }
+
         if (! empty($filtros['organismo'])) {
             $query->where('organismo', 'ilike', '%' . $filtros['organismo'] . '%');
         }

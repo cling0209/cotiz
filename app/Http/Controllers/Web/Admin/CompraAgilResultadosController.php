@@ -44,7 +44,7 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradas(Request $request): View
     {
-        $filtros = $request->only(['nronota', 'organismo', 'fecha_desde', 'fecha_hasta']);
+        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'fecha_desde', 'fecha_hasta']);
 
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),

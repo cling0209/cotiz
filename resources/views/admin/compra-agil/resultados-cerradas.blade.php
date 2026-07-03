@@ -16,9 +16,14 @@
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
                 <div class="col-auto">
-                    <label for="f-nronota" class="form-label small mb-0">N° Cotización</label>
+                    <label for="f-nronota" class="form-label small mb-0">Nota</label>
                     <input type="number" class="form-control form-control-sm" id="f-nronota" name="nronota"
                         value="{{ $filtros['nronota'] ?? '' }}" placeholder="Ej: 1234" style="width:7rem">
+                </div>
+                <div class="col-auto">
+                    <label for="f-codigo" class="form-label small mb-0">Código CA</label>
+                    <input type="text" class="form-control form-control-sm" id="f-codigo" name="codigo_proceso"
+                        value="{{ $filtros['codigo_proceso'] ?? '' }}" placeholder="Ej: 2923-..." style="width:10rem">
                 </div>
                 <div class="col-auto">
                     <label for="f-organismo" class="form-label small mb-0">Organismo</label>
