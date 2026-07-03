@@ -43,7 +43,7 @@ class CompraAgilGanadorResolverTest extends TestCase
 
         $this->assertSame('INTEGRAMUNDO SPA', $ganador['razon_social']);
         $this->assertSame('76779675-7', $this->resolver->rutGanador($payload));
-        $this->assertSame('ganada', $this->resolver->resultadoPropio($payload));
+        $this->assertSame('cerrada', $this->resolver->resultadoPropio($payload));
     }
 
     public function test_detecta_ganador_con_seleccion_anidada(): void

@@ -3,17 +3,28 @@
 @section('title', 'Resultados Compra Ágil')
 
 @section('content')
+@php
+    $corridaActiva = !empty($estadoCorrida['en_curso']);
+@endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h3 mb-0">Resultados Compra Ágil</h1>
         @if($apiConfigurada)
-            <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp" @disabled($pendientesCount === 0)>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp"
+                @disabled($pendientesCount === 0 || $corridaActiva)>
                 <i class="bi bi-arrow-repeat"></i> Consultar ahora
             </button>
         @else
             <span class="badge text-bg-warning">Configure MERCADOPUBLICO_TICKET</span>
         @endif
     </div>
+
+    @if($corridaActiva)
+        <div class="alert alert-info border small mb-3 py-2">
+            Consulta en curso iniciada por <strong>{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
+            Puede salir de esta pantalla; el proceso continúa en segundo plano.
+        </div>
+    @endif
 
     @if($ultimaCorrida)
         <div class="alert alert-light border small mb-3 py-2" id="banner-ultima-corrida">
@@ -31,7 +42,7 @@
         <p class="small text-muted mb-3" id="banner-sin-corrida">Aún no se ha ejecutado ninguna consulta. Use «Consultar ahora».</p>
     @endif
 
-    <div class="card shadow-sm mb-4 d-none" id="card-progreso">
+    <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">
         <div class="card-body py-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                 <span class="small fw-semibold" id="progreso-texto">Preparando…</span>
@@ -44,27 +55,15 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100"><div class="card-body py-3">
-                <div class="text-muted small">Cerradas (estadística)</div>
-                <div class="fs-4 fw-semibold">{{ number_format($kpi['total'], 0, ',', '.') }}</div>
-            </div></div>
-        </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
             <div class="card shadow-sm h-100 border-success"><div class="card-body py-3">
-                <div class="text-muted small">Ganadas</div>
-                <div class="fs-4 fw-semibold text-success">{{ number_format($kpi['ganadas'], 0, ',', '.') }}</div>
+                <div class="text-muted small">Cerradas</div>
+                <div class="fs-4 fw-semibold text-success">{{ number_format($kpi['cerradas'], 0, ',', '.') }}</div>
             </div></div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100 border-danger"><div class="card-body py-3">
-                <div class="text-muted small">Perdidas</div>
-                <div class="fs-4 fw-semibold text-danger">{{ number_format($kpi['perdidas'], 0, ',', '.') }}</div>
-            </div></div>
-        </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
             <div class="card shadow-sm h-100 border-warning"><div class="card-body py-3">
-                <div class="text-muted small">Pendientes seguimiento</div>
+                <div class="text-muted small">Pendiente de seguimiento</div>
                 <div class="fs-4 fw-semibold text-warning">{{ number_format($kpi['pendientes'], 0, ',', '.') }}</div>
             </div></div>
         </div>
@@ -82,7 +81,7 @@
                         <th>Nota</th>
                         <th>Código CA</th>
                         <th>Cambio estado</th>
-                        <th>Resultado</th>
+                        <th>Seguimiento</th>
                         <th>Ganador</th>
                         <th></th>
                     </tr>
@@ -120,7 +119,7 @@
 
     <div class="card shadow-sm">
         <div class="card-header py-2">
-            <h2 class="h6 mb-0">Cerradas — estadística</h2>
+            <h2 class="h6 mb-0">Cerradas</h2>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">
@@ -130,7 +129,7 @@
                         <th>Código CA</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
-                        <th>Resultado</th>
+                        <th>Seguimiento</th>
                         <th>Ganador</th>
                         <th class="text-end">Monto</th>
                         <th>Consultado</th>
@@ -194,43 +193,31 @@
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const urls = {
         iniciar: @json(route('admin.compra-agil.resultados.iniciar')),
-        consultar: @json(url('/admin/compra-agil/resultados/consultar/__NRO__')),
-        finalizar: @json(route('admin.compra-agil.resultados.finalizar')),
+        estado: @json(route('admin.compra-agil.resultados.estado')),
         detalle: @json(url('/admin/compra-agil/resultados/detalle/__NRO__')),
     };
+    const estadoInicial = @json($estadoCorrida);
     const btnConsultar = document.getElementById('btn-consultar-mp');
     const cardProgreso = document.getElementById('card-progreso');
     const progresoBar = document.getElementById('progreso-bar');
     const progresoTexto = document.getElementById('progreso-texto');
     const progresoUsuario = document.getElementById('progreso-usuario');
-    const tbodyNovedades = document.getElementById('tbody-novedades');
-    const badgeNovedades = document.getElementById('badge-novedades');
+    let pollTimer = null;
+    let corridaActiva = !!estadoInicial.en_curso;
+    let monitoreando = corridaActiva;
 
-    const resultadoBadge = (r) => {
+    const seguimientoBadge = (r) => {
         const map = {
-            ganada: 'success',
-            perdida: 'danger',
-            pendiente: 'warning',
-            desierta: 'secondary',
-            cancelada: 'secondary',
-            no_participo: 'light text-dark border',
+            cerrada: ['success', 'Cerrada'],
+            pendiente: ['warning', 'Pendiente seguimiento'],
+            desierta: ['secondary', 'Desierta'],
+            cancelada: ['secondary', 'Cancelada'],
         };
-        const labels = {
-            ganada: 'Ganada',
-            perdida: 'Perdida',
-            pendiente: 'Pendiente',
-            desierta: 'Desierta',
-            cancelada: 'Cancelada',
-            no_participo: 'No participó',
-        };
-        const cls = map[r] || 'secondary';
-        const lbl = labels[r] || (r || '—');
-        return `<span class="badge text-bg-${cls === 'light text-dark border' ? 'light text-dark border' : cls}">${lbl}</span>`;
+        const [cls, lbl] = map[r] || ['secondary', r || '—'];
+        return `<span class="badge text-bg-${cls}">${lbl}</span>`;
     };
 
     const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
-
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
     async function postJson(url, body) {
         const res = await fetch(url, {
@@ -243,85 +230,97 @@
             body: JSON.stringify(body || {}),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Error en la consulta.');
-        return data;
+        return { res, data };
     }
 
-    function actualizarProgreso(actual, total, codigo, usuario) {
-        const pct = total > 0 ? Math.round((actual / total) * 100) : 0;
+    function actualizarProgreso(estado) {
+        const pct = estado.porcentaje ?? 0;
+        const codigo = estado.codigo_actual || '';
         progresoBar.style.width = pct + '%';
         progresoBar.textContent = pct + '%';
-        progresoTexto.textContent = `Consultando ${actual} / ${total}` + (codigo ? ` — ${codigo}` : '');
-        if (usuario) progresoUsuario.textContent = 'Ejecutado por: ' + usuario;
+        progresoTexto.textContent = `Consultando ${estado.procesadas ?? 0} / ${estado.total ?? 0}`
+            + (codigo ? ` — ${codigo}` : '');
+        if (estado.usuario) {
+            progresoUsuario.textContent = 'Ejecutado por: ' + estado.usuario;
+        }
     }
 
-    function agregarNovedad(r) {
-        if (!r.cambio) return;
-        document.getElementById('novedades-vacio')?.remove();
-        const tr = document.createElement('tr');
-        tr.dataset.nronota = r.nronota;
-        tr.innerHTML = `
-            <td>${r.nronota}</td>
-            <td class="font-monospace small">${r.codigo}</td>
-            <td class="small">${r.estado_anterior || '—'} <i class="bi bi-arrow-right"></i> <strong>${r.estado_nuevo || '—'}</strong></td>
-            <td>${resultadoBadge(r.resultado_propio)}</td>
-            <td class="small">${r.razon_social_ganador ? r.razon_social_ganador + '<br><span class="text-muted">' + (r.rut_ganador || '') + '</span>' : '—'}</td>
-            <td><button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="${r.nronota}">Detalle</button></td>`;
-        tbodyNovedades.prepend(tr);
-        badgeNovedades.textContent = tbodyNovedades.querySelectorAll('tr[data-nronota]').length;
+    function setCorridaActiva(activa) {
+        corridaActiva = activa;
+        if (btnConsultar) {
+            btnConsultar.disabled = activa || btnConsultar.dataset.sinPendientes === '1';
+        }
     }
 
-    function actualizarBannerCorrida(c) {
-        const banner = document.getElementById('banner-ultima-corrida');
-        const sin = document.getElementById('banner-sin-corrida');
-        if (sin) sin.classList.add('d-none');
-        if (!banner) return;
-        banner.classList.remove('d-none');
-        document.getElementById('ultima-usuario').textContent = c.usuario;
-        banner.innerHTML = `<strong>Última consulta</strong><br>
-            Usuario: <span id="ultima-usuario">${c.usuario}</span>
-            · Inicio: ${c.inicio}
-            · Fin: ${c.fin || '—'}
-            · Procesadas: ${c.notas_procesadas}
-            · Con cambio: ${c.notas_con_cambio}`;
+    function detenerPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    async function pollEstado() {
+        try {
+            const res = await fetch(urls.estado, { headers: { 'Accept': 'application/json' } });
+            const estado = await res.json();
+            if (estado.en_curso) {
+                cardProgreso.classList.remove('d-none');
+                progresoBar.classList.add('progress-bar-animated');
+                actualizarProgreso(estado);
+                setCorridaActiva(true);
+                return;
+            }
+            detenerPolling();
+            setCorridaActiva(false);
+            if (monitoreando) {
+                monitoreando = false;
+                progresoTexto.textContent = 'Consulta finalizada. Actualizando…';
+                progresoBar.classList.remove('progress-bar-animated');
+                window.location.reload();
+            }
+        } catch (e) {
+            console.warn('poll estado:', e);
+        }
+    }
+
+    function iniciarPolling() {
+        detenerPolling();
+        monitoreando = true;
+        cardProgreso.classList.remove('d-none');
+        pollEstado();
+        pollTimer = setInterval(pollEstado, 2500);
     }
 
     btnConsultar?.addEventListener('click', async () => {
         btnConsultar.disabled = true;
         cardProgreso.classList.remove('d-none');
-        actualizarProgreso(0, 1, '', '');
+        actualizarProgreso({ procesadas: 0, total: 1, porcentaje: 0 });
 
-        try {
-            const inicio = await postJson(urls.iniciar, {});
-            const pendientes = inicio.pendientes || [];
-            const total = pendientes.length;
-            const corridaId = inicio.corrida_id;
-            progresoUsuario.textContent = 'Ejecutado por: ' + inicio.usuario;
-
-            for (let i = 0; i < pendientes.length; i++) {
-                const p = pendientes[i];
-                actualizarProgreso(i, total, p.codigo, inicio.usuario);
-                try {
-                    const res = await postJson(urls.consultar.replace('__NRO__', p.nronota), { corrida_id: corridaId });
-                    if (res.resultado?.cambio) agregarNovedad(res.resultado);
-                } catch (e) {
-                    console.warn('Nota ' + p.nronota + ':', e.message);
-                }
-                actualizarProgreso(i + 1, total, p.codigo, inicio.usuario);
-                await sleep(350);
-            }
-
-            const fin = await postJson(urls.finalizar, { corrida_id: corridaId, estado: 'ok' });
-            if (fin.corrida) actualizarBannerCorrida(fin.corrida);
-            progresoTexto.textContent = 'Consulta finalizada. Recargue para ver estadística actualizada.';
-            progresoBar.classList.remove('progress-bar-animated');
-        } catch (e) {
-            progresoTexto.textContent = e.message;
-            progresoBar.classList.add('bg-danger');
-        } finally {
-            btnConsultar.disabled = false;
+        const { res, data } = await postJson(urls.iniciar, {});
+        if (res.status === 409 && data.estado?.en_curso) {
+            iniciarPolling();
+            return;
         }
+        if (!res.ok) {
+            progresoTexto.textContent = data.error || 'Error al iniciar.';
+            progresoBar.classList.add('bg-danger');
+            btnConsultar.disabled = corridaActiva;
+            return;
+        }
+        if (data.estado) {
+            actualizarProgreso(data.estado);
+        }
+        iniciarPolling();
     });
+
+    if (btnConsultar && btnConsultar.disabled && !corridaActiva) {
+        btnConsultar.dataset.sinPendientes = '1';
+    }
+
+    if (corridaActiva) {
+        actualizarProgreso(estadoInicial);
+        iniciarPolling();
+    }
 
     document.addEventListener('click', async (ev) => {
         const btn = ev.target.closest('.btn-detalle-mp');
@@ -339,7 +338,7 @@
             const s = data.seguimiento;
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Ganador: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
-                Resultado: ${s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}</p>`;
+                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}</p>`;
             html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
             (data.ofertas || []).forEach(o => {
                 html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">

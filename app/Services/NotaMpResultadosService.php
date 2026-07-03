@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessNotaMpCorridaJob;
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
@@ -79,22 +80,69 @@ class NotaMpResultadosService
             ]);
     }
 
-    public function iniciarCorrida(string $usuario): NotaMpCorrida
+    public function encolarCorrida(string $usuario): NotaMpCorrida
     {
-        $enCurso = $this->corridaEnCurso();
-        if ($enCurso !== null) {
-            $enCurso->update([
-                'fin' => now(),
-                'estado' => 'cancelled',
-                'mensaje' => 'Reemplazada por nueva corrida.',
-            ]);
+        if ($this->corridaEnCurso() !== null) {
+            throw new RuntimeException('Ya hay una consulta en curso.');
         }
 
-        return NotaMpCorrida::query()->create([
+        $pendientes = $this->notasPendientesConsulta();
+        if ($pendientes->isEmpty()) {
+            throw new RuntimeException('No hay cotizaciones pendientes de consultar (sin código CA o ya finalizadas).');
+        }
+
+        $lista = $pendientes->values()->all();
+
+        $corrida = NotaMpCorrida::query()->create([
             'usuario' => trim($usuario),
             'inicio' => now(),
             'estado' => 'running',
+            'total_notas' => count($lista),
+            'pendientes_json' => $lista,
+            'notas_procesadas' => 0,
+            'notas_con_cambio' => 0,
         ]);
+
+        ProcessNotaMpCorridaJob::dispatch($corrida->id);
+
+        return $corrida->fresh() ?? $corrida;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function estadoCorrida(?NotaMpCorrida $corrida = null): array
+    {
+        $corrida = $this->corridaEnCurso();
+        if ($corrida !== null) {
+            $corrida = $corrida->fresh() ?? $corrida;
+        }
+        if ($corrida === null) {
+            return ['en_curso' => false];
+        }
+
+        $total = max(1, (int) $corrida->total_notas);
+        $procesadas = min((int) $corrida->notas_procesadas, $total);
+
+        return [
+            'en_curso' => $corrida->estado === 'running',
+            'corrida_id' => $corrida->id,
+            'usuario' => $corrida->usuario,
+            'inicio' => $corrida->inicio->format('d/m/Y H:i:s'),
+            'procesadas' => $procesadas,
+            'total' => (int) $corrida->total_notas,
+            'porcentaje' => (int) round(($procesadas / $total) * 100),
+            'nronota_actual' => $corrida->nronota_actual,
+            'codigo_actual' => $corrida->codigo_actual,
+            'notas_con_cambio' => (int) $corrida->notas_con_cambio,
+            'estado' => $corrida->estado,
+        ];
+    }
+
+    /** @deprecated Use encolarCorrida() */
+    public function iniciarCorrida(string $usuario): NotaMpCorrida
+    {
+        return $this->encolarCorrida($usuario);
     }
 
     public function finalizarCorrida(NotaMpCorrida $corrida, string $estado = 'ok', ?string $mensaje = null): NotaMpCorrida
@@ -137,15 +185,7 @@ class NotaMpResultadosService
         $estadoCodigo = $this->ganador->codigoEstadoMp($payload);
         $estadoGlosa = $this->ganador->glosaEstadoMp($payload);
         $resultadoPropio = $this->ganador->resultadoPropio($payload);
-        $finalizado = $this->ganador->esEstadoFinal($payload)
-            || in_array($resultadoPropio, ['ganada', 'perdida', 'desierta', 'cancelada', 'no_participo'], true);
-
-        if ($estadoCodigo === 'cerrada' && ! $this->ganador->tieneProveedorAdjudicado($payload)) {
-            $finalizado = false;
-            if ($resultadoPropio !== 'desierta' && $resultadoPropio !== 'cancelada') {
-                $resultadoPropio = 'pendiente';
-            }
-        }
+        $finalizado = in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true);
 
         $rutGanador = $this->ganador->rutGanador($payload);
         $montoGanador = $ganadorProv !== null ? (int) round((float) ($ganadorProv['monto_total'] ?? 0)) : null;
@@ -293,26 +333,13 @@ class NotaMpResultadosService
     }
 
     /**
-     * @return array{total: int, ganadas: int, perdidas: int, pendientes: int, desiertas: int}
+     * @return array{cerradas: int, pendientes: int}
      */
     public function resumenEstadistica(): array
     {
-        $rows = NotaMpSeguimiento::query()
-            ->whereRaw('finalizado IS TRUE')
-            ->selectRaw('resultado_propio, count(*) as total')
-            ->groupBy('resultado_propio')
-            ->pluck('total', 'resultado_propio');
-
-        $ganadas = (int) ($rows['ganada'] ?? 0);
-        $perdidas = (int) ($rows['perdida'] ?? 0);
-        $desiertas = (int) ($rows['desierta'] ?? 0) + (int) ($rows['cancelada'] ?? 0);
-
         return [
-            'total' => (int) $rows->sum(),
-            'ganadas' => $ganadas,
-            'perdidas' => $perdidas,
+            'cerradas' => (int) NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count(),
             'pendientes' => (int) NotaMpSeguimiento::query()->whereRaw('finalizado IS FALSE')->count(),
-            'desiertas' => $desiertas,
         ];
     }
 

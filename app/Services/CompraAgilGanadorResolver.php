@@ -179,6 +179,8 @@ class CompraAgilGanadorResolver
     }
 
     /**
+     * Clasificación de seguimiento (sin ganada/perdida).
+     *
      * @param  array<string, mixed>  $payload
      */
     public function resultadoPropio(array $payload): string
@@ -192,28 +194,11 @@ class CompraAgilGanadorResolver
             return 'cancelada';
         }
 
-        $ganador = $this->ganadorPrincipal($payload);
-        if ($ganador === null) {
-            return 'pendiente';
+        $finalizado = $this->esEstadoFinal($payload);
+        if ($codigo === 'cerrada' && ! $this->tieneProveedorAdjudicado($payload)) {
+            $finalizado = false;
         }
 
-        $rutGanador = $this->rutGanador($payload);
-        $rutPropio = $this->rutEmpresaPropia();
-        if ($rutPropio !== '' && $this->rutsCoinciden($rutGanador, $rutPropio)) {
-            return 'ganada';
-        }
-
-        $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
-        foreach ($proveedores as $prov) {
-            if (! is_array($prov)) {
-                continue;
-            }
-            $rut = trim((string) ($prov['rut_proveedor'] ?? ''));
-            if ($rut !== '' && $this->rutsCoinciden($this->parser->normalizarRut($rut), $rutPropio)) {
-                return 'perdida';
-            }
-        }
-
-        return 'no_participo';
+        return $finalizado ? 'cerrada' : 'pendiente';
     }
 }

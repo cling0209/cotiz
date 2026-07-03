@@ -83,5 +83,6 @@ return [
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_max_por_corrida' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_MAX_POR_CORRIDA', 50)),
+        'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 350)),
     ],
 ];

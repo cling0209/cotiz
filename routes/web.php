@@ -108,8 +108,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::middleware('compra-agil-resultados')->group(function () {
                 Route::get('compra-agil/resultados', [CompraAgilResultadosController::class, 'index'])->name('compra-agil.resultados.index');
                 Route::post('compra-agil/resultados/iniciar', [CompraAgilResultadosController::class, 'iniciar'])->name('compra-agil.resultados.iniciar');
-                Route::post('compra-agil/resultados/consultar/{nronota}', [CompraAgilResultadosController::class, 'consultar'])->name('compra-agil.resultados.consultar')->whereNumber('nronota');
-                Route::post('compra-agil/resultados/finalizar', [CompraAgilResultadosController::class, 'finalizar'])->name('compra-agil.resultados.finalizar');
+                Route::get('compra-agil/resultados/estado', [CompraAgilResultadosController::class, 'estado'])->name('compra-agil.resultados.estado');
                 Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
             });
 

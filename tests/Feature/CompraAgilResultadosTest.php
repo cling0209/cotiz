@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Nota;
+use App\Models\NotaMpCorrida;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -19,6 +20,7 @@ class CompraAgilResultadosTest extends TestCase
         config([
             'cotiz.mercadopublico.ticket' => 'test-ticket',
             'cotiz.mercadopublico.resultados_admin_habilitado' => true,
+            'cotiz.mercadopublico.resultados_delay_ms' => 0,
             'cotiz.empresa_rut' => '76.779.675-7',
         ]);
     }
@@ -38,7 +40,7 @@ class CompraAgilResultadosTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_consulta_nota_guarda_ganador_y_cambio(): void
+    public function test_encolar_corrida_procesa_nota_y_guarda_seguimiento(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
         $nota = Nota::query()->create([
@@ -79,30 +81,64 @@ class CompraAgilResultadosTest extends TestCase
             ]),
         ]);
 
-        $inicio = $this->actingAs($admin)
+        $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.iniciar'))
             ->assertOk()
-            ->json();
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.compra-agil.resultados.consultar', ['nronota' => $nota->nronota]), [
-                'corrida_id' => $inicio['corrida_id'],
-            ])
-            ->assertOk()
-            ->assertJsonPath('resultado.resultado_propio', 'ganada')
-            ->assertJsonPath('resultado.grupo', 'cerradas');
+            ->assertJsonPath('estado.en_curso', false);
 
         $this->assertDatabaseHas('nota_mp_seguimientos', [
             'nronota' => $nota->nronota,
             'rut_ganador' => '76779675-7',
-            'resultado_propio' => 'ganada',
+            'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
 
-        $this->assertDatabaseHas('nota_mp_corrida_cambios', [
-            'corrida_id' => $inicio['corrida_id'],
-            'nronota' => $nota->nronota,
-            'estado_nuevo' => 'proveedor_seleccionado',
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'ok',
+            'notas_procesadas' => 1,
+            'total_notas' => 1,
         ]);
+    }
+
+    public function test_no_permite_dos_corridas_en_paralelo(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 5,
+            'notas_procesadas' => 1,
+            'pendientes_json' => [['nronota' => 1, 'codigo' => '1-1-COT26']],
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertStatus(409)
+            ->assertJsonPath('estado.en_curso', true);
+    }
+
+    public function test_estado_expone_progreso_de_corrida_activa(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 10,
+            'notas_procesadas' => 3,
+            'codigo_actual' => '3300-66-COT26',
+            'pendientes_json' => [],
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.compra-agil.resultados.estado'))
+            ->assertOk()
+            ->assertJsonPath('en_curso', true)
+            ->assertJsonPath('procesadas', 3)
+            ->assertJsonPath('total', 10)
+            ->assertJsonPath('codigo_actual', '3300-66-COT26');
     }
 }
