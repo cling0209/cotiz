@@ -480,14 +480,31 @@
                 </tr>`;
             });
             html += '</tbody></table></div>';
-            const ganador = (data.ofertas || []).find(o => o.proveedor_seleccionado);
-            if (ganador && ganador.lineas && ganador.lineas.length) {
-                html += '<h3 class="h6 mt-3">Productos adjudicados</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
-                ganador.lineas.forEach(l => {
-                    html += `<tr><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
-                });
-                html += '</tbody></table></div>';
-            }
+            html += '<h3 class="h6 mt-3">Detalle por proveedor</h3>';
+            (data.ofertas || []).forEach(o => {
+                const badges = [
+                    o.proveedor_seleccionado ? 'Ganador' : '',
+                    o.es_propio ? 'Propio' : '',
+                    o.inadmisible ? 'Inadmisible' : '',
+                ].filter(Boolean).join(' · ');
+                const rowClass = o.proveedor_seleccionado ? ' border border-success rounded p-2 mb-2' : ' border rounded p-2 mb-2';
+                html += `<div class="${rowClass.trim()}">`;
+                html += `<p class="small fw-semibold mb-1">${o.razon_social || '—'} <span class="text-muted fw-normal">(${o.rut_proveedor || '—'})</span>`;
+                if (badges) {
+                    html += ` · ${badges}`;
+                }
+                html += ` · Total: ${fmtMonto(o.monto_total)}</p>`;
+                if (!o.lineas || !o.lineas.length) {
+                    html += '<p class="small text-muted mb-0">Sin detalle de productos en MP.</p>';
+                } else {
+                    html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
+                    o.lineas.forEach(l => {
+                        html += `<tr><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
+                    });
+                    html += '</tbody></table></div>';
+                }
+                html += '</div>';
+            });
             body.innerHTML = html;
         } catch (e) {
             body.innerHTML = `<p class="text-danger small">${e.message}</p>`;
