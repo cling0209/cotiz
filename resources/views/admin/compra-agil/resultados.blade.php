@@ -43,6 +43,8 @@
                 · <span class="text-danger">{{ $ultimaCorrida->mensaje }}</span>
             @elseif($ultimaCorrida->estado === 'cancelled')
                 · <span class="text-muted">{{ $ultimaCorrida->mensaje }}</span>
+            @elseif(filled($ultimaCorrida->mensaje))
+                · <span class="text-warning">{{ $ultimaCorrida->mensaje }}</span>
             @endif
         </div>
     @else

@@ -36,6 +36,8 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         }
 
         $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+        $fallidas = 0;
+        $ultimoError = null;
 
         foreach ($pendientes as $item) {
             $corrida->refresh();
@@ -65,10 +67,13 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             try {
                 $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario);
             } catch (RuntimeException $e) {
+                $fallidas++;
+                $ultimoError = $e->getMessage();
                 Log::warning('ProcessNotaMpCorridaJob: nota omitida', [
                     'corrida_id' => $corrida->id,
                     'nronota' => $nronota,
-                    'message' => $e->getMessage(),
+                    'codigo' => $codigo,
+                    'message' => $ultimoError,
                 ]);
                 $corrida->increment('notas_procesadas');
             }
@@ -88,7 +93,11 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             'codigo_actual' => null,
         ]);
 
-        $resultados->finalizarCorrida($corrida->fresh() ?? $corrida, 'ok');
+        $resultados->finalizarCorridaDesdeJob(
+            $corrida->fresh() ?? $corrida,
+            $fallidas,
+            $ultimoError,
+        );
     }
 
     public function failed(?Throwable $exception): void

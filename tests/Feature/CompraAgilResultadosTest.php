@@ -173,4 +173,39 @@ class CompraAgilResultadosTest extends TestCase
             ->postJson(route('admin.compra-agil.resultados.cancelar'))
             ->assertStatus(422);
     }
+
+    public function test_corrida_marca_error_si_todas_las_consultas_fallan(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+        Nota::query()->create([
+            'nronota' => 502,
+            'descripcion' => 'Test fallo MP',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente test',
+            'encargado' => '3300-66-COT26',
+            'nota_softland' => 50200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/3300-66-COT26' => Http::response([], 404),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk()
+            ->assertJsonPath('estado.en_curso', false);
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'error',
+            'notas_procesadas' => 1,
+            'total_notas' => 1,
+        ]);
+
+        $this->assertDatabaseMissing('nota_mp_seguimientos', [
+            'nronota' => 502,
+        ]);
+    }
 }

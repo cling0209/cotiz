@@ -236,6 +236,39 @@ class NotaMpResultadosService
         return $corrida->fresh() ?? $corrida;
     }
 
+    public function finalizarCorridaDesdeJob(
+        NotaMpCorrida $corrida,
+        int $fallidas,
+        ?string $ultimoError = null,
+    ): NotaMpCorrida {
+        $guardadas = (int) NotaMpSeguimiento::query()
+            ->where('ultima_corrida_id', $corrida->id)
+            ->count();
+        $procesadas = (int) $corrida->notas_procesadas;
+
+        if ($guardadas === 0 && $procesadas > 0) {
+            $mensaje = 'Ninguna de las '.$procesadas.' consultas guardó seguimiento.';
+            if ($ultimoError !== null && trim($ultimoError) !== '') {
+                $mensaje .= ' Último error: '.trim($ultimoError);
+            } else {
+                $mensaje .= ' Revise MERCADOPUBLICO_TICKET, cuota diaria de MP y logs del servidor.';
+            }
+
+            return $this->finalizarCorrida($corrida, 'error', $mensaje);
+        }
+
+        if ($fallidas > 0) {
+            $mensaje = $guardadas.' consultadas ok, '.$fallidas.' con error.';
+            if ($ultimoError !== null && trim($ultimoError) !== '') {
+                $mensaje .= ' Último error: '.trim($ultimoError);
+            }
+
+            return $this->finalizarCorrida($corrida, 'ok', $mensaje);
+        }
+
+        return $this->finalizarCorrida($corrida, 'ok');
+    }
+
     public function cancelarCorridaEnCurso(string $usuario): NotaMpCorrida
     {
         $corrida = $this->corridaEnCurso();
