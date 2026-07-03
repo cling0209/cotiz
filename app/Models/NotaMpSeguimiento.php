@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -46,5 +47,15 @@ class NotaMpSeguimiento extends Model
     public function ultimaCorrida(): BelongsTo
     {
         return $this->belongsTo(NotaMpCorrida::class, 'ultima_corrida_id');
+    }
+
+    public function scopeFinalizado(Builder $query): Builder
+    {
+        return $query->whereRaw('finalizado IS TRUE');
+    }
+
+    public function scopePendiente(Builder $query): Builder
+    {
+        return $query->whereRaw('finalizado IS FALSE');
     }
 }

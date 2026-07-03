@@ -61,7 +61,7 @@ class NotaMpResultadosService
             ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
             ->where(function ($q) {
                 $q->whereNull('seg.nronota')
-                    ->orWhere('seg.finalizado', false);
+                    ->orWhereRaw('seg.finalizado IS FALSE');
             })
             ->orderBy('notas.fecha')
             ->orderBy('notas.nronota')
@@ -298,7 +298,7 @@ class NotaMpResultadosService
     public function resumenEstadistica(): array
     {
         $rows = NotaMpSeguimiento::query()
-            ->where('finalizado', true)
+            ->finalizado()
             ->selectRaw('resultado_propio, count(*) as total')
             ->groupBy('resultado_propio')
             ->pluck('total', 'resultado_propio');
@@ -311,7 +311,7 @@ class NotaMpResultadosService
             'total' => (int) $rows->sum(),
             'ganadas' => $ganadas,
             'perdidas' => $perdidas,
-            'pendientes' => (int) NotaMpSeguimiento::query()->where('finalizado', false)->count(),
+            'pendientes' => (int) NotaMpSeguimiento::query()->pendiente()->count(),
             'desiertas' => $desiertas,
         ];
     }
@@ -322,8 +322,8 @@ class NotaMpResultadosService
     public function listadoCerradas(int $limite = 50): Collection
     {
         return NotaMpSeguimiento::query()
-            ->with(['nota', 'ofertas' => fn ($q) => $q->where('proveedor_seleccionado', true)->with('lineas')])
-            ->where('finalizado', true)
+            ->with(['nota', 'ofertas' => fn ($q) => $q->proveedorSeleccionado()->with('lineas')])
+            ->finalizado()
             ->orderByDesc('ultimo_consultado_en')
             ->limit($limite)
             ->get();

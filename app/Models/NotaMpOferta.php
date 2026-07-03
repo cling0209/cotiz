@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -36,5 +37,10 @@ class NotaMpOferta extends Model
     public function lineas(): HasMany
     {
         return $this->hasMany(NotaMpOfertaLinea::class, 'oferta_id');
+    }
+
+    public function scopeProveedorSeleccionado(Builder $query): Builder
+    {
+        return $query->whereRaw('proveedor_seleccionado IS TRUE');
     }
 }
