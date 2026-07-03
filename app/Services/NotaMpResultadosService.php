@@ -166,12 +166,11 @@ class NotaMpResultadosService
             $this->eliminarJobsResultadosMpPendientes();
             ProcessNotaMpCorridaJob::dispatch($corrida->id);
 
-            if (config('queue.default') !== 'sync') {
-                $jobsEncolados = $this->contarJobsResultadosMpPendientes($corrida->id)
-                    + $this->contarJobsResultadosMpReservados($corrida->id);
-                if ($jobsEncolados === 0) {
+            if (config('queue.default') !== 'sync' && ! $this->jobResultadosMpEncolado($corrida->id)) {
+                $corrida->refresh();
+                if ($corrida->estado === 'running' && (int) $corrida->notas_procesadas === 0) {
                     throw new RuntimeException(
-                        'El job no quedó en la tabla jobs. Verifique QUEUE_CONNECTION=database y migraciones.',
+                        'El job no quedó en la tabla jobs. Verifique migraciones (tabla jobs) y QUEUE_CONNECTION=database.',
                     );
                 }
             }
@@ -183,7 +182,7 @@ class NotaMpResultadosService
             );
 
             throw new RuntimeException(
-                'No se pudo encolar la consulta en segundo plano. Verifique QUEUE_CONNECTION=database y RUN_QUEUE_WORKER=true.',
+                'No se pudo encolar la consulta: '.$e->getMessage(),
                 0,
                 $e,
             );
@@ -210,11 +209,7 @@ class NotaMpResultadosService
         $query = DB::table('jobs')->where('payload', 'like', '%ProcessNotaMpCorridaJob%');
 
         if ($corridaId !== null) {
-            $query->where(function ($q) use ($corridaId) {
-                $q->where('payload', 'like', '%"corridaId";i:'.$corridaId.';%')
-                    ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.',%')
-                    ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.'}%');
-            });
+            $query->where('payload', 'like', '%i:'.$corridaId.';%');
         }
 
         return $query->delete();
@@ -226,11 +221,18 @@ class NotaMpResultadosService
             return $query;
         }
 
-        return $query->where(function ($q) use ($corridaId) {
-            $q->where('payload', 'like', '%"corridaId";i:'.$corridaId.';%')
-                ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.',%')
-                ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.'}%');
-        });
+        // Payload Laravel: PHP serialize dentro de JSON → corridaId";i:8; o corridaId\";i:8;
+        return $query->where('payload', 'like', '%i:'.$corridaId.';%');
+    }
+
+    public function jobResultadosMpEncolado(int $corridaId): bool
+    {
+        if (! Schema::hasTable('jobs')) {
+            return false;
+        }
+
+        return $this->contarJobsResultadosMpPendientes($corridaId) > 0
+            || $this->contarJobsResultadosMpReservados($corridaId) > 0;
     }
 
     public function contarJobsResultadosMpPendientes(?int $corridaId = null): int
