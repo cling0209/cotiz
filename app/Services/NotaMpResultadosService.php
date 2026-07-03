@@ -316,17 +316,19 @@ class NotaMpResultadosService
         $colaDriver = (string) config('queue.default');
         $alerta = null;
 
+        $tieneCodigoActual = filled($corrida->codigo_actual);
+
         if ($corrida->estado === 'running' && $procesadas === 0 && $segundosEnCurso >= 45) {
             if ($colaDriver === 'sync' && app()->isProduction()) {
                 $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
             } elseif ($jobsEnCola > 0) {
                 $alerta = 'Hay '.$jobsEnCola.' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
-            } elseif ($jobsReservados > 0 && $segundosEnCurso >= 120) {
+            } elseif ($jobsReservados > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 120) {
                 $alerta = 'Hay un job reservado sin avance. Espere o use «Cancelar consulta» y reintente.';
-            } elseif (filled($corrida->codigo_actual) && $segundosEnCurso >= 120) {
+            } elseif ($tieneCodigoActual && $segundosEnCurso >= 180) {
                 $alerta = 'Sin avance consultando '.$corrida->codigo_actual.' tras '
                     .(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
-            } elseif ($segundosEnCurso >= 120) {
+            } elseif (! $tieneCodigoActual && $segundosEnCurso >= 120) {
                 $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
             }
         }
