@@ -5,6 +5,7 @@ use App\Http\Controllers\Web\Admin\AgileRecepcionController;
 use App\Http\Controllers\Web\Admin\AuthController;
 use App\Http\Controllers\Web\Admin\AccountController;
 use App\Http\Controllers\Web\Admin\CompraAgilAnalisisController;
+use App\Http\Controllers\Web\Admin\CompraAgilResultadosController;
 use App\Http\Controllers\Web\Admin\CompraAgilBusquedaController;
 use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
@@ -102,6 +103,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('compra-agil/analisis', [CompraAgilAnalisisController::class, 'index'])->name('compra-agil.analisis.index');
                 Route::post('compra-agil/analisis/sync', [CompraAgilAnalisisController::class, 'sincronizar'])->name('compra-agil.analisis.sync');
                 Route::get('compra-agil/analisis/producto/{prodItem}', [CompraAgilAnalisisController::class, 'detalleProducto'])->name('compra-agil.analisis.producto')->where('prodItem', '[^/]+');
+            });
+
+            Route::middleware('compra-agil-resultados')->group(function () {
+                Route::get('compra-agil/resultados', [CompraAgilResultadosController::class, 'index'])->name('compra-agil.resultados.index');
+                Route::post('compra-agil/resultados/iniciar', [CompraAgilResultadosController::class, 'iniciar'])->name('compra-agil.resultados.iniciar');
+                Route::post('compra-agil/resultados/consultar/{nronota}', [CompraAgilResultadosController::class, 'consultar'])->name('compra-agil.resultados.consultar')->whereNumber('nronota');
+                Route::post('compra-agil/resultados/finalizar', [CompraAgilResultadosController::class, 'finalizar'])->name('compra-agil.resultados.finalizar');
+                Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
             });
 
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');

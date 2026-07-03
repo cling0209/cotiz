@@ -45,8 +45,13 @@
                     <i class="bi bi-check2-circle"></i> Adjudicadas
                 </a>
                 @if(auth()->user()->canAccessCompraAgilAnalisis())
-                    <a href="{{ route('admin.compra-agil.analisis.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.*') ? 'active' : '' }}">
+                    <a href="{{ route('admin.compra-agil.analisis.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.analisis.*') ? 'active' : '' }}">
                         <i class="bi bi-graph-up"></i> Análisis MP
+                    </a>
+                @endif
+                @if(auth()->user()->canAccessCompraAgilResultados())
+                    <a href="{{ route('admin.compra-agil.resultados.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.resultados.*') ? 'active' : '' }}">
+                        <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">

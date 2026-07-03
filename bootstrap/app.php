@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ForceRequestRootUrl;
 use App\Http\Middleware\EnsureCompraAgilAnalisisAdmin;
+use App\Http\Middleware\EnsureCompraAgilResultadosAdmin;
 use App\Http\Middleware\EnsureAgileBasicAuth;
 use App\Http\Middleware\EnsureNotaApiBasicAuth;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
             'compra-agil-analisis' => EnsureCompraAgilAnalisisAdmin::class,
+            'compra-agil-resultados' => EnsureCompraAgilResultadosAdmin::class,
             'agile.basic' => EnsureAgileBasicAuth::class,
             'nota.basic' => EnsureNotaApiBasicAuth::class,
         ]);

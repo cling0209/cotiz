@@ -21,6 +21,7 @@ class CompraAgilSyncService
         protected CompraAgilApiService $api,
         protected CompraAgilPayloadMapper $mapper,
         protected CompraAgilBenchmarkService $benchmarkService,
+        protected CompraAgilGanadorResolver $ganador,
     ) {}
 
     /**
@@ -83,7 +84,7 @@ class CompraAgilSyncService
                     continue;
                 }
 
-                if (! $this->tieneProveedorAdjudicado($payload)) {
+                if (! $this->ganador->tieneProveedorAdjudicado($payload)) {
                     continue;
                 }
 
@@ -193,7 +194,7 @@ class CompraAgilSyncService
         $estado = is_array($payload['estado'] ?? null) ? $payload['estado'] : [];
         $resumen = is_array($payload['resumen'] ?? null) ? $payload['resumen'] : [];
 
-        $rutGanador = $this->extraerRutGanador($payload);
+        $rutGanador = $this->ganador->rutGanador($payload);
 
         $proceso = CompraAgilProceso::query()->updateOrCreate(
             ['codigo' => $codigo],
@@ -222,7 +223,7 @@ class CompraAgilSyncService
         CompraAgilLineaMercado::query()->where('codigo_proceso', $codigo)->delete();
 
         $productos = is_array($payload['productos_solicitados'] ?? null) ? $payload['productos_solicitados'] : [];
-        $preciosGanador = $this->preciosGanadorPorProducto($payload);
+        $preciosGanador = $this->ganador->preciosGanadorPorProducto($payload);
 
         foreach ($productos as $producto) {
             if (! is_array($producto)) {
@@ -247,86 +248,6 @@ class CompraAgilSyncService
         }
 
         return $proceso;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, float>
-     */
-    private function preciosGanadorPorProducto(array $payload): array
-    {
-        $out = [];
-        $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
-
-        foreach ($this->proveedoresAdjudicados($proveedores) as $prov) {
-            $productos = is_array($prov['productos_cotizados'] ?? null) ? $prov['productos_cotizados'] : [];
-            foreach ($productos as $linea) {
-                if (! is_array($linea)) {
-                    continue;
-                }
-                $cod = trim((string) ($linea['codigo_producto'] ?? ''));
-                $precio = $linea['precio_unitario'] ?? null;
-                if ($cod !== '' && $precio !== null && ! isset($out[$cod])) {
-                    $out[$cod] = (float) $precio;
-                }
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array<int, mixed>  $proveedores
-     * @return list<array<string, mixed>>
-     */
-    private function proveedoresAdjudicados(array $proveedores): array
-    {
-        $adjudicados = [];
-        foreach ($proveedores as $prov) {
-            if (! is_array($prov)) {
-                continue;
-            }
-            if (! empty($prov['seleccion']['proveedor_seleccionado']) || ! empty($prov['activo'])) {
-                $adjudicados[] = $prov;
-            }
-        }
-
-        if ($adjudicados !== []) {
-            return $adjudicados;
-        }
-
-        if (count($proveedores) === 1 && is_array($proveedores[0])) {
-            return [$proveedores[0]];
-        }
-
-        return [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function tieneProveedorAdjudicado(array $payload): bool
-    {
-        $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
-
-        return $this->proveedoresAdjudicados($proveedores) !== [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function extraerRutGanador(array $payload): ?string
-    {
-        foreach ($this->proveedoresAdjudicados(
-            is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : []
-        ) as $prov) {
-            $rut = trim((string) ($prov['rut_proveedor'] ?? ''));
-            if ($rut !== '') {
-                return (new CompraAgilTextoParserService)->normalizarRut($rut);
-            }
-        }
-
-        return null;
     }
 
     private function parseFecha(mixed $valor): ?Carbon
