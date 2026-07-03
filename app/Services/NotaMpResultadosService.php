@@ -451,7 +451,14 @@ class NotaMpResultadosService
         $anterior = NotaMpSeguimiento::query()->find($nronota);
         $estadoAnterior = $anterior?->estado_mp_codigo;
 
-        $payload = $this->api->detalle($codigo, usarCache: false);
+        try {
+            $payload = $this->api->detalle($codigo, usarCache: false);
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'No existe Compra Ágil')) {
+                return $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);
+            }
+            throw $e;
+        }
 
         $ganadorProv = $this->ganador->ganadorPrincipal($payload);
         $institucion = is_array($payload['institucion'] ?? null) ? $payload['institucion'] : [];
@@ -570,6 +577,67 @@ class NotaMpResultadosService
             'monto_total_ganador' => $montoGanador,
             'id_orden_compra' => isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null,
             'organismo' => trim((string) ($institucion['organismo_comprador'] ?? '')),
+        ];
+    }
+
+    private function marcarNoExisteEnMp(
+        int $nronota,
+        string $codigo,
+        NotaMpCorrida $corrida,
+        string $usuario,
+        Nota $nota,
+        ?NotaMpSeguimiento $anterior,
+    ): array {
+        $estadoAnterior = $anterior?->estado_mp_codigo;
+
+        DB::transaction(function () use ($nronota, $codigo, $corrida, $usuario) {
+            NotaMpSeguimiento::query()->updateOrCreate(
+                ['nronota' => $nronota],
+                [
+                    'codigo_proceso' => $codigo,
+                    'estado_mp_glosa' => 'No existe en MP',
+                    'resultado_propio' => 'no_encontrada',
+                    'finalizado' => true,
+                    'ultimo_usuario' => trim($usuario),
+                    'ultimo_consultado_en' => now(),
+                    'ultima_corrida_id' => $corrida->id,
+                ],
+            );
+
+            $corrida->increment('notas_procesadas');
+
+            NotaMpCorridaDetalle::query()->updateOrCreate(
+                ['corrida_id' => $corrida->id, 'nronota' => $nronota],
+                [
+                    'codigo_proceso' => $codigo,
+                    'empresa' => mb_substr(trim((string) ($nota->empresa ?? '')), 0, 200) ?: null,
+                    'exito' => true,
+                    'mensaje' => 'No existe en Mercado Público — omitida',
+                    'estado_mp_glosa' => 'No existe en MP',
+                    'resultado_propio' => 'no_encontrada',
+                    'cambio' => $estadoAnterior !== null,
+                ],
+            );
+        });
+
+        $corrida->refresh();
+
+        return [
+            'nronota' => $nronota,
+            'codigo' => $codigo,
+            'empresa' => trim((string) ($nota->empresa ?? '')),
+            'estado_anterior' => $estadoAnterior,
+            'estado_nuevo' => null,
+            'estado_glosa' => 'No existe en MP',
+            'cambio' => false,
+            'finalizado' => true,
+            'grupo' => 'cerradas',
+            'resultado_propio' => 'no_encontrada',
+            'rut_ganador' => null,
+            'razon_social_ganador' => null,
+            'monto_total_ganador' => null,
+            'id_orden_compra' => null,
+            'organismo' => '',
         ];
     }
 
