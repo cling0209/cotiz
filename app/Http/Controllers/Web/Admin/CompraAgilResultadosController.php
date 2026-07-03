@@ -112,6 +112,7 @@ class CompraAgilResultadosController extends Controller
                 'es_propio' => $o->es_propio,
                 'inadmisible' => $o->inadmisible,
                 'lineas' => $o->lineas->map(fn ($l) => [
+                    'codigo_producto' => $l->codigo_producto ?: null,
                     'descripcion' => $l->descripcion ?: $l->nombre_producto,
                     'cantidad' => $l->cantidad,
                     'precio_unitario' => $l->precio_unitario,

@@ -497,9 +497,9 @@
                 if (!o.lineas || !o.lineas.length) {
                     html += '<p class="small text-muted mb-0">Sin detalle de productos en MP.</p>';
                 } else {
-                    html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
+                    html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Cód. MP</th><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
                     o.lineas.forEach(l => {
-                        html += `<tr><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
+                        html += `<tr><td class="small font-monospace">${l.codigo_producto || '—'}</td><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
                     });
                     html += '</tbody></table></div>';
                 }
