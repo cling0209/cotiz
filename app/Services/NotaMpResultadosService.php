@@ -590,7 +590,7 @@ class NotaMpResultadosService
     ): array {
         $estadoAnterior = $anterior?->estado_mp_codigo;
 
-        DB::transaction(function () use ($nronota, $codigo, $corrida, $usuario) {
+        DB::transaction(function () use ($nronota, $codigo, $corrida, $usuario, $nota, $estadoAnterior) {
             NotaMpSeguimiento::query()->updateOrCreate(
                 ['nronota' => $nronota],
                 [
