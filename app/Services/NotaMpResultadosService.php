@@ -494,7 +494,7 @@ class NotaMpResultadosService
                     'id_orden_compra' => isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null,
                     'monto_total_ganador' => $montoGanador,
                     'resultado_propio' => $resultadoPropio,
-                    'finalizado' => $this->pgBool($finalizado),
+                    'finalizado' => $finalizado,
                     'ultimo_usuario' => trim($usuario),
                     'ultimo_consultado_en' => now(),
                     'ultima_corrida_id' => $corrida->id,
@@ -537,7 +537,7 @@ class NotaMpResultadosService
                 [
                     'codigo_proceso' => $codigo,
                     'empresa' => mb_substr(trim((string) ($nota->empresa ?? '')), 0, 200) ?: null,
-                    'exito' => $this->pgBool(true),
+                    'exito' => true,
                     'mensaje' => null,
                     'estado_mp_glosa' => $estadoGlosa,
                     'resultado_propio' => $resultadoPropio,
@@ -545,7 +545,7 @@ class NotaMpResultadosService
                     'razon_social_ganador' => $ganadorProv !== null
                         ? mb_substr(trim((string) ($ganadorProv['razon_social'] ?? '')), 0, 200)
                         : null,
-                    'cambio' => $this->pgBool($cambio),
+                    'cambio' => $cambio,
                 ],
             );
         });
@@ -600,13 +600,13 @@ class NotaMpResultadosService
                 'id_cotizacion_mp' => isset($prov['id_cotizacion']) ? (int) $prov['id_cotizacion'] : null,
                 'rut_proveedor' => $rut !== '' ? $this->parser->normalizarRut($rut) : null,
                 'razon_social' => mb_substr(trim((string) ($prov['razon_social'] ?? '')), 0, 200),
-                'proveedor_seleccionado' => $this->pgBool($esGanador),
+                'proveedor_seleccionado' => $esGanador,
                 'monto_total' => isset($prov['monto_total']) ? (int) round((float) $prov['monto_total']) : null,
-                'es_propio' => $this->pgBool($rutPropio !== '' && $this->ganador->rutsCoinciden(
+                'es_propio' => $rutPropio !== '' && $this->ganador->rutsCoinciden(
                     $rut !== '' ? $this->parser->normalizarRut($rut) : null,
                     $rutPropio,
-                )),
-                'inadmisible' => $this->pgBool((int) ($prov['estado'] ?? 0) === 3),
+                ),
+                'inadmisible' => (int) ($prov['estado'] ?? 0) === 3,
                 'id_oc' => isset($prov['id_oc']) ? (int) $prov['id_oc'] : null,
             ]);
 
@@ -654,13 +654,13 @@ class NotaMpResultadosService
             [
                 'codigo_proceso' => mb_substr(strtoupper(trim($codigo)), 0, 40),
                 'empresa' => $empresa !== null ? mb_substr(trim($empresa), 0, 200) : null,
-                'exito' => $this->pgBool(false),
+                'exito' => false,
                 'mensaje' => mb_substr(trim($mensaje), 0, 500),
                 'estado_mp_glosa' => null,
                 'resultado_propio' => null,
                 'rut_ganador' => null,
                 'razon_social_ganador' => null,
-                'cambio' => $this->pgBool(false),
+                'cambio' => false,
             ],
         );
     }
@@ -719,11 +719,6 @@ class NotaMpResultadosService
                 ->first(fn (NotaMpOferta $o) => $o->proveedor_seleccionado)
                 ?->lineas ?? collect(),
         ];
-    }
-
-    private function pgBool(bool $value): \Illuminate\Contracts\Database\Query\Expression
-    {
-        return DB::raw($value ? 'true' : 'false');
     }
 
     /**
