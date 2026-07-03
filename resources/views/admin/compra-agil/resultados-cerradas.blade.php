@@ -12,6 +12,43 @@
         <span class="badge text-bg-secondary">{{ $cerradas->total() }}</span>
     </div>
 
+    <form method="GET" action="{{ route('admin.compra-agil.resultados.cerradas') }}" class="card shadow-sm mb-3" data-no-loader>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label for="f-nronota" class="form-label small mb-0">N° Cotización</label>
+                    <input type="number" class="form-control form-control-sm" id="f-nronota" name="nronota"
+                        value="{{ $filtros['nronota'] ?? '' }}" placeholder="Ej: 1234" style="width:7rem">
+                </div>
+                <div class="col-auto">
+                    <label for="f-organismo" class="form-label small mb-0">Organismo</label>
+                    <input type="text" class="form-control form-control-sm" id="f-organismo" name="organismo"
+                        value="{{ $filtros['organismo'] ?? '' }}" placeholder="Buscar..." style="width:12rem">
+                </div>
+                <div class="col-auto">
+                    <label for="f-fecha-desde" class="form-label small mb-0">Publicación desde</label>
+                    <input type="date" class="form-control form-control-sm" id="f-fecha-desde" name="fecha_desde"
+                        value="{{ $filtros['fecha_desde'] ?? '' }}">
+                </div>
+                <div class="col-auto">
+                    <label for="f-fecha-hasta" class="form-label small mb-0">Publicación hasta</label>
+                    <input type="date" class="form-control form-control-sm" id="f-fecha-hasta" name="fecha_hasta"
+                        value="{{ $filtros['fecha_hasta'] ?? '' }}">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    @if(collect($filtros)->filter()->isNotEmpty())
+                        <a href="{{ route('admin.compra-agil.resultados.cerradas') }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
+                            <i class="bi bi-x-lg"></i> Limpiar
+                        </a>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </form>
+
     <div class="card shadow-sm">
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">
@@ -58,7 +95,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>

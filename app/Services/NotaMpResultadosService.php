@@ -647,16 +647,33 @@ class NotaMpResultadosService
         return NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count();
     }
 
-    public function listadoCerradasPaginado(int $porPagina = 20): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return NotaMpSeguimiento::query()
+        $query = NotaMpSeguimiento::query()
             ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
-            ->whereRaw('finalizado IS TRUE')
+            ->whereRaw('finalizado IS TRUE');
+
+        if (! empty($filtros['nronota'])) {
+            $query->where('nronota', (int) $filtros['nronota']);
+        }
+
+        if (! empty($filtros['organismo'])) {
+            $query->where('organismo', 'ilike', '%' . $filtros['organismo'] . '%');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00');
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'] . ' 23:59:59');
+        }
+
+        return $query
             ->orderByRaw('fecha_publicacion IS NULL')
             ->orderByDesc('fecha_publicacion')
             ->paginate($porPagina)
-            ->withQueryString()
-            ->fragment('seccion-cerradas');
+            ->withQueryString();
     }
 
     public function registrarDetalleFallo(
