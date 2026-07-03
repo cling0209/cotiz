@@ -30,4 +30,9 @@ class NotaMpCorridaCambio extends Model
     {
         return $this->belongsTo(Nota::class, 'nronota', 'nronota');
     }
+
+    public function seguimiento(): BelongsTo
+    {
+        return $this->belongsTo(NotaMpSeguimiento::class, 'nronota', 'nronota');
+    }
 }

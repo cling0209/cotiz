@@ -626,7 +626,8 @@ class NotaMpResultadosService
         return NotaMpSeguimiento::query()
             ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->whereRaw('finalizado IS TRUE')
-            ->orderByDesc('ultimo_consultado_en')
+            ->orderByRaw('fecha_publicacion IS NULL')
+            ->orderByDesc('fecha_publicacion')
             ->limit($limite)
             ->get();
     }
@@ -681,10 +682,11 @@ class NotaMpResultadosService
         }
 
         return NotaMpCorridaCambio::query()
-            ->with('nota')
+            ->with(['nota', 'seguimiento'])
             ->where('corrida_id', $corrida->id)
-            ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->sortByDesc(fn (NotaMpCorridaCambio $nov) => $nov->seguimiento?->fecha_publicacion?->timestamp ?? 0)
+            ->values();
     }
 
     /**

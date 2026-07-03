@@ -169,6 +169,7 @@
                     <tr>
                         <th>Nota</th>
                         <th>Código CA</th>
+                        <th>Publicación</th>
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
                         <th>Ganador</th>
@@ -180,6 +181,7 @@
                         <tr data-nronota="{{ $nov->nronota }}">
                             <td>{{ $nov->nronota }}</td>
                             <td class="font-monospace small">{{ $nov->codigo_proceso }}</td>
+                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">
                                 {{ $nov->estado_anterior ?: '—' }}
                                 <i class="bi bi-arrow-right"></i>
@@ -199,7 +201,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr id="novedades-vacio"><td colspan="6" class="text-center text-muted py-4">Sin cambios en la última consulta.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="7" class="text-center text-muted py-4">Sin cambios en la última consulta.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -216,6 +218,7 @@
                     <tr>
                         <th>Nota</th>
                         <th>Código CA</th>
+                        <th>Publicación</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
                         <th>Seguimiento</th>
@@ -230,6 +233,7 @@
                         <tr data-nronota="{{ $seg->nronota }}">
                             <td>{{ $seg->nronota }}</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
+                            <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
                             <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
                             <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
@@ -253,7 +257,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
                     @endforelse
                 </tbody>
             </table>
