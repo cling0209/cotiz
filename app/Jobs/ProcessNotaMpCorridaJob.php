@@ -4,14 +4,13 @@ namespace App\Jobs;
 
 use App\Models\NotaMpCorrida;
 use App\Services\NotaMpResultadosService;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
-class ProcessNotaMpCorridaJob implements ShouldBeUnique, ShouldQueue
+class ProcessNotaMpCorridaJob implements ShouldQueue
 {
     use Queueable;
 
@@ -22,11 +21,6 @@ class ProcessNotaMpCorridaJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public int $corridaId,
     ) {}
-
-    public function uniqueId(): string
-    {
-        return 'nota-mp-corrida';
-    }
 
     public function handle(NotaMpResultadosService $resultados): void
     {
@@ -50,12 +44,16 @@ class ProcessNotaMpCorridaJob implements ShouldBeUnique, ShouldQueue
             }
 
             if (! is_array($item)) {
+                $corrida->increment('notas_procesadas');
+
                 continue;
             }
 
             $nronota = (int) ($item['nronota'] ?? 0);
             $codigo = trim((string) ($item['codigo'] ?? ''));
             if ($nronota <= 0) {
+                $corrida->increment('notas_procesadas');
+
                 continue;
             }
 

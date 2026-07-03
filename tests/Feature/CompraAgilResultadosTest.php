@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -165,6 +166,8 @@ class CompraAgilResultadosTest extends TestCase
             'estado' => 'cancelled',
             'notas_procesadas' => 2,
         ]);
+
+        $this->assertSame(0, DB::table('jobs')->where('payload', 'like', '%ProcessNotaMpCorridaJob%')->count());
 
         $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.cancelar'))

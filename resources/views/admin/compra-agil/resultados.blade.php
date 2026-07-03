@@ -51,6 +51,7 @@
 
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">
         <div class="card-body py-3">
+            <div class="alert alert-warning small py-2 d-none mb-2" id="progreso-alerta"></div>
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                 <span class="small fw-semibold" id="progreso-texto">Preparando…</span>
                 <span class="small text-muted" id="progreso-usuario"></span>
@@ -196,6 +197,7 @@
     const progresoBar = document.getElementById('progreso-bar');
     const progresoTexto = document.getElementById('progreso-texto');
     const progresoUsuario = document.getElementById('progreso-usuario');
+    const progresoAlerta = document.getElementById('progreso-alerta');
     let pollTimer = null;
     let corridaActiva = !!estadoInicial.en_curso;
     let monitoreando = corridaActiva;
@@ -237,6 +239,19 @@
         if (estado.usuario) {
             progresoUsuario.textContent = 'Ejecutado por: ' + estado.usuario;
         }
+        if (progresoAlerta) {
+            if (estado.alerta) {
+                progresoAlerta.textContent = estado.alerta;
+                progresoAlerta.classList.remove('d-none');
+            } else {
+                progresoAlerta.textContent = '';
+                progresoAlerta.classList.add('d-none');
+            }
+        }
+    }
+
+    if (corridaActiva && estadoInicial.alerta) {
+        actualizarProgreso(estadoInicial);
     }
 
     function setCorridaActiva(activa) {

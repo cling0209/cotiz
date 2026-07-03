@@ -11,6 +11,7 @@ use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class NotaMpResultadosService
@@ -93,6 +94,8 @@ class NotaMpResultadosService
 
         $lista = $pendientes->values()->all();
 
+        $this->assertColaBackgroundDisponible();
+
         $corrida = NotaMpCorrida::query()->create([
             'usuario' => trim($usuario),
             'inicio' => now(),
@@ -103,9 +106,66 @@ class NotaMpResultadosService
             'notas_con_cambio' => 0,
         ]);
 
-        ProcessNotaMpCorridaJob::dispatch($corrida->id);
+        try {
+            $this->eliminarJobsResultadosMpPendientes();
+            $dispatch = ProcessNotaMpCorridaJob::dispatch($corrida->id);
+            if (config('queue.default') !== 'sync') {
+                $dispatch->afterResponse();
+            }
+        } catch (\Throwable $e) {
+            $this->finalizarCorrida(
+                $corrida,
+                'error',
+                'No se pudo encolar la consulta: '.$e->getMessage(),
+            );
+
+            throw new RuntimeException(
+                'No se pudo encolar la consulta en segundo plano. Verifique QUEUE_CONNECTION=database y RUN_QUEUE_WORKER=true.',
+                0,
+                $e,
+            );
+        }
 
         return $corrida->fresh() ?? $corrida;
+    }
+
+    public function assertColaBackgroundDisponible(): void
+    {
+        if (config('queue.default') === 'sync' && app()->isProduction()) {
+            throw new RuntimeException(
+                'La consulta en segundo plano requiere QUEUE_CONNECTION=database y RUN_QUEUE_WORKER=true en Render.',
+            );
+        }
+    }
+
+    public function eliminarJobsResultadosMpPendientes(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')->where('payload', 'like', '%ProcessNotaMpCorridaJob%');
+
+        if ($corridaId !== null) {
+            $query->where(function ($q) use ($corridaId) {
+                $q->where('payload', 'like', '%"corridaId";i:'.$corridaId.';%')
+                    ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.',%')
+                    ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.'}%');
+            });
+        }
+
+        return $query->delete();
+    }
+
+    public function contarJobsResultadosMpPendientes(): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        return (int) DB::table('jobs')
+            ->where('payload', 'like', '%ProcessNotaMpCorridaJob%')
+            ->count();
     }
 
     /**
@@ -123,6 +183,20 @@ class NotaMpResultadosService
 
         $total = max(1, (int) $corrida->total_notas);
         $procesadas = min((int) $corrida->notas_procesadas, $total);
+        $segundosEnCurso = (int) $corrida->inicio->diffInSeconds(now());
+        $jobsEnCola = $this->contarJobsResultadosMpPendientes();
+        $colaDriver = (string) config('queue.default');
+        $alerta = null;
+
+        if ($corrida->estado === 'running' && $procesadas === 0 && $segundosEnCurso >= 45) {
+            if ($colaDriver === 'sync' && app()->isProduction()) {
+                $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
+            } elseif ($jobsEnCola > 0) {
+                $alerta = 'Hay '.$jobsEnCola.' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
+            } elseif ($segundosEnCurso >= 120) {
+                $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Revise logs del worker o cancele y reintente.';
+            }
+        }
 
         return [
             'en_curso' => $corrida->estado === 'running',
@@ -136,6 +210,10 @@ class NotaMpResultadosService
             'codigo_actual' => $corrida->codigo_actual,
             'notas_con_cambio' => (int) $corrida->notas_con_cambio,
             'estado' => $corrida->estado,
+            'segundos_en_curso' => $segundosEnCurso,
+            'jobs_en_cola' => $jobsEnCola,
+            'cola_driver' => $colaDriver,
+            'alerta' => $alerta,
         ];
     }
 
@@ -164,6 +242,8 @@ class NotaMpResultadosService
         if ($corrida === null) {
             throw new RuntimeException('No hay una consulta en curso para cancelar.');
         }
+
+        $this->eliminarJobsResultadosMpPendientes($corrida->id);
 
         return $this->finalizarCorrida(
             $corrida,
