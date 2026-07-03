@@ -164,9 +164,16 @@ class NotaMpResultadosService
 
         try {
             $this->eliminarJobsResultadosMpPendientes();
-            $dispatch = ProcessNotaMpCorridaJob::dispatch($corrida->id);
+            ProcessNotaMpCorridaJob::dispatch($corrida->id);
+
             if (config('queue.default') !== 'sync') {
-                $dispatch->afterResponse();
+                $jobsEncolados = $this->contarJobsResultadosMpPendientes($corrida->id)
+                    + $this->contarJobsResultadosMpReservados($corrida->id);
+                if ($jobsEncolados === 0) {
+                    throw new RuntimeException(
+                        'El job no quedó en la tabla jobs. Verifique QUEUE_CONNECTION=database y migraciones.',
+                    );
+                }
             }
         } catch (\Throwable $e) {
             $this->finalizarCorrida(
