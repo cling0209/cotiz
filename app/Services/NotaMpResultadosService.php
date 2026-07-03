@@ -32,10 +32,66 @@ class NotaMpResultadosService
 
     public function corridaEnCurso(): ?NotaMpCorrida
     {
-        return NotaMpCorrida::query()
+        $corrida = NotaMpCorrida::query()
             ->where('estado', 'running')
             ->orderByDesc('id')
             ->first();
+
+        if ($corrida === null) {
+            return null;
+        }
+
+        if ($this->liberarCorridaColgadaIfNeeded($corrida)) {
+            return null;
+        }
+
+        return $corrida->fresh() ?? $corrida;
+    }
+
+    public function liberarCorridaColgadaIfNeeded(NotaMpCorrida $corrida): bool
+    {
+        if ($corrida->estado !== 'running') {
+            return false;
+        }
+
+        $segundos = (int) $corrida->inicio->diffInSeconds(now());
+        $umbral = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 600));
+        $jobsPendientes = $this->contarJobsResultadosMpPendientes($corrida->id);
+        $jobsReservados = $this->contarJobsResultadosMpReservados($corrida->id);
+        $procesadas = (int) $corrida->notas_procesadas;
+        $total = max(0, (int) $corrida->total_notas);
+        $sinJobActivo = $jobsPendientes === 0 && $jobsReservados === 0;
+
+        if (! $sinJobActivo || $segundos < $umbral) {
+            return false;
+        }
+
+        if ($procesadas >= $total && $total > 0) {
+            return false;
+        }
+
+        $minutos = (int) floor($segundos / 60);
+        $codigo = trim((string) ($corrida->codigo_actual ?? ''));
+
+        if ($procesadas === 0) {
+            $mensaje = 'Consulta colgada liberada automáticamente tras '.$minutos.' min sin worker activo.';
+            if ($codigo !== '') {
+                $mensaje .= ' Se detuvo en '.$codigo.'.';
+            }
+            $mensaje .= ' Reintente con «Consultar ahora».';
+
+            $this->finalizarCorrida($corrida, 'error', $mensaje);
+
+            return true;
+        }
+
+        $this->finalizarCorrida(
+            $corrida,
+            'error',
+            'Consulta interrumpida tras '.$minutos.' min ('.$procesadas.'/'.$total.' procesadas). Reintente.',
+        );
+
+        return true;
     }
 
     public function apiConfigurada(): bool
@@ -157,15 +213,47 @@ class NotaMpResultadosService
         return $query->delete();
     }
 
-    public function contarJobsResultadosMpPendientes(): int
+    private function filtrarJobsResultadosMpPorCorrida(\Illuminate\Database\Query\Builder $query, ?int $corridaId): \Illuminate\Database\Query\Builder
+    {
+        if ($corridaId === null) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($corridaId) {
+            $q->where('payload', 'like', '%"corridaId";i:'.$corridaId.';%')
+                ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.',%')
+                ->orWhere('payload', 'like', '%"corridaId":'.$corridaId.'}%');
+        });
+    }
+
+    public function contarJobsResultadosMpPendientes(?int $corridaId = null): int
     {
         if (! Schema::hasTable('jobs')) {
             return 0;
         }
 
-        return (int) DB::table('jobs')
+        $query = DB::table('jobs')
             ->where('payload', 'like', '%ProcessNotaMpCorridaJob%')
-            ->count();
+            ->whereNull('reserved_at');
+
+        $query = $this->filtrarJobsResultadosMpPorCorrida($query, $corridaId);
+
+        return (int) $query->count();
+    }
+
+    public function contarJobsResultadosMpReservados(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessNotaMpCorridaJob%')
+            ->whereNotNull('reserved_at');
+
+        $query = $this->filtrarJobsResultadosMpPorCorrida($query, $corridaId);
+
+        return (int) $query->count();
     }
 
     /**
@@ -184,7 +272,8 @@ class NotaMpResultadosService
         $total = max(1, (int) $corrida->total_notas);
         $procesadas = min((int) $corrida->notas_procesadas, $total);
         $segundosEnCurso = (int) $corrida->inicio->diffInSeconds(now());
-        $jobsEnCola = $this->contarJobsResultadosMpPendientes();
+        $jobsEnCola = $this->contarJobsResultadosMpPendientes($corrida->id);
+        $jobsReservados = $this->contarJobsResultadosMpReservados($corrida->id);
         $colaDriver = (string) config('queue.default');
         $alerta = null;
 
@@ -193,8 +282,13 @@ class NotaMpResultadosService
                 $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
             } elseif ($jobsEnCola > 0) {
                 $alerta = 'Hay '.$jobsEnCola.' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
+            } elseif ($jobsReservados > 0 && $segundosEnCurso >= 120) {
+                $alerta = 'Hay un job reservado sin avance. Espere o use «Cancelar consulta» y reintente.';
+            } elseif (filled($corrida->codigo_actual) && $segundosEnCurso >= 120) {
+                $alerta = 'Sin avance consultando '.$corrida->codigo_actual.' tras '
+                    .(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
             } elseif ($segundosEnCurso >= 120) {
-                $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Revise logs del worker o cancele y reintente.';
+                $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
             }
         }
 
@@ -212,6 +306,7 @@ class NotaMpResultadosService
             'estado' => $corrida->estado,
             'segundos_en_curso' => $segundosEnCurso,
             'jobs_en_cola' => $jobsEnCola,
+            'jobs_reservados' => $jobsReservados,
             'cola_driver' => $colaDriver,
             'alerta' => $alerta,
         ];

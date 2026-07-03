@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\User;
+use App\Services\NotaMpResultadosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -206,6 +207,28 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertDatabaseMissing('nota_mp_seguimientos', [
             'nronota' => 502,
+        ]);
+    }
+
+    public function test_corrida_colgada_se_libera_automaticamente(): void
+    {
+        config(['cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subMinutes(15),
+            'estado' => 'running',
+            'total_notas' => 50,
+            'notas_procesadas' => 0,
+            'codigo_actual' => '1048606-4-COT26',
+            'pendientes_json' => [['nronota' => 1, 'codigo' => '1048606-4-COT26']],
+        ]);
+
+        $this->assertNull($this->app->make(NotaMpResultadosService::class)->corridaEnCurso());
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'error',
+            'notas_procesadas' => 0,
         ]);
     }
 }
