@@ -20,9 +20,14 @@
     </div>
 
     @if($corridaActiva)
-        <div class="alert alert-info border small mb-3 py-2">
-            Consulta en curso iniciada por <strong>{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
-            Puede salir de esta pantalla; el proceso continúa en segundo plano.
+        <div class="alert alert-info border small mb-3 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>
+                Consulta en curso iniciada por <strong>{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
+                Puede salir de esta pantalla; el proceso continúa en segundo plano.
+            </span>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-cancelar-mp">
+                <i class="bi bi-x-circle"></i> Cancelar consulta
+            </button>
         </div>
     @endif
 
@@ -36,6 +41,8 @@
             · Con cambio: {{ $ultimaCorrida->notas_con_cambio }}
             @if($ultimaCorrida->estado === 'error')
                 · <span class="text-danger">{{ $ultimaCorrida->mensaje }}</span>
+            @elseif($ultimaCorrida->estado === 'cancelled')
+                · <span class="text-muted">{{ $ultimaCorrida->mensaje }}</span>
             @endif
         </div>
     @else
@@ -51,21 +58,6 @@
             <div class="progress" style="height: 1.25rem;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-6">
-            <div class="card shadow-sm h-100 border-success"><div class="card-body py-3">
-                <div class="text-muted small">Cerradas</div>
-                <div class="fs-4 fw-semibold text-success">{{ number_format($kpi['cerradas'], 0, ',', '.') }}</div>
-            </div></div>
-        </div>
-        <div class="col-md-6">
-            <div class="card shadow-sm h-100 border-warning"><div class="card-body py-3">
-                <div class="text-muted small">Pendiente de seguimiento</div>
-                <div class="fs-4 fw-semibold text-warning">{{ number_format($kpi['pendientes'], 0, ',', '.') }}</div>
-            </div></div>
         </div>
     </div>
 
@@ -194,10 +186,12 @@
     const urls = {
         iniciar: @json(route('admin.compra-agil.resultados.iniciar')),
         estado: @json(route('admin.compra-agil.resultados.estado')),
+        cancelar: @json(route('admin.compra-agil.resultados.cancelar')),
         detalle: @json(url('/admin/compra-agil/resultados/detalle/__NRO__')),
     };
     const estadoInicial = @json($estadoCorrida);
     const btnConsultar = document.getElementById('btn-consultar-mp');
+    const btnCancelar = document.getElementById('btn-cancelar-mp');
     const cardProgreso = document.getElementById('card-progreso');
     const progresoBar = document.getElementById('progreso-bar');
     const progresoTexto = document.getElementById('progreso-texto');
@@ -249,6 +243,9 @@
         corridaActiva = activa;
         if (btnConsultar) {
             btnConsultar.disabled = activa || btnConsultar.dataset.sinPendientes === '1';
+        }
+        if (btnCancelar) {
+            btnCancelar.disabled = !activa;
         }
     }
 
@@ -311,6 +308,22 @@
             actualizarProgreso(data.estado);
         }
         iniciarPolling();
+    });
+
+    btnCancelar?.addEventListener('click', async () => {
+        if (!confirm('¿Cancelar la consulta en curso?')) {
+            return;
+        }
+        btnCancelar.disabled = true;
+        const { res, data } = await postJson(urls.cancelar, {});
+        detenerPolling();
+        monitoreando = false;
+        if (!res.ok) {
+            alert(data.error || 'No se pudo cancelar.');
+            btnCancelar.disabled = false;
+            return;
+        }
+        window.location.reload();
     });
 
     if (btnConsultar && btnConsultar.disabled && !corridaActiva) {

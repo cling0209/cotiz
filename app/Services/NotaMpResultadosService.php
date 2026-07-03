@@ -151,9 +151,25 @@ class NotaMpResultadosService
             'fin' => now(),
             'estado' => $estado,
             'mensaje' => $mensaje,
+            'nronota_actual' => null,
+            'codigo_actual' => null,
         ]);
 
         return $corrida->fresh() ?? $corrida;
+    }
+
+    public function cancelarCorridaEnCurso(string $usuario): NotaMpCorrida
+    {
+        $corrida = $this->corridaEnCurso();
+        if ($corrida === null) {
+            throw new RuntimeException('No hay una consulta en curso para cancelar.');
+        }
+
+        return $this->finalizarCorrida(
+            $corrida,
+            'cancelled',
+            'Cancelada por '.trim($usuario).'.',
+        );
     }
 
     /**
@@ -330,17 +346,6 @@ class NotaMpResultadosService
                 ]);
             }
         }
-    }
-
-    /**
-     * @return array{cerradas: int, pendientes: int}
-     */
-    public function resumenEstadistica(): array
-    {
-        return [
-            'cerradas' => (int) NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count(),
-            'pendientes' => (int) NotaMpSeguimiento::query()->whereRaw('finalizado IS FALSE')->count(),
-        ];
     }
 
     /**

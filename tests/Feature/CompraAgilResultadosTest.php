@@ -141,4 +141,33 @@ class CompraAgilResultadosTest extends TestCase
             ->assertJsonPath('total', 10)
             ->assertJsonPath('codigo_actual', '3300-66-COT26');
     }
+
+    public function test_cancelar_corrida_en_curso(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 10,
+            'notas_procesadas' => 2,
+            'codigo_actual' => '3300-66-COT26',
+            'pendientes_json' => [['nronota' => 1, 'codigo' => '1-1-COT26']],
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.cancelar'))
+            ->assertOk()
+            ->assertJsonPath('estado.en_curso', false);
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'cancelled',
+            'notas_procesadas' => 2,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.cancelar'))
+            ->assertStatus(422);
+    }
 }

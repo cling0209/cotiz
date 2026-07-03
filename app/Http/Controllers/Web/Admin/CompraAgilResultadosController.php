@@ -24,7 +24,6 @@ class CompraAgilResultadosController extends Controller
             'ultimaCorrida' => $this->resultados->ultimaCorrida(),
             'corridaEnCurso' => $corridaEnCurso,
             'estadoCorrida' => $this->resultados->estadoCorrida($corridaEnCurso),
-            'kpi' => $this->resultados->resumenEstadistica(),
             'novedades' => $this->resultados->novedadesUltimaCorrida(),
             'cerradas' => $this->resultados->listadoCerradas(100),
             'pendientesCount' => $this->resultados->notasPendientesConsulta()->count(),
@@ -60,6 +59,20 @@ class CompraAgilResultadosController extends Controller
     public function estado(Request $request): JsonResponse
     {
         return response()->json($this->resultados->estadoCorrida());
+    }
+
+    public function cancelar(Request $request): JsonResponse
+    {
+        try {
+            $this->resultados->cancelarCorridaEnCurso((string) $request->user()->username);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'estado' => $this->resultados->estadoCorrida(),
+        ]);
     }
 
     public function detalle(int $nronota): JsonResponse

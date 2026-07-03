@@ -109,6 +109,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('compra-agil/resultados', [CompraAgilResultadosController::class, 'index'])->name('compra-agil.resultados.index');
                 Route::post('compra-agil/resultados/iniciar', [CompraAgilResultadosController::class, 'iniciar'])->name('compra-agil.resultados.iniciar');
                 Route::get('compra-agil/resultados/estado', [CompraAgilResultadosController::class, 'estado'])->name('compra-agil.resultados.estado');
+                Route::post('compra-agil/resultados/cancelar', [CompraAgilResultadosController::class, 'cancelar'])->name('compra-agil.resultados.cancelar');
                 Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
             });
 
