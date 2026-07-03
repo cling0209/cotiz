@@ -70,18 +70,18 @@
 
     <div class="d-flex gap-2 mb-3">
         @if($ultimaCorrida)
-            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#seccion-resultado" aria-expanded="false">
+            @php
+                $detalleOk = $detalleCorrida->where('exito', true)->count();
+                $detalleError = $detalleCorrida->where('exito', false)->count();
+            @endphp
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-toggle-resultado">
                 <i class="bi bi-list-check"></i> Resultado último proceso
-                @php
-                    $detalleOk = $detalleCorrida->where('exito', true)->count();
-                    $detalleError = $detalleCorrida->where('exito', false)->count();
-                @endphp
                 @if($detalleCorrida->isNotEmpty())
                     <span class="badge text-bg-secondary ms-1">{{ $detalleOk + $detalleError }}</span>
                 @endif
             </button>
         @endif
-        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#seccion-cerradas" aria-expanded="false">
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-toggle-cerradas">
             <i class="bi bi-lock-fill"></i> Cerradas
             <span class="badge text-bg-secondary ms-1">{{ $cerradas->total() }}</span>
         </button>
@@ -151,7 +151,7 @@
     </div>
 
     @if($ultimaCorrida)
-        <div class="collapse mb-4" id="seccion-resultado">
+        <div class="mb-4" id="seccion-resultado" style="display:none">
             <div class="card shadow-sm">
                 <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h2 class="h6 mb-0">Resultado por cotización — última consulta</h2>
@@ -225,7 +225,7 @@
         </div>
     @endif
 
-    <div class="collapse mb-4" id="seccion-cerradas">
+    <div class="mb-4" id="seccion-cerradas" style="display:none">
         <div class="card shadow-sm">
             <div class="card-header py-2">
                 <h2 class="h6 mb-0">Cerradas</h2>
@@ -548,11 +548,23 @@
     });
 })();
 
+function toggleSeccion(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const visible = el.style.display !== 'none';
+    el.style.display = visible ? 'none' : '';
+    if (btn) btn.classList.toggle('active', !visible);
+}
+
+document.getElementById('btn-toggle-resultado')?.addEventListener('click', function () {
+    toggleSeccion('seccion-resultado', this);
+});
+document.getElementById('btn-toggle-cerradas')?.addEventListener('click', function () {
+    toggleSeccion('seccion-cerradas', this);
+});
+
 if (new URLSearchParams(location.search).has('page') || location.hash === '#seccion-cerradas') {
-    const el = document.getElementById('seccion-cerradas');
-    if (el && typeof bootstrap !== 'undefined') {
-        new bootstrap.Collapse(el, { toggle: true });
-    }
+    toggleSeccion('seccion-cerradas', document.getElementById('btn-toggle-cerradas'));
 }
 </script>
 @endpush
