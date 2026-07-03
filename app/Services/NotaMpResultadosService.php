@@ -642,6 +642,11 @@ class NotaMpResultadosService
             ->get();
     }
 
+    public function contarCerradas(): int
+    {
+        return NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count();
+    }
+
     public function listadoCerradasPaginado(int $porPagina = 20): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         return NotaMpSeguimiento::query()

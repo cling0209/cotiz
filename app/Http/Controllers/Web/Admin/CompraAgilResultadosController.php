@@ -26,9 +26,26 @@ class CompraAgilResultadosController extends Controller
             'estadoCorrida' => $this->resultados->estadoCorrida($corridaEnCurso),
             'novedades' => $this->resultados->novedadesUltimaCorrida(),
             'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
-            'cerradas' => $this->resultados->listadoCerradasPaginado(20),
+            'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
             'limiteCorridaMax' => $this->resultados->limiteCorridaMax(),
+        ]);
+    }
+
+    public function resultado(): View
+    {
+        $ultimaCorrida = $this->resultados->ultimaCorrida();
+
+        return view('admin.compra-agil.resultados-resultado', [
+            'ultimaCorrida' => $ultimaCorrida,
+            'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
+        ]);
+    }
+
+    public function cerradas(Request $request): View
+    {
+        return view('admin.compra-agil.resultados-cerradas', [
+            'cerradas' => $this->resultados->listadoCerradasPaginado(20),
         ]);
     }
 

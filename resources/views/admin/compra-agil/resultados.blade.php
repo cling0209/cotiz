@@ -70,21 +70,17 @@
 
     <div class="d-flex gap-2 mb-3">
         @if($ultimaCorrida)
-            @php
-                $detalleOk = $detalleCorrida->where('exito', true)->count();
-                $detalleError = $detalleCorrida->where('exito', false)->count();
-            @endphp
-            <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-toggle-resultado">
+            <a href="{{ route('admin.compra-agil.resultados.resultado') }}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-list-check"></i> Resultado último proceso
                 @if($detalleCorrida->isNotEmpty())
-                    <span class="badge text-bg-secondary ms-1">{{ $detalleOk + $detalleError }}</span>
+                    <span class="badge text-bg-secondary ms-1">{{ $detalleCorrida->count() }}</span>
                 @endif
-            </button>
+            </a>
         @endif
-        <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-toggle-cerradas">
+        <a href="{{ route('admin.compra-agil.resultados.cerradas') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-lock-fill"></i> Cerradas
-            <span class="badge text-bg-secondary ms-1">{{ $cerradas->total() }}</span>
-        </button>
+            <span class="badge text-bg-secondary ms-1">{{ $cerradasCount }}</span>
+        </a>
     </div>
 
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">
@@ -149,159 +145,9 @@
             </table>
         </div>
     </div>
-
-    @if($ultimaCorrida)
-        <div class="mb-4" id="seccion-resultado" style="display:none">
-            <div class="card shadow-sm">
-                <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <h2 class="h6 mb-0">Resultado por cotización — última consulta</h2>
-                    @if($detalleCorrida->isNotEmpty())
-                        <span class="small text-muted">
-                            {{ $detalleOk }} ok · {{ $detalleError }} con error
-                        </span>
-                    @endif
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Nota</th>
-                                <th>Código CA</th>
-                                <th>Cliente</th>
-                                <th>Resultado</th>
-                                <th>Estado MP</th>
-                                <th>Ganador</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($detalleCorrida as $det)
-                                <tr data-nronota="{{ $det->nronota }}">
-                                    <td>{{ $det->nronota }}</td>
-                                    <td class="font-monospace small">{{ $det->codigo_proceso }}</td>
-                                    <td class="small">{{ $det->empresa ?: '—' }}</td>
-                                    <td>
-                                        @if($det->exito)
-                                            @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $det->resultado_propio])
-                                            @if($det->cambio)
-                                                <span class="badge text-bg-info ms-1">Cambio</span>
-                                            @endif
-                                        @else
-                                            <span class="badge text-bg-danger">Error</span>
-                                        @endif
-                                    </td>
-                                    <td class="small">
-                                        @if($det->exito)
-                                            {{ $det->estado_mp_glosa ?: '—' }}
-                                        @else
-                                            <span class="text-danger">{{ $det->mensaje }}</span>
-                                        @endif
-                                    </td>
-                                    <td class="small">
-                                        @if($det->razon_social_ganador)
-                                            {{ $det->razon_social_ganador }}<br>
-                                            <span class="text-muted">{{ $det->rut_ganador }}</span>
-                                        @else
-                                            —
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if($det->exito)
-                                            <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $det->nronota }}">Detalle</button>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">
-                                        Sin detalle registrado en la última consulta.
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    @endif
-
-    <div class="mb-4" id="seccion-cerradas" style="display:none">
-        <div class="card shadow-sm">
-            <div class="card-header py-2">
-                <h2 class="h6 mb-0">Cerradas</h2>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Nota</th>
-                            <th>Código CA</th>
-                            <th>Publicación</th>
-                            <th>Organismo</th>
-                            <th>Estado MP</th>
-                            <th>Seguimiento</th>
-                            <th>Ganador</th>
-                            <th class="text-end">Monto</th>
-                            <th>Consultado</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-cerradas">
-                        @forelse($cerradas as $seg)
-                            <tr data-nronota="{{ $seg->nronota }}">
-                                <td>{{ $seg->nronota }}</td>
-                                <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
-                                <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
-                                <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
-                                <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
-                                <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
-                                <td class="small">
-                                    @if($seg->razon_social_ganador)
-                                        {{ Str::limit($seg->razon_social_ganador, 30) }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="text-end small">
-                                    @if($seg->monto_total_ganador)
-                                        ${{ number_format($seg->monto_total_ganador, 0, ',', '.') }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="small text-muted">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
-                                <td>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="10" class="text-center text-muted py-4">Sin procesos cerrados registrados aún.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            @if($cerradas->hasPages())
-                <div class="card-footer py-2 d-flex justify-content-center">
-                    {{ $cerradas->links() }}
-                </div>
-            @endif
-        </div>
-    </div>
 </div>
 
-<div class="modal fade" id="modal-detalle-mp" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h2 class="modal-title fs-6" id="modal-detalle-titulo">Detalle Mercado Público</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body py-2" id="modal-detalle-body">
-                <p class="text-muted small mb-0">Cargando…</p>
-            </div>
-        </div>
-    </div>
-</div>
+@include('admin.compra-agil.partials.modal-detalle-mp')
 @endsection
 
 @push('scripts')
@@ -312,7 +158,6 @@
         iniciar: @json(route('admin.compra-agil.resultados.iniciar')),
         estado: @json(route('admin.compra-agil.resultados.estado')),
         cancelar: @json(route('admin.compra-agil.resultados.cancelar')),
-        detalle: @json(url('/admin/compra-agil/resultados/detalle/__NRO__')),
     };
     const estadoInicial = @json($estadoCorrida);
     const btnConsultar = document.getElementById('btn-consultar-mp');
@@ -327,24 +172,6 @@
     let pollTimer = null;
     let corridaActiva = !!estadoInicial.en_curso;
     let monitoreando = corridaActiva;
-
-    const seguimientoBadge = (r) => {
-        const map = {
-            cerrada: ['success', 'Cerrada'],
-            pendiente: ['warning', 'Pendiente seguimiento'],
-            desierta: ['secondary', 'Desierta'],
-            cancelada: ['secondary', 'Cancelada'],
-        };
-        const [cls, lbl] = map[r] || ['secondary', r || '—'];
-        return `<span class="badge text-bg-${cls}">${lbl}</span>`;
-    };
-
-    const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
-    const fmtFecha = (iso) => {
-        if (!iso) return '—';
-        const d = new Date(iso);
-        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
-    };
 
     async function postJson(url, body) {
         const res = await fetch(url, {
@@ -486,85 +313,6 @@
         iniciarPolling();
     }
 
-    document.addEventListener('click', async (ev) => {
-        const btn = ev.target.closest('.btn-detalle-mp');
-        if (!btn) return;
-        const nronota = btn.dataset.nronota;
-        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-detalle-mp'));
-        const body = document.getElementById('modal-detalle-body');
-        document.getElementById('modal-detalle-titulo').textContent = 'Nota ' + nronota;
-        body.innerHTML = '<p class="text-muted small">Cargando…</p>';
-        modal.show();
-        try {
-            const res = await fetch(urls.detalle.replace('__NRO__', nronota), { headers: { 'Accept': 'application/json' } });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Error');
-            const s = data.seguimiento;
-            let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
-                Ganador: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
-                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.id_orden_compra ? '<br>OC: <strong>' + s.id_orden_compra + '</strong>' : ''}</p>`;
-            if (s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion) {
-                html += `<p class="small text-muted mb-2">Publicación: ${fmtFecha(s.fecha_publicacion)} · Cierre: ${fmtFecha(s.fecha_cierre)} · Últ. cambio: ${fmtFecha(s.fecha_ultimo_cambio)}${s.fecha_cancelacion ? ' · Cancelación: ' + fmtFecha(s.fecha_cancelacion) : ''}</p>`;
-            }
-            html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
-            (data.ofertas || []).forEach(o => {
-                html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">
-                    <td>${o.razon_social || '—'}</td>
-                    <td class="small">${o.rut_proveedor || '—'}</td>
-                    <td class="text-end">${fmtMonto(o.monto_total)}</td>
-                    <td class="small">${o.proveedor_seleccionado ? 'Ganador' : ''}${o.es_propio ? ' · Propio' : ''}${o.inadmisible ? ' · Inadm.' : ''}</td>
-                </tr>`;
-            });
-            html += '</tbody></table></div>';
-            html += '<h3 class="h6 mt-3">Detalle por proveedor</h3>';
-            (data.ofertas || []).forEach(o => {
-                const badges = [
-                    o.proveedor_seleccionado ? 'Ganador' : '',
-                    o.es_propio ? 'Propio' : '',
-                    o.inadmisible ? 'Inadmisible' : '',
-                ].filter(Boolean).join(' · ');
-                const rowClass = o.proveedor_seleccionado ? ' border border-success rounded p-2 mb-2' : ' border rounded p-2 mb-2';
-                html += `<div class="${rowClass.trim()}">`;
-                html += `<p class="small fw-semibold mb-1">${o.razon_social || '—'} <span class="text-muted fw-normal">(${o.rut_proveedor || '—'})</span>`;
-                if (badges) {
-                    html += ` · ${badges}`;
-                }
-                html += ` · Total: ${fmtMonto(o.monto_total)}</p>`;
-                if (!o.lineas || !o.lineas.length) {
-                    html += '<p class="small text-muted mb-0">Sin detalle de productos en MP.</p>';
-                } else {
-                    html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Cód. MP</th><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
-                    o.lineas.forEach(l => {
-                        html += `<tr><td class="small font-monospace">${l.codigo_producto || '—'}</td><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
-                    });
-                    html += '</tbody></table></div>';
-                }
-                html += '</div>';
-            });
-            body.innerHTML = html;
-        } catch (e) {
-            body.innerHTML = `<p class="text-danger small">${e.message}</p>`;
-        }
-    });
 })();
-
-function toggleSeccion(id, btn) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const visible = el.style.display !== 'none';
-    el.style.display = visible ? 'none' : '';
-    if (btn) btn.classList.toggle('active', !visible);
-}
-
-document.getElementById('btn-toggle-resultado')?.addEventListener('click', function () {
-    toggleSeccion('seccion-resultado', this);
-});
-document.getElementById('btn-toggle-cerradas')?.addEventListener('click', function () {
-    toggleSeccion('seccion-cerradas', this);
-});
-
-if (new URLSearchParams(location.search).has('page') || location.hash === '#seccion-cerradas') {
-    toggleSeccion('seccion-cerradas', document.getElementById('btn-toggle-cerradas'));
-}
 </script>
 @endpush
