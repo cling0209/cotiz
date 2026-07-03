@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\PgBoolean;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,7 +31,7 @@ class NotaMpSeguimiento extends Model
             'nronota' => 'integer',
             'id_orden_compra' => 'integer',
             'monto_total_ganador' => 'integer',
-            'finalizado' => 'boolean',
+            'finalizado' => PgBoolean::class,
             'fecha_publicacion' => 'datetime',
             'fecha_cierre' => 'datetime',
             'fecha_ultimo_cambio' => 'datetime',

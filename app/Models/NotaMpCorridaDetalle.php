@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\PgBoolean;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -19,8 +20,8 @@ class NotaMpCorridaDetalle extends Model
         return [
             'corrida_id' => 'integer',
             'nronota' => 'integer',
-            'exito' => 'boolean',
-            'cambio' => 'boolean',
+            'exito' => PgBoolean::class,
+            'cambio' => PgBoolean::class,
         ];
     }
 

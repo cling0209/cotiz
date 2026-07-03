@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\PgBoolean;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,9 +23,9 @@ class NotaMpOferta extends Model
             'nronota' => 'integer',
             'id_cotizacion_mp' => 'integer',
             'monto_total' => 'integer',
-            'proveedor_seleccionado' => 'boolean',
-            'es_propio' => 'boolean',
-            'inadmisible' => 'boolean',
+            'proveedor_seleccionado' => PgBoolean::class,
+            'es_propio' => PgBoolean::class,
+            'inadmisible' => PgBoolean::class,
             'id_oc' => 'integer',
         ];
     }
