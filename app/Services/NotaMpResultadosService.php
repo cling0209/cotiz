@@ -318,17 +318,17 @@ class NotaMpResultadosService
 
         $tieneCodigoActual = filled($corrida->codigo_actual);
 
-        if ($corrida->estado === 'running' && $procesadas === 0 && $segundosEnCurso >= 45) {
-            if ($colaDriver === 'sync' && app()->isProduction()) {
+        if ($corrida->estado === 'running' && $procesadas === 0) {
+            if ($colaDriver === 'sync' && app()->isProduction() && $segundosEnCurso >= 30) {
                 $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
-            } elseif ($jobsEnCola > 0) {
+            } elseif ($jobsEnCola > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 90) {
                 $alerta = 'Hay '.$jobsEnCola.' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
-            } elseif ($jobsReservados > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 120) {
+            } elseif ($jobsReservados > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 150) {
                 $alerta = 'Hay un job reservado sin avance. Espere o use «Cancelar consulta» y reintente.';
             } elseif ($tieneCodigoActual && $segundosEnCurso >= 180) {
                 $alerta = 'Sin avance consultando '.$corrida->codigo_actual.' tras '
                     .(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
-            } elseif (! $tieneCodigoActual && $segundosEnCurso >= 120) {
+            } elseif (! $tieneCodigoActual && $segundosEnCurso >= 150) {
                 $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
             }
         }
