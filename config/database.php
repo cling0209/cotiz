@@ -97,6 +97,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'timezone' => env('DB_TIMEZONE', 'America/Santiago'),
             // Neon pooler: evita "cached plan must not change result type" tras migraciones
             'options' => extension_loaded('pdo_pgsql') && filter_var(
                 env('DB_EMULATE_PREPARES', str_contains((string) env('DB_HOST', ''), 'pooler')
