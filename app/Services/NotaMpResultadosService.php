@@ -10,6 +10,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -470,8 +471,7 @@ class NotaMpResultadosService
             $anterior,
             $nota,
         ) {
-            NotaMpSeguimiento::query()->updateOrCreate(
-                ['nronota' => $nronota],
+            $datosSeguimiento = array_merge(
                 [
                     'codigo_proceso' => $codigo,
                     'estado_mp_codigo' => $estadoCodigo,
@@ -489,6 +489,12 @@ class NotaMpResultadosService
                     'ultimo_consultado_en' => now(),
                     'ultima_corrida_id' => $corrida->id,
                 ],
+                $this->fechasSeguimientoParaGuardar($payload, $finalizado, $anterior),
+            );
+
+            NotaMpSeguimiento::query()->updateOrCreate(
+                ['nronota' => $nronota],
+                $datosSeguimiento,
             );
 
             $this->persistirOfertas($nronota, $payload);
@@ -706,5 +712,51 @@ class NotaMpResultadosService
     private function pgBool(bool $value): \Illuminate\Contracts\Database\Query\Expression
     {
         return DB::raw($value ? 'true' : 'false');
+    }
+
+    /**
+     * Por ahora solo persiste fechas MP en procesos cerrados y sin sobrescribir valores ya guardados.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, Carbon>
+     */
+    private function fechasSeguimientoParaGuardar(array $payload, bool $finalizado, ?NotaMpSeguimiento $anterior): array
+    {
+        if (! $finalizado) {
+            return [];
+        }
+
+        $campos = [
+            'fecha_publicacion' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_publicacion')),
+            'fecha_cierre' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_cierre')),
+            'fecha_ultimo_cambio' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_ultimo_cambio')),
+            'fecha_cancelacion' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_cancelacion')),
+        ];
+
+        $out = [];
+        foreach ($campos as $campo => $valor) {
+            if ($valor === null) {
+                continue;
+            }
+            if ($anterior !== null && $anterior->{$campo} !== null) {
+                continue;
+            }
+            $out[$campo] = $valor;
+        }
+
+        return $out;
+    }
+
+    private function parseFechaMp(mixed $valor): ?Carbon
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $valor);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

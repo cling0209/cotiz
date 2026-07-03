@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
+use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,6 +66,12 @@ class CompraAgilResultadosTest extends TestCase
                     'estado' => ['codigo' => 'proveedor_seleccionado', 'glosa' => 'Proveedor seleccionado'],
                     'id_orden_compra' => 55070937,
                     'institucion' => ['organismo_comprador' => 'Municipalidad'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-03-20 16:19',
+                        'fecha_cierre' => '2026-03-25 09:00',
+                        'fecha_ultimo_cambio' => '2026-03-25 11:00',
+                        'fecha_cancelacion' => null,
+                    ],
                     'proveedores_cotizando' => [
                         [
                             'id_cotizacion' => 1,
@@ -93,7 +100,14 @@ class CompraAgilResultadosTest extends TestCase
             'rut_ganador' => '76779675-7',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
+            'fecha_publicacion' => '2026-03-20 16:19:00',
+            'fecha_cierre' => '2026-03-25 09:00:00',
+            'fecha_ultimo_cambio' => '2026-03-25 11:00:00',
         ]);
+
+        $seg = NotaMpSeguimiento::query()->find($nota->nronota);
+        $this->assertNotNull($seg);
+        $this->assertNull($seg->fecha_cancelacion);
 
         $this->assertDatabaseHas('nota_mp_corridas', [
             'estado' => 'ok',

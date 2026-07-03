@@ -102,6 +102,10 @@ class CompraAgilResultadosController extends Controller
                 'finalizado' => $seg->finalizado,
                 'monto_total_ganador' => $seg->monto_total_ganador,
                 'id_orden_compra' => $seg->id_orden_compra,
+                'fecha_publicacion' => $seg->fecha_publicacion?->toIso8601String(),
+                'fecha_cierre' => $seg->fecha_cierre?->toIso8601String(),
+                'fecha_ultimo_cambio' => $seg->fecha_ultimo_cambio?->toIso8601String(),
+                'fecha_cancelacion' => $seg->fecha_cancelacion?->toIso8601String(),
             ],
             'ofertas' => $detalle['ofertas']->map(fn ($o) => [
                 'id' => $o->id,

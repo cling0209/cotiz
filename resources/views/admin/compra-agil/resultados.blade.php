@@ -312,6 +312,11 @@
     };
 
     const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
+    const fmtFecha = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
+    };
 
     async function postJson(url, body) {
         const res = await fetch(url, {
@@ -470,6 +475,9 @@
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Ganador: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
                 Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}</p>`;
+            if (s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion) {
+                html += `<p class="small text-muted mb-2">Publicación: ${fmtFecha(s.fecha_publicacion)} · Cierre: ${fmtFecha(s.fecha_cierre)} · Últ. cambio: ${fmtFecha(s.fecha_ultimo_cambio)}${s.fecha_cancelacion ? ' · Cancelación: ' + fmtFecha(s.fecha_cancelacion) : ''}</p>`;
+            }
             html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
             (data.ofertas || []).forEach(o => {
                 html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">
