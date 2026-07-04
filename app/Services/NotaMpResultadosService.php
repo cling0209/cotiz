@@ -341,6 +341,23 @@ class NotaMpResultadosService
             }
         }
 
+        $ultimoDetalle = NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->orderByDesc('id')
+            ->first();
+
+        $ultimoDetalleInfo = null;
+        if ($ultimoDetalle) {
+            $ultimoDetalleInfo = [
+                'nronota' => $ultimoDetalle->nronota,
+                'codigo' => $ultimoDetalle->codigo_proceso,
+                'exito' => (bool) $ultimoDetalle->exito,
+                'mensaje' => $ultimoDetalle->mensaje,
+                'estado_mp' => $ultimoDetalle->estado_mp_glosa,
+                'resultado' => $ultimoDetalle->resultado_propio,
+            ];
+        }
+
         return [
             'en_curso' => $corrida->estado === 'running',
             'corrida_id' => $corrida->id,
@@ -358,6 +375,7 @@ class NotaMpResultadosService
             'jobs_reservados' => $jobsReservados,
             'cola_driver' => $colaDriver,
             'alerta' => $alerta,
+            'ultimo_detalle' => $ultimoDetalleInfo,
         ];
     }
 

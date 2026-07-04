@@ -96,6 +96,7 @@
             <div class="progress" style="height: 1.25rem;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
+            <div class="small text-muted mt-2 d-none" id="progreso-ultimo-detalle"></div>
         </div>
     </div>
 
@@ -190,6 +191,8 @@
         return { res, data };
     }
 
+    const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
+
     function actualizarProgreso(estado) {
         const pct = estado.porcentaje ?? 0;
         const codigo = estado.codigo_actual || '';
@@ -208,6 +211,18 @@
                 progresoAlerta.textContent = '';
                 progresoAlerta.classList.add('d-none');
             }
+        }
+        if (progresoUltimoDetalle && estado.ultimo_detalle) {
+            const d = estado.ultimo_detalle;
+            let txt = `Última procesada: ${d.codigo} (nota ${d.nronota})`;
+            if (d.exito) {
+                txt += ` — ${d.estado_mp || '—'}`;
+                if (d.resultado) txt += ` · ${d.resultado}`;
+            } else {
+                txt += ` — <span class="text-danger">Error: ${d.mensaje || 'desconocido'}</span>`;
+            }
+            progresoUltimoDetalle.innerHTML = txt;
+            progresoUltimoDetalle.classList.remove('d-none');
         }
     }
 
