@@ -797,6 +797,10 @@ class NotaMpResultadosService
             $query->where('nota_mp_oferta_lineas.precio_unitario', '<=', (int) $filtros['precio_hasta']);
         }
 
+        if (! empty($filtros['solo_ganador'])) {
+            $query->whereRaw('o.proveedor_seleccionado IS TRUE');
+        }
+
         return $query
             ->orderByRaw('s.fecha_publicacion DESC NULLS LAST')
             ->orderBy('nota_mp_oferta_lineas.precio_unitario');

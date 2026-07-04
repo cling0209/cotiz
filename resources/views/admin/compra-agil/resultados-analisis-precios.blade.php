@@ -49,6 +49,13 @@
                     <input type="number" class="form-control form-control-sm" id="f-precio-hasta" name="precio_hasta"
                         value="{{ $filtros['precio_hasta'] ?? '' }}" placeholder="$" style="width:6rem">
                 </div>
+                <div class="col-auto d-flex align-items-end">
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="f-solo-ganador" name="solo_ganador" value="1"
+                            {{ ($filtros['solo_ganador'] ?? '') ? 'checked' : '' }}>
+                        <label class="form-check-label small" for="f-solo-ganador">Solo ganador</label>
+                    </div>
+                </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-search"></i> Buscar

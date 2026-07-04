@@ -54,10 +54,14 @@ class CompraAgilResultadosController extends Controller
 
     public function analisisPrecios(Request $request): View
     {
-        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta']);
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
+
+        if (! $request->has('solo_ganador') && ! $request->hasAny(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta'])) {
+            $filtros['solo_ganador'] = '1';
+        }
 
         return view('admin.compra-agil.resultados-analisis-precios', [
-            'lineas' => ! empty(array_filter($filtros))
+            'lineas' => ! empty(array_filter(collect($filtros)->except('solo_ganador')->all()))
                 ? $this->resultados->analisisPrecios($filtros)
                 : null,
             'filtros' => $filtros,
@@ -66,7 +70,7 @@ class CompraAgilResultadosController extends Controller
 
     public function analisisPreciosExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta']);
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
         $lineas = $this->resultados->analisisPreciosExportar($filtros);
 
         $filename = 'analisis_precios_' . now()->format('Ymd_His') . '.csv';
