@@ -94,6 +94,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('cotizaciones/{nronota}/export/guia', [CotizacionExportController::class, 'guia'])->name('cotizaciones.export.guia')->whereNumber('nronota');
         Route::get('cotizaciones/{nronota}/export/guia-ingreso', [CotizacionExportController::class, 'guiaIngreso'])->name('cotizaciones.export.guia-ingreso')->whereNumber('nronota');
 
+        Route::middleware('compra-agil-resultados')->group(function () {
+            Route::get('compra-agil/resultados', [CompraAgilResultadosController::class, 'index'])->name('compra-agil.resultados.index');
+            Route::post('compra-agil/resultados/iniciar', [CompraAgilResultadosController::class, 'iniciar'])->name('compra-agil.resultados.iniciar');
+            Route::get('compra-agil/resultados/estado', [CompraAgilResultadosController::class, 'estado'])->name('compra-agil.resultados.estado');
+            Route::post('compra-agil/resultados/cancelar', [CompraAgilResultadosController::class, 'cancelar'])->name('compra-agil.resultados.cancelar');
+            Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
+            Route::get('compra-agil/resultados/resultado', [CompraAgilResultadosController::class, 'resultado'])->name('compra-agil.resultados.resultado');
+            Route::get('compra-agil/resultados/cerradas', [CompraAgilResultadosController::class, 'cerradas'])->name('compra-agil.resultados.cerradas');
+            Route::get('compra-agil/resultados/analisis-precios', [CompraAgilResultadosController::class, 'analisisPrecios'])->name('compra-agil.resultados.analisis-precios');
+            Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
+        });
+
         Route::middleware('superadmin')->group(function () {
             Route::get('cotizaciones/adjudicadas', [AdjudicadaListadoController::class, 'index'])->name('cotizaciones.adjudicadas.index');
             Route::get('cotizaciones/adjudicadas/export/detalle', [AdjudicadaListadoController::class, 'exportDetalle'])->name('cotizaciones.adjudicadas.export.detalle');
@@ -103,18 +115,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('compra-agil/analisis', [CompraAgilAnalisisController::class, 'index'])->name('compra-agil.analisis.index');
                 Route::post('compra-agil/analisis/sync', [CompraAgilAnalisisController::class, 'sincronizar'])->name('compra-agil.analisis.sync');
                 Route::get('compra-agil/analisis/producto/{prodItem}', [CompraAgilAnalisisController::class, 'detalleProducto'])->name('compra-agil.analisis.producto')->where('prodItem', '[^/]+');
-            });
-
-            Route::middleware('compra-agil-resultados')->group(function () {
-                Route::get('compra-agil/resultados', [CompraAgilResultadosController::class, 'index'])->name('compra-agil.resultados.index');
-                Route::post('compra-agil/resultados/iniciar', [CompraAgilResultadosController::class, 'iniciar'])->name('compra-agil.resultados.iniciar');
-                Route::get('compra-agil/resultados/estado', [CompraAgilResultadosController::class, 'estado'])->name('compra-agil.resultados.estado');
-                Route::post('compra-agil/resultados/cancelar', [CompraAgilResultadosController::class, 'cancelar'])->name('compra-agil.resultados.cancelar');
-                Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
-                Route::get('compra-agil/resultados/resultado', [CompraAgilResultadosController::class, 'resultado'])->name('compra-agil.resultados.resultado');
-                Route::get('compra-agil/resultados/cerradas', [CompraAgilResultadosController::class, 'cerradas'])->name('compra-agil.resultados.cerradas');
-                Route::get('compra-agil/resultados/analisis-precios', [CompraAgilResultadosController::class, 'analisisPrecios'])->name('compra-agil.resultados.analisis-precios');
-                Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
             });
 
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');

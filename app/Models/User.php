@@ -63,7 +63,7 @@ class User extends Authenticatable
 
     public function canAccessCompraAgilResultados(): bool
     {
-        return $this->username === 'admin'
+        return in_array($this->perfil, [self::PERFIL_SUPERADMIN, self::PERFIL_ADMIN_CLIENTE], true)
             && config('cotiz.mercadopublico.resultados_admin_habilitado', true);
     }
 
