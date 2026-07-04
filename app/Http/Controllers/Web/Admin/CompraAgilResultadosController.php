@@ -128,10 +128,8 @@ class CompraAgilResultadosController extends Controller
             ], 409);
         }
 
-        $limite = $this->resultados->normalizarLimiteConsulta((int) $request->input('limite', $this->resultados->limiteCorridaMax()));
-
         try {
-            $this->resultados->encolarCorrida((string) $request->user()->username, $limite);
+            $this->resultados->encolarCorrida((string) $request->user()->username);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
