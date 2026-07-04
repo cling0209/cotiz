@@ -16,7 +16,12 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
     public int $timeout = 14400;
 
-    public int $tries = 1;
+    public int $maxExceptions = 1;
+
+    public function retryUntil(): \DateTime
+    {
+        return now()->addHours(4);
+    }
 
     public function __construct(
         public int $corridaId,
