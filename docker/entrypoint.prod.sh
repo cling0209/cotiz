@@ -36,7 +36,7 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Iniciando queue worker (database) con auto-restart..." >&2
   (
     while true; do
-      php artisan queue:work database --sleep=3 --tries=1 --timeout=3600 --max-time=3500 >> storage/logs/queue-worker.log 2>&1
+      php artisan queue:work database --sleep=3 --tries=1 --timeout=14400 --max-time=14400 >> storage/logs/queue-worker.log 2>&1
       echo "[$(date)] Queue worker terminó (exit $?). Reiniciando en 5s..." >&2
       sleep 5
     done
