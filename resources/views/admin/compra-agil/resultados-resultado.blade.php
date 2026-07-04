@@ -21,17 +21,12 @@
             · Con cambio: {{ $ultimaCorrida->notas_con_cambio }}
         </div>
 
-        @php
-            $detalleOk = $detalleCorrida->where('exito', true)->count();
-            $detalleError = $detalleCorrida->where('exito', false)->count();
-        @endphp
-
         <div class="card shadow-sm">
             <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h2 class="h6 mb-0">Resultado por cotización</h2>
-                @if($detalleCorrida->isNotEmpty())
+                @if($detalleCorrida->total() > 0)
                     <span class="small text-muted">
-                        {{ $detalleOk }} ok · {{ $detalleError }} con error
+                        {{ $detalleCorrida->total() }} registros · Página {{ $detalleCorrida->currentPage() }} de {{ $detalleCorrida->lastPage() }}
                     </span>
                 @endif
             </div>
@@ -95,6 +90,11 @@
                     </tbody>
                 </table>
             </div>
+            @if($detalleCorrida->hasPages())
+                <div class="card-footer py-2 d-flex justify-content-center">
+                    {{ $detalleCorrida->links() }}
+                </div>
+            @endif
         </div>
     @else
         <div class="alert alert-info">No se ha ejecutado ninguna consulta aún.</div>

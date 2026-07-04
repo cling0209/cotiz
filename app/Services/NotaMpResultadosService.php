@@ -899,6 +899,19 @@ class NotaMpResultadosService
             ->get();
     }
 
+    public function detalleUltimaCorridaPaginado(int $perPage = 50, ?NotaMpCorrida $corrida = null): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $corrida ??= $this->ultimaCorrida();
+        if ($corrida === null) {
+            return NotaMpCorridaDetalle::query()->whereRaw('1=0')->paginate($perPage);
+        }
+
+        return NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->orderBy('nronota')
+            ->paginate($perPage);
+    }
+
     /**
      * @return Collection<int, NotaMpCorridaCambio>
      */
