@@ -94,7 +94,10 @@
 
     <div class="card shadow-sm mb-4">
         <div class="card-header py-2 d-flex justify-content-between align-items-center">
-            <h2 class="h6 mb-0">Novedades — última consulta</h2>
+            <div>
+                <h2 class="h6 mb-0 d-inline">Novedades — última consulta</h2>
+                <span class="text-muted small ms-2">Cotizaciones que cambiaron de estado en la última consulta a Mercado Público</span>
+            </div>
             <span class="badge text-bg-primary" id="badge-novedades">{{ $novedades->count() }}</span>
         </div>
         <div class="table-responsive">
