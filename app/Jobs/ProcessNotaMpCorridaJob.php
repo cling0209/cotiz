@@ -64,25 +64,36 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                 'codigo_actual' => $codigo !== '' ? $codigo : null,
             ]);
 
-            try {
-                $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario);
-            } catch (\Throwable $e) {
+            $maxIntentos = 3;
+            $exito = false;
+            for ($intento = 1; $intento <= $maxIntentos; $intento++) {
+                try {
+                    $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario);
+                    $exito = true;
+                    break;
+                } catch (\Throwable $e) {
+                    $ultimoError = $e->getMessage();
+                    Log::warning('ProcessNotaMpCorridaJob: intento '.$intento.'/'.$maxIntentos.' fallido', [
+                        'corrida_id' => $corrida->id,
+                        'nronota' => $nronota,
+                        'codigo' => $codigo,
+                        'message' => $ultimoError,
+                    ]);
+                    if ($intento < $maxIntentos) {
+                        sleep(2);
+                    }
+                }
+            }
+            if (! $exito) {
                 $fallidas++;
-                $ultimoError = $e->getMessage();
                 $empresa = trim((string) ($item['empresa'] ?? ''));
                 $resultados->registrarDetalleFallo(
                     $corrida,
                     $nronota,
                     $codigo,
-                    mb_substr($ultimoError, 0, 500),
+                    mb_substr($ultimoError . ' (tras '.$maxIntentos.' intentos)', 0, 500),
                     $empresa !== '' ? $empresa : null,
                 );
-                Log::warning('ProcessNotaMpCorridaJob: nota omitida', [
-                    'corrida_id' => $corrida->id,
-                    'nronota' => $nronota,
-                    'codigo' => $codigo,
-                    'message' => $ultimoError,
-                ]);
                 $corrida->increment('notas_procesadas');
             }
 
