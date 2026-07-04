@@ -138,7 +138,7 @@ class CompraAgilApiService
 
         try {
             $response = Http::connectTimeout(10)
-                ->timeout(30)
+                ->timeout(15)
                 ->withHeaders(['ticket' => $ticket])
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);
