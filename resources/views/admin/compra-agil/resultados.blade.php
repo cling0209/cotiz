@@ -97,7 +97,10 @@
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
             <div class="small text-muted mt-2 d-none" id="progreso-ultimo-detalle"></div>
-            <div class="small text-muted mt-1 d-none" id="progreso-tiempo"><i class="bi bi-clock"></i> <span id="progreso-tiempo-valor"></span></div>
+            <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
+                <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
+                · Última nota: <span id="progreso-tiempo-nota"></span>
+            </div>
         </div>
     </div>
 
@@ -194,12 +197,16 @@
 
     const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
     const progresoTiempo = document.getElementById('progreso-tiempo');
-    const progresoTiempoValor = document.getElementById('progreso-tiempo-valor');
-    let segundosServidor = 0;
-    let tiempoUltimoSync = 0;
+    const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
+    const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
+    let segTotalServidor = 0;
+    let syncTotalMs = 0;
+    let syncNotaMs = 0;
+    let ultimaNotaId = null;
     let relojTimer = null;
 
     function fmtTiempo(seg) {
+        seg = Math.max(0, seg);
         const h = Math.floor(seg / 3600);
         const m = Math.floor((seg % 3600) / 60);
         const s = seg % 60;
@@ -210,10 +217,11 @@
         if (relojTimer) return;
         progresoTiempo?.classList.remove('d-none');
         relojTimer = setInterval(() => {
-            const ahora = Math.floor((Date.now() - tiempoUltimoSync) / 1000);
-            if (progresoTiempoValor) {
-                progresoTiempoValor.textContent = fmtTiempo(segundosServidor + ahora);
-            }
+            const now = Date.now();
+            const totalSeg = segTotalServidor + Math.floor((now - syncTotalMs) / 1000);
+            const notaSeg = Math.floor((now - syncNotaMs) / 1000);
+            if (progresoTiempoTotal) progresoTiempoTotal.textContent = fmtTiempo(totalSeg);
+            if (progresoTiempoNota) progresoTiempoNota.textContent = fmtTiempo(notaSeg);
         }, 1000);
     }
 
@@ -242,8 +250,13 @@
             }
         }
         if (estado.segundos_en_curso !== undefined) {
-            segundosServidor = estado.segundos_en_curso;
-            tiempoUltimoSync = Date.now();
+            segTotalServidor = estado.segundos_en_curso;
+            syncTotalMs = Date.now();
+            const notaActual = estado.nronota_actual || estado.codigo_actual || null;
+            if (notaActual !== ultimaNotaId) {
+                ultimaNotaId = notaActual;
+                syncNotaMs = Date.now();
+            }
             iniciarReloj();
         }
         if (progresoUltimoDetalle && estado.ultimo_detalle) {
