@@ -43,7 +43,7 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradas(Request $request): View
     {
-        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'fecha_desde', 'fecha_hasta']);
+        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'proveedor', 'fecha_desde', 'fecha_hasta']);
 
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
@@ -53,9 +53,9 @@ class CompraAgilResultadosController extends Controller
 
     public function analisisPrecios(Request $request): View
     {
-        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
 
-        if (! $request->has('solo_ganador') && ! $request->hasAny(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta'])) {
+        if (! $request->has('solo_ganador') && ! $request->hasAny(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta'])) {
             $filtros['solo_ganador'] = '1';
         }
 
@@ -69,7 +69,7 @@ class CompraAgilResultadosController extends Controller
 
     public function analisisPreciosExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
         $lineas = $this->resultados->analisisPreciosExportar($filtros);
 
         $filename = 'analisis_precios_' . now()->format('Ymd_His') . '.csv';
@@ -80,7 +80,7 @@ class CompraAgilResultadosController extends Controller
             fputcsv($out, [
                 'Código', 'Producto', 'Descripción', 'P.Unitario', 'Cantidad', 'Total',
                 'Nota', 'Código CA', 'Publicación', 'Organismo', 'Proveedor', 'RUT',
-                'Ganador', 'Propio', 'Dif.%', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
+                'Prov. seleccionado', 'Propio', 'Dif.%', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
             ], ';');
             foreach ($lineas as $l) {
                 $diffPct = '';

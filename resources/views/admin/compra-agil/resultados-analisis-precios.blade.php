@@ -49,11 +49,16 @@
                     <input type="number" class="form-control form-control-sm" id="f-precio-hasta" name="precio_hasta"
                         value="{{ $filtros['precio_hasta'] ?? '' }}" placeholder="$" style="width:6rem">
                 </div>
+                <div class="col-auto">
+                    <label for="f-proveedor" class="form-label small mb-0">Prov. seleccionado</label>
+                    <input type="text" class="form-control form-control-sm" id="f-proveedor" name="proveedor"
+                        value="{{ $filtros['proveedor'] ?? '' }}" placeholder="Razón social..." style="width:11rem">
+                </div>
                 <div class="col-auto d-flex align-items-end">
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="f-solo-ganador" name="solo_ganador" value="1"
                             {{ ($filtros['solo_ganador'] ?? '') ? 'checked' : '' }}>
-                        <label class="form-check-label small" for="f-solo-ganador">Solo ganador</label>
+                        <label class="form-check-label small" for="f-solo-ganador">Solo prov. seleccionado</label>
                     </div>
                 </div>
                 <div class="col-auto">
@@ -150,7 +155,7 @@
                                 </td>
                                 <td>
                                     @if($l->proveedor_seleccionado)
-                                        <span class="badge text-bg-success">Ganador</span>
+                                        <span class="badge text-bg-success">Prov. seleccionado</span>
                                     @endif
                                     @if($l->es_propio)
                                         <span class="badge text-bg-info">Propio</span>

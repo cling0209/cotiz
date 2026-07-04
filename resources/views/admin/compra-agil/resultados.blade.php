@@ -111,7 +111,7 @@
                         <th>Publicación</th>
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
-                        <th>Ganador</th>
+                        <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
                         <th>OC</th>
                         <th></th>
@@ -146,7 +146,7 @@
                             </td>
                             <td class="small">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
                             <td class="text-nowrap">
-                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Ganador vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Prov. seleccionado vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
                         </tr>

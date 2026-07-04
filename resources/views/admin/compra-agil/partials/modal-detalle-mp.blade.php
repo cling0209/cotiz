@@ -60,18 +60,18 @@
                 html += `Estado: ${s.estado_mp_glosa || s.estado_mp_codigo || '—'} · Monto total: ${fmtMonto(s.monto_total_ganador)}</p>`;
 
                 if (!ganador && !propio) {
-                    html += '<div class="alert alert-warning small py-2">No se encontraron ofertas del ganador ni de Romulo para esta nota.</div>';
+                    html += '<div class="alert alert-warning small py-2">No se encontraron ofertas del proveedor seleccionado ni de Romulo para esta nota.</div>';
                     body.innerHTML = html;
                     return;
                 }
 
                 html += '<div class="row gx-3 mb-2">';
                 html += '<div class="col-md-6"><div class="border rounded p-2 h-100' + (ganador ? ' border-success' : '') + '">';
-                html += '<p class="small fw-semibold mb-1 text-success"><i class="bi bi-trophy-fill"></i> Ganador</p>';
+                html += '<p class="small fw-semibold mb-1 text-success"><i class="bi bi-trophy-fill"></i> Prov. seleccionado</p>';
                 if (ganador) {
                     html += `<p class="small mb-0">${ganador.razon_social || '—'} <span class="text-muted">(${ganador.rut_proveedor || '—'})</span><br>Total: ${fmtMonto(ganador.monto_total)}</p>`;
                 } else {
-                    html += '<p class="small text-muted mb-0">Sin oferta ganadora</p>';
+                    html += '<p class="small text-muted mb-0">Sin proveedor seleccionado</p>';
                 }
                 html += '</div></div>';
                 html += '<div class="col-md-6"><div class="border rounded p-2 h-100' + (propio ? ' border-primary' : '') + '">';
@@ -104,7 +104,7 @@
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0">';
                 html += '<thead class="table-light"><tr>';
                 html += '<th>Producto</th><th>Cant.</th>';
-                html += '<th class="text-end table-success">P.Unit. Ganador</th>';
+                html += '<th class="text-end table-success">P.Unit. Prov. sel.</th>';
                 html += '<th class="text-end table-primary">P.Unit. Romulo</th>';
                 html += '<th class="text-end">Diferencia</th>';
                 html += '</tr></thead><tbody>';
@@ -168,7 +168,7 @@
             if (!res.ok) throw new Error(data.error || 'Error');
             const s = data.seguimiento;
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
-                Ganador: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
+                Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
                 Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.id_orden_compra ? '<br>OC: <strong>' + s.id_orden_compra + '</strong>' : ''}</p>`;
             if (s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion) {
                 html += `<p class="small text-muted mb-2">Publicación: ${fmtFecha(s.fecha_publicacion)} · Cierre: ${fmtFecha(s.fecha_cierre)} · Últ. cambio: ${fmtFecha(s.fecha_ultimo_cambio)}${s.fecha_cancelacion ? ' · Cancelación: ' + fmtFecha(s.fecha_cancelacion) : ''}</p>`;
@@ -179,14 +179,14 @@
                     <td>${o.razon_social || '—'}</td>
                     <td class="small">${o.rut_proveedor || '—'}</td>
                     <td class="text-end">${fmtMonto(o.monto_total)}</td>
-                    <td class="small">${o.proveedor_seleccionado ? 'Ganador' : ''}${o.es_propio ? ' · Propio' : ''}${o.inadmisible ? ' · Inadm.' : ''}</td>
+                    <td class="small">${o.proveedor_seleccionado ? 'Seleccionado' : ''}${o.es_propio ? ' · Propio' : ''}${o.inadmisible ? ' · Inadm.' : ''}</td>
                 </tr>`;
             });
             html += '</tbody></table></div>';
             html += '<h3 class="h6 mt-3">Detalle por proveedor</h3>';
             (data.ofertas || []).forEach(o => {
                 const badges = [
-                    o.proveedor_seleccionado ? 'Ganador' : '',
+                    o.proveedor_seleccionado ? 'Seleccionado' : '',
                     o.es_propio ? 'Propio' : '',
                     o.inadmisible ? 'Inadmisible' : '',
                 ].filter(Boolean).join(' · ');

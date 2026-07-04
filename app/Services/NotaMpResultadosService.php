@@ -790,6 +790,10 @@ class NotaMpResultadosService
             $query->where('s.codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
         }
 
+        if (! empty($filtros['proveedor'])) {
+            $query->where('o.razon_social', 'ilike', '%' . $filtros['proveedor'] . '%');
+        }
+
         if (! empty($filtros['fecha_desde'])) {
             $query->where('s.fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00');
         }
@@ -850,6 +854,10 @@ class NotaMpResultadosService
 
         if (! empty($filtros['organismo'])) {
             $query->where('organismo', 'ilike', '%' . $filtros['organismo'] . '%');
+        }
+
+        if (! empty($filtros['proveedor'])) {
+            $query->where('razon_social_ganador', 'ilike', '%' . $filtros['proveedor'] . '%');
         }
 
         if (! empty($filtros['fecha_desde'])) {

@@ -31,6 +31,11 @@
                         value="{{ $filtros['organismo'] ?? '' }}" placeholder="Buscar..." style="width:12rem">
                 </div>
                 <div class="col-auto">
+                    <label for="f-proveedor" class="form-label small mb-0">Prov. seleccionado</label>
+                    <input type="text" class="form-control form-control-sm" id="f-proveedor" name="proveedor"
+                        value="{{ $filtros['proveedor'] ?? '' }}" placeholder="Razón social..." style="width:12rem">
+                </div>
+                <div class="col-auto">
                     <label for="f-fecha-desde" class="form-label small mb-0">Publicación desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-fecha-desde" name="fecha_desde"
                         value="{{ $filtros['fecha_desde'] ?? '' }}">
@@ -65,7 +70,7 @@
                         <th>Organismo</th>
                         <th>Estado MP</th>
                         <th>Seguimiento</th>
-                        <th>Ganador</th>
+                        <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
                         <th>Consultado</th>
                         <th></th>
@@ -96,7 +101,7 @@
                             </td>
                             <td class="small text-muted">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
                             <td class="text-nowrap">
-                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Ganador vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
                             </td>
                         </tr>
