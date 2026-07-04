@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -136,10 +137,13 @@ class CompraAgilApiService
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
 
         try {
-            $response = Http::timeout(30)
+            $response = Http::connectTimeout(10)
+                ->timeout(30)
                 ->withHeaders(['ticket' => $ticket])
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('Timeout o error de conexión con Mercado Público. Reintente.', 0, $e);
         } catch (RequestException $e) {
             throw new RuntimeException($this->mensajeDesdeRespuesta($e->response?->status(), $e->response?->json()), $e->getCode(), $e);
         }
