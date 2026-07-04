@@ -117,6 +117,7 @@
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
                         <th>Ganador</th>
+                        <th class="text-end">Monto</th>
                         <th>OC</th>
                         <th></th>
                     </tr>
@@ -141,13 +142,20 @@
                                     —
                                 @endif
                             </td>
+                            <td class="text-end small">
+                                @if($nov->seguimiento?->monto_total_ganador)
+                                    ${{ number_format($nov->seguimiento->monto_total_ganador, 0, ',', '.') }}
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td class="small">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
                             <td>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
                         </tr>
                     @empty
-                        <tr id="novedades-vacio"><td colspan="8" class="text-center text-muted py-4">Sin cambios en la última consulta.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="9" class="text-center text-muted py-4">Sin cambios en la última consulta.</td></tr>
                     @endforelse
                 </tbody>
             </table>
