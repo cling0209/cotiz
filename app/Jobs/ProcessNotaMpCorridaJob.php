@@ -139,7 +139,21 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         app(NotaMpResultadosService::class)->finalizarCorrida(
             $corrida,
             'error',
-            $exception?->getMessage() ?: 'La consulta en segundo plano falló.',
+            $this->mensajeAmigable($exception),
         );
+    }
+
+    private function mensajeAmigable(?Throwable $exception): string
+    {
+        $msg = $exception?->getMessage() ?? '';
+
+        if (str_contains($msg, 'attempted too many times')) {
+            return 'La consulta fue interrumpida por el servidor. Intente nuevamente.';
+        }
+        if (str_contains($msg, 'has timed out')) {
+            return 'La consulta excedió el tiempo máximo permitido. Intente con menos notas.';
+        }
+
+        return $msg ?: 'La consulta en segundo plano falló.';
     }
 }
