@@ -137,14 +137,14 @@ class CompraAgilApiService
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
 
         try {
-            $response = Http::connectTimeout(10)
-                ->timeout(15)
+            $response = Http::connectTimeout(15)
+                ->timeout(30)
                 ->withOptions([
                     'curl' => [
-                        CURLOPT_TIMEOUT => 15,
-                        CURLOPT_CONNECTTIMEOUT => 10,
+                        CURLOPT_TIMEOUT => 30,
+                        CURLOPT_CONNECTTIMEOUT => 15,
                         CURLOPT_LOW_SPEED_LIMIT => 1,
-                        CURLOPT_LOW_SPEED_TIME => 10,
+                        CURLOPT_LOW_SPEED_TIME => 20,
                     ],
                 ])
                 ->withHeaders(['ticket' => $ticket])
