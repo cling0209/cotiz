@@ -14,7 +14,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 3600;
+    public int $timeout = 14400;
 
     public int $tries = 1;
 

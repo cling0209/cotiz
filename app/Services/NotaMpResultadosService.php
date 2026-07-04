@@ -59,14 +59,16 @@ class NotaMpResultadosService
         }
 
         $segundos = (int) $corrida->inicio->diffInSeconds(now());
-        $umbral = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 600));
+        $umbralBase = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 600));
         $jobsPendientes = $this->contarJobsResultadosMpPendientes($corrida->id);
         $jobsReservados = $this->contarJobsResultadosMpReservados($corrida->id);
         $procesadas = (int) $corrida->notas_procesadas;
         $total = max(0, (int) $corrida->total_notas);
         $sinJobActivo = $jobsPendientes === 0 && $jobsReservados === 0;
 
-        $umbralJobColgado = max($umbral, 900);
+        $umbralPorNotas = max($umbralBase, $total * 60);
+        $umbral = $sinJobActivo ? $umbralBase : $umbralPorNotas;
+        $umbralJobColgado = max($umbralPorNotas, 3600);
 
         if ($sinJobActivo && $segundos >= $umbral) {
             // sin job activo y pasó el umbral → liberar
