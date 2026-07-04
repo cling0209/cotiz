@@ -97,6 +97,7 @@
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
             <div class="small text-muted mt-2 d-none" id="progreso-ultimo-detalle"></div>
+            <div class="small text-muted mt-1 d-none" id="progreso-tiempo"><i class="bi bi-clock"></i> <span id="progreso-tiempo-valor"></span></div>
         </div>
     </div>
 
@@ -192,6 +193,34 @@
     }
 
     const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
+    const progresoTiempo = document.getElementById('progreso-tiempo');
+    const progresoTiempoValor = document.getElementById('progreso-tiempo-valor');
+    let segundosServidor = 0;
+    let tiempoUltimoSync = 0;
+    let relojTimer = null;
+
+    function fmtTiempo(seg) {
+        const h = Math.floor(seg / 3600);
+        const m = Math.floor((seg % 3600) / 60);
+        const s = seg % 60;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function iniciarReloj() {
+        if (relojTimer) return;
+        progresoTiempo?.classList.remove('d-none');
+        relojTimer = setInterval(() => {
+            const ahora = Math.floor((Date.now() - tiempoUltimoSync) / 1000);
+            if (progresoTiempoValor) {
+                progresoTiempoValor.textContent = fmtTiempo(segundosServidor + ahora);
+            }
+        }, 1000);
+    }
+
+    function detenerReloj() {
+        if (relojTimer) { clearInterval(relojTimer); relojTimer = null; }
+        progresoTiempo?.classList.add('d-none');
+    }
 
     function actualizarProgreso(estado) {
         const pct = estado.porcentaje ?? 0;
@@ -211,6 +240,11 @@
                 progresoAlerta.textContent = '';
                 progresoAlerta.classList.add('d-none');
             }
+        }
+        if (estado.segundos_en_curso !== undefined) {
+            segundosServidor = estado.segundos_en_curso;
+            tiempoUltimoSync = Date.now();
+            iniciarReloj();
         }
         if (progresoUltimoDetalle && estado.ultimo_detalle) {
             const d = estado.ultimo_detalle;
@@ -241,6 +275,7 @@
     }
 
     function detenerPolling() {
+        detenerReloj();
         if (pollTimer) {
             clearInterval(pollTimer);
             pollTimer = null;
