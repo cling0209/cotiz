@@ -139,6 +139,14 @@ class CompraAgilApiService
         try {
             $response = Http::connectTimeout(10)
                 ->timeout(15)
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_TIMEOUT => 15,
+                        CURLOPT_CONNECTTIMEOUT => 10,
+                        CURLOPT_LOW_SPEED_LIMIT => 1,
+                        CURLOPT_LOW_SPEED_TIME => 10,
+                    ],
+                ])
                 ->withHeaders(['ticket' => $ticket])
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);
@@ -146,6 +154,8 @@ class CompraAgilApiService
             throw new RuntimeException('Timeout o error de conexión con Mercado Público. Reintente.', 0, $e);
         } catch (RequestException $e) {
             throw new RuntimeException($this->mensajeDesdeRespuesta($e->response?->status(), $e->response?->json()), $e->getCode(), $e);
+        } catch (\Throwable $e) {
+            throw new RuntimeException('Error inesperado consultando Mercado Público: ' . mb_substr($e->getMessage(), 0, 200), 0, $e);
         }
 
         $status = $response->status();
