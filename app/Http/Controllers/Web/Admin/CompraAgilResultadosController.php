@@ -54,13 +54,55 @@ class CompraAgilResultadosController extends Controller
 
     public function analisisPrecios(Request $request): View
     {
-        $filtros = $request->only(['producto', 'nronota']);
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta']);
 
         return view('admin.compra-agil.resultados-analisis-precios', [
             'lineas' => ! empty(array_filter($filtros))
                 ? $this->resultados->analisisPrecios($filtros)
                 : null,
             'filtros' => $filtros,
+        ]);
+    }
+
+    public function analisisPreciosExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta']);
+        $lineas = $this->resultados->analisisPreciosExportar($filtros);
+
+        $filename = 'analisis_precios_' . now()->format('Ymd_His') . '.csv';
+
+        return response()->streamDownload(function () use ($lineas) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Código', 'Producto', 'Descripción', 'P.Unitario', 'Cantidad', 'Total',
+                'Nota', 'Código CA', 'Publicación', 'Organismo', 'Proveedor', 'RUT',
+                'Ganador', 'Propio', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
+            ], ';');
+            foreach ($lineas as $l) {
+                fputcsv($out, [
+                    $l->codigo_producto,
+                    $l->nombre_producto,
+                    $l->descripcion,
+                    $l->precio_unitario,
+                    $l->cantidad,
+                    $l->monto_total,
+                    $l->nronota,
+                    $l->codigo_proceso,
+                    $l->fecha_publicacion ? \Carbon\Carbon::parse($l->fecha_publicacion)->format('d/m/Y') : '',
+                    $l->organismo,
+                    $l->razon_social,
+                    $l->rut_proveedor,
+                    $l->proveedor_seleccionado ? 'Sí' : 'No',
+                    $l->es_propio ? 'Sí' : 'No',
+                    $l->precio_propio,
+                    $l->cantidad_propia,
+                    $l->total_propio,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 

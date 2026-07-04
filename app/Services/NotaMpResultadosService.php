@@ -728,11 +728,19 @@ class NotaMpResultadosService
             ->get();
     }
 
-    public function analisisPrecios(array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    private function buildAnalisisPreciosQuery(array $filtros = []): \Illuminate\Database\Eloquent\Builder
     {
         $query = NotaMpOfertaLinea::query()
             ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
+            ->leftJoin('nota_mp_ofertas as op', function ($join) {
+                $join->on('op.nronota', '=', 'o.nronota')
+                     ->whereRaw('op.es_propio IS TRUE');
+            })
+            ->leftJoin('nota_mp_oferta_lineas as lp', function ($join) {
+                $join->on('lp.oferta_id', '=', 'op.id')
+                     ->on('lp.codigo_producto', '=', 'nota_mp_oferta_lineas.codigo_producto');
+            })
             ->select([
                 'nota_mp_oferta_lineas.codigo_producto',
                 'nota_mp_oferta_lineas.nombre_producto',
@@ -748,6 +756,9 @@ class NotaMpResultadosService
                 's.codigo_proceso',
                 's.fecha_publicacion',
                 's.organismo',
+                DB::raw('lp.precio_unitario as precio_propio'),
+                DB::raw('lp.cantidad as cantidad_propia'),
+                DB::raw('lp.monto_total as total_propio'),
             ]);
 
         if (! empty($filtros['producto'])) {
@@ -766,10 +777,43 @@ class NotaMpResultadosService
             $query->where('o.nronota', (int) $filtros['nronota']);
         }
 
+        if (! empty($filtros['codigo_proceso'])) {
+            $query->where('s.codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where('s.fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00');
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where('s.fecha_publicacion', '<=', $filtros['fecha_hasta'] . ' 23:59:59');
+        }
+
+        if (! empty($filtros['precio_desde'])) {
+            $query->where('nota_mp_oferta_lineas.precio_unitario', '>=', (int) $filtros['precio_desde']);
+        }
+
+        if (! empty($filtros['precio_hasta'])) {
+            $query->where('nota_mp_oferta_lineas.precio_unitario', '<=', (int) $filtros['precio_hasta']);
+        }
+
         return $query
-            ->orderBy('nota_mp_oferta_lineas.precio_unitario')
+            ->orderByRaw('s.fecha_publicacion DESC NULLS LAST')
+            ->orderBy('nota_mp_oferta_lineas.precio_unitario');
+    }
+
+    public function analisisPrecios(array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        return $this->buildAnalisisPreciosQuery($filtros)
             ->paginate(30)
             ->withQueryString();
+    }
+
+    public function analisisPreciosExportar(array $filtros = []): Collection
+    {
+        return $this->buildAnalisisPreciosQuery($filtros)
+            ->limit(5000)
+            ->get();
     }
 
     public function contarCerradas(): int
