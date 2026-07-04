@@ -751,12 +751,15 @@ class NotaMpResultadosService
             ]);
 
         if (! empty($filtros['producto'])) {
-            $term = '%' . $filtros['producto'] . '%';
-            $query->where(function ($q) use ($term) {
-                $q->where('nota_mp_oferta_lineas.nombre_producto', 'ilike', $term)
-                  ->orWhere('nota_mp_oferta_lineas.descripcion', 'ilike', $term)
-                  ->orWhere('nota_mp_oferta_lineas.codigo_producto', 'ilike', $term);
-            });
+            $palabras = preg_split('/\s+/', trim($filtros['producto']), -1, PREG_SPLIT_NO_EMPTY);
+            foreach ($palabras as $palabra) {
+                $term = '%' . $palabra . '%';
+                $query->where(function ($q) use ($term) {
+                    $q->where('nota_mp_oferta_lineas.nombre_producto', 'ilike', $term)
+                      ->orWhere('nota_mp_oferta_lineas.descripcion', 'ilike', $term)
+                      ->orWhere('nota_mp_oferta_lineas.codigo_producto', 'ilike', $term);
+                });
+            }
         }
 
         if (! empty($filtros['nronota'])) {
