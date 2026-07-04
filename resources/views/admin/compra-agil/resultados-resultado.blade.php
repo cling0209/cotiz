@@ -74,8 +74,9 @@
                                         —
                                     @endif
                                 </td>
-                                <td>
+                                <td class="text-nowrap">
                                     @if($det->exito)
+                                        <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $det->nronota }}" title="Comparar precios Ganador vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                         <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $det->nronota }}">Detalle</button>
                                     @endif
                                 </td>
