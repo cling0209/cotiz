@@ -94,7 +94,7 @@
                             <th>Código</th>
                             <th>Producto</th>
                             <th>Descripción</th>
-                            <th class="text-end">P. Unit.</th>
+                            <th class="text-end table-info">P. Unit.</th>
                             <th class="text-end">Cant.</th>
                             <th class="text-end">Total</th>
                             <th>Nota</th>
@@ -103,8 +103,8 @@
                             <th>Proveedor</th>
                             <th>RUT</th>
                             <th class="text-end table-warning">P.Unit. Romulo</th>
-                            <th class="text-end table-warning">Cant. Romulo</th>
-                            <th class="text-end table-warning">Total Romulo</th>
+                            <th class="text-end">Cant. Romulo</th>
+                            <th class="text-end">Total Romulo</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -114,7 +114,7 @@
                                 <td class="font-monospace">{{ $l->codigo_producto ?: '—' }}</td>
                                 <td>{{ $l->nombre_producto ?: '—' }}</td>
                                 <td class="text-muted">{{ Str::limit($l->descripcion, 50) ?: '—' }}</td>
-                                <td class="text-end">${{ number_format($l->precio_unitario ?? 0, 0, ',', '.') }}</td>
+                                <td class="text-end table-info">${{ number_format($l->precio_unitario ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end">{{ $l->cantidad ?? '—' }}</td>
                                 <td class="text-end">${{ number_format($l->monto_total ?? 0, 0, ',', '.') }}</td>
                                 <td>{{ $l->nronota }}</td>
@@ -129,8 +129,8 @@
                                         —
                                     @endif
                                 </td>
-                                <td class="text-end table-warning">{{ $l->cantidad_propia ?? '—' }}</td>
-                                <td class="text-end table-warning">
+                                <td class="text-end">{{ $l->cantidad_propia !== null ? number_format($l->cantidad_propia, 0, ',', '.') : '—' }}</td>
+                                <td class="text-end">
                                     @if($l->total_propio !== null)
                                         ${{ number_format($l->total_propio, 0, ',', '.') }}
                                     @else

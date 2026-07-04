@@ -100,7 +100,7 @@ class CompraAgilResultadosController extends Controller
                     $l->proveedor_seleccionado ? 'Sí' : 'No',
                     $l->es_propio ? 'Sí' : 'No',
                     $l->precio_propio,
-                    $l->cantidad_propia,
+                    $l->cantidad_propia !== null ? (int) $l->cantidad_propia : '',
                     $l->total_propio,
                 ], ';');
             }
