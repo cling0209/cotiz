@@ -36,17 +36,15 @@
         @endif
     </div>
 
-    @if($corridaActiva)
-        <div class="alert alert-info border small mb-3 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <span>
-                Consulta en curso iniciada por <strong>{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
-                Puede salir de esta pantalla; el proceso continúa en segundo plano.
-            </span>
-            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-cancelar-mp">
-                <i class="bi bi-x-circle"></i> Cancelar consulta
-            </button>
-        </div>
-    @endif
+    <div class="alert alert-info border small mb-3 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $corridaActiva ? '' : 'd-none' }}" id="banner-corrida-activa">
+        <span>
+            Consulta en curso iniciada por <strong id="banner-corrida-usuario">{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
+            Puede salir de esta pantalla; el proceso continúa en segundo plano.
+        </span>
+        <button type="button" class="btn btn-outline-danger btn-sm" id="btn-cancelar-mp">
+            <i class="bi bi-x-circle"></i> Cancelar consulta
+        </button>
+    </div>
 
     @if($ultimaCorrida)
         <div class="alert alert-light border small mb-3 py-2" id="banner-ultima-corrida">
@@ -277,6 +275,8 @@
         actualizarProgreso(estadoInicial);
     }
 
+    const bannerCorridaActiva = document.getElementById('banner-corrida-activa');
+
     function setCorridaActiva(activa) {
         corridaActiva = activa;
         if (btnConsultar) {
@@ -284,6 +284,9 @@
         }
         if (btnCancelar) {
             btnCancelar.disabled = !activa;
+        }
+        if (bannerCorridaActiva) {
+            bannerCorridaActiva.classList.toggle('d-none', !activa);
         }
     }
 
