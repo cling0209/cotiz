@@ -52,6 +52,18 @@ class CompraAgilResultadosController extends Controller
         ]);
     }
 
+    public function analisisPrecios(Request $request): View
+    {
+        $filtros = $request->only(['producto', 'nronota']);
+
+        return view('admin.compra-agil.resultados-analisis-precios', [
+            'lineas' => ! empty(array_filter($filtros))
+                ? $this->resultados->analisisPrecios($filtros)
+                : null,
+            'filtros' => $filtros,
+        ]);
+    }
+
     public function iniciar(Request $request): JsonResponse
     {
         if (! $this->resultados->apiConfigurada()) {

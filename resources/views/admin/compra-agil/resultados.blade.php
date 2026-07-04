@@ -81,6 +81,9 @@
             <i class="bi bi-lock-fill"></i> Cerradas
             <span class="badge text-bg-secondary ms-1">{{ $cerradasCount }}</span>
         </a>
+        <a href="{{ route('admin.compra-agil.resultados.analisis-precios') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-bar-chart-line"></i> Análisis de precios
+        </a>
     </div>
 
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">

@@ -710,6 +710,47 @@ class NotaMpResultadosService
             ->get();
     }
 
+    public function analisisPrecios(array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $query = NotaMpOfertaLinea::query()
+            ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
+            ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
+            ->select([
+                'nota_mp_oferta_lineas.codigo_producto',
+                'nota_mp_oferta_lineas.nombre_producto',
+                'nota_mp_oferta_lineas.descripcion',
+                'nota_mp_oferta_lineas.cantidad',
+                'nota_mp_oferta_lineas.precio_unitario',
+                'nota_mp_oferta_lineas.monto_total',
+                'o.nronota',
+                'o.rut_proveedor',
+                'o.razon_social',
+                'o.proveedor_seleccionado',
+                'o.es_propio',
+                's.codigo_proceso',
+                's.fecha_publicacion',
+                's.organismo',
+            ]);
+
+        if (! empty($filtros['producto'])) {
+            $term = '%' . $filtros['producto'] . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('nota_mp_oferta_lineas.nombre_producto', 'ilike', $term)
+                  ->orWhere('nota_mp_oferta_lineas.descripcion', 'ilike', $term)
+                  ->orWhere('nota_mp_oferta_lineas.codigo_producto', 'ilike', $term);
+            });
+        }
+
+        if (! empty($filtros['nronota'])) {
+            $query->where('o.nronota', (int) $filtros['nronota']);
+        }
+
+        return $query
+            ->orderBy('nota_mp_oferta_lineas.precio_unitario')
+            ->paginate(30)
+            ->withQueryString();
+    }
+
     public function contarCerradas(): int
     {
         return NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count();

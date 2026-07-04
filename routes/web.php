@@ -113,6 +113,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('compra-agil/resultados/detalle/{nronota}', [CompraAgilResultadosController::class, 'detalle'])->name('compra-agil.resultados.detalle')->whereNumber('nronota');
                 Route::get('compra-agil/resultados/resultado', [CompraAgilResultadosController::class, 'resultado'])->name('compra-agil.resultados.resultado');
                 Route::get('compra-agil/resultados/cerradas', [CompraAgilResultadosController::class, 'cerradas'])->name('compra-agil.resultados.cerradas');
+                Route::get('compra-agil/resultados/analisis-precios', [CompraAgilResultadosController::class, 'analisisPrecios'])->name('compra-agil.resultados.analisis-precios');
             });
 
             Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
