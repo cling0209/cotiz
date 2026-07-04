@@ -54,6 +54,7 @@
                         <tr>
                             <th>Código</th>
                             <th>Producto</th>
+                            <th>Descripción</th>
                             <th class="text-end">P. Unitario</th>
                             <th class="text-end">Cantidad</th>
                             <th class="text-end">Total</th>
@@ -69,7 +70,8 @@
                         @forelse($lineas as $l)
                             <tr class="{{ $l->proveedor_seleccionado ? 'table-success' : '' }}{{ $l->es_propio ? ' fw-semibold' : '' }}">
                                 <td class="font-monospace small">{{ $l->codigo_producto ?: '—' }}</td>
-                                <td class="small">{{ $l->nombre_producto ?: $l->descripcion ?: '—' }}</td>
+                                <td class="small">{{ $l->nombre_producto ?: '—' }}</td>
+                                <td class="small text-muted">{{ Str::limit($l->descripcion, 60) ?: '—' }}</td>
                                 <td class="text-end small">${{ number_format($l->precio_unitario ?? 0, 0, ',', '.') }}</td>
                                 <td class="text-end small">{{ $l->cantidad ?? '—' }}</td>
                                 <td class="text-end small">${{ number_format($l->monto_total ?? 0, 0, ',', '.') }}</td>
@@ -88,7 +90,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="11" class="text-center text-muted py-4">Sin resultados para la búsqueda.</td></tr>
+                            <tr><td colspan="12" class="text-center text-muted py-4">Sin resultados para la búsqueda.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
