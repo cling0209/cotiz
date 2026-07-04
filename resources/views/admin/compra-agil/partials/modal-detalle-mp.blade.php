@@ -1,3 +1,17 @@
+<div class="modal fade" id="modal-comparar-mp" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title fs-6" id="modal-comparar-titulo">Comparar precios</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2" id="modal-comparar-body">
+                <p class="text-muted small mb-0">Cargando…</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="modal-detalle-mp" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
@@ -24,6 +38,122 @@
     };
 
     document.addEventListener('click', async (ev) => {
+        const btnComp = ev.target.closest('.btn-comparar-mp');
+        if (btnComp) {
+            const nronota = btnComp.dataset.nronota;
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-comparar-mp'));
+            const body = document.getElementById('modal-comparar-body');
+            document.getElementById('modal-comparar-titulo').textContent = 'Comparar precios — Nota ' + nronota;
+            body.innerHTML = '<p class="text-muted small">Cargando…</p>';
+            modal.show();
+            try {
+                const res = await fetch(urlDetalle.replace('__NRO__', nronota), { headers: { 'Accept': 'application/json' } });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error');
+
+                const ofertas = data.ofertas || [];
+                const ganador = ofertas.find(o => o.proveedor_seleccionado);
+                const propio = ofertas.find(o => o.es_propio);
+                const s = data.seguimiento;
+
+                let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.organismo || ''}<br>`;
+                html += `Estado: ${s.estado_mp_glosa || s.estado_mp_codigo || '—'} · Monto total: ${fmtMonto(s.monto_total_ganador)}</p>`;
+
+                if (!ganador && !propio) {
+                    html += '<div class="alert alert-warning small py-2">No se encontraron ofertas del ganador ni de Romulo para esta nota.</div>';
+                    body.innerHTML = html;
+                    return;
+                }
+
+                html += '<div class="row gx-3 mb-2">';
+                html += '<div class="col-md-6"><div class="border rounded p-2 h-100' + (ganador ? ' border-success' : '') + '">';
+                html += '<p class="small fw-semibold mb-1 text-success"><i class="bi bi-trophy-fill"></i> Ganador</p>';
+                if (ganador) {
+                    html += `<p class="small mb-0">${ganador.razon_social || '—'} <span class="text-muted">(${ganador.rut_proveedor || '—'})</span><br>Total: ${fmtMonto(ganador.monto_total)}</p>`;
+                } else {
+                    html += '<p class="small text-muted mb-0">Sin oferta ganadora</p>';
+                }
+                html += '</div></div>';
+                html += '<div class="col-md-6"><div class="border rounded p-2 h-100' + (propio ? ' border-primary' : '') + '">';
+                html += '<p class="small fw-semibold mb-1 text-primary"><i class="bi bi-building"></i> Romulo</p>';
+                if (propio) {
+                    html += `<p class="small mb-0">${propio.razon_social || '—'} <span class="text-muted">(${propio.rut_proveedor || '—'})</span><br>Total: ${fmtMonto(propio.monto_total)}`;
+                    if (propio.inadmisible) html += ' · <span class="text-danger">Inadmisible</span>';
+                    html += '</p>';
+                } else {
+                    html += '<p class="small text-muted mb-0">No participó en esta nota</p>';
+                }
+                html += '</div></div></div>';
+
+                const lineasGanador = ganador?.lineas || [];
+                const lineasPropio = propio?.lineas || [];
+
+                const propioMap = {};
+                lineasPropio.forEach((l, i) => {
+                    const key = l.codigo_producto || ('__idx__' + i);
+                    propioMap[key] = l;
+                });
+
+                const maxLineas = Math.max(lineasGanador.length, lineasPropio.length);
+                if (maxLineas === 0) {
+                    html += '<p class="small text-muted">Sin detalle de productos para comparar.</p>';
+                    body.innerHTML = html;
+                    return;
+                }
+
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0">';
+                html += '<thead class="table-light"><tr>';
+                html += '<th>Producto</th><th>Cant.</th>';
+                html += '<th class="text-end table-success">P.Unit. Ganador</th>';
+                html += '<th class="text-end table-primary">P.Unit. Romulo</th>';
+                html += '<th class="text-end">Diferencia</th>';
+                html += '</tr></thead><tbody>';
+
+                const matched = new Set();
+                lineasGanador.forEach((lg, i) => {
+                    const key = lg.codigo_producto || ('__idx__' + i);
+                    const lp = propioMap[key] || lineasPropio[i] || null;
+                    if (lp && lp.codigo_producto) matched.add(lp.codigo_producto);
+
+                    const puG = lg.precio_unitario ?? null;
+                    const puP = lp?.precio_unitario ?? null;
+                    let diffHtml = '—';
+                    if (puG !== null && puP !== null && puG > 0) {
+                        const pct = ((puP - puG) / puG * 100).toFixed(1);
+                        const num = parseFloat(pct);
+                        const cls = num > 0 ? 'text-danger' : (num < 0 ? 'text-success' : 'text-muted');
+                        diffHtml = `<span class="${cls}">${num > 0 ? '+' : ''}${pct}%</span>`;
+                    }
+
+                    html += '<tr>';
+                    html += `<td class="small">${lg.descripcion || lg.codigo_producto || '—'}</td>`;
+                    html += `<td>${lg.cantidad ?? '—'}</td>`;
+                    html += `<td class="text-end">${puG !== null ? fmtMonto(puG) : '—'}</td>`;
+                    html += `<td class="text-end">${puP !== null ? fmtMonto(puP) : '—'}</td>`;
+                    html += `<td class="text-end">${diffHtml}</td>`;
+                    html += '</tr>';
+                });
+
+                lineasPropio.forEach(lp => {
+                    if (lp.codigo_producto && matched.has(lp.codigo_producto)) return;
+                    if (!lp.codigo_producto) return;
+                    html += '<tr>';
+                    html += `<td class="small">${lp.descripcion || lp.codigo_producto || '—'}</td>`;
+                    html += `<td>${lp.cantidad ?? '—'}</td>`;
+                    html += `<td class="text-end text-muted">—</td>`;
+                    html += `<td class="text-end">${fmtMonto(lp.precio_unitario)}</td>`;
+                    html += `<td class="text-end">—</td>`;
+                    html += '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+                body.innerHTML = html;
+            } catch (e) {
+                body.innerHTML = `<p class="text-danger small">${e.message}</p>`;
+            }
+            return;
+        }
+
         const btn = ev.target.closest('.btn-detalle-mp');
         if (!btn) return;
         const nronota = btn.dataset.nronota;
