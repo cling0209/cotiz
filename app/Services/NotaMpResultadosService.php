@@ -343,6 +343,11 @@ class NotaMpResultadosService
             }
         }
 
+        $detalleStats = NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->selectRaw("count(*) as total, count(*) filter (where exito IS TRUE) as ok, count(*) filter (where exito IS FALSE) as fallos")
+            ->first();
+
         $ultimoDetalle = NotaMpCorridaDetalle::query()
             ->where('corrida_id', $corrida->id)
             ->orderByDesc('id')
@@ -377,6 +382,8 @@ class NotaMpResultadosService
             'jobs_reservados' => $jobsReservados,
             'cola_driver' => $colaDriver,
             'alerta' => $alerta,
+            'detalle_ok' => (int) ($detalleStats->ok ?? 0),
+            'detalle_fallos' => (int) ($detalleStats->fallos ?? 0),
             'ultimo_detalle' => $ultimoDetalleInfo,
         ];
     }

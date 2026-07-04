@@ -88,6 +88,8 @@
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
                 · Última nota: <span id="progreso-tiempo-nota"></span>
+                · <span class="text-success">OK: <span id="progreso-ok">0</span></span>
+                · <span class="text-danger">Fallos: <span id="progreso-fallos">0</span></span>
             </div>
         </div>
     </div>
@@ -259,6 +261,10 @@
             }
             iniciarReloj();
         }
+        const elOk = document.getElementById('progreso-ok');
+        const elFallos = document.getElementById('progreso-fallos');
+        if (elOk) elOk.textContent = estado.detalle_ok ?? 0;
+        if (elFallos) elFallos.textContent = estado.detalle_fallos ?? 0;
         if (progresoUltimoDetalle && estado.ultimo_detalle) {
             const d = estado.ultimo_detalle;
             let txt = `Última procesada: ${d.codigo} (nota ${d.nronota})`;
