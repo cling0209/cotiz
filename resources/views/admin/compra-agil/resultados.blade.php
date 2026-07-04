@@ -17,20 +17,10 @@
             @endif
         </div>
         @if($apiConfigurada)
-            <div class="d-flex flex-wrap align-items-end gap-2">
-                <div>
-                    <label for="input-limite-corrida" class="form-label small mb-1">Cantidad a consultar</label>
-                    <input type="number" class="form-control form-control-sm" id="input-limite-corrida"
-                        min="1" max="{{ $limiteCorridaMax }}"
-                        value="{{ min(5, $pendientesCount ?: 5) }}"
-                        style="width: 6rem;"
-                        @disabled($pendientesCount === 0 || $corridaActiva)>
-                </div>
-                <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp"
-                    @disabled($pendientesCount === 0 || $corridaActiva)>
-                    <i class="bi bi-arrow-repeat"></i> Consultar ahora
-                </button>
-            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-consultar-mp"
+                @disabled($pendientesCount === 0 || $corridaActiva)>
+                <i class="bi bi-arrow-repeat"></i> Consultar ahora
+            </button>
         @else
             <span class="badge text-bg-warning">Configure MERCADOPUBLICO_TICKET</span>
         @endif
@@ -178,8 +168,6 @@
     };
     const estadoInicial = @json($estadoCorrida);
     const btnConsultar = document.getElementById('btn-consultar-mp');
-    const inputLimite = document.getElementById('input-limite-corrida');
-    const limiteCorridaMax = @json($limiteCorridaMax);
     const btnCancelar = document.getElementById('btn-cancelar-mp');
     const cardProgreso = document.getElementById('card-progreso');
     const progresoBar = document.getElementById('progreso-bar');
@@ -346,12 +334,7 @@
         cardProgreso.classList.remove('d-none');
         actualizarProgreso({ procesadas: 0, total: 1, porcentaje: 0 });
 
-        const limite = parseInt(inputLimite?.value ?? '5', 10);
-        const body = {
-            limite: Number.isNaN(limite) ? 5 : Math.min(limiteCorridaMax, Math.max(1, limite)),
-        };
-
-        const { res, data } = await postJson(urls.iniciar, body);
+        const { res, data } = await postJson(urls.iniciar, {});
         if (res.status === 409 && data.estado?.en_curso) {
             iniciarPolling();
             return;

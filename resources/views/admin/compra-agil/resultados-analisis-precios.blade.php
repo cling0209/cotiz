@@ -102,6 +102,7 @@
                             <th>Publicación</th>
                             <th>Proveedor</th>
                             <th>RUT</th>
+                            <th class="text-end">Dif. %</th>
                             <th class="text-end table-warning">P.Unit. Romulo</th>
                             <th class="text-end">Cant. Romulo</th>
                             <th class="text-end">Total Romulo</th>
@@ -122,6 +123,16 @@
                                 <td class="text-muted">{{ $l->fecha_publicacion ? \Carbon\Carbon::parse($l->fecha_publicacion)->format('d/m/Y') : '—' }}</td>
                                 <td>{{ $l->razon_social ?: '—' }}</td>
                                 <td class="text-muted">{{ $l->rut_proveedor ?: '—' }}</td>
+                                <td class="text-end">
+                                    @if($l->precio_propio !== null && $l->precio_unitario > 0)
+                                        @php
+                                            $diffPct = round(($l->precio_propio - $l->precio_unitario) / $l->precio_unitario * 100, 1);
+                                        @endphp
+                                        <span class="{{ $diffPct > 0 ? 'text-danger' : ($diffPct < 0 ? 'text-success' : 'text-muted') }}">{{ $diffPct > 0 ? '+' : '' }}{{ $diffPct }}%</span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="text-end table-warning">
                                     @if($l->precio_propio !== null)
                                         ${{ number_format($l->precio_propio, 0, ',', '.') }}
@@ -147,7 +158,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="15" class="text-center text-muted py-4">Sin resultados para la búsqueda.</td></tr>
+                            <tr><td colspan="16" class="text-center text-muted py-4">Sin resultados para la búsqueda.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

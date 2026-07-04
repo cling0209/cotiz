@@ -28,7 +28,6 @@ class CompraAgilResultadosController extends Controller
             'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
             'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
-            'limiteCorridaMax' => $this->resultados->limiteCorridaMax(),
         ]);
     }
 
@@ -81,9 +80,13 @@ class CompraAgilResultadosController extends Controller
             fputcsv($out, [
                 'Código', 'Producto', 'Descripción', 'P.Unitario', 'Cantidad', 'Total',
                 'Nota', 'Código CA', 'Publicación', 'Organismo', 'Proveedor', 'RUT',
-                'Ganador', 'Propio', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
+                'Ganador', 'Propio', 'Dif.%', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
             ], ';');
             foreach ($lineas as $l) {
+                $diffPct = '';
+                if ($l->precio_propio !== null && $l->precio_unitario > 0) {
+                    $diffPct = round(($l->precio_propio - $l->precio_unitario) / $l->precio_unitario * 100, 1);
+                }
                 fputcsv($out, [
                     $l->codigo_producto,
                     $l->nombre_producto,
@@ -99,6 +102,7 @@ class CompraAgilResultadosController extends Controller
                     $l->rut_proveedor,
                     $l->proveedor_seleccionado ? 'Sí' : 'No',
                     $l->es_propio ? 'Sí' : 'No',
+                    $diffPct,
                     $l->precio_propio,
                     $l->cantidad_propia !== null ? (int) $l->cantidad_propia : '',
                     $l->total_propio,
@@ -124,7 +128,7 @@ class CompraAgilResultadosController extends Controller
             ], 409);
         }
 
-        $limite = $this->resultados->normalizarLimiteConsulta((int) $request->input('limite', 5));
+        $limite = $this->resultados->normalizarLimiteConsulta((int) $request->input('limite', $this->resultados->limiteCorridaMax()));
 
         try {
             $this->resultados->encolarCorrida((string) $request->user()->username, $limite);
