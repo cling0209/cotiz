@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
+use App\Models\NotaMpCorridaCambio;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
@@ -41,6 +42,144 @@ class CompraAgilResultadosTest extends TestCase
         $this->actingAs($otro)
             ->get(route('admin.compra-agil.resultados.index'))
             ->assertForbidden();
+    }
+
+    public function test_novedades_recientes_limita_y_ordena_por_fecha_ultimo_cambio(): void
+    {
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'fin' => now(),
+            'estado' => 'ok',
+            'total_notas' => 2,
+            'notas_procesadas' => 2,
+        ]);
+
+        foreach ([801, 802] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Test novedades '.$nronota,
+                'fecha' => now()->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => 80000 + $nronota,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 801,
+            'codigo_proceso' => '801-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'rut_ganador' => '76779675-7',
+            'razon_social_ganador' => 'INTEGRAMUNDO SPA',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-03-25 11:00:00',
+            'ultima_corrida_id' => $corrida->id,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 802,
+            'codigo_proceso' => '802-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'rut_ganador' => '11111111-1',
+            'razon_social_ganador' => 'OTRO SPA',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-03-26 15:00:00',
+            'ultima_corrida_id' => $corrida->id,
+        ]);
+
+        NotaMpCorridaCambio::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 801,
+            'codigo_proceso' => '801-1-COT26',
+            'estado_anterior' => 'publicada',
+            'estado_nuevo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '76779675-7',
+            'razon_social_ganador' => 'INTEGRAMUNDO SPA',
+        ]);
+
+        NotaMpCorridaCambio::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 802,
+            'codigo_proceso' => '802-1-COT26',
+            'estado_anterior' => 'publicada',
+            'estado_nuevo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '11111111-1',
+            'razon_social_ganador' => 'OTRO SPA',
+        ]);
+
+        $novedades = $this->app->make(NotaMpResultadosService::class)->novedadesRecientes();
+
+        $this->assertCount(2, $novedades);
+        $this->assertSame(802, $novedades->first()->nronota);
+        $this->assertSame(801, $novedades->last()->nronota);
+        $this->assertTrue($novedades->firstWhere('nronota', 801)->es_ganador_propio);
+        $this->assertFalse($novedades->firstWhere('nronota', 802)->es_ganador_propio);
+        $this->assertTrue($novedades->every(fn ($nov) => $nov->cambio_ultima_consulta));
+    }
+
+    public function test_novedades_no_marca_cambio_ultima_consulta_si_corrida_es_anterior(): void
+    {
+        $corridaAnterior = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subDay(),
+            'fin' => now()->subDay(),
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
+        ]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'fin' => now(),
+            'estado' => 'ok',
+            'total_notas' => 0,
+            'notas_procesadas' => 0,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 803,
+            'descripcion' => 'Test corrida anterior',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '803-1-COT26',
+            'nota_softland' => 80300,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 803,
+            'codigo_proceso' => '803-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-03-27 10:00:00',
+            'ultima_corrida_id' => $corridaAnterior->id,
+        ]);
+
+        NotaMpCorridaCambio::query()->create([
+            'corrida_id' => $corridaAnterior->id,
+            'nronota' => 803,
+            'codigo_proceso' => '803-1-COT26',
+            'estado_anterior' => 'publicada',
+            'estado_nuevo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+        ]);
+
+        $novedades = $this->app->make(NotaMpResultadosService::class)->novedadesRecientes();
+
+        $this->assertCount(1, $novedades);
+        $this->assertFalse($novedades->first()->cambio_ultima_consulta);
     }
 
     public function test_encolar_corrida_procesa_nota_y_guarda_seguimiento(): void

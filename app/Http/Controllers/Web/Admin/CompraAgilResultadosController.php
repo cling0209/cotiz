@@ -24,7 +24,7 @@ class CompraAgilResultadosController extends Controller
             'ultimaCorrida' => $this->resultados->ultimaCorrida(),
             'corridaEnCurso' => $corridaEnCurso,
             'estadoCorrida' => $this->resultados->estadoCorrida($corridaEnCurso),
-            'novedades' => $this->resultados->novedadesUltimaCorrida(),
+            'novedades' => $this->resultados->novedadesRecientes(),
             'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
             'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),

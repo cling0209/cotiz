@@ -1020,21 +1020,31 @@ class NotaMpResultadosService
     }
 
     /**
+     * Últimas novedades (cambios de estado MP) ordenadas por fecha de último cambio del proceso.
+     *
      * @return Collection<int, NotaMpCorridaCambio>
      */
-    public function novedadesUltimaCorrida(?NotaMpCorrida $corrida = null): Collection
+    public function novedadesRecientes(int $limite = 30): Collection
     {
-        $corrida ??= $this->ultimaCorrida();
-        if ($corrida === null) {
-            return collect();
-        }
+        $limite = max(1, min($limite, 100));
+        $rutPropio = $this->ganador->rutEmpresaPropia();
+        $ultimaCorridaId = $this->ultimaCorrida()?->id;
 
-        return NotaMpCorridaCambio::query()
+        $items = NotaMpCorridaCambio::query()
             ->with(['nota', 'seguimiento'])
-            ->where('corrida_id', $corrida->id)
-            ->get()
-            ->sortByDesc(fn (NotaMpCorridaCambio $nov) => $nov->seguimiento?->fecha_publicacion?->timestamp ?? 0)
-            ->values();
+            ->join('nota_mp_seguimientos as seg', 'nota_mp_corrida_cambios.nronota', '=', 'seg.nronota')
+            ->whereNotNull('seg.fecha_ultimo_cambio')
+            ->orderByDesc('seg.fecha_ultimo_cambio')
+            ->select('nota_mp_corrida_cambios.*')
+            ->limit($limite)
+            ->get();
+
+        return $items->each(function (NotaMpCorridaCambio $nov) use ($rutPropio, $ultimaCorridaId): void {
+            $nov->es_ganador_propio = $rutPropio !== ''
+                && $this->ganador->rutsCoinciden($nov->rut_ganador, $rutPropio);
+            $nov->cambio_ultima_consulta = $ultimaCorridaId !== null
+                && (int) $nov->corrida_id === (int) $ultimaCorridaId;
+        });
     }
 
     /**

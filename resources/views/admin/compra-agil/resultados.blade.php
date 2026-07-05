@@ -95,12 +95,25 @@
     </div>
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-                <h2 class="h6 mb-0 d-inline">Novedades — última consulta</h2>
-                <span class="text-muted small ms-2">Cotizaciones que cambiaron de estado en la última consulta a Mercado Público</span>
+                <h2 class="h6 mb-0 d-inline">Novedades recientes</h2>
+                <p class="text-muted small mb-0 mt-1">
+                    Últimas 30 cotizaciones con cambio de estado en Mercado Público, ordenadas por fecha de último cambio.
+                    @if($ultimaCorrida)
+                        Las marcadas como <span class="badge text-bg-info">Nueva</span> cambiaron en la última consulta
+                        ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).
+                    @endif
+                    Filas en verde: ganador propio (Romulo).
+                </p>
             </div>
-            <span class="badge text-bg-primary" id="badge-novedades">{{ $novedades->count() }}</span>
+            <div class="d-flex align-items-center gap-2">
+                @php $novedadesNuevas = $novedades->where('cambio_ultima_consulta', true)->count(); @endphp
+                @if($novedadesNuevas > 0)
+                    <span class="badge text-bg-info" id="badge-novedades-nuevas">{{ $novedadesNuevas }} nueva{{ $novedadesNuevas === 1 ? '' : 's' }}</span>
+                @endif
+                <span class="badge text-bg-primary" id="badge-novedades">{{ $novedades->count() }} total</span>
+            </div>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">
@@ -108,7 +121,7 @@
                     <tr>
                         <th>Nota</th>
                         <th>Código CA</th>
-                        <th>Publicación</th>
+                        <th>Últ. cambio</th>
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
@@ -119,10 +132,16 @@
                 </thead>
                 <tbody id="tbody-novedades">
                     @forelse($novedades as $nov)
-                        <tr data-nronota="{{ $nov->nronota }}">
-                            <td>{{ $nov->nronota }}</td>
+                        <tr data-nronota="{{ $nov->nronota }}"
+                            class="{{ !empty($nov->es_ganador_propio) ? 'table-success' : '' }}{{ !empty($nov->cambio_ultima_consulta) ? ' border-start border-3 border-info' : '' }}">
+                            <td>
+                                {{ $nov->nronota }}
+                                @if(!empty($nov->cambio_ultima_consulta))
+                                    <span class="badge text-bg-info ms-1">Nueva</span>
+                                @endif
+                            </td>
                             <td class="font-monospace small">{{ $nov->codigo_proceso }}</td>
-                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">
                                 {{ $nov->estado_anterior ?: '—' }}
                                 <i class="bi bi-arrow-right"></i>
@@ -151,7 +170,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr id="novedades-vacio"><td colspan="9" class="text-center text-muted py-4">Sin cambios en la última consulta.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="9" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
                     @endforelse
                 </tbody>
             </table>
