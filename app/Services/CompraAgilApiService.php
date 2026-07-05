@@ -135,16 +135,16 @@ class CompraAgilApiService
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
+        $timeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
+        $connectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
 
         try {
-            $response = Http::connectTimeout(15)
-                ->timeout(30)
+            $response = Http::connectTimeout($connectTimeoutSeg)
+                ->timeout($timeoutSeg)
                 ->withOptions([
                     'curl' => [
-                        CURLOPT_TIMEOUT => 30,
-                        CURLOPT_CONNECTTIMEOUT => 15,
-                        CURLOPT_LOW_SPEED_LIMIT => 1,
-                        CURLOPT_LOW_SPEED_TIME => 20,
+                        CURLOPT_TIMEOUT => $timeoutSeg,
+                        CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
                     ],
                 ])
                 ->withHeaders(['ticket' => $ticket])
