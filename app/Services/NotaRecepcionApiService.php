@@ -11,6 +11,10 @@ use RuntimeException;
 
 class NotaRecepcionApiService
 {
+    public function __construct(
+        protected NotaDetalleService $detalleService,
+    ) {}
+
     /**
      * Equivalente legacy apinota.php → graba_resumen.
      *
@@ -120,7 +124,7 @@ class NotaRecepcionApiService
                     ->max('orden') + 1;
             }
 
-            NotaDetalle::query()->updateOrCreate(
+            $linea = NotaDetalle::query()->updateOrCreate(
                 [
                     'nronota' => $nronota,
                     'prod_item' => $prodItem,
@@ -131,10 +135,12 @@ class NotaRecepcionApiService
                     'cantidad' => max(1, (int) ($payload['cantidad'] ?? 1)),
                     'fechahora' => now(),
                     'prod_valor_costo' => (int) ($payload['prod_valor_costo'] ?? 0),
-                    'prod_item_agile' => trim((string) ($payload['prod_item_agile'] ?? '')),
-                    'prod_descripcion_agile' => trim((string) ($payload['prod_descripcion_agile'] ?? '')),
+                    'prod_item_agile' => trim((string) ($payload['prod_item_agile'] ?? '')) ?: null,
+                    'prod_descripcion_agile' => trim((string) ($payload['prod_descripcion_agile'] ?? '')) ?: null,
                 ],
             );
+
+            $this->detalleService->sincronizarVinculoAgileMaeprod($linea);
         });
     }
 

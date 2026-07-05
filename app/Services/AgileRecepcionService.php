@@ -181,9 +181,7 @@ class AgileRecepcionService
                     continue;
                 }
 
-                $this->agileMaeprodService->registrarSiNoExiste($idAgile, $descripcion);
-
-                NotaDetalle::query()->create([
+                $linea = NotaDetalle::query()->create([
                     'nronota' => $nronota,
                     'prod_item' => $idAgile,
                     'prod_valor' => 0,
@@ -194,6 +192,8 @@ class AgileRecepcionService
                     'prod_item_agile' => $idAgile,
                     'prod_descripcion_agile' => $descripcion,
                 ]);
+
+                $this->detalleService->sincronizarVinculoAgileMaeprod($linea);
 
                 $orden++;
             }
@@ -314,24 +314,24 @@ class AgileRecepcionService
                 'prod_descripcion_agile' => $descripcionAgile,
             ]);
 
-        if ($codigoInterno !== '' && $codigoInterno !== '0') {
-            $this->agileMaeprodService->vincularCodigoInterno((string) $linea->prod_item_agile, $codigoInterno);
-
-            if ($producto) {
-                $producto->update([
-                    'prod_valor' => $prodValorDet,
-                    'prod_valor_fecha' => now(),
-                    'prod_user_upd' => $usuarioUpd,
-                ]);
-            }
-        }
-
-        return NotaDetalle::query()
+        $actualizada = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
             ->where('orden', (int) $datos['orden'])
             ->where('prod_item_agile', trim((string) $datos['prod_item_agile']))
             ->with('producto')
             ->firstOrFail();
+
+        $this->detalleService->sincronizarVinculoAgileMaeprod($actualizada);
+
+        if ($codigoInterno !== '' && $codigoInterno !== '0' && $producto) {
+            $producto->update([
+                'prod_valor' => $prodValorDet,
+                'prod_valor_fecha' => now(),
+                'prod_user_upd' => $usuarioUpd,
+            ]);
+        }
+
+        return $actualizada->fresh(['producto']);
     }
 
     public function aprobar(Nota $nota, ?string $estadousuario = null): Nota

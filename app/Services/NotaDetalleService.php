@@ -159,7 +159,44 @@ class NotaDetalleService
                     'cantidad' => $cantidad,
                     'prod_valor_costo' => $costo,
                 ]);
+
+            $actualizada = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('prod_item', $prodItem)
+                ->where('orden', $orden)
+                ->first();
+
+            if ($actualizada) {
+                $this->sincronizarVinculoAgileMaeprod($actualizada);
+            }
         });
+    }
+
+    /**
+     * Persiste agilemaeprod cuando la línea tiene ID Mercado Público y código interno vinculado.
+     */
+    public function sincronizarVinculoAgileMaeprod(NotaDetalle $linea): void
+    {
+        $agileId = trim((string) ($linea->prod_item_agile ?? ''));
+        if ($agileId === '') {
+            return;
+        }
+
+        $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
+        if ($descripcionAgile !== '') {
+            $this->agileMaeprodService->registrarSiNoExiste($agileId, $descripcionAgile);
+        }
+
+        $codigoInterno = trim((string) $linea->prod_item);
+        if ($codigoInterno === '' || $codigoInterno === '0' || $codigoInterno === $agileId) {
+            return;
+        }
+
+        if (! Maeprod::query()->where('prod_item', $codigoInterno)->exists()) {
+            return;
+        }
+
+        $this->agileMaeprodService->vincularCodigoInterno($agileId, $codigoInterno);
     }
 
     public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): void
@@ -266,7 +303,7 @@ class NotaDetalleService
             $agileId = trim((string) $prodItemAgile);
             $agileDesc = trim((string) $prodDescripcionAgile);
 
-            return NotaDetalle::create([
+            $linea = NotaDetalle::create([
                 'nronota' => $nota->nronota,
                 'prod_item' => trim($prodItem),
                 'prod_valor' => $prodValor,
@@ -277,6 +314,10 @@ class NotaDetalleService
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
             ]);
+
+            $this->sincronizarVinculoAgileMaeprod($linea);
+
+            return $linea;
         });
     }
 
@@ -392,7 +433,13 @@ class NotaDetalleService
                     ]);
             }
 
-            $this->agileMaeprodService->vincularCodigoInterno($agileId, $codigo);
+            $actualizada = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('orden', (int) $linea->orden)
+                ->where('prod_item_agile', $agileId)
+                ->firstOrFail();
+
+            $this->sincronizarVinculoAgileMaeprod($actualizada);
 
             $updates = [];
             if ((int) ($producto->prod_valor ?? 0) !== $valor) {

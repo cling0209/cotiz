@@ -378,13 +378,10 @@ class CompraAgilImportService
             for ($i = $desde; $i < $hasta; $i++) {
                 $linea = $preview['lineas'][$i];
                 $descripcionMp = $this->descripcionAgileParaLinea($linea['id_agile'], $linea['descripcion']);
-                $this->agileMaeprodService->registrarSiNoExiste($linea['id_agile'], $descripcionMp);
 
                 $vinculo = $this->resolverProductoParaImportar($linea['id_agile'], $linea['descripcion']);
 
                 if ($vinculo) {
-                    $this->agileMaeprodService->vincularCodigoInterno($linea['id_agile'], $vinculo['prod_item']);
-
                     $this->detalleService->agregarLinea(
                         $nota,
                         $vinculo['prod_item'],

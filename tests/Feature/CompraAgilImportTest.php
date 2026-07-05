@@ -463,6 +463,58 @@ TXT;
         $this->assertStringContainsString('LIMPIADOR', (string) $linea->prod_descripcion_agile);
     }
 
+    public function test_grabar_lineas_sincroniza_vinculo_agilemaeprod(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'ASEO001',
+            'prod_valor' => 4500,
+            'cantidad' => 5,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 3200,
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+        ]);
+
+        $this->assertFalse(
+            AgileMaeprod::query()
+                ->where('prod_item_agile', '31237835')
+                ->where('prod_item', 'ASEO001')
+                ->exists()
+        );
+
+        $response = $this->actingAs($this->admin)->post(
+            route('admin.cotizaciones.update', $nota->nronota),
+            [
+                'accion' => 'grabar',
+                'descripcion' => $nota->descripcion,
+                'encargado' => $nota->encargado,
+                'empresa' => $nota->empresa,
+                'celular' => '',
+                'contacto' => '',
+                'contactocorreo' => '',
+                'rutempresa' => '',
+                'diashabiles' => 2,
+                'ocompra' => '',
+                'lineas' => [
+                    [
+                        'prod_item' => 'ASEO001',
+                        'orden' => 1,
+                        'cantidad' => 5,
+                        'prod_valor' => 4600,
+                        'prod_valor_costo' => 3200,
+                    ],
+                ],
+            ],
+        );
+
+        $response->assertRedirect();
+        $this->assertSame('ASEO001', AgileMaeprod::query()->find('31237835')->prod_item);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([
