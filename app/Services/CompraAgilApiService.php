@@ -87,7 +87,7 @@ class CompraAgilApiService
     /**
      * @return array<string, mixed>
      */
-    public function detalle(string $codigo, bool $usarCache = true): array
+    public function detalle(string $codigo, bool $usarCache = true, ?float $deadlineMicrotime = null): array
     {
         $codigo = trim($codigo);
         if ($codigo === '') {
@@ -95,7 +95,7 @@ class CompraAgilApiService
         }
 
         if (! $usarCache) {
-            return $this->requestDetalle($codigo);
+            return $this->requestDetalle($codigo, $deadlineMicrotime);
         }
 
         return Cache::remember(
@@ -108,9 +108,9 @@ class CompraAgilApiService
     /**
      * @return array<string, mixed>
      */
-    private function requestDetalle(string $codigo): array
+    private function requestDetalle(string $codigo, ?float $deadlineMicrotime = null): array
     {
-        return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo));
+        return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo), [], $deadlineMicrotime);
     }
 
     private function detalleCacheKey(string $codigo): string
@@ -127,7 +127,7 @@ class CompraAgilApiService
      * @param  array<string, mixed>  $params
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, array $params = []): array
+    private function request(string $method, string $path, array $params = [], ?float $deadlineMicrotime = null): array
     {
         if (! $this->isConfigured()) {
             throw new RuntimeException('API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.');
@@ -138,15 +138,27 @@ class CompraAgilApiService
         $ultimoError = null;
 
         for ($intento = 1; $intento <= $maxReintentos; $intento++) {
+            $this->assertAntesDeDeadlineHttp($deadlineMicrotime);
+
             try {
-                $response = $this->enviarRequestHttp($method, $path, $params);
+                $response = $this->enviarRequestHttp($method, $path, $params, $deadlineMicrotime);
 
                 return $this->interpretarRespuestaHttp($response);
             } catch (RuntimeException $e) {
                 $ultimoError = $e->getMessage();
+                if ($this->esErrorDeadlineNota($ultimoError)) {
+                    throw $e;
+                }
+
                 $recuperable = $e->getCode() === 1;
 
                 if ($recuperable && $intento < $maxReintentos) {
+                    if ($deadlineMicrotime !== null) {
+                        $restante = $deadlineMicrotime - microtime(true);
+                        if ($restante <= $esperaSeg) {
+                            throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
+                        }
+                    }
                     sleep($esperaSeg);
 
                     continue;
@@ -159,15 +171,36 @@ class CompraAgilApiService
         throw new RuntimeException($ultimoError ?? 'Error al consultar Mercado Público.');
     }
 
+    private function assertAntesDeDeadlineHttp(?float $deadlineMicrotime): void
+    {
+        if ($deadlineMicrotime !== null && microtime(true) >= $deadlineMicrotime) {
+            throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
+        }
+    }
+
+    private function esErrorDeadlineNota(string $mensaje): bool
+    {
+        return str_contains($mensaje, NotaMpResultadosService::mensajeTiempoMaximoNota());
+    }
+
     /**
      * @param  array<string, mixed>  $params
      */
-    private function enviarRequestHttp(string $method, string $path, array $params = []): \Illuminate\Http\Client\Response
+    private function enviarRequestHttp(string $method, string $path, array $params = [], ?float $deadlineMicrotime = null): \Illuminate\Http\Client\Response
     {
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
         $timeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
         $connectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
+
+        if ($deadlineMicrotime !== null) {
+            $restante = $deadlineMicrotime - microtime(true);
+            if ($restante <= 0) {
+                throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
+            }
+            $timeoutSeg = max(5, min($timeoutSeg, (int) floor($restante)));
+            $connectTimeoutSeg = max(3, min($connectTimeoutSeg, $timeoutSeg));
+        }
 
         try {
             return Http::connectTimeout($connectTimeoutSeg)

@@ -202,6 +202,7 @@
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
     const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
     const umbralAlertaNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_alerta_segundos', 180));
+    const umbralMaxNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
     let segTotalServidor = 0;
     let syncTotalMs = 0;
     let syncNotaMs = 0;
@@ -228,7 +229,7 @@
             if (progresoTiempoNota) progresoTiempoNota.textContent = fmtTiempo(notaSeg);
             if (progresoAlerta && ultimoCodigoActual && notaSeg >= umbralAlertaNotaSeg) {
                 progresoAlerta.textContent = 'Consultando ' + ultimoCodigoActual + ' lleva '
-                    + fmtTiempo(notaSeg) + '. Si supera ' + umbralAlertaNotaSeg
+                    + fmtTiempo(notaSeg) + '. Al superar ' + umbralMaxNotaSeg
                     + ' s se registrará como fallo y continuará con la siguiente.';
                 progresoAlerta.classList.remove('d-none');
             }

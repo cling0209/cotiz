@@ -85,12 +85,17 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                     break;
                 } catch (\Throwable $e) {
                     $ultimoError = $e->getMessage();
+                    $esTimeoutNota = str_contains($ultimoError, NotaMpResultadosService::mensajeTiempoMaximoNota());
                     Log::warning('ProcessNotaMpCorridaJob: intento '.$intento.'/'.$maxIntentos.' fallido', [
                         'corrida_id' => $corrida->id,
                         'nronota' => $nronota,
                         'codigo' => $codigo,
                         'message' => $ultimoError,
+                        'timeout_nota' => $esTimeoutNota,
                     ]);
+                    if ($esTimeoutNota) {
+                        break;
+                    }
                     if ($intento < $maxIntentos && microtime(true) < $deadlineNota) {
                         sleep(2);
                     }

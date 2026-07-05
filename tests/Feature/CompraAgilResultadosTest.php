@@ -308,7 +308,10 @@ class CompraAgilResultadosTest extends TestCase
 
     public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void
     {
-        config(['cotiz.mercadopublico.resultados_nota_alerta_segundos' => 180]);
+        config([
+            'cotiz.mercadopublico.resultados_nota_alerta_segundos' => 180,
+            'cotiz.mercadopublico.resultados_nota_max_segundos' => 180,
+        ]);
 
         NotaMpCorrida::query()->create([
             'usuario' => 'admin',
@@ -327,6 +330,45 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertTrue($estado['en_curso']);
         $this->assertNotNull($estado['alerta']);
         $this->assertStringContainsString('974556-11-COT26', $estado['alerta']);
+        $this->assertStringContainsString('Al superar 180 s', $estado['alerta']);
         $this->assertGreaterThanOrEqual(180, $estado['segundos_en_nota_actual']);
+    }
+
+    public function test_consultar_nota_no_llama_api_si_deadline_ya_vencio(): void
+    {
+        $nota = Nota::query()->create([
+            'nronota' => 777,
+            'descripcion' => 'Deadline test',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '897-13-COT26',
+            'nota_softland' => 77700,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 1,
+            'notas_procesadas' => 0,
+            'pendientes_json' => [['nronota' => 777, 'codigo' => '897-13-COT26']],
+        ]);
+
+        Http::fake();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(NotaMpResultadosService::mensajeTiempoMaximoNota());
+
+        $this->app->make(NotaMpResultadosService::class)->consultarNota(
+            $nota->nronota,
+            $corrida,
+            'admin',
+            microtime(true) - 1,
+        );
+
+        Http::assertNothingSent();
     }
 }

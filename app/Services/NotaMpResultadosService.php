@@ -146,6 +146,16 @@ class NotaMpResultadosService
         return 'Tiempo máximo por nota excedido. Se reintentará en la próxima consulta.';
     }
 
+    public static function formatearDuracionSegundos(int $segundos): string
+    {
+        $segundos = max(0, $segundos);
+        $h = intdiv($segundos, 3600);
+        $m = intdiv($segundos % 3600, 60);
+        $s = $segundos % 60;
+
+        return sprintf('%02d:%02d:%02d', $h, $m, $s);
+    }
+
     public function contarNotasPendientesConsulta(): int
     {
         return Nota::query()
@@ -351,10 +361,11 @@ class NotaMpResultadosService
 
         if ($corrida->estado === 'running' && $tieneCodigoActual && $segundosEnNotaActual !== null) {
             $umbralAlertaNota = $this->notaAlertaSegundos();
+            $umbralMaxNota = $this->notaMaxSegundos();
             if ($segundosEnNotaActual >= $umbralAlertaNota) {
                 $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
-                    .(int) floor($segundosEnNotaActual / 60).' min. '
-                    .'Si supera '.$umbralAlertaNota.' s se registrará como fallo y continuará con la siguiente.';
+                    .self::formatearDuracionSegundos($segundosEnNotaActual).'. '
+                    .'Al superar '.$umbralMaxNota.' s se registrará como fallo y continuará con la siguiente.';
             }
         }
 
@@ -512,7 +523,7 @@ class NotaMpResultadosService
         $estadoAnterior = $anterior?->estado_mp_codigo;
 
         try {
-            $payload = $this->api->detalle($codigo, usarCache: false);
+            $payload = $this->api->detalle($codigo, false, $deadline);
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'No existe Compra Ágil')) {
                 return $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);
@@ -756,9 +767,12 @@ class NotaMpResultadosService
             ]);
 
             $productos = is_array($prov['productos_cotizados'] ?? null) ? $prov['productos_cotizados'] : [];
-            foreach ($productos as $linea) {
+            foreach ($productos as $idxLinea => $linea) {
                 if (! is_array($linea)) {
                     continue;
+                }
+                if ($idxLinea % 25 === 0) {
+                    $this->assertAntesDeDeadline($deadline, $nronota, (string) ($payload['codigo'] ?? ''), 'guardando ofertas');
                 }
                 $lineasBatch[] = [
                     'oferta_id' => $oferta->id,
@@ -773,6 +787,7 @@ class NotaMpResultadosService
                 ];
 
                 if (count($lineasBatch) >= $tamanoLote) {
+                    $this->assertAntesDeDeadline($deadline, $nronota, (string) ($payload['codigo'] ?? ''), 'insertando líneas');
                     NotaMpOfertaLinea::query()->insert($lineasBatch);
                     $lineasBatch = [];
                 }
@@ -780,6 +795,7 @@ class NotaMpResultadosService
         }
 
         if ($lineasBatch !== []) {
+            $this->assertAntesDeDeadline($deadline, $nronota, (string) ($payload['codigo'] ?? ''), 'insertando líneas');
             NotaMpOfertaLinea::query()->insert($lineasBatch);
         }
     }
