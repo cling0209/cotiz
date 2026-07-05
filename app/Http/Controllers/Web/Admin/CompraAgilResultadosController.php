@@ -186,6 +186,10 @@ class CompraAgilResultadosController extends Controller
                 'fecha_cierre' => $seg->fecha_cierre?->toIso8601String(),
                 'fecha_ultimo_cambio' => $seg->fecha_ultimo_cambio?->toIso8601String(),
                 'fecha_cancelacion' => $seg->fecha_cancelacion?->toIso8601String(),
+                'convocatoria_estado' => $seg->convocatoria_estado,
+                'convocatoria_descripcion' => $seg->convocatoria_descripcion,
+                'fecha_cierre_primer_llamado' => $seg->fecha_cierre_primer_llamado?->toIso8601String(),
+                'fecha_cierre_segundo_llamado' => $seg->fecha_cierre_segundo_llamado?->toIso8601String(),
             ],
             'ofertas' => $detalle['ofertas']->map(fn ($o) => [
                 'id' => $o->id,

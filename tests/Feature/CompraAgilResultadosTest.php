@@ -211,6 +211,12 @@ class CompraAgilResultadosTest extends TestCase
                         'fecha_ultimo_cambio' => '2026-03-25 11:00',
                         'fecha_cancelacion' => null,
                     ],
+                    'convocatoria' => [
+                        'estado_convocatoria' => 1,
+                        'descripcion' => 'Primer llamado',
+                        'fecha_cierre_primer_llamado' => '2026-03-25 09:00',
+                        'fecha_cierre_segundo_llamado' => '2026-03-26 16:07',
+                    ],
                     'proveedores_cotizando' => [
                         [
                             'id_cotizacion' => 1,
@@ -242,6 +248,9 @@ class CompraAgilResultadosTest extends TestCase
             'fecha_publicacion' => '2026-03-20 16:19:00',
             'fecha_cierre' => '2026-03-25 09:00:00',
             'fecha_ultimo_cambio' => '2026-03-25 11:00:00',
+            'convocatoria_descripcion' => 'Primer llamado',
+            'fecha_cierre_primer_llamado' => '2026-03-25 09:00:00',
+            'fecha_cierre_segundo_llamado' => '2026-03-26 16:07:00',
         ]);
 
         $seg = NotaMpSeguimiento::query()->find($nota->nronota);
@@ -266,6 +275,68 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk()
             ->assertSee('Resultado por cotización', false)
             ->assertSee('3300-66-COT26', false);
+    }
+
+    public function test_consulta_publicada_guarda_fechas_y_convocatoria(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+        $nota = Nota::query()->create([
+            'nronota' => 510,
+            'descripcion' => 'Test publicada MP',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente test',
+            'encargado' => '1000-10-COT26',
+            'nota_softland' => 51000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1000-10-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '1000-10-COT26',
+                    'estado' => ['codigo' => 'publicada', 'glosa' => 'Publicada'],
+                    'institucion' => ['organismo_comprador' => 'Municipalidad'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-07-03 12:52',
+                        'fecha_cierre' => '2026-07-04 14:30',
+                        'fecha_ultimo_cambio' => '2026-07-04 14:35',
+                        'fecha_cancelacion' => null,
+                    ],
+                    'convocatoria' => [
+                        'estado_convocatoria' => 1,
+                        'descripcion' => 'Primer llamado',
+                        'fecha_cierre_primer_llamado' => '2026-07-04 14:30',
+                        'fecha_cierre_segundo_llamado' => '2026-07-05 16:07',
+                    ],
+                    'proveedores_cotizando' => [],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk();
+
+        $this->assertDatabaseHas('nota_mp_seguimientos', [
+            'nronota' => $nota->nronota,
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_publicacion' => '2026-07-03 12:52:00',
+            'fecha_cierre' => '2026-07-04 14:30:00',
+            'fecha_ultimo_cambio' => '2026-07-04 14:35:00',
+            'convocatoria_descripcion' => 'Primer llamado',
+            'fecha_cierre_primer_llamado' => '2026-07-04 14:30:00',
+            'fecha_cierre_segundo_llamado' => '2026-07-05 16:07:00',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.compra-agil.resultados.detalle', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->assertJsonPath('seguimiento.convocatoria_descripcion', 'Primer llamado')
+            ->assertJsonPath('seguimiento.fecha_cierre_primer_llamado', fn ($v) => str_contains((string) $v, '2026-07-04'));
     }
 
     public function test_no_permite_dos_corridas_en_paralelo(): void

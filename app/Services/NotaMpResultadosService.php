@@ -671,6 +671,7 @@ class NotaMpResultadosService
                     'ultima_corrida_id' => $corrida->id,
                 ],
                 $this->fechasSeguimientoParaGuardar($payload, $finalizado, $anterior),
+                $this->convocatoriaSeguimientoParaGuardar($payload),
             );
 
             NotaMpSeguimiento::query()->updateOrCreate(
@@ -1162,17 +1163,13 @@ class NotaMpResultadosService
     }
 
     /**
-     * Por ahora solo persiste fechas MP en procesos cerrados y sin sobrescribir valores ya guardados.
+     * Fechas MP: en procesos abiertos se actualizan en cada consulta; en cerrados solo se rellenan vacíos.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, Carbon>
      */
     private function fechasSeguimientoParaGuardar(array $payload, bool $finalizado, ?NotaMpSeguimiento $anterior): array
     {
-        if (! $finalizado) {
-            return [];
-        }
-
         $campos = [
             'fecha_publicacion' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_publicacion')),
             'fecha_cierre' => $this->parseFechaMp(data_get($payload, 'fechas.fecha_cierre')),
@@ -1185,10 +1182,41 @@ class NotaMpResultadosService
             if ($valor === null) {
                 continue;
             }
-            if ($anterior !== null && $anterior->{$campo} !== null) {
+            if ($finalizado && $anterior !== null && $anterior->{$campo} !== null) {
                 continue;
             }
             $out[$campo] = $valor;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function convocatoriaSeguimientoParaGuardar(array $payload): array
+    {
+        $conv = is_array($payload['convocatoria'] ?? null) ? $payload['convocatoria'] : [];
+        if ($conv === []) {
+            return [];
+        }
+
+        $out = [];
+        if (isset($conv['estado_convocatoria']) && $conv['estado_convocatoria'] !== '') {
+            $out['convocatoria_estado'] = (int) $conv['estado_convocatoria'];
+        }
+        $descripcion = mb_substr(trim((string) ($conv['descripcion'] ?? '')), 0, 120);
+        if ($descripcion !== '') {
+            $out['convocatoria_descripcion'] = $descripcion;
+        }
+        $cierrePrimero = $this->parseFechaMp($conv['fecha_cierre_primer_llamado'] ?? null);
+        if ($cierrePrimero !== null) {
+            $out['fecha_cierre_primer_llamado'] = $cierrePrimero;
+        }
+        $cierreSegundo = $this->parseFechaMp($conv['fecha_cierre_segundo_llamado'] ?? null);
+        if ($cierreSegundo !== null) {
+            $out['fecha_cierre_segundo_llamado'] = $cierreSegundo;
         }
 
         return $out;

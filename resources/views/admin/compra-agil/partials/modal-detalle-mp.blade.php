@@ -170,9 +170,35 @@
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
                 Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.id_orden_compra ? '<br>OC: <strong>' + s.id_orden_compra + '</strong>' : ''}</p>`;
-            if (s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion) {
-                html += `<p class="small text-muted mb-2">Publicación: ${fmtFecha(s.fecha_publicacion)} · Cierre: ${fmtFecha(s.fecha_cierre)} · Últ. cambio: ${fmtFecha(s.fecha_ultimo_cambio)}${s.fecha_cancelacion ? ' · Cancelación: ' + fmtFecha(s.fecha_cancelacion) : ''}</p>`;
+
+            const tieneFechas = s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion;
+            if (tieneFechas) {
+                html += '<h3 class="h6 mb-1">Fechas Mercado Público</h3>';
+                html += '<dl class="row small mb-2 gy-1">';
+                html += `<dt class="col-sm-4 text-muted">Publicación</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_publicacion)}</dd>`;
+                html += `<dt class="col-sm-4 text-muted">Cierre</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_cierre)}</dd>`;
+                html += `<dt class="col-sm-4 text-muted">Últ. cambio</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_ultimo_cambio)}</dd>`;
+                if (s.fecha_cancelacion) {
+                    html += `<dt class="col-sm-4 text-muted">Cancelación</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_cancelacion)}</dd>`;
+                }
+                html += '</dl>';
             }
+
+            const tieneConvocatoria = s.convocatoria_descripcion || s.fecha_cierre_primer_llamado || s.fecha_cierre_segundo_llamado || s.convocatoria_estado != null;
+            if (tieneConvocatoria) {
+                html += '<h3 class="h6 mb-1">Convocatoria</h3>';
+                html += '<dl class="row small mb-2 gy-1">';
+                if (s.convocatoria_descripcion) {
+                    html += `<dt class="col-sm-4 text-muted">Descripción</dt><dd class="col-sm-8 mb-0">${s.convocatoria_descripcion}</dd>`;
+                }
+                if (s.convocatoria_estado != null && s.convocatoria_estado !== '') {
+                    html += `<dt class="col-sm-4 text-muted">Estado</dt><dd class="col-sm-8 mb-0">${s.convocatoria_estado}</dd>`;
+                }
+                html += `<dt class="col-sm-4 text-muted">Cierre 1er llamado</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_cierre_primer_llamado)}</dd>`;
+                html += `<dt class="col-sm-4 text-muted">Cierre 2do llamado</dt><dd class="col-sm-8 mb-0">${fmtFecha(s.fecha_cierre_segundo_llamado)}</dd>`;
+                html += '</dl>';
+            }
+
             html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
             (data.ofertas || []).forEach(o => {
                 html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">

@@ -21,6 +21,8 @@ class NotaMpSeguimiento extends Model
     protected $fillable = [
         'nronota', 'codigo_proceso', 'estado_mp_codigo', 'estado_mp_glosa', 'organismo',
         'fecha_publicacion', 'fecha_cierre', 'fecha_ultimo_cambio', 'fecha_cancelacion',
+        'convocatoria_estado', 'convocatoria_descripcion',
+        'fecha_cierre_primer_llamado', 'fecha_cierre_segundo_llamado',
         'rut_ganador', 'razon_social_ganador', 'id_orden_compra', 'monto_total_ganador',
         'resultado_propio', 'finalizado', 'ultimo_usuario', 'ultimo_consultado_en', 'ultima_corrida_id',
     ];
@@ -36,6 +38,9 @@ class NotaMpSeguimiento extends Model
             'fecha_cierre' => 'datetime',
             'fecha_ultimo_cambio' => 'datetime',
             'fecha_cancelacion' => 'datetime',
+            'fecha_cierre_primer_llamado' => 'datetime',
+            'fecha_cierre_segundo_llamado' => 'datetime',
+            'convocatoria_estado' => 'integer',
             'ultimo_consultado_en' => 'datetime',
         ];
     }
