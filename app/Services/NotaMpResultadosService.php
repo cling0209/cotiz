@@ -550,6 +550,7 @@ class NotaMpResultadosService
             $estadoAnterior,
             $anterior,
             $nota,
+            $deadline,
         ) {
             $datosSeguimiento = array_merge(
                 [
