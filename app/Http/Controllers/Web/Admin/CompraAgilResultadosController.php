@@ -51,6 +51,55 @@ class CompraAgilResultadosController extends Controller
         ]);
     }
 
+    public function cerradasExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'proveedor', 'fecha_desde', 'fecha_hasta']);
+        $cerradas = $this->resultados->listadoCerradasExportar($filtros);
+        $filename = 'cerradas_compra_agil_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($cerradas) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Nota',
+                'Código CA',
+                'Publicación',
+                'Organismo',
+                'Estado MP',
+                'Seguimiento',
+                'Prov. seleccionado',
+                'RUT ganador',
+                'Monto',
+                'Ejecutivo',
+                'Cliente',
+                'Consultado',
+                'Propio',
+                'OC',
+            ], ';');
+            foreach ($cerradas as $seg) {
+                fputcsv($out, [
+                    $seg->nronota,
+                    $seg->codigo_proceso,
+                    $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
+                    $seg->organismo,
+                    $seg->estado_mp_glosa ?: $seg->estado_mp_codigo,
+                    $seg->resultado_propio,
+                    $seg->razon_social_ganador,
+                    $seg->rut_ganador,
+                    $seg->monto_total_ganador,
+                    $this->resultados->nombreEjecutivoNota($seg),
+                    $seg->nota?->empresa,
+                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
+                    $seg->id_orden_compra,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function analisisPrecios(Request $request): View
     {
         $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);

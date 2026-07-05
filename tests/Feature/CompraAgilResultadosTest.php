@@ -627,4 +627,57 @@ class CompraAgilResultadosTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    public function test_cerradas_muestra_ejecutivo_y_exporta_csv(): void
+    {
+        $admin = User::factory()->create([
+            'username' => 'admin',
+            'nombre' => 'Ana',
+            'apellidop' => 'Ejecutiva',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 910,
+            'descripcion' => 'Cerrada propia',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente ACME',
+            'encargado' => '910-1-COT26',
+            'nota_softland' => 91000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 910,
+            'codigo_proceso' => '910-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'estado_mp_glosa' => 'Proveedor seleccionado',
+            'organismo' => 'Municipalidad Test',
+            'rut_ganador' => '76779675-7',
+            'razon_social_ganador' => 'INTEGRAMUNDO SPA',
+            'monto_total_ganador' => 150000,
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_publicacion' => '2026-04-01 10:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.cerradas'))
+            ->assertOk()
+            ->assertSee('Ejecutivo', false)
+            ->assertSee('Ana Ejecutiva', false)
+            ->assertSee('Descargar CSV', false);
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.cerradas.exportar'));
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/csv', (string) $response->headers->get('Content-Type'));
+        $this->assertStringContainsString('910-1-COT26', $response->streamedContent());
+        $this->assertStringContainsString('Ana Ejecutiva', $response->streamedContent());
+        $this->assertStringContainsString('Sí', $response->streamedContent());
+    }
 }

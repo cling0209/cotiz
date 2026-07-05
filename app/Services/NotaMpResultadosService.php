@@ -974,13 +974,74 @@ class NotaMpResultadosService
      */
     public function listadoCerradas(int $limite = 50): Collection
     {
-        return NotaMpSeguimiento::query()
-            ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
-            ->whereRaw('finalizado IS TRUE')
+        $items = $this->buildCerradasQuery([])
+            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->orderByRaw('fecha_publicacion IS NULL')
             ->orderByDesc('fecha_publicacion')
             ->limit($limite)
             ->get();
+
+        return $this->marcarCerradasConFlags($items);
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     */
+    private function buildCerradasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = NotaMpSeguimiento::query()
+            ->whereRaw('finalizado IS TRUE');
+
+        if (! empty($filtros['nronota'])) {
+            $query->where('nronota', (int) $filtros['nronota']);
+        }
+
+        if (! empty($filtros['codigo_proceso'])) {
+            $query->where('codigo_proceso', 'ilike', '%'.$filtros['codigo_proceso'].'%');
+        }
+
+        if (! empty($filtros['organismo'])) {
+            $query->where('organismo', 'ilike', '%'.$filtros['organismo'].'%');
+        }
+
+        if (! empty($filtros['proveedor'])) {
+            $query->where('razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  Collection<int, NotaMpSeguimiento>  $items
+     * @return Collection<int, NotaMpSeguimiento>
+     */
+    private function marcarCerradasConFlags(Collection $items): Collection
+    {
+        $rutPropio = $this->ganador->rutEmpresaPropia();
+
+        return $items->each(function (NotaMpSeguimiento $seg) use ($rutPropio): void {
+            $seg->es_ganador_propio = $rutPropio !== ''
+                && $this->ganador->rutsCoinciden($seg->rut_ganador, $rutPropio);
+        });
+    }
+
+    public function nombreEjecutivoNota(?NotaMpSeguimiento $seg): string
+    {
+        if ($seg === null || $seg->nota === null) {
+            return '';
+        }
+
+        $nombre = trim((string) ($seg->nota->usuarioRel?->fullName() ?: $seg->nota->usuario));
+
+        return $nombre;
     }
 
     private function buildAnalisisPreciosQuery(array $filtros = []): \Illuminate\Database\Eloquent\Builder
@@ -1086,39 +1147,31 @@ class NotaMpResultadosService
 
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $query = NotaMpSeguimiento::query()
-            ->with(['nota', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
-            ->whereRaw('finalizado IS TRUE');
-
-        if (! empty($filtros['nronota'])) {
-            $query->where('nronota', (int) $filtros['nronota']);
-        }
-
-        if (! empty($filtros['codigo_proceso'])) {
-            $query->where('codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
-        }
-
-        if (! empty($filtros['organismo'])) {
-            $query->where('organismo', 'ilike', '%' . $filtros['organismo'] . '%');
-        }
-
-        if (! empty($filtros['proveedor'])) {
-            $query->where('razon_social_ganador', 'ilike', '%' . $filtros['proveedor'] . '%');
-        }
-
-        if (! empty($filtros['fecha_desde'])) {
-            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00');
-        }
-
-        if (! empty($filtros['fecha_hasta'])) {
-            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'] . ' 23:59:59');
-        }
-
-        return $query
+        $paginator = $this->buildCerradasQuery($filtros)
+            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->orderByRaw('fecha_publicacion IS NULL')
             ->orderByDesc('fecha_publicacion')
             ->paginate($porPagina)
             ->withQueryString();
+
+        $this->marcarCerradasConFlags($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @return Collection<int, NotaMpSeguimiento>
+     */
+    public function listadoCerradasExportar(array $filtros = [], int $limite = 10000): Collection
+    {
+        $items = $this->buildCerradasQuery($filtros)
+            ->with(['nota.usuarioRel'])
+            ->orderByRaw('fecha_publicacion IS NULL')
+            ->orderByDesc('fecha_publicacion')
+            ->limit($limite)
+            ->get();
+
+        return $this->marcarCerradasConFlags($items);
     }
 
     public function registrarDetalleFallo(

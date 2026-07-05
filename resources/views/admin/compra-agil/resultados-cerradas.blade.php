@@ -60,6 +60,14 @@
     </form>
 
     <div class="card shadow-sm">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <p class="text-muted small mb-0">Filas en verde: ganador propio (Romulo).</p>
+            @if($cerradas->total() > 0)
+                <a href="{{ route('admin.compra-agil.resultados.cerradas.exportar', request()->query()) }}" class="btn btn-outline-success btn-sm" download data-no-loader>
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar CSV
+                </a>
+            @endif
+        </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-dark">
@@ -67,6 +75,7 @@
                         <th>Nota</th>
                         <th>Código CA</th>
                         <th>Publicación</th>
+                        <th>Ejecutivo</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
                         <th>Seguimiento</th>
@@ -78,10 +87,11 @@
                 </thead>
                 <tbody>
                     @forelse($cerradas as $seg)
-                        <tr>
+                        <tr class="{{ !empty($seg->es_ganador_propio) ? 'table-success' : '' }}">
                             <td>{{ $seg->nronota }}</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small">{{ $seg->nota?->usuarioRel?->fullName() ?: ($seg->nota?->usuario ?: '—') }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
                             <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
                             <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
@@ -106,7 +116,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
+                        <tr><td colspan="11" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>
