@@ -11,33 +11,51 @@ if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
   exit 1
 fi
 
-mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
-chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
-chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+run_as_www() {
+  if id www-data >/dev/null 2>&1; then
+    su -s /bin/sh www-data -c "$1"
+  else
+    sh -c "$1"
+  fi
+}
 
-php artisan package:discover --ansi 2>/dev/null || true
-php artisan view:clear 2>/dev/null || true
+fix_storage_permissions() {
+  mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
+  touch storage/logs/laravel.log storage/logs/mail.log 2>/dev/null || true
+  chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+  chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+  chmod -R 777 storage/logs storage/framework 2>/dev/null || true
+  chown www-data:www-data storage/logs/laravel.log storage/logs/mail.log 2>/dev/null || true
+  chmod 666 storage/logs/laravel.log storage/logs/mail.log 2>/dev/null || true
+}
+
+fix_storage_permissions
+
+run_as_www 'php artisan package:discover --ansi 2>/dev/null || true'
+run_as_www 'php artisan view:clear 2>/dev/null || true'
 php -r 'echo "PHP max_input_vars=".ini_get("max_input_vars").PHP_EOL;'
-php artisan optimize:clear 2>/dev/null || true
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+run_as_www 'php artisan optimize:clear 2>/dev/null || true'
+run_as_www 'php artisan config:cache'
+run_as_www 'php artisan route:cache'
+run_as_www 'php artisan view:cache'
 
 if [ "$RUN_MIGRATIONS" = "true" ]; then
-  php artisan migrate --force
+  run_as_www 'php artisan migrate --force'
 fi
 
 if [ "$RUN_SEED" = "true" ]; then
-  php artisan db:seed --force
+  run_as_www 'php artisan db:seed --force'
 fi
 
-php artisan l5-swagger:generate 2>/dev/null || true
+run_as_www 'php artisan l5-swagger:generate 2>/dev/null || true'
+
+fix_storage_permissions
 
 if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Iniciando queue worker (database) con auto-restart..." >&2
   (
     while true; do
-      php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 2>&1
+      run_as_www 'php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 2>&1'
       echo "[$(date)] Queue worker terminó (exit $?). Reiniciando en 5s..." >&2
       sleep 5
     done

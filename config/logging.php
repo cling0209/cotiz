@@ -5,6 +5,15 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
+$defaultLogChannel = env('LOG_CHANNEL');
+if ($defaultLogChannel === null || $defaultLogChannel === '') {
+    $defaultLogChannel = env('APP_ENV') === 'production' ? 'stderr' : 'stack';
+}
+
+$emergencyLogPath = env('APP_ENV') === 'production'
+    ? 'php://stderr'
+    : storage_path('logs/laravel.log');
+
 return [
 
     /*
@@ -18,7 +27,7 @@ return [
     |
     */
 
-    'default' => env('LOG_CHANNEL', 'stack'),
+    'default' => $defaultLogChannel,
 
     /*
     |--------------------------------------------------------------------------
@@ -131,7 +140,7 @@ return [
         ],
 
         'emergency' => [
-            'path' => storage_path('logs/laravel.log'),
+            'path' => $emergencyLogPath,
         ],
 
     ],
