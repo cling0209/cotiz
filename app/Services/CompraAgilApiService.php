@@ -133,7 +133,9 @@ class CompraAgilApiService
             throw new RuntimeException('API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.');
         }
 
-        $maxReintentos = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
+        $maxReintentos = $deadlineMicrotime !== null
+            ? 1
+            : max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
         $esperaSeg = max(1, (int) config('cotiz.mercadopublico.api_espera_reintento_seg', 5));
         $ultimoError = null;
 
@@ -190,27 +192,32 @@ class CompraAgilApiService
     {
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
-        $timeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
-        $connectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
+        $baseTimeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
+        $baseConnectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
 
         if ($deadlineMicrotime !== null) {
             $restante = $deadlineMicrotime - microtime(true);
             if ($restante <= 0) {
                 throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
             }
-            $timeoutSeg = max(5, min($timeoutSeg, (int) floor($restante)));
-            $connectTimeoutSeg = max(3, min($connectTimeoutSeg, $timeoutSeg));
+            $timeoutSeg = max(5, min($baseTimeoutSeg, 30, (int) floor($restante)));
+            $connectTimeoutSeg = max(3, min($baseConnectTimeoutSeg, 10, $timeoutSeg));
+        } else {
+            $timeoutSeg = $baseTimeoutSeg;
+            $connectTimeoutSeg = $baseConnectTimeoutSeg;
         }
+
+        $curlOpts = [
+            CURLOPT_TIMEOUT => $timeoutSeg,
+            CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
+            CURLOPT_LOW_SPEED_TIME => min(20, max(5, $timeoutSeg - 5)),
+            CURLOPT_LOW_SPEED_LIMIT => 10,
+        ];
 
         try {
             return Http::connectTimeout($connectTimeoutSeg)
                 ->timeout($timeoutSeg)
-                ->withOptions([
-                    'curl' => [
-                        CURLOPT_TIMEOUT => $timeoutSeg,
-                        CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
-                    ],
-                ])
+                ->withOptions(['curl' => $curlOpts])
                 ->withHeaders(['ticket' => $ticket])
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);

@@ -46,12 +46,97 @@ class NotaMpResultadosService
             return null;
         }
 
+        if ($this->liberarNotaColgadaIfNeeded($corrida)) {
+            $corrida = $corrida->fresh() ?? $corrida;
+        }
+
         if ($this->liberarCorridaColgadaIfNeeded($corrida)) {
             return null;
         }
 
         return $corrida->fresh() ?? $corrida;
     }
+
+    /**
+     * Si una nota supera el tiempo máximo sin avanzar, registra fallo y encola la siguiente.
+     */
+    public function liberarNotaColgadaIfNeeded(NotaMpCorrida $corrida): bool
+    {
+        if ($corrida->estado !== 'running' || ! filled($corrida->codigo_actual)) {
+            return false;
+        }
+
+        if ($corrida->updated_at === null) {
+            return false;
+        }
+
+        $segundosEnNota = (int) $corrida->updated_at->diffInSeconds(now());
+        $umbral = $this->notaMaxSegundos() + 30;
+
+        if ($segundosEnNota < $umbral) {
+            return false;
+        }
+
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $indice = (int) $corrida->notas_procesadas;
+
+        if ($indice >= count($pendientes)) {
+            return false;
+        }
+
+        $item = $pendientes[$indice];
+        if (! is_array($item)) {
+            return false;
+        }
+
+        $nronota = (int) ($item['nronota'] ?? 0);
+        $codigo = trim((string) ($item['codigo'] ?? $corrida->codigo_actual));
+        if ($nronota <= 0) {
+            return false;
+        }
+
+        Log::warning('NotaMpResultados: nota colgada recuperada automáticamente', [
+            'corrida_id' => $corrida->id,
+            'nronota' => $nronota,
+            'codigo' => $codigo,
+            'segundos' => $segundosEnNota,
+        ]);
+
+        $empresa = trim((string) ($item['empresa'] ?? ''));
+        $this->registrarDetalleFallo(
+            $corrida,
+            $nronota,
+            $codigo,
+            self::mensajeTiempoMaximoNota().' ('.$this->notaMaxSegundos().' s, recuperación automática).',
+            $empresa !== '' ? $empresa : null,
+        );
+
+        $corrida->increment('notas_procesadas');
+        $corrida->refresh();
+
+        $this->eliminarJobsResultadosMpPendientes($corrida->id);
+
+        $pendientesRestantes = count($pendientes);
+        if ((int) $corrida->notas_procesadas >= $pendientesRestantes) {
+            $fallidas = (int) NotaMpCorridaDetalle::query()
+                ->where('corrida_id', $corrida->id)
+                ->where('exito', false)
+                ->count();
+            $this->finalizarCorridaDesdeJob($corrida, $fallidas, self::mensajeTiempoMaximoNota());
+
+            return true;
+        }
+
+        $corrida->update([
+            'nronota_actual' => null,
+            'codigo_actual' => null,
+        ]);
+
+        if (! $this->jobResultadosMpEncolado($corrida->id)) {
+            ProcessNotaMpCorridaJob::dispatch($corrida->id);
+        }
+
+        return true;
 
     public function liberarCorridaColgadaIfNeeded(NotaMpCorrida $corrida): bool
     {
@@ -365,7 +450,8 @@ class NotaMpResultadosService
             if ($segundosEnNotaActual >= $umbralAlertaNota) {
                 $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
                     .self::formatearDuracionSegundos($segundosEnNotaActual).'. '
-                    .'Al superar '.$umbralMaxNota.' s se registrará como fallo y continuará con la siguiente.';
+                    .'Al superar '.$umbralMaxNota.' s se registrará como fallo y continuará con la siguiente '
+                    .'(recuperación automática a los '.($umbralMaxNota + 30).' s).';
             }
         }
 
@@ -521,6 +607,7 @@ class NotaMpResultadosService
 
         $anterior = NotaMpSeguimiento::query()->find($nronota);
         $estadoAnterior = $anterior?->estado_mp_codigo;
+        $procesadasAlInicio = (int) $corrida->notas_procesadas;
 
         try {
             $payload = $this->api->detalle($codigo, false, $deadline);
@@ -562,6 +649,7 @@ class NotaMpResultadosService
             $anterior,
             $nota,
             $deadline,
+            $procesadasAlInicio,
         ) {
             $datosSeguimiento = array_merge(
                 [
@@ -612,7 +700,10 @@ class NotaMpResultadosService
                 $corrida->increment('notas_con_cambio');
             }
 
-            $corrida->increment('notas_procesadas');
+            $corrida->refresh();
+            if ((int) $corrida->notas_procesadas === $procesadasAlInicio) {
+                $corrida->increment('notas_procesadas');
+            }
 
             NotaMpCorridaDetalle::query()->updateOrCreate(
                 ['corrida_id' => $corrida->id, 'nronota' => $nronota],

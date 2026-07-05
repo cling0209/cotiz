@@ -423,6 +423,50 @@ class CompraAgilResultadosTest extends TestCase
         ]);
     }
 
+    public function test_nota_colgada_se_recupera_automaticamente(): void
+    {
+        config(['cotiz.mercadopublico.resultados_nota_max_segundos' => 180]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subMinutes(10),
+            'estado' => 'running',
+            'total_notas' => 2,
+            'notas_procesadas' => 0,
+            'nronota_actual' => 900,
+            'codigo_actual' => '900-1-COT26',
+            'pendientes_json' => [
+                ['nronota' => 900, 'codigo' => '900-1-COT26', 'empresa' => 'Test'],
+                ['nronota' => 901, 'codigo' => '901-1-COT26', 'empresa' => 'Test 2'],
+            ],
+            'updated_at' => now()->subMinutes(4),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 900,
+            'descripcion' => 'Colgada',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Test',
+            'encargado' => '900-1-COT26',
+            'nota_softland' => 90000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertTrue($service->liberarNotaColgadaIfNeeded($corrida));
+
+        $corrida->refresh();
+        $this->assertSame(1, (int) $corrida->notas_procesadas);
+        $this->assertNull($corrida->codigo_actual);
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
+            'corrida_id' => $corrida->id,
+            'nronota' => 900,
+            'exito' => false,
+        ]);
+    }
+
     public function test_corrida_colgada_se_libera_automaticamente(): void
     {
         config(['cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600]);

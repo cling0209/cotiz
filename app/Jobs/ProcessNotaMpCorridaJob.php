@@ -7,16 +7,16 @@ use App\Services\NotaMpResultadosService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 use Throwable;
 
 class ProcessNotaMpCorridaJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 43200;
+    /** Tiempo máximo por ejecución (una nota). */
+    public int $timeout = 300;
 
-    public int $maxExceptions = 1;
+    public int $maxExceptions = 3;
 
     public function retryUntil(): \DateTime
     {
@@ -25,7 +25,10 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
     public function __construct(
         public int $corridaId,
-    ) {}
+    ) {
+        $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
+        $this->timeout = $maxSegNota + 90;
+    }
 
     public function handle(NotaMpResultadosService $resultados): void
     {
@@ -35,88 +38,67 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         }
 
         $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
-        $procesadasPrevias = (int) $corrida->notas_procesadas;
-        if ($procesadasPrevias > 0) {
-            $pendientes = array_slice($pendientes, $procesadasPrevias);
+        $indice = (int) $corrida->notas_procesadas;
+
+        if ($indice >= count($pendientes)) {
+            $this->finalizarSiCompleta($resultados, $corrida);
+
+            return;
         }
 
-        $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+        $item = $pendientes[$indice];
+        if (! is_array($item)) {
+            $corrida->increment('notas_procesadas');
+            $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
+
+            return;
+        }
+
+        $nronota = (int) ($item['nronota'] ?? 0);
+        $codigo = trim((string) ($item['codigo'] ?? ''));
+        if ($nronota <= 0) {
+            $corrida->increment('notas_procesadas');
+            $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
+
+            return;
+        }
+
+        $corrida->update([
+            'nronota_actual' => $nronota,
+            'codigo_actual' => $codigo !== '' ? $codigo : null,
+        ]);
+
         $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
-        $fallidas = 0;
+        $deadlineNota = microtime(true) + $maxSegNota;
         $ultimoError = null;
+        $exito = false;
 
-        foreach ($pendientes as $item) {
-            $corrida->refresh();
-            if ($corrida->estado !== 'running') {
-                return;
-            }
-
-            if (! is_array($item)) {
-                $corrida->increment('notas_procesadas');
-
-                continue;
-            }
-
-            $nronota = (int) ($item['nronota'] ?? 0);
-            $codigo = trim((string) ($item['codigo'] ?? ''));
-            if ($nronota <= 0) {
-                $corrida->increment('notas_procesadas');
-
-                continue;
-            }
-
-            $corrida->update([
-                'nronota_actual' => $nronota,
-                'codigo_actual' => $codigo !== '' ? $codigo : null,
+        try {
+            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, $deadlineNota);
+            $exito = true;
+        } catch (\Throwable $e) {
+            $ultimoError = $e->getMessage();
+            Log::warning('ProcessNotaMpCorridaJob: nota fallida', [
+                'corrida_id' => $corrida->id,
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'message' => $ultimoError,
             ]);
+        }
 
-            $inicioNota = microtime(true);
-            $deadlineNota = $inicioNota + $maxSegNota;
-            $maxIntentos = 3;
-            $exito = false;
-            for ($intento = 1; $intento <= $maxIntentos; $intento++) {
-                if (microtime(true) >= $deadlineNota) {
-                    $ultimoError = NotaMpResultadosService::mensajeTiempoMaximoNota().' ('.$maxSegNota.' s).';
-                    break;
-                }
-                try {
-                    $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, $deadlineNota);
-                    $exito = true;
-                    break;
-                } catch (\Throwable $e) {
-                    $ultimoError = $e->getMessage();
-                    $esTimeoutNota = str_contains($ultimoError, NotaMpResultadosService::mensajeTiempoMaximoNota());
-                    Log::warning('ProcessNotaMpCorridaJob: intento '.$intento.'/'.$maxIntentos.' fallido', [
-                        'corrida_id' => $corrida->id,
-                        'nronota' => $nronota,
-                        'codigo' => $codigo,
-                        'message' => $ultimoError,
-                        'timeout_nota' => $esTimeoutNota,
-                    ]);
-                    if ($esTimeoutNota) {
-                        break;
-                    }
-                    if ($intento < $maxIntentos && microtime(true) < $deadlineNota) {
-                        sleep(2);
-                    }
-                }
-            }
+        $corrida->refresh();
+        if ((int) $corrida->notas_procesadas <= $indice) {
             if (! $exito) {
-                $fallidas++;
                 $empresa = trim((string) ($item['empresa'] ?? ''));
                 $resultados->registrarDetalleFallo(
                     $corrida,
                     $nronota,
                     $codigo,
-                    mb_substr($ultimoError . ' (tras '.$maxIntentos.' intentos)', 0, 500),
+                    mb_substr(($ultimoError ?: 'Error desconocido').' (1 intento)', 0, 500),
                     $empresa !== '' ? $empresa : null,
                 );
-                $corrida->increment('notas_procesadas');
             }
-
-            if ($delayMs > 0) {
-                usleep($delayMs * 1000);
-            }
+            $corrida->increment('notas_procesadas');
         }
 
         $corrida->refresh();
@@ -124,16 +106,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
-        $corrida->update([
-            'nronota_actual' => null,
-            'codigo_actual' => null,
-        ]);
-
-        $resultados->finalizarCorridaDesdeJob(
-            $corrida->fresh() ?? $corrida,
-            $fallidas,
-            $ultimoError,
-        );
+        $this->encolarSiguiente($resultados, $corrida, $ultimoError);
     }
 
     public function failed(?Throwable $exception): void
@@ -143,15 +116,101 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             'message' => $exception?->getMessage(),
         ]);
 
+        $resultados = app(NotaMpResultadosService::class);
         $corrida = NotaMpCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== 'running') {
             return;
         }
 
-        app(NotaMpResultadosService::class)->finalizarCorrida(
-            $corrida,
-            'error',
-            $this->mensajeAmigable($exception),
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $indice = (int) $corrida->notas_procesadas;
+
+        if ($indice < count($pendientes)) {
+            $item = $pendientes[$indice];
+            if (is_array($item)) {
+                $nronota = (int) ($item['nronota'] ?? 0);
+                $codigo = trim((string) ($item['codigo'] ?? ''));
+                if ($nronota > 0) {
+                    $msg = $this->mensajeAmigable($exception);
+                    $empresa = trim((string) ($item['empresa'] ?? ''));
+                    $resultados->registrarDetalleFallo(
+                        $corrida,
+                        $nronota,
+                        $codigo,
+                        mb_substr($msg.' (job interrumpido)', 0, 500),
+                        $empresa !== '' ? $empresa : null,
+                    );
+                }
+            }
+            $corrida->increment('notas_procesadas');
+        }
+
+        $corrida->refresh();
+        if ($corrida->estado !== 'running') {
+            return;
+        }
+
+        try {
+            $this->encolarSiguiente($resultados, $corrida, $exception?->getMessage());
+        } catch (\Throwable $e) {
+            $resultados->finalizarCorrida(
+                $corrida,
+                'error',
+                'Consulta interrumpida: '.$e->getMessage(),
+            );
+        }
+    }
+
+    private function encolarSiguiente(
+        NotaMpResultadosService $resultados,
+        NotaMpCorrida $corrida,
+        ?string $ultimoError = null,
+    ): void {
+        $corrida->update([
+            'nronota_actual' => null,
+            'codigo_actual' => null,
+        ]);
+
+        $corrida->refresh();
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $procesadas = (int) $corrida->notas_procesadas;
+
+        if ($procesadas >= count($pendientes)) {
+            $this->finalizarSiCompleta($resultados, $corrida, $ultimoError);
+
+            return;
+        }
+
+        if ($resultados->jobResultadosMpEncolado($corrida->id)) {
+            return;
+        }
+
+        $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+        $job = self::dispatch($corrida->id);
+        if ($delayMs > 0) {
+            $job->delay(now()->addMilliseconds($delayMs));
+        }
+    }
+
+    private function finalizarSiCompleta(
+        NotaMpResultadosService $resultados,
+        NotaMpCorrida $corrida,
+        ?string $ultimoError = null,
+    ): void {
+        $corrida->refresh();
+        if ($corrida->estado !== 'running') {
+            return;
+        }
+
+        $fallidas = (int) \App\Models\NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->where('exito', false)
+            ->count();
+
+        $resultados->finalizarCorridaDesdeJob(
+            $corrida->fresh() ?? $corrida,
+            $fallidas,
+            $ultimoError,
         );
     }
 
@@ -160,10 +219,10 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         $msg = $exception?->getMessage() ?? '';
 
         if (str_contains($msg, 'attempted too many times')) {
-            return 'La consulta fue interrumpida por el servidor. Intente nuevamente.';
+            return 'La consulta fue interrumpida por el servidor. Se continuará con la siguiente nota.';
         }
-        if (str_contains($msg, 'has timed out')) {
-            return 'La consulta excedió el tiempo máximo permitido. Intente con menos notas.';
+        if (str_contains($msg, 'has timed out') || str_contains($msg, 'Maximum execution time')) {
+            return NotaMpResultadosService::mensajeTiempoMaximoNota();
         }
 
         return $msg ?: 'La consulta en segundo plano falló.';
