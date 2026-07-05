@@ -82,6 +82,8 @@ return [
         'detalle_cache_segundos' => max(60, (int) env('MERCADOPUBLICO_DETALLE_CACHE_SEGUNDOS', 3600)),
         'api_timeout_segundos' => max(15, (int) env('MERCADOPUBLICO_API_TIMEOUT_SEG', 45)),
         'api_connect_timeout_segundos' => max(5, (int) env('MERCADOPUBLICO_API_CONNECT_TIMEOUT_SEG', 15)),
+        'api_reintentos_http' => max(1, (int) env('MERCADOPUBLICO_API_REINTENTOS', 3)),
+        'api_espera_reintento_seg' => max(1, (int) env('MERCADOPUBLICO_API_ESPERA_REINTENTO_SEG', 5)),
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 1500)),

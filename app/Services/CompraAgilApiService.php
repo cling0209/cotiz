@@ -133,13 +133,44 @@ class CompraAgilApiService
             throw new RuntimeException('API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.');
         }
 
+        $maxReintentos = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
+        $esperaSeg = max(1, (int) config('cotiz.mercadopublico.api_espera_reintento_seg', 5));
+        $ultimoError = null;
+
+        for ($intento = 1; $intento <= $maxReintentos; $intento++) {
+            try {
+                $response = $this->enviarRequestHttp($method, $path, $params);
+
+                return $this->interpretarRespuestaHttp($response);
+            } catch (RuntimeException $e) {
+                $ultimoError = $e->getMessage();
+                $recuperable = $e->getCode() === 1;
+
+                if ($recuperable && $intento < $maxReintentos) {
+                    sleep($esperaSeg);
+
+                    continue;
+                }
+
+                throw $e;
+            }
+        }
+
+        throw new RuntimeException($ultimoError ?? 'Error al consultar Mercado Público.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    private function enviarRequestHttp(string $method, string $path, array $params = []): \Illuminate\Http\Client\Response
+    {
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
         $timeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
         $connectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
 
         try {
-            $response = Http::connectTimeout($connectTimeoutSeg)
+            return Http::connectTimeout($connectTimeoutSeg)
                 ->timeout($timeoutSeg)
                 ->withOptions([
                     'curl' => [
@@ -151,15 +182,25 @@ class CompraAgilApiService
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);
         } catch (ConnectionException $e) {
-            throw new RuntimeException($this->mensajeErrorConexion($e), 0, $e);
+            throw new RuntimeException($this->mensajeErrorConexion($e), 1, $e);
         } catch (RequestException $e) {
-            throw new RuntimeException($this->mensajeErrorRequest($e), $e->getCode(), $e);
+            throw new RuntimeException($this->mensajeErrorRequest($e), 0, $e);
         } catch (\Throwable $e) {
             throw new RuntimeException('Error inesperado consultando Mercado Público: ' . mb_substr($e->getMessage(), 0, 200), 0, $e);
         }
+    }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function interpretarRespuestaHttp(\Illuminate\Http\Client\Response $response): array
+    {
         $status = $response->status();
         $json = $response->json();
+
+        if ($this->esHttpRecuperable($status)) {
+            throw new RuntimeException($this->mensajeDesdeRespuesta($status, $json), 1);
+        }
 
         if ($status === 429) {
             throw new RuntimeException(
@@ -196,6 +237,11 @@ class CompraAgilApiService
         }
 
         return $payload;
+    }
+
+    private function esHttpRecuperable(?int $status): bool
+    {
+        return in_array($status, [502, 503, 504], true);
     }
 
     private function mensajeErrorConexion(ConnectionException $e): string
@@ -235,7 +281,9 @@ class CompraAgilApiService
 
         return match ($status) {
             400 => 'Parámetros inválidos para Mercado Público.',
-            503 => 'Mercado Público no disponible temporalmente.',
+            502 => 'Mercado Público no disponible temporalmente (HTTP 502).',
+            503 => 'Mercado Público no disponible temporalmente (HTTP 503).',
+            504 => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
             default => 'Error al consultar Mercado Público (HTTP '.($status ?? '?').').',
         };
     }
