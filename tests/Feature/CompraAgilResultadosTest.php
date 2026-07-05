@@ -530,7 +530,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $corrida->refresh();
         $this->assertSame(1, (int) $corrida->notas_procesadas);
-        $this->assertNull($corrida->codigo_actual);
+        $this->assertSame('901-1-COT26', $corrida->codigo_actual);
+        $this->assertNotNull($corrida->nota_inicio_at);
         $this->assertDatabaseHas('nota_mp_corrida_detalle', [
             'corrida_id' => $corrida->id,
             'nronota' => 900,
@@ -575,6 +576,7 @@ class CompraAgilResultadosTest extends TestCase
             'notas_procesadas' => 50,
             'codigo_actual' => '974556-11-COT26',
             'nronota_actual' => 999,
+            'nota_inicio_at' => now()->subMinutes(4),
             'pendientes_json' => [],
             'updated_at' => now()->subMinutes(4),
         ]);

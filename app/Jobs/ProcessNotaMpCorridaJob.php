@@ -63,10 +63,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
-        $corrida->update([
-            'nronota_actual' => $nronota,
-            'codigo_actual' => $codigo !== '' ? $codigo : null,
-        ]);
+        $resultados->marcarNotaEnConsulta($corrida, $nronota, $codigo);
 
         $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
         $deadlineNota = microtime(true) + $maxSegNota;
@@ -166,20 +163,18 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         NotaMpCorrida $corrida,
         ?string $ultimoError = null,
     ): void {
-        $corrida->update([
-            'nronota_actual' => null,
-            'codigo_actual' => null,
-        ]);
-
         $corrida->refresh();
         $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
         $procesadas = (int) $corrida->notas_procesadas;
 
         if ($procesadas >= count($pendientes)) {
+            $resultados->marcarSiguienteNotaPendiente($corrida);
             $this->finalizarSiCompleta($resultados, $corrida, $ultimoError);
 
             return;
         }
+
+        $resultados->marcarSiguienteNotaPendiente($corrida);
 
         if ($resultados->jobResultadosMpEncolado($corrida->id)) {
             return;

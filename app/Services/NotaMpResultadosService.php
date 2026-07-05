@@ -66,11 +66,10 @@ class NotaMpResultadosService
             return false;
         }
 
-        if ($corrida->updated_at === null) {
+        $segundosEnNota = $this->segundosEnNotaActual($corrida);
+        if ($segundosEnNota === null) {
             return false;
         }
-
-        $segundosEnNota = (int) $corrida->updated_at->diffInSeconds(now());
         $umbral = $this->notaMaxSegundos() + 30;
 
         if ($segundosEnNota < $umbral) {
@@ -127,10 +126,7 @@ class NotaMpResultadosService
             return true;
         }
 
-        $corrida->update([
-            'nronota_actual' => null,
-            'codigo_actual' => null,
-        ]);
+        $this->marcarSiguienteNotaPendiente($corrida);
 
         if (! $this->jobResultadosMpEncolado($corrida->id)) {
             ProcessNotaMpCorridaJob::dispatch($corrida->id);
@@ -242,6 +238,70 @@ class NotaMpResultadosService
         return sprintf('%02d:%02d:%02d', $h, $m, $s);
     }
 
+    public function marcarNotaEnConsulta(NotaMpCorrida $corrida, int $nronota, string $codigo): void
+    {
+        $codigo = trim($codigo);
+
+        $corrida->update([
+            'nronota_actual' => $nronota,
+            'codigo_actual' => $codigo !== '' ? $codigo : null,
+            'nota_inicio_at' => now(),
+        ]);
+    }
+
+    public function marcarSiguienteNotaPendiente(NotaMpCorrida $corrida): void
+    {
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $indice = (int) $corrida->notas_procesadas;
+
+        if ($indice >= count($pendientes)) {
+            $corrida->update([
+                'nronota_actual' => null,
+                'codigo_actual' => null,
+                'nota_inicio_at' => null,
+            ]);
+
+            return;
+        }
+
+        $item = $pendientes[$indice];
+        if (! is_array($item)) {
+            $corrida->update([
+                'nronota_actual' => null,
+                'codigo_actual' => null,
+                'nota_inicio_at' => null,
+            ]);
+
+            return;
+        }
+
+        $nronota = (int) ($item['nronota'] ?? 0);
+        $codigo = trim((string) ($item['codigo'] ?? ''));
+
+        $corrida->update([
+            'nronota_actual' => $nronota > 0 ? $nronota : null,
+            'codigo_actual' => $codigo !== '' ? $codigo : null,
+            'nota_inicio_at' => now(),
+        ]);
+    }
+
+    private function segundosEnNotaActual(NotaMpCorrida $corrida): ?int
+    {
+        if (! filled($corrida->codigo_actual)) {
+            return null;
+        }
+
+        if ($corrida->nota_inicio_at !== null) {
+            return (int) $corrida->nota_inicio_at->diffInSeconds(now());
+        }
+
+        if ($corrida->updated_at !== null) {
+            return (int) $corrida->updated_at->diffInSeconds(now());
+        }
+
+        return null;
+    }
+
     public function contarNotasPendientesConsulta(): int
     {
         return Nota::query()
@@ -313,6 +373,9 @@ class NotaMpResultadosService
             'notas_procesadas' => 0,
             'notas_con_cambio' => 0,
         ]);
+
+        $this->marcarSiguienteNotaPendiente($corrida);
+        $corrida->refresh();
 
         try {
             $this->eliminarJobsResultadosMpPendientes();
@@ -440,10 +503,7 @@ class NotaMpResultadosService
 
         $tieneCodigoActual = filled($corrida->codigo_actual);
 
-        $segundosEnNotaActual = null;
-        if ($tieneCodigoActual && $corrida->updated_at !== null) {
-            $segundosEnNotaActual = (int) $corrida->updated_at->diffInSeconds(now());
-        }
+        $segundosEnNotaActual = $this->segundosEnNotaActual($corrida);
 
         if ($corrida->estado === 'running' && $tieneCodigoActual && $segundosEnNotaActual !== null) {
             $umbralAlertaNota = $this->notaAlertaSegundos();
@@ -531,6 +591,7 @@ class NotaMpResultadosService
             'mensaje' => $mensaje,
             'nronota_actual' => null,
             'codigo_actual' => null,
+            'nota_inicio_at' => null,
         ]);
 
         return $corrida->fresh() ?? $corrida;

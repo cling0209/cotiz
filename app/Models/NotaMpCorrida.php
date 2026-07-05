@@ -11,7 +11,7 @@ class NotaMpCorrida extends Model
 
     protected $fillable = [
         'usuario', 'inicio', 'fin', 'notas_procesadas', 'notas_con_cambio',
-        'total_notas', 'nronota_actual', 'codigo_actual', 'pendientes_json',
+        'total_notas', 'nronota_actual', 'codigo_actual', 'nota_inicio_at', 'pendientes_json',
         'estado', 'mensaje',
     ];
 
@@ -20,6 +20,7 @@ class NotaMpCorrida extends Model
         return [
             'inicio' => 'datetime',
             'fin' => 'datetime',
+            'nota_inicio_at' => 'datetime',
             'notas_procesadas' => 'integer',
             'notas_con_cambio' => 'integer',
             'total_notas' => 'integer',

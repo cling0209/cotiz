@@ -293,15 +293,15 @@
         if (estado.segundos_en_nota_actual !== undefined && estado.segundos_en_nota_actual !== null) {
             syncNotaMs = Date.now() - (estado.segundos_en_nota_actual * 1000);
             ultimaNotaId = estado.nronota_actual || estado.codigo_actual || ultimaNotaId;
-        } else if (!estado.codigo_actual) {
-            syncNotaMs = null;
-            ultimaNotaId = null;
-        } else if (estado.segundos_en_curso !== undefined) {
+        } else if (estado.codigo_actual && estado.segundos_en_curso !== undefined) {
             const notaActual = estado.nronota_actual || estado.codigo_actual || null;
             if (notaActual !== ultimaNotaId) {
                 ultimaNotaId = notaActual;
                 syncNotaMs = Date.now();
             }
+        } else if (!estado.codigo_actual) {
+            syncNotaMs = null;
+            ultimaNotaId = null;
         }
         if (estado.segundos_en_curso !== undefined) {
             iniciarReloj();
