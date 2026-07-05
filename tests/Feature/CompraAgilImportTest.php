@@ -114,6 +114,49 @@ TXT;
         );
     }
 
+    public function test_preview_prioriza_vinculo_agilemaeprod_sobre_similitud(): void
+    {
+        AgileMaeprod::query()->create([
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'OTRO PRODUCTO',
+            'prod_item' => 'ASEO002',
+        ]);
+
+        $nota = $this->crearNota();
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertOk();
+        $lineaVinculada = collect($response->json('lineas'))
+            ->firstWhere('id_agile', '31237835');
+
+        $this->assertNotNull($lineaVinculada);
+        $this->assertSame('vinculado', $lineaVinculada['estado']);
+        $this->assertFalse($lineaVinculada['es_sugerencia']);
+        $this->assertSame('ASEO002', $lineaVinculada['producto']['prod_item']);
+    }
+
+    public function test_preview_propone_similitud_si_no_hay_vinculo_agilemaeprod(): void
+    {
+        $nota = $this->crearNota();
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertOk();
+        $linea = collect($response->json('lineas'))->firstWhere('id_agile', '31237835');
+
+        $this->assertNotNull($linea);
+        $this->assertSame('pendiente', $linea['estado']);
+        $this->assertTrue($linea['es_sugerencia']);
+        $this->assertSame('ASEO001', $linea['producto']['prod_item']);
+    }
+
     public function test_importar_vincula_lineas_con_maestro_previo(): void
     {
         AgileMaeprod::query()->create([

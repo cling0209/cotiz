@@ -445,7 +445,8 @@ class CompraAgilImportService
     }
 
     /**
-     * Vínculo en agilemaeprod o, si no existe, sugerencia por similitud (igual que en el análisis).
+     * Resuelve producto interno para importar: primero vínculo guardado en agilemaeprod
+     * (código Mercado Público → prod_item); si no hay match, sugerencia por similitud de descripción.
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
