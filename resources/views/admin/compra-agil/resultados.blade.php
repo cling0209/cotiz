@@ -201,10 +201,12 @@
     const progresoTiempo = document.getElementById('progreso-tiempo');
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
     const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
+    const umbralAlertaNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_alerta_segundos', 180));
     let segTotalServidor = 0;
     let syncTotalMs = 0;
     let syncNotaMs = 0;
     let ultimaNotaId = null;
+    let ultimoCodigoActual = '';
     let relojTimer = null;
 
     function fmtTiempo(seg) {
@@ -224,6 +226,12 @@
             const notaSeg = Math.floor((now - syncNotaMs) / 1000);
             if (progresoTiempoTotal) progresoTiempoTotal.textContent = fmtTiempo(totalSeg);
             if (progresoTiempoNota) progresoTiempoNota.textContent = fmtTiempo(notaSeg);
+            if (progresoAlerta && ultimoCodigoActual && notaSeg >= umbralAlertaNotaSeg) {
+                progresoAlerta.textContent = 'Consultando ' + ultimoCodigoActual + ' lleva '
+                    + fmtTiempo(notaSeg) + '. Si supera ' + umbralAlertaNotaSeg
+                    + ' s se registrará como fallo y continuará con la siguiente.';
+                progresoAlerta.classList.remove('d-none');
+            }
         }, 1000);
     }
 
@@ -251,14 +259,24 @@
                 progresoAlerta.classList.add('d-none');
             }
         }
+        if (estado.codigo_actual) {
+            ultimoCodigoActual = estado.codigo_actual;
+        }
         if (estado.segundos_en_curso !== undefined) {
             segTotalServidor = estado.segundos_en_curso;
             syncTotalMs = Date.now();
+        }
+        if (estado.segundos_en_nota_actual !== undefined && estado.segundos_en_nota_actual !== null) {
+            syncNotaMs = Date.now() - (estado.segundos_en_nota_actual * 1000);
+            ultimaNotaId = estado.nronota_actual || estado.codigo_actual || ultimaNotaId;
+        } else if (estado.segundos_en_curso !== undefined) {
             const notaActual = estado.nronota_actual || estado.codigo_actual || null;
             if (notaActual !== ultimaNotaId) {
                 ultimaNotaId = notaActual;
                 syncNotaMs = Date.now();
             }
+        }
+        if (estado.segundos_en_curso !== undefined) {
             iniciarReloj();
         }
         const elOk = document.getElementById('progreso-ok');

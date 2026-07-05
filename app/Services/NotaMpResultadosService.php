@@ -13,6 +13,7 @@ use App\Models\NotaMpSeguimiento;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
@@ -128,6 +129,21 @@ class NotaMpResultadosService
     public function normalizarLimiteConsulta(int $limite): int
     {
         return max(1, min(self::LIMITE_CORRIDA_MAX, $limite));
+    }
+
+    public function notaMaxSegundos(): int
+    {
+        return max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
+    }
+
+    public function notaAlertaSegundos(): int
+    {
+        return max(60, (int) config('cotiz.mercadopublico.resultados_nota_alerta_segundos', 180));
+    }
+
+    public static function mensajeTiempoMaximoNota(): string
+    {
+        return 'Tiempo máximo por nota excedido. Se reintentará en la próxima consulta.';
     }
 
     public function contarNotasPendientesConsulta(): int
@@ -328,7 +344,21 @@ class NotaMpResultadosService
 
         $tieneCodigoActual = filled($corrida->codigo_actual);
 
-        if ($corrida->estado === 'running' && $procesadas === 0) {
+        $segundosEnNotaActual = null;
+        if ($tieneCodigoActual && $corrida->updated_at !== null) {
+            $segundosEnNotaActual = (int) $corrida->updated_at->diffInSeconds(now());
+        }
+
+        if ($corrida->estado === 'running' && $tieneCodigoActual && $segundosEnNotaActual !== null) {
+            $umbralAlertaNota = $this->notaAlertaSegundos();
+            if ($segundosEnNotaActual >= $umbralAlertaNota) {
+                $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
+                    .(int) floor($segundosEnNotaActual / 60).' min. '
+                    .'Si supera '.$umbralAlertaNota.' s se registrará como fallo y continuará con la siguiente.';
+            }
+        }
+
+        if ($corrida->estado === 'running' && $procesadas === 0 && $alerta === null) {
             if ($colaDriver === 'sync' && app()->isProduction() && $segundosEnCurso >= 30) {
                 $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
             } elseif ($jobsEnCola > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 90) {
@@ -378,6 +408,7 @@ class NotaMpResultadosService
             'notas_con_cambio' => (int) $corrida->notas_con_cambio,
             'estado' => $corrida->estado,
             'segundos_en_curso' => $segundosEnCurso,
+            'segundos_en_nota_actual' => $segundosEnNotaActual,
             'jobs_en_cola' => $jobsEnCola,
             'jobs_reservados' => $jobsReservados,
             'cola_driver' => $colaDriver,
@@ -459,8 +490,10 @@ class NotaMpResultadosService
     /**
      * @return array<string, mixed>
      */
-    public function consultarNota(int $nronota, NotaMpCorrida $corrida, string $usuario): array
+    public function consultarNota(int $nronota, NotaMpCorrida $corrida, string $usuario, ?float $deadline = null): array
     {
+        $inicio = microtime(true);
+
         if (! $this->api->isConfigured()) {
             throw new RuntimeException('MERCADOPUBLICO_TICKET no configurado.');
         }
@@ -486,6 +519,9 @@ class NotaMpResultadosService
             }
             throw $e;
         }
+
+        $msApi = (int) round((microtime(true) - $inicio) * 1000);
+        $this->assertAntesDeDeadline($deadline, $nronota, $codigo, 'tras API');
 
         $ganadorProv = $this->ganador->ganadorPrincipal($payload);
         $institucion = is_array($payload['institucion'] ?? null) ? $payload['institucion'] : [];
@@ -541,7 +577,7 @@ class NotaMpResultadosService
                 $datosSeguimiento,
             );
 
-            $this->persistirOfertas($nronota, $payload);
+            $this->persistirOfertas($nronota, $payload, $deadline);
 
             $cambio = $estadoAnterior !== $estadoCodigo
                 || ($anterior?->resultado_propio !== $resultadoPropio)
@@ -585,6 +621,17 @@ class NotaMpResultadosService
         });
 
         $corrida->refresh();
+
+        $msTotal = (int) round((microtime(true) - $inicio) * 1000);
+        if ($msTotal >= 60000) {
+            Log::info('NotaMpResultados: consulta lenta', [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'ms_total' => $msTotal,
+                'ms_api' => $msApi,
+                'ms_guardado' => max(0, $msTotal - $msApi),
+            ]);
+        }
 
         return [
             'nronota' => $nronota,
@@ -671,21 +718,23 @@ class NotaMpResultadosService
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function persistirOfertas(int $nronota, array $payload): void
+    private function persistirOfertas(int $nronota, array $payload, ?float $deadline = null): void
     {
-        NotaMpOferta::query()->where('nronota', $nronota)->each(function (NotaMpOferta $oferta) {
-            $oferta->lineas()->delete();
-            $oferta->delete();
-        });
+        NotaMpOferta::query()->where('nronota', $nronota)->delete();
 
         $rutPropio = $this->ganador->rutEmpresaPropia();
         $idOrdenCompra = isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null;
         $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
+        $lineasBatch = [];
+        $now = now();
+        $tamanoLote = 500;
 
         foreach ($proveedores as $prov) {
             if (! is_array($prov)) {
                 continue;
             }
+
+            $this->assertAntesDeDeadline($deadline, $nronota, (string) ($payload['codigo'] ?? ''), 'guardando ofertas');
 
             $rut = trim((string) ($prov['rut_proveedor'] ?? ''));
             $esGanador = $this->ganador->esProveedorGanador($prov, $idOrdenCompra);
@@ -710,7 +759,7 @@ class NotaMpResultadosService
                 if (! is_array($linea)) {
                     continue;
                 }
-                NotaMpOfertaLinea::query()->create([
+                $lineasBatch[] = [
                     'oferta_id' => $oferta->id,
                     'codigo_producto' => trim((string) ($linea['codigo_producto'] ?? '')),
                     'nombre_producto' => mb_substr(trim((string) ($linea['nombre_producto'] ?? $linea['nombre'] ?? '')), 0, 500),
@@ -718,9 +767,35 @@ class NotaMpResultadosService
                     'cantidad' => (float) ($linea['cantidad'] ?? 0),
                     'precio_unitario' => isset($linea['precio_unitario']) ? (int) round((float) $linea['precio_unitario']) : null,
                     'monto_total' => isset($linea['monto_total_producto']) ? (int) round((float) $linea['monto_total_producto']) : null,
-                ]);
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                if (count($lineasBatch) >= $tamanoLote) {
+                    NotaMpOfertaLinea::query()->insert($lineasBatch);
+                    $lineasBatch = [];
+                }
             }
         }
+
+        if ($lineasBatch !== []) {
+            NotaMpOfertaLinea::query()->insert($lineasBatch);
+        }
+    }
+
+    private function assertAntesDeDeadline(?float $deadline, int $nronota, string $codigo, string $fase): void
+    {
+        if ($deadline === null || microtime(true) < $deadline) {
+            return;
+        }
+
+        Log::warning('NotaMpResultados: tiempo máximo por nota excedido', [
+            'nronota' => $nronota,
+            'codigo' => $codigo,
+            'fase' => $fase,
+        ]);
+
+        throw new RuntimeException(self::mensajeTiempoMaximoNota());
     }
 
     /**

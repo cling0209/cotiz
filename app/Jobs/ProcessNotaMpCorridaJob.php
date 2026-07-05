@@ -41,6 +41,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         }
 
         $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+        $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
         $fallidas = 0;
         $ultimoError = null;
 
@@ -69,11 +70,17 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                 'codigo_actual' => $codigo !== '' ? $codigo : null,
             ]);
 
+            $inicioNota = microtime(true);
+            $deadlineNota = $inicioNota + $maxSegNota;
             $maxIntentos = 3;
             $exito = false;
             for ($intento = 1; $intento <= $maxIntentos; $intento++) {
+                if (microtime(true) >= $deadlineNota) {
+                    $ultimoError = NotaMpResultadosService::mensajeTiempoMaximoNota().' ('.$maxSegNota.' s).';
+                    break;
+                }
                 try {
-                    $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario);
+                    $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, $deadlineNota);
                     $exito = true;
                     break;
                 } catch (\Throwable $e) {
@@ -84,7 +91,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                         'codigo' => $codigo,
                         'message' => $ultimoError,
                     ]);
-                    if ($intento < $maxIntentos) {
+                    if ($intento < $maxIntentos && microtime(true) < $deadlineNota) {
                         sleep(2);
                     }
                 }

@@ -305,4 +305,28 @@ class CompraAgilResultadosTest extends TestCase
             'notas_procesadas' => 0,
         ]);
     }
+
+    public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void
+    {
+        config(['cotiz.mercadopublico.resultados_nota_alerta_segundos' => 180]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subHour(),
+            'estado' => 'running',
+            'total_notas' => 100,
+            'notas_procesadas' => 50,
+            'codigo_actual' => '974556-11-COT26',
+            'nronota_actual' => 999,
+            'pendientes_json' => [],
+            'updated_at' => now()->subMinutes(4),
+        ]);
+
+        $estado = $this->app->make(NotaMpResultadosService::class)->estadoCorrida();
+
+        $this->assertTrue($estado['en_curso']);
+        $this->assertNotNull($estado['alerta']);
+        $this->assertStringContainsString('974556-11-COT26', $estado['alerta']);
+        $this->assertGreaterThanOrEqual(180, $estado['segundos_en_nota_actual']);
+    }
 }
