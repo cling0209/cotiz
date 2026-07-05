@@ -11,8 +11,9 @@ if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
   exit 1
 fi
 
-mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging
-chown -R www-data:www-data storage/app/imports 2>/dev/null || true
+mkdir -p storage/app/imports/chunks storage/app/imports/merged storage/app/imports/pending storage/app/imports/jobs storage/app/imports/errors storage/app/imports/staging storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
 
 php artisan package:discover --ansi 2>/dev/null || true
 php artisan view:clear 2>/dev/null || true
@@ -36,7 +37,7 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Iniciando queue worker (database) con auto-restart..." >&2
   (
     while true; do
-      php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 >> storage/logs/queue-worker.log 2>&1
+      php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 2>&1
       echo "[$(date)] Queue worker terminó (exit $?). Reiniciando en 5s..." >&2
       sleep 5
     done

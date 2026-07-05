@@ -137,6 +137,7 @@ class NotaMpResultadosService
         }
 
         return true;
+    }
 
     public function liberarCorridaColgadaIfNeeded(NotaMpCorrida $corrida): bool
     {
