@@ -38,6 +38,7 @@
                             <th>Código CA</th>
                             <th>Cliente</th>
                             <th>Resultado</th>
+                            <th>Error / detalle</th>
                             <th>Estado MP</th>
                             <th>Prov. seleccionado</th>
                             <th></th>
@@ -45,7 +46,7 @@
                     </thead>
                     <tbody>
                         @forelse($detalleCorrida as $det)
-                            <tr>
+                            <tr class="{{ $det->exito ? '' : 'table-light' }}">
                                 <td>{{ $det->nronota }}</td>
                                 <td class="font-monospace small">{{ $det->codigo_proceso }}</td>
                                 <td class="small">{{ $det->empresa ?: '—' }}</td>
@@ -59,11 +60,18 @@
                                         <span class="badge text-bg-danger">Error</span>
                                     @endif
                                 </td>
+                                <td class="small text-break" style="min-width: 12rem; max-width: 22rem;">
+                                    @if($det->exito)
+                                        <span class="text-muted">—</span>
+                                    @else
+                                        <span class="text-danger">{{ $det->mensaje ?: 'Error desconocido' }}</span>
+                                    @endif
+                                </td>
                                 <td class="small">
                                     @if($det->exito)
                                         {{ $det->estado_mp_glosa ?: '—' }}
                                     @else
-                                        <span class="text-danger">{{ $det->mensaje }}</span>
+                                        <span class="text-muted">—</span>
                                     @endif
                                 </td>
                                 <td class="small">
@@ -83,7 +91,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="8" class="text-center text-muted py-4">
                                     Sin detalle registrado en la última consulta.
                                 </td>
                             </tr>
