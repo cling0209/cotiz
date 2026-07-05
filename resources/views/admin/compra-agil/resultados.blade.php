@@ -99,7 +99,7 @@
             <div>
                 <h2 class="h6 mb-0 d-inline">Novedades recientes</h2>
                 <p class="text-muted small mb-0 mt-1">
-                    Últimas 30 cotizaciones con cambio de estado en Mercado Público, ordenadas por fecha de último cambio.
+                    Últimas 40 cotizaciones con cambio de estado en Mercado Público, ordenadas por fecha de último cambio.
                     @if($ultimaCorrida)
                         Las marcadas como <span class="badge text-bg-info">Nueva</span> cambiaron en la última consulta
                         ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).
@@ -121,6 +121,7 @@
                     <tr>
                         <th>Nota</th>
                         <th>Código CA</th>
+                        <th>Publicación</th>
                         <th>Últ. cambio</th>
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
@@ -141,6 +142,7 @@
                                 @endif
                             </td>
                             <td class="font-monospace small">{{ $nov->codigo_proceso }}</td>
+                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $nov->seguimiento?->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">
                                 {{ $nov->estado_anterior ?: '—' }}
@@ -170,7 +172,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr id="novedades-vacio"><td colspan="9" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="10" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
                     @endforelse
                 </tbody>
             </table>

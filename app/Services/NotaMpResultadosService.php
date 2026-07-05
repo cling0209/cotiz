@@ -1178,7 +1178,7 @@ class NotaMpResultadosService
      *
      * @return Collection<int, NotaMpCorridaCambio>
      */
-    public function novedadesRecientes(int $limite = 30): Collection
+    public function novedadesRecientes(int $limite = 40): Collection
     {
         $limite = max(1, min($limite, 100));
         $rutPropio = $this->ganador->rutEmpresaPropia();
