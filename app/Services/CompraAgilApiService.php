@@ -151,9 +151,9 @@ class CompraAgilApiService
                 ->acceptJson()
                 ->send($method, $baseUrl.$path, $method === 'GET' ? ['query' => $params] : ['json' => $params]);
         } catch (ConnectionException $e) {
-            throw new RuntimeException('Timeout o error de conexión con Mercado Público. Reintente.', 0, $e);
+            throw new RuntimeException($this->mensajeErrorConexion($e), 0, $e);
         } catch (RequestException $e) {
-            throw new RuntimeException($this->mensajeDesdeRespuesta($e->response?->status(), $e->response?->json()), $e->getCode(), $e);
+            throw new RuntimeException($this->mensajeErrorRequest($e), $e->getCode(), $e);
         } catch (\Throwable $e) {
             throw new RuntimeException('Error inesperado consultando Mercado Público: ' . mb_substr($e->getMessage(), 0, 200), 0, $e);
         }
@@ -196,6 +196,31 @@ class CompraAgilApiService
         }
 
         return $payload;
+    }
+
+    private function mensajeErrorConexion(ConnectionException $e): string
+    {
+        $detalle = trim($e->getMessage());
+        $base = 'Timeout o error de conexión con Mercado Público.';
+
+        if ($detalle !== '') {
+            return $base.' Detalle: '.mb_substr($detalle, 0, 240).'. Reintente.';
+        }
+
+        return $base.' Reintente.';
+    }
+
+    private function mensajeErrorRequest(RequestException $e): string
+    {
+        $status = $e->response?->status();
+        $msg = $this->mensajeDesdeRespuesta($status, $e->response?->json());
+        $curl = trim($e->getMessage());
+
+        if ($curl !== '' && ! str_contains($msg, $curl)) {
+            $msg .= ' Detalle: '.mb_substr($curl, 0, 180);
+        }
+
+        return $msg;
     }
 
     /**

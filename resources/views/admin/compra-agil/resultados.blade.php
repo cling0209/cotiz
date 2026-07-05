@@ -84,7 +84,7 @@
             <div class="progress" style="height: 1.25rem;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
-            <div class="small text-muted mt-2 d-none" id="progreso-ultimo-detalle"></div>
+            <div class="small text-muted mt-2 d-none text-break" id="progreso-ultimo-detalle"></div>
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
                 · Última nota: <span id="progreso-tiempo-nota"></span>
