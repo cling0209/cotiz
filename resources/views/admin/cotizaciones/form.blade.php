@@ -694,29 +694,50 @@
         return { res, json };
     }
 
+    function esRespuestaColdStartConsultaPar(res, json) {
+        if (json?.cold_start === true) {
+            return true;
+        }
+
+        return res.status === 503 && String(json?.message || '').trim() === String(consultaParConfig.mensaje || '').trim();
+    }
+
+    function mensajeErrorSinConexionConsultaPar() {
+        return 'No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.';
+    }
+
     async function validarEncargadoParConEspera(codigo, opciones = {}) {
         const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
         const max = consultaParConfig.maxIntentos;
+        const mensajeIniciando = consultaParConfig.mensaje;
+        let enColdStart = false;
 
         for (let intento = 1; intento <= max; intento++) {
-            opciones.onProgress?.(intento, max, consultaParConfig.mensaje);
+            if (enColdStart) {
+                opciones.onProgress?.(intento, max, mensajeIniciando);
+            }
+
             const { res, json } = await fetchValidarEncargadoPar(codigo, token);
             if (res.ok && json.ok) {
                 opciones.onSuccess?.(json);
 
                 return json;
             }
-            if (json.cold_start) {
+
+            if (esRespuestaColdStartConsultaPar(res, json)) {
+                enColdStart = true;
+                opciones.onProgress?.(intento, max, mensajeIniciando);
                 if (intento >= max) {
-                    throw new Error('No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.');
+                    throw new Error(mensajeErrorSinConexionConsultaPar());
                 }
                 await sleepMs(consultaParConfig.esperaMs);
                 continue;
             }
+
             throw new Error(extraerMensajeError(json, 'No se puede usar este número de cotización.'));
         }
 
-        throw new Error('No se pudo conectar con el servicio de consulta.');
+        throw new Error(mensajeErrorSinConexionConsultaPar());
     }
 
     let grabandoCotizacion = false;
@@ -736,7 +757,7 @@
             const cabecera = collectCabeceraFromForm();
 
             if (necesitaConsultaParEncargado(cabecera.encargado)) {
-                setLoaderMensaje(consultaParConfig.mensaje);
+                setLoaderMensaje('Verificando cotización en el otro sitio…');
                 await validarEncargadoParConEspera(cabecera.encargado, {
                     onProgress: (_intento, _max, msg) => setLoaderMensaje(msg),
                 });

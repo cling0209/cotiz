@@ -70,7 +70,7 @@ class NotaConsultaRemotaService
             }
         }
 
-        $ultima['error'] = 'No se pudo conectar con el servicio de consulta en el otro sitio. Intente nuevamente en unos momentos.';
+        $ultima['error'] = self::mensajeSinConexionConsultaPar();
         $ultima['cold_start'] = false;
 
         return $ultima;
@@ -99,6 +99,11 @@ class NotaConsultaRemotaService
             'cotiz.api_nota.consulta_par_mensaje_iniciando',
             'Iniciando servicio de consulta, espere unos segundos.',
         ));
+    }
+
+    public static function mensajeSinConexionConsultaPar(): string
+    {
+        return 'No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.';
     }
 
     /**

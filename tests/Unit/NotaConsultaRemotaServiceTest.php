@@ -185,4 +185,27 @@ class NotaConsultaRemotaServiceTest extends TestCase
         $this->assertSame('', $error);
         $this->assertSame(2, $intentos);
     }
+
+    public function test_con_espera_agota_reintentos_con_mensaje_sin_conexion(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.consulta_par_max_intentos' => 2,
+            'cotiz.api_nota.consulta_par_espera_segundos' => 0,
+        ]);
+
+        Http::fake([
+            'cotiza.romulo.cl/api/v1/nota-consulta' => Http::response('', 503),
+            'cotiza.romulo.cl/up' => Http::response('OK', 200),
+        ]);
+
+        $consulta = $this->service->consultarEncargadoEnParConEspera('OC-SIN-RESPUESTA');
+
+        $this->assertFalse($consulta['cold_start']);
+        $this->assertSame(NotaConsultaRemotaService::mensajeSinConexionConsultaPar(), $consulta['error']);
+    }
 }
