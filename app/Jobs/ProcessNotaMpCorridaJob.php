@@ -199,7 +199,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
         $fallidas = (int) \App\Models\NotaMpCorridaDetalle::query()
             ->where('corrida_id', $corrida->id)
-            ->where('exito', false)
+            ->whereRaw('exito IS FALSE')
             ->count();
 
         $resultados->finalizarCorridaDesdeJob(

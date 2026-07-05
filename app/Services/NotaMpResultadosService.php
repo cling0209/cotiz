@@ -119,7 +119,7 @@ class NotaMpResultadosService
         if ((int) $corrida->notas_procesadas >= $pendientesRestantes) {
             $fallidas = (int) NotaMpCorridaDetalle::query()
                 ->where('corrida_id', $corrida->id)
-                ->where('exito', false)
+                ->whereRaw('exito IS FALSE')
                 ->count();
             $this->finalizarCorridaDesdeJob($corrida, $fallidas, self::mensajeTiempoMaximoNota());
 
