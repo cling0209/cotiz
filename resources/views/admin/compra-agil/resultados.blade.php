@@ -224,7 +224,7 @@
     const umbralMaxNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
     let segTotalServidor = 0;
     let syncTotalMs = 0;
-    let syncNotaMs = 0;
+    let syncNotaMs = null;
     let ultimaNotaId = null;
     let ultimoCodigoActual = '';
     let relojTimer = null;
@@ -243,10 +243,12 @@
         relojTimer = setInterval(() => {
             const now = Date.now();
             const totalSeg = segTotalServidor + Math.floor((now - syncTotalMs) / 1000);
-            const notaSeg = Math.floor((now - syncNotaMs) / 1000);
+            const notaSeg = syncNotaMs !== null ? Math.floor((now - syncNotaMs) / 1000) : null;
             if (progresoTiempoTotal) progresoTiempoTotal.textContent = fmtTiempo(totalSeg);
-            if (progresoTiempoNota) progresoTiempoNota.textContent = fmtTiempo(notaSeg);
-            if (progresoAlerta && ultimoCodigoActual && notaSeg >= umbralAlertaNotaSeg) {
+            if (progresoTiempoNota) {
+                progresoTiempoNota.textContent = notaSeg !== null ? fmtTiempo(notaSeg) : '—';
+            }
+            if (progresoAlerta && ultimoCodigoActual && notaSeg !== null && notaSeg >= umbralAlertaNotaSeg) {
                 progresoAlerta.textContent = 'Consultando ' + ultimoCodigoActual + ' lleva '
                     + fmtTiempo(notaSeg) + '. Al superar ' + umbralMaxNotaSeg
                     + ' s se registrará como fallo y continuará con la siguiente.';
@@ -281,6 +283,8 @@
         }
         if (estado.codigo_actual) {
             ultimoCodigoActual = estado.codigo_actual;
+        } else {
+            ultimoCodigoActual = '';
         }
         if (estado.segundos_en_curso !== undefined) {
             segTotalServidor = estado.segundos_en_curso;
@@ -289,6 +293,9 @@
         if (estado.segundos_en_nota_actual !== undefined && estado.segundos_en_nota_actual !== null) {
             syncNotaMs = Date.now() - (estado.segundos_en_nota_actual * 1000);
             ultimaNotaId = estado.nronota_actual || estado.codigo_actual || ultimaNotaId;
+        } else if (!estado.codigo_actual) {
+            syncNotaMs = null;
+            ultimaNotaId = null;
         } else if (estado.segundos_en_curso !== undefined) {
             const notaActual = estado.nronota_actual || estado.codigo_actual || null;
             if (notaActual !== ultimaNotaId) {
@@ -317,7 +324,7 @@
         }
     }
 
-    if (corridaActiva && estadoInicial.alerta) {
+    if (corridaActiva) {
         actualizarProgreso(estadoInicial);
     }
 
