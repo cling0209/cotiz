@@ -992,42 +992,10 @@ class NotaMpResultadosService
      */
     private function buildCerradasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
-        $query = NotaMpSeguimiento::query()
-            ->whereRaw('finalizado IS TRUE');
-
-        if (! empty($filtros['nronota'])) {
-            $query->where('nronota', (int) $filtros['nronota']);
-        }
-
-        if (! empty($filtros['codigo_proceso'])) {
-            $query->where('codigo_proceso', 'ilike', '%'.$filtros['codigo_proceso'].'%');
-        }
-
-        if (! empty($filtros['organismo'])) {
-            $query->where('organismo', 'ilike', '%'.$filtros['organismo'].'%');
-        }
-
-        if (! empty($filtros['proveedor'])) {
-            $query->where('razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
-        }
-
-        if (! empty($filtros['fecha_desde'])) {
-            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
-        }
-
-        if (! empty($filtros['fecha_hasta'])) {
-            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
-        }
-
-        if (! empty($filtros['cambio_desde'])) {
-            $query->where('fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
-        }
-
-        if (! empty($filtros['cambio_hasta'])) {
-            $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
-        }
-
-        return $query;
+        return $this->aplicarFiltrosListadoSeguimiento(
+            NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE'),
+            $filtros,
+        );
     }
 
     /**
@@ -1190,6 +1158,36 @@ class NotaMpResultadosService
         return NotaMpSeguimiento::query()->where('resultado_propio', 'pendiente')->count();
     }
 
+    public function contarTodas(): int
+    {
+        return NotaMpSeguimiento::query()->count();
+    }
+
+    public function listadoTodasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $paginator = $this->aplicarOrdenCerradas($this->buildTodasQuery($filtros))
+            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->paginate($porPagina)
+            ->withQueryString();
+
+        $this->marcarCerradasConFlags($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @return Collection<int, NotaMpSeguimiento>
+     */
+    public function listadoTodasExportar(array $filtros = [], int $limite = 10000): Collection
+    {
+        $items = $this->aplicarOrdenCerradas($this->buildTodasQuery($filtros))
+            ->with(['nota.usuarioRel'])
+            ->limit($limite)
+            ->get();
+
+        return $this->marcarCerradasConFlags($items);
+    }
+
     public function listadoPendientesPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $paginator = $this->aplicarOrdenCerradas($this->buildPendientesSeguimientoQuery($filtros))
@@ -1271,9 +1269,28 @@ class NotaMpResultadosService
      */
     private function buildPendientesSeguimientoQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
-        $query = NotaMpSeguimiento::query()
-            ->where('resultado_propio', 'pendiente');
+        return $this->aplicarFiltrosListadoSeguimiento(
+            NotaMpSeguimiento::query()->where('resultado_propio', 'pendiente'),
+            $filtros,
+        );
+    }
 
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     */
+    private function buildTodasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->aplicarFiltrosListadoSeguimiento(NotaMpSeguimiento::query(), $filtros);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     */
+    private function aplicarFiltrosListadoSeguimiento(
+        \Illuminate\Database\Eloquent\Builder $query,
+        array $filtros,
+    ): \Illuminate\Database\Eloquent\Builder {
         if (! empty($filtros['nronota'])) {
             $query->where('nronota', (int) $filtros['nronota']);
         }
@@ -1304,6 +1321,18 @@ class NotaMpResultadosService
 
         if (! empty($filtros['cambio_hasta'])) {
             $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+        }
+
+        if (! empty($filtros['seguimiento'])) {
+            $query->where('resultado_propio', $filtros['seguimiento']);
+        }
+
+        if (! empty($filtros['estado_mp'])) {
+            $term = '%'.$filtros['estado_mp'].'%';
+            $query->where(function ($q) use ($term): void {
+                $q->where('estado_mp_glosa', 'ilike', $term)
+                    ->orWhere('estado_mp_codigo', 'ilike', $term);
+            });
         }
 
         return $query;

@@ -890,6 +890,95 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame(1, substr_count($html, 'Comparar'));
     }
 
+    public function test_todas_las_notas_listado_exporta_y_boton_en_index(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 930,
+            'descripcion' => 'Pendiente en listado todas',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '930-1-COT26',
+            'nota_softland' => 93000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 930,
+            'codigo_proceso' => '930-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'fecha_ultimo_cambio' => '2026-05-02 11:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 932,
+            'descripcion' => 'Cerrada en listado todas',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '932-1-COT26',
+            'nota_softland' => 93200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 932,
+            'codigo_proceso' => '932-1-COT26',
+            'estado_mp_codigo' => 'cerrada',
+            'estado_mp_glosa' => 'Cerrada',
+            'organismo' => 'Municipalidad Test',
+            'razon_social_ganador' => 'GANADOR SPA',
+            'rut_ganador' => '22222222-2',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_publicacion' => '2026-04-01 10:00:00',
+            'fecha_ultimo_cambio' => '2026-04-10 11:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.index'))
+            ->assertOk()
+            ->assertSee('Todas las notas', false);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.todas'))
+            ->assertOk()
+            ->assertSee('930-1-COT26', false)
+            ->assertSee('932-1-COT26', false)
+            ->assertSee('Detalle', false)
+            ->getContent();
+
+        $this->assertSame(2, substr_count($html, 'Consultar MP'));
+        $this->assertSame(1, substr_count($html, 'Comparar'));
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.todas', ['seguimiento' => 'cerrada']))
+            ->assertOk()
+            ->assertSee('932-1-COT26', false)
+            ->assertDontSee('930-1-COT26', false);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.todas.exportar'))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->streamedContent();
+
+        $this->assertStringContainsString('930-1-COT26', $csv);
+        $this->assertStringContainsString('932-1-COT26', $csv);
+        $this->assertStringContainsString('Seguimiento', $csv);
+    }
+
     public function test_consultar_individual_responde_cambio_estado(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);

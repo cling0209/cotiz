@@ -73,6 +73,10 @@
             <i class="bi bi-hourglass-split"></i> Pendientes seguimiento
             <span class="badge text-bg-warning ms-1">{{ $pendientesSeguimientoCount }}</span>
         </a>
+        <a href="{{ route('admin.compra-agil.resultados.todas') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-list-ul"></i> Todas las notas
+            <span class="badge text-bg-primary ms-1">{{ $todasCount }}</span>
+        </a>
         <a href="{{ route('admin.compra-agil.resultados.analisis-precios') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-bar-chart-line"></i> Análisis de precios
         </a>

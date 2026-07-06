@@ -29,6 +29,7 @@ class CompraAgilResultadosController extends Controller
             'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
             'pendientesSeguimientoCount' => $this->resultados->contarPendientesSeguimiento(),
+            'todasCount' => $this->resultados->contarTodas(),
         ]);
     }
 
@@ -44,10 +45,7 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradas(Request $request): View
     {
-        $filtros = $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
-            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
-        ]);
+        $filtros = $this->filtrosListadoSeguimiento($request);
 
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
@@ -57,10 +55,7 @@ class CompraAgilResultadosController extends Controller
 
     public function pendientes(Request $request): View
     {
-        $filtros = $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
-            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
-        ]);
+        $filtros = $this->filtrosListadoSeguimiento($request);
 
         return view('admin.compra-agil.resultados-pendientes', [
             'pendientes' => $this->resultados->listadoPendientesPaginado(20, $filtros),
@@ -70,12 +65,72 @@ class CompraAgilResultadosController extends Controller
         ]);
     }
 
+    public function todas(Request $request): View
+    {
+        $filtros = $this->filtrosListadoSeguimiento($request);
+
+        return view('admin.compra-agil.resultados-todas', [
+            'todas' => $this->resultados->listadoTodasPaginado(20, $filtros),
+            'filtros' => $filtros,
+            'apiConfigurada' => $this->resultados->apiConfigurada(),
+            'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
+        ]);
+    }
+
+    public function todasExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $this->filtrosListadoSeguimiento($request);
+        $todas = $this->resultados->listadoTodasExportar($filtros);
+        $filename = 'todas_compra_agil_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($todas) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Nota',
+                'Código CA',
+                'Publicación',
+                'Último cambio',
+                'Organismo',
+                'Estado MP',
+                'Seguimiento',
+                'Prov. seleccionado',
+                'RUT ganador',
+                'Monto',
+                'Ejecutivo',
+                'Cliente',
+                'Consultado',
+                'Propio',
+                'OC',
+            ], ';');
+            foreach ($todas as $seg) {
+                fputcsv($out, [
+                    $seg->nronota,
+                    $seg->codigo_proceso,
+                    $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
+                    $seg->organismo,
+                    $seg->estado_mp_glosa ?: $seg->estado_mp_codigo,
+                    $seg->resultado_propio,
+                    $seg->razon_social_ganador,
+                    $seg->rut_ganador,
+                    $seg->monto_total_ganador,
+                    $this->resultados->nombreEjecutivoNota($seg),
+                    $seg->nota?->empresa,
+                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
+                    $seg->id_orden_compra,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function pendientesExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filtros = $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
-            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
-        ]);
+        $filtros = $this->filtrosListadoSeguimiento($request);
         $pendientes = $this->resultados->listadoPendientesExportar($filtros);
         $filename = 'pendientes_seguimiento_'.now()->format('Ymd_His').'.csv';
 
@@ -142,10 +197,7 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradasExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filtros = $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
-            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
-        ]);
+        $filtros = $this->filtrosListadoSeguimiento($request);
         $cerradas = $this->resultados->listadoCerradasExportar($filtros);
         $filename = 'cerradas_compra_agil_'.now()->format('Ymd_His').'.csv';
 
@@ -351,6 +403,18 @@ class CompraAgilResultadosController extends Controller
                     'monto_total' => $l->monto_total,
                 ]),
             ]),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filtrosListadoSeguimiento(Request $request): array
+    {
+        return $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+            'seguimiento', 'estado_mp',
         ]);
     }
 }
