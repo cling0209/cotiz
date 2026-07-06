@@ -14,7 +14,7 @@
 
     <p class="text-muted small mb-3">
         Cotizaciones consultadas en MP que aún no están cerradas (estado «Pendiente seguimiento»).
-        Use «Consultar MP» para actualizar el estado de una nota sin esperar la corrida masiva.
+        «Consultar MP» solo aparece cuando ya hay proveedor seleccionado en MP.
     </p>
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.pendientes') }}" class="card shadow-sm mb-3" data-no-loader>
@@ -102,31 +102,32 @@
                 </thead>
                 <tbody>
                     @forelse($pendientes as $seg)
-                        <tr class="{{ !empty($seg->es_ganador_propio) ? 'table-success' : '' }}">
+                        <tr class="pendiente-data-row {{ !empty($seg->es_ganador_propio) ? 'table-success' : '' }}"
+                            data-nronota="{{ $seg->nronota }}">
                             <td>{{ $seg->nronota }}</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $seg->nota?->usuarioRel?->fullName() ?: ($seg->nota?->usuario ?: '—') }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
-                            <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
-                            <td class="small">
+                            <td class="small cell-estado-mp">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
+                            <td class="small cell-proveedor">
                                 @if($seg->razon_social_ganador)
                                     {{ Str::limit($seg->razon_social_ganador, 30) }}
                                 @else
                                     —
                                 @endif
                             </td>
-                            <td class="text-end small">
+                            <td class="text-end small cell-monto">
                                 @if($seg->monto_total_ganador)
                                     ${{ number_format($seg->monto_total_ganador, 0, ',', '.') }}
                                 @else
                                     —
                                 @endif
                             </td>
-                            <td class="small text-muted">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
-                            <td class="text-nowrap">
-                                @if($apiConfigurada)
+                            <td class="small text-muted cell-consultado">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
+                            <td class="text-nowrap cell-acciones">
+                                @if($apiConfigurada && !empty($seg->tiene_proveedor_seleccionado))
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $seg->nronota }}"
@@ -135,8 +136,18 @@
                                         <i class="bi bi-cloud-download"></i> Consultar MP
                                     </button>
                                 @endif
-                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
+                                @if(!empty($seg->tiene_proveedor_seleccionado))
+                                    <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
+                                @endif
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
+                            </td>
+                        </tr>
+                        <tr class="consulta-mp-feedback d-none" data-nronota="{{ $seg->nronota }}">
+                            <td colspan="11" class="py-2 bg-light">
+                                <div class="progress" style="height: 0.5rem;">
+                                    <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <div class="consulta-mp-mensaje small mt-1 text-muted"></div>
                             </td>
                         </tr>
                     @empty
@@ -157,5 +168,5 @@
 @endsection
 
 @push('scripts')
-@include('admin.compra-agil.partials.script-consultar-mp-individual')
+@include('admin.compra-agil.partials.script-consultar-mp-pendientes')
 @endpush

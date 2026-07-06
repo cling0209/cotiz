@@ -804,8 +804,10 @@ class NotaMpResultadosService
             'codigo' => $codigo,
             'empresa' => trim((string) ($nota->empresa ?? '')),
             'estado_anterior' => $estadoAnterior,
+            'estado_anterior_glosa' => $anterior?->estado_mp_glosa ?: $anterior?->estado_mp_codigo,
             'estado_nuevo' => $estadoCodigo,
             'estado_glosa' => $estadoGlosa,
+            'resultado_anterior' => $anterior?->resultado_propio,
             'cambio' => $estadoAnterior !== $estadoCodigo
                 || ($anterior?->resultado_propio !== $resultadoPropio)
                 || ($anterior?->rut_ganador !== $rutGanador),
@@ -1047,7 +1049,25 @@ class NotaMpResultadosService
         return $items->each(function (NotaMpSeguimiento $seg) use ($rutPropio): void {
             $seg->es_ganador_propio = $rutPropio !== ''
                 && $this->ganador->rutsCoinciden($seg->rut_ganador, $rutPropio);
+            $seg->tiene_proveedor_seleccionado = $this->segTieneProveedorSeleccionado($seg);
         });
+    }
+
+    private function segTieneProveedorSeleccionado(NotaMpSeguimiento $seg): bool
+    {
+        if ($seg->estado_mp_codigo === 'proveedor_seleccionado') {
+            return true;
+        }
+
+        if (filled($seg->razon_social_ganador) || filled($seg->rut_ganador)) {
+            return true;
+        }
+
+        if ($seg->relationLoaded('ofertas') && $seg->ofertas->isNotEmpty()) {
+            return true;
+        }
+
+        return false;
     }
 
     public function nombreEjecutivoNota(?NotaMpSeguimiento $seg): string

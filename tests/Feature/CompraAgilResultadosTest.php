@@ -820,7 +820,7 @@ class CompraAgilResultadosTest extends TestCase
 
         Nota::query()->create([
             'nronota' => 920,
-            'descripcion' => 'Pendiente seguimiento',
+            'descripcion' => 'Pendiente seguimiento sin prov',
             'fecha' => now()->toDateString(),
             'usuario' => 'admin',
             'empresa' => 'Cliente',
@@ -843,17 +843,120 @@ class CompraAgilResultadosTest extends TestCase
             'ultimo_consultado_en' => now(),
         ]);
 
+        Nota::query()->create([
+            'nronota' => 921,
+            'descripcion' => 'Pendiente con prov seleccionado',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '921-1-COT26',
+            'nota_softland' => 92100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 921,
+            'codigo_proceso' => '921-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'estado_mp_glosa' => 'Proveedor seleccionado',
+            'organismo' => 'Municipalidad Test',
+            'razon_social_ganador' => 'PROVEEDOR SPA',
+            'rut_ganador' => '11111111-1',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'fecha_ultimo_cambio' => '2026-05-03 11:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
         $this->actingAs($admin)
             ->get(route('admin.compra-agil.resultados.index'))
             ->assertOk()
             ->assertSee('Pendientes seguimiento', false)
             ->assertSee('920-1-COT26', false);
 
-        $this->actingAs($admin)
+        $html = $this->actingAs($admin)
             ->get(route('admin.compra-agil.resultados.pendientes'))
             ->assertOk()
             ->assertSee('920-1-COT26', false)
-            ->assertSee('Consultar MP', false);
+            ->assertSee('921-1-COT26', false)
+            ->assertSee('Consultar MP', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'Consultar MP'));
+    }
+
+    public function test_consultar_individual_responde_cambio_estado(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 931,
+            'descripcion' => 'Consulta individual cambio',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '931-1-COT26',
+            'nota_softland' => 93100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 931,
+            'codigo_proceso' => '931-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'estado_mp_glosa' => 'Proveedor seleccionado',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'ultimo_consultado_en' => now()->subDay(),
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/931-1-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '931-1-COT26',
+                    'estado' => ['codigo' => 'proveedor_seleccionado', 'glosa' => 'Proveedor seleccionado'],
+                    'id_orden_compra' => 55070998,
+                    'institucion' => ['organismo_comprador' => 'Municipalidad'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-05-01 10:00',
+                        'fecha_cierre' => '2026-05-10 09:00',
+                        'fecha_ultimo_cambio' => '2026-05-11 11:00',
+                        'fecha_cancelacion' => null,
+                    ],
+                    'convocatoria' => [
+                        'estado_convocatoria' => 1,
+                        'descripcion' => 'Primer llamado',
+                        'fecha_cierre_primer_llamado' => '2026-05-10 09:00',
+                        'fecha_cierre_segundo_llamado' => null,
+                    ],
+                    'proveedores_cotizando' => [
+                        [
+                            'id_cotizacion' => 1,
+                            'rut_proveedor' => '76.779.675-7',
+                            'razon_social' => 'INTEGRAMUNDO SPA',
+                            'proveedor_seleccionado' => 1,
+                            'activo' => 1,
+                            'id_oc' => 55070998,
+                            'monto_total' => 120000,
+                            'productos_cotizados' => [],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.consultar-individual', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('resultado.cambio', true)
+            ->assertJsonPath('resultado.resultado_anterior', 'pendiente')
+            ->assertJsonPath('resultado.resultado_propio', 'cerrada')
+            ->assertJsonPath('resultado.estado_anterior', 'proveedor_seleccionado');
     }
 
     public function test_consultar_individual_actualiza_seguimiento(): void
