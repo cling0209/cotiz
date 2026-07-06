@@ -99,7 +99,7 @@
             <div>
                 <h2 class="h6 mb-0 d-inline">Novedades recientes</h2>
                 <p class="text-muted small mb-0 mt-1">
-                    Últimas 40 cotizaciones con cambio de estado en Mercado Público, ordenadas por fecha de último cambio.
+                    Hasta 40 cotizaciones (una fila por nota con su último cambio en MP), ordenadas por fecha de último cambio.
                     @if($ultimaCorrida)
                         Las marcadas como <span class="badge text-bg-info">Nueva</span> cambiaron en la última consulta
                         ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).

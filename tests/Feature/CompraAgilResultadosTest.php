@@ -125,6 +125,69 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertTrue($novedades->every(fn ($nov) => $nov->cambio_ultima_consulta));
     }
 
+    public function test_novedades_muestra_solo_ultimo_cambio_por_nota(): void
+    {
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'fin' => now(),
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 804,
+            'descripcion' => 'Test ultimo cambio',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '804-1-COT26',
+            'nota_softland' => 80400,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 804,
+            'codigo_proceso' => '804-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'rut_ganador' => '77399254-1',
+            'razon_social_ganador' => 'LIBRERIA ANTU LIMITADA',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-07-06 11:00:00',
+            'ultima_corrida_id' => $corrida->id,
+        ]);
+
+        NotaMpCorridaCambio::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 804,
+            'codigo_proceso' => '804-1-COT26',
+            'estado_anterior' => null,
+            'estado_nuevo' => 'cerrada',
+            'resultado_propio' => 'pendiente',
+        ]);
+
+        NotaMpCorridaCambio::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 804,
+            'codigo_proceso' => '804-1-COT26',
+            'estado_anterior' => 'cerrada',
+            'estado_nuevo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '77399254-1',
+            'razon_social_ganador' => 'LIBRERIA ANTU LIMITADA',
+        ]);
+
+        $novedades = $this->app->make(NotaMpResultadosService::class)->novedadesRecientes();
+
+        $this->assertCount(1, $novedades);
+        $this->assertSame(804, $novedades->first()->nronota);
+        $this->assertSame('proveedor_seleccionado', $novedades->first()->estado_nuevo);
+        $this->assertSame('cerrada', $novedades->first()->estado_anterior);
+    }
+
     public function test_novedades_no_marca_cambio_ultima_consulta_si_corrida_es_anterior(): void
     {
         $corridaAnterior = NotaMpCorrida::query()->create([

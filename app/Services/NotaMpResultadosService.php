@@ -1240,7 +1240,7 @@ class NotaMpResultadosService
     }
 
     /**
-     * Últimas novedades (cambios de estado MP) ordenadas por fecha de último cambio del proceso.
+     * Último cambio de estado MP por cotización, ordenado por fecha de último cambio del proceso.
      *
      * @return Collection<int, NotaMpCorridaCambio>
      */
@@ -1250,10 +1250,16 @@ class NotaMpResultadosService
         $rutPropio = $this->ganador->rutEmpresaPropia();
         $ultimaCorridaId = $this->ultimaCorrida()?->id;
 
+        $ultimoCambioPorNota = NotaMpCorridaCambio::query()
+            ->join('nota_mp_seguimientos as seg_filter', 'nota_mp_corrida_cambios.nronota', '=', 'seg_filter.nronota')
+            ->whereNotNull('seg_filter.fecha_ultimo_cambio')
+            ->groupBy('nota_mp_corrida_cambios.nronota')
+            ->selectRaw('MAX(nota_mp_corrida_cambios.id) as id');
+
         $items = NotaMpCorridaCambio::query()
             ->with(['nota', 'seguimiento'])
             ->join('nota_mp_seguimientos as seg', 'nota_mp_corrida_cambios.nronota', '=', 'seg.nronota')
-            ->whereNotNull('seg.fecha_ultimo_cambio')
+            ->whereIn('nota_mp_corrida_cambios.id', $ultimoCambioPorNota)
             ->orderByDesc('seg.fecha_ultimo_cambio')
             ->select('nota_mp_corrida_cambios.*')
             ->limit($limite)
