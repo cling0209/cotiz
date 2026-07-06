@@ -43,7 +43,10 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradas(Request $request): View
     {
-        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'proveedor', 'fecha_desde', 'fecha_hasta']);
+        $filtros = $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+        ]);
 
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
@@ -53,7 +56,10 @@ class CompraAgilResultadosController extends Controller
 
     public function cerradasExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $filtros = $request->only(['nronota', 'codigo_proceso', 'organismo', 'proveedor', 'fecha_desde', 'fecha_hasta']);
+        $filtros = $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+        ]);
         $cerradas = $this->resultados->listadoCerradasExportar($filtros);
         $filename = 'cerradas_compra_agil_'.now()->format('Ymd_His').'.csv';
 
@@ -64,6 +70,7 @@ class CompraAgilResultadosController extends Controller
                 'Nota',
                 'Código CA',
                 'Publicación',
+                'Último cambio',
                 'Organismo',
                 'Estado MP',
                 'Seguimiento',
@@ -81,6 +88,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->nronota,
                     $seg->codigo_proceso,
                     $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
                     $seg->organismo,
                     $seg->estado_mp_glosa ?: $seg->estado_mp_codigo,
                     $seg->resultado_propio,

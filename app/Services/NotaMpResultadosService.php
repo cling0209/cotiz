@@ -974,10 +974,8 @@ class NotaMpResultadosService
      */
     public function listadoCerradas(int $limite = 50): Collection
     {
-        $items = $this->buildCerradasQuery([])
+        $items = $this->aplicarOrdenCerradas($this->buildCerradasQuery([]))
             ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
-            ->orderByRaw('fecha_publicacion IS NULL')
-            ->orderByDesc('fecha_publicacion')
             ->limit($limite)
             ->get();
 
@@ -1016,7 +1014,26 @@ class NotaMpResultadosService
             $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
         }
 
+        if (! empty($filtros['cambio_desde'])) {
+            $query->where('fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['cambio_hasta'])) {
+            $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+        }
+
         return $query;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     */
+    private function aplicarOrdenCerradas(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query
+            ->orderByRaw('fecha_ultimo_cambio IS NULL')
+            ->orderByDesc('fecha_ultimo_cambio');
     }
 
     /**
@@ -1147,10 +1164,8 @@ class NotaMpResultadosService
 
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $paginator = $this->buildCerradasQuery($filtros)
+        $paginator = $this->aplicarOrdenCerradas($this->buildCerradasQuery($filtros))
             ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
-            ->orderByRaw('fecha_publicacion IS NULL')
-            ->orderByDesc('fecha_publicacion')
             ->paginate($porPagina)
             ->withQueryString();
 
@@ -1164,10 +1179,8 @@ class NotaMpResultadosService
      */
     public function listadoCerradasExportar(array $filtros = [], int $limite = 10000): Collection
     {
-        $items = $this->buildCerradasQuery($filtros)
+        $items = $this->aplicarOrdenCerradas($this->buildCerradasQuery($filtros))
             ->with(['nota.usuarioRel'])
-            ->orderByRaw('fecha_publicacion IS NULL')
-            ->orderByDesc('fecha_publicacion')
             ->limit($limite)
             ->get();
 

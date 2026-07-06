@@ -680,4 +680,74 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('Ana Ejecutiva', $response->streamedContent());
         $this->assertStringContainsString('Sí', $response->streamedContent());
     }
+
+    public function test_cerradas_ordena_y_filtra_por_fecha_ultimo_cambio(): void
+    {
+        $admin = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        foreach ([911, 912, 913] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Cerrada '.$nronota,
+                'fecha' => now()->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => $nronota * 100,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 911,
+            'codigo_proceso' => '911-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-06-01 10:00:00',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 912,
+            'codigo_proceso' => '912-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-06-15 10:00:00',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 913,
+            'codigo_proceso' => '913-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'fecha_ultimo_cambio' => '2026-05-01 10:00:00',
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.cerradas'));
+
+        $response->assertOk();
+        $pos912 = strpos($response->getContent(), '912-1-COT26');
+        $pos911 = strpos($response->getContent(), '911-1-COT26');
+        $pos913 = strpos($response->getContent(), '913-1-COT26');
+        $this->assertNotFalse($pos912);
+        $this->assertNotFalse($pos911);
+        $this->assertNotFalse($pos913);
+        $this->assertTrue($pos912 < $pos911);
+        $this->assertTrue($pos911 < $pos913);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.cerradas', [
+                'cambio_desde' => '2026-06-01',
+                'cambio_hasta' => '2026-06-30',
+            ]))
+            ->assertOk()
+            ->assertSee('912-1-COT26', false)
+            ->assertSee('911-1-COT26', false)
+            ->assertDontSee('913-1-COT26', false);
+    }
 }

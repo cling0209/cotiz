@@ -46,6 +46,16 @@
                         value="{{ $filtros['fecha_hasta'] ?? '' }}">
                 </div>
                 <div class="col-auto">
+                    <label for="f-cambio-desde" class="form-label small mb-0">Último cambio desde</label>
+                    <input type="date" class="form-control form-control-sm" id="f-cambio-desde" name="cambio_desde"
+                        value="{{ $filtros['cambio_desde'] ?? '' }}">
+                </div>
+                <div class="col-auto">
+                    <label for="f-cambio-hasta" class="form-label small mb-0">Último cambio hasta</label>
+                    <input type="date" class="form-control form-control-sm" id="f-cambio-hasta" name="cambio_hasta"
+                        value="{{ $filtros['cambio_hasta'] ?? '' }}">
+                </div>
+                <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-search"></i> Filtrar
                     </button>
@@ -75,6 +85,7 @@
                         <th>Nota</th>
                         <th>Código CA</th>
                         <th>Publicación</th>
+                        <th>Último cambio</th>
                         <th>Ejecutivo</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
@@ -91,6 +102,7 @@
                             <td>{{ $seg->nronota }}</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $seg->nota?->usuarioRel?->fullName() ?: ($seg->nota?->usuario ?: '—') }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
                             <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
@@ -116,7 +128,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="11" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>
