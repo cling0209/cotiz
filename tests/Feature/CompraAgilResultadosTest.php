@@ -1034,4 +1034,76 @@ class CompraAgilResultadosTest extends TestCase
             'finalizado' => true,
         ]);
     }
+
+    public function test_consultar_individual_permitido_con_corrida_masiva_en_curso(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subMinutes(5),
+            'estado' => 'running',
+            'total_notas' => 50,
+            'notas_procesadas' => 10,
+            'notas_con_cambio' => 2,
+            'pendientes_json' => [],
+        ]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 932,
+            'descripcion' => 'Consulta individual con corrida masiva',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '932-1-COT26',
+            'nota_softland' => 93200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 932,
+            'codigo_proceso' => '932-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'ultimo_consultado_en' => now()->subDay(),
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/932-1-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '932-1-COT26',
+                    'estado' => ['codigo' => 'cerrada', 'glosa' => 'Cerrada'],
+                    'id_orden_compra' => null,
+                    'institucion' => ['organismo_comprador' => 'Ejercito'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-07-01 10:00',
+                        'fecha_cierre' => '2026-07-05 09:00',
+                        'fecha_ultimo_cambio' => '2026-07-04 17:05',
+                        'fecha_cancelacion' => null,
+                    ],
+                    'convocatoria' => [
+                        'estado_convocatoria' => 1,
+                        'descripcion' => 'Primer llamado',
+                        'fecha_cierre_primer_llamado' => '2026-07-05 09:00',
+                        'fecha_cierre_segundo_llamado' => null,
+                    ],
+                    'proveedores_cotizando' => [],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.consultar-individual', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'running',
+            'total_notas' => 50,
+        ]);
+    }
 }

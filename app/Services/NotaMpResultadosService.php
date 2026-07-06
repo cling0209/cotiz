@@ -1213,16 +1213,12 @@ class NotaMpResultadosService
     }
 
     /**
-     * Consulta una sola cotización en Mercado Público (fuera de la corrida masiva).
+     * Consulta una sola cotización en Mercado Público (síncrona, independiente de la corrida masiva).
      *
      * @return array<string, mixed>
      */
     public function consultarNotaIndividual(int $nronota, string $usuario): array
     {
-        if ($this->corridaEnCurso() !== null) {
-            throw new RuntimeException('Ya hay una consulta masiva en curso. Espere a que finalice o cancélela.');
-        }
-
         if (! $this->api->isConfigured()) {
             throw new RuntimeException('MERCADOPUBLICO_TICKET no configurado.');
         }

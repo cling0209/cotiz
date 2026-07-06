@@ -18,8 +18,8 @@
     </p>
 
     @if($corridaEnCurso)
-        <div class="alert alert-warning small py-2 mb-3">
-            Hay una consulta masiva en curso. Puede consultar notas individuales; si falla, espere a que termine la corrida masiva.
+        <div class="alert alert-info small py-2 mb-3">
+            Hay una consulta masiva en curso. Puede usar «Consultar MP» en cada fila; la consulta individual no se bloquea.
         </div>
     @endif
 
