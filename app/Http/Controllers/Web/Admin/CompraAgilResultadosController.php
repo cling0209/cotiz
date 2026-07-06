@@ -130,14 +130,15 @@ class CompraAgilResultadosController extends Controller
         $lineas = $this->resultados->analisisPreciosExportar($filtros);
 
         $filename = 'analisis_precios_' . now()->format('Ymd_His') . '.csv';
+        $sistema = config('cotiz.sistema');
 
-        return response()->streamDownload(function () use ($lineas) {
+        return response()->streamDownload(function () use ($lineas, $sistema) {
             $out = fopen('php://output', 'w');
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Código', 'Producto', 'Descripción', 'P.Unitario', 'Cantidad', 'Total',
                 'Nota', 'Código CA', 'Publicación', 'Organismo', 'Proveedor', 'RUT',
-                'Prov. seleccionado', 'Propio', 'Dif.%', 'P.Unit. Romulo', 'Cant. Romulo', 'Total Romulo',
+                'Prov. seleccionado', 'Propio', 'Dif.%', 'P.Unit. '.$sistema, 'Cant. '.$sistema, 'Total '.$sistema,
             ], ';');
             foreach ($lineas as $l) {
                 $diffPct = '';

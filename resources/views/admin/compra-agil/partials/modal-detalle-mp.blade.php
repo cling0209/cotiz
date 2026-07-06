@@ -30,6 +30,7 @@
 <script>
 (function () {
     const urlDetalle = @json(url('/admin/compra-agil/resultados/detalle/__NRO__'));
+    const cotizSistema = @json(config('cotiz.sistema'));
     const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
     const fmtFecha = (iso) => {
         if (!iso) return '—';
@@ -60,7 +61,7 @@
                 html += `Estado: ${s.estado_mp_glosa || s.estado_mp_codigo || '—'} · Monto total: ${fmtMonto(s.monto_total_ganador)}</p>`;
 
                 if (!ganador && !propio) {
-                    html += '<div class="alert alert-warning small py-2">No se encontraron ofertas del proveedor seleccionado ni de Romulo para esta nota.</div>';
+                    html += '<div class="alert alert-warning small py-2">No se encontraron ofertas del proveedor seleccionado ni de ' + cotizSistema + ' para esta nota.</div>';
                     body.innerHTML = html;
                     return;
                 }
@@ -75,7 +76,7 @@
                 }
                 html += '</div></div>';
                 html += '<div class="col-md-6"><div class="border rounded p-2 h-100' + (propio ? ' border-primary' : '') + '">';
-                html += '<p class="small fw-semibold mb-1 text-primary"><i class="bi bi-building"></i> Romulo</p>';
+                html += '<p class="small fw-semibold mb-1 text-primary"><i class="bi bi-building"></i> ' + cotizSistema + '</p>';
                 if (propio) {
                     html += `<p class="small mb-0">${propio.razon_social || '—'} <span class="text-muted">(${propio.rut_proveedor || '—'})</span><br>Total: ${fmtMonto(propio.monto_total)}`;
                     if (propio.inadmisible) html += ' · <span class="text-danger">Inadmisible</span>';
@@ -105,7 +106,7 @@
                 html += '<thead class="table-light"><tr>';
                 html += '<th>Producto</th><th>Cant.</th>';
                 html += '<th class="text-end table-success">P.Unit. Prov. sel.</th>';
-                html += '<th class="text-end table-primary">P.Unit. Romulo</th>';
+                html += '<th class="text-end table-primary">P.Unit. ' + cotizSistema + '</th>';
                 html += '<th class="text-end">Diferencia</th>';
                 html += '</tr></thead><tbody>';
 

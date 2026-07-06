@@ -108,9 +108,9 @@
                             <th>Proveedor</th>
                             <th>RUT</th>
                             <th class="text-end">Dif. %</th>
-                            <th class="text-end table-warning">P.Unit. Romulo</th>
-                            <th class="text-end">Cant. Romulo</th>
-                            <th class="text-end">Total Romulo</th>
+                            <th class="text-end table-warning">P.Unit. {{ config('cotiz.sistema') }}</th>
+                            <th class="text-end">Cant. {{ config('cotiz.sistema') }}</th>
+                            <th class="text-end">Total {{ config('cotiz.sistema') }}</th>
                             <th></th>
                         </tr>
                     </thead>

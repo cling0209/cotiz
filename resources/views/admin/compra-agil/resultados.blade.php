@@ -104,7 +104,7 @@
                         Las marcadas como <span class="badge text-bg-info">Nueva</span> cambiaron en la última consulta
                         ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).
                     @endif
-                    Filas en verde: ganador propio (Romulo).
+                    Filas en verde: ganador propio ({{ config('cotiz.sistema') }}).
                 </p>
             </div>
             <div class="d-flex align-items-center gap-2">
@@ -167,7 +167,7 @@
                             </td>
                             <td class="small">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
                             <td class="text-nowrap">
-                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Prov. seleccionado vs Romulo"><i class="bi bi-arrow-left-right"></i> Comparar</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
                         </tr>
