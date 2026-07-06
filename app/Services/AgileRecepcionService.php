@@ -77,11 +77,12 @@ class AgileRecepcionService
         $nota->load('detalle.producto');
 
         $lineas = $nota->detalle->map(function (NotaDetalle $linea) {
+            $producto = $linea->resolveProducto();
             [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua(
-                $linea->producto?->prod_valor_fecha
+                $producto?->prod_valor_fecha
             );
 
-            $codigoInterno = trim((string) $linea->prod_item);
+            $codigoInterno = $linea->codigoProducto();
             if ($codigoInterno === '' || $codigoInterno === '0') {
                 $codigoInterno = (string) ($this->agileMaeprodService->codigoInternoParaAgile(
                     (string) $linea->prod_item_agile
@@ -91,7 +92,7 @@ class AgileRecepcionService
             return [
                 'linea' => $linea,
                 'prod_item' => $codigoInterno,
-                'prod_nombre' => $linea->producto?->prod_nombre ?? $linea->prod_descripcion_agile ?? $linea->prod_item_agile,
+                'prod_nombre' => $producto?->prod_nombre ?? $linea->prod_descripcion_agile ?? $linea->prod_item_agile,
                 'prod_valor_fecha' => $fechaFmt,
                 'prod_valor_fecha_antigua' => $fechaAntigua,
                 'subtotal' => $linea->lineTotal(),

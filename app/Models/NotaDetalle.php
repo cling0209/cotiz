@@ -37,6 +37,18 @@ class NotaDetalle extends Model
         return $this->belongsTo(Maeprod::class, 'prod_item', 'prod_item');
     }
 
+    public function codigoProducto(): string
+    {
+        return trim((string) ($this->prod_item ?? ''));
+    }
+
+    public function resolveProducto(): ?Maeprod
+    {
+        $codigo = $this->codigoProducto();
+
+        return $codigo !== '' ? Maeprod::query()->find($codigo) : null;
+    }
+
     public function lineTotal(): int
     {
         return $this->prod_valor * $this->cantidad;

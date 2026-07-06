@@ -21,9 +21,22 @@ class NotaDetalleService
     {
         $lineas = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
-            ->with('producto')
             ->orderBy('orden')
             ->get();
+
+        $codigosProducto = $lineas
+            ->map(fn (NotaDetalle $linea) => $linea->codigoProducto())
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $maeprods = $codigosProducto === []
+            ? collect()
+            : Maeprod::query()
+                ->whereIn('prod_item', $codigosProducto)
+                ->get()
+                ->keyBy('prod_item');
 
         $agileIds = $lineas
             ->map(fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')))
@@ -45,11 +58,12 @@ class NotaDetalleService
             ->pluck('total', 'prod_item');
 
         return $lineas
-            ->map(function (NotaDetalle $linea) use ($descripcionesAgile, $repetidosPorProd) {
+            ->map(function (NotaDetalle $linea) use ($descripcionesAgile, $repetidosPorProd, $maeprods) {
                 return $this->mapearFilaLinea(
                     $linea,
                     $descripcionesAgile,
                     (int) ($repetidosPorProd[$linea->prod_item] ?? 0),
+                    $maeprods->get($linea->codigoProducto()),
                 );
             });
     }
@@ -59,8 +73,6 @@ class NotaDetalleService
      */
     public function filaLineaParaFormulario(Nota $nota, NotaDetalle $linea): array
     {
-        $linea->loadMissing('producto');
-
         $agileId = trim((string) ($linea->prod_item_agile ?? ''));
         $descripcionesAgile = $agileId === ''
             ? collect()
@@ -73,16 +85,23 @@ class NotaDetalleService
             ->where('prod_item', $linea->prod_item)
             ->count();
 
-        return $this->mapearFilaLinea($linea, $descripcionesAgile, $repetidos);
+        return $this->mapearFilaLinea($linea, $descripcionesAgile, $repetidos, $linea->resolveProducto());
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function mapearFilaLinea(NotaDetalle $linea, Collection $descripcionesAgile, int $repetidos): array
-    {
+    private function mapearFilaLinea(
+        NotaDetalle $linea,
+        Collection $descripcionesAgile,
+        int $repetidos,
+        ?Maeprod $producto = null,
+    ): array {
+        $producto ??= $linea->resolveProducto();
+        $codigoProducto = $linea->codigoProducto();
+
         [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua(
-            $linea->producto?->prod_valor_fecha
+            $producto?->prod_valor_fecha
         );
 
         $agileId = trim((string) ($linea->prod_item_agile ?? ''));
@@ -93,12 +112,12 @@ class NotaDetalleService
 
         return [
             'linea' => $linea,
-            'prod_nombre' => $linea->producto?->prod_nombre
-                ?? ($linea->prod_descripcion_agile ?: $linea->prod_item),
-            'prod_familia' => $linea->producto?->prod_familia,
-            'prod_imagen' => $linea->producto?->imageUrl(),
-            'image_url' => $linea->producto?->imageUrl(),
-            'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
+            'prod_nombre' => $producto?->prod_nombre
+                ?? ($linea->prod_descripcion_agile ?: $codigoProducto),
+            'prod_familia' => $producto?->prod_familia,
+            'prod_imagen' => $producto?->imageUrl(),
+            'image_url' => $producto?->imageUrl(),
+            'prod_item_softland' => $producto?->prod_item_softland ?? '',
             'prod_item_agile' => $agileId,
             'prod_descripcion_agile' => $descripcionAgile,
             'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
@@ -121,7 +140,7 @@ class NotaDetalleService
             $prodItem = $linea->prod_item;
             $orden = (int) $linea->orden;
 
-            $producto = Maeprod::query()->find($prodItem);
+            $producto = Maeprod::query()->find(trim((string) $prodItem));
             $prodValor = (int) ($datos['prod_valor'] ?? $linea->prod_valor);
             $cantidad = (int) ($datos['cantidad'] ?? $linea->cantidad);
             $costo = (int) ($datos['prod_valor_costo'] ?? $linea->prod_valor_costo);
@@ -187,7 +206,7 @@ class NotaDetalleService
             $this->agileMaeprodService->registrarSiNoExiste($agileId, $descripcionAgile);
         }
 
-        $codigoInterno = trim((string) $linea->prod_item);
+        $codigoInterno = $linea->codigoProducto();
         if ($codigoInterno === '' || $codigoInterno === '0' || $codigoInterno === $agileId) {
             return;
         }
@@ -226,7 +245,6 @@ class NotaDetalleService
 
             $lineas = NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
-                ->with('producto')
                 ->orderBy('orden')
                 ->get();
 
@@ -242,7 +260,7 @@ class NotaDetalleService
                     'prod_valor' => $nuevoValor,
                     'cantidad' => $linea->cantidad,
                     'prod_valor_costo' => $costo,
-                    'prod_item_softland' => $linea->producto?->prod_item_softland ?? '',
+                    'prod_item_softland' => $linea->resolveProducto()?->prod_item_softland ?? '',
                 ], $usuarioUpd);
 
                 $actualizadas[] = [
@@ -276,7 +294,7 @@ class NotaDetalleService
         ?string $prodDescripcionAgile = null,
     ): NotaDetalle {
         return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
-            $producto = Maeprod::query()->find($prodItem);
+            $producto = Maeprod::query()->find(trim($prodItem));
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
 
             if ($producto) {
@@ -333,7 +351,7 @@ class NotaDetalleService
             return true;
         }
 
-        return $linea->producto === null;
+        return $linea->resolveProducto() === null;
     }
 
     public function agregarLineaAgilePendiente(

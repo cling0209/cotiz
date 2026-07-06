@@ -73,18 +73,18 @@ class NotaEnvioRelayService
 
     private function enviarDetalle(string $destino, Nota $nota, NotaDetalle $linea, int $nronotaDestino): void
     {
-        $producto = $linea->producto;
+        $producto = $linea->resolveProducto();
         $payload = [
             'accion' => 'graba_detalle',
             'nronota' => $nronotaDestino,
-            'prod_item' => $linea->prod_item,
+            'prod_item' => $linea->codigoProducto(),
             'prod_valor' => (int) $linea->prod_valor,
             'cantidad' => (int) $linea->cantidad,
             'orden' => (int) $linea->orden,
             'prod_valor_costo' => (int) $linea->prod_valor_costo,
             'prod_item_agile' => (string) ($linea->prod_item_agile ?? ''),
             'prod_descripcion_agile' => (string) ($linea->prod_descripcion_agile ?? ''),
-            'prod_nombre' => $producto?->prod_nombre ?? $linea->prod_descripcion_agile ?? $linea->prod_item,
+            'prod_nombre' => $producto?->prod_nombre ?? $linea->prod_descripcion_agile ?? $linea->codigoProducto(),
             'prod_familia' => $producto?->prod_familia ?? '',
             'prod_imagen' => $producto?->prod_imagen ?? '',
             'prod_gramaje' => $producto?->prod_gramaje ?? '',
