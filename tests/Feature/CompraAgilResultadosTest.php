@@ -1005,6 +1005,8 @@ class CompraAgilResultadosTest extends TestCase
             ->getContent();
 
         $this->assertSame(0, substr_count($html, 'btn-detalle-mp'));
+        $this->assertStringContainsString('dataRowTodas', $html);
+        $this->assertStringContainsString('actualizarFilaTodas', $html);
     }
 
     public function test_consultar_individual_responde_cambio_estado(): void

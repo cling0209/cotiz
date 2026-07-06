@@ -62,6 +62,7 @@
         desierta: 'Desierta',
         cancelada: 'Cancelada',
         no_encontrada: 'No existe en MP',
+        sin_consultar: 'Sin consultar MP',
     };
 
     const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
@@ -110,6 +111,10 @@
         return document.querySelector('tr.novedad-data-row[data-nronota="' + nronota + '"]');
     }
 
+    function dataRowTodas(nronota) {
+        return document.querySelector('tr.todas-data-row[data-nronota="' + nronota + '"]');
+    }
+
     function badgeSeguimientoHtml(codigo) {
         const labels = {
             cerrada: ['success', 'Cerrada'],
@@ -117,6 +122,7 @@
             desierta: ['secondary', 'Desierta'],
             cancelada: ['secondary', 'Cancelada'],
             no_encontrada: ['dark', 'No existe en MP'],
+            sin_consultar: ['info', 'Sin consultar MP'],
         };
         const info = labels[codigo] || ['secondary', codigo || '—'];
         return '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
@@ -161,6 +167,8 @@
             let txt = 'Cambio detectado: ' + antGlosa + ' → ' + nueGlosa;
             if (r.resultado_anterior !== r.resultado_propio) {
                 txt += ' · Seguimiento: ' + antSeg + ' → ' + nueSeg;
+            } else if (r.resultado_anterior == null && r.resultado_propio) {
+                txt += ' · Seguimiento: ' + nueSeg;
             }
             return txt;
         }
@@ -168,14 +176,71 @@
         return 'Sin cambios de estado (' + nueGlosa + ' · ' + nueSeg + ')';
     }
 
-    function actualizarFilaPendiente(nronota, r) {
-        const row = dataRowPendiente(nronota);
+    function cambioSeguimiento(r) {
+        return r.resultado_anterior != null
+            && r.resultado_propio != null
+            && r.resultado_anterior !== r.resultado_propio;
+    }
+
+    function crearBotonDetalle(nronota) {
+        const det = document.createElement('button');
+        det.type = 'button';
+        det.className = 'btn btn-outline-secondary btn-sm btn-detalle-mp';
+        det.dataset.nronota = String(nronota);
+        det.textContent = 'Detalle';
+        return det;
+    }
+
+    function crearBotonComparar(nronota) {
+        const cmp = document.createElement('button');
+        cmp.type = 'button';
+        cmp.className = 'btn btn-outline-primary btn-sm btn-comparar-mp';
+        cmp.dataset.nronota = String(nronota);
+        cmp.title = 'Comparar precios';
+        cmp.innerHTML = '<i class="bi bi-arrow-left-right"></i> Comparar';
+        return cmp;
+    }
+
+    function actualizarAccionesFila(row, nronota, r) {
+        const acciones = row.querySelector('.cell-acciones');
+        if (!acciones) return;
+
+        const btnConsultar = acciones.querySelector('.btn-consultar-mp-individual');
+        if (btnConsultar && r.resultado_propio !== 'pendiente') {
+            btnConsultar.remove();
+        } else if (btnConsultar) {
+            btnConsultar.disabled = false;
+            btnConsultar.dataset.consultando = '0';
+        }
+
+        const puedeComparar = r.razon_social_ganador
+            || r.estado_nuevo === 'proveedor_seleccionado'
+            || r.estado_nuevo === 'cerrada';
+
+        if (puedeComparar && !acciones.querySelector('.btn-comparar-mp')) {
+            const cmp = crearBotonComparar(nronota);
+            const det = acciones.querySelector('.btn-detalle-mp');
+            if (det) {
+                acciones.insertBefore(cmp, det);
+            } else {
+                acciones.appendChild(cmp);
+            }
+        }
+
+        if (r.resultado_propio && r.resultado_propio !== 'sin_consultar' && !acciones.querySelector('.btn-detalle-mp')) {
+            acciones.appendChild(crearBotonDetalle(nronota));
+        }
+    }
+
+    function actualizarFilaTablaComun(row, nronota, r) {
         if (!row) return;
 
         const estadoCell = row.querySelector('.cell-estado-mp');
         if (estadoCell) {
-            estadoCell.textContent = r.estado_glosa || r.estado_nuevo || '—';
-            if (cambioEstadoMp(r)) {
+            const anterior = estadoCell.textContent.trim();
+            const nuevo = r.estado_glosa || r.estado_nuevo || '—';
+            estadoCell.textContent = nuevo;
+            if (cambioEstadoMp(r) || anterior === '—' || anterior === '') {
                 destellarCambio(estadoCell);
             }
         }
@@ -200,38 +265,26 @@
 
         const segCell = row.querySelector('.cell-seguimiento');
         if (segCell && r.resultado_propio) {
+            const eraSinConsultar = segCell.textContent.trim().includes('Sin consultar MP');
             segCell.innerHTML = badgeSeguimientoHtml(r.resultado_propio);
-            if (cambioSeguimiento(r)) {
+            if (cambioSeguimiento(r) || eraSinConsultar) {
                 destellarCambio(segCell.querySelector('.badge') || segCell);
             }
         }
 
-        const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
-        if (btnConsultar && r.resultado_propio !== 'pendiente') {
-            btnConsultar.remove();
-        }
-
-        if (!r.finalizado && r.razon_social_ganador) {
-            const acciones = row.querySelector('.cell-acciones');
-            if (acciones && !acciones.querySelector('.btn-comparar-mp')) {
-                const cmp = document.createElement('button');
-                cmp.type = 'button';
-                cmp.className = 'btn btn-outline-primary btn-sm btn-comparar-mp';
-                cmp.dataset.nronota = String(nronota);
-                cmp.title = 'Comparar precios';
-                cmp.innerHTML = '<i class="bi bi-arrow-left-right"></i> Comparar';
-                const det = acciones.querySelector('.btn-detalle-mp');
-                if (det) {
-                    acciones.insertBefore(cmp, det);
-                } else {
-                    acciones.appendChild(cmp);
-                }
-            }
-        }
+        actualizarAccionesFila(row, nronota, r);
 
         if (r.cambio) {
             row.classList.add('table-info');
         }
+    }
+
+    function actualizarFilaPendiente(nronota, r) {
+        actualizarFilaTablaComun(dataRowPendiente(nronota), nronota, r);
+    }
+
+    function actualizarFilaTodas(nronota, r) {
+        actualizarFilaTablaComun(dataRowTodas(nronota), nronota, r);
     }
 
     function actualizarFilaNovedad(nronota, r) {
@@ -269,16 +322,14 @@
 
         const segCell = row.querySelector('.cell-seguimiento');
         if (segCell && r.resultado_propio) {
+            const eraSinConsultar = segCell.textContent.trim().includes('Sin consultar MP');
             segCell.innerHTML = badgeSeguimientoHtml(r.resultado_propio);
-            if (cambioSeguimiento(r)) {
+            if (cambioSeguimiento(r) || eraSinConsultar) {
                 destellarCambio(segCell.querySelector('.badge') || segCell);
             }
         }
 
-        const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
-        if (btnConsultar && r.resultado_propio !== 'pendiente') {
-            btnConsultar.remove();
-        }
+        actualizarAccionesFila(row, nronota, r);
 
         if (r.cambio) {
             row.classList.add('table-info');
@@ -288,6 +339,8 @@
     function actualizarFilaConsultaMp(nronota, r) {
         if (dataRowPendiente(nronota)) {
             actualizarFilaPendiente(nronota, r);
+        } else if (dataRowTodas(nronota)) {
+            actualizarFilaTodas(nronota, r);
         } else {
             actualizarFilaNovedad(nronota, r);
         }
