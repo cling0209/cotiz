@@ -884,7 +884,8 @@ class CompraAgilResultadosTest extends TestCase
             ->assertSee('Consultar MP', false)
             ->getContent();
 
-        $this->assertSame(1, substr_count($html, 'Consultar MP'));
+        $this->assertSame(2, substr_count($html, 'Consultar MP'));
+        $this->assertSame(1, substr_count($html, 'Comparar'));
     }
 
     public function test_consultar_individual_responde_cambio_estado(): void

@@ -13,8 +13,8 @@
     </div>
 
     <p class="text-muted small mb-3">
-        Cotizaciones consultadas en MP que aún no están cerradas (estado «Pendiente seguimiento»).
-        «Consultar MP» solo aparece cuando ya hay proveedor seleccionado en MP.
+        Cotizaciones con seguimiento «Pendiente» en el sistema. Use «Consultar MP» para actualizar el estado en Mercado Público
+        (barra de progreso y resultado debajo de cada fila). «Comparar» solo si ya hay proveedor seleccionado en MP.
     </p>
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.pendientes') }}" class="card shadow-sm mb-3" data-no-loader>
@@ -94,6 +94,7 @@
                         <th>Ejecutivo</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
+                        <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
                         <th>Consultado</th>
@@ -110,7 +111,8 @@
                             <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $seg->nota?->usuarioRel?->fullName() ?: ($seg->nota?->usuario ?: '—') }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
-                            <td class="small cell-estado-mp">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
+                            <td class="small cell-estado-mp">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo ?: '—' }}</td>
+                            <td class="cell-seguimiento">@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $seg->resultado_propio])</td>
                             <td class="small cell-proveedor">
                                 @if($seg->razon_social_ganador)
                                     {{ Str::limit($seg->razon_social_ganador, 30) }}
@@ -127,7 +129,7 @@
                             </td>
                             <td class="small text-muted cell-consultado">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
                             <td class="text-nowrap cell-acciones">
-                                @if($apiConfigurada && !empty($seg->tiene_proveedor_seleccionado))
+                                @if($apiConfigurada)
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $seg->nronota }}"
@@ -143,7 +145,7 @@
                             </td>
                         </tr>
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $seg->nronota }}">
-                            <td colspan="11" class="py-2 bg-light">
+                            <td colspan="12" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">
                                     <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
                                 </div>
@@ -151,7 +153,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="11" class="text-center text-muted py-4">No hay cotizaciones pendientes de seguimiento.</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted py-4">No hay cotizaciones pendientes de seguimiento.</td></tr>
                     @endforelse
                 </tbody>
             </table>

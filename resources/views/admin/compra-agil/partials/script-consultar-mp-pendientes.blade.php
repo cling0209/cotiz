@@ -99,9 +99,34 @@
             consultadoCell.textContent = now.toLocaleDateString('es-CL') + ' ' + now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
         }
 
+        const segCell = row.querySelector('.cell-seguimiento');
+        if (segCell && r.resultado_propio) {
+            const labels = { cerrada: ['success', 'Cerrada'], pendiente: ['warning', 'Pendiente seguimiento'], desierta: ['secondary', 'Desierta'], cancelada: ['secondary', 'Cancelada'], no_encontrada: ['dark', 'No existe en MP'] };
+            const info = labels[r.resultado_propio] || ['secondary', r.resultado_propio];
+            segCell.innerHTML = '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
+        }
+
         const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
-        if (btnConsultar && (r.finalizado || r.resultado_propio !== 'pendiente')) {
+        if (btnConsultar && r.resultado_propio !== 'pendiente') {
             btnConsultar.remove();
+        }
+
+        if (!r.finalizado && r.razon_social_ganador) {
+            const acciones = row.querySelector('.cell-acciones');
+            if (acciones && !acciones.querySelector('.btn-comparar-mp')) {
+                const cmp = document.createElement('button');
+                cmp.type = 'button';
+                cmp.className = 'btn btn-outline-primary btn-sm btn-comparar-mp';
+                cmp.dataset.nronota = String(nronota);
+                cmp.title = 'Comparar precios';
+                cmp.innerHTML = '<i class="bi bi-arrow-left-right"></i> Comparar';
+                const det = acciones.querySelector('.btn-detalle-mp');
+                if (det) {
+                    acciones.insertBefore(cmp, det);
+                } else {
+                    acciones.appendChild(cmp);
+                }
+            }
         }
     }
 
