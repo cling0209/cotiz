@@ -84,8 +84,9 @@ class AgileRecepcionService
 
             $codigoInterno = $linea->codigoProducto();
             if ($codigoInterno === '' || $codigoInterno === '0') {
-                $codigoInterno = (string) ($this->agileMaeprodService->codigoInternoParaAgile(
-                    (string) $linea->prod_item_agile
+                $codigoInterno = (string) ($this->agileMaeprodService->codigoInternoParaLinea(
+                    (string) $linea->prod_item_agile,
+                    (string) ($linea->prod_descripcion_agile ?? ''),
                 ) ?? '');
             }
 
@@ -237,7 +238,10 @@ class AgileRecepcionService
 
                 $codigoInterno = trim((string) $linea->prod_item);
                 if ($codigoInterno === '' || $codigoInterno === '0') {
-                    $codigoInterno = $this->agileMaeprodService->codigoInternoParaAgile((string) $linea->prod_item_agile) ?? '';
+                    $codigoInterno = $this->agileMaeprodService->codigoInternoParaLinea(
+                        (string) $linea->prod_item_agile,
+                        (string) ($linea->prod_descripcion_agile ?? ''),
+                    ) ?? '';
                 }
 
                 if ($codigoInterno !== '' && $codigoInterno !== '0') {
@@ -274,7 +278,10 @@ class AgileRecepcionService
 
         $codigoInterno = trim((string) ($datos['prod_item'] ?? ''));
         if ($codigoInterno === '' || $codigoInterno === '0') {
-            $codigoInterno = $this->agileMaeprodService->codigoInternoParaAgile((string) $linea->prod_item_agile) ?? '';
+            $codigoInterno = $this->agileMaeprodService->codigoInternoParaLinea(
+                (string) $linea->prod_item_agile,
+                (string) ($linea->prod_descripcion_agile ?? ''),
+            ) ?? '';
         }
 
         $producto = ($codigoInterno !== '' && $codigoInterno !== '0')
@@ -345,7 +352,10 @@ class AgileRecepcionService
         foreach ($nota->detalle as $linea) {
             $codigo = trim((string) $linea->prod_item);
             if ($codigo === '' || $codigo === '0') {
-                $codigo = $this->agileMaeprodService->codigoInternoParaAgile((string) $linea->prod_item_agile) ?? '';
+                $codigo = $this->agileMaeprodService->codigoInternoParaLinea(
+                    (string) $linea->prod_item_agile,
+                    (string) ($linea->prod_descripcion_agile ?? ''),
+                ) ?? '';
             }
             if ($codigo === '' || $codigo === '0') {
                 $faltantes[] = $linea->prod_item_agile ?: 'fila '.$linea->orden;

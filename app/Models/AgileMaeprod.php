@@ -23,6 +23,8 @@ class AgileMaeprod extends Model
         'prod_item_agile',
         'prod_descripcion_agile',
         'prod_item',
+        'descripcion_norm_hash',
+        'prod_codigo_categoria_mp',
     ];
 
     public function producto(): BelongsTo

@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\AgileMaeprod;
-use App\Models\Maeprod;
 use App\Models\Nota;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -12,10 +11,10 @@ class CompraAgilImportService
 {
     public function __construct(
         protected CompraAgilTextoParserService $parser,
-        protected MaeprodBusquedaSimilitudService $busqueda,
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
         protected AgileMaeprodService $agileMaeprodService,
+        protected AgileVinculoAprendizajeService $vinculoAprendizaje,
     ) {}
 
     /**
@@ -201,18 +200,16 @@ class CompraAgilImportService
      */
     private function construirLineaPreview(array $linea): array
     {
-        $vinculo = $this->resolverVinculoExistente($linea['id_agile']);
-        $sugerencia = $vinculo ? null : $this->resolverSugerenciaSimilitud($linea['descripcion']);
-        $producto = $vinculo ?? $sugerencia;
+        $resuelto = $this->vinculoAprendizaje->resolverParaImportacion($linea['descripcion']);
 
         return [
             'id_agile' => $linea['id_agile'],
             'descripcion' => $linea['descripcion'],
             'cantidad' => $linea['cantidad'],
             'categoria' => $linea['categoria'],
-            'producto' => $producto,
-            'estado' => $vinculo ? 'vinculado' : 'pendiente',
-            'es_sugerencia' => $vinculo === null && $sugerencia !== null,
+            'producto' => $resuelto['producto'],
+            'estado' => $resuelto['estado'],
+            'es_sugerencia' => $resuelto['es_sugerencia'],
         ];
     }
 
@@ -379,7 +376,7 @@ class CompraAgilImportService
                 $linea = $preview['lineas'][$i];
                 $descripcionMp = $this->descripcionAgileParaLinea($linea['id_agile'], $linea['descripcion']);
 
-                $vinculo = $this->resolverProductoParaImportar($linea['id_agile'], $linea['descripcion']);
+                $vinculo = $this->resolverProductoParaImportar($linea['descripcion']);
 
                 if ($vinculo) {
                     $this->detalleService->agregarLinea(
@@ -442,63 +439,14 @@ class CompraAgilImportService
     }
 
     /**
-     * Resuelve producto interno para importar: primero vínculo guardado en agilemaeprod
-     * (código Mercado Público → prod_item); si no hay match, sugerencia por similitud de descripción.
+     * Resuelve producto interno: aprendizaje por descripción en agilemaeprod, luego similitud en maeprod.
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
-    private function resolverProductoParaImportar(string $idAgile, string $descripcion): ?array
+    private function resolverProductoParaImportar(string $descripcion): ?array
     {
-        $vinculo = $this->resolverVinculoExistente($idAgile);
-        if ($vinculo !== null) {
-            return $vinculo;
-        }
+        $resuelto = $this->vinculoAprendizaje->resolverParaImportacion($descripcion);
 
-        return $this->resolverSugerenciaSimilitud($descripcion);
-    }
-
-    /**
-     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
-     */
-    private function resolverVinculoExistente(string $idAgile): ?array
-    {
-        $vinculo = AgileMaeprod::query()->find(trim($idAgile));
-        if (! $vinculo || trim((string) $vinculo->prod_item) === '') {
-            return null;
-        }
-
-        $mae = Maeprod::query()->find($vinculo->prod_item);
-        if (! $mae) {
-            return null;
-        }
-
-        return $this->maeprodArray($mae);
-    }
-
-    /**
-     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
-     */
-    private function resolverSugerenciaSimilitud(string $descripcion): ?array
-    {
-        $resultados = $this->busqueda->buscar($descripcion, null, 1);
-        $mae = $resultados->first();
-        if (! $mae instanceof Maeprod) {
-            return null;
-        }
-
-        return $this->maeprodArray($mae);
-    }
-
-    /**
-     * @return array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
-     */
-    private function maeprodArray(Maeprod $mae): array
-    {
-        return [
-            'prod_item' => (string) $mae->prod_item,
-            'prod_nombre' => (string) $mae->prod_nombre,
-            'prod_valor' => (int) ($mae->prod_valor ?? 0),
-            'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0),
-        ];
+        return $resuelto['producto'];
     }
 }

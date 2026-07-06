@@ -192,16 +192,17 @@ class NotaDetalleService
     }
 
     /**
-     * Persiste agilemaeprod cuando la línea tiene ID Mercado Público y código interno vinculado.
+     * Persiste agilemaeprod aprendiendo descripción → prod_item (no por codigo_producto MP).
      */
     public function sincronizarVinculoAgileMaeprod(NotaDetalle $linea): void
     {
+        $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
         $agileId = trim((string) ($linea->prod_item_agile ?? ''));
-        if ($agileId === '') {
+
+        if ($descripcionAgile === '' && $agileId === '') {
             return;
         }
 
-        $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
         if ($descripcionAgile !== '') {
             $this->agileMaeprodService->registrarSiNoExiste($agileId, $descripcionAgile);
         }
@@ -215,7 +216,12 @@ class NotaDetalleService
             return;
         }
 
-        $this->agileMaeprodService->vincularCodigoInterno($agileId, $codigoInterno);
+        $this->agileMaeprodService->vincularCodigoInternoConDescripcion(
+            $agileId,
+            $codigoInterno,
+            $descripcionAgile !== '' ? $descripcionAgile : null,
+            $agileId !== '' ? $agileId : null,
+        );
     }
 
     public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): void

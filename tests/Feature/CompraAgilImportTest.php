@@ -110,17 +110,20 @@ TXT;
         $this->assertSame('ASEO001', $lineas->first()->prod_item);
         $this->assertSame('ASEO002', $lineas->get(1)->prod_item);
         $this->assertTrue(
-            AgileMaeprod::query()->where('prod_item_agile', '31237835')->exists()
+            AgileMaeprod::query()
+                ->where('prod_codigo_categoria_mp', '31237835')
+                ->orWhere('prod_item_agile', '31237835')
+                ->exists()
         );
     }
 
-    public function test_preview_prioriza_vinculo_agilemaeprod_sobre_similitud(): void
+    public function test_preview_prioriza_vinculo_aprendido_por_descripcion(): void
     {
-        AgileMaeprod::query()->create([
-            'prod_item_agile' => '31237835',
-            'prod_descripcion_agile' => 'OTRO PRODUCTO',
-            'prod_item' => 'ASEO002',
-        ]);
+        app(\App\Services\AgileVinculoAprendizajeService::class)->guardarAprendizaje(
+            'LIMPIADOR DE PISOS CON AROMAS 5 LTS. CADA UNO',
+            'ASEO002',
+            '31237835',
+        );
 
         $nota = $this->crearNota();
 
@@ -159,11 +162,11 @@ TXT;
 
     public function test_importar_vincula_lineas_con_maestro_previo(): void
     {
-        AgileMaeprod::query()->create([
-            'prod_item_agile' => '31237835',
-            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS',
-            'prod_item' => 'ASEO001',
-        ]);
+        app(\App\Services\AgileVinculoAprendizajeService::class)->guardarAprendizaje(
+            'LIMPIADOR DE PISOS CON AROMAS 5 LTS. CADA UNO',
+            'ASEO001',
+            '31237835',
+        );
 
         $nota = $this->crearNota(['encargado' => '']);
 
@@ -221,7 +224,12 @@ TXT;
 
         $this->assertNotNull($linea);
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
-        $this->assertSame('ASEO001', AgileMaeprod::query()->find('31237835')->prod_item);
+        $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
+            ->hashDescripcion('LIMPIADOR DE PISOS CON AROMAS 5 LTS');
+        $this->assertSame(
+            'ASEO001',
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+        );
     }
 
     public function test_importar_rechaza_sin_numero_cotizacion_si_texto_no_lo_trae(): void
@@ -512,7 +520,12 @@ TXT;
         );
 
         $response->assertRedirect();
-        $this->assertSame('ASEO001', AgileMaeprod::query()->find('31237835')->prod_item);
+        $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
+            ->hashDescripcion('LIMPIADOR DE PISOS CON AROMAS 5 LTS');
+        $this->assertSame(
+            'ASEO001',
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+        );
     }
 
     private function crearNota(array $attrs = []): Nota

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AgileMaeprod;
 use App\Models\CompraAgilBenchmark;
 use App\Models\CompraAgilLineaMercado;
 use App\Models\CompraAgilProceso;
@@ -231,9 +230,15 @@ class CompraAgilSyncService
             }
             $codigoProd = trim((string) ($producto['codigo_producto'] ?? ''));
             $precio = $codigoProd !== '' ? ($preciosGanador[$codigoProd] ?? null) : null;
-            $prodItem = $codigoProd !== ''
-                ? AgileMaeprod::query()->find($codigoProd)?->prod_item
-                : null;
+            $descripcion = trim((string) ($producto['descripcion'] ?? ''));
+            if ($descripcion === '') {
+                $descripcion = trim((string) ($producto['nombre'] ?? ''));
+            }
+            $prodItem = null;
+            if ($descripcion !== '') {
+                $aprendido = app(AgileVinculoAprendizajeService::class)->buscarCodigoAprendido($descripcion);
+                $prodItem = $aprendido['prod_item'] ?? null;
+            }
 
             CompraAgilLineaMercado::query()->create([
                 'codigo_proceso' => $codigo,
