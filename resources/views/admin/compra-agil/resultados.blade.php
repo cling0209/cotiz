@@ -109,6 +109,7 @@
                         ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).
                     @endif
                     Filas en verde: ganador propio ({{ config('cotiz.sistema') }}).
+                    Use «Consultar MP» en filas pendientes para actualizar sin recargar la página.
                 </p>
             </div>
             <div class="d-flex align-items-center gap-2">
@@ -138,7 +139,7 @@
                 <tbody id="tbody-novedades">
                     @forelse($novedades as $nov)
                         <tr data-nronota="{{ $nov->nronota }}"
-                            class="{{ !empty($nov->es_ganador_propio) ? 'table-success' : '' }}{{ !empty($nov->cambio_ultima_consulta) ? ' border-start border-3 border-info' : '' }}">
+                            class="novedad-data-row {{ !empty($nov->es_ganador_propio) ? 'table-success' : '' }}{{ !empty($nov->cambio_ultima_consulta) ? ' border-start border-3 border-info' : '' }}">
                             <td>
                                 {{ $nov->nronota }}
                                 @if(!empty($nov->cambio_ultima_consulta))
@@ -148,13 +149,13 @@
                             <td class="font-monospace small">{{ $nov->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $nov->seguimiento?->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $nov->seguimiento?->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
-                            <td class="small">
+                            <td class="small cell-cambio-estado">
                                 {{ $nov->estado_anterior ?: '—' }}
                                 <i class="bi bi-arrow-right"></i>
                                 <strong>{{ $nov->estado_nuevo ?: '—' }}</strong>
                             </td>
-                            <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $nov->resultado_propio])</td>
-                            <td class="small">
+                            <td class="cell-seguimiento">@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $nov->resultado_propio])</td>
+                            <td class="small cell-proveedor">
                                 @if($nov->razon_social_ganador)
                                     {{ $nov->razon_social_ganador }}<br>
                                     <span class="text-muted">{{ $nov->rut_ganador }}</span>
@@ -162,15 +163,15 @@
                                     —
                                 @endif
                             </td>
-                            <td class="text-end small">
+                            <td class="text-end small cell-monto">
                                 @if($nov->seguimiento?->monto_total_ganador)
                                     ${{ number_format($nov->seguimiento->monto_total_ganador, 0, ',', '.') }}
                                 @else
                                     —
                                 @endif
                             </td>
-                            <td class="small">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
-                            <td class="text-nowrap">
+                            <td class="small cell-oc">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
+                            <td class="text-nowrap cell-acciones">
                                 @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
@@ -183,6 +184,16 @@
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
                         </tr>
+                        @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
+                        <tr class="consulta-mp-feedback d-none" data-nronota="{{ $nov->nronota }}">
+                            <td colspan="10" class="py-2 bg-light">
+                                <div class="progress" style="height: 0.5rem;">
+                                    <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <div class="consulta-mp-mensaje small mt-1 text-muted"></div>
+                            </td>
+                        </tr>
+                        @endif
                     @empty
                         <tr id="novedades-vacio"><td colspan="10" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
                     @endforelse

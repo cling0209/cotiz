@@ -106,6 +106,22 @@
         return document.querySelector('tr.pendiente-data-row[data-nronota="' + nronota + '"]');
     }
 
+    function dataRowNovedad(nronota) {
+        return document.querySelector('tr.novedad-data-row[data-nronota="' + nronota + '"]');
+    }
+
+    function badgeSeguimientoHtml(codigo) {
+        const labels = {
+            cerrada: ['success', 'Cerrada'],
+            pendiente: ['warning', 'Pendiente seguimiento'],
+            desierta: ['secondary', 'Desierta'],
+            cancelada: ['secondary', 'Cancelada'],
+            no_encontrada: ['dark', 'No existe en MP'],
+        };
+        const info = labels[codigo] || ['secondary', codigo || '—'];
+        return '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
+    }
+
     function mostrarProgresoConsulta(nronota) {
         const fb = feedbackRow(nronota);
         if (!fb) return false;
@@ -184,15 +200,7 @@
 
         const segCell = row.querySelector('.cell-seguimiento');
         if (segCell && r.resultado_propio) {
-            const labels = {
-                cerrada: ['success', 'Cerrada'],
-                pendiente: ['warning', 'Pendiente seguimiento'],
-                desierta: ['secondary', 'Desierta'],
-                cancelada: ['secondary', 'Cancelada'],
-                no_encontrada: ['dark', 'No existe en MP'],
-            };
-            const info = labels[r.resultado_propio] || ['secondary', r.resultado_propio];
-            segCell.innerHTML = '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
+            segCell.innerHTML = badgeSeguimientoHtml(r.resultado_propio);
             if (cambioSeguimiento(r)) {
                 destellarCambio(segCell.querySelector('.badge') || segCell);
             }
@@ -223,6 +231,65 @@
 
         if (r.cambio) {
             row.classList.add('table-info');
+        }
+    }
+
+    function actualizarFilaNovedad(nronota, r) {
+        const row = dataRowNovedad(nronota);
+        if (!row) return;
+
+        const cambioCell = row.querySelector('.cell-cambio-estado');
+        if (cambioCell) {
+            const ant = fmtGlosa(r.estado_anterior, r.estado_anterior_glosa);
+            const nue = fmtGlosa(r.estado_nuevo, r.estado_glosa);
+            cambioCell.innerHTML = ant + ' <i class="bi bi-arrow-right"></i> <strong>' + nue + '</strong>';
+            if (cambioEstadoMp(r)) {
+                destellarCambio(cambioCell);
+            }
+        }
+
+        const provCell = row.querySelector('.cell-proveedor');
+        if (provCell && r.razon_social_ganador) {
+            let html = r.razon_social_ganador;
+            if (r.rut_ganador) {
+                html += '<br><span class="text-muted">' + r.rut_ganador + '</span>';
+            }
+            provCell.innerHTML = html;
+        }
+
+        const montoCell = row.querySelector('.cell-monto');
+        if (montoCell && r.monto_total_ganador) {
+            montoCell.textContent = fmtMonto(r.monto_total_ganador);
+        }
+
+        const ocCell = row.querySelector('.cell-oc');
+        if (ocCell && r.id_orden_compra) {
+            ocCell.textContent = String(r.id_orden_compra);
+        }
+
+        const segCell = row.querySelector('.cell-seguimiento');
+        if (segCell && r.resultado_propio) {
+            segCell.innerHTML = badgeSeguimientoHtml(r.resultado_propio);
+            if (cambioSeguimiento(r)) {
+                destellarCambio(segCell.querySelector('.badge') || segCell);
+            }
+        }
+
+        const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
+        if (btnConsultar && r.resultado_propio !== 'pendiente') {
+            btnConsultar.remove();
+        }
+
+        if (r.cambio) {
+            row.classList.add('table-info');
+        }
+    }
+
+    function actualizarFilaConsultaMp(nronota, r) {
+        if (dataRowPendiente(nronota)) {
+            actualizarFilaPendiente(nronota, r);
+        } else {
+            actualizarFilaNovedad(nronota, r);
         }
     }
 
@@ -275,7 +342,7 @@
                         destellarCambio(msg);
                     }
                 }
-                actualizarFilaPendiente(nronota, r);
+                actualizarFilaConsultaMp(nronota, r);
             } else {
                 window.location.reload();
             }
@@ -302,6 +369,7 @@
         const btnConsultar = ev.target.closest('.btn-consultar-mp-individual');
         if (btnConsultar) {
             ev.preventDefault();
+            ev.stopPropagation();
             const nronota = btnConsultar.dataset.nronota;
             if (nronota) {
                 await consultarMercadoPublico(btnConsultar, nronota);
