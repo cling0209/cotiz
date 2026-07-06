@@ -13,8 +13,8 @@
     </div>
 
     <p class="text-muted small mb-3">
-        Todas las cotizaciones con seguimiento en Mercado Público, sin importar su estado de seguimiento.
-        Use «Consultar MP» para actualizar una fila; «Comparar» solo si ya hay proveedor seleccionado en MP.
+        Todas las cotizaciones con código Compra Ágil en el sistema, consultadas o no en Mercado Público.
+        Use «Consultar MP» para traer el estado; «Comparar» solo si ya hay proveedor seleccionado en MP.
     </p>
 
     @if($corridaEnCurso)
@@ -50,6 +50,7 @@
                     <label for="f-seguimiento" class="form-label small mb-0">Seguimiento</label>
                     <select class="form-select form-select-sm" id="f-seguimiento" name="seguimiento" style="width:11rem">
                         <option value="">Todos</option>
+                        <option value="sin_consultar" @selected(($filtros['seguimiento'] ?? '') === 'sin_consultar')>Sin consultar MP</option>
                         <option value="pendiente" @selected(($filtros['seguimiento'] ?? '') === 'pendiente')>Pendiente</option>
                         <option value="cerrada" @selected(($filtros['seguimiento'] ?? '') === 'cerrada')>Cerrada</option>
                         <option value="desierta" @selected(($filtros['seguimiento'] ?? '') === 'desierta')>Desierta</option>
@@ -162,7 +163,9 @@
                                 @if(!empty($seg->tiene_proveedor_seleccionado))
                                     <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 @endif
-                                <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
+                                @if(($seg->resultado_propio ?? '') !== 'sin_consultar')
+                                    <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
+                                @endif
                             </td>
                         </tr>
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $seg->nronota }}">
@@ -174,7 +177,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="12" class="text-center text-muted py-4">No hay cotizaciones con seguimiento en Mercado Público.</td></tr>
+                        <tr><td colspan="12" class="text-center text-muted py-4">No hay cotizaciones con código Compra Ágil para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Nota extends Model
 {
@@ -45,6 +46,11 @@ class Nota extends Model
     public function usuarioRel(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario', 'username');
+    }
+
+    public function mpSeguimiento(): HasOne
+    {
+        return $this->hasOne(NotaMpSeguimiento::class, 'nronota', 'nronota');
     }
 
     public function total(): int

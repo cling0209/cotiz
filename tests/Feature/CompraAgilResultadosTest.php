@@ -979,6 +979,34 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('Seguimiento', $csv);
     }
 
+    public function test_todas_incluye_nota_sin_consultar_mp_por_codigo_ca(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 13561,
+            'descripcion' => 'Cotiz Quilpue sin consultar MP',
+            'fecha' => '2026-07-05',
+            'usuario' => 'admin',
+            'empresa' => 'I MUNICIPALIDAD DE QUILPUE',
+            'encargado' => '2428-902-COT26',
+            'nota_softland' => 1356100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.todas', ['codigo_proceso' => '2428-902-COT26']))
+            ->assertOk()
+            ->assertSee('13561', false)
+            ->assertSee('2428-902-COT26', false)
+            ->assertSee('Sin consultar MP', false)
+            ->assertSee('Consultar MP', false)
+            ->getContent();
+
+        $this->assertSame(0, substr_count($html, 'btn-detalle-mp'));
+    }
+
     public function test_consultar_individual_responde_cambio_estado(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);

@@ -1160,17 +1160,24 @@ class NotaMpResultadosService
 
     public function contarTodas(): int
     {
-        return NotaMpSeguimiento::query()->count();
+        return $this->buildTodasNotasQuery([])->count('notas.nronota');
     }
 
     public function listadoTodasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $paginator = $this->aplicarOrdenCerradas($this->buildTodasQuery($filtros))
-            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+        $paginator = $this->buildTodasNotasQuery($filtros)
+            ->with([
+                'usuarioRel',
+                'mpSeguimiento.ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas'),
+            ])
             ->paginate($porPagina)
             ->withQueryString();
 
-        $this->marcarCerradasConFlags($paginator->getCollection());
+        $items = $paginator->getCollection()
+            ->map(fn (Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
+
+        $this->marcarCerradasConFlags($items);
+        $paginator->setCollection($items);
 
         return $paginator;
     }
@@ -1180,10 +1187,12 @@ class NotaMpResultadosService
      */
     public function listadoTodasExportar(array $filtros = [], int $limite = 10000): Collection
     {
-        $items = $this->aplicarOrdenCerradas($this->buildTodasQuery($filtros))
-            ->with(['nota.usuarioRel'])
+        $notas = $this->buildTodasNotasQuery($filtros)
+            ->with(['usuarioRel', 'mpSeguimiento'])
             ->limit($limite)
             ->get();
+
+        $items = $notas->map(fn (Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
 
         return $this->marcarCerradasConFlags($items);
     }
@@ -1276,11 +1285,131 @@ class NotaMpResultadosService
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     * @return \Illuminate\Database\Eloquent\Builder<Nota>
      */
-    private function buildTodasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    private function buildTodasNotasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
-        return $this->aplicarFiltrosListadoSeguimiento(NotaMpSeguimiento::query(), $filtros);
+        $query = Nota::query()
+            ->select('notas.*')
+            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota');
+
+        $this->aplicarFiltroCodigoCaEnNotas($query);
+
+        if (! empty($filtros['nronota'])) {
+            $query->where('notas.nronota', (int) $filtros['nronota']);
+        }
+
+        if (! empty($filtros['codigo_proceso'])) {
+            $term = '%'.$filtros['codigo_proceso'].'%';
+            $query->where(function ($q) use ($term): void {
+                $q->where('seg.codigo_proceso', 'ilike', $term)
+                    ->orWhere(function ($q2) use ($term): void {
+                        $q2->whereNull('seg.nronota')
+                            ->where('notas.encargado', 'ilike', $term);
+                    });
+            });
+        }
+
+        if (! empty($filtros['organismo'])) {
+            $term = '%'.$filtros['organismo'].'%';
+            $query->where(function ($q) use ($term): void {
+                $q->where('seg.organismo', 'ilike', $term)
+                    ->orWhere(function ($q2) use ($term): void {
+                        $q2->whereNull('seg.nronota')
+                            ->where('notas.empresa', 'ilike', $term);
+                    });
+            });
+        }
+
+        if (! empty($filtros['proveedor'])) {
+            $query->where('seg.razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where(function ($q) use ($filtros): void {
+                $q->where('seg.fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00')
+                    ->orWhere(function ($q2) use ($filtros): void {
+                        $q2->whereNull('seg.nronota')
+                            ->where('notas.fecha', '>=', $filtros['fecha_desde']);
+                    });
+            });
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where(function ($q) use ($filtros): void {
+                $q->where('seg.fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59')
+                    ->orWhere(function ($q2) use ($filtros): void {
+                        $q2->whereNull('seg.nronota')
+                            ->where('notas.fecha', '<=', $filtros['fecha_hasta']);
+                    });
+            });
+        }
+
+        if (! empty($filtros['cambio_desde'])) {
+            $query->where('seg.fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['cambio_hasta'])) {
+            $query->where('seg.fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+        }
+
+        if (! empty($filtros['seguimiento'])) {
+            if ($filtros['seguimiento'] === 'sin_consultar') {
+                $query->whereNull('seg.nronota');
+            } else {
+                $query->where('seg.resultado_propio', $filtros['seguimiento']);
+            }
+        }
+
+        if (! empty($filtros['estado_mp'])) {
+            $term = '%'.$filtros['estado_mp'].'%';
+            $query->where(function ($q) use ($term): void {
+                $q->where('seg.estado_mp_glosa', 'ilike', $term)
+                    ->orWhere('seg.estado_mp_codigo', 'ilike', $term);
+            });
+        }
+
+        return $query
+            ->orderByRaw('COALESCE(seg.fecha_ultimo_cambio, notas.fecha) DESC')
+            ->orderByDesc('notas.nronota');
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Nota>  $query
+     */
+    private function aplicarFiltroCodigoCaEnNotas(\Illuminate\Database\Eloquent\Builder $query, string $column = 'notas.encargado'): void
+    {
+        $query->whereRaw("trim(coalesce({$column}, '')) <> ''");
+
+        if ($query->getConnection()->getDriverName() === 'pgsql') {
+            $query->whereRaw("upper(trim({$column})) ~ ?", ['^\d+-\d+-COT\d+$']);
+
+            return;
+        }
+
+        $query->whereRaw("upper({$column}) LIKE '%-%-COT%'");
+    }
+
+    private function itemListadoTodasDesdeNota(Nota $nota): NotaMpSeguimiento
+    {
+        $seg = $nota->relationLoaded('mpSeguimiento') ? $nota->mpSeguimiento : null;
+
+        if ($seg !== null) {
+            $seg->setRelation('nota', $nota);
+
+            return $seg;
+        }
+
+        $placeholder = new NotaMpSeguimiento([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => strtoupper(trim((string) $nota->encargado)),
+            'organismo' => trim((string) ($nota->empresa ?? '')),
+            'resultado_propio' => 'sin_consultar',
+        ]);
+        $placeholder->exists = false;
+        $placeholder->setRelation('nota', $nota);
+
+        return $placeholder;
     }
 
     /**
