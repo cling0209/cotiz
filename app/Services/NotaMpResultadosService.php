@@ -1162,6 +1162,133 @@ class NotaMpResultadosService
         return NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count();
     }
 
+    public function contarPendientesSeguimiento(): int
+    {
+        return NotaMpSeguimiento::query()->where('resultado_propio', 'pendiente')->count();
+    }
+
+    public function listadoPendientesPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $paginator = $this->aplicarOrdenCerradas($this->buildPendientesSeguimientoQuery($filtros))
+            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->paginate($porPagina)
+            ->withQueryString();
+
+        $this->marcarCerradasConFlags($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    /**
+     * @return Collection<int, NotaMpSeguimiento>
+     */
+    public function listadoPendientesExportar(array $filtros = [], int $limite = 10000): Collection
+    {
+        $items = $this->aplicarOrdenCerradas($this->buildPendientesSeguimientoQuery($filtros))
+            ->with(['nota.usuarioRel'])
+            ->limit($limite)
+            ->get();
+
+        return $this->marcarCerradasConFlags($items);
+    }
+
+    /**
+     * Consulta una sola cotización en Mercado Público (fuera de la corrida masiva).
+     *
+     * @return array<string, mixed>
+     */
+    public function consultarNotaIndividual(int $nronota, string $usuario): array
+    {
+        if ($this->corridaEnCurso() !== null) {
+            throw new RuntimeException('Ya hay una consulta masiva en curso. Espere a que finalice o cancélela.');
+        }
+
+        if (! $this->api->isConfigured()) {
+            throw new RuntimeException('MERCADOPUBLICO_TICKET no configurado.');
+        }
+
+        $nota = Nota::query()->find($nronota);
+        if ($nota === null) {
+            throw new RuntimeException('Cotización no encontrada.');
+        }
+
+        $codigo = strtoupper(trim((string) $nota->encargado));
+        if (! $this->esCodigoCompraAgil($codigo)) {
+            throw new RuntimeException('La nota no tiene un código Compra Ágil válido en encargado.');
+        }
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => trim($usuario),
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 1,
+            'notas_procesadas' => 0,
+            'notas_con_cambio' => 0,
+        ]);
+
+        try {
+            $resultado = $this->consultarNota($nronota, $corrida, $usuario, null);
+            $this->finalizarCorrida($corrida, 'ok', 'Consulta individual nota '.$nronota.'.');
+
+            return $resultado;
+        } catch (RuntimeException $e) {
+            $this->registrarDetalleFallo(
+                $corrida,
+                $nronota,
+                $codigo,
+                $e->getMessage(),
+                trim((string) ($nota->empresa ?? '')),
+            );
+            $corrida->increment('notas_procesadas');
+            $this->finalizarCorrida($corrida, 'error', $e->getMessage());
+
+            throw $e;
+        }
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
+     */
+    private function buildPendientesSeguimientoQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = NotaMpSeguimiento::query()
+            ->where('resultado_propio', 'pendiente');
+
+        if (! empty($filtros['nronota'])) {
+            $query->where('nronota', (int) $filtros['nronota']);
+        }
+
+        if (! empty($filtros['codigo_proceso'])) {
+            $query->where('codigo_proceso', 'ilike', '%'.$filtros['codigo_proceso'].'%');
+        }
+
+        if (! empty($filtros['organismo'])) {
+            $query->where('organismo', 'ilike', '%'.$filtros['organismo'].'%');
+        }
+
+        if (! empty($filtros['proveedor'])) {
+            $query->where('razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
+        }
+
+        if (! empty($filtros['cambio_desde'])) {
+            $query->where('fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['cambio_hasta'])) {
+            $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+        }
+
+        return $query;
+    }
+
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $paginator = $this->aplicarOrdenCerradas($this->buildCerradasQuery($filtros))

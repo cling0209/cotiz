@@ -69,6 +69,10 @@
             <i class="bi bi-lock-fill"></i> Cerradas
             <span class="badge text-bg-secondary ms-1">{{ $cerradasCount }}</span>
         </a>
+        <a href="{{ route('admin.compra-agil.resultados.pendientes') }}" class="btn btn-outline-warning btn-sm">
+            <i class="bi bi-hourglass-split"></i> Pendientes seguimiento
+            <span class="badge text-bg-warning ms-1">{{ $pendientesSeguimientoCount }}</span>
+        </a>
         <a href="{{ route('admin.compra-agil.resultados.analisis-precios') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-bar-chart-line"></i> Análisis de precios
         </a>
@@ -167,6 +171,15 @@
                             </td>
                             <td class="small">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
                             <td class="text-nowrap">
+                                @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
+                                    <button type="button"
+                                        class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
+                                        data-nronota="{{ $nov->nronota }}"
+                                        title="Consultar estado en Mercado Público"
+                                        @disabled($corridaActiva)>
+                                        <i class="bi bi-cloud-download"></i> MP
+                                    </button>
+                                @endif
                                 <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
@@ -184,6 +197,7 @@
 @endsection
 
 @push('scripts')
+@include('admin.compra-agil.partials.script-consultar-mp-individual')
 <script>
 (function () {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';

@@ -28,6 +28,7 @@ class CompraAgilResultadosController extends Controller
             'detalleCorrida' => $this->resultados->detalleUltimaCorrida(),
             'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
+            'pendientesSeguimientoCount' => $this->resultados->contarPendientesSeguimiento(),
         ]);
     }
 
@@ -51,6 +52,91 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
             'filtros' => $filtros,
+        ]);
+    }
+
+    public function pendientes(Request $request): View
+    {
+        $filtros = $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+        ]);
+
+        return view('admin.compra-agil.resultados-pendientes', [
+            'pendientes' => $this->resultados->listadoPendientesPaginado(20, $filtros),
+            'filtros' => $filtros,
+            'apiConfigurada' => $this->resultados->apiConfigurada(),
+            'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
+        ]);
+    }
+
+    public function pendientesExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+        ]);
+        $pendientes = $this->resultados->listadoPendientesExportar($filtros);
+        $filename = 'pendientes_seguimiento_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($pendientes) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Nota',
+                'Código CA',
+                'Publicación',
+                'Último cambio',
+                'Organismo',
+                'Estado MP',
+                'Prov. seleccionado',
+                'RUT ganador',
+                'Monto',
+                'Ejecutivo',
+                'Cliente',
+                'Consultado',
+                'Propio',
+                'OC',
+            ], ';');
+            foreach ($pendientes as $seg) {
+                fputcsv($out, [
+                    $seg->nronota,
+                    $seg->codigo_proceso,
+                    $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
+                    $seg->organismo,
+                    $seg->estado_mp_glosa ?: $seg->estado_mp_codigo,
+                    $seg->razon_social_ganador,
+                    $seg->rut_ganador,
+                    $seg->monto_total_ganador,
+                    $this->resultados->nombreEjecutivoNota($seg),
+                    $seg->nota?->empresa,
+                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
+                    $seg->id_orden_compra,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function consultarIndividual(Request $request, int $nronota): JsonResponse
+    {
+        if (! $this->resultados->apiConfigurada()) {
+            return response()->json(['error' => 'Configure MERCADOPUBLICO_TICKET.'], 503);
+        }
+
+        try {
+            $resultado = $this->resultados->consultarNotaIndividual($nronota, (string) $request->user()->username);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'resultado' => $resultado,
         ]);
     }
 
