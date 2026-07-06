@@ -30,14 +30,17 @@ class NotaMpResultadosService
     public function ultimaCorrida(): ?NotaMpCorrida
     {
         return NotaMpCorrida::query()
+            ->masivas()
             ->whereIn('estado', ['ok', 'error', 'cancelled'])
             ->orderByDesc('id')
             ->first();
     }
 
+    /** Corrida masiva en curso (worker). Ignora consultas individuales por fila. */
     public function corridaEnCurso(): ?NotaMpCorrida
     {
         $corrida = NotaMpCorrida::query()
+            ->masivas()
             ->where('estado', 'running')
             ->orderByDesc('id')
             ->first();
@@ -1214,6 +1217,7 @@ class NotaMpResultadosService
 
     /**
      * Consulta una sola cotización en Mercado Público (síncrona, independiente de la corrida masiva).
+     * No usa worker ni compite con el progreso del proceso masivo en pantalla.
      *
      * @return array<string, mixed>
      */

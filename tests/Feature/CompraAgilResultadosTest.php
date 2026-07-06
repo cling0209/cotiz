@@ -432,7 +432,9 @@ class CompraAgilResultadosTest extends TestCase
             'total_notas' => 10,
             'notas_procesadas' => 3,
             'codigo_actual' => '3300-66-COT26',
-            'pendientes_json' => [],
+            'pendientes_json' => [
+                ['nronota' => 3300, 'codigo' => '3300-66-COT26'],
+            ],
         ]);
 
         $this->actingAs($admin)
@@ -1046,7 +1048,10 @@ class CompraAgilResultadosTest extends TestCase
             'total_notas' => 50,
             'notas_procesadas' => 10,
             'notas_con_cambio' => 2,
-            'pendientes_json' => [],
+            'pendientes_json' => [
+                ['nronota' => 900, 'codigo' => '900-1-COT26'],
+                ['nronota' => 901, 'codigo' => '901-1-COT26'],
+            ],
         ]);
 
         $nota = Nota::query()->create([
@@ -1101,9 +1106,19 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk()
             ->assertJsonPath('ok', true);
 
+        $corridaMasiva = $this->app->make(NotaMpResultadosService::class)->corridaEnCurso();
+        $this->assertNotNull($corridaMasiva);
+        $this->assertSame(50, (int) $corridaMasiva->total_notas);
+        $this->assertSame(10, (int) $corridaMasiva->notas_procesadas);
+
         $this->assertDatabaseHas('nota_mp_corridas', [
             'estado' => 'running',
             'total_notas' => 50,
+        ]);
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
         ]);
     }
 }

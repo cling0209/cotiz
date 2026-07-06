@@ -176,7 +176,7 @@
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $nov->nronota }}"
                                         title="Consultar estado en Mercado Público">
-                                        <i class="bi bi-cloud-download"></i> MP
+                                        <i class="bi bi-cloud-download"></i> Consultar MP
                                     </button>
                                 @endif
                                 <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $nov->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>

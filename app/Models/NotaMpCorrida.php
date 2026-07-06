@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -27,6 +28,32 @@ class NotaMpCorrida extends Model
             'nronota_actual' => 'integer',
             'pendientes_json' => 'array',
         ];
+    }
+
+    /** Corrida masiva (worker): tiene cola de notas pendientes. */
+    public function esMasiva(): bool
+    {
+        $pendientes = $this->pendientes_json;
+
+        return is_array($pendientes) && count($pendientes) > 0;
+    }
+
+    /** Consulta síncrona de una sola nota (sin worker). */
+    public function esIndividual(): bool
+    {
+        return ! $this->esMasiva();
+    }
+
+    /**
+     * @param  Builder<NotaMpCorrida>  $query
+     * @return Builder<NotaMpCorrida>
+     */
+    public function scopeMasivas(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('pendientes_json')
+            ->where('pendientes_json', '!=', '[]')
+            ->where('pendientes_json', '!=', 'null');
     }
 
     public function cambios(): HasMany
