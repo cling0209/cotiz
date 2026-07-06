@@ -29,8 +29,18 @@
 @push('scripts')
 <script>
 (function () {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const urlDetalle = @json(url('/admin/compra-agil/resultados/detalle/__NRO__'));
+    const urlConsultarBase = @json(url('/admin/compra-agil/resultados/consultar'));
     const cotizSistema = @json(config('cotiz.sistema'));
+    const segLabels = {
+        cerrada: 'Cerrada',
+        pendiente: 'Pendiente seguimiento',
+        desierta: 'Desierta',
+        cancelada: 'Cancelada',
+        no_encontrada: 'No existe en MP',
+    };
+
     const fmtMonto = (n) => '$' + (Number(n) || 0).toLocaleString('es-CL');
     const fmtFecha = (iso) => {
         if (!iso) return '—';
@@ -38,7 +48,216 @@
         return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
     };
 
+    function labelSeguimiento(codigo) {
+        return segLabels[codigo] || codigo || '—';
+    }
+
+    function fmtGlosa(codigo, glosa) {
+        return glosa || codigo || '—';
+    }
+
+    function feedbackRow(nronota) {
+        return document.querySelector('tr.consulta-mp-feedback[data-nronota="' + nronota + '"]');
+    }
+
+    function dataRowPendiente(nronota) {
+        return document.querySelector('tr.pendiente-data-row[data-nronota="' + nronota + '"]');
+    }
+
+    function mostrarProgresoConsulta(nronota) {
+        const fb = feedbackRow(nronota);
+        if (!fb) return false;
+        fb.classList.remove('d-none');
+        const bar = fb.querySelector('.consulta-mp-progress-bar');
+        const msg = fb.querySelector('.consulta-mp-mensaje');
+        if (bar) {
+            bar.style.width = '35%';
+            bar.classList.add('progress-bar-animated', 'progress-bar-striped');
+            bar.classList.remove('bg-success', 'bg-danger');
+        }
+        if (msg) {
+            msg.className = 'consulta-mp-mensaje small mt-1 text-muted';
+            msg.textContent = 'Consultando Mercado Público…';
+        }
+        return true;
+    }
+
+    function finalizarProgresoConsulta(nronota, ok) {
+        const fb = feedbackRow(nronota);
+        if (!fb) return;
+        const bar = fb.querySelector('.consulta-mp-progress-bar');
+        if (bar) {
+            bar.style.width = '100%';
+            bar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+            bar.classList.add(ok ? 'bg-success' : 'bg-danger');
+        }
+    }
+
+    function mensajeConsultaResultado(r) {
+        const antGlosa = fmtGlosa(r.estado_anterior, r.estado_anterior_glosa);
+        const nueGlosa = fmtGlosa(r.estado_nuevo, r.estado_glosa);
+        const antSeg = labelSeguimiento(r.resultado_anterior);
+        const nueSeg = labelSeguimiento(r.resultado_propio);
+
+        if (r.cambio) {
+            let txt = 'Cambio detectado: ' + antGlosa + ' → ' + nueGlosa;
+            if (r.resultado_anterior !== r.resultado_propio) {
+                txt += ' · Seguimiento: ' + antSeg + ' → ' + nueSeg;
+            }
+            return txt;
+        }
+
+        return 'Sin cambios de estado (' + nueGlosa + ' · ' + nueSeg + ')';
+    }
+
+    function actualizarFilaPendiente(nronota, r) {
+        const row = dataRowPendiente(nronota);
+        if (!row) return;
+
+        const estadoCell = row.querySelector('.cell-estado-mp');
+        if (estadoCell) {
+            estadoCell.textContent = r.estado_glosa || r.estado_nuevo || '—';
+        }
+
+        const provCell = row.querySelector('.cell-proveedor');
+        if (provCell && r.razon_social_ganador) {
+            provCell.textContent = r.razon_social_ganador.length > 30
+                ? r.razon_social_ganador.substring(0, 30) + '…'
+                : r.razon_social_ganador;
+        }
+
+        const montoCell = row.querySelector('.cell-monto');
+        if (montoCell && r.monto_total_ganador) {
+            montoCell.textContent = fmtMonto(r.monto_total_ganador);
+        }
+
+        const consultadoCell = row.querySelector('.cell-consultado');
+        if (consultadoCell) {
+            const now = new Date();
+            consultadoCell.textContent = now.toLocaleDateString('es-CL') + ' ' + now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const segCell = row.querySelector('.cell-seguimiento');
+        if (segCell && r.resultado_propio) {
+            const labels = {
+                cerrada: ['success', 'Cerrada'],
+                pendiente: ['warning', 'Pendiente seguimiento'],
+                desierta: ['secondary', 'Desierta'],
+                cancelada: ['secondary', 'Cancelada'],
+                no_encontrada: ['dark', 'No existe en MP'],
+            };
+            const info = labels[r.resultado_propio] || ['secondary', r.resultado_propio];
+            segCell.innerHTML = '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
+        }
+
+        const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
+        if (btnConsultar && r.resultado_propio !== 'pendiente') {
+            btnConsultar.remove();
+        }
+
+        if (!r.finalizado && r.razon_social_ganador) {
+            const acciones = row.querySelector('.cell-acciones');
+            if (acciones && !acciones.querySelector('.btn-comparar-mp')) {
+                const cmp = document.createElement('button');
+                cmp.type = 'button';
+                cmp.className = 'btn btn-outline-primary btn-sm btn-comparar-mp';
+                cmp.dataset.nronota = String(nronota);
+                cmp.title = 'Comparar precios';
+                cmp.innerHTML = '<i class="bi bi-arrow-left-right"></i> Comparar';
+                const det = acciones.querySelector('.btn-detalle-mp');
+                if (det) {
+                    acciones.insertBefore(cmp, det);
+                } else {
+                    acciones.appendChild(cmp);
+                }
+            }
+        }
+
+        if (r.cambio) {
+            row.classList.add('table-info');
+        }
+    }
+
+    async function consultarMercadoPublico(btn, nronota) {
+        if (btn.dataset.consultando === '1') {
+            return;
+        }
+
+        btn.dataset.consultando = '1';
+        btn.disabled = true;
+        const tieneFilaProgreso = mostrarProgresoConsulta(nronota);
+
+        try {
+            const res = await fetch(urlConsultarBase + '/' + encodeURIComponent(nronota), {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                },
+            });
+            const data = await res.json().catch(function () { return {}; });
+
+            if (!res.ok) {
+                const errMsg = data.error || 'Error al consultar Mercado Público.';
+                if (tieneFilaProgreso) {
+                    finalizarProgresoConsulta(nronota, false);
+                    const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
+                    if (msg) {
+                        msg.className = 'consulta-mp-mensaje small mt-1 text-danger';
+                        msg.textContent = errMsg;
+                    }
+                } else if (window.AdminDialog) {
+                    AdminDialog.alert(errMsg, { title: 'Consultar MP', type: 'danger' });
+                } else {
+                    alert(errMsg);
+                }
+                btn.disabled = false;
+                btn.dataset.consultando = '0';
+                return;
+            }
+
+            const r = data.resultado || {};
+            if (tieneFilaProgreso) {
+                finalizarProgresoConsulta(nronota, true);
+                const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
+                if (msg) {
+                    msg.className = 'consulta-mp-mensaje small mt-1 fw-semibold ' + (r.cambio ? 'text-success' : 'text-secondary');
+                    msg.textContent = mensajeConsultaResultado(r);
+                }
+                actualizarFilaPendiente(nronota, r);
+            } else {
+                window.location.reload();
+            }
+        } catch (err) {
+            if (tieneFilaProgreso) {
+                finalizarProgresoConsulta(nronota, false);
+                const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
+                if (msg) {
+                    msg.className = 'consulta-mp-mensaje small mt-1 text-danger';
+                    msg.textContent = 'Error de red al consultar Mercado Público.';
+                }
+            } else if (window.AdminDialog) {
+                AdminDialog.alert('Error de red al consultar Mercado Público.', { title: 'Consultar MP', type: 'danger' });
+            } else {
+                alert('Error de red al consultar Mercado Público.');
+            }
+            btn.disabled = false;
+        }
+
+        btn.dataset.consultando = '0';
+    }
+
     document.addEventListener('click', async (ev) => {
+        const btnConsultar = ev.target.closest('.btn-consultar-mp-individual');
+        if (btnConsultar) {
+            ev.preventDefault();
+            const nronota = btnConsultar.dataset.nronota;
+            if (nronota) {
+                await consultarMercadoPublico(btnConsultar, nronota);
+            }
+            return;
+        }
+
         const btnComp = ev.target.closest('.btn-comparar-mp');
         if (btnComp) {
             const nronota = btnComp.dataset.nronota;

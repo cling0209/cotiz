@@ -17,6 +17,12 @@
         (barra de progreso y resultado debajo de cada fila). «Comparar» solo si ya hay proveedor seleccionado en MP.
     </p>
 
+    @if($corridaEnCurso)
+        <div class="alert alert-warning small py-2 mb-3">
+            Hay una consulta masiva en curso. Puede consultar notas individuales; si falla, espere a que termine la corrida masiva.
+        </div>
+    @endif
+
     <form method="GET" action="{{ route('admin.compra-agil.resultados.pendientes') }}" class="card shadow-sm mb-3" data-no-loader>
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
@@ -133,8 +139,7 @@
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $seg->nronota }}"
-                                        title="Consultar estado en Mercado Público"
-                                        @disabled($corridaEnCurso)>
+                                        title="Consultar estado en Mercado Público">
                                         <i class="bi bi-cloud-download"></i> Consultar MP
                                     </button>
                                 @endif
@@ -168,7 +173,3 @@
 
 @include('admin.compra-agil.partials.modal-detalle-mp')
 @endsection
-
-@push('scripts')
-@include('admin.compra-agil.partials.script-consultar-mp-pendientes')
-@endpush

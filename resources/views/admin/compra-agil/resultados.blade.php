@@ -175,8 +175,7 @@
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $nov->nronota }}"
-                                        title="Consultar estado en Mercado Público"
-                                        @disabled($corridaActiva)>
+                                        title="Consultar estado en Mercado Público">
                                         <i class="bi bi-cloud-download"></i> MP
                                     </button>
                                 @endif
@@ -197,7 +196,6 @@
 @endsection
 
 @push('scripts')
-@include('admin.compra-agil.partials.script-consultar-mp-individual')
 <script>
 (function () {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
