@@ -26,6 +26,29 @@
     </div>
 </div>
 
+@push('head')
+<style>
+    @keyframes mp-cambio-destello {
+        0%, 100% { background-color: transparent; color: inherit; }
+        20% { background-color: #ffc107; color: #212529; }
+        40% { background-color: #fff3cd; color: #212529; }
+        60% { background-color: #ffc107; color: #212529; }
+        80% { background-color: #fff3cd; color: #212529; }
+    }
+    .mp-cambio-destello {
+        animation: mp-cambio-destello 1.4s ease-out;
+        border-radius: 0.25rem;
+    }
+    td.mp-cambio-destello {
+        display: table-cell;
+    }
+    .consulta-mp-mensaje.mp-cambio-destello {
+        display: inline-block;
+        padding: 0.15rem 0.35rem;
+    }
+</style>
+@endpush
+
 @push('scripts')
 <script>
 (function () {
@@ -54,6 +77,25 @@
 
     function fmtGlosa(codigo, glosa) {
         return glosa || codigo || '—';
+    }
+
+    function destellarCambio(el) {
+        if (!el) return;
+        el.classList.remove('mp-cambio-destello');
+        void el.offsetWidth;
+        el.classList.add('mp-cambio-destello');
+        el.addEventListener('animationend', function onEnd() {
+            el.classList.remove('mp-cambio-destello');
+            el.removeEventListener('animationend', onEnd);
+        });
+    }
+
+    function cambioEstadoMp(r) {
+        return r.estado_anterior != null && r.estado_nuevo != null && r.estado_anterior !== r.estado_nuevo;
+    }
+
+    function cambioSeguimiento(r) {
+        return r.resultado_anterior != null && r.resultado_propio != null && r.resultado_anterior !== r.resultado_propio;
     }
 
     function feedbackRow(nronota) {
@@ -117,6 +159,9 @@
         const estadoCell = row.querySelector('.cell-estado-mp');
         if (estadoCell) {
             estadoCell.textContent = r.estado_glosa || r.estado_nuevo || '—';
+            if (cambioEstadoMp(r)) {
+                destellarCambio(estadoCell);
+            }
         }
 
         const provCell = row.querySelector('.cell-proveedor');
@@ -148,6 +193,9 @@
             };
             const info = labels[r.resultado_propio] || ['secondary', r.resultado_propio];
             segCell.innerHTML = '<span class="badge text-bg-' + info[0] + '">' + info[1] + '</span>';
+            if (cambioSeguimiento(r)) {
+                destellarCambio(segCell.querySelector('.badge') || segCell);
+            }
         }
 
         const btnConsultar = row.querySelector('.btn-consultar-mp-individual');
@@ -223,6 +271,9 @@
                 if (msg) {
                     msg.className = 'consulta-mp-mensaje small mt-1 fw-semibold ' + (r.cambio ? 'text-success' : 'text-secondary');
                     msg.textContent = mensajeConsultaResultado(r);
+                    if (r.cambio) {
+                        destellarCambio(msg);
+                    }
                 }
                 actualizarFilaPendiente(nronota, r);
             } else {
