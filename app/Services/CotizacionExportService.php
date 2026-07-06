@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use Illuminate\Support\Collection;
@@ -18,7 +17,7 @@ class CotizacionExportService
     {
         return Nota::query()
             ->with([
-                'detalle' => fn ($q) => $q->with('producto')->orderBy('orden'),
+                'detalle' => fn ($q) => $q->orderBy('orden'),
                 'usuarioRel',
             ])
             ->findOrFail($nronota);
@@ -53,7 +52,12 @@ class CotizacionExportService
     {
         $lineas = $this->lineasParaExport($nota);
         $contenido = $lineas
-            ->map(fn ($row) => $this->filaSoftland($nota, $row['linea'], $row['linea']->producto, $row['prod_nombre']))
+            ->map(fn ($row) => $this->filaSoftland(
+                $nota,
+                $row['linea'],
+                (string) ($row['prod_item_softland'] ?? ''),
+                (string) $row['prod_nombre'],
+            ))
             ->implode("\n");
 
         $nombre = 'NOTA_'.$nota->nronota.'_'.now()->format('YmdHis').'.TXT';
@@ -65,7 +69,7 @@ class CotizacionExportService
     {
         $lineas = $this->lineasParaExport($nota);
         $contenido = $lineas
-            ->map(fn ($row) => $row['linea']->prod_item.str_repeat(';', 7).trim((string) $row['linea']->cantidad))
+            ->map(fn ($row) => $row['linea']->codigoProducto().str_repeat(';', 7).trim((string) $row['linea']->cantidad))
             ->implode("\n");
 
         $nombre = 'GUIA_'.$nota->nronota.'_'.now()->format('YmdHis').'.TXT';
@@ -82,16 +86,19 @@ class CotizacionExportService
         $folio = (string) $nota->nronota;
         $fecha = $nota->fecha?->format('d/m/Y') ?? now()->format('d/m/Y');
 
+        $lineas = $this->lineasParaExport($nota);
         $nombre = 'notasguiaingreso_'.$nota->nronota.'_'.now()->format('YmdHis').'.csv';
 
-        return response()->streamDownload(function () use ($nota, $bodega, $concepto, $proveedor, $vacias, $folio, $fecha) {
+        return response()->streamDownload(function () use ($lineas, $bodega, $concepto, $proveedor, $vacias, $folio, $fecha) {
             $out = fopen('php://output', 'w');
             if ($out === false) {
                 return;
             }
 
-            foreach ($nota->detalle as $linea) {
-                $codigo = trim((string) ($linea->producto?->prod_item_softland ?? ''));
+            foreach ($lineas as $row) {
+                /** @var NotaDetalle $linea */
+                $linea = $row['linea'];
+                $codigo = trim((string) ($row['prod_item_softland'] ?? ''));
                 $fila = array_merge(
                     [$bodega, $folio, $fecha, $concepto, '', $proveedor],
                     $vacias,
@@ -141,7 +148,7 @@ class CotizacionExportService
                 /** @var NotaDetalle $linea */
                 $linea = $row['linea'];
                 fputcsv($out, [
-                    $linea->prod_item,
+                    $linea->codigoProducto(),
                     $row['prod_item_softland'],
                     $row['prod_nombre'],
                     $linea->prod_valor,
@@ -156,12 +163,12 @@ class CotizacionExportService
         ]);
     }
 
-    private function filaSoftland(Nota $nota, NotaDetalle $linea, ?Maeprod $producto, string $prodNombre): string
+    private function filaSoftland(Nota $nota, NotaDetalle $linea, string $prodItemSoftland, string $prodNombre): string
     {
         $fecha = $nota->fecha?->format('d-m-Y') ?? '';
         $fechaEntrega = $nota->fechaentrega?->format('d-m-Y') ?? '';
         $rut = (string) ($nota->rutempresa ?? '');
-        $softland = trim((string) ($producto?->prod_item_softland ?? ''));
+        $softland = trim($prodItemSoftland);
 
         $campos = [
             (string) ($nota->nota_softland ?? ''),
