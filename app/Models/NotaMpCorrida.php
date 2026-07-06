@@ -50,6 +50,14 @@ class NotaMpCorrida extends Model
      */
     public function scopeMasivas(Builder $query): Builder
     {
+        $driver = $query->getConnection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return $query
+                ->whereNotNull('pendientes_json')
+                ->whereRaw('jsonb_array_length(pendientes_json::jsonb) > 0');
+        }
+
         return $query
             ->whereNotNull('pendientes_json')
             ->where('pendientes_json', '!=', '[]')
