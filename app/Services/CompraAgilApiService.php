@@ -200,8 +200,9 @@ class CompraAgilApiService
             if ($restante <= 0) {
                 throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
             }
-            $timeoutSeg = max(5, min($baseTimeoutSeg, 30, (int) floor($restante)));
-            $connectTimeoutSeg = max(3, min($baseConnectTimeoutSeg, 10, $timeoutSeg));
+            $restanteSeg = max(5, (int) floor($restante));
+            $timeoutSeg = max(5, min($baseTimeoutSeg, $restanteSeg));
+            $connectTimeoutSeg = max(3, min($baseConnectTimeoutSeg, $timeoutSeg));
         } else {
             $timeoutSeg = $baseTimeoutSeg;
             $connectTimeoutSeg = $baseConnectTimeoutSeg;
