@@ -207,11 +207,17 @@ class CompraAgilApiService
             $connectTimeoutSeg = $baseConnectTimeoutSeg;
         }
 
+        $lowSpeedTimeSeg = min(
+            max(5, (int) config('cotiz.mercadopublico.api_low_speed_time_segundos', 20)),
+            max(5, $timeoutSeg - 5),
+        );
+        $lowSpeedLimitBytes = max(1, (int) config('cotiz.mercadopublico.api_low_speed_limit_bytes', 10));
+
         $curlOpts = [
             CURLOPT_TIMEOUT => $timeoutSeg,
             CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
-            CURLOPT_LOW_SPEED_TIME => min(20, max(5, $timeoutSeg - 5)),
-            CURLOPT_LOW_SPEED_LIMIT => 10,
+            CURLOPT_LOW_SPEED_TIME => $lowSpeedTimeSeg,
+            CURLOPT_LOW_SPEED_LIMIT => $lowSpeedLimitBytes,
         ];
 
         try {
