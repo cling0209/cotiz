@@ -2357,8 +2357,11 @@
         actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
 
         try {
-            const okPrep = await prepararImportAgileAntesPreview();
+            const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
             if (!okPrep) return;
+
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Analizando PDF...');
 
             let todasLineas = [];
             let total = 0;
@@ -2418,7 +2421,8 @@
         }
     }
 
-    async function prepararImportAgileAntesPreview() {
+    async function prepararImportAgileAntesPreview(opciones = {}) {
+        const mantenerProgreso = opciones.mantenerProgreso === true;
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Revisando líneas Agile en esta cotización…');
 
@@ -2467,7 +2471,9 @@
             if (limp.detalle) actualizarResumenLineas(limp.detalle);
         }
 
-        ocultarProgresoImportar();
+        if (!mantenerProgreso) {
+            ocultarProgresoImportar();
+        }
         return true;
     }
 
