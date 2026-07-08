@@ -93,6 +93,7 @@
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
             <div class="small text-muted mt-2 d-none text-break" id="progreso-en-curso"></div>
+            <div class="small text-muted mt-1 d-none text-break" id="progreso-recientes"></div>
             <div class="small text-muted mt-2 d-none text-break" id="progreso-ultimo-detalle"></div>
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
@@ -249,6 +250,7 @@
 
     const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
     const progresoEnCurso = document.getElementById('progreso-en-curso');
+    const progresoRecientes = document.getElementById('progreso-recientes');
     const progresoTiempo = document.getElementById('progreso-tiempo');
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
     const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
@@ -323,12 +325,37 @@
             }
         }
         if (progresoEnCurso) {
-            if (codigosEnCurso.length > 0) {
-                progresoEnCurso.textContent = 'En curso: ' + codigosEnCurso.join(' · ');
+            if (enCurso.length > 0) {
+                const partes = enCurso.map((x) => {
+                    const cod = x.codigo || '';
+                    const seg = (x.segundos !== undefined && x.segundos !== null)
+                        ? ` (${fmtTiempo(x.segundos)})`
+                        : '';
+                    return cod + seg;
+                });
+                progresoEnCurso.textContent = 'En curso: ' + partes.join(' · ');
                 progresoEnCurso.classList.remove('d-none');
             } else {
                 progresoEnCurso.textContent = '';
                 progresoEnCurso.classList.add('d-none');
+            }
+        }
+        if (progresoRecientes) {
+            const recientes = Array.isArray(estado.recientes) ? estado.recientes : [];
+            if (recientes.length > 0) {
+                const partes = recientes.slice(0, 5).map((r) => {
+                    const ms = Number(r.ms || 0);
+                    const tiempo = ms >= 1000
+                        ? ((ms / 1000).toFixed(1).replace('.', ',') + ' s')
+                        : (ms + ' ms');
+                    const marca = r.exito ? 'OK' : 'Fallo';
+                    return `${r.codigo} ${marca} ${tiempo}`;
+                });
+                progresoRecientes.innerHTML = 'Últimas: ' + partes.join(' · ');
+                progresoRecientes.classList.remove('d-none');
+            } else {
+                progresoRecientes.textContent = '';
+                progresoRecientes.classList.add('d-none');
             }
         }
         if (estado.codigo_actual) {

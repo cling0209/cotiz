@@ -6,8 +6,8 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use GuzzleHttp\Promise\EachPromise;
 use GuzzleHttp\Promise\PromiseInterface;
-use GuzzleHttp\Promise\Utils as PromiseUtils;
 use RuntimeException;
 
 class CompraAgilApiService
@@ -108,8 +108,8 @@ class CompraAgilApiService
     }
 
     /**
-     * Consulta varios códigos lanzando de a uno (stagger), sin esperar respuesta para el siguiente.
-     * Máximo $maxInFlight en vuelo. Errores recuperables se reintentan con detalle() al final de cada una.
+     * Disparo escalonado: no espera respuesta para programar la siguiente (cuando concurrencia > 1).
+     * Con concurrencia 1 usa HTTP síncrono (fiable en Render) + pausa stagger entre notas.
      *
      * @param  list<string>  $codigos
      * @param  (callable(string, array<string, mixed>|\RuntimeException): void)|null  $onDone
@@ -142,98 +142,56 @@ class CompraAgilApiService
 
         $maxInFlight = max(1, min(10, $maxInFlight));
         $staggerMs = max(0, $staggerMs);
-        $enVuelo = [];
+
+        if ($maxInFlight <= 1) {
+            return $this->detalleVariosSecuencial($cola, $staggerMs, $onDone, $shouldContinue, $onLaunch);
+        }
+
+        return $this->detalleVariosEachPromise($cola, $maxInFlight, $staggerMs, $onDone, $shouldContinue, $onLaunch);
+    }
+
+    /**
+     * @param  list<string>  $cola
+     * @return array<string, array<string, mixed>|\RuntimeException>
+     */
+    private function detalleVariosSecuencial(
+        array $cola,
+        int $staggerMs,
+        ?callable $onDone,
+        ?callable $shouldContinue,
+        ?callable $onLaunch,
+    ): array {
         $resultados = [];
-        $ultimoDisparoMs = null;
+        $first = true;
 
-        while ($cola !== [] || $enVuelo !== []) {
+        foreach ($cola as $codigo) {
             if ($shouldContinue !== null && ! $shouldContinue()) {
-                foreach ($cola as $codigoRestante) {
-                    $err = new RuntimeException('Consulta cancelada.');
-                    $resultados[$codigoRestante] = $err;
-                    if ($onDone !== null) {
-                        $onDone($codigoRestante, $err);
-                    }
-                }
-                $cola = [];
-            }
-
-            PromiseUtils::queue()->run();
-
-            foreach ($enVuelo as $codigo => $promise) {
-                $state = $promise->getState();
-                if ($state === PromiseInterface::PENDING) {
-                    continue;
-                }
-
-                unset($enVuelo[$codigo]);
-
-                try {
-                    $value = $promise->wait();
-                    if ($value instanceof RuntimeException) {
-                        $resultado = $value;
-                    } elseif ($value instanceof \Illuminate\Http\Client\Response) {
-                        try {
-                            $resultado = $this->interpretarRespuestaHttp($value);
-                        } catch (RuntimeException $e) {
-                            $resultado = $e;
-                        }
-                    } elseif (is_array($value)) {
-                        $resultado = $value;
-                    } else {
-                        $resultado = new RuntimeException('Respuesta vacía de Mercado Público.', 1);
-                    }
-                } catch (\Throwable $e) {
-                    $resultado = $e instanceof RuntimeException
-                        ? $e
-                        : new RuntimeException(
-                            $e instanceof ConnectionException
-                                ? $this->mensajeErrorConexion($e)
-                                : ('Error inesperado consultando Mercado Público: '.mb_substr($e->getMessage(), 0, 200)),
-                            $e instanceof ConnectionException ? 1 : 0,
-                            $e,
-                        );
-                }
-
-                if ($resultado instanceof RuntimeException) {
-                    $msg = $resultado->getMessage();
-                    if (
-                        ! self::esErrorDefinitivoMp($msg)
-                        && ! $this->esErrorDeadlineNota($msg)
-                        && $resultado->getCode() === 1
-                    ) {
-                        try {
-                            $resultado = $this->detalle($codigo, false, null);
-                        } catch (RuntimeException $e) {
-                            $resultado = $e;
-                        }
-                    }
-                }
-
-                $resultados[$codigo] = $resultado;
+                $err = new RuntimeException('Consulta cancelada.');
+                $resultados[$codigo] = $err;
                 if ($onDone !== null) {
-                    $onDone($codigo, $resultado);
+                    $onDone($codigo, $err);
                 }
+                continue;
             }
 
-            $ahoraMs = (int) floor(microtime(true) * 1000);
-            $puedeDisparar = $ultimoDisparoMs === null
-                || ($ahoraMs - $ultimoDisparoMs) >= $staggerMs;
+            if (! $first && $staggerMs > 0) {
+                usleep($staggerMs * 1000);
+            }
+            $first = false;
 
-            if (
-                $cola !== []
-                && count($enVuelo) < $maxInFlight
-                && $puedeDisparar
-                && ($shouldContinue === null || $shouldContinue())
-            ) {
-                $codigo = array_shift($cola);
-                if ($onLaunch !== null) {
-                    $onLaunch($codigo);
-                }
-                $enVuelo[$codigo] = $this->launchAsyncDetalle($codigo);
-                $ultimoDisparoMs = $ahoraMs;
-            } elseif ($enVuelo !== [] || $cola !== []) {
-                usleep(50_000);
+            if ($onLaunch !== null) {
+                $onLaunch($codigo);
+            }
+
+            try {
+                $resultado = $this->detalle($codigo, false, null);
+            } catch (RuntimeException $e) {
+                $resultado = $e;
+            }
+
+            $resultados[$codigo] = $resultado;
+            if ($onDone !== null) {
+                $onDone($codigo, $resultado);
             }
         }
 
@@ -241,18 +199,123 @@ class CompraAgilApiService
     }
 
     /**
+     * @param  list<string>  $cola
+     * @return array<string, array<string, mixed>|\RuntimeException>
+     */
+    private function detalleVariosEachPromise(
+        array $cola,
+        int $maxInFlight,
+        int $staggerMs,
+        ?callable $onDone,
+        ?callable $shouldContinue,
+        ?callable $onLaunch,
+    ): array {
+        $resultados = [];
+
+        $interpretar = function ($value, string $codigo) {
+            if ($value instanceof RuntimeException) {
+                $resultado = $value;
+            } elseif ($value instanceof \Illuminate\Http\Client\Response) {
+                try {
+                    $resultado = $this->interpretarRespuestaHttp($value);
+                } catch (RuntimeException $e) {
+                    $resultado = $e;
+                }
+            } elseif (is_array($value)) {
+                $resultado = $value;
+            } else {
+                $resultado = new RuntimeException('Respuesta vacía de Mercado Público.', 1);
+            }
+
+            if ($resultado instanceof RuntimeException) {
+                $msg = $resultado->getMessage();
+                if (
+                    ! self::esErrorDefinitivoMp($msg)
+                    && ! $this->esErrorDeadlineNota($msg)
+                    && $resultado->getCode() === 1
+                ) {
+                    try {
+                        $resultado = $this->detalle($codigo, false, null);
+                    } catch (RuntimeException $e) {
+                        $resultado = $e;
+                    }
+                }
+            }
+
+            return $resultado;
+        };
+
+        $generator = function () use ($cola, $staggerMs, $onLaunch, $shouldContinue) {
+            $i = 0;
+            foreach ($cola as $codigo) {
+                if ($shouldContinue !== null && ! $shouldContinue()) {
+                    break;
+                }
+                if ($onLaunch !== null) {
+                    $onLaunch($codigo);
+                }
+                // delay Guzzle no bloquea CurlMulti (stagger acumulado desde el inicio del wait).
+                yield $codigo => $this->launchAsyncDetalle($codigo, $i * $staggerMs);
+                $i++;
+            }
+        };
+
+        $each = new EachPromise($generator(), [
+            'concurrency' => $maxInFlight,
+            'fulfilled' => function ($value, $codigo) use (&$resultados, $interpretar, $onDone) {
+                $codigo = strtoupper((string) $codigo);
+                $resultado = $interpretar($value, $codigo);
+                $resultados[$codigo] = $resultado;
+                if ($onDone !== null) {
+                    $onDone($codigo, $resultado);
+                }
+            },
+            'rejected' => function ($reason, $codigo) use (&$resultados, $interpretar, $onDone) {
+                $codigo = strtoupper((string) $codigo);
+                if ($reason instanceof ConnectionException) {
+                    $value = new RuntimeException($this->mensajeErrorConexion($reason), 1, $reason);
+                } elseif ($reason instanceof RuntimeException) {
+                    $value = $reason;
+                } elseif ($reason instanceof \Throwable) {
+                    $value = new RuntimeException(
+                        'Error inesperado consultando Mercado Público: '.mb_substr($reason->getMessage(), 0, 200),
+                        0,
+                        $reason,
+                    );
+                } else {
+                    $value = new RuntimeException('Error inesperado consultando Mercado Público.', 1);
+                }
+                $resultado = $interpretar($value, $codigo);
+                $resultados[$codigo] = $resultado;
+                if ($onDone !== null) {
+                    $onDone($codigo, $resultado);
+                }
+            },
+        ]);
+
+        $each->promise()->wait();
+
+        return $resultados;
+    }
+
+    /**
      * @return PromiseInterface
      */
-    private function launchAsyncDetalle(string $codigo): PromiseInterface
+    private function launchAsyncDetalle(string $codigo, int $delayMs = 0): PromiseInterface
     {
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
         [$timeoutSeg, $connectTimeoutSeg, $curlOpts] = $this->opcionesHttpMp();
 
+        $options = ['curl' => $curlOpts];
+        if ($delayMs > 0) {
+            $options['delay'] = $delayMs;
+        }
+
         return Http::async()
             ->connectTimeout($connectTimeoutSeg)
             ->timeout($timeoutSeg)
-            ->withOptions(['curl' => $curlOpts])
+            ->withOptions($options)
             ->withHeaders(['ticket' => $ticket])
             ->acceptJson()
             ->get($baseUrl.'/v2/compra-agil/'.rawurlencode($codigo))

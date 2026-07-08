@@ -633,17 +633,69 @@ class NotaMpResultadosService
             'detalle_fallos' => (int) ($detalleStats->fallos ?? 0),
             'ultimo_detalle' => $ultimoDetalleInfo,
             'notas_en_curso' => $this->enCursoActual($corrida),
+            'recientes' => $this->recientesActual($corrida),
             'concurrencia' => $this->concurrenciaResultados(),
             'config_mp' => self::configMpEfectiva(),
         ];
     }
 
     /**
-     * @return list<array{nronota: int, codigo: string}>
+     * @return list<array{nronota: int, codigo: string, started_at?: string|null, segundos?: int}>
      */
     public function enCursoActual(NotaMpCorrida $corrida): array
     {
         $lista = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
+        $out = [];
+        $now = now();
+        foreach ($lista as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($nronota <= 0 || $codigo === '') {
+                continue;
+            }
+            $startedAt = isset($item['started_at']) ? (string) $item['started_at'] : null;
+            $segundos = null;
+            if ($startedAt) {
+                try {
+                    $segundos = (int) \Carbon\Carbon::parse($startedAt)->diffInSeconds($now);
+                } catch (\Throwable) {
+                    $segundos = null;
+                }
+            } elseif ($corrida->nota_inicio_at !== null && count($lista) === 1) {
+                $segundos = (int) $corrida->nota_inicio_at->diffInSeconds($now);
+            }
+            $out[] = [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'started_at' => $startedAt,
+                'segundos' => $segundos,
+            ];
+        }
+
+        if ($out === [] && filled($corrida->codigo_actual)) {
+            $segundos = $this->segundosEnNotaActual($corrida);
+            $out[] = [
+                'nronota' => (int) ($corrida->nronota_actual ?? 0),
+                'codigo' => (string) $corrida->codigo_actual,
+                'started_at' => $corrida->nota_inicio_at?->toIso8601String(),
+                'segundos' => $segundos,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Últimas notas terminadas (máx. 5) con duración.
+     *
+     * @return list<array{nronota: int, codigo: string, exito: bool, ms: int, mensaje?: string|null}>
+     */
+    public function recientesActual(NotaMpCorrida $corrida): array
+    {
+        $lista = is_array($corrida->recientes_json) ? $corrida->recientes_json : [];
         $out = [];
         foreach ($lista as $item) {
             if (! is_array($item)) {
@@ -654,17 +706,27 @@ class NotaMpResultadosService
             if ($nronota <= 0 || $codigo === '') {
                 continue;
             }
-            $out[] = ['nronota' => $nronota, 'codigo' => $codigo];
-        }
-
-        if ($out === [] && filled($corrida->codigo_actual)) {
             $out[] = [
-                'nronota' => (int) ($corrida->nronota_actual ?? 0),
-                'codigo' => (string) $corrida->codigo_actual,
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'exito' => (bool) ($item['exito'] ?? false),
+                'ms' => (int) ($item['ms'] ?? 0),
+                'mensaje' => isset($item['mensaje']) ? (string) $item['mensaje'] : null,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array{nronota: int, codigo: string, exito: bool, ms: int, mensaje?: string|null}  $entry
+     */
+    public function pushReciente(NotaMpCorrida $corrida, array $entry): void
+    {
+        $lista = is_array($corrida->recientes_json) ? $corrida->recientes_json : [];
+        array_unshift($lista, $entry);
+        $lista = array_slice($lista, 0, 5);
+        $corrida->update(['recientes_json' => $lista]);
     }
 
     /**
@@ -699,6 +761,7 @@ class NotaMpResultadosService
             'codigo_actual' => null,
             'nota_inicio_at' => null,
             'en_curso_json' => null,
+            'recientes_json' => null,
         ]);
 
         return $corrida->fresh() ?? $corrida;
@@ -772,10 +835,12 @@ class NotaMpResultadosService
             'nronota_actual' => null,
             'codigo_actual' => null,
             'nota_inicio_at' => now(),
+            'recientes_json' => is_array($corrida->recientes_json) ? $corrida->recientes_json : [],
         ]);
 
         $porCodigo = [];
         $codigos = [];
+        $startedAtByCodigo = [];
         foreach ($lote as $item) {
             $nronota = (int) ($item['nronota'] ?? 0);
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
@@ -794,16 +859,19 @@ class NotaMpResultadosService
         $maxInFlight = $this->concurrenciaResultados();
         $staggerMs = max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000));
 
-        $onLaunch = function (string $codigo) use (&$corrida, $porCodigo): void {
+        $onLaunch = function (string $codigo) use (&$corrida, $porCodigo, &$startedAtByCodigo): void {
             $item = $porCodigo[$codigo] ?? null;
             if ($item === null) {
                 return;
             }
+            $startedAt = now()->toIso8601String();
+            $startedAtByCodigo[$codigo] = microtime(true);
             $corrida->refresh();
             $enCurso = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
             $enCurso[] = [
                 'nronota' => (int) $item['nronota'],
                 'codigo' => $codigo,
+                'started_at' => $startedAt,
             ];
             $primero = $enCurso[0] ?? null;
             $corrida->update([
@@ -822,6 +890,7 @@ class NotaMpResultadosService
             &$ok,
             &$ultimoError,
             &$yaContadas,
+            &$startedAtByCodigo,
         ): void {
             if (isset($yaContadas[$codigo])) {
                 return;
@@ -841,6 +910,9 @@ class NotaMpResultadosService
             $nronota = (int) ($item['nronota'] ?? 0);
             $empresa = trim((string) ($item['empresa'] ?? ''));
             $procesadasAntes = (int) $corrida->notas_procesadas;
+            $ms = isset($startedAtByCodigo[$codigo])
+                ? (int) round((microtime(true) - $startedAtByCodigo[$codigo]) * 1000)
+                : 0;
 
             $enCurso = array_values(array_filter(
                 is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [],
@@ -852,15 +924,19 @@ class NotaMpResultadosService
                 'codigo_actual' => $enCurso[0]['codigo'] ?? null,
             ]);
 
+            $exito = false;
+            $mensajeReciente = null;
             try {
                 if ($apiResult instanceof RuntimeException) {
                     throw $apiResult;
                 }
                 $this->consultarNotaConPayload($nronota, $corrida, $usuario, $apiResult, null);
                 $ok++;
+                $exito = true;
             } catch (\Throwable $e) {
                 $fallidas++;
                 $ultimoError = $e->getMessage();
+                $mensajeReciente = mb_substr((string) $ultimoError, 0, 120);
                 $sufijo = CompraAgilApiService::esErrorDefinitivoMp((string) $ultimoError)
                     ? 'sin reintento'
                     : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)).' intentos HTTP');
@@ -880,6 +956,14 @@ class NotaMpResultadosService
             }
 
             $corrida->refresh();
+            $this->pushReciente($corrida, [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'exito' => $exito,
+                'ms' => $ms,
+                'mensaje' => $mensajeReciente,
+            ]);
+
             if ((int) $corrida->notas_procesadas <= $procesadasAntes) {
                 $corrida->increment('notas_procesadas');
             }
