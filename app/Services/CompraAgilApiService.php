@@ -388,10 +388,11 @@ class CompraAgilApiService
     {
         $texto = mb_strtolower($mensaje);
         $texto = str_replace(
-            ['á', 'é', 'í', 'ó', 'ú', 'ñ'],
-            ['a', 'e', 'i', 'o', 'u', 'n'],
+            ['á', 'é', 'í', 'ó', 'ú', 'ñ', ''', ''', '"', '"'],
+            ['a', 'e', 'i', 'o', 'u', 'n', "'", "'", '"', '"'],
             $texto,
         );
+        $texto = preg_replace('/\s+/u', ' ', trim($texto)) ?? trim($texto);
 
         if (str_contains($texto, "parametro de ruta 'codigo' invalido")) {
             return true;
