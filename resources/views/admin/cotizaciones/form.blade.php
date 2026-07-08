@@ -34,8 +34,7 @@
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
         <div class="alert alert-danger py-2 mb-2" role="alert">
-            Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos manualmente.
-            Puede usar <strong>Importar desde Compra &Aacute;gil</strong> para cargar cabecera y l&iacute;neas desde Mercado P&uacute;blico.
+            Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos, importar l&iacute;neas o aplicar factor.
         </div>
     @endif
 
@@ -117,7 +116,10 @@
                 {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                 ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
             </p>
-        @else
+        @endif
+
+        <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion && ! $desdeAdjudicadas])>
+        @unless($desdeAdjudicadas)
             <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
                     <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
@@ -126,11 +128,9 @@
                     {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                     ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                 </span>
-                <span class="small text-muted">Pegue texto de Mercado P&uacute;blico para cargar cabecera y l&iacute;neas (vincule productos con Buscar en cada fila).</span>
+                <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto o suba un PDF de listado de materiales.</span>
             </div>
-        @endif
-
-        <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion && ! $desdeAdjudicadas])>
+        @endunless
             @unless($desdeAdjudicadas)
                 <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
                     <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
@@ -325,6 +325,9 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="tab-ca-pegar" data-bs-toggle="tab" data-bs-target="#panel-ca-pegar" type="button" role="tab">Pegar texto</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-ca-pdf" data-bs-toggle="tab" data-bs-target="#panel-ca-pdf" type="button" role="tab">OCR PDF</button>
+                        </li>
                     </ul>
                     <p class="small mb-2" id="importar-compra-agil-detalle-actual">
                         <strong>Cotizaci&oacute;n actual:</strong>
@@ -354,6 +357,18 @@
                             ></textarea>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
                                 <i class="bi bi-search"></i> Analizar texto pegado
+                            </button>
+                        </div>
+                        <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
+                            <p class="small text-muted mb-2">Suba un PDF con listado de materiales (columnas Cantidad y descripci&oacute;n). Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
+                            <input
+                                type="file"
+                                id="importar-compra-agil-pdf"
+                                class="form-control form-control-sm mb-2"
+                                accept=".pdf,application/pdf"
+                            >
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-pdf">
+                                <i class="bi bi-file-earmark-pdf"></i> Analizar PDF
                             </button>
                         </div>
                     </div>
@@ -1902,6 +1917,8 @@
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
         coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
         limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
+        pdfPreview: @json(route('admin.cotizaciones.importar-pdf.preview', $nota->nronota)),
+        pdfImportar: @json(route('admin.cotizaciones.importar-pdf', $nota->nronota)),
         apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
@@ -1910,6 +1927,8 @@
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
     const importarTexto = document.getElementById('importar-compra-agil-texto');
+    const importarPdfInput = document.getElementById('importar-compra-agil-pdf');
+    const btnImportarAnalizarPdf = document.getElementById('btn-importar-compra-agil-analizar-pdf');
     const importarEstado = document.getElementById('importar-compra-agil-estado');
     const importarCabecera = document.getElementById('importar-compra-agil-cabecera');
     const importarCabeceraTexto = document.getElementById('importar-compra-agil-cabecera-texto');
@@ -1929,6 +1948,8 @@
     let importPreviewData = null;
     let importandoCompraAgil = false;
     let importCodigoApi = null;
+    let importModo = 'texto';
+    let importPdfFile = null;
 
     function escHtml(s) {
         return String(s ?? '')
@@ -2057,8 +2078,11 @@
     function resetImportCompraAgilModal() {
         importPreviewData = null;
         importCodigoApi = null;
+        importModo = 'texto';
+        importPdfFile = null;
         importandoCompraAgil = false;
         if (importarTexto) importarTexto.value = '';
+        if (importarPdfInput) importarPdfInput.value = '';
         document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
         if (importarEstado) importarEstado.textContent = '';
         if (importarCabecera) importarCabecera.classList.add('d-none');
@@ -2073,6 +2097,7 @@
             btnImportarConfirmar.disabled = false;
         }
         if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
     }
 
     function renderImportPreview(data) {
@@ -2159,6 +2184,10 @@
     }
 
     async function analizarImportCompraAgil() {
+        if (!asegurarNumeroCotizacion()) return;
+
+        importModo = 'texto';
+        importPdfFile = null;
         const texto = String(importarTexto?.value || '').trim();
         importCodigoApi = null;
         limpiarImportAlerta();
@@ -2304,6 +2333,87 @@
         }
     }
 
+    async function analizarImportPdf() {
+        if (!asegurarNumeroCotizacion()) return;
+
+        importModo = 'pdf';
+        importCodigoApi = null;
+        const file = importarPdfInput?.files?.[0] || null;
+        if (!file) {
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF.';
+            return;
+        }
+        importPdfFile = file;
+        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        renderImportPreview(null);
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+
+        try {
+            const okPrep = await prepararImportAgileAntesPreview();
+            if (!okPrep) return;
+
+            let todasLineas = [];
+            let total = 0;
+            let desde = 0;
+
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando PDF...');
+
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('pdf', importPdfFile);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
+
+                const res = await fetch(importarMpUrls.pdfPreview, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el PDF.'));
+                    return;
+                }
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            const previewFinal = {
+                cabecera: {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: null,
+                puede_importar: true,
+            };
+            renderImportPreview(previewFinal);
+
+            if (importarEstado) {
+                const n = previewFinal.resumen.total || 0;
+                importarEstado.textContent = n > 0
+                    ? 'Análisis listo (PDF).'
+                    : 'No se detectaron productos en el PDF.';
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        } finally {
+            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+        }
+    }
+
     async function prepararImportAgileAntesPreview() {
         if (importarEstado) {
             importarEstado.textContent = 'Revisando líneas Agile en esta cotización…';
@@ -2400,10 +2510,14 @@
     let analizandoCodigoApi = false;
 
     async function analizarCodigoApi(codigo) {
+        if (!asegurarNumeroCotizacion()) return;
+
         codigo = String(codigo || '').trim().toUpperCase();
         if (!codigo || analizandoCodigoApi) return;
 
         analizandoCodigoApi = true;
+        importModo = 'api';
+        importPdfFile = null;
         importCodigoApi = codigo;
         renderImportPreview(null);
         limpiarImportAlerta();
@@ -2525,6 +2639,7 @@
 
     async function confirmarImportCompraAgil() {
         if (importandoCompraAgil || !importPreviewData) return;
+        if (!asegurarNumeroCotizacion()) return;
 
         if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
             mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
@@ -2533,8 +2648,10 @@
 
         const texto = String(importarTexto?.value || '').trim();
         const usarApi = !!importCodigoApi;
+        const usarPdf = importModo === 'pdf';
 
-        if (!usarApi && !texto) return;
+        if (!usarApi && !usarPdf && !texto) return;
+        if (usarPdf && !importPdfFile) return;
 
         const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
@@ -2545,7 +2662,7 @@
             if (!ok) return;
         }
 
-        if (usarApi) {
+        if (usarApi || usarPdf) {
             const okAgile = await prepararImportAgileAntesPreview();
             if (!okAgile) return;
         }
@@ -2553,13 +2670,13 @@
         importandoCompraAgil = true;
         if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
         if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
         mostrarProgresoImportar();
 
         const total = importPreviewData?.resumen?.total || 0;
 
         try {
             if (usarApi) {
-                const total = importPreviewData?.resumen?.total || 0;
                 const lote = tamanoLoteImportar(total);
                 for (let desde = 0; desde < total; desde += lote) {
                     const hasta = Math.min(desde + lote, total);
@@ -2579,6 +2696,52 @@
                         ocultarProgresoImportar();
                         mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
+                    }
+                }
+            } else if (usarPdf) {
+                if (total === 0) {
+                    const body = new FormData();
+                    body.append('_token', csrf);
+                    body.append('pdf', importPdfFile);
+                    body.append('desde', '0');
+                    body.append('hasta', '0');
+
+                    const res = await fetch(importarMpUrls.pdfImportar, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        ocultarProgresoImportar();
+                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                        return;
+                    }
+                } else {
+                    const lote = tamanoLoteImportar(total);
+                    for (let desde = 0; desde < total; desde += lote) {
+                        const hasta = Math.min(desde + lote, total);
+                        actualizarProgresoImportar(desde, total, desde === 0 ? 'Importando líneas desde PDF...' : null);
+
+                        const body = new FormData();
+                        body.append('_token', csrf);
+                        body.append('pdf', importPdfFile);
+                        body.append('desde', String(desde));
+                        body.append('hasta', String(hasta));
+
+                        const res = await fetch(importarMpUrls.pdfImportar, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body,
+                        });
+                        const json = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            ocultarProgresoImportar();
+                            mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                            return;
+                        }
+
+                        actualizarProgresoImportar(hasta, total);
                     }
                 }
             } else if (total === 0) {
@@ -2644,10 +2807,12 @@
             importandoCompraAgil = false;
             if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
             if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
         }
     }
 
     btnAbrirImportar?.addEventListener('click', () => {
+        if (!asegurarNumeroCotizacion()) return;
         resetImportCompraAgilModal();
         actualizarResumenLineas(resumenLineasInicial);
         bsModalImportar?.show();
@@ -2655,6 +2820,7 @@
     });
 
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
+    btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {

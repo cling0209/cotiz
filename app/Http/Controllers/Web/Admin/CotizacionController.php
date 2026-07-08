@@ -8,6 +8,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\CompraAgilImportService;
+use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
 use RuntimeException;
@@ -22,6 +23,7 @@ class CotizacionController extends Controller
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
         protected CompraAgilImportService $compraAgilImport,
+        protected MaterialesPdfImportService $materialesPdfImport,
     ) {}
 
     public function create(Request $request): RedirectResponse
@@ -480,6 +482,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'texto' => ['required', 'string', 'max:50000'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -542,6 +548,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $request->validate([
             'texto' => ['nullable', 'string', 'max:50000'],
         ]);
@@ -563,6 +573,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $eliminadas = $this->detalleService->eliminarTodasLineasAgile($nota);
 
         return response()->json([
@@ -580,6 +594,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'texto' => ['required', 'string', 'max:50000'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -587,12 +605,6 @@ class CotizacionController extends Controller
         ]);
 
         $parseado = $this->compraAgilImport->parseTexto($datos['texto']);
-
-        if ($nota->requiereNumeroCotizacion() && $parseado['cabecera']['codigo_cotizacion'] === '') {
-            return response()->json([
-                'error' => 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.',
-            ], 422);
-        }
 
         if (($parseado['cabecera']['codigo_cotizacion'] ?? '') !== ''
             && (! isset($datos['desde']) || (int) $datos['desde'] === 0)) {
@@ -626,6 +638,103 @@ class CotizacionController extends Controller
                 'error' => config('app.debug')
                     ? $e->getMessage()
                     : 'Error interno al importar. Intente con menos líneas o contacte al administrador.',
+            ], 500);
+        }
+
+        return response()->json(array_merge([
+            'ok' => true,
+        ], $resultado));
+    }
+
+    public function importarPdfPreview(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
+        $datos = $request->validate([
+            'pdf' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            if (isset($datos['desde'], $datos['hasta'])) {
+                $resultado = $this->materialesPdfImport->previewLote(
+                    $request->file('pdf'),
+                    (int) $datos['desde'],
+                    (int) $datos['hasta'],
+                );
+            } else {
+                $resultado = $this->materialesPdfImport->preview($request->file('pdf'));
+            }
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error al analizar el PDF.',
+            ], 500);
+        }
+
+        return response()->json(array_merge($resultado, [
+            'error_cabecera' => null,
+            'puede_importar' => true,
+        ]));
+    }
+
+    public function importarPdf(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
+        $datos = $request->validate([
+            'pdf' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            if (isset($datos['desde'], $datos['hasta'])) {
+                $resultado = $this->materialesPdfImport->aplicarLote(
+                    $nota,
+                    $request->file('pdf'),
+                    $request->user()->username,
+                    (int) $datos['desde'],
+                    (int) $datos['hasta'],
+                );
+            } else {
+                $resultado = $this->materialesPdfImport->aplicar(
+                    $nota,
+                    $request->file('pdf'),
+                    $request->user()->username,
+                );
+            }
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error interno al importar desde PDF.',
             ], 500);
         }
 

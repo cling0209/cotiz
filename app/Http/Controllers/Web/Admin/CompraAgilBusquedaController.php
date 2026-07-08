@@ -82,6 +82,10 @@ class CompraAgilBusquedaController extends Controller
     {
         $nota = $this->notaAutorizada($request, $nronota);
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -120,6 +124,10 @@ class CompraAgilBusquedaController extends Controller
     {
         $nota = $this->notaAutorizada($request, $nronota);
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -137,10 +145,6 @@ class CompraAgilBusquedaController extends Controller
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
             $parseado = $this->mapper->fromDetalle($payload);
-
-            if ($nota->requiereNumeroCotizacion() && $parseado['cabecera']['codigo_cotizacion'] === '') {
-                return response()->json(['error' => 'La Compra Ágil no trae código de cotización.'], 422);
-            }
 
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->importService->aplicarLoteDesdeDatos(
@@ -171,6 +175,10 @@ class CompraAgilBusquedaController extends Controller
     public function validarCodigo(Request $request, int $nronota): JsonResponse
     {
         $nota = $this->notaAutorizada($request, $nronota);
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
 
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
@@ -267,5 +275,14 @@ class CompraAgilBusquedaController extends Controller
         }
 
         return $nota;
+    }
+
+    private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): ?JsonResponse
+    {
+        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        return null;
     }
 }

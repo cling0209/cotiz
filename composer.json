@@ -16,6 +16,7 @@
         "openspout/openspout": "^4.28",
         "phpoffice/phpspreadsheet": "^5.8",
         "resend/resend-php": "^1.0",
+        "smalot/pdfparser": "^2.12",
         "transbank/transbank-sdk": "^5.1"
     },
     "require-dev": {

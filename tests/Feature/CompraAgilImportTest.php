@@ -86,7 +86,7 @@ TXT;
 
     public function test_importar_actualiza_cabecera_y_agrega_lineas_pendientes(): void
     {
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
@@ -168,7 +168,7 @@ TXT;
             '31237835',
         );
 
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
@@ -250,7 +250,33 @@ TXT;
         );
 
         $response->assertStatus(422);
-        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar, o pegar un texto que lo incluya.');
+        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
+    }
+
+    public function test_importar_rechaza_sin_numero_cotizacion_aunque_texto_lo_trae(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
+    }
+
+    public function test_preview_rechaza_sin_numero_cotizacion_guardado(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
     }
 
     public function test_preview_advierte_cotizacion_duplicada(): void
@@ -260,7 +286,7 @@ TXT;
             'encargado' => '1161-172-COT26',
         ]);
 
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => 'COT-NUEVA-001']);
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
@@ -275,7 +301,7 @@ TXT;
 
     public function test_importar_por_lotes_agrega_todas_las_lineas(): void
     {
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
 
         $response1 = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
@@ -333,7 +359,7 @@ TXT;
             'factor_precio_venta' => 1.22,
         ]);
 
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => 'COT-NUEVA-002']);
 
         $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
@@ -361,7 +387,7 @@ TXT;
             ], 200),
         ]);
 
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => 'COT-NUEVA-003']);
 
         $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
@@ -389,7 +415,7 @@ TXT;
             ], 200),
         ]);
 
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
 
         $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
@@ -454,7 +480,7 @@ TXT;
 
     public function test_importar_guarda_descripcion_agile_en_linea(): void
     {
-        $nota = $this->crearNota(['encargado' => '']);
+        $nota = $this->crearNota(['encargado' => '1161-172-COT26']);
 
         $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
