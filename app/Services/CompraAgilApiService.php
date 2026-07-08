@@ -388,8 +388,14 @@ class CompraAgilApiService
     {
         $texto = mb_strtolower($mensaje);
         $texto = str_replace(
-            ['á', 'é', 'í', 'ó', 'ú', 'ñ', ''', ''', '"', '"'],
-            ['a', 'e', 'i', 'o', 'u', 'n', "'", "'", '"', '"'],
+            [
+                'á', 'é', 'í', 'ó', 'ú', 'ñ',
+                "\u{2018}", "\u{2019}", "\u{201C}", "\u{201D}",
+            ],
+            [
+                'a', 'e', 'i', 'o', 'u', 'n',
+                "'", "'", '"', '"',
+            ],
             $texto,
         );
         $texto = preg_replace('/\s+/u', ' ', trim($texto)) ?? trim($texto);
