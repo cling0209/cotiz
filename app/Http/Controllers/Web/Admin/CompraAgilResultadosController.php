@@ -184,10 +184,17 @@ class CompraAgilResultadosController extends Controller
             return response()->json(['error' => 'Configure MERCADOPUBLICO_TICKET.'], 503);
         }
 
+        $inicio = microtime(true);
+
         try {
             $resultado = $this->resultados->consultarNotaIndividual($nronota, (string) $request->user()->username);
         } catch (RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+            $msTotal = (int) round((microtime(true) - $inicio) * 1000);
+
+            return response()->json([
+                'error' => $e->getMessage(),
+                'ms_total' => $msTotal,
+            ], 422);
         }
 
         return response()->json([

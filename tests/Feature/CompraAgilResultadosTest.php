@@ -1266,7 +1266,10 @@ class CompraAgilResultadosTest extends TestCase
             ->assertJsonPath('resultado.cambio', true)
             ->assertJsonPath('resultado.resultado_anterior', 'pendiente')
             ->assertJsonPath('resultado.resultado_propio', 'cerrada')
-            ->assertJsonPath('resultado.estado_anterior', 'proveedor_seleccionado');
+            ->assertJsonPath('resultado.estado_anterior', 'proveedor_seleccionado')
+            ->assertJsonStructure([
+                'resultado' => ['ms_total', 'ms_api', 'ms_guardado'],
+            ]);
     }
 
     public function test_consultar_individual_actualiza_seguimiento(): void

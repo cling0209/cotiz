@@ -683,7 +683,14 @@ class NotaMpResultadosService
             $payload = $this->api->detalle($codigo, false, $deadline);
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'No existe Compra Ágil')) {
-                return $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);
+                $resultado = $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);
+                $msTotal = (int) round((microtime(true) - $inicio) * 1000);
+
+                return array_merge($resultado, [
+                    'ms_total' => $msTotal,
+                    'ms_api' => $msTotal,
+                    'ms_guardado' => 0,
+                ]);
             }
             throw $e;
         }
@@ -827,6 +834,9 @@ class NotaMpResultadosService
             'monto_total_ganador' => $montoGanador,
             'id_orden_compra' => isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null,
             'organismo' => trim((string) ($institucion['organismo_comprador'] ?? '')),
+            'ms_total' => $msTotal,
+            'ms_api' => $msApi,
+            'ms_guardado' => max(0, $msTotal - $msApi),
         ];
     }
 

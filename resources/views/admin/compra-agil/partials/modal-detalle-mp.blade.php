@@ -157,6 +157,32 @@
         }
     }
 
+    function fmtTiempoRespuestaMs(ms) {
+        if (ms == null || ms < 0 || Number.isNaN(ms)) {
+            return '';
+        }
+        if (ms < 1000) {
+            return ms + ' ms';
+        }
+        const seg = ms / 1000;
+        return (seg >= 10 ? Math.round(seg) : seg.toFixed(1).replace('.', ',')) + ' s';
+    }
+
+    function sufijoTiempoRespuesta(r, msCliente) {
+        const total = r && r.ms_total != null ? r.ms_total : msCliente;
+        if (total == null) {
+            return '';
+        }
+        let txt = ' · Tiempo: ' + fmtTiempoRespuestaMs(total);
+        if (r && r.ms_api != null && r.ms_guardado != null && r.ms_guardado > 50) {
+            txt += ' (API: ' + fmtTiempoRespuestaMs(r.ms_api)
+                + ', guardado: ' + fmtTiempoRespuestaMs(r.ms_guardado) + ')';
+        } else if (r && r.ms_api != null && Math.abs(r.ms_api - total) > 50) {
+            txt += ' (API: ' + fmtTiempoRespuestaMs(r.ms_api) + ')';
+        }
+        return txt;
+    }
+
     function mensajeConsultaResultado(r) {
         const antGlosa = fmtGlosa(r.estado_anterior, r.estado_anterior_glosa);
         const nueGlosa = fmtGlosa(r.estado_nuevo, r.estado_glosa);
@@ -170,10 +196,10 @@
             } else if (r.resultado_anterior == null && r.resultado_propio) {
                 txt += ' · Seguimiento: ' + nueSeg;
             }
-            return txt;
+            return txt + sufijoTiempoRespuesta(r);
         }
 
-        return 'Sin cambios de estado (' + nueGlosa + ' · ' + nueSeg + ')';
+        return 'Sin cambios de estado (' + nueGlosa + ' · ' + nueSeg + ')' + sufijoTiempoRespuesta(r);
     }
 
     function cambioSeguimiento(r) {
@@ -354,6 +380,7 @@
         btn.dataset.consultando = '1';
         btn.disabled = true;
         const tieneFilaProgreso = mostrarProgresoConsulta(nronota);
+        const tInicio = performance.now();
 
         try {
             const res = await fetch(urlConsultarBase + '/' + encodeURIComponent(nronota), {
@@ -364,9 +391,11 @@
                 },
             });
             const data = await res.json().catch(function () { return {}; });
+            const msCliente = Math.round(performance.now() - tInicio);
 
             if (!res.ok) {
-                const errMsg = data.error || 'Error al consultar Mercado Público.';
+                const errMsg = (data.error || 'Error al consultar Mercado Público.')
+                    + sufijoTiempoRespuesta(data, data.ms_total != null ? data.ms_total : msCliente);
                 if (tieneFilaProgreso) {
                     finalizarProgresoConsulta(nronota, false);
                     const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
@@ -385,6 +414,7 @@
             }
 
             const r = data.resultado || {};
+            r.ms_total = r.ms_total != null ? r.ms_total : msCliente;
             if (tieneFilaProgreso) {
                 finalizarProgresoConsulta(nronota, true);
                 const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
@@ -400,17 +430,19 @@
                 window.location.reload();
             }
         } catch (err) {
+            const msCliente = Math.round(performance.now() - tInicio);
+            const errRed = 'Error de red al consultar Mercado Público.' + sufijoTiempoRespuesta(null, msCliente);
             if (tieneFilaProgreso) {
                 finalizarProgresoConsulta(nronota, false);
                 const msg = feedbackRow(nronota)?.querySelector('.consulta-mp-mensaje');
                 if (msg) {
                     msg.className = 'consulta-mp-mensaje small mt-1 text-danger';
-                    msg.textContent = 'Error de red al consultar Mercado Público.';
+                    msg.textContent = errRed;
                 }
             } else if (window.AdminDialog) {
-                AdminDialog.alert('Error de red al consultar Mercado Público.', { title: 'Consultar MP', type: 'danger' });
+                AdminDialog.alert(errRed, { title: 'Consultar MP', type: 'danger' });
             } else {
-                alert('Error de red al consultar Mercado Público.');
+                alert(errRed);
             }
             btn.disabled = false;
         }
