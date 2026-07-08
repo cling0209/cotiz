@@ -232,7 +232,7 @@ TXT;
         );
     }
 
-    public function test_importar_rechaza_sin_numero_cotizacion_si_texto_no_lo_trae(): void
+    public function test_importar_permite_sin_numero_cotizacion_si_texto_no_lo_trae(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
 
@@ -249,11 +249,11 @@ TXT;
             ['texto' => $texto],
         );
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
+        $response->assertOk();
+        $this->assertSame(1, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
     }
 
-    public function test_importar_rechaza_sin_numero_cotizacion_aunque_texto_lo_trae(): void
+    public function test_importar_sin_numero_guardado_usa_codigo_del_texto(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
 
@@ -262,11 +262,13 @@ TXT;
             ['texto' => $this->textoMp],
         );
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
+        $response->assertOk();
+        $nota->refresh();
+        $this->assertSame('1161-172-COT26', trim((string) $nota->encargado));
+        $this->assertSame(2, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
     }
 
-    public function test_preview_rechaza_sin_numero_cotizacion_guardado(): void
+    public function test_preview_permite_sin_numero_cotizacion_guardado(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
 
@@ -275,8 +277,9 @@ TXT;
             ['texto' => $this->textoMp],
         );
 
-        $response->assertStatus(422);
-        $response->assertJsonPath('error', 'Debe ingresar el número de cotización antes de continuar.');
+        $response->assertOk();
+        $response->assertJsonPath('cabecera.codigo_cotizacion', '1161-172-COT26');
+        $response->assertJsonPath('resumen.total', 2);
     }
 
     public function test_preview_advierte_cotizacion_duplicada(): void

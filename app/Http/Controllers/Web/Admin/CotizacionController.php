@@ -45,7 +45,7 @@ class CotizacionController extends Controller
         }
 
         return redirect()->route('admin.cotizaciones.edit', $nota->nronota)
-            ->with('info', 'Ingrese el número de cotización para continuar.');
+            ->with('info', 'Importe desde Compra Ágil para comenzar.');
     }
 
     public function retomar(Request $request): RedirectResponse
@@ -83,6 +83,9 @@ class CotizacionController extends Controller
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
+            'abrirImportarAlInicio' => $request->query('from') !== 'adjudicadas'
+                && $nota->requiereNumeroCotizacion()
+                && $lineas->isEmpty(),
             'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
         ]);
@@ -103,10 +106,6 @@ class CotizacionController extends Controller
         $accion = $request->string('accion')->toString();
 
         if ($accion === 'aplicar_factor') {
-            if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
-                return back()->with('error', $error);
-            }
-
             $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
 
             if ($factor === null) {
@@ -250,10 +249,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
-            return response()->json(['error' => $error], 422);
-        }
-
         $datos = $request->validate($this->reglasLineasLote());
 
         $lineas = $datos['lineas'];
@@ -285,10 +280,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
-            return response()->json(['error' => $error], 422);
-        }
-
         $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
         if ($factor === null) {
             return response()->json([
@@ -317,10 +308,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -389,10 +376,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
-
         $datos = $request->validate([
             'prod_item' => ['nullable', 'string'],
             'orden' => ['required', 'integer', 'min:1'],
@@ -429,10 +412,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -480,10 +459,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -548,10 +523,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
-
         $request->validate([
             'texto' => ['nullable', 'string', 'max:50000'],
         ]);
@@ -573,10 +544,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
-
         $eliminadas = $this->detalleService->eliminarTodasLineasAgile($nota);
 
         return response()->json([
@@ -592,10 +559,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -749,10 +712,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
-            return response()->json(['error' => $error], 422);
         }
 
         $datos = $request->validate([

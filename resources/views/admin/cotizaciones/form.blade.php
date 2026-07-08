@@ -33,8 +33,8 @@
     </div>
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
-        <div class="alert alert-danger py-2 mb-2" role="alert">
-            Debe ingresar el <strong>n&uacute;mero de cotizaci&oacute;n</strong> y pulsar <strong>Guardar n&uacute;mero</strong> antes de agregar productos, importar l&iacute;neas o aplicar factor.
+        <div class="alert alert-info py-2 mb-2" role="alert">
+            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n solo es obligatorio antes de analizar un <strong>PDF (OCR)</strong>.
         </div>
     @endif
 
@@ -54,9 +54,6 @@
                     <td><input type="text" name="empresa" id="empresa" maxlength="100" value="{{ old('empresa', $nota->empresa) }}"></td>
                     <th>
                         Cotizaci&oacute;n
-                        @if($requiereNumeroCotizacion)
-                            <span class="text-danger"> *</span>
-                        @endif
                     </th>
                     <td>
                         <input
@@ -65,13 +62,11 @@
                             id="encargado"
                             maxlength="100"
                             value="{{ old('encargado', $nota->encargado) }}"
-                            required
                             @class([
                                 'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || $errors->has('encargado'),
                                 'is-invalid' => $errors->has('encargado'),
                             ])
-                            @if($requiereNumeroCotizacion) autofocus @endif
-                            placeholder="{{ $requiereNumeroCotizacion ? 'Nº cotización obligatorio' : '' }}"
+                            placeholder="{{ $requiereNumeroCotizacion ? 'Se completa al importar o para OCR PDF' : '' }}"
                         >
                         @error('encargado')
                             <div class="text-danger small mt-1">{{ $message }}</div>
@@ -118,7 +113,7 @@
             </p>
         @endif
 
-        <div @class(['cotiz-contenido-detalle', 'cotiz-contenido-bloqueado' => $requiereNumeroCotizacion && ! $desdeAdjudicadas])>
+        <div class="cotiz-contenido-detalle">
         @unless($desdeAdjudicadas)
             <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
@@ -361,6 +356,11 @@
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
                             <p class="small text-muted mb-2">Suba un PDF con listado de materiales (columnas Cantidad y descripci&oacute;n). Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
+                            @if($requiereNumeroCotizacion)
+                                <div class="alert alert-warning py-2 px-3 small mb-2">
+                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el PDF.
+                                </div>
+                            @endif
                             <input
                                 type="file"
                                 id="importar-compra-agil-pdf"
@@ -467,6 +467,7 @@
 <script>
 (function () {
     const requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
+    const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
     const desdeAdjudicadas = @json($desdeAdjudicadas);
     const detalleColspan = @json($detalleColspan);
     const mensajeSinLineas = desdeAdjudicadas
@@ -487,18 +488,18 @@
         return Promise.resolve(confirm(message));
     }
 
-    function asegurarNumeroCotizacion() {
+    function asegurarNumeroCotizacionParaPdf() {
         if (!requiereNumeroCotizacion) {
             return true;
         }
         const enc = document.getElementById('encargado');
         const valor = String(enc?.value || '').trim();
         if (!valor) {
-            dlgAlert('Debe ingresar el número de cotización y guardarlo antes de continuar.', { title: 'Número de cotización' });
+            dlgAlert('Debe ingresar el número de cotización y guardarlo antes de analizar el PDF.', { title: 'Número de cotización' });
             enc?.focus();
             return false;
         }
-        dlgAlert('Guarde el número de cotización con el botón «Guardar número» antes de continuar.', { title: 'Número de cotización' });
+        dlgAlert('Guarde el número de cotización con el botón «Guardar número» antes de analizar el PDF.', { title: 'Número de cotización' });
         enc?.focus();
         return false;
     }
@@ -852,7 +853,6 @@
 
     async function aplicarFactorAjax() {
         if (!factorInput || !btnFactorAumento) return;
-        if (!asegurarNumeroCotizacion()) return;
 
         const parsed = parseFactorChile(factorInput.value);
         if (parsed === null) {
@@ -1755,7 +1755,6 @@
     }
 
     function abrirModalBuscar() {
-        if (!asegurarNumeroCotizacion()) return;
         if (!bsModal || !modalInput) return;
         modalInput.value = '';
         limpiarProductosMarcados();
@@ -2188,8 +2187,6 @@
     }
 
     async function analizarImportCompraAgil() {
-        if (!asegurarNumeroCotizacion()) return;
-
         importModo = 'texto';
         importPdfFile = null;
         const texto = String(importarTexto?.value || '').trim();
@@ -2338,7 +2335,7 @@
     }
 
     async function analizarImportPdf() {
-        if (!asegurarNumeroCotizacion()) return;
+        if (!asegurarNumeroCotizacionParaPdf()) return;
 
         importModo = 'pdf';
         importCodigoApi = null;
@@ -2514,8 +2511,6 @@
     let analizandoCodigoApi = false;
 
     async function analizarCodigoApi(codigo) {
-        if (!asegurarNumeroCotizacion()) return;
-
         codigo = String(codigo || '').trim().toUpperCase();
         if (!codigo || analizandoCodigoApi) return;
 
@@ -2644,7 +2639,9 @@
 
     async function confirmarImportCompraAgil() {
         if (importandoCompraAgil || !importPreviewData) return;
-        if (!asegurarNumeroCotizacion()) return;
+
+        const usarPdf = importModo === 'pdf';
+        if (usarPdf && !asegurarNumeroCotizacionParaPdf()) return;
 
         if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
             mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
@@ -2653,7 +2650,6 @@
 
         const texto = String(importarTexto?.value || '').trim();
         const usarApi = !!importCodigoApi;
-        const usarPdf = importModo === 'pdf';
 
         if (!usarApi && !usarPdf && !texto) return;
         if (usarPdf && !importPdfFile) return;
@@ -2817,11 +2813,10 @@
     }
 
     btnAbrirImportar?.addEventListener('click', () => {
-        if (!asegurarNumeroCotizacion()) return;
         resetImportCompraAgilModal();
         actualizarResumenLineas(resumenLineasInicial);
         bsModalImportar?.show();
-        setTimeout(() => importarTexto?.focus(), 200);
+        setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 200);
     });
 
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
@@ -3139,6 +3134,13 @@
             type: 'warning',
         });
     @endif
+
+    if (abrirImportarAlInicio && bsModalImportar) {
+        resetImportCompraAgilModal();
+        actualizarResumenLineas(resumenLineasInicial);
+        bsModalImportar.show();
+        setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+    }
 })();
 </script>
 @endpush

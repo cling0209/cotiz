@@ -82,10 +82,6 @@ class CompraAgilBusquedaController extends Controller
     {
         $nota = $this->notaAutorizada($request, $nronota);
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
-
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -123,10 +119,6 @@ class CompraAgilBusquedaController extends Controller
     public function importarCodigo(Request $request, int $nronota): JsonResponse
     {
         $nota = $this->notaAutorizada($request, $nronota);
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
 
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
