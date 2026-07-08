@@ -2919,13 +2919,16 @@
                 }
                 let html = '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
                     + '<th style="width:80px"></th>'
-                    + '<th>Código</th><th>Nombre</th><th>Costo</th><th>Venta</th><th></th>'
+                    + '<th>Código</th><th>Nombre</th>'
+                    + '<th class="text-end" style="width:70px">Stock</th>'
+                    + '<th>Costo</th><th>Venta</th><th></th>'
                     + '</tr></thead><tbody>';
                 items.forEach((p, idx) => {
                     html += '<tr>'
                         + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
                         + '<td>' + escHtml(p.prod_item) + '</td>'
                         + '<td>' + escHtml(p.prod_nombre) + '</td>'
+                        + '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor) + '</td>'
                         + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
