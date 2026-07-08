@@ -668,9 +668,7 @@ class NotaMpResultadosService
     }
 
     /**
-     * Valores efectivos de timeout/reintentos (post-tope en config/cotiz.php).
-     *
-     * @return array{timeout_seg: int, connect_timeout_seg: int, low_speed_seg: int, reintentos: int, delay_ms: int, concurrencia: int}
+     * @return array{timeout_seg: int, connect_timeout_seg: int, low_speed_seg: int, reintentos: int, delay_ms: int, concurrencia: int, stagger_ms: int}
      */
     public static function configMpEfectiva(): array
     {
@@ -681,6 +679,7 @@ class NotaMpResultadosService
             'reintentos' => (int) config('cotiz.mercadopublico.api_reintentos_http', 3),
             'delay_ms' => (int) config('cotiz.mercadopublico.resultados_delay_ms', 500),
             'concurrencia' => max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5))),
+            'stagger_ms' => max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000)),
         ];
     }
 
@@ -755,7 +754,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Procesa un lote de notas en paralelo vía Http::pool (un job = hasta N consultas MP).
+     * Procesa un lote con disparo escalonado: lanza la siguiente ~2 s después
+     * sin esperar respuesta; máximo N en vuelo. Persiste cada resultado al llegar.
      *
      * @param  list<array{nronota: int, codigo: string, empresa?: string|null}>  $lote
      * @return array{ultimo_error: ?string, fallidas: int, ok: int}
@@ -766,47 +766,97 @@ class NotaMpResultadosService
             return ['ultimo_error' => null, 'fallidas' => 0, 'ok' => 0];
         }
 
-        $this->marcarLoteEnConsulta($corrida, $lote);
+        // UI empieza vacía; se llena con onLaunch (máx. N en vuelo).
+        $corrida->update([
+            'en_curso_json' => [],
+            'nronota_actual' => null,
+            'codigo_actual' => null,
+            'nota_inicio_at' => now(),
+        ]);
 
+        $porCodigo = [];
         $codigos = [];
         foreach ($lote as $item) {
+            $nronota = (int) ($item['nronota'] ?? 0);
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-            if ($codigo !== '') {
-                $codigos[] = $codigo;
+            if ($nronota <= 0 || $codigo === '') {
+                continue;
             }
+            $codigos[] = $codigo;
+            $porCodigo[$codigo] = $item;
         }
-
-        $payloads = $codigos !== [] ? $this->api->detalleVarios($codigos) : [];
 
         $fallidas = 0;
         $ok = 0;
         $ultimoError = null;
+        $yaContadas = [];
 
-        foreach ($lote as $item) {
+        $maxInFlight = $this->concurrenciaResultados();
+        $staggerMs = max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000));
+
+        $onLaunch = function (string $codigo) use (&$corrida, $porCodigo): void {
+            $item = $porCodigo[$codigo] ?? null;
+            if ($item === null) {
+                return;
+            }
+            $corrida->refresh();
+            $enCurso = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
+            $enCurso[] = [
+                'nronota' => (int) $item['nronota'],
+                'codigo' => $codigo,
+            ];
+            $primero = $enCurso[0] ?? null;
+            $corrida->update([
+                'en_curso_json' => $enCurso,
+                'nronota_actual' => $primero['nronota'] ?? null,
+                'codigo_actual' => $primero['codigo'] ?? null,
+                'nota_inicio_at' => $corrida->nota_inicio_at ?? now(),
+            ]);
+        };
+
+        $onDone = function (string $codigo, array|RuntimeException $apiResult) use (
+            &$corrida,
+            $usuario,
+            $porCodigo,
+            &$fallidas,
+            &$ok,
+            &$ultimoError,
+            &$yaContadas,
+        ): void {
+            if (isset($yaContadas[$codigo])) {
+                return;
+            }
+            $yaContadas[$codigo] = true;
+
             $corrida->refresh();
             if ($corrida->estado !== 'running') {
-                break;
+                return;
+            }
+
+            $item = $porCodigo[$codigo] ?? null;
+            if ($item === null) {
+                return;
             }
 
             $nronota = (int) ($item['nronota'] ?? 0);
-            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
             $empresa = trim((string) ($item['empresa'] ?? ''));
-            if ($nronota <= 0) {
-                continue;
-            }
-
             $procesadasAntes = (int) $corrida->notas_procesadas;
 
+            $enCurso = array_values(array_filter(
+                is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [],
+                static fn ($row) => ! (is_array($row) && strtoupper((string) ($row['codigo'] ?? '')) === $codigo),
+            ));
+            $corrida->update([
+                'en_curso_json' => $enCurso !== [] ? $enCurso : null,
+                'nronota_actual' => $enCurso[0]['nronota'] ?? null,
+                'codigo_actual' => $enCurso[0]['codigo'] ?? null,
+            ]);
+
             try {
-                $apiResult = $codigo !== '' ? ($payloads[$codigo] ?? null) : null;
                 if ($apiResult instanceof RuntimeException) {
                     throw $apiResult;
                 }
-                if (is_array($apiResult)) {
-                    $this->consultarNotaConPayload($nronota, $corrida, $usuario, $apiResult, null);
-                } else {
-                    $this->consultarNota($nronota, $corrida, $usuario, null);
-                }
+                $this->consultarNotaConPayload($nronota, $corrida, $usuario, $apiResult, null);
                 $ok++;
             } catch (\Throwable $e) {
                 $fallidas++;
@@ -821,7 +871,7 @@ class NotaMpResultadosService
                     mb_substr(($ultimoError ?: 'Error desconocido').' ('.$sufijo.')', 0, 500),
                     $empresa !== '' ? $empresa : null,
                 );
-                Log::warning('NotaMpResultados: nota fallida en lote', [
+                Log::warning('NotaMpResultados: nota fallida en pipeline', [
                     'corrida_id' => $corrida->id,
                     'nronota' => $nronota,
                     'codigo' => $codigo,
@@ -830,6 +880,51 @@ class NotaMpResultadosService
             }
 
             $corrida->refresh();
+            if ((int) $corrida->notas_procesadas <= $procesadasAntes) {
+                $corrida->increment('notas_procesadas');
+            }
+        };
+
+        if ($codigos !== []) {
+            $this->api->detalleVariosEscalonado(
+                $codigos,
+                $maxInFlight,
+                $staggerMs,
+                $onDone,
+                function () use ($corrida): bool {
+                    $corrida->refresh();
+
+                    return $corrida->estado === 'running';
+                },
+                $onLaunch,
+            );
+        }
+
+        // Notas del lote sin código válido: marcar fallidas.
+        foreach ($lote as $item) {
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($nronota <= 0) {
+                continue;
+            }
+            if ($codigo !== '' && isset($yaContadas[$codigo])) {
+                continue;
+            }
+            if ($codigo !== '') {
+                continue;
+            }
+
+            $corrida->refresh();
+            $procesadasAntes = (int) $corrida->notas_procesadas;
+            $ultimoError = 'La nota no tiene un código Compra Ágil válido.';
+            $this->registrarDetalleFallo(
+                $corrida,
+                $nronota,
+                '',
+                $ultimoError.' (sin reintento)',
+                trim((string) ($item['empresa'] ?? '')) ?: null,
+            );
+            $fallidas++;
             if ((int) $corrida->notas_procesadas <= $procesadasAntes) {
                 $corrida->increment('notas_procesadas');
             }

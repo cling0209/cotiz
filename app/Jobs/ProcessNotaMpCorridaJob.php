@@ -13,8 +13,8 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Tiempo máximo por ejecución (lote de notas). */
-    public int $timeout = 300;
+    /** Tiempo máximo por ejecución (pipeline de la corrida). */
+    public int $timeout = 43200;
 
     public int $maxExceptions = 3;
 
@@ -28,12 +28,9 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
     ) {
         $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
         $timeoutApi = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
-        $reintentos = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
-        $esperaReintento = max(1, (int) config('cotiz.mercadopublico.api_espera_reintento_seg', 5));
-        $concurrencia = max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5)));
-        $margenJob = max(90, ($timeoutApi + $esperaReintento) * $reintentos + 60);
-        // Lote paralelo: el wall-clock es ~max(API) + persistencias secuenciales.
-        $this->timeout = max($maxSegNota + 90, $margenJob + ($concurrencia * 30));
+        $staggerMs = max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000));
+        // Pipeline largo: stagger * notas + timeouts API. Render worker ya usa --timeout=43200.
+        $this->timeout = max(3600, $maxSegNota + ($timeoutApi * 3) + (int) ceil($staggerMs / 1000) * 200);
     }
 
     public function handle(NotaMpResultadosService $resultados): void
@@ -45,14 +42,16 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
         $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
         $indice = (int) $corrida->notas_procesadas;
+        $restantes = max(0, count($pendientes) - $indice);
 
-        if ($indice >= count($pendientes)) {
+        if ($restantes <= 0) {
             $this->finalizarSiCompleta($resultados, $corrida);
 
             return;
         }
 
-        $lote = $resultados->lotePendienteActual($corrida);
+        // Pipeline continuo: todas las pendientes, disparo cada ~2 s, máx. N en vuelo.
+        $lote = $resultados->lotePendienteActual($corrida, $restantes);
         if ($lote === []) {
             $corrida->increment('notas_procesadas');
             $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
@@ -87,27 +86,29 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
-        $lote = $resultados->lotePendienteActual($corrida);
+        $enCurso = $resultados->enCursoActual($corrida);
+        if ($enCurso === []) {
+            $enCurso = array_slice($resultados->lotePendienteActual($corrida, 1), 0, 1);
+        }
         $msg = $this->mensajeAmigable($exception);
 
-        foreach ($lote as $item) {
+        foreach ($enCurso as $item) {
             $nronota = (int) ($item['nronota'] ?? 0);
             $codigo = trim((string) ($item['codigo'] ?? ''));
             if ($nronota <= 0) {
                 continue;
             }
-            $empresa = trim((string) ($item['empresa'] ?? ''));
             $resultados->registrarDetalleFallo(
                 $corrida,
                 $nronota,
                 $codigo,
                 mb_substr($msg.' (job interrumpido)', 0, 500),
-                $empresa !== '' ? $empresa : null,
+                null,
             );
             $corrida->increment('notas_procesadas');
         }
 
-        if ($lote === []) {
+        if ($enCurso === []) {
             $corrida->increment('notas_procesadas');
         }
 

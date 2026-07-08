@@ -882,6 +882,7 @@ class CompraAgilResultadosTest extends TestCase
     {
         config([
             'cotiz.mercadopublico.resultados_concurrencia' => 5,
+            'cotiz.mercadopublico.resultados_stagger_ms' => 0,
             'cotiz.mercadopublico.api_reintentos_http' => 1,
             'cotiz.mercadopublico.resultados_delay_ms' => 0,
         ]);

@@ -93,8 +93,10 @@ return [
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 500)),
-        // Notas consultadas en paralelo (Http::pool) por cada job del worker único en Render.
+        // Máx. consultas MP en vuelo (Http async). El siguiente se dispara sin esperar respuesta.
         'resultados_concurrencia' => max(1, min(10, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA', 5))),
+        // Espera entre disparos sucesivos (no entre fin de lote).
+        'resultados_stagger_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_STAGGER_MS', 2000)),
         'resultados_nota_max_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_MAX_SEG', 180)),
         'resultados_nota_alerta_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_ALERTA_SEG', 180)),
         'resultados_corrida_colgada_segundos' => max(300, (int) env('MERCADOPUBLICO_RESULTADOS_COLGADA_SEG', 43200)),

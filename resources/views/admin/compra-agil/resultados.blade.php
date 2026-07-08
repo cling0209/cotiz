@@ -379,8 +379,8 @@
             progresoConfigMp.textContent = 'MP en servidor: timeout '
                 + (c.timeout_seg ?? '?') + ' s, low-speed '
                 + (c.low_speed_seg ?? '?') + ' s, '
-                + (c.reintentos ?? '?') + ' reintento(s), pausa entre lotes '
-                + (c.delay_ms ?? '?') + ' ms, concurrencia '
+                + (c.reintentos ?? '?') + ' reintento(s), disparo cada '
+                + (c.stagger_ms ?? 2000) + ' ms, máx en vuelo '
                 + (c.concurrencia ?? concurrencia);
             progresoConfigMp.classList.remove('d-none');
         }
