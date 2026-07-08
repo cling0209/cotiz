@@ -96,7 +96,11 @@
             <div class="small text-muted mt-2 d-none text-break" id="progreso-ultimo-detalle"></div>
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
-                · Última nota: <span id="progreso-tiempo-nota"></span>
+                · <span id="progreso-en-curso-wrap">En curso: <span id="progreso-tiempo-nota">—</span><span id="progreso-estado-nota"></span></span>
+                · Última terminada: <span id="progreso-ultima-ms">—</span>
+                · Más lenta: <span id="progreso-max-ms">—</span>
+                · Ritmo: <span id="progreso-ritmo">—</span>
+                · ETA: <span id="progreso-eta">—</span>
                 · <span class="text-success">OK: <span id="progreso-ok">0</span></span>
                 · <span class="text-danger">Fallos: <span id="progreso-fallos">0</span></span>
             </div>
@@ -252,15 +256,38 @@
     const progresoTiempo = document.getElementById('progreso-tiempo');
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
     const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
+    const progresoEstadoNota = document.getElementById('progreso-estado-nota');
+    const progresoUltimaMs = document.getElementById('progreso-ultima-ms');
+    const progresoMaxMs = document.getElementById('progreso-max-ms');
+    const progresoRitmo = document.getElementById('progreso-ritmo');
+    const progresoEta = document.getElementById('progreso-eta');
+    const progresoEnCursoWrap = document.getElementById('progreso-en-curso-wrap');
     const progresoConfigMp = document.getElementById('progreso-config-mp');
-    const umbralAlertaNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_alerta_segundos', 180));
-    const umbralMaxNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
     let segTotalServidor = 0;
     let syncTotalMs = 0;
     let syncNotaMs = null;
     let ultimaNotaId = null;
     let ultimoCodigoActual = '';
     let relojTimer = null;
+
+    function fmtDuracionMs(ms) {
+        ms = Math.max(0, Number(ms) || 0);
+        if (ms >= 1000) {
+            return (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+        }
+        return ms + ' ms';
+    }
+
+    function fmtEta(seg) {
+        seg = Math.max(0, Number(seg) || 0);
+        if (seg <= 0) return '—';
+        if (seg < 120) return seg + ' s';
+        const m = Math.floor(seg / 60);
+        if (m < 120) return m + ' min';
+        const h = Math.floor(m / 60);
+        const rm = m % 60;
+        return h + ' h ' + rm + ' min';
+    }
 
     function fmtTiempo(seg) {
         seg = Math.max(0, seg);
@@ -278,14 +305,14 @@
             const totalSeg = segTotalServidor + Math.floor((now - syncTotalMs) / 1000);
             const notaSeg = syncNotaMs !== null ? Math.floor((now - syncNotaMs) / 1000) : null;
             if (progresoTiempoTotal) progresoTiempoTotal.textContent = fmtTiempo(totalSeg);
-            if (progresoTiempoNota) {
-                progresoTiempoNota.textContent = notaSeg !== null ? fmtTiempo(notaSeg) : '—';
+            const hayEnCurso = !!ultimoCodigoActual;
+            if (progresoEnCursoWrap) {
+                progresoEnCursoWrap.classList.toggle('d-none', !hayEnCurso);
             }
-            if (progresoAlerta && ultimoCodigoActual && notaSeg !== null && notaSeg >= umbralAlertaNotaSeg) {
-                progresoAlerta.textContent = 'Consultando ' + ultimoCodigoActual + ' lleva '
-                    + fmtTiempo(notaSeg) + '. Al superar ' + umbralMaxNotaSeg
-                    + ' s se registrará como fallo y continuará con la siguiente.';
-                progresoAlerta.classList.remove('d-none');
+            if (progresoTiempoNota) {
+                progresoTiempoNota.textContent = hayEnCurso && notaSeg !== null
+                    ? (ultimoCodigoActual + ' ' + fmtTiempo(notaSeg))
+                    : '—';
             }
         }, 1000);
     }
@@ -385,6 +412,37 @@
         const elFallos = document.getElementById('progreso-fallos');
         if (elOk) elOk.textContent = estado.detalle_ok ?? 0;
         if (elFallos) elFallos.textContent = estado.detalle_fallos ?? 0;
+
+        const stats = estado.stats || {};
+        if (progresoUltimaMs) {
+            progresoUltimaMs.textContent = stats.last_ms > 0
+                ? (fmtDuracionMs(stats.last_ms) + (stats.last_codigo ? ' (' + stats.last_codigo + ')' : ''))
+                : '—';
+        }
+        if (progresoMaxMs) {
+            progresoMaxMs.textContent = stats.max_ms > 0
+                ? (fmtDuracionMs(stats.max_ms) + (stats.max_codigo ? ' (' + stats.max_codigo + ')' : ''))
+                : '—';
+        }
+        if (progresoRitmo) {
+            progresoRitmo.textContent = stats.ritmo_notas_por_min != null
+                ? (String(stats.ritmo_notas_por_min).replace('.', ',') + '/min')
+                : '—';
+        }
+        if (progresoEta) {
+            progresoEta.textContent = fmtEta(stats.eta_segundos);
+        }
+        if (progresoEstadoNota) {
+            const est = stats.estado_nota;
+            if (est === 'colgada') {
+                progresoEstadoNota.innerHTML = ' <span class="badge text-bg-danger ms-1">Pegada — recuperando</span>';
+            } else if (est === 'lenta') {
+                progresoEstadoNota.innerHTML = ' <span class="badge text-bg-warning text-dark ms-1">Lenta</span>';
+            } else {
+                progresoEstadoNota.textContent = '';
+            }
+        }
+
         if (progresoUltimoDetalle && estado.ultimo_detalle) {
             const d = estado.ultimo_detalle;
             let txt = `Última procesada: ${d.codigo} (nota ${d.nronota})`;

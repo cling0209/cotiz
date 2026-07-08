@@ -880,8 +880,46 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertTrue($estado['en_curso']);
         $this->assertNotNull($estado['alerta']);
         $this->assertStringContainsString('974556-11-COT26', $estado['alerta']);
-        $this->assertStringContainsString('Al superar 180 s', $estado['alerta']);
+        $this->assertStringContainsString('210 s', $estado['alerta']);
         $this->assertGreaterThanOrEqual(180, $estado['segundos_en_nota_actual']);
+        $this->assertSame('lenta', $estado['stats']['estado_nota'] ?? null);
+    }
+
+    public function test_push_reciente_acumula_stats_corrida(): void
+    {
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 3,
+            'notas_procesadas' => 0,
+            'pendientes_json' => [],
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $service->pushReciente($corrida, [
+            'nronota' => 1,
+            'codigo' => '100-1-COT26',
+            'exito' => true,
+            'ms' => 3000,
+        ]);
+        $service->pushReciente($corrida, [
+            'nronota' => 2,
+            'codigo' => '200-1-COT26',
+            'exito' => false,
+            'ms' => 180000,
+            'mensaje' => '504',
+        ]);
+
+        $corrida->refresh();
+        $stats = $corrida->stats_json;
+        $this->assertSame(180000, (int) ($stats['max_ms'] ?? 0));
+        $this->assertSame('200-1-COT26', $stats['max_codigo'] ?? null);
+        $this->assertSame(2, (int) ($stats['count'] ?? 0));
+
+        $resumen = $service->statsCorridaResumen($corrida, 2, 400, null);
+        $this->assertSame(91500, $resumen['promedio_ms']);
+        $this->assertSame(180000, $resumen['max_ms']);
     }
 
     public function test_estado_corrida_incluye_config_mp_efectiva(): void

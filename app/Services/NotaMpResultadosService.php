@@ -126,6 +126,13 @@ class NotaMpResultadosService
                 self::mensajeTiempoMaximoNota().' ('.$this->notaMaxSegundos().' s, recuperación automática).',
                 $empresa !== '' ? $empresa : null,
             );
+            $this->pushReciente($corrida, [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'exito' => false,
+                'ms' => $segundosEnNota * 1000,
+                'mensaje' => self::mensajeTiempoMaximoNota(),
+            ]);
             $corrida->increment('notas_procesadas');
         }
 
@@ -567,11 +574,15 @@ class NotaMpResultadosService
         if ($corrida->estado === 'running' && $tieneCodigoActual && $segundosEnNotaActual !== null) {
             $umbralAlertaNota = $this->notaAlertaSegundos();
             $umbralMaxNota = $this->notaMaxSegundos();
-            if ($segundosEnNotaActual >= $umbralAlertaNota) {
+            $umbralRecuperacion = $umbralMaxNota + 30;
+            if ($segundosEnNotaActual >= $umbralRecuperacion) {
                 $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
-                    .self::formatearDuracionSegundos($segundosEnNotaActual).'. '
-                    .'Al superar '.$umbralMaxNota.' s se registrará como fallo y continuará con la siguiente '
-                    .'(recuperación automática a los '.($umbralMaxNota + 30).' s, incluso con worker activo).';
+                    .self::formatearDuracionSegundos($segundosEnNotaActual)
+                    .' — recuperación automática en curso (umbral '.$umbralRecuperacion.' s).';
+            } elseif ($segundosEnNotaActual >= $umbralAlertaNota) {
+                $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
+                    .self::formatearDuracionSegundos($segundosEnNotaActual)
+                    .'. Si supera '.$umbralRecuperacion.' s se marcará fallo y continuará sola.';
             }
         }
 
@@ -589,6 +600,8 @@ class NotaMpResultadosService
                 $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
             }
         }
+
+        $stats = $this->statsCorridaResumen($corrida, $procesadas, $segundosEnCurso, $segundosEnNotaActual);
 
         $detalleStats = NotaMpCorridaDetalle::query()
             ->where('corrida_id', $corrida->id)
@@ -635,6 +648,7 @@ class NotaMpResultadosService
             'ultimo_detalle' => $ultimoDetalleInfo,
             'notas_en_curso' => $this->enCursoActual($corrida),
             'recientes' => $this->recientesActual($corrida),
+            'stats' => $stats,
             'concurrencia' => $this->concurrenciaResultados(),
             'config_mp' => self::configMpEfectiva(),
         ];
@@ -724,10 +738,95 @@ class NotaMpResultadosService
      */
     public function pushReciente(NotaMpCorrida $corrida, array $entry): void
     {
+        $corrida->refresh();
         $lista = is_array($corrida->recientes_json) ? $corrida->recientes_json : [];
         array_unshift($lista, $entry);
         $lista = array_slice($lista, 0, 5);
-        $corrida->update(['recientes_json' => $lista]);
+
+        $ms = max(0, (int) ($entry['ms'] ?? 0));
+        $codigo = strtoupper(trim((string) ($entry['codigo'] ?? '')));
+        $stats = is_array($corrida->stats_json) ? $corrida->stats_json : [];
+        $maxMs = max(0, (int) ($stats['max_ms'] ?? 0));
+        $sumMs = max(0, (int) ($stats['sum_ms'] ?? 0));
+        $count = max(0, (int) ($stats['count'] ?? 0));
+        if ($ms > 0 && $codigo !== '') {
+            if ($ms > $maxMs) {
+                $maxMs = $ms;
+                $stats['max_codigo'] = $codigo;
+            }
+            $sumMs += $ms;
+            $count++;
+            $stats['max_ms'] = $maxMs;
+            $stats['sum_ms'] = $sumMs;
+            $stats['count'] = $count;
+            $stats['last_ms'] = $ms;
+            $stats['last_codigo'] = $codigo;
+        }
+
+        $corrida->update([
+            'recientes_json' => $lista,
+            'stats_json' => $stats !== [] ? $stats : null,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     max_ms: int,
+     *     max_codigo: ?string,
+     *     last_ms: int,
+     *     last_codigo: ?string,
+     *     promedio_ms: int,
+     *     ritmo_notas_por_min: ?float,
+     *     eta_segundos: ?int,
+     *     estado_nota: ?string,
+     *     umbral_recuperacion_seg: int
+     * }
+     */
+    public function statsCorridaResumen(
+        NotaMpCorrida $corrida,
+        int $procesadas,
+        int $segundosEnCurso,
+        ?int $segundosEnNotaActual,
+    ): array {
+        $raw = is_array($corrida->stats_json) ? $corrida->stats_json : [];
+        $count = max(0, (int) ($raw['count'] ?? 0));
+        $sumMs = max(0, (int) ($raw['sum_ms'] ?? 0));
+        $maxMs = max(0, (int) ($raw['max_ms'] ?? 0));
+        $promedioMs = $count > 0 ? (int) round($sumMs / $count) : 0;
+
+        $ritmo = null;
+        $etaSeg = null;
+        if ($procesadas > 0 && $segundosEnCurso >= 30) {
+            $ritmo = round(($procesadas / $segundosEnCurso) * 60, 1);
+            $restantes = max(0, (int) $corrida->total_notas - $procesadas);
+            if ($ritmo > 0 && $restantes > 0) {
+                $etaSeg = (int) round(($restantes / $ritmo) * 60);
+            }
+        }
+
+        $umbralRecuperacion = $this->notaMaxSegundos() + 30;
+        $estadoNota = null;
+        if ($segundosEnNotaActual !== null && filled($corrida->codigo_actual)) {
+            if ($segundosEnNotaActual >= $umbralRecuperacion) {
+                $estadoNota = 'colgada';
+            } elseif ($segundosEnNotaActual >= $this->notaAlertaSegundos()) {
+                $estadoNota = 'lenta';
+            } else {
+                $estadoNota = 'normal';
+            }
+        }
+
+        return [
+            'max_ms' => $maxMs,
+            'max_codigo' => isset($raw['max_codigo']) ? (string) $raw['max_codigo'] : null,
+            'last_ms' => max(0, (int) ($raw['last_ms'] ?? 0)),
+            'last_codigo' => isset($raw['last_codigo']) ? (string) $raw['last_codigo'] : null,
+            'promedio_ms' => $promedioMs,
+            'ritmo_notas_por_min' => $ritmo,
+            'eta_segundos' => $etaSeg,
+            'estado_nota' => $estadoNota,
+            'umbral_recuperacion_seg' => $umbralRecuperacion,
+        ];
     }
 
     /**
@@ -764,6 +863,7 @@ class NotaMpResultadosService
             'nota_inicio_at' => null,
             'en_curso_json' => null,
             'recientes_json' => null,
+            'stats_json' => null,
         ]);
 
         return $corrida->fresh() ?? $corrida;
