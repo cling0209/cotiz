@@ -61,7 +61,7 @@
                         <th style="width:52px"></th>
                         <th>C&oacute;digo</th>
                         <th>Descripci&oacute;n</th>
-                        <th>Familia</th>
+                        <th class="text-end">Stock</th>
                         <th class="text-end">Precio</th>
                         <th class="text-end">Costo</th>
                         @if($mostrarAcciones)
@@ -88,7 +88,7 @@
                             </td>
                             <td><code>{{ $producto->prod_item }}</code></td>
                             <td>{{ $producto->prod_nombre }}</td>
-                            <td class="text-muted small">{{ $producto->prod_familia }}</td>
+                            <td class="text-end text-muted small tabular-nums">{{ $producto->prod_stock_real !== null ? number_format((int) $producto->prod_stock_real, 0, ',', '.') : '—' }}</td>
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
                             @if($mostrarAcciones)
