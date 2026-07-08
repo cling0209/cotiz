@@ -148,7 +148,7 @@ class CompraAgilApiService
                 return $this->interpretarRespuestaHttp($response);
             } catch (RuntimeException $e) {
                 $ultimoError = $e->getMessage();
-                if ($this->esErrorDeadlineNota($ultimoError)) {
+                if ($this->esErrorDeadlineNota($ultimoError) || self::esErrorDefinitivoMp($ultimoError)) {
                     throw $e;
                 }
 
@@ -246,7 +246,12 @@ class CompraAgilApiService
         $json = $response->json();
 
         if ($this->esHttpRecuperable($status)) {
-            throw new RuntimeException($this->mensajeDesdeRespuesta($status, $json), 1);
+            $mensaje = $this->mensajeDesdeRespuesta($status, $json);
+            if (self::esErrorDefinitivoMp($mensaje)) {
+                throw new RuntimeException($mensaje);
+            }
+
+            throw new RuntimeException($mensaje, 1);
         }
 
         if ($status === 429) {
@@ -264,7 +269,8 @@ class CompraAgilApiService
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException($this->mensajeDesdeRespuesta($status, $json));
+            $mensaje = $this->mensajeDesdeRespuesta($status, $json);
+            throw new RuntimeException($mensaje);
         }
 
         if (! is_array($json) || ($json['success'] ?? '') !== 'OK') {
@@ -368,5 +374,31 @@ class CompraAgilApiService
             || str_contains($texto, 'límite')
             || str_contains($texto, 'too many')
             || str_contains($texto, 'rate limit');
+    }
+
+    /**
+     * Errores de validación de MP que no mejoran con reintentos HTTP (p. ej. código CA mal formado).
+     */
+    public static function esErrorDefinitivoMp(string $mensaje): bool
+    {
+        return self::esCodigoRutaInvalidoMp($mensaje);
+    }
+
+    public static function esCodigoRutaInvalidoMp(string $mensaje): bool
+    {
+        $texto = mb_strtolower($mensaje);
+        $texto = str_replace(
+            ['á', 'é', 'í', 'ó', 'ú', 'ñ'],
+            ['a', 'e', 'i', 'o', 'u', 'n'],
+            $texto,
+        );
+
+        if (str_contains($texto, "parametro de ruta 'codigo' invalido")) {
+            return true;
+        }
+
+        return str_contains($texto, 'ruta')
+            && str_contains($texto, 'codigo')
+            && str_contains($texto, 'invalido');
     }
 }

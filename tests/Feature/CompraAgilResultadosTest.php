@@ -574,6 +574,50 @@ class CompraAgilResultadosTest extends TestCase
         Http::assertSentCount(3);
     }
 
+    public function test_corrida_masiva_no_reintenta_codigo_ruta_invalido_en_mp(): void
+    {
+        config([
+            'cotiz.mercadopublico.api_reintentos_http' => 3,
+            'cotiz.mercadopublico.api_espera_reintento_seg' => 0,
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 5032,
+            'descripcion' => 'Codigo CA invalido para MP',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente test',
+            'encargado' => '5032-1-COT26',
+            'nota_softland' => 503200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $errorMp = "Parámetro de ruta 'codigo' inválido.";
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/5032-1-COT26' => Http::sequence()
+                ->push(['success' => 'ERROR', 'errors' => [['mensaje' => $errorMp]]], 503)
+                ->push(['success' => 'ERROR', 'errors' => [['mensaje' => $errorMp]]], 503)
+                ->push(['success' => 'ERROR', 'errors' => [['mensaje' => $errorMp]]], 503),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk()
+            ->assertJsonPath('estado.en_curso', false);
+
+        Http::assertSentCount(1);
+
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
+            'nronota' => 5032,
+            'exito' => false,
+            'mensaje' => $errorMp.' (sin reintento)',
+        ]);
+    }
+
     public function test_encolar_corrida_respeta_limite_solicitado(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);

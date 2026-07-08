@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\NotaMpCorrida;
+use App\Services\CompraAgilApiService;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -94,12 +95,15 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         if ((int) $corrida->notas_procesadas <= $indice) {
             if (! $exito) {
                 $empresa = trim((string) ($item['empresa'] ?? ''));
+                $sufijoIntentos = CompraAgilApiService::esErrorDefinitivoMp((string) $ultimoError)
+                    ? 'sin reintento'
+                    : $intentosHttp.' intentos HTTP';
                 $resultados->registrarDetalleFallo(
                     $corrida,
                     $nronota,
                     $codigo,
                     mb_substr(
-                        ($ultimoError ?: 'Error desconocido').' ('.$intentosHttp.' intentos HTTP)',
+                        ($ultimoError ?: 'Error desconocido').' ('.$sufijoIntentos.')',
                         0,
                         500,
                     ),
