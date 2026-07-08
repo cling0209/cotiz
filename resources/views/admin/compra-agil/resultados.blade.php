@@ -92,8 +92,7 @@
             <div class="progress" style="height: 1.25rem;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
-            <div class="small text-muted mt-2 d-none text-break" id="progreso-en-curso"></div>
-            <div class="small text-muted mt-1 d-none text-break" id="progreso-recientes"></div>
+            <div class="small mt-2 d-none" id="progreso-recientes"></div>
             <div class="small text-muted mt-2 d-none text-break" id="progreso-ultimo-detalle"></div>
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
@@ -249,7 +248,6 @@
     }
 
     const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
-    const progresoEnCurso = document.getElementById('progreso-en-curso');
     const progresoRecientes = document.getElementById('progreso-recientes');
     const progresoTiempo = document.getElementById('progreso-tiempo');
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
@@ -324,37 +322,35 @@
                 progresoAlerta.classList.add('d-none');
             }
         }
-        if (progresoEnCurso) {
-            if (enCurso.length > 0) {
-                const partes = enCurso.map((x) => {
-                    const cod = x.codigo || '';
-                    const seg = (x.segundos !== undefined && x.segundos !== null)
-                        ? ` (${fmtTiempo(x.segundos)})`
-                        : '';
-                    return cod + seg;
-                });
-                progresoEnCurso.textContent = 'En curso: ' + partes.join(' · ');
-                progresoEnCurso.classList.remove('d-none');
-            } else {
-                progresoEnCurso.textContent = '';
-                progresoEnCurso.classList.add('d-none');
-            }
-        }
         if (progresoRecientes) {
             const recientes = Array.isArray(estado.recientes) ? estado.recientes : [];
             if (recientes.length > 0) {
-                const partes = recientes.slice(0, 5).map((r) => {
+                const filas = recientes.slice(0, 5).map((r) => {
                     const ms = Number(r.ms || 0);
                     const tiempo = ms >= 1000
                         ? ((ms / 1000).toFixed(1).replace('.', ',') + ' s')
                         : (ms + ' ms');
-                    const marca = r.exito ? 'OK' : 'Fallo';
-                    return `${r.codigo} ${marca} ${tiempo}`;
+                    const ok = !!r.exito;
+                    const icon = ok
+                        ? '<span class="text-success">✓</span>'
+                        : '<span class="text-danger">✗</span>';
+                    const marca = ok
+                        ? '<span class="text-success">OK</span>'
+                        : '<span class="text-danger">Fallo</span>';
+                    const msg = (!ok && r.mensaje)
+                        ? ` <span class="text-muted">(${String(r.mensaje).replace(/[<>&]/g, '')})</span>`
+                        : '';
+                    return `<div class="d-flex flex-wrap align-items-baseline gap-2 py-0">${icon}`
+                        + ` <span class="font-monospace">${r.codigo || '—'}</span>`
+                        + ` ${marca}`
+                        + ` <span class="text-muted tabular-nums">${tiempo}</span>`
+                        + msg
+                        + `</div>`;
                 });
-                progresoRecientes.innerHTML = 'Últimas: ' + partes.join(' · ');
+                progresoRecientes.innerHTML = '<div class="fw-semibold text-muted mb-1">Últimas</div>' + filas.join('');
                 progresoRecientes.classList.remove('d-none');
             } else {
-                progresoRecientes.textContent = '';
+                progresoRecientes.innerHTML = '';
                 progresoRecientes.classList.add('d-none');
             }
         }
