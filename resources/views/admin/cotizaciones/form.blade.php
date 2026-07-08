@@ -383,6 +383,12 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="importar-compra-agil-estado" class="small text-muted"></span>
                     </div>
+                    <div id="importar-compra-agil-progreso-wrap" class="d-none w-100 mb-2">
+                        <div class="progress" style="height:14px">
+                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <p id="importar-compra-agil-progreso-texto" class="small text-primary fw-semibold mb-0 mt-1">Preparando importaci&oacute;n...</p>
+                    </div>
                     <div id="importar-compra-agil-cabecera" class="small mb-2 d-none">
                         <strong>Cabecera detectada:</strong>
                         <span id="importar-compra-agil-cabecera-texto"></span>
@@ -404,12 +410,6 @@
                     </div>
                 </div>
                 <div class="modal-footer flex-column align-items-stretch gap-2 py-2">
-                    <div id="importar-compra-agil-progreso-wrap" class="d-none w-100">
-                        <div class="progress" style="height:14px">
-                            <div id="importar-compra-agil-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                        </div>
-                        <p id="importar-compra-agil-progreso-texto" class="small text-primary fw-semibold mb-0 mt-1">Preparando importaci&oacute;n...</p>
-                    </div>
                     <div class="d-flex w-100 flex-wrap align-items-center gap-2">
                         <span class="small text-muted me-auto" id="importar-compra-agil-resumen"></span>
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
@@ -2056,12 +2056,16 @@
         const totalLineas = Math.max(0, Number(total) || 0);
         const actualNum = Math.max(0, Number(actual) || 0);
         const procesadas = totalLineas > 0 ? Math.min(actualNum, totalLineas) : actualNum;
-        const pct = totalLineas > 0 ? Math.round((procesadas / totalLineas) * 100) : (actualNum > 0 ? 100 : 0);
+        const indeterminado = totalLineas === 0 && !!textoExtra;
+        const pct = totalLineas > 0
+            ? Math.round((procesadas / totalLineas) * 100)
+            : (indeterminado ? 100 : (actualNum > 0 ? 100 : 0));
 
         if (importarProgresoBar) {
             importarProgresoBar.style.width = pct + '%';
             importarProgresoBar.setAttribute('aria-valuenow', String(pct));
-            importarProgresoBar.textContent = pct + '%';
+            importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+            importarProgresoBar.textContent = indeterminado ? '' : (pct + '%');
         }
 
         if (importarProgresoTexto) {
@@ -2070,7 +2074,7 @@
             } else if (totalLineas > 0) {
                 importarProgresoTexto.textContent = procesadas + ' de ' + totalLineas + ' líneas (' + pct + '%)';
             } else {
-                importarProgresoTexto.textContent = 'Actualizando cabecera...';
+                importarProgresoTexto.textContent = 'Procesando…';
             }
         }
     }
@@ -2415,9 +2419,6 @@
     }
 
     async function prepararImportAgileAntesPreview() {
-        if (importarEstado) {
-            importarEstado.textContent = 'Revisando líneas Agile en esta cotización…';
-        }
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Revisando líneas Agile en esta cotización…');
 
@@ -2447,9 +2448,6 @@
             );
             if (!okReemplazo) {
                 return false;
-            }
-            if (importarEstado) {
-                importarEstado.textContent = 'Eliminando líneas Agile anteriores…';
             }
             mostrarProgresoImportar();
             actualizarProgresoImportar(0, 0, 'Eliminando líneas Agile anteriores…');
@@ -2620,6 +2618,7 @@
     });
 
     function mostrarProgresoImportar() {
+        if (importarEstado) importarEstado.textContent = '';
         if (importarProgresoWrap) {
             importarProgresoWrap.classList.remove('d-none');
             importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
