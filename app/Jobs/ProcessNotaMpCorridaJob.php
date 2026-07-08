@@ -27,7 +27,12 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         public int $corridaId,
     ) {
         $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
-        $this->timeout = $maxSegNota + 90;
+        $timeoutApi = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
+        $reintentos = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
+        $esperaReintento = max(1, (int) config('cotiz.mercadopublico.api_espera_reintento_seg', 5));
+        $margenJob = max(90, ($timeoutApi + $esperaReintento) * $reintentos + 60);
+
+        $this->timeout = max($maxSegNota + 90, $margenJob);
     }
 
     public function handle(NotaMpResultadosService $resultados): void
@@ -65,13 +70,14 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
         $resultados->marcarNotaEnConsulta($corrida, $nronota, $codigo);
 
-        $maxSegNota = max(60, (int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
-        $deadlineNota = microtime(true) + $maxSegNota;
+        // Sin deadline: misma resiliencia que «Consultar MP» individual (reintentos HTTP + timeout completo).
+        // El tope de seguridad es $this->timeout del job (resultados_nota_max_segundos + margen).
         $ultimoError = null;
         $exito = false;
+        $intentosHttp = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
 
         try {
-            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, $deadlineNota);
+            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, null);
             $exito = true;
         } catch (\Throwable $e) {
             $ultimoError = $e->getMessage();
@@ -80,6 +86,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                 'nronota' => $nronota,
                 'codigo' => $codigo,
                 'message' => $ultimoError,
+                'intentos_http' => $intentosHttp,
             ]);
         }
 
@@ -91,7 +98,11 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
                     $corrida,
                     $nronota,
                     $codigo,
-                    mb_substr(($ultimoError ?: 'Error desconocido').' (1 intento)', 0, 500),
+                    mb_substr(
+                        ($ultimoError ?: 'Error desconocido').' ('.$intentosHttp.' intentos HTTP)',
+                        0,
+                        500,
+                    ),
                     $empresa !== '' ? $empresa : null,
                 );
             }

@@ -518,6 +518,62 @@ class CompraAgilResultadosTest extends TestCase
         ]);
     }
 
+    public function test_corrida_masiva_reintenta_errores_http_recuperables_como_consulta_individual(): void
+    {
+        config([
+            'cotiz.mercadopublico.api_reintentos_http' => 3,
+            'cotiz.mercadopublico.api_espera_reintento_seg' => 0,
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 5031,
+            'descripcion' => 'Test reintento MP masivo',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente test',
+            'encargado' => '5031-1-COT26',
+            'nota_softland' => 503100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/5031-1-COT26' => Http::sequence()
+                ->push([], 503)
+                ->push([], 503)
+                ->push([
+                    'success' => 'OK',
+                    'payload' => [
+                        'codigo' => '5031-1-COT26',
+                        'estado' => ['codigo' => 'publicada', 'glosa' => 'Publicada'],
+                        'institucion' => ['organismo_comprador' => 'Test'],
+                        'proveedores_cotizando' => [],
+                    ],
+                ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk()
+            ->assertJsonPath('estado.en_curso', false);
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'ok',
+            'notas_procesadas' => 1,
+            'total_notas' => 1,
+        ]);
+
+        $this->assertDatabaseHas('nota_mp_seguimientos', [
+            'nronota' => 5031,
+            'estado_mp_glosa' => 'Publicada',
+            'resultado_propio' => 'pendiente',
+        ]);
+
+        Http::assertSentCount(3);
+    }
+
     public function test_encolar_corrida_respeta_limite_solicitado(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
