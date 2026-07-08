@@ -692,6 +692,7 @@ class CotizacionController extends Controller
                 'prod_valor' => $p->prod_valor,
                 'prod_valor_costo' => $p->prod_valor_costo,
                 'prod_familia' => $p->prod_familia,
+                'prod_stock_real' => $p->prod_stock_real,
                 'prod_gramaje' => $p->prod_gramaje,
                 'image_url' => $p->imageUrl(),
             ]),

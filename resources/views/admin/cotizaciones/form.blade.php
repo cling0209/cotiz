@@ -287,7 +287,7 @@
                                     <th style="width:80px"></th>
                                     <th style="width:90px">C&oacute;digo</th>
                                     <th>Descripci&oacute;n</th>
-                                    <th style="width:80px">Familia</th>
+                                    <th class="text-end" style="width:80px">Stock</th>
                                     <th class="text-end" style="width:90px">Precio</th>
                                 </tr>
                             </thead>
@@ -1661,7 +1661,7 @@
                 '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
                 '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
                 '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
-                '<td class="align-middle small text-muted">' + (p.prod_familia || '') + '</td>' +
+                '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
                 '<td class="align-middle text-end fw-semibold">' + fmtPrecio(p.prod_valor) + '</td>';
 
             const chk = tr.querySelector('.cotiz-buscar-check');
