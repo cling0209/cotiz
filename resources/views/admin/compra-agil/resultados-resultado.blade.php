@@ -82,13 +82,31 @@
                                         —
                                     @endif
                                 </td>
-                                <td class="text-nowrap">
+                                <td class="text-nowrap cell-acciones">
+                                    @if(!$det->exito && $apiConfigurada)
+                                        <button type="button"
+                                            class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
+                                            data-nronota="{{ $det->nronota }}"
+                                            title="Consultar estado en Mercado Público">
+                                            <i class="bi bi-cloud-download"></i> Consultar MP
+                                        </button>
+                                    @endif
                                     @if($det->exito)
                                         <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $det->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                         <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $det->nronota }}">Detalle</button>
                                     @endif
                                 </td>
                             </tr>
+                            @if(!$det->exito && $apiConfigurada)
+                            <tr class="consulta-mp-feedback d-none" data-nronota="{{ $det->nronota }}">
+                                <td colspan="8" class="py-2 bg-light">
+                                    <div class="progress" style="height: 0.5rem;">
+                                        <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="consulta-mp-mensaje small mt-1 text-muted"></div>
+                                </td>
+                            </tr>
+                            @endif
                         @empty
                             <tr>
                                 <td colspan="8" class="text-center text-muted py-4">

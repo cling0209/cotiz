@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
+use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
@@ -702,6 +703,93 @@ class CompraAgilResultadosTest extends TestCase
             'nronota' => 900,
             'exito' => false,
         ]);
+    }
+
+    public function test_nota_colgada_no_se_recupera_si_hay_job_reservado_activo(): void
+    {
+        config(['cotiz.mercadopublico.resultados_nota_max_segundos' => 180]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subMinutes(10),
+            'estado' => 'running',
+            'total_notas' => 1,
+            'notas_procesadas' => 0,
+            'nronota_actual' => 902,
+            'codigo_actual' => '902-1-COT26',
+            'pendientes_json' => [
+                ['nronota' => 902, 'codigo' => '902-1-COT26', 'empresa' => 'Test'],
+            ],
+            'updated_at' => now()->subMinutes(4),
+        ]);
+
+        DB::table('jobs')->insert([
+            'queue' => 'default',
+            'payload' => '{"displayName":"App\\\\Jobs\\\\ProcessNotaMpCorridaJob","job":"Illuminate\\\\Queue\\\\CallQueuedHandler@call","data":{"commandName":"App\\\\Jobs\\\\ProcessNotaMpCorridaJob","command":"O:33:\"App\\\\Jobs\\\\ProcessNotaMpCorridaJob\":1:{s:8:\"corridaId\";i:'.$corrida->id.';}"}}',
+            'attempts' => 1,
+            'reserved_at' => time(),
+            'available_at' => time(),
+            'created_at' => time(),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertFalse($service->liberarNotaColgadaIfNeeded($corrida));
+
+        $corrida->refresh();
+        $this->assertSame(0, (int) $corrida->notas_procesadas);
+        $this->assertDatabaseMissing('nota_mp_corrida_detalle', [
+            'corrida_id' => $corrida->id,
+            'nronota' => 902,
+        ]);
+    }
+
+    public function test_resultado_ultimo_proceso_muestra_consultar_mp_solo_en_filas_error(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subHour(),
+            'fin' => now(),
+            'estado' => 'ok',
+            'total_notas' => 2,
+            'notas_procesadas' => 2,
+            'pendientes_json' => [
+                ['nronota' => 950, 'codigo' => '950-1-COT26', 'empresa' => 'Cliente error'],
+                ['nronota' => 951, 'codigo' => '951-1-COT26', 'empresa' => 'Cliente ok'],
+            ],
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 950,
+            'codigo_proceso' => '950-1-COT26',
+            'empresa' => 'Cliente error',
+            'exito' => false,
+            'mensaje' => 'Tiempo máximo por nota excedido.',
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 951,
+            'codigo_proceso' => '951-1-COT26',
+            'empresa' => 'Cliente ok',
+            'exito' => true,
+            'estado_mp_glosa' => 'Cerrada',
+            'resultado_propio' => 'pendiente',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.resultado'))
+            ->assertOk()
+            ->assertSee('950-1-COT26', false)
+            ->assertSee('951-1-COT26', false)
+            ->assertSee('Consultar MP', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'Consultar MP'));
+        $this->assertSame(1, substr_count($html, 'btn-consultar-mp-individual'));
+        $this->assertSame(1, substr_count($html, 'Comparar'));
     }
 
     public function test_corrida_colgada_se_libera_automaticamente(): void

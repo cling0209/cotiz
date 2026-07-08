@@ -69,6 +69,11 @@ class NotaMpResultadosService
             return false;
         }
 
+        // Con worker activo en esta corrida, el job registra el fallo; evita duplicar error por polling.
+        if ($this->contarJobsResultadosMpReservados($corrida->id) > 0) {
+            return false;
+        }
+
         $segundosEnNota = $this->segundosEnNotaActual($corrida);
         if ($segundosEnNota === null) {
             return false;

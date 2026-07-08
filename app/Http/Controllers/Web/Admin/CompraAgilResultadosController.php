@@ -40,6 +40,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-resultado', [
             'ultimaCorrida' => $ultimaCorrida,
             'detalleCorrida' => $this->resultados->detalleUltimaCorridaPaginado(50),
+            'apiConfigurada' => $this->resultados->apiConfigurada(),
         ]);
     }
 
