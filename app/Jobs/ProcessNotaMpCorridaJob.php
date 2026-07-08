@@ -71,14 +71,13 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
         $resultados->marcarNotaEnConsulta($corrida, $nronota, $codigo);
 
-        // Deadline acotado al masivo (individual sigue con null en consultarNotaIndividual).
-        $deadline = microtime(true) + $resultados->notaMaxSegundos();
+        // Misma consulta HTTP que «Consultar MP» individual (deadline null → reintentos y timeout completos).
         $ultimoError = null;
         $exito = false;
         $intentosHttp = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
 
         try {
-            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, $deadline);
+            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, null);
             $exito = true;
         } catch (\Throwable $e) {
             $ultimoError = $e->getMessage();
