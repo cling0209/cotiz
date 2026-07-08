@@ -106,11 +106,150 @@ class CompraAgilApiService
     }
 
     /**
+     * Consulta varios códigos en paralelo (un solo worker / Http::pool).
+     * Errores recuperables se reintentan con detalle() secuencial (mismos reintentos que individual).
+     *
+     * @param  list<string>  $codigos
+     * @return array<string, array<string, mixed>|\RuntimeException> keyed por código en mayúsculas
+     */
+    public function detalleVarios(array $codigos): array
+    {
+        if (! $this->isConfigured()) {
+            throw new RuntimeException('API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.');
+        }
+
+        $unicos = [];
+        foreach ($codigos as $codigo) {
+            $codigo = strtoupper(trim((string) $codigo));
+            if ($codigo === '') {
+                continue;
+            }
+            $unicos[$codigo] = $codigo;
+        }
+
+        if ($unicos === []) {
+            return [];
+        }
+
+        $resultados = $this->requestDetallePool(array_values($unicos));
+
+        foreach ($resultados as $codigo => $resultado) {
+            if (! $resultado instanceof RuntimeException) {
+                continue;
+            }
+            $msg = $resultado->getMessage();
+            if (self::esErrorDefinitivoMp($msg) || $this->esErrorDeadlineNota($msg)) {
+                continue;
+            }
+            if ($resultado->getCode() !== 1) {
+                continue;
+            }
+            try {
+                $resultados[$codigo] = $this->detalle($codigo, false, null);
+            } catch (RuntimeException $e) {
+                $resultados[$codigo] = $e;
+            }
+        }
+
+        return $resultados;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function requestDetalle(string $codigo, ?float $deadlineMicrotime = null): array
     {
         return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo), [], $deadlineMicrotime);
+    }
+
+    /**
+     * @param  list<string>  $codigos
+     * @return array<string, array<string, mixed>|\RuntimeException>
+     */
+    private function requestDetallePool(array $codigos): array
+    {
+        $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
+        $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
+        [$timeoutSeg, $connectTimeoutSeg, $curlOpts] = $this->opcionesHttpMp();
+
+        $responses = Http::pool(function ($pool) use ($codigos, $baseUrl, $ticket, $timeoutSeg, $connectTimeoutSeg, $curlOpts) {
+            foreach ($codigos as $codigo) {
+                $pool->as($codigo)
+                    ->connectTimeout($connectTimeoutSeg)
+                    ->timeout($timeoutSeg)
+                    ->withOptions(['curl' => $curlOpts])
+                    ->withHeaders(['ticket' => $ticket])
+                    ->acceptJson()
+                    ->get($baseUrl.'/v2/compra-agil/'.rawurlencode($codigo));
+            }
+        }, count($codigos));
+
+        $out = [];
+        foreach ($codigos as $codigo) {
+            $response = $responses[$codigo] ?? null;
+            if ($response instanceof \Throwable) {
+                $out[$codigo] = new RuntimeException(
+                    $response instanceof ConnectionException
+                        ? $this->mensajeErrorConexion($response)
+                        : ('Error inesperado consultando Mercado Público: '.mb_substr($response->getMessage(), 0, 200)),
+                    $response instanceof ConnectionException ? 1 : 0,
+                    $response,
+                );
+
+                continue;
+            }
+
+            if (! $response instanceof \Illuminate\Http\Client\Response) {
+                $out[$codigo] = new RuntimeException('Respuesta vacía de Mercado Público.', 1);
+
+                continue;
+            }
+
+            try {
+                $out[$codigo] = $this->interpretarRespuestaHttp($response);
+            } catch (RuntimeException $e) {
+                $out[$codigo] = $e;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{0: int, 1: int, 2: array<int, mixed>}
+     */
+    private function opcionesHttpMp(?float $deadlineMicrotime = null): array
+    {
+        $baseTimeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
+        $baseConnectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
+
+        if ($deadlineMicrotime !== null) {
+            $restante = $deadlineMicrotime - microtime(true);
+            if ($restante <= 0) {
+                throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
+            }
+            $restanteSeg = max(5, (int) floor($restante));
+            $timeoutSeg = max(5, min($baseTimeoutSeg, $restanteSeg));
+            $connectTimeoutSeg = max(3, min($baseConnectTimeoutSeg, $timeoutSeg));
+        } else {
+            $timeoutSeg = $baseTimeoutSeg;
+            $connectTimeoutSeg = $baseConnectTimeoutSeg;
+        }
+
+        $lowSpeedTimeSeg = min(
+            max(5, (int) config('cotiz.mercadopublico.api_low_speed_time_segundos', 20)),
+            max(5, $timeoutSeg - 5),
+        );
+        $lowSpeedLimitBytes = max(1, (int) config('cotiz.mercadopublico.api_low_speed_limit_bytes', 10));
+
+        $curlOpts = [
+            CURLOPT_TIMEOUT => $timeoutSeg,
+            CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
+            CURLOPT_LOW_SPEED_TIME => $lowSpeedTimeSeg,
+            CURLOPT_LOW_SPEED_LIMIT => $lowSpeedLimitBytes,
+        ];
+
+        return [$timeoutSeg, $connectTimeoutSeg, $curlOpts];
     }
 
     private function detalleCacheKey(string $codigo): string
@@ -192,34 +331,7 @@ class CompraAgilApiService
     {
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
-        $baseTimeoutSeg = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
-        $baseConnectTimeoutSeg = max(5, (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15));
-
-        if ($deadlineMicrotime !== null) {
-            $restante = $deadlineMicrotime - microtime(true);
-            if ($restante <= 0) {
-                throw new RuntimeException(NotaMpResultadosService::mensajeTiempoMaximoNota());
-            }
-            $restanteSeg = max(5, (int) floor($restante));
-            $timeoutSeg = max(5, min($baseTimeoutSeg, $restanteSeg));
-            $connectTimeoutSeg = max(3, min($baseConnectTimeoutSeg, $timeoutSeg));
-        } else {
-            $timeoutSeg = $baseTimeoutSeg;
-            $connectTimeoutSeg = $baseConnectTimeoutSeg;
-        }
-
-        $lowSpeedTimeSeg = min(
-            max(5, (int) config('cotiz.mercadopublico.api_low_speed_time_segundos', 20)),
-            max(5, $timeoutSeg - 5),
-        );
-        $lowSpeedLimitBytes = max(1, (int) config('cotiz.mercadopublico.api_low_speed_limit_bytes', 10));
-
-        $curlOpts = [
-            CURLOPT_TIMEOUT => $timeoutSeg,
-            CURLOPT_CONNECTTIMEOUT => $connectTimeoutSeg,
-            CURLOPT_LOW_SPEED_TIME => $lowSpeedTimeSeg,
-            CURLOPT_LOW_SPEED_LIMIT => $lowSpeedLimitBytes,
-        ];
+        [$timeoutSeg, $connectTimeoutSeg, $curlOpts] = $this->opcionesHttpMp($deadlineMicrotime);
 
         try {
             return Http::connectTimeout($connectTimeoutSeg)

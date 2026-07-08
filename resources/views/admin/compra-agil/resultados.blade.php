@@ -92,6 +92,7 @@
             <div class="progress" style="height: 1.25rem;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
+            <div class="small text-muted mt-2 d-none text-break" id="progreso-en-curso"></div>
             <div class="small text-muted mt-2 d-none text-break" id="progreso-ultimo-detalle"></div>
             <div class="small text-muted mt-1 d-none" id="progreso-tiempo">
                 <i class="bi bi-clock"></i> Total: <span id="progreso-tiempo-total"></span>
@@ -99,6 +100,7 @@
                 · <span class="text-success">OK: <span id="progreso-ok">0</span></span>
                 · <span class="text-danger">Fallos: <span id="progreso-fallos">0</span></span>
             </div>
+            <div class="small text-muted mt-1 d-none" id="progreso-config-mp"></div>
         </div>
     </div>
 
@@ -246,9 +248,11 @@
     }
 
     const progresoUltimoDetalle = document.getElementById('progreso-ultimo-detalle');
+    const progresoEnCurso = document.getElementById('progreso-en-curso');
     const progresoTiempo = document.getElementById('progreso-tiempo');
     const progresoTiempoTotal = document.getElementById('progreso-tiempo-total');
     const progresoTiempoNota = document.getElementById('progreso-tiempo-nota');
+    const progresoConfigMp = document.getElementById('progreso-config-mp');
     const umbralAlertaNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_alerta_segundos', 180));
     const umbralMaxNotaSeg = @json((int) config('cotiz.mercadopublico.resultados_nota_max_segundos', 180));
     let segTotalServidor = 0;
@@ -293,11 +297,19 @@
 
     function actualizarProgreso(estado) {
         const pct = estado.porcentaje ?? 0;
-        const codigo = estado.codigo_actual || '';
+        const enCurso = Array.isArray(estado.notas_en_curso) ? estado.notas_en_curso : [];
+        const concurrencia = estado.concurrencia
+            ?? estado.config_mp?.concurrencia
+            ?? (enCurso.length || 1);
+        const codigosEnCurso = enCurso
+            .map((x) => (x && x.codigo) ? x.codigo : '')
+            .filter(Boolean);
+        const codigo = estado.codigo_actual || (codigosEnCurso[0] || '');
         progresoBar.style.width = pct + '%';
         progresoBar.textContent = pct + '%';
         progresoTexto.textContent = `Consultando ${estado.procesadas ?? 0} / ${estado.total ?? 0}`
-            + (codigo ? ` — ${codigo}` : '');
+            + (concurrencia > 1 ? ` · ${Math.min(concurrencia, Math.max(enCurso.length, 1))} en paralelo` : '')
+            + (codigo && concurrencia <= 1 ? ` — ${codigo}` : '');
         if (estado.usuario) {
             progresoUsuario.textContent = 'Ejecutado por: ' + estado.usuario;
         }
@@ -310,8 +322,19 @@
                 progresoAlerta.classList.add('d-none');
             }
         }
+        if (progresoEnCurso) {
+            if (codigosEnCurso.length > 0) {
+                progresoEnCurso.textContent = 'En curso: ' + codigosEnCurso.join(' · ');
+                progresoEnCurso.classList.remove('d-none');
+            } else {
+                progresoEnCurso.textContent = '';
+                progresoEnCurso.classList.add('d-none');
+            }
+        }
         if (estado.codigo_actual) {
             ultimoCodigoActual = estado.codigo_actual;
+        } else if (codigosEnCurso.length) {
+            ultimoCodigoActual = codigosEnCurso.join(', ');
         } else {
             ultimoCodigoActual = '';
         }
@@ -328,7 +351,7 @@
                 ultimaNotaId = notaActual;
                 syncNotaMs = Date.now();
             }
-        } else if (!estado.codigo_actual) {
+        } else if (!estado.codigo_actual && codigosEnCurso.length === 0) {
             syncNotaMs = null;
             ultimaNotaId = null;
         }
@@ -350,6 +373,16 @@
             }
             progresoUltimoDetalle.innerHTML = txt;
             progresoUltimoDetalle.classList.remove('d-none');
+        }
+        if (progresoConfigMp && estado.config_mp) {
+            const c = estado.config_mp;
+            progresoConfigMp.textContent = 'MP en servidor: timeout '
+                + (c.timeout_seg ?? '?') + ' s, low-speed '
+                + (c.low_speed_seg ?? '?') + ' s, '
+                + (c.reintentos ?? '?') + ' reintento(s), pausa entre lotes '
+                + (c.delay_ms ?? '?') + ' ms, concurrencia '
+                + (c.concurrencia ?? concurrencia);
+            progresoConfigMp.classList.remove('d-none');
         }
     }
 

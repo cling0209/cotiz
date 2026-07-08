@@ -698,6 +698,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame(1, (int) $corrida->notas_procesadas);
         $this->assertSame('901-1-COT26', $corrida->codigo_actual);
         $this->assertNotNull($corrida->nota_inicio_at);
+        $this->assertNotEmpty($corrida->en_curso_json);
         $this->assertDatabaseHas('nota_mp_corrida_detalle', [
             'corrida_id' => $corrida->id,
             'nronota' => 900,
@@ -841,6 +842,110 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('974556-11-COT26', $estado['alerta']);
         $this->assertStringContainsString('Al superar 180 s', $estado['alerta']);
         $this->assertGreaterThanOrEqual(180, $estado['segundos_en_nota_actual']);
+    }
+
+    public function test_estado_corrida_incluye_config_mp_efectiva(): void
+    {
+        config([
+            'cotiz.mercadopublico.api_timeout_segundos' => 45,
+            'cotiz.mercadopublico.api_low_speed_time_segundos' => 20,
+            'cotiz.mercadopublico.api_reintentos_http' => 3,
+            'cotiz.mercadopublico.resultados_delay_ms' => 500,
+            'cotiz.mercadopublico.resultados_concurrencia' => 5,
+        ]);
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now(),
+            'estado' => 'running',
+            'total_notas' => 1,
+            'notas_procesadas' => 0,
+            'codigo_actual' => '897-13-COT26',
+            'en_curso_json' => [['nronota' => 1, 'codigo' => '897-13-COT26']],
+            'pendientes_json' => [['nronota' => 1, 'codigo' => '897-13-COT26']],
+        ]);
+
+        $estado = $this->app->make(NotaMpResultadosService::class)->estadoCorrida();
+
+        $this->assertArrayHasKey('config_mp', $estado);
+        $this->assertSame(45, $estado['config_mp']['timeout_seg']);
+        $this->assertSame(20, $estado['config_mp']['low_speed_seg']);
+        $this->assertSame(3, $estado['config_mp']['reintentos']);
+        $this->assertSame(500, $estado['config_mp']['delay_ms']);
+        $this->assertSame(5, $estado['config_mp']['concurrencia']);
+        $this->assertSame(5, $estado['concurrencia']);
+        $this->assertCount(1, $estado['notas_en_curso']);
+        $this->assertSame('897-13-COT26', $estado['notas_en_curso'][0]['codigo']);
+    }
+
+    public function test_corrida_masiva_consulta_lote_en_paralelo(): void
+    {
+        config([
+            'cotiz.mercadopublico.resultados_concurrencia' => 5,
+            'cotiz.mercadopublico.api_reintentos_http' => 1,
+            'cotiz.mercadopublico.resultados_delay_ms' => 0,
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        foreach ([7101, 7102, 7103] as $i => $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Lote paralelo '.$nronota,
+                'fecha' => now()->subDays(3 - $i)->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente '.$nronota,
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => 710000 + $nronota,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+            $path = parse_url($request->url(), PHP_URL_PATH) ?: '';
+            $codigo = strtoupper(basename($path));
+
+            return Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => $codigo,
+                    'estado' => ['codigo' => 'publicada', 'glosa' => 'Publicada'],
+                    'institucion' => ['organismo_comprador' => 'Test'],
+                    'proveedores_cotizando' => [],
+                ],
+            ]);
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk()
+            ->assertJsonPath('estado.en_curso', false);
+
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'estado' => 'ok',
+            'total_notas' => 3,
+            'notas_procesadas' => 3,
+        ]);
+
+        Http::assertSentCount(3);
+
+        foreach ([7101, 7102, 7103] as $nronota) {
+            $this->assertDatabaseHas('nota_mp_seguimientos', [
+                'nronota' => $nronota,
+                'estado_mp_glosa' => 'Publicada',
+            ]);
+        }
+    }
+
+    public function test_config_mp_efectiva_respeta_tope_timeout_y_low_speed(): void
+    {
+        $efectiva = NotaMpResultadosService::configMpEfectiva();
+
+        $this->assertLessThanOrEqual(45, $efectiva['timeout_seg']);
+        $this->assertLessThanOrEqual(20, $efectiva['low_speed_seg']);
+        $this->assertGreaterThanOrEqual(15, $efectiva['timeout_seg']);
+        $this->assertGreaterThanOrEqual(5, $efectiva['low_speed_seg']);
     }
 
     public function test_consultar_nota_no_llama_api_si_deadline_ya_vencio(): void

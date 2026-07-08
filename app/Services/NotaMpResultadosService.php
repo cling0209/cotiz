@@ -84,41 +84,50 @@ class NotaMpResultadosService
             return false;
         }
 
+        $lote = $this->enCursoActual($corrida);
+        if ($lote === []) {
+            $lote = array_slice($this->lotePendienteActual($corrida, 1), 0, 1);
+        }
+        if ($lote === []) {
+            return false;
+        }
+
+        // Completar datos de empresa desde pendientes_json si falta.
         $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
-        $indice = (int) $corrida->notas_procesadas;
-
-        if ($indice >= count($pendientes)) {
-            return false;
+        $empresaPorNota = [];
+        foreach ($pendientes as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $nr = (int) ($item['nronota'] ?? 0);
+            if ($nr > 0) {
+                $empresaPorNota[$nr] = trim((string) ($item['empresa'] ?? ''));
+            }
         }
 
-        $item = $pendientes[$indice];
-        if (! is_array($item)) {
-            return false;
-        }
-
-        $nronota = (int) ($item['nronota'] ?? 0);
-        $codigo = trim((string) ($item['codigo'] ?? $corrida->codigo_actual));
-        if ($nronota <= 0) {
-            return false;
-        }
-
-        Log::warning('NotaMpResultados: nota colgada recuperada automáticamente', [
+        Log::warning('NotaMpResultados: lote colgado recuperado automáticamente', [
             'corrida_id' => $corrida->id,
-            'nronota' => $nronota,
-            'codigo' => $codigo,
+            'lote' => $lote,
             'segundos' => $segundosEnNota,
         ]);
 
-        $empresa = trim((string) ($item['empresa'] ?? ''));
-        $this->registrarDetalleFallo(
-            $corrida,
-            $nronota,
-            $codigo,
-            self::mensajeTiempoMaximoNota().' ('.$this->notaMaxSegundos().' s, recuperación automática).',
-            $empresa !== '' ? $empresa : null,
-        );
+        foreach ($lote as $item) {
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = trim((string) ($item['codigo'] ?? $corrida->codigo_actual));
+            if ($nronota <= 0) {
+                continue;
+            }
+            $empresa = $empresaPorNota[$nronota] ?? '';
+            $this->registrarDetalleFallo(
+                $corrida,
+                $nronota,
+                $codigo,
+                self::mensajeTiempoMaximoNota().' ('.$this->notaMaxSegundos().' s, recuperación automática).',
+                $empresa !== '' ? $empresa : null,
+            );
+            $corrida->increment('notas_procesadas');
+        }
 
-        $corrida->increment('notas_procesadas');
         $corrida->refresh();
 
         $this->eliminarJobsResultadosMpPendientes($corrida->id);
@@ -254,43 +263,84 @@ class NotaMpResultadosService
             'nronota_actual' => $nronota,
             'codigo_actual' => $codigo !== '' ? $codigo : null,
             'nota_inicio_at' => now(),
+            'en_curso_json' => $codigo !== ''
+                ? [['nronota' => $nronota, 'codigo' => $codigo]]
+                : [],
         ]);
+    }
+
+    /**
+     * @param  list<array{nronota: int, codigo: string, empresa?: string|null}>  $lote
+     */
+    public function marcarLoteEnConsulta(NotaMpCorrida $corrida, array $lote): void
+    {
+        $enCurso = [];
+        foreach ($lote as $item) {
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($nronota <= 0 || $codigo === '') {
+                continue;
+            }
+            $enCurso[] = ['nronota' => $nronota, 'codigo' => $codigo];
+        }
+
+        $primero = $enCurso[0] ?? null;
+        $corrida->update([
+            'nronota_actual' => $primero['nronota'] ?? null,
+            'codigo_actual' => $primero['codigo'] ?? null,
+            'nota_inicio_at' => now(),
+            'en_curso_json' => $enCurso !== [] ? $enCurso : null,
+        ]);
+    }
+
+    public function concurrenciaResultados(): int
+    {
+        return max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5)));
+    }
+
+    /**
+     * @return list<array{nronota: int, codigo: string, empresa?: string|null}>
+     */
+    public function lotePendienteActual(NotaMpCorrida $corrida, ?int $tamano = null): array
+    {
+        $tamano ??= $this->concurrenciaResultados();
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $indice = (int) $corrida->notas_procesadas;
+        $slice = array_slice($pendientes, $indice, max(1, $tamano));
+        $lote = [];
+        foreach ($slice as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $nronota = (int) ($item['nronota'] ?? 0);
+            if ($nronota <= 0) {
+                continue;
+            }
+            $lote[] = [
+                'nronota' => $nronota,
+                'codigo' => strtoupper(trim((string) ($item['codigo'] ?? ''))),
+                'empresa' => trim((string) ($item['empresa'] ?? '')),
+            ];
+        }
+
+        return $lote;
     }
 
     public function marcarSiguienteNotaPendiente(NotaMpCorrida $corrida): void
     {
-        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
-        $indice = (int) $corrida->notas_procesadas;
-
-        if ($indice >= count($pendientes)) {
+        $lote = $this->lotePendienteActual($corrida);
+        if ($lote === []) {
             $corrida->update([
                 'nronota_actual' => null,
                 'codigo_actual' => null,
                 'nota_inicio_at' => null,
+                'en_curso_json' => null,
             ]);
 
             return;
         }
 
-        $item = $pendientes[$indice];
-        if (! is_array($item)) {
-            $corrida->update([
-                'nronota_actual' => null,
-                'codigo_actual' => null,
-                'nota_inicio_at' => null,
-            ]);
-
-            return;
-        }
-
-        $nronota = (int) ($item['nronota'] ?? 0);
-        $codigo = trim((string) ($item['codigo'] ?? ''));
-
-        $corrida->update([
-            'nronota_actual' => $nronota > 0 ? $nronota : null,
-            'codigo_actual' => $codigo !== '' ? $codigo : null,
-            'nota_inicio_at' => now(),
-        ]);
+        $this->marcarLoteEnConsulta($corrida, $lote);
     }
 
     private function segundosEnNotaActual(NotaMpCorrida $corrida): ?int
@@ -582,6 +632,55 @@ class NotaMpResultadosService
             'detalle_ok' => (int) ($detalleStats->ok ?? 0),
             'detalle_fallos' => (int) ($detalleStats->fallos ?? 0),
             'ultimo_detalle' => $ultimoDetalleInfo,
+            'notas_en_curso' => $this->enCursoActual($corrida),
+            'concurrencia' => $this->concurrenciaResultados(),
+            'config_mp' => self::configMpEfectiva(),
+        ];
+    }
+
+    /**
+     * @return list<array{nronota: int, codigo: string}>
+     */
+    public function enCursoActual(NotaMpCorrida $corrida): array
+    {
+        $lista = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
+        $out = [];
+        foreach ($lista as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($nronota <= 0 || $codigo === '') {
+                continue;
+            }
+            $out[] = ['nronota' => $nronota, 'codigo' => $codigo];
+        }
+
+        if ($out === [] && filled($corrida->codigo_actual)) {
+            $out[] = [
+                'nronota' => (int) ($corrida->nronota_actual ?? 0),
+                'codigo' => (string) $corrida->codigo_actual,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Valores efectivos de timeout/reintentos (post-tope en config/cotiz.php).
+     *
+     * @return array{timeout_seg: int, connect_timeout_seg: int, low_speed_seg: int, reintentos: int, delay_ms: int, concurrencia: int}
+     */
+    public static function configMpEfectiva(): array
+    {
+        return [
+            'timeout_seg' => (int) config('cotiz.mercadopublico.api_timeout_segundos', 45),
+            'connect_timeout_seg' => (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15),
+            'low_speed_seg' => (int) config('cotiz.mercadopublico.api_low_speed_time_segundos', 20),
+            'reintentos' => (int) config('cotiz.mercadopublico.api_reintentos_http', 3),
+            'delay_ms' => (int) config('cotiz.mercadopublico.resultados_delay_ms', 500),
+            'concurrencia' => max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5))),
         ];
     }
 
@@ -600,6 +699,7 @@ class NotaMpResultadosService
             'nronota_actual' => null,
             'codigo_actual' => null,
             'nota_inicio_at' => null,
+            'en_curso_json' => null,
         ]);
 
         return $corrida->fresh() ?? $corrida;
@@ -655,10 +755,112 @@ class NotaMpResultadosService
     }
 
     /**
+     * Procesa un lote de notas en paralelo vía Http::pool (un job = hasta N consultas MP).
+     *
+     * @param  list<array{nronota: int, codigo: string, empresa?: string|null}>  $lote
+     * @return array{ultimo_error: ?string, fallidas: int, ok: int}
+     */
+    public function consultarLoteMasivo(NotaMpCorrida $corrida, array $lote, string $usuario): array
+    {
+        if ($lote === []) {
+            return ['ultimo_error' => null, 'fallidas' => 0, 'ok' => 0];
+        }
+
+        $this->marcarLoteEnConsulta($corrida, $lote);
+
+        $codigos = [];
+        foreach ($lote as $item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $codigos[] = $codigo;
+            }
+        }
+
+        $payloads = $codigos !== [] ? $this->api->detalleVarios($codigos) : [];
+
+        $fallidas = 0;
+        $ok = 0;
+        $ultimoError = null;
+
+        foreach ($lote as $item) {
+            $corrida->refresh();
+            if ($corrida->estado !== 'running') {
+                break;
+            }
+
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            $empresa = trim((string) ($item['empresa'] ?? ''));
+            if ($nronota <= 0) {
+                continue;
+            }
+
+            $procesadasAntes = (int) $corrida->notas_procesadas;
+
+            try {
+                $apiResult = $codigo !== '' ? ($payloads[$codigo] ?? null) : null;
+                if ($apiResult instanceof RuntimeException) {
+                    throw $apiResult;
+                }
+                if (is_array($apiResult)) {
+                    $this->consultarNotaConPayload($nronota, $corrida, $usuario, $apiResult, null);
+                } else {
+                    $this->consultarNota($nronota, $corrida, $usuario, null);
+                }
+                $ok++;
+            } catch (\Throwable $e) {
+                $fallidas++;
+                $ultimoError = $e->getMessage();
+                $sufijo = CompraAgilApiService::esErrorDefinitivoMp((string) $ultimoError)
+                    ? 'sin reintento'
+                    : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)).' intentos HTTP');
+                $this->registrarDetalleFallo(
+                    $corrida,
+                    $nronota,
+                    $codigo,
+                    mb_substr(($ultimoError ?: 'Error desconocido').' ('.$sufijo.')', 0, 500),
+                    $empresa !== '' ? $empresa : null,
+                );
+                Log::warning('NotaMpResultados: nota fallida en lote', [
+                    'corrida_id' => $corrida->id,
+                    'nronota' => $nronota,
+                    'codigo' => $codigo,
+                    'message' => $ultimoError,
+                ]);
+            }
+
+            $corrida->refresh();
+            if ((int) $corrida->notas_procesadas <= $procesadasAntes) {
+                $corrida->increment('notas_procesadas');
+            }
+        }
+
+        return [
+            'ultimo_error' => $ultimoError,
+            'fallidas' => $fallidas,
+            'ok' => $ok,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function consultarNota(int $nronota, NotaMpCorrida $corrida, string $usuario, ?float $deadline = null): array
     {
+        return $this->consultarNotaConPayload($nronota, $corrida, $usuario, null, $deadline);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payloadPrecargado
+     * @return array<string, mixed>
+     */
+    public function consultarNotaConPayload(
+        int $nronota,
+        NotaMpCorrida $corrida,
+        string $usuario,
+        ?array $payloadPrecargado,
+        ?float $deadline = null,
+    ): array {
         $inicio = microtime(true);
 
         if (! $this->api->isConfigured()) {
@@ -680,7 +882,7 @@ class NotaMpResultadosService
         $procesadasAlInicio = (int) $corrida->notas_procesadas;
 
         try {
-            $payload = $this->api->detalle($codigo, false, $deadline);
+            $payload = $payloadPrecargado ?? $this->api->detalle($codigo, false, $deadline);
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'No existe Compra Ágil')) {
                 $resultado = $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);

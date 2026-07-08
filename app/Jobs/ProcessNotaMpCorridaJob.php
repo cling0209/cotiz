@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\NotaMpCorrida;
-use App\Services\CompraAgilApiService;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -14,7 +13,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Tiempo máximo por ejecución (una nota). */
+    /** Tiempo máximo por ejecución (lote de notas). */
     public int $timeout = 300;
 
     public int $maxExceptions = 3;
@@ -31,9 +30,10 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         $timeoutApi = max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45));
         $reintentos = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
         $esperaReintento = max(1, (int) config('cotiz.mercadopublico.api_espera_reintento_seg', 5));
+        $concurrencia = max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5)));
         $margenJob = max(90, ($timeoutApi + $esperaReintento) * $reintentos + 60);
-
-        $this->timeout = max($maxSegNota + 90, $margenJob);
+        // Lote paralelo: el wall-clock es ~max(API) + persistencias secuenciales.
+        $this->timeout = max($maxSegNota + 90, $margenJob + ($concurrencia * 30));
     }
 
     public function handle(NotaMpResultadosService $resultados): void
@@ -52,72 +52,26 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
-        $item = $pendientes[$indice];
-        if (! is_array($item)) {
+        $lote = $resultados->lotePendienteActual($corrida);
+        if ($lote === []) {
             $corrida->increment('notas_procesadas');
             $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
 
             return;
         }
 
-        $nronota = (int) ($item['nronota'] ?? 0);
-        $codigo = trim((string) ($item['codigo'] ?? ''));
-        if ($nronota <= 0) {
-            $corrida->increment('notas_procesadas');
-            $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
-
-            return;
-        }
-
-        $resultados->marcarNotaEnConsulta($corrida, $nronota, $codigo);
-
-        // Misma consulta HTTP que «Consultar MP» individual (deadline null → reintentos y timeout completos).
-        $ultimoError = null;
-        $exito = false;
-        $intentosHttp = max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3));
-
-        try {
-            $resultados->consultarNota($nronota, $corrida, (string) $corrida->usuario, null);
-            $exito = true;
-        } catch (\Throwable $e) {
-            $ultimoError = $e->getMessage();
-            Log::warning('ProcessNotaMpCorridaJob: nota fallida', [
-                'corrida_id' => $corrida->id,
-                'nronota' => $nronota,
-                'codigo' => $codigo,
-                'message' => $ultimoError,
-                'intentos_http' => $intentosHttp,
-            ]);
-        }
-
-        $corrida->refresh();
-        if ((int) $corrida->notas_procesadas <= $indice) {
-            if (! $exito) {
-                $empresa = trim((string) ($item['empresa'] ?? ''));
-                $sufijoIntentos = CompraAgilApiService::esErrorDefinitivoMp((string) $ultimoError)
-                    ? 'sin reintento'
-                    : $intentosHttp.' intentos HTTP';
-                $resultados->registrarDetalleFallo(
-                    $corrida,
-                    $nronota,
-                    $codigo,
-                    mb_substr(
-                        ($ultimoError ?: 'Error desconocido').' ('.$sufijoIntentos.')',
-                        0,
-                        500,
-                    ),
-                    $empresa !== '' ? $empresa : null,
-                );
-            }
-            $corrida->increment('notas_procesadas');
-        }
+        $resultadoLote = $resultados->consultarLoteMasivo(
+            $corrida,
+            $lote,
+            (string) $corrida->usuario,
+        );
 
         $corrida->refresh();
         if ($corrida->estado !== 'running') {
             return;
         }
 
-        $this->encolarSiguiente($resultados, $corrida, $ultimoError);
+        $this->encolarSiguiente($resultados, $corrida, $resultadoLote['ultimo_error'] ?? null);
     }
 
     public function failed(?Throwable $exception): void
@@ -133,26 +87,27 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
-        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
-        $indice = (int) $corrida->notas_procesadas;
+        $lote = $resultados->lotePendienteActual($corrida);
+        $msg = $this->mensajeAmigable($exception);
 
-        if ($indice < count($pendientes)) {
-            $item = $pendientes[$indice];
-            if (is_array($item)) {
-                $nronota = (int) ($item['nronota'] ?? 0);
-                $codigo = trim((string) ($item['codigo'] ?? ''));
-                if ($nronota > 0) {
-                    $msg = $this->mensajeAmigable($exception);
-                    $empresa = trim((string) ($item['empresa'] ?? ''));
-                    $resultados->registrarDetalleFallo(
-                        $corrida,
-                        $nronota,
-                        $codigo,
-                        mb_substr($msg.' (job interrumpido)', 0, 500),
-                        $empresa !== '' ? $empresa : null,
-                    );
-                }
+        foreach ($lote as $item) {
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = trim((string) ($item['codigo'] ?? ''));
+            if ($nronota <= 0) {
+                continue;
             }
+            $empresa = trim((string) ($item['empresa'] ?? ''));
+            $resultados->registrarDetalleFallo(
+                $corrida,
+                $nronota,
+                $codigo,
+                mb_substr($msg.' (job interrumpido)', 0, 500),
+                $empresa !== '' ? $empresa : null,
+            );
+            $corrida->increment('notas_procesadas');
+        }
+
+        if ($lote === []) {
             $corrida->increment('notas_procesadas');
         }
 

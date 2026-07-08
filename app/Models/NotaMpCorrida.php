@@ -12,8 +12,8 @@ class NotaMpCorrida extends Model
 
     protected $fillable = [
         'usuario', 'inicio', 'fin', 'notas_procesadas', 'notas_con_cambio',
-        'total_notas', 'nronota_actual', 'codigo_actual', 'nota_inicio_at', 'pendientes_json',
-        'estado', 'mensaje',
+        'total_notas', 'nronota_actual', 'codigo_actual', 'nota_inicio_at', 'en_curso_json',
+        'pendientes_json', 'estado', 'mensaje',
     ];
 
     protected function casts(): array
@@ -26,6 +26,7 @@ class NotaMpCorrida extends Model
             'notas_con_cambio' => 'integer',
             'total_notas' => 'integer',
             'nronota_actual' => 'integer',
+            'en_curso_json' => 'array',
             'pendientes_json' => 'array',
         ];
     }
