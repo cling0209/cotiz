@@ -69,11 +69,6 @@ class NotaMpResultadosService
             return false;
         }
 
-        // Con worker activo en esta corrida, el job registra el fallo; evita duplicar error por polling.
-        if ($this->contarJobsResultadosMpReservados($corrida->id) > 0) {
-            return false;
-        }
-
         $segundosEnNota = $this->segundosEnNotaActual($corrida);
         if ($segundosEnNota === null) {
             return false;
@@ -105,16 +100,22 @@ class NotaMpResultadosService
             }
         }
 
+        $jobsReservados = $this->contarJobsResultadosMpReservados($corrida->id);
+
         Log::warning('NotaMpResultados: lote colgado recuperado automáticamente', [
             'corrida_id' => $corrida->id,
             'lote' => $lote,
             'segundos' => $segundosEnNota,
+            'jobs_reservados' => $jobsReservados,
         ]);
 
         foreach ($lote as $item) {
             $nronota = (int) ($item['nronota'] ?? 0);
             $codigo = trim((string) ($item['codigo'] ?? $corrida->codigo_actual));
             if ($nronota <= 0) {
+                continue;
+            }
+            if ($this->notaYaTieneDetalleEnCorrida($corrida, $nronota)) {
                 continue;
             }
             $empresa = $empresaPorNota[$nronota] ?? '';
@@ -570,7 +571,7 @@ class NotaMpResultadosService
                 $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
                     .self::formatearDuracionSegundos($segundosEnNotaActual).'. '
                     .'Al superar '.$umbralMaxNota.' s se registrará como fallo y continuará con la siguiente '
-                    .'(recuperación automática a los '.($umbralMaxNota + 30).' s).';
+                    .'(recuperación automática a los '.($umbralMaxNota + 30).' s, incluso con worker activo).';
             }
         }
 
@@ -910,6 +911,15 @@ class NotaMpResultadosService
 
             $nronota = (int) ($item['nronota'] ?? 0);
             $empresa = trim((string) ($item['empresa'] ?? ''));
+            if ($nronota > 0 && $this->notaYaTieneDetalleEnCorrida($corrida, $nronota)) {
+                Log::info('NotaMpResultados: nota ya registrada en corrida, omitiendo callback duplicado', [
+                    'corrida_id' => $corrida->id,
+                    'nronota' => $nronota,
+                    'codigo' => $codigo,
+                ]);
+
+                return;
+            }
             $procesadasAntes = (int) $corrida->notas_procesadas;
             $ms = isset($startedAtByCodigo[$codigo])
                 ? (int) round((microtime(true) - $startedAtByCodigo[$codigo]) * 1000)
@@ -1887,6 +1897,14 @@ class NotaMpResultadosService
             ->get();
 
         return $this->marcarCerradasConFlags($items);
+    }
+
+    public function notaYaTieneDetalleEnCorrida(NotaMpCorrida $corrida, int $nronota): bool
+    {
+        return NotaMpCorridaDetalle::query()
+            ->where('corrida_id', $corrida->id)
+            ->where('nronota', $nronota)
+            ->exists();
     }
 
     public function registrarDetalleFallo(

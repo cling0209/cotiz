@@ -706,7 +706,7 @@ class CompraAgilResultadosTest extends TestCase
         ]);
     }
 
-    public function test_nota_colgada_no_se_recupera_si_hay_job_reservado_activo(): void
+    public function test_nota_colgada_se_recupera_aun_con_job_reservado_si_supera_umbral(): void
     {
         config(['cotiz.mercadopublico.resultados_nota_max_segundos' => 180]);
 
@@ -734,13 +734,53 @@ class CompraAgilResultadosTest extends TestCase
         ]);
 
         $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertTrue($service->liberarNotaColgadaIfNeeded($corrida));
+
+        $corrida->refresh();
+        $this->assertSame(1, (int) $corrida->notas_procesadas);
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
+            'corrida_id' => $corrida->id,
+            'nronota' => 902,
+            'exito' => false,
+        ]);
+        $this->assertSame(0, $service->contarJobsResultadosMpReservados($corrida->id));
+    }
+
+    public function test_nota_colgada_no_se_recupera_con_job_reservado_antes_del_umbral(): void
+    {
+        config(['cotiz.mercadopublico.resultados_nota_max_segundos' => 180]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subMinutes(2),
+            'estado' => 'running',
+            'total_notas' => 1,
+            'notas_procesadas' => 0,
+            'nronota_actual' => 903,
+            'codigo_actual' => '903-1-COT26',
+            'nota_inicio_at' => now()->subSeconds(60),
+            'pendientes_json' => [
+                ['nronota' => 903, 'codigo' => '903-1-COT26', 'empresa' => 'Test'],
+            ],
+        ]);
+
+        DB::table('jobs')->insert([
+            'queue' => 'default',
+            'payload' => '{"displayName":"App\\\\Jobs\\\\ProcessNotaMpCorridaJob","job":"Illuminate\\\\Queue\\\\CallQueuedHandler@call","data":{"commandName":"App\\\\Jobs\\\\ProcessNotaMpCorridaJob","command":"O:33:\"App\\\\Jobs\\\\ProcessNotaMpCorridaJob\":1:{s:8:\"corridaId\";i:'.$corrida->id.';}"}}',
+            'attempts' => 1,
+            'reserved_at' => time(),
+            'available_at' => time(),
+            'created_at' => time(),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
         $this->assertFalse($service->liberarNotaColgadaIfNeeded($corrida));
 
         $corrida->refresh();
         $this->assertSame(0, (int) $corrida->notas_procesadas);
         $this->assertDatabaseMissing('nota_mp_corrida_detalle', [
             'corrida_id' => $corrida->id,
-            'nronota' => 902,
+            'nronota' => 903,
         ]);
     }
 
