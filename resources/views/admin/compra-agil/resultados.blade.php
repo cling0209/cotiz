@@ -400,8 +400,12 @@
         if (progresoConfigMp && estado.config_mp) {
             const c = estado.config_mp;
             progresoConfigMp.textContent = 'MP en servidor: timeout '
-                + (c.timeout_seg ?? '?') + ' s, low-speed '
-                + (c.low_speed_seg ?? '?') + ' s, '
+                + (c.timeout_seg ?? '?') + ' s, connect '
+                + (c.connect_timeout_seg ?? '?') + ' s, low-speed '
+                + ((c.low_speed_limit_bytes ?? 0) > 0
+                    ? ((c.low_speed_seg ?? '?') + ' s / ' + c.low_speed_limit_bytes + ' B/s')
+                    : 'off')
+                + ', '
                 + (c.reintentos ?? '?') + ' reintento(s), disparo cada '
                 + (c.stagger_ms ?? 2000) + ' ms, máx en vuelo '
                 + (c.concurrencia ?? concurrencia);

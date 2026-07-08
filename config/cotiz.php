@@ -82,12 +82,11 @@ return [
         'sync_dias_inicial' => max(1, (int) env('MERCADOPUBLICO_SYNC_DIAS_INICIAL', 180)),
         'sync_max_detalle' => (int) env('MERCADOPUBLICO_SYNC_MAX_DETALLE', 50),
         'detalle_cache_segundos' => max(60, (int) env('MERCADOPUBLICO_DETALLE_CACHE_SEGUNDOS', 3600)),
-        // Tope duro: valores altos en Render (p. ej. TIMEOUT=90, LOW_SPEED=60) hacen ~60 s por nota fallida.
-        'api_timeout_segundos' => max(15, min(45, (int) env('MERCADOPUBLICO_API_TIMEOUT_SEG', 45))),
-        'api_connect_timeout_segundos' => max(5, min(15, (int) env('MERCADOPUBLICO_API_CONNECT_TIMEOUT_SEG', 15))),
-        // cURL aborta si la velocidad cae bajo el límite (bytes/s) durante este tiempo seguido.
-        'api_low_speed_time_segundos' => max(5, min(20, (int) env('MERCADOPUBLICO_API_LOW_SPEED_TIME_SEG', 20))),
-        'api_low_speed_limit_bytes' => max(1, (int) env('MERCADOPUBLICO_API_LOW_SPEED_LIMIT_BYTES', 10)),
+        // Timeout HTTP por request. LOW_SPEED_LIMIT=0 desactiva el corte por velocidad baja (cURL).
+        'api_timeout_segundos' => max(15, min(180, (int) env('MERCADOPUBLICO_API_TIMEOUT_SEG', 45))),
+        'api_connect_timeout_segundos' => max(5, min(60, (int) env('MERCADOPUBLICO_API_CONNECT_TIMEOUT_SEG', 15))),
+        'api_low_speed_time_segundos' => max(0, min(120, (int) env('MERCADOPUBLICO_API_LOW_SPEED_TIME_SEG', 20))),
+        'api_low_speed_limit_bytes' => max(0, (int) env('MERCADOPUBLICO_API_LOW_SPEED_LIMIT_BYTES', 10)),
         'api_reintentos_http' => max(1, (int) env('MERCADOPUBLICO_API_REINTENTOS', 3)),
         'api_espera_reintento_seg' => max(1, (int) env('MERCADOPUBLICO_API_ESPERA_REINTENTO_SEG', 5)),
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),

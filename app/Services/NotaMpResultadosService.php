@@ -730,7 +730,7 @@ class NotaMpResultadosService
     }
 
     /**
-     * @return array{timeout_seg: int, connect_timeout_seg: int, low_speed_seg: int, reintentos: int, delay_ms: int, concurrencia: int, stagger_ms: int}
+     * @return array{timeout_seg: int, connect_timeout_seg: int, low_speed_seg: int, low_speed_limit_bytes: int, reintentos: int, delay_ms: int, concurrencia: int, stagger_ms: int}
      */
     public static function configMpEfectiva(): array
     {
@@ -738,6 +738,7 @@ class NotaMpResultadosService
             'timeout_seg' => (int) config('cotiz.mercadopublico.api_timeout_segundos', 45),
             'connect_timeout_seg' => (int) config('cotiz.mercadopublico.api_connect_timeout_segundos', 15),
             'low_speed_seg' => (int) config('cotiz.mercadopublico.api_low_speed_time_segundos', 20),
+            'low_speed_limit_bytes' => (int) config('cotiz.mercadopublico.api_low_speed_limit_bytes', 10),
             'reintentos' => (int) config('cotiz.mercadopublico.api_reintentos_http', 3),
             'delay_ms' => (int) config('cotiz.mercadopublico.resultados_delay_ms', 500),
             'concurrencia' => max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5))),
