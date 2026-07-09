@@ -95,7 +95,7 @@ return [
         // Máx. consultas MP en vuelo (Http async). El siguiente se dispara sin esperar respuesta.
         'resultados_concurrencia' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA', 5)),
         // Tope superior configurable (evita valores accidentales muy altos).
-        'resultados_concurrencia_max' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA_MAX', 50)),
+        'resultados_concurrencia_max' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA_MAX', 200)),
         // Espera entre disparos sucesivos (no entre fin de lote).
         'resultados_stagger_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_STAGGER_MS', 2000)),
         'resultados_nota_max_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_MAX_SEG', 180)),

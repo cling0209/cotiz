@@ -304,7 +304,7 @@ class NotaMpResultadosService
     public static function concurrenciaResultadosEfectiva(): int
     {
         $valor = max(1, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5));
-        $max = max(1, (int) config('cotiz.mercadopublico.resultados_concurrencia_max', 50));
+        $max = max(1, (int) config('cotiz.mercadopublico.resultados_concurrencia_max', 200));
 
         return min($valor, $max);
     }
