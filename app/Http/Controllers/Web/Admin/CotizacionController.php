@@ -310,6 +310,10 @@ class CotizacionController extends Controller
             abort(403);
         }
 
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'prod_item' => ['required', 'string', 'max:50'],
             'cantidad' => ['required', 'integer', 'min:1'],

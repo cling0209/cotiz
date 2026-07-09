@@ -34,7 +34,7 @@
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
         <div class="alert alert-info py-2 mb-2" role="alert">
-            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n solo es obligatorio antes de analizar un <strong>PDF (OCR)</strong>.
+            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF (OCR)</strong>.
         </div>
     @endif
 
@@ -488,18 +488,22 @@
         return Promise.resolve(confirm(message));
     }
 
-    function asegurarNumeroCotizacionParaPdf() {
+    function asegurarNumeroCotizacionGuardada(opciones = {}) {
         if (!requiereNumeroCotizacion) {
             return true;
         }
         const enc = document.getElementById('encargado');
         const valor = String(enc?.value || '').trim();
+        const titulo = opciones.titulo || 'Cotización';
         if (!valor) {
-            dlgAlert('Debe ingresar el número de cotización y guardarlo antes de analizar el PDF.', { title: 'Número de cotización' });
+            dlgAlert(opciones.mensajeVacio || 'Debe ingresar la cotización.', { title: titulo });
             enc?.focus();
             return false;
         }
-        dlgAlert('Guarde el número de cotización con el botón «Guardar número» antes de analizar el PDF.', { title: 'Número de cotización' });
+        dlgAlert(
+            opciones.mensajeGuardar || 'Guarde la cotización con el botón «Guardar número» antes de continuar.',
+            { title: titulo },
+        );
         enc?.focus();
         return false;
     }
@@ -1755,6 +1759,10 @@
     }
 
     function abrirModalBuscar() {
+        if (!asegurarNumeroCotizacionGuardada({
+            mensajeVacio: 'Debe ingresar la cotización.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de agregar productos.',
+        })) return;
         if (!bsModal || !modalInput) return;
         modalInput.value = '';
         limpiarProductosMarcados();
@@ -2335,7 +2343,11 @@
     }
 
     async function analizarImportPdf() {
-        if (!asegurarNumeroCotizacionParaPdf()) return;
+        if (!asegurarNumeroCotizacionGuardada({
+            mensajeVacio: 'Debe ingresar la cotización antes de analizar el PDF.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el PDF.',
+            titulo: 'Número de cotización',
+        })) return;
 
         importModo = 'pdf';
         importCodigoApi = null;
@@ -2641,7 +2653,11 @@
         if (importandoCompraAgil || !importPreviewData) return;
 
         const usarPdf = importModo === 'pdf';
-        if (usarPdf && !asegurarNumeroCotizacionParaPdf()) return;
+        if (usarPdf && !asegurarNumeroCotizacionGuardada({
+            mensajeVacio: 'Debe ingresar la cotización antes de importar el PDF.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF.',
+            titulo: 'Número de cotización',
+        })) return;
 
         if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
             mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
