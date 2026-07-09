@@ -46,11 +46,11 @@
                     </thead>
                     <tbody>
                         @forelse($detalleCorrida as $det)
-                            <tr class="{{ $det->exito ? '' : 'table-light' }}">
+                            <tr class="{{ $det->exito ? '' : 'table-light' }} resultado-ultimo-data-row" data-nronota="{{ $det->nronota }}">
                                 <td>{{ $det->nronota }}</td>
                                 <td class="font-monospace small">{{ $det->codigo_proceso }}</td>
                                 <td class="small">{{ $det->empresa ?: '—' }}</td>
-                                <td>
+                                <td class="cell-resultado">
                                     @if($det->exito)
                                         @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $det->resultado_propio])
                                         @if($det->cambio)
@@ -60,21 +60,21 @@
                                         <span class="badge text-bg-danger">Error</span>
                                     @endif
                                 </td>
-                                <td class="small text-break" style="min-width: 12rem; max-width: 22rem;">
+                                <td class="small text-break cell-error-detalle" style="min-width: 12rem; max-width: 22rem;">
                                     @if($det->exito)
                                         <span class="text-muted">—</span>
                                     @else
                                         <span class="text-danger">{{ $det->mensaje ?: 'Error desconocido' }}</span>
                                     @endif
                                 </td>
-                                <td class="small">
+                                <td class="small cell-estado-mp">
                                     @if($det->exito)
                                         {{ $det->estado_mp_glosa ?: '—' }}
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
                                 </td>
-                                <td class="small">
+                                <td class="small cell-proveedor">
                                     @if($det->razon_social_ganador)
                                         {{ $det->razon_social_ganador }}<br>
                                         <span class="text-muted">{{ $det->rut_ganador }}</span>

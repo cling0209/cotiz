@@ -115,6 +115,10 @@
         return document.querySelector('tr.todas-data-row[data-nronota="' + nronota + '"]');
     }
 
+    function dataRowResultadoUltimo(nronota) {
+        return document.querySelector('tr.resultado-ultimo-data-row[data-nronota="' + nronota + '"]');
+    }
+
     function badgeSeguimientoHtml(codigo) {
         const labels = {
             cerrada: ['success', 'Cerrada'],
@@ -362,8 +366,79 @@
         }
     }
 
+    function actualizarFilaResultadoUltimo(nronota, r) {
+        const row = dataRowResultadoUltimo(nronota);
+        if (!row) return;
+
+        row.classList.remove('table-light');
+        if (r.cambio) {
+            row.classList.add('table-info');
+        }
+
+        const resultadoCell = row.querySelector('.cell-resultado');
+        if (resultadoCell && r.resultado_propio) {
+            let html = badgeSeguimientoHtml(r.resultado_propio);
+            if (r.cambio) {
+                html += ' <span class="badge text-bg-info ms-1">Cambio</span>';
+            }
+            resultadoCell.innerHTML = html;
+            destellarCambio(resultadoCell.querySelector('.badge') || resultadoCell);
+        }
+
+        const errorCell = row.querySelector('.cell-error-detalle');
+        if (errorCell) {
+            errorCell.innerHTML = '<span class="text-muted">—</span>';
+        }
+
+        const estadoCell = row.querySelector('.cell-estado-mp');
+        if (estadoCell) {
+            const nuevo = r.estado_glosa || r.estado_nuevo || '—';
+            estadoCell.textContent = nuevo;
+            destellarCambio(estadoCell);
+        }
+
+        const provCell = row.querySelector('.cell-proveedor');
+        if (provCell) {
+            if (r.razon_social_ganador) {
+                let html = r.razon_social_ganador;
+                if (r.rut_ganador) {
+                    html += '<br><span class="text-muted">' + r.rut_ganador + '</span>';
+                }
+                provCell.innerHTML = html;
+            } else {
+                provCell.textContent = '—';
+            }
+        }
+
+        actualizarAccionesFilaResultadoUltimo(row, nronota, r);
+    }
+
+    function actualizarAccionesFilaResultadoUltimo(row, nronota, r) {
+        const acciones = row.querySelector('.cell-acciones');
+        if (!acciones) return;
+
+        const btnConsultar = acciones.querySelector('.btn-consultar-mp-individual');
+        if (btnConsultar) {
+            btnConsultar.remove();
+        }
+
+        const puedeComparar = r.razon_social_ganador
+            || r.estado_nuevo === 'proveedor_seleccionado'
+            || r.estado_nuevo === 'cerrada';
+
+        if (puedeComparar && !acciones.querySelector('.btn-comparar-mp')) {
+            acciones.appendChild(crearBotonComparar(nronota));
+        }
+
+        if (r.resultado_propio && r.resultado_propio !== 'sin_consultar' && !acciones.querySelector('.btn-detalle-mp')) {
+            acciones.appendChild(crearBotonDetalle(nronota));
+        }
+    }
+
     function actualizarFilaConsultaMp(nronota, r) {
-        if (dataRowPendiente(nronota)) {
+        if (dataRowResultadoUltimo(nronota)) {
+            actualizarFilaResultadoUltimo(nronota, r);
+        } else if (dataRowPendiente(nronota)) {
             actualizarFilaPendiente(nronota, r);
         } else if (dataRowTodas(nronota)) {
             actualizarFilaTodas(nronota, r);
