@@ -366,8 +366,34 @@
         }
     }
 
-    function actualizarFilaResultadoUltimo(nronota, r) {
-        const row = dataRowResultadoUltimo(nronota);
+    function esFilaResultadoUltimo(row) {
+        return !!row && (
+            row.classList.contains('resultado-ultimo-data-row')
+            || row.querySelector('.cell-error-detalle') != null
+        );
+    }
+
+    function filaDatosDesdeHint(dataRowHint, nronota) {
+        if (dataRowHint && dataRowHint.tagName === 'TR' && !dataRowHint.classList.contains('consulta-mp-feedback')) {
+            return dataRowHint;
+        }
+        const fb = feedbackRow(nronota);
+        if (fb && fb.previousElementSibling && fb.previousElementSibling.tagName === 'TR') {
+            return fb.previousElementSibling;
+        }
+        return dataRowResultadoUltimo(nronota);
+    }
+
+    function puedeCompararNota(r) {
+        const estadosComparables = ['proveedor_seleccionado', 'cerrada', 'oc_emitida'];
+        return !!(r.razon_social_ganador
+            || r.resultado_propio === 'cerrada'
+            || r.finalizado
+            || estadosComparables.includes(r.estado_nuevo));
+    }
+
+    function actualizarFilaResultadoUltimo(nronota, r, rowHint) {
+        const row = filaDatosDesdeHint(rowHint, nronota);
         if (!row) return;
 
         row.classList.remove('table-light');
@@ -376,8 +402,10 @@
         }
 
         const resultadoCell = row.querySelector('.cell-resultado');
-        if (resultadoCell && r.resultado_propio) {
-            let html = badgeSeguimientoHtml(r.resultado_propio);
+        if (resultadoCell) {
+            const codigoSeguimiento = r.resultado_propio
+                || (r.finalizado ? 'cerrada' : 'pendiente');
+            let html = badgeSeguimientoHtml(codigoSeguimiento);
             if (r.cambio) {
                 html += ' <span class="badge text-bg-info ms-1">Cambio</span>';
             }
@@ -417,28 +445,28 @@
         const acciones = row.querySelector('.cell-acciones');
         if (!acciones) return;
 
-        const btnConsultar = acciones.querySelector('.btn-consultar-mp-individual');
-        if (btnConsultar) {
-            btnConsultar.remove();
-        }
+        acciones.querySelectorAll('.btn-consultar-mp-individual').forEach(function (el) {
+            el.remove();
+        });
 
-        const puedeComparar = r.razon_social_ganador
-            || r.estado_nuevo === 'proveedor_seleccionado'
-            || r.estado_nuevo === 'cerrada';
-
-        if (puedeComparar && !acciones.querySelector('.btn-comparar-mp')) {
+        if (puedeCompararNota(r) && !acciones.querySelector('.btn-comparar-mp')) {
             acciones.appendChild(crearBotonComparar(nronota));
         }
 
-        if (r.resultado_propio && r.resultado_propio !== 'sin_consultar' && !acciones.querySelector('.btn-detalle-mp')) {
+        const codigoSeguimiento = r.resultado_propio || (r.finalizado ? 'cerrada' : 'pendiente');
+        if (codigoSeguimiento !== 'sin_consultar' && !acciones.querySelector('.btn-detalle-mp')) {
             acciones.appendChild(crearBotonDetalle(nronota));
         }
     }
 
-    function actualizarFilaConsultaMp(nronota, r) {
-        if (dataRowResultadoUltimo(nronota)) {
-            actualizarFilaResultadoUltimo(nronota, r);
-        } else if (dataRowPendiente(nronota)) {
+    function actualizarFilaConsultaMp(nronota, r, dataRowHint) {
+        const rowHint = filaDatosDesdeHint(dataRowHint, nronota);
+
+        if (esFilaResultadoUltimo(rowHint)) {
+            actualizarFilaResultadoUltimo(nronota, r, rowHint);
+            return;
+        }
+        if (dataRowPendiente(nronota)) {
             actualizarFilaPendiente(nronota, r);
         } else if (dataRowTodas(nronota)) {
             actualizarFilaTodas(nronota, r);
@@ -500,7 +528,7 @@
                         destellarCambio(msg);
                     }
                 }
-                actualizarFilaConsultaMp(nronota, r);
+                actualizarFilaConsultaMp(nronota, r, btn.closest('tr'));
             } else {
                 window.location.reload();
             }
