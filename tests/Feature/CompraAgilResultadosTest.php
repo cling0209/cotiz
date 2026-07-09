@@ -956,6 +956,21 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame('897-13-COT26', $estado['notas_en_curso'][0]['codigo']);
     }
 
+    public function test_concurrencia_resultados_respeta_tope_configurable(): void
+    {
+        config([
+            'cotiz.mercadopublico.resultados_concurrencia' => 200,
+            'cotiz.mercadopublico.resultados_concurrencia_max' => 25,
+        ]);
+
+        $this->assertSame(25, NotaMpResultadosService::concurrenciaResultadosEfectiva());
+        $this->assertSame(25, NotaMpResultadosService::configMpEfectiva()['concurrencia']);
+
+        config(['cotiz.mercadopublico.resultados_concurrencia' => 8]);
+
+        $this->assertSame(8, NotaMpResultadosService::concurrenciaResultadosEfectiva());
+    }
+
     public function test_corrida_masiva_consulta_lote_en_paralelo(): void
     {
         config([

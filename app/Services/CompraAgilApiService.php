@@ -140,7 +140,7 @@ class CompraAgilApiService
             return [];
         }
 
-        $maxInFlight = max(1, min(10, $maxInFlight));
+        $maxInFlight = max(1, $maxInFlight);
         $staggerMs = max(0, $staggerMs);
 
         if ($maxInFlight <= 1) {

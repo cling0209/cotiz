@@ -301,9 +301,17 @@ class NotaMpResultadosService
         ]);
     }
 
+    public static function concurrenciaResultadosEfectiva(): int
+    {
+        $valor = max(1, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5));
+        $max = max(1, (int) config('cotiz.mercadopublico.resultados_concurrencia_max', 50));
+
+        return min($valor, $max);
+    }
+
     public function concurrenciaResultados(): int
     {
-        return max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5)));
+        return self::concurrenciaResultadosEfectiva();
     }
 
     /**
@@ -841,7 +849,7 @@ class NotaMpResultadosService
             'low_speed_limit_bytes' => (int) config('cotiz.mercadopublico.api_low_speed_limit_bytes', 10),
             'reintentos' => (int) config('cotiz.mercadopublico.api_reintentos_http', 3),
             'delay_ms' => (int) config('cotiz.mercadopublico.resultados_delay_ms', 500),
-            'concurrencia' => max(1, min(10, (int) config('cotiz.mercadopublico.resultados_concurrencia', 5))),
+            'concurrencia' => self::concurrenciaResultadosEfectiva(),
             'stagger_ms' => max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000)),
         ];
     }
