@@ -102,5 +102,8 @@ return [
         'resultados_nota_alerta_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_ALERTA_SEG', 180)),
         // Default 30 min (antes 43200 = 12 h dejaba corridas eternas al ~99%).
         'resultados_corrida_colgada_segundos' => max(300, (int) env('MERCADOPUBLICO_RESULTADOS_COLGADA_SEG', 1800)),
+        // Consulta masiva automática («Consultar ahora») vía scheduler.
+        'resultados_schedule_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_SCHEDULE', true), FILTER_VALIDATE_BOOL),
+        'resultados_schedule_hours' => env('MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS', '10,19'),
     ],
 ];

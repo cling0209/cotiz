@@ -63,5 +63,17 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Queue worker loop PID: $!" >&2
 fi
 
+# Scheduler Laravel (consulta MP a las 10 y 19, u horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
+if [ "${RUN_SCHEDULER:-true}" = "true" ]; then
+  echo "Iniciando Laravel scheduler (cada 60s)..." >&2
+  (
+    while true; do
+      run_as_www 'php artisan schedule:run --verbose --no-interaction 2>&1' || true
+      sleep 60
+    done
+  ) &
+  echo "Scheduler loop PID: $!" >&2
+fi
+
 php-fpm -D
 exec nginx -g 'daemon off;'

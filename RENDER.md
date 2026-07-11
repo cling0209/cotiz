@@ -145,6 +145,18 @@ En free verás: `Unable to connect to ssl://mail.romulo.cl:465 (Operation timed 
 - [ ] Probar login admin OTP o recuperar contraseña
 - [ ] Log sin timeout SMTP
 
+## 6. Consulta MP programada (Resultados Compra Ágil)
+
+El contenedor ejecuta `php artisan schedule:run` cada minuto (`RUN_SCHEDULER=true` por defecto).
+
+| Variable | Default | Uso |
+|----------|---------|-----|
+| `MERCADOPUBLICO_RESULTADOS_SCHEDULE` | `true` | Activa la corrida automática |
+| `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS` | `10,19` | Horas locales (`APP_TIMEZONE`, Chile) |
+| `RUN_SCHEDULER` | `true` | Loop del scheduler en el entrypoint |
+
+Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados`.
+
 ## URLs
 
 | Recurso | URL |
