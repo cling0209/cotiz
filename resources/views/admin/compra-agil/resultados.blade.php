@@ -138,6 +138,8 @@
                         <th>Código CA</th>
                         <th>Publicación</th>
                         <th>Últ. cambio</th>
+                        <th>Cierre 1er llamado</th>
+                        <th>Cierre 2do llamado</th>
                         <th>Cambio estado</th>
                         <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
@@ -159,6 +161,8 @@
                             <td class="font-monospace small">{{ $nov->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $nov->seguimiento?->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $nov->seguimiento?->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_cierre_primer_llamado?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $nov->seguimiento?->fecha_cierre_segundo_llamado?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small cell-cambio-estado">
                                 {{ $nov->estado_anterior ?: '—' }}
                                 <i class="bi bi-arrow-right"></i>
@@ -196,7 +200,7 @@
                         </tr>
                         @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $nov->nronota }}">
-                            <td colspan="10" class="py-2 bg-light">
+                            <td colspan="12" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">
                                     <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
                                 </div>
@@ -205,7 +209,7 @@
                         </tr>
                         @endif
                     @empty
-                        <tr id="novedades-vacio"><td colspan="10" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="12" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
                     @endforelse
                 </tbody>
             </table>
