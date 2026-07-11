@@ -281,7 +281,8 @@ class CotizacionListadoAccionesTest extends TestCase
         $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index'));
 
         $response->assertOk();
-        $response->assertSee('lista para postular a segundo llamado', false);
+        $response->assertSee('hay 1 cotización lista para postular a segundo llamado.', false);
+        $response->assertSee('Atención:', false);
         $response->assertSee('#201', false);
         $response->assertSee('201-1-COT26', false);
         $response->assertSee('cierre 2° llamado: 11/07/2026 21:38', false);

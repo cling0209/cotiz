@@ -62,10 +62,12 @@
             <div class="d-flex align-items-start gap-2">
                 <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0 mt-0"></i>
                 <div>
-                    <strong>Atenci&oacute;n:</strong>
-                    {{ $segundoLlamadoParaPostular->count() === 1
-                        ? 'hay 1 cotizaci&oacute;n lista para postular a segundo llamado.'
-                        : 'hay '.$segundoLlamadoParaPostular->count().' cotizaciones listas para postular a segundo llamado.' }}
+                    <strong>Atención:</strong>
+                    @if($segundoLlamadoParaPostular->count() === 1)
+                        hay 1 cotización lista para postular a segundo llamado.
+                    @else
+                        hay {{ $segundoLlamadoParaPostular->count() }} cotizaciones listas para postular a segundo llamado.
+                    @endif
                     <div class="small mt-1 mb-0">
                         Notas:
                         @foreach($segundoLlamadoParaPostular as $item)
