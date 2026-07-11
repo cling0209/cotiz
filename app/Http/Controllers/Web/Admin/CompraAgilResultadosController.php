@@ -29,6 +29,7 @@ class CompraAgilResultadosController extends Controller
             'cerradasCount' => $this->resultados->contarCerradas(),
             'pendientesCount' => $this->resultados->contarNotasPendientesConsulta(),
             'pendientesSeguimientoCount' => $this->resultados->contarPendientesSeguimiento(),
+            'segundoLlamadoCount' => $this->resultados->contarSegundoLlamado(),
             'todasCount' => $this->resultados->contarTodas(),
         ]);
     }
@@ -60,6 +61,18 @@ class CompraAgilResultadosController extends Controller
 
         return view('admin.compra-agil.resultados-pendientes', [
             'pendientes' => $this->resultados->listadoPendientesPaginado(20, $filtros),
+            'filtros' => $filtros,
+            'apiConfigurada' => $this->resultados->apiConfigurada(),
+            'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
+        ]);
+    }
+
+    public function segundoLlamado(Request $request): View
+    {
+        $filtros = $this->filtrosSegundoLlamadoUi($request);
+
+        return view('admin.compra-agil.resultados-segundo-llamado', [
+            'items' => $this->resultados->listadoPendientesPaginado(20, $this->filtrosSegundoLlamado($filtros)),
             'filtros' => $filtros,
             'apiConfigurada' => $this->resultados->apiConfigurada(),
             'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
@@ -167,6 +180,63 @@ class CompraAgilResultadosController extends Controller
                 'OC',
             ], ';');
             foreach ($pendientes as $seg) {
+                fputcsv($out, [
+                    $seg->nronota,
+                    $seg->codigo_proceso,
+                    $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_cierre_primer_llamado?->format('d/m/Y H:i') ?? '',
+                    $seg->fecha_cierre_segundo_llamado?->format('d/m/Y H:i') ?? '',
+                    $seg->convocatoria_descripcion ?: '',
+                    $seg->convocatoria_estado ?? '',
+                    $seg->organismo,
+                    $seg->estado_mp_glosa ?: $seg->estado_mp_codigo,
+                    $seg->razon_social_ganador,
+                    $seg->rut_ganador,
+                    $seg->monto_total_ganador,
+                    $this->resultados->nombreEjecutivoNota($seg),
+                    $seg->nota?->empresa,
+                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
+                    $seg->id_orden_compra,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function segundoLlamadoExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $this->filtrosSegundoLlamado($this->filtrosSegundoLlamadoUi($request));
+        $items = $this->resultados->listadoPendientesExportar($filtros);
+        $filename = 'segundo_llamado_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($items) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Nota',
+                'Código CA',
+                'Publicación',
+                'Último cambio',
+                'Cierre 1er llamado',
+                'Cierre 2do llamado',
+                'Estado convocatoria',
+                'Cód. estado convocatoria',
+                'Organismo',
+                'Estado MP',
+                'Prov. seleccionado',
+                'RUT ganador',
+                'Monto',
+                'Ejecutivo',
+                'Cliente',
+                'Consultado',
+                'Propio',
+                'OC',
+            ], ';');
+            foreach ($items as $seg) {
                 fputcsv($out, [
                     $seg->nronota,
                     $seg->codigo_proceso,
@@ -447,6 +517,33 @@ class CompraAgilResultadosController extends Controller
             'nronota', 'codigo_proceso', 'organismo', 'proveedor',
             'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
             'seguimiento', 'estado_mp', 'convocatoria',
+        ]);
+    }
+
+    /**
+     * Filtros libres de la UI de segundo llamado (sin forzar estado/convocatoria).
+     *
+     * @return array<string, mixed>
+     */
+    private function filtrosSegundoLlamadoUi(Request $request): array
+    {
+        return $request->only([
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
+        ]);
+    }
+
+    /**
+     * Filtros de consulta con criterios fijos de segundo llamado.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return array<string, mixed>
+     */
+    private function filtrosSegundoLlamado(array $filtros): array
+    {
+        return array_merge($filtros, [
+            'estado_mp' => 'publicada',
+            'convocatoria' => 'Segundo llamado',
         ]);
     }
 }

@@ -73,6 +73,10 @@
             <i class="bi bi-hourglass-split"></i> Pendientes seguimiento
             <span class="badge text-bg-warning ms-1">{{ $pendientesSeguimientoCount }}</span>
         </a>
+        <a href="{{ route('admin.compra-agil.resultados.segundo-llamado') }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-megaphone"></i> Segundo llamado
+            <span class="badge text-bg-info ms-1">{{ $segundoLlamadoCount }}</span>
+        </a>
         <a href="{{ route('admin.compra-agil.resultados.todas') }}" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-list-ul"></i> Todas las notas
             <span class="badge text-bg-primary ms-1">{{ $todasCount }}</span>

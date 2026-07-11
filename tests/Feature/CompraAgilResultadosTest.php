@@ -1263,6 +1263,7 @@ class CompraAgilResultadosTest extends TestCase
             ->get(route('admin.compra-agil.resultados.index'))
             ->assertOk()
             ->assertSee('Pendientes seguimiento', false)
+            ->assertSee('Segundo llamado', false)
             ->assertSee('920-1-COT26', false);
 
         $html = $this->actingAs($admin)
@@ -1275,6 +1276,75 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertSame(2, substr_count($html, 'Consultar MP'));
         $this->assertSame(1, substr_count($html, 'Comparar'));
+    }
+
+    public function test_segundo_llamado_listado_y_boton_en_index(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 940,
+            'descripcion' => 'Segundo llamado publicada',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '940-1-COT26',
+            'nota_softland' => 94000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 940,
+            'codigo_proceso' => '940-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'convocatoria_estado' => 2,
+            'convocatoria_descripcion' => 'Segundo llamado',
+            'fecha_cierre_segundo_llamado' => '2026-07-11 21:38:00',
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 941,
+            'descripcion' => 'Primer llamado no debe listarse',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '941-1-COT26',
+            'nota_softland' => 94100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 941,
+            'codigo_proceso' => '941-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'convocatoria_estado' => 1,
+            'convocatoria_descripcion' => 'Primer llamado',
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.index'))
+            ->assertOk()
+            ->assertSee('Segundo llamado', false)
+            ->assertSee(route('admin.compra-agil.resultados.segundo-llamado', [], false), false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.segundo-llamado'))
+            ->assertOk()
+            ->assertSee('940-1-COT26', false)
+            ->assertSee('Segundo llamado', false)
+            ->assertDontSee('941-1-COT26', false);
     }
 
     public function test_todas_las_notas_listado_exporta_y_boton_en_index(): void

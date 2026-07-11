@@ -107,6 +107,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('compra-agil/resultados/cerradas/exportar', [CompraAgilResultadosController::class, 'cerradasExportar'])->name('compra-agil.resultados.cerradas.exportar');
             Route::get('compra-agil/resultados/pendientes', [CompraAgilResultadosController::class, 'pendientes'])->name('compra-agil.resultados.pendientes');
             Route::get('compra-agil/resultados/pendientes/exportar', [CompraAgilResultadosController::class, 'pendientesExportar'])->name('compra-agil.resultados.pendientes.exportar');
+            Route::get('compra-agil/resultados/segundo-llamado', [CompraAgilResultadosController::class, 'segundoLlamado'])->name('compra-agil.resultados.segundo-llamado');
+            Route::get('compra-agil/resultados/segundo-llamado/exportar', [CompraAgilResultadosController::class, 'segundoLlamadoExportar'])->name('compra-agil.resultados.segundo-llamado.exportar');
             Route::get('compra-agil/resultados/todas', [CompraAgilResultadosController::class, 'todas'])->name('compra-agil.resultados.todas');
             Route::get('compra-agil/resultados/todas/exportar', [CompraAgilResultadosController::class, 'todasExportar'])->name('compra-agil.resultados.todas.exportar');
             Route::post('compra-agil/resultados/consultar/{nronota}', [CompraAgilResultadosController::class, 'consultarIndividual'])->name('compra-agil.resultados.consultar-individual')->whereNumber('nronota');

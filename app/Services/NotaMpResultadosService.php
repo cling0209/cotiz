@@ -1707,6 +1707,14 @@ class NotaMpResultadosService
         return NotaMpSeguimiento::query()->where('resultado_propio', 'pendiente')->count();
     }
 
+    public function contarSegundoLlamado(): int
+    {
+        return $this->buildPendientesSeguimientoQuery([
+            'estado_mp' => 'publicada',
+            'convocatoria' => 'Segundo llamado',
+        ])->count();
+    }
+
     public function contarTodas(): int
     {
         return $this->buildTodasNotasQuery([])->count('notas.nronota');
@@ -2008,10 +2016,10 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['estado_mp'])) {
-            $term = '%'.$filtros['estado_mp'].'%';
+            $term = '%'.mb_strtolower(trim((string) $filtros['estado_mp'])).'%';
             $query->where(function ($q) use ($term): void {
-                $q->where('estado_mp_glosa', 'ilike', $term)
-                    ->orWhere('estado_mp_codigo', 'ilike', $term);
+                $q->whereRaw('lower(estado_mp_glosa) like ?', [$term])
+                    ->orWhereRaw('lower(estado_mp_codigo) like ?', [$term]);
             });
         }
 
@@ -2050,7 +2058,7 @@ class NotaMpResultadosService
         }
 
         $query->where(function ($q) use ($valor, $colDesc, $colEstado): void {
-            $q->where($colDesc, 'ilike', '%'.$valor.'%');
+            $q->whereRaw('lower('.$colDesc.') like ?', ['%'.mb_strtolower($valor).'%']);
             if (ctype_digit($valor)) {
                 $q->orWhere($colEstado, (int) $valor);
             }
