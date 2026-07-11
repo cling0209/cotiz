@@ -30,6 +30,28 @@ class NotaListadoService
         return $query->paginate($porPagina)->withQueryString();
     }
 
+    /**
+     * Cotizaciones subidas por el usuario con seguimiento pendiente,
+     * estado MP publicada y convocatoria en segundo llamado (listas para postular).
+     *
+     * @return Collection<int, Nota>
+     */
+    public function cotizacionesSegundoLlamadoParaPostular(User $user): Collection
+    {
+        return Nota::query()
+            ->select('notas.nronota', 'notas.encargado', 'notas.empresa')
+            ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->where('notas.usuario', $user->username)
+            ->where('seg.resultado_propio', 'pendiente')
+            ->where(function ($q): void {
+                $q->whereRaw('lower(seg.estado_mp_glosa) like ?', ['%publicada%'])
+                    ->orWhereRaw('lower(seg.estado_mp_codigo) like ?', ['%publicada%']);
+            })
+            ->whereRaw('lower(seg.convocatoria_descripcion) like ?', ['%segundo llamado%'])
+            ->orderByDesc('notas.nronota')
+            ->get();
+    }
+
     private function baseQuery(User $user, array $filtros): Builder
     {
         $query = Nota::query()
@@ -40,7 +62,7 @@ class NotaListadoService
                     ->whereColumn('notasdetalle.nronota', 'notas.nronota'),
                 'total_calculado'
             )
-            ->with('usuarioRel');
+            ->with(['usuarioRel', 'mpSeguimiento']);
 
         $this->aplicarReglasPerfil($query, $user);
 

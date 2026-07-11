@@ -26,12 +26,16 @@ class CotizacionListadoController extends Controller
     public function index(Request $request): View
     {
         $filtros = $this->normalizarFiltros($request);
-        $cotizaciones = $this->listadoService->listar($request->user(), $filtros);
+        $user = $request->user();
+        $cotizaciones = $this->listadoService->listar($user, $filtros);
+        $segundoLlamado = $this->listadoService->cotizacionesSegundoLlamadoParaPostular($user);
 
         return view('admin.cotizaciones.index', [
             'cotizaciones' => $cotizaciones,
             'filtros' => $filtros,
-            'puedeGestionar' => $this->listadoService->puedeGestionar($request->user()),
+            'puedeGestionar' => $this->listadoService->puedeGestionar($user),
+            'segundoLlamadoParaPostular' => $segundoLlamado,
+            'nronotasSegundoLlamado' => $segundoLlamado->pluck('nronota')->all(),
         ]);
     }
 

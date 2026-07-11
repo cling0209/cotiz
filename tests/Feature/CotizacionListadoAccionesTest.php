@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Maeprod;
 use App\Models\Nota;
+use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -217,6 +218,82 @@ class CotizacionListadoAccionesTest extends TestCase
         $contenido = $response->streamedContent();
         $this->assertStringContainsString('SINCOD01', $contenido);
         $this->assertStringContainsString('PRODUCTO SIN SOFTLAND', $contenido);
+    }
+
+    public function test_listado_muestra_alerta_segundo_llamado_solo_del_ejecutivo_logueado(): void
+    {
+        $propia = $this->crearNota([
+            'nronota' => 201,
+            'usuario' => 'ejecutivo',
+            'encargado' => '201-1-COT26',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $propia->nronota,
+            'codigo_proceso' => '201-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'convocatoria_estado' => 2,
+            'convocatoria_descripcion' => 'Segundo llamado',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $ajena = $this->crearNota([
+            'nronota' => 202,
+            'usuario' => 'otro',
+            'encargado' => '202-1-COT26',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $ajena->nronota,
+            'codigo_proceso' => '202-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'convocatoria_estado' => 2,
+            'convocatoria_descripcion' => 'Segundo llamado',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $primerLlamado = $this->crearNota([
+            'nronota' => 203,
+            'usuario' => 'ejecutivo',
+            'encargado' => '203-1-COT26',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $primerLlamado->nronota,
+            'codigo_proceso' => '203-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Municipalidad Test',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'convocatoria_estado' => 1,
+            'convocatoria_descripcion' => 'Primer llamado',
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index'));
+
+        $response->assertOk();
+        $response->assertSee('lista para postular a segundo llamado', false);
+        $response->assertSee('#201', false);
+        $response->assertSee('201-1-COT26', false);
+        $response->assertSee('2° llamado', false);
+        $response->assertDontSee('#202', false);
+    }
+
+    public function test_listado_no_muestra_alerta_segundo_llamado_sin_coincidencias(): void
+    {
+        $this->crearNota(['nronota' => 210, 'usuario' => 'ejecutivo']);
+
+        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index'));
+
+        $response->assertOk();
+        $response->assertDontSee('postular a segundo llamado', false);
     }
 
     private function crearNota(array $attrs = []): Nota

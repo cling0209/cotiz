@@ -57,6 +57,28 @@
         </div>
     </div>
 
+    @if(($segundoLlamadoParaPostular ?? collect())->isNotEmpty())
+        <div class="alert alert-warning border-warning shadow-sm mb-3 alerta-segundo-llamado" role="alert">
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0 mt-0"></i>
+                <div>
+                    <strong>Atenci&oacute;n:</strong>
+                    {{ $segundoLlamadoParaPostular->count() === 1
+                        ? 'hay 1 cotizaci&oacute;n lista para postular a segundo llamado.'
+                        : 'hay '.$segundoLlamadoParaPostular->count().' cotizaciones listas para postular a segundo llamado.' }}
+                    <div class="small mt-1 mb-0">
+                        Notas:
+                        @foreach($segundoLlamadoParaPostular as $item)
+                            <a href="{{ route('admin.cotizaciones.edit', $item->nronota) }}" class="fw-semibold text-decoration-underline">
+                                #{{ $item->nronota }}@if($item->encargado) ({{ $item->encargado }})@endif
+                            </a>@if(! $loop->last), @endif
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="card shadow-sm">
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle mb-0">
@@ -64,6 +86,7 @@
                     <tr>
                         @php
                             $sortLink = fn ($campo, $dir) => route('admin.cotizaciones.index', array_merge($filtros, ['orden_campo' => $campo, 'orden_dir' => $dir, 'page' => 1]));
+                            $nronotasSegundoLlamado = $nronotasSegundoLlamado ?? [];
                         @endphp
                         <th>
                             Nota
@@ -93,9 +116,15 @@
                         @php
                             $estaAceptada = strtolower(trim((string) $nota->estado)) === 'aceptada';
                             $sinUsuario = trim((string) $nota->usuario) === '';
+                            $esSegundoLlamado = in_array((int) $nota->nronota, $nronotasSegundoLlamado, true);
                         @endphp
-                        <tr>
-                            <td>{{ $nota->nronota }}</td>
+                        <tr @class(['table-warning fila-segundo-llamado' => $esSegundoLlamado])>
+                            <td>
+                                {{ $nota->nronota }}
+                                @if($esSegundoLlamado)
+                                    <span class="badge text-bg-warning ms-1">2° llamado</span>
+                                @endif
+                            </td>
                             <td>
                                 @if($nota->fueRecibidaPorApi())
                                     {{ $nota->notaorigen }}
@@ -170,3 +199,18 @@
     </div>
 </div>
 @endsection
+
+@push('head')
+<style>
+@keyframes alerta-segundo-llamado-destello {
+    0%, 100% { background-color: #fff3cd; box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.45); }
+    50% { background-color: #ffe08a; box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.25); }
+}
+.alerta-segundo-llamado {
+    animation: alerta-segundo-llamado-destello 1.2s ease-in-out infinite;
+}
+.fila-segundo-llamado td {
+    font-weight: 500;
+}
+</style>
+@endpush
