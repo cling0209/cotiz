@@ -64,6 +64,15 @@
                         value="{{ $filtros['estado_mp'] ?? '' }}" placeholder="Ej: Publicada" style="width:10rem">
                 </div>
                 <div class="col-auto">
+                    <label for="f-convocatoria" class="form-label small mb-0">Estado convocatoria</label>
+                    <select class="form-select form-select-sm" id="f-convocatoria" name="convocatoria" style="width:12rem">
+                        <option value="">Todos</option>
+                        <option value="Primer llamado" @selected(($filtros['convocatoria'] ?? '') === 'Primer llamado')>Primer llamado</option>
+                        <option value="Segundo llamado" @selected(($filtros['convocatoria'] ?? '') === 'Segundo llamado')>Segundo llamado</option>
+                        <option value="sin" @selected(($filtros['convocatoria'] ?? '') === 'sin')>Sin convocatoria</option>
+                    </select>
+                </div>
+                <div class="col-auto">
                     <label for="f-fecha-desde" class="form-label small mb-0">Publicación desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-fecha-desde" name="fecha_desde"
                         value="{{ $filtros['fecha_desde'] ?? '' }}">

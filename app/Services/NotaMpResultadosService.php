@@ -1918,6 +1918,8 @@ class NotaMpResultadosService
             });
         }
 
+        $this->aplicarFiltroConvocatoria($query, $filtros, 'seg.');
+
         return $query
             ->orderByRaw('COALESCE(seg.fecha_ultimo_cambio, notas.fecha) DESC')
             ->orderByDesc('notas.nronota');
@@ -2013,7 +2015,46 @@ class NotaMpResultadosService
             });
         }
 
+        $this->aplicarFiltroConvocatoria($query, $filtros);
+
         return $query;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>  $query
+     * @param  array<string, mixed>  $filtros
+     */
+    private function aplicarFiltroConvocatoria(
+        \Illuminate\Database\Eloquent\Builder $query,
+        array $filtros,
+        string $prefix = '',
+    ): void {
+        $valor = trim((string) ($filtros['convocatoria'] ?? ''));
+        if ($valor === '') {
+            return;
+        }
+
+        $colDesc = $prefix.'convocatoria_descripcion';
+        $colEstado = $prefix.'convocatoria_estado';
+
+        if ($valor === 'sin') {
+            $query->where(function ($q) use ($colDesc, $colEstado): void {
+                $q->whereNull($colDesc)
+                    ->where(function ($q2) use ($colEstado): void {
+                        $q2->whereNull($colEstado)
+                            ->orWhere($colEstado, 0);
+                    });
+            });
+
+            return;
+        }
+
+        $query->where(function ($q) use ($valor, $colDesc, $colEstado): void {
+            $q->where($colDesc, 'ilike', '%'.$valor.'%');
+            if (ctype_digit($valor)) {
+                $q->orWhere($colEstado, (int) $valor);
+            }
+        });
     }
 
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator

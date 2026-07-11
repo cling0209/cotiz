@@ -446,7 +446,7 @@ class CompraAgilResultadosController extends Controller
         return $request->only([
             'nronota', 'codigo_proceso', 'organismo', 'proveedor',
             'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
-            'seguimiento', 'estado_mp',
+            'seguimiento', 'estado_mp', 'convocatoria',
         ]);
     }
 }
