@@ -74,11 +74,17 @@
                                     ? \Illuminate\Support\Carbon::parse($item->fecha_cierre_segundo_llamado)->format('d/m/Y H:i')
                                     : null;
                             @endphp
-                            <a href="{{ route('admin.cotizaciones.edit', $item->nronota) }}" class="fw-semibold text-decoration-underline">
-                                #{{ $item->nronota }}@if($item->encargado) ({{ $item->encargado }})@endif
-                            </a>@if($cierreSegundo)
-                                <span class="text-dark"> — cierre 2° llamado: {{ $cierreSegundo }}</span>
-                            @endif@if(! $loop->last)<br>@endif
+                            <div>
+                                <a href="{{ route('admin.cotizaciones.edit', $item->nronota) }}" class="fw-semibold text-decoration-underline">
+                                    #{{ $item->nronota }}
+                                    @if($item->encargado)
+                                        ({{ $item->encargado }})
+                                    @endif
+                                </a>
+                                @if($cierreSegundo)
+                                    <span class="text-dark"> — cierre 2° llamado: {{ $cierreSegundo }}</span>
+                                @endif
+                            </div>
                         @endforeach
                     </div>
                 </div>
