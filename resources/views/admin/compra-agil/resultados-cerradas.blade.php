@@ -86,6 +86,8 @@
                         <th>Código CA</th>
                         <th>Publicación</th>
                         <th>Último cambio</th>
+                        <th>Cierre 1er llamado</th>
+                        <th>Cierre 2do llamado</th>
                         <th>Ejecutivo</th>
                         <th>Organismo</th>
                         <th>Estado MP</th>
@@ -103,6 +105,8 @@
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $seg->fecha_cierre_primer_llamado?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted">{{ $seg->fecha_cierre_segundo_llamado?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $seg->nota?->usuarioRel?->fullName() ?: ($seg->nota?->usuario ?: '—') }}</td>
                             <td class="small">{{ Str::limit($seg->organismo, 40) }}</td>
                             <td class="small">{{ $seg->estado_mp_glosa ?: $seg->estado_mp_codigo }}</td>
@@ -128,7 +132,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="12" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
+                        <tr><td colspan="14" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>
