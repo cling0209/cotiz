@@ -167,30 +167,64 @@ class NotaMpResultadosService
         }
 
         $segundos = (int) $corrida->inicio->diffInSeconds(now());
-        $umbralBase = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 600));
+        $umbralConfig = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 1800));
+        // Tope duro 2 h: evita corridas eternas si el env quedó en 43200 (12 h).
+        $umbralBase = min($umbralConfig, 7200);
         $jobsPendientes = $this->contarJobsResultadosMpPendientes($corrida->id);
         $jobsReservados = $this->contarJobsResultadosMpReservados($corrida->id);
         $procesadas = (int) $corrida->notas_procesadas;
         $total = max(0, (int) $corrida->total_notas);
+        $restantes = max(0, $total - $procesadas);
         $sinJobActivo = $jobsPendientes === 0 && $jobsReservados === 0;
+        $sinAvanceSeg = $corrida->updated_at !== null
+            ? (int) $corrida->updated_at->diffInSeconds(now())
+            : $segundos;
+        $umbralSinAvance = $this->notaMaxSegundos() + 90;
+        $minutos = (int) floor($segundos / 60);
 
-        $umbralPorNotas = max($umbralBase, $total * 60);
+        // Caso 99%: contador completo pero estado sigue running (job no llamó finalizar).
+        if ($total > 0 && $procesadas >= $total) {
+            $this->eliminarJobsResultadosMpPendientes($corrida->id);
+            $fallidas = (int) NotaMpCorridaDetalle::query()
+                ->where('corrida_id', $corrida->id)
+                ->whereRaw('exito IS FALSE')
+                ->count();
+            $this->finalizarCorridaDesdeJob(
+                $corrida,
+                $fallidas,
+                'Consulta cerrada automáticamente: todas las notas ya estaban procesadas.',
+            );
+
+            return true;
+        }
+
+        // Últimas 1–3 notas sin avance: cerrar en vez de quedarse colgada al final.
+        if ($restantes > 0 && $restantes <= 3 && $sinAvanceSeg >= $umbralSinAvance) {
+            $this->eliminarJobsResultadosMpPendientes($corrida->id);
+            $this->finalizarCorrida(
+                $corrida,
+                'error',
+                'Consulta interrumpida tras '.$minutos.' min sin avance en las últimas notas ('
+                .$procesadas.'/'.$total.'). Reintente.',
+            );
+
+            return true;
+        }
+
+        $umbralPorNotas = max($umbralBase, min($total * 60, 7200));
         $umbral = $sinJobActivo ? $umbralBase : $umbralPorNotas;
-        $umbralJobColgado = max($umbralPorNotas, 3600);
+        $umbralJobColgado = min(max($umbralPorNotas, 3600), 7200);
 
         if ($sinJobActivo && $segundos >= $umbral) {
             // sin job activo y pasó el umbral → liberar
         } elseif ($segundos >= $umbralJobColgado) {
-            // job aún reservado pero sin avance hace >15 min → worker probablemente murió
+            // job aún reservado demasiado tiempo → worker probablemente muerto/colgado
+        } elseif ($sinJobActivo && $procesadas > 0 && $sinAvanceSeg >= $umbralSinAvance) {
+            // sin job y sin avance reciente → liberar
         } else {
             return false;
         }
 
-        if ($procesadas >= $total && $total > 0) {
-            return false;
-        }
-
-        $minutos = (int) floor($segundos / 60);
         $codigo = trim((string) ($corrida->codigo_actual ?? ''));
 
         $this->eliminarJobsResultadosMpPendientes();
