@@ -237,6 +237,7 @@ class CotizacionListadoAccionesTest extends TestCase
             'finalizado' => false,
             'convocatoria_estado' => 2,
             'convocatoria_descripcion' => 'Segundo llamado',
+            'fecha_cierre_segundo_llamado' => '2026-07-11 21:38:00',
             'ultimo_consultado_en' => now(),
         ]);
 
@@ -255,6 +256,7 @@ class CotizacionListadoAccionesTest extends TestCase
             'finalizado' => false,
             'convocatoria_estado' => 2,
             'convocatoria_descripcion' => 'Segundo llamado',
+            'fecha_cierre_segundo_llamado' => '2026-07-12 10:00:00',
             'ultimo_consultado_en' => now(),
         ]);
 
@@ -282,6 +284,7 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertSee('lista para postular a segundo llamado', false);
         $response->assertSee('#201', false);
         $response->assertSee('201-1-COT26', false);
+        $response->assertSee('cierre 2° llamado: 11/07/2026 21:38', false);
         $response->assertSee('2° llamado', false);
         $response->assertDontSee('#202', false);
     }

@@ -69,9 +69,16 @@
                     <div class="small mt-1 mb-0">
                         Notas:
                         @foreach($segundoLlamadoParaPostular as $item)
+                            @php
+                                $cierreSegundo = $item->fecha_cierre_segundo_llamado
+                                    ? \Illuminate\Support\Carbon::parse($item->fecha_cierre_segundo_llamado)->format('d/m/Y H:i')
+                                    : null;
+                            @endphp
                             <a href="{{ route('admin.cotizaciones.edit', $item->nronota) }}" class="fw-semibold text-decoration-underline">
                                 #{{ $item->nronota }}@if($item->encargado) ({{ $item->encargado }})@endif
-                            </a>@if(! $loop->last), @endif
+                            </a>@if($cierreSegundo)
+                                <span class="text-dark"> — cierre 2° llamado: {{ $cierreSegundo }}</span>
+                            @endif@if(! $loop->last)<br>@endif
                         @endforeach
                     </div>
                 </div>
@@ -87,6 +94,7 @@
                         @php
                             $sortLink = fn ($campo, $dir) => route('admin.cotizaciones.index', array_merge($filtros, ['orden_campo' => $campo, 'orden_dir' => $dir, 'page' => 1]));
                             $nronotasSegundoLlamado = $nronotasSegundoLlamado ?? [];
+                            $segundoLlamadoPorNota = ($segundoLlamadoParaPostular ?? collect())->keyBy('nronota');
                         @endphp
                         <th>
                             Nota
@@ -135,7 +143,20 @@
                             <td>{{ $nota->fecha?->format('d/m/Y') }}</td>
                             <td>{{ $nota->empresa }}</td>
                             <td class="text-end">${{ number_format($nota->total_calculado ?? 0, 0, ',', '.') }}</td>
-                            <td>{{ $nota->encargado }}</td>
+                            <td>
+                                {{ $nota->encargado }}
+                                @if($esSegundoLlamado)
+                                    @php
+                                        $cierreFila = optional($segundoLlamadoPorNota->get($nota->nronota))->fecha_cierre_segundo_llamado;
+                                        $cierreFilaFmt = $cierreFila
+                                            ? \Illuminate\Support\Carbon::parse($cierreFila)->format('d/m/Y H:i')
+                                            : null;
+                                    @endphp
+                                    @if($cierreFilaFmt)
+                                        <div class="small text-muted">Cierre 2°: {{ $cierreFilaFmt }}</div>
+                                    @endif
+                                @endif
+                            </td>
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->estado ?: '—' }}</td>
                             <td class="text-end">

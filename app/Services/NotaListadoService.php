@@ -39,7 +39,12 @@ class NotaListadoService
     public function cotizacionesSegundoLlamadoParaPostular(User $user): Collection
     {
         return Nota::query()
-            ->select('notas.nronota', 'notas.encargado', 'notas.empresa')
+            ->select(
+                'notas.nronota',
+                'notas.encargado',
+                'notas.empresa',
+                'seg.fecha_cierre_segundo_llamado',
+            )
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->where('notas.usuario', $user->username)
             ->where('seg.resultado_propio', 'pendiente')
