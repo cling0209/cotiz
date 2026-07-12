@@ -198,56 +198,73 @@ class NotaMpResultadosService
             return true;
         }
 
-        // Últimas 1–3 notas sin avance: cerrar en vez de quedarse colgada al final.
-        if ($restantes > 0 && $restantes <= 3 && $sinAvanceSeg >= $umbralSinAvance) {
-            $this->eliminarJobsResultadosMpPendientes($corrida->id);
-            $this->finalizarCorrida(
-                $corrida,
-                'error',
-                'Consulta interrumpida tras '.$minutos.' min sin avance en las últimas notas ('
-                .$procesadas.'/'.$total.'). Reintente.',
-            );
-
-            return true;
-        }
-
         $umbralPorNotas = max($umbralBase, min($total * 60, 7200));
         $umbral = $sinJobActivo ? $umbralBase : $umbralPorNotas;
         $umbralJobColgado = min(max($umbralPorNotas, 3600), 7200);
 
-        if ($sinJobActivo && $segundos >= $umbral) {
-            // sin job activo y pasó el umbral → liberar
-        } elseif ($segundos >= $umbralJobColgado) {
-            // job aún reservado demasiado tiempo → worker probablemente muerto/colgado
-        } elseif ($sinJobActivo && $procesadas > 0 && $sinAvanceSeg >= $umbralSinAvance) {
-            // sin job y sin avance reciente → liberar
+        // sinAvanceSeg actúa de cooldown tras reanudar (touch) y evita reencolar en cada poll.
+        if ($sinJobActivo && $segundos >= $umbral && $sinAvanceSeg >= $umbralSinAvance) {
+            // sin job activo y pasó el umbral → reanudar
+        } elseif (! $sinJobActivo && $segundos >= $umbralJobColgado && $sinAvanceSeg >= $umbralSinAvance) {
+            // job reservado demasiado tiempo → worker probablemente muerto/colgado → reanudar
+        } elseif ($sinJobActivo && $restantes > 0 && $sinAvanceSeg >= $umbralSinAvance) {
+            // sin job y sin avance reciente (incluye últimas 1–3 notas) → reanudar
         } else {
+            return false;
+        }
+
+        return $this->reanudarCorridaColgada($corrida, $procesadas, $total, $minutos);
+    }
+
+    /**
+     * Tras sleep/redeploy de Render el worker muere y la corrida queda running sin job.
+     * Reencola desde notas_procesadas en lugar de marcar error.
+     *
+     * @return bool true solo si se cerró la corrida (no se pudo reanudar)
+     */
+    private function reanudarCorridaColgada(
+        NotaMpCorrida $corrida,
+        int $procesadas,
+        int $total,
+        int $minutos,
+    ): bool {
+        $this->eliminarJobsResultadosMpPendientes($corrida->id);
+
+        if ($this->jobResultadosMpEncolado($corrida->id)) {
             return false;
         }
 
         $codigo = trim((string) ($corrida->codigo_actual ?? ''));
 
-        $this->eliminarJobsResultadosMpPendientes();
+        try {
+            // Resetea cooldown (updated_at) y alinea codigo_actual con el índice actual.
+            $corrida->touch();
+            $this->marcarSiguienteNotaPendiente($corrida->fresh() ?? $corrida);
 
-        if ($procesadas === 0) {
-            $mensaje = 'Consulta colgada liberada automáticamente tras '.$minutos.' min sin worker activo.';
-            if ($codigo !== '') {
-                $mensaje .= ' Se detuvo en '.$codigo.'.';
-            }
-            $mensaje .= ' Reintente con «Consultar ahora».';
+            ProcessNotaMpCorridaJob::dispatch($corrida->id);
+
+            Log::warning('Corrida MP reanudada tras worker caído o sin avance', [
+                'corrida_id' => $corrida->id,
+                'procesadas' => $procesadas,
+                'total' => $total,
+                'minutos' => $minutos,
+                'codigo' => $codigo !== '' ? $codigo : null,
+            ]);
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::error('No se pudo reanudar corrida MP colgada', [
+                'corrida_id' => $corrida->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            $mensaje = 'Consulta interrumpida tras '.$minutos.' min ('.$procesadas.'/'.$total
+                .' procesadas). No se pudo reanudar: '.$e->getMessage().'. Reintente.';
 
             $this->finalizarCorrida($corrida, 'error', $mensaje);
 
             return true;
         }
-
-        $this->finalizarCorrida(
-            $corrida,
-            'error',
-            'Consulta interrumpida tras '.$minutos.' min ('.$procesadas.'/'.$total.' procesadas). Reintente.',
-        );
-
-        return true;
     }
 
     public function apiConfigurada(): bool

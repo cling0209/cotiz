@@ -833,26 +833,85 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame(1, substr_count($html, 'Comparar'));
     }
 
-    public function test_corrida_colgada_se_libera_automaticamente(): void
+    public function test_corrida_colgada_se_reanuda_automaticamente(): void
     {
-        config(['cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600]);
+        config([
+            'cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600,
+            'cotiz.mercadopublico.resultados_nota_max_segundos' => 60,
+        ]);
 
-        NotaMpCorrida::query()->create([
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $corrida = NotaMpCorrida::query()->create([
             'usuario' => 'admin',
             'inicio' => now()->subMinutes(15),
             'estado' => 'running',
             'total_notas' => 50,
             'notas_procesadas' => 0,
-            'codigo_actual' => '1048606-4-COT26',
-            'pendientes_json' => [['nronota' => 1, 'codigo' => '1048606-4-COT26']],
+            'codigo_actual' => null,
+            'nota_inicio_at' => null,
+            'pendientes_json' => [
+                ['nronota' => 1, 'codigo' => '1048606-4-COT26'],
+                ['nronota' => 2, 'codigo' => '1048607-4-COT26'],
+            ],
+            'updated_at' => now()->subMinutes(10),
         ]);
 
-        $this->assertNull($this->app->make(NotaMpResultadosService::class)->corridaEnCurso());
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertFalse($service->liberarCorridaColgadaIfNeeded($corrida->fresh()));
 
-        $this->assertDatabaseHas('nota_mp_corridas', [
-            'estado' => 'error',
-            'notas_procesadas' => 0,
+        $corrida->refresh();
+        $this->assertSame('running', $corrida->estado);
+        $this->assertSame(0, (int) $corrida->notas_procesadas);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessNotaMpCorridaJob::class, function ($job) use ($corrida) {
+            return $job->corridaId === $corrida->id;
+        });
+
+        $enCurso = $service->corridaEnCurso();
+        $this->assertNotNull($enCurso);
+        $this->assertSame($corrida->id, $enCurso->id);
+    }
+
+    public function test_corrida_colgada_con_progreso_se_reanuda_sin_marcar_error(): void
+    {
+        config([
+            'cotiz.mercadopublico.resultados_corrida_colgada_segundos' => 600,
+            'cotiz.mercadopublico.resultados_nota_max_segundos' => 60,
         ]);
+
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $pendientes = [];
+        for ($i = 1; $i <= 146; $i++) {
+            $pendientes[] = ['nronota' => $i, 'codigo' => $i.'-1-COT26'];
+        }
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subMinutes(904),
+            'estado' => 'running',
+            'total_notas' => 146,
+            'notas_procesadas' => 59,
+            'codigo_actual' => null,
+            'nota_inicio_at' => null,
+            'pendientes_json' => $pendientes,
+            'updated_at' => now()->subMinutes(30),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertFalse($service->liberarCorridaColgadaIfNeeded($corrida->fresh()));
+
+        $corrida->refresh();
+        $this->assertSame('running', $corrida->estado);
+        $this->assertSame(59, (int) $corrida->notas_procesadas);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessNotaMpCorridaJob::class, function ($job) use ($corrida) {
+            return $job->corridaId === $corrida->id;
+        });
+
+        // Cooldown: no reencolar de inmediato en el siguiente poll.
+        \Illuminate\Support\Facades\Queue::fake();
+        $this->assertFalse($service->liberarCorridaColgadaIfNeeded($corrida->fresh()));
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
     }
 
     public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void
