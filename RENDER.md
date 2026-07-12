@@ -151,10 +151,13 @@ El contenedor ejecuta `php artisan schedule:run` cada minuto (`RUN_SCHEDULER=tru
 
 Además, al **boot** del contenedor (cold start / redeploy) corre un **catch-up**: si el último horario (`10`/`19`) ya pasó y no hubo corrida masiva desde ese slot, encola la consulta. Así, si Render estaba dormido a las 10:00 y despierta a las 14:00, igual se ejecuta.
 
+Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). El botón individual «Consultar MP» sigue pudiendo forzar.
+
 | Variable | Default | Uso |
 |----------|---------|-----|
 | `MERCADOPUBLICO_RESULTADOS_SCHEDULE` | `true` | Activa la corrida automática + catch-up al boot |
 | `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS` | `10,19` | Horas locales (`APP_TIMEZONE`, Chile) |
+| `MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA` | `true` | Omite en masiva las ya consultadas hoy |
 | `RUN_SCHEDULER` | `true` | Loop del scheduler en el entrypoint |
 
 Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados`.

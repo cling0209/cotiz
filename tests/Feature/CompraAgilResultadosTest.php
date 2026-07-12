@@ -1038,6 +1038,97 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_omite_consultadas_hoy(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 15:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 701,
+            'descripcion' => 'Ya consultada hoy',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '701-1-COT26',
+            'nota_softland' => 70100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        Nota::query()->create([
+            'nronota' => 702,
+            'descripcion' => 'Sin consultar hoy',
+            'fecha' => '2026-07-02',
+            'usuario' => 'admin',
+            'empresa' => 'B',
+            'encargado' => '702-1-COT26',
+            'nota_softland' => 70200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 701,
+            'codigo_proceso' => '701-1-COT26',
+            'finalizado' => false,
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 10:30:00', 'America/Santiago'),
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 702,
+            'codigo_proceso' => '702-1-COT26',
+            'finalizado' => false,
+            'ultimo_consultado_en' => Carbon::parse('2026-07-11 19:00:00', 'America/Santiago'),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $pendientes = $service->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(702, $pendientes->first()['nronota']);
+        $this->assertSame(1, $service->contarNotasPendientesConsulta());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_consultadas_hoy_si_skip_desactivado(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => false,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 15:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 703,
+            'descripcion' => 'Consultada hoy',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'C',
+            'encargado' => '703-1-COT26',
+            'nota_softland' => 70300,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 703,
+            'codigo_proceso' => '703-1-COT26',
+            'finalizado' => false,
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 11:00:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(703, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void
     {
         config([

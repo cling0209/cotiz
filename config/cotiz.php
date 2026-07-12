@@ -105,5 +105,10 @@ return [
         // Consulta masiva automática («Consultar ahora») vía scheduler.
         'resultados_schedule_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_SCHEDULE', true), FILTER_VALIDATE_BOOL),
         'resultados_schedule_hours' => env('MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS', '10,19'),
+        // No reconsultar en corrida masiva si ya se consultó hoy (timezone APP_TIMEZONE).
+        'resultados_skip_consultadas_mismo_dia' => filter_var(
+            env('MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA', true),
+            FILTER_VALIDATE_BOOL,
+        ),
     ],
 ];

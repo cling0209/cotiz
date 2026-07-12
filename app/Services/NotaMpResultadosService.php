@@ -429,14 +429,7 @@ class NotaMpResultadosService
 
     public function contarNotasPendientesConsulta(): int
     {
-        return Nota::query()
-            ->select(['notas.nronota', 'notas.encargado'])
-            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
-            ->where(function ($q) {
-                $q->whereNull('seg.nronota')
-                    ->orWhereRaw('seg.finalizado IS FALSE');
-            })
+        return $this->queryNotasCandidatasConsulta()
             ->get()
             ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
             ->count();
@@ -447,18 +440,10 @@ class NotaMpResultadosService
      */
     public function notasPendientesConsulta(?int $limite = null): Collection
     {
-        $query = Nota::query()
-            ->select(['notas.nronota', 'notas.encargado', 'notas.fecha', 'notas.empresa'])
-            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
-            ->where(function ($q) {
-                $q->whereNull('seg.nronota')
-                    ->orWhereRaw('seg.finalizado IS FALSE');
-            })
+        $filtered = $this->queryNotasCandidatasConsulta()
             ->orderBy('notas.fecha')
-            ->orderBy('notas.nronota');
-
-        $filtered = $query->get()
+            ->orderBy('notas.nronota')
+            ->get()
             ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
             ->values();
 
@@ -472,6 +457,36 @@ class NotaMpResultadosService
             'fecha' => $nota->fecha?->format('Y-m-d'),
             'empresa' => trim((string) ($nota->empresa ?? '')),
         ]);
+    }
+
+    /**
+     * Notas con código CA no finalizadas. Opcionalmente omite las ya consultadas hoy.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<Nota>
+     */
+    private function queryNotasCandidatasConsulta(): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = Nota::query()
+            ->select(['notas.nronota', 'notas.encargado', 'notas.fecha', 'notas.empresa'])
+            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
+            ->where(function ($q) {
+                $q->whereNull('seg.nronota')
+                    ->orWhereRaw('seg.finalizado IS FALSE');
+            });
+
+        if (config('cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia', true)) {
+            $inicioDia = now()
+                ->timezone((string) config('app.timezone', 'America/Santiago'))
+                ->startOfDay();
+
+            $query->where(function ($q) use ($inicioDia) {
+                $q->whereNull('seg.ultimo_consultado_en')
+                    ->orWhere('seg.ultimo_consultado_en', '<', $inicioDia);
+            });
+        }
+
+        return $query;
     }
 
     /**
