@@ -474,6 +474,119 @@ class NotaMpResultadosService
         ]);
     }
 
+    /**
+     * Horas locales del schedule de consulta MP (0–23), ordenadas.
+     *
+     * @return list<int>
+     */
+    public function horasScheduleResultados(): array
+    {
+        return collect(explode(',', (string) config('cotiz.mercadopublico.resultados_schedule_hours', '10,19')))
+            ->map(fn ($h) => (int) trim((string) $h))
+            ->filter(fn ($h) => $h >= 0 && $h <= 23)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Último instante de horario programado ya vencido (timezone de la app).
+     * Ej. horas 10,19 y ahora 14:00 → hoy 10:00; si son 08:00 → ayer 19:00.
+     */
+    public function ultimoSlotScheduleVencido(?Carbon $ahora = null): ?Carbon
+    {
+        $horas = $this->horasScheduleResultados();
+        if ($horas === []) {
+            return null;
+        }
+
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $ahora = ($ahora ?? now())->copy()->timezone($tz);
+
+        $candidatos = [];
+        foreach ([0, 1] as $diasAtras) {
+            $dia = $ahora->copy()->startOfDay()->subDays($diasAtras);
+            foreach ($horas as $hora) {
+                $slot = $dia->copy()->setTime((int) $hora, 0, 0);
+                if ($slot->lessThanOrEqualTo($ahora)) {
+                    $candidatos[] = $slot;
+                }
+            }
+        }
+
+        if ($candidatos === []) {
+            return null;
+        }
+
+        usort($candidatos, static fn (Carbon $a, Carbon $b) => $a->getTimestamp() <=> $b->getTimestamp());
+
+        return end($candidatos) ?: null;
+    }
+
+    public function huboCorridaMasivaDesde(Carbon $desde): bool
+    {
+        return NotaMpCorrida::query()
+            ->masivas()
+            ->where('inicio', '>=', $desde)
+            ->exists();
+    }
+
+    /**
+     * Si el schedule está activo y el último slot ya pasó sin corrida masiva, encola una.
+     * Pensado para el boot del contenedor (Render cold start / redeploy).
+     *
+     * @return array{accion: string, slot?: string, corrida_id?: int, mensaje?: string}
+     */
+    public function asegurarCorridaProgramadaSiCorresponde(string $usuario = 'sistema'): array
+    {
+        if (! config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
+            return ['accion' => 'omitido', 'mensaje' => 'Schedule deshabilitado.'];
+        }
+
+        if (! $this->apiConfigurada()) {
+            return ['accion' => 'omitido', 'mensaje' => 'API Mercado Público no configurada.'];
+        }
+
+        $slot = $this->ultimoSlotScheduleVencido();
+        if ($slot === null) {
+            return ['accion' => 'omitido', 'mensaje' => 'No hay slot de schedule vencido.'];
+        }
+
+        if ($this->huboCorridaMasivaDesde($slot)) {
+            return [
+                'accion' => 'omitido',
+                'slot' => $slot->toIso8601String(),
+                'mensaje' => 'Ya hubo corrida masiva desde el slot '.$slot->format('Y-m-d H:i'),
+            ];
+        }
+
+        if ($this->corridaEnCurso() !== null) {
+            return [
+                'accion' => 'omitido',
+                'slot' => $slot->toIso8601String(),
+                'mensaje' => 'Ya hay una consulta en curso.',
+            ];
+        }
+
+        try {
+            $corrida = $this->encolarCorrida($usuario);
+        } catch (RuntimeException $e) {
+            return [
+                'accion' => 'omitido',
+                'slot' => $slot->toIso8601String(),
+                'mensaje' => $e->getMessage(),
+            ];
+        }
+
+        return [
+            'accion' => 'encolada',
+            'slot' => $slot->toIso8601String(),
+            'corrida_id' => $corrida->id,
+            'mensaje' => 'Catch-up: consulta encolada para slot '.$slot->format('Y-m-d H:i'),
+        ];
+    }
+
     public function encolarCorrida(string $usuario): NotaMpCorrida
     {
         if ($this->corridaEnCurso() !== null) {

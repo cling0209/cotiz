@@ -149,13 +149,17 @@ En free verás: `Unable to connect to ssl://mail.romulo.cl:465 (Operation timed 
 
 El contenedor ejecuta `php artisan schedule:run` cada minuto (`RUN_SCHEDULER=true` por defecto).
 
+Además, al **boot** del contenedor (cold start / redeploy) corre un **catch-up**: si el último horario (`10`/`19`) ya pasó y no hubo corrida masiva desde ese slot, encola la consulta. Así, si Render estaba dormido a las 10:00 y despierta a las 14:00, igual se ejecuta.
+
 | Variable | Default | Uso |
 |----------|---------|-----|
-| `MERCADOPUBLICO_RESULTADOS_SCHEDULE` | `true` | Activa la corrida automática |
+| `MERCADOPUBLICO_RESULTADOS_SCHEDULE` | `true` | Activa la corrida automática + catch-up al boot |
 | `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS` | `10,19` | Horas locales (`APP_TIMEZONE`, Chile) |
 | `RUN_SCHEDULER` | `true` | Loop del scheduler en el entrypoint |
 
 Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados`.
+
+Catch-up manual: `php artisan compra-agil:consultar-resultados --catch-up`.
 
 ## URLs
 

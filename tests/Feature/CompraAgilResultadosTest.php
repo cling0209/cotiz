@@ -9,6 +9,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -912,6 +913,129 @@ class CompraAgilResultadosTest extends TestCase
         \Illuminate\Support\Facades\Queue::fake();
         $this->assertFalse($service->liberarCorridaColgadaIfNeeded($corrida->fresh()));
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
+    }
+
+    public function test_ultimo_slot_schedule_vencido_elige_hora_correcta(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 14:30:00', 'America/Santiago'));
+        $slot = $service->ultimoSlotScheduleVencido();
+        $this->assertNotNull($slot);
+        $this->assertSame('2026-07-12 10:00:00', $slot->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 08:00:00', 'America/Santiago'));
+        $slot = $service->ultimoSlotScheduleVencido();
+        $this->assertNotNull($slot);
+        $this->assertSame('2026-07-11 19:00:00', $slot->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 19:00:00', 'America/Santiago'));
+        $slot = $service->ultimoSlotScheduleVencido();
+        $this->assertNotNull($slot);
+        $this->assertSame('2026-07-12 19:00:00', $slot->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_catch_up_schedule_omite_si_ya_hubo_corrida_desde_el_slot(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 14:00:00', 'America/Santiago'));
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => Carbon::parse('2026-07-12 10:05:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-07-12 11:00:00', 'America/Santiago'),
+            'estado' => 'ok',
+            'total_notas' => 2,
+            'notas_procesadas' => 2,
+            'pendientes_json' => [
+                ['nronota' => 1, 'codigo' => '1-1-COT26'],
+                ['nronota' => 2, 'codigo' => '2-1-COT26'],
+            ],
+        ]);
+
+        $resultado = $this->app->make(NotaMpResultadosService::class)
+            ->asegurarCorridaProgramadaSiCorresponde('sistema');
+
+        $this->assertSame('omitido', $resultado['accion']);
+        $this->assertStringContainsString('Ya hubo corrida masiva', $resultado['mensaje'] ?? '');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_catch_up_schedule_encola_si_slot_perdido(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'queue.default' => 'sync',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 14:00:00', 'America/Santiago'));
+        \Illuminate\Support\Facades\Queue::fake();
+
+        Nota::query()->create([
+            'nronota' => 88001,
+            'descripcion' => 'Catch-up schedule',
+            'fecha' => '2026-07-01',
+            'empresa' => 'Test SA',
+            'encargado' => '88001-1-COT26',
+            'usuario' => 'admin',
+            'nota_softland' => 8800100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $resultado = $this->app->make(NotaMpResultadosService::class)
+            ->asegurarCorridaProgramadaSiCorresponde('sistema');
+
+        $this->assertSame('encolada', $resultado['accion']);
+        $this->assertArrayHasKey('corrida_id', $resultado);
+        $this->assertDatabaseHas('nota_mp_corridas', [
+            'id' => $resultado['corrida_id'],
+            'usuario' => 'sistema',
+            'estado' => 'running',
+        ]);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessNotaMpCorridaJob::class);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_comando_catch_up_exito(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 14:00:00', 'America/Santiago'));
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => Carbon::parse('2026-07-12 10:01:00', 'America/Santiago'),
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
+            'pendientes_json' => [['nronota' => 1, 'codigo' => '1-1-COT26']],
+        ]);
+
+        $this->artisan('compra-agil:consultar-resultados', ['--catch-up' => true])
+            ->assertSuccessful();
+
+        Carbon::setTestNow();
     }
 
     public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void

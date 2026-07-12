@@ -10,12 +10,19 @@ use Throwable;
 class ConsultarResultadosMpCommand extends Command
 {
     protected $signature = 'compra-agil:consultar-resultados
-                            {--usuario=sistema : Usuario registrado en la corrida}';
+                            {--usuario=sistema : Usuario registrado en la corrida}
+                            {--catch-up : Solo encola si el último horario programado se pasó sin corrida (boot Render)}';
 
     protected $description = 'Encola la consulta masiva a Mercado Público (equivalente a «Consultar ahora»)';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
+        $usuario = trim((string) $this->option('usuario')) ?: 'sistema';
+
+        if ($this->option('catch-up')) {
+            return $this->handleCatchUp($resultados, $usuario);
+        }
+
         if (! $resultados->apiConfigurada()) {
             $this->warn('MERCADOPUBLICO_TICKET no configurado. Se omite la consulta programada.');
 
@@ -27,8 +34,6 @@ class ConsultarResultadosMpCommand extends Command
 
             return self::SUCCESS;
         }
-
-        $usuario = trim((string) $this->option('usuario')) ?: 'sistema';
 
         try {
             $corrida = $resultados->encolarCorrida($usuario);
@@ -58,6 +63,26 @@ class ConsultarResultadosMpCommand extends Command
             (int) $corrida->total_notas,
             $usuario,
         ));
+
+        return self::SUCCESS;
+    }
+
+    private function handleCatchUp(NotaMpResultadosService $resultados, string $usuario): int
+    {
+        try {
+            $resultado = $resultados->asegurarCorridaProgramadaSiCorresponde($usuario);
+        } catch (Throwable $e) {
+            $this->error('Catch-up falló: '.$e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $mensaje = (string) ($resultado['mensaje'] ?? $resultado['accion']);
+        if (($resultado['accion'] ?? '') === 'encolada') {
+            $this->info($mensaje.' (corrida #'.($resultado['corrida_id'] ?? '?').').');
+        } else {
+            $this->info($mensaje);
+        }
 
         return self::SUCCESS;
     }
