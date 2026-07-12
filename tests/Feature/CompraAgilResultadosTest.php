@@ -1129,6 +1129,80 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_limpiar_en_curso_si_detalle_ya_existe(): void
+    {
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subHour(),
+            'estado' => 'running',
+            'total_notas' => 2,
+            'notas_procesadas' => 1,
+            'nronota_actual' => 5525,
+            'codigo_actual' => '5525-117-COT26',
+            'nota_inicio_at' => now()->subMinutes(3),
+            'en_curso_json' => [[
+                'nronota' => 5525,
+                'codigo' => '5525-117-COT26',
+                'started_at' => now()->subMinutes(3)->toIso8601String(),
+            ]],
+            'pendientes_json' => [
+                ['nronota' => 5525, 'codigo' => '5525-117-COT26'],
+                ['nronota' => 5526, 'codigo' => '5526-1-COT26'],
+            ],
+            'recientes_json' => [[
+                'nronota' => 5525,
+                'codigo' => '5525-117-COT26',
+                'exito' => true,
+                'ms' => 11300,
+            ]],
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 5525,
+            'codigo_proceso' => '5525-117-COT26',
+            'exito' => true,
+            'mensaje' => 'OK',
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $service->limpiarEnCursoSiDetalleYaExiste($corrida->fresh());
+
+        $corrida->refresh();
+        $this->assertNull($corrida->codigo_actual);
+        $this->assertNull($corrida->nronota_actual);
+        $this->assertNull($corrida->en_curso_json);
+    }
+
+    public function test_avanzar_indice_si_detalle_ya_existe(): void
+    {
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subHour(),
+            'estado' => 'running',
+            'total_notas' => 2,
+            'notas_procesadas' => 0,
+            'codigo_actual' => '5525-117-COT26',
+            'pendientes_json' => [
+                ['nronota' => 5525, 'codigo' => '5525-117-COT26'],
+                ['nronota' => 5526, 'codigo' => '5526-1-COT26'],
+            ],
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 5525,
+            'codigo_proceso' => '5525-117-COT26',
+            'exito' => true,
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertSame(1, $service->avanzarIndiceSiDetalleYaExiste($corrida->fresh()));
+
+        $corrida->refresh();
+        $this->assertSame(1, (int) $corrida->notas_procesadas);
+    }
+
     public function test_estado_corrida_alerta_cuando_nota_actual_lleva_mas_de_tres_minutos(): void
     {
         config([

@@ -53,6 +53,26 @@ class NotaMpResultadosService
             $corrida = $corrida->fresh() ?? $corrida;
         }
 
+        if ($corrida->estado === 'running') {
+            $codigoAntes = trim((string) ($corrida->codigo_actual ?? ''));
+            $saltadas = $this->avanzarIndiceSiDetalleYaExiste($corrida);
+            $corrida = $corrida->fresh() ?? $corrida;
+            $this->limpiarEnCursoSiDetalleYaExiste($corrida);
+            $corrida = $corrida->fresh() ?? $corrida;
+            $codigoDespues = trim((string) ($corrida->codigo_actual ?? ''));
+            $destapo = $saltadas > 0 || ($codigoAntes !== '' && $codigoDespues === '');
+
+            // Solo reencolar si realmente destrabamos (no en cada poll).
+            if (
+                $destapo
+                && $corrida->estado === 'running'
+                && (int) $corrida->notas_procesadas < (int) $corrida->total_notas
+                && ! $this->jobResultadosMpEncolado($corrida->id)
+            ) {
+                ProcessNotaMpCorridaJob::dispatch($corrida->id);
+            }
+        }
+
         if ($this->liberarCorridaColgadaIfNeeded($corrida)) {
             return null;
         }
@@ -383,6 +403,9 @@ class NotaMpResultadosService
             if ($nronota <= 0) {
                 continue;
             }
+            if ($this->notaYaTieneDetalleEnCorrida($corrida, $nronota)) {
+                continue;
+            }
             $lote[] = [
                 'nronota' => $nronota,
                 'codigo' => strtoupper(trim((string) ($item['codigo'] ?? ''))),
@@ -391,6 +414,131 @@ class NotaMpResultadosService
         }
 
         return $lote;
+    }
+
+    /**
+     * Avanza notas_procesadas si el ítem actual ya tiene detalle (evita reconsultar y quedar pegado).
+     */
+    public function avanzarIndiceSiDetalleYaExiste(NotaMpCorrida $corrida): int
+    {
+        $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+        $saltadas = 0;
+
+        while (true) {
+            $corrida->refresh();
+            if ($corrida->estado !== 'running') {
+                break;
+            }
+
+            $indice = (int) $corrida->notas_procesadas;
+            if ($indice >= count($pendientes)) {
+                break;
+            }
+
+            $item = $pendientes[$indice] ?? null;
+            if (! is_array($item)) {
+                $corrida->increment('notas_procesadas');
+                $saltadas++;
+
+                continue;
+            }
+
+            $nronota = (int) ($item['nronota'] ?? 0);
+            if ($nronota <= 0 || ! $this->notaYaTieneDetalleEnCorrida($corrida, $nronota)) {
+                break;
+            }
+
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+            }
+
+            $corrida->increment('notas_procesadas');
+            $saltadas++;
+        }
+
+        if ($saltadas > 0) {
+            Log::info('NotaMpResultados: índice avanzado por notas ya con detalle', [
+                'corrida_id' => $corrida->id,
+                'saltadas' => $saltadas,
+                'notas_procesadas' => (int) ($corrida->fresh()?->notas_procesadas ?? 0),
+            ]);
+        }
+
+        return $saltadas;
+    }
+
+    /**
+     * Quita un código de en_curso y realinea codigo_actual / nota_inicio_at.
+     */
+    public function quitarCodigoDeConsultaEnCurso(NotaMpCorrida $corrida, string $codigo): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return;
+        }
+
+        $corrida->refresh();
+        $enCurso = array_values(array_filter(
+            is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [],
+            static fn ($row) => ! (is_array($row) && strtoupper((string) ($row['codigo'] ?? '')) === $codigo),
+        ));
+
+        $primero = $enCurso[0] ?? null;
+        $notaInicio = null;
+        if ($primero !== null) {
+            $started = $primero['started_at'] ?? null;
+            $notaInicio = is_string($started) && $started !== ''
+                ? Carbon::parse($started)
+                : now();
+        }
+
+        $corrida->update([
+            'en_curso_json' => $enCurso !== [] ? $enCurso : null,
+            'nronota_actual' => $primero['nronota'] ?? null,
+            'codigo_actual' => $primero['codigo'] ?? null,
+            'nota_inicio_at' => $notaInicio,
+        ]);
+    }
+
+    /**
+     * Si "en curso" apunta a una nota ya con detalle, limpia el estado fantasma de la UI.
+     */
+    public function limpiarEnCursoSiDetalleYaExiste(NotaMpCorrida $corrida): void
+    {
+        if ($corrida->estado !== 'running') {
+            return;
+        }
+
+        $nronota = (int) ($corrida->nronota_actual ?? 0);
+        $codigo = strtoupper(trim((string) ($corrida->codigo_actual ?? '')));
+
+        if ($nronota > 0 && $this->notaYaTieneDetalleEnCorrida($corrida, $nronota)) {
+            if ($codigo !== '') {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+            } else {
+                $corrida->update([
+                    'en_curso_json' => null,
+                    'nronota_actual' => null,
+                    'codigo_actual' => null,
+                    'nota_inicio_at' => null,
+                ]);
+            }
+
+            return;
+        }
+
+        $enCurso = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
+        foreach ($enCurso as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $nr = (int) ($row['nronota'] ?? 0);
+            $cod = strtoupper(trim((string) ($row['codigo'] ?? '')));
+            if ($nr > 0 && $cod !== '' && $this->notaYaTieneDetalleEnCorrida($corrida, $nr)) {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $cod);
+            }
+        }
     }
 
     public function marcarSiguienteNotaPendiente(NotaMpCorrida $corrida): void
@@ -1167,7 +1315,10 @@ class NotaMpResultadosService
                 'en_curso_json' => $enCurso,
                 'nronota_actual' => $primero['nronota'] ?? null,
                 'codigo_actual' => $primero['codigo'] ?? null,
-                'nota_inicio_at' => $corrida->nota_inicio_at ?? now(),
+                // Siempre reinicia el reloj al lanzar (evita "Lenta" heredada del lote).
+                'nota_inicio_at' => isset($primero['started_at'])
+                    ? Carbon::parse((string) $primero['started_at'])
+                    : now(),
             ]);
         };
 
@@ -1181,18 +1332,26 @@ class NotaMpResultadosService
             &$yaContadas,
             &$startedAtByCodigo,
         ): void {
+            $codigo = strtoupper(trim($codigo));
+
             if (isset($yaContadas[$codigo])) {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+
                 return;
             }
             $yaContadas[$codigo] = true;
 
             $corrida->refresh();
             if ($corrida->estado !== 'running') {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+
                 return;
             }
 
             $item = $porCodigo[$codigo] ?? null;
             if ($item === null) {
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+
                 return;
             }
 
@@ -1205,6 +1364,15 @@ class NotaMpResultadosService
                     'codigo' => $codigo,
                 ]);
 
+                $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
+                $corrida->refresh();
+                $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
+                $indice = (int) $corrida->notas_procesadas;
+                $actual = $pendientes[$indice] ?? null;
+                if (is_array($actual) && (int) ($actual['nronota'] ?? 0) === $nronota) {
+                    $corrida->increment('notas_procesadas');
+                }
+
                 return;
             }
             $procesadasAntes = (int) $corrida->notas_procesadas;
@@ -1212,15 +1380,7 @@ class NotaMpResultadosService
                 ? (int) round((microtime(true) - $startedAtByCodigo[$codigo]) * 1000)
                 : 0;
 
-            $enCurso = array_values(array_filter(
-                is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [],
-                static fn ($row) => ! (is_array($row) && strtoupper((string) ($row['codigo'] ?? '')) === $codigo),
-            ));
-            $corrida->update([
-                'en_curso_json' => $enCurso !== [] ? $enCurso : null,
-                'nronota_actual' => $enCurso[0]['nronota'] ?? null,
-                'codigo_actual' => $enCurso[0]['codigo'] ?? null,
-            ]);
+            $this->quitarCodigoDeConsultaEnCurso($corrida, $codigo);
 
             $exito = false;
             $mensajeReciente = null;
@@ -1309,6 +1469,20 @@ class NotaMpResultadosService
             $fallidas++;
             if ((int) $corrida->notas_procesadas <= $procesadasAntes) {
                 $corrida->increment('notas_procesadas');
+            }
+        }
+
+        // Limpia "en curso" residual al terminar el lote (evita OK en Últimas + Lenta arriba).
+        $corrida->refresh();
+        if ($corrida->estado === 'running') {
+            $enCurso = is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [];
+            if ($enCurso !== []) {
+                $corrida->update([
+                    'en_curso_json' => null,
+                    'nronota_actual' => null,
+                    'codigo_actual' => null,
+                    'nota_inicio_at' => null,
+                ]);
             }
         }
 

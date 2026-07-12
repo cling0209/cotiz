@@ -40,6 +40,10 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
             return;
         }
 
+        // Si quedó pegada con detalle ya guardado, avanza el índice y limpia "en curso".
+        $resultados->avanzarIndiceSiDetalleYaExiste($corrida);
+        $corrida->refresh();
+
         $pendientes = is_array($corrida->pendientes_json) ? $corrida->pendientes_json : [];
         $indice = (int) $corrida->notas_procesadas;
         $restantes = max(0, count($pendientes) - $indice);
@@ -53,6 +57,7 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
         // Pipeline continuo: todas las pendientes, disparo cada ~2 s, máx. N en vuelo.
         $lote = $resultados->lotePendienteActual($corrida, $restantes);
         if ($lote === []) {
+            // Ítem actual ya tiene detalle o es inválido: saltar uno y continuar.
             $corrida->increment('notas_procesadas');
             $this->encolarSiguiente($resultados, $corrida->fresh() ?? $corrida);
 
