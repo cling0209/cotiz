@@ -25,6 +25,10 @@ RUN apk add --no-cache \
     postgresql-dev \
     icu-dev \
     oniguruma-dev \
+    tesseract-ocr \
+    tesseract-ocr-data-spa \
+    tesseract-ocr-data-eng \
+    poppler-utils \
     $PHPIZE_DEPS \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \

@@ -232,6 +232,42 @@ TXT;
         $this->assertSame(300, $lineas[0]['cantidad']);
     }
 
+    public function test_parse_eett_especificaciones_desde_ocr(): void
+    {
+        $texto = $this->cargarFixture('eett_ocr.txt');
+
+        $this->assertSame('eett_especificaciones', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(2, count($lineas));
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('STEP', $lineas[0]['descripcion']);
+        $this->assertSame(2, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('BANDA', $lineas[1]['descripcion']);
+    }
+
+    public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
+    {
+        $ocr = new \App\Services\PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            $this->markTestSkipped('tesseract/pdftoppm no disponibles.');
+        }
+
+        $pdf = 'c:\\Archivos Varios\\OTROS\\John\\Req\\pdf cotiz\\EETT (3).pdf';
+        if (! is_file($pdf)) {
+            $this->markTestSkipped('PDF EETT de muestra no disponible.');
+        }
+
+        $uploaded = new \Illuminate\Http\UploadedFile($pdf, 'EETT (3).pdf', 'application/pdf', null, true);
+        $parser = new ListadoMaterialesPdfParserService($ocr);
+        $lineas = $parser->parseUploadedFile($uploaded);
+
+        $this->assertGreaterThanOrEqual(2, count($lineas));
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('STEP', $lineas[0]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

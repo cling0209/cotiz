@@ -164,6 +164,12 @@ Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados
 
 Catch-up manual: `php artisan compra-agil:consultar-resultados --catch-up`.
 
+## OCR de PDFs escaneados
+
+El importador PDF/Word puede leer listados escaneados (p. ej. EETT) con **pdftoppm** + **tesseract** (paquetes en el `Dockerfile`: `poppler-utils`, `tesseract-ocr`, `tesseract-ocr-data-spa/eng`).
+
+Si el PDF ya trae texto nativo, no usa OCR. En local Windows hace falta Tesseract y Poppler en PATH (o las rutas habituales de instalación).
+
 ## URLs
 
 | Recurso | URL |

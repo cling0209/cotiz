@@ -21,6 +21,12 @@ class ListadoMaterialesPdfParserService
 
     private const FORMATO_BASES = 'bases_linea';
 
+    private const FORMATO_EETT = 'eett_especificaciones';
+
+    public function __construct(
+        protected ?PdfOcrService $ocr = null,
+    ) {}
+
     /**
      * @return array{
      *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
@@ -81,6 +87,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_DETALLE => $this->parseDetalleUnidades($texto),
             self::FORMATO_LICITACION => $this->parseLicitacionPedido($texto),
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
+            self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
             default => $this->parseListadoCantidad($texto),
         };
 
@@ -165,6 +172,13 @@ class ListadoMaterialesPdfParserService
             || (str_contains($upper, 'BASES ADMINISTRATIVAS') && str_contains($upper, 'DESCRIPCION TECNICA'))
         ) {
             return self::FORMATO_BASES;
+        }
+
+        if (
+            (str_contains($upper, 'DETALLE DEL REQUERIMIENTO') || str_contains($upper, 'ESPECIFICACIONES TECNICAS') || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS'))
+            && (str_contains($upper, 'UNIDADES') || preg_match('/\d+\s*UNIDADES/u', $upper) === 1)
+        ) {
+            return self::FORMATO_EETT;
         }
 
         return self::FORMATO_LISTADO;
@@ -615,13 +629,141 @@ class ListadoMaterialesPdfParserService
             throw new RuntimeException('No se pudo extraer texto del PDF. Verifique que no sea un documento escaneado.', 0, $e);
         }
 
-        if ($texto === '') {
-            throw new RuntimeException(
-                'El PDF no contiene texto legible (posible escaneo). Use un PDF/Word con texto nativo o un listado digitalizado, no una imagen.',
-            );
+        if ($texto !== '') {
+            return $texto;
         }
 
-        return $texto;
+        $ocr = $this->ocr ?? new PdfOcrService;
+        try {
+            return $ocr->extraerTexto($path);
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'OCR no disponible')) {
+                throw new RuntimeException(
+                    'El PDF no contiene texto legible (posible escaneo) y OCR no está disponible en este entorno. Use un PDF/Word con texto nativo, o despliegue con tesseract/pdftoppm.',
+                    0,
+                    $e,
+                );
+            }
+
+            throw new RuntimeException(
+                'El PDF está escaneado y el OCR no pudo leerlo correctamente: '.$e->getMessage(),
+                0,
+                $e,
+            );
+        }
+    }
+
+    /**
+     * Formato EETT / especificaciones técnicas: bloques "PRODUCTO:" + "N unidades".
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseEettEspecificaciones(string $texto): array
+    {
+        $texto = $this->normalizarEspaciosDocumento($texto);
+        $lineasRaw = preg_split('/\n+/u', $texto) ?: [];
+        $lineasRaw = array_values(array_filter(array_map(
+            static fn (string $l) => trim(preg_replace('/[ \t]+/u', ' ', $l) ?? $l),
+            $lineasRaw,
+        ), static fn (string $l) => $l !== ''));
+
+        $bloques = [];
+        $actual = null;
+
+        foreach ($lineasRaw as $linea) {
+            $upper = mb_strtoupper($linea);
+
+            if (
+                str_starts_with($upper, 'LUGAR DE ENTREGA')
+                || str_starts_with($upper, '6.-')
+                || str_starts_with($upper, '6.')
+                || str_contains($upper, 'IMAGEN DE REFERENCIA')
+            ) {
+                if ($actual !== null) {
+                    $bloques[] = $actual;
+                    $actual = null;
+                }
+
+                continue;
+            }
+
+            // Cabecera de producto tipo "STEP:" o "BANDA ELASTICA 45 M:"
+            if (preg_match('/^([A-ZÁÉÍÓÚÑ0-9][A-ZÁÉÍÓÚÑ0-9 \.\/\-]{1,80}):\s*$/u', $linea, $m) === 1) {
+                if ($actual !== null) {
+                    $bloques[] = $actual;
+                }
+                $actual = [
+                    'nombre' => trim($m[1]),
+                    'detalle' => [],
+                ];
+
+                continue;
+            }
+
+            if ($actual === null) {
+                continue;
+            }
+
+            $actual['detalle'][] = $linea;
+        }
+
+        if ($actual !== null) {
+            $bloques[] = $actual;
+        }
+
+        $resultado = [];
+        foreach ($bloques as $bloque) {
+            $detalleTexto = implode(' ', $bloque['detalle']);
+            $cantidad = 1;
+            if (preg_match('/(\d+)\s*unidades/iu', $detalleTexto, $m) === 1) {
+                $cantidad = max(1, (int) $m[1]);
+            } elseif (preg_match('/^\s*(\d+)\s*[|]\s*(\d+)\s*unidades/imu', implode("\n", $bloque['detalle']), $m) === 1) {
+                $cantidad = max(1, (int) $m[2]);
+            }
+
+            $specs = [];
+            foreach ($bloque['detalle'] as $lineaDetalle) {
+                $limpia = trim($lineaDetalle);
+                if ($limpia === '') {
+                    continue;
+                }
+                if (preg_match('/\d+\s*unidades/iu', $limpia) === 1 && ! str_contains($limpia, ':')) {
+                    continue;
+                }
+                if (preg_match('/^\d+\s*[|]/u', $limpia) === 1) {
+                    $limpia = trim((string) preg_replace('/^\d+\s*[|]\s*\d+\s*unidades\s*[-–]?\s*/iu', '', $limpia));
+                    if ($limpia === '') {
+                        continue;
+                    }
+                }
+                $limpia = ltrim($limpia, "-•*.~ \t");
+                if ($limpia !== '') {
+                    $specs[] = $limpia;
+                }
+            }
+
+            $descripcion = trim($bloque['nombre'].(count($specs) > 0 ? ' — '.implode('; ', array_slice($specs, 0, 10)) : ''));
+            if ($descripcion === '' || $this->esDescripcionAdministrativa($descripcion)) {
+                continue;
+            }
+
+            $resultado[] = [
+                'cantidad' => $cantidad,
+                'descripcion' => mb_substr($descripcion, 0, 500),
+            ];
+        }
+
+        // Fallback: filas "N | M unidades" sin bloque de nombre claro
+        if ($resultado === [] && preg_match_all('/(\d+)\s*[|]\s*(\d+)\s*unidades/iu', $texto, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $resultado[] = [
+                    'cantidad' => max(1, (int) $match[2]),
+                    'descripcion' => 'Ítem '.(int) $match[1],
+                ];
+            }
+        }
+
+        return $resultado;
     }
 
     private function extraerTextoDocx(string $path): string
