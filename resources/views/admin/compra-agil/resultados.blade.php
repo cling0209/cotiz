@@ -156,6 +156,7 @@
                         <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
                         <th>OC</th>
+                        <th>Consultado</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -205,6 +206,7 @@
                                 @endif
                             </td>
                             <td class="small cell-oc">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
+                            <td class="small text-muted cell-consultado">{{ $nov->seguimiento?->ultimo_consultado_en?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
                                     <button type="button"
@@ -220,7 +222,7 @@
                         </tr>
                         @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $nov->nronota }}">
-                            <td colspan="13" class="py-2 bg-light">
+                            <td colspan="14" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">
                                     <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
                                 </div>
@@ -229,7 +231,7 @@
                         </tr>
                         @endif
                     @empty
-                        <tr id="novedades-vacio"><td colspan="13" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
+                        <tr id="novedades-vacio"><td colspan="14" class="text-center text-muted py-4">Sin novedades registradas con fecha de último cambio en Mercado Público.</td></tr>
                     @endforelse
                 </tbody>
             </table>
