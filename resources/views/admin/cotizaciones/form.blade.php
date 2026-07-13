@@ -123,7 +123,7 @@
                     {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                     ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                 </span>
-                <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto o suba un PDF / Word de listado de materiales.</span>
+                <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto, suba un PDF / Word o un Excel de listado de materiales.</span>
             </div>
         @endunless
             @unless($desdeAdjudicadas)
@@ -323,6 +323,9 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="tab-ca-pdf" data-bs-toggle="tab" data-bs-target="#panel-ca-pdf" type="button" role="tab">PDF y Word</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-ca-excel" data-bs-toggle="tab" data-bs-target="#panel-ca-excel" type="button" role="tab">Excel</button>
+                        </li>
                     </ul>
                     <p class="small mb-2" id="importar-compra-agil-detalle-actual">
                         <strong>Cotizaci&oacute;n actual:</strong>
@@ -369,6 +372,37 @@
                             >
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-pdf">
                                 <i class="bi bi-file-earmark-text"></i> Analizar PDF / Word
+                            </button>
+                        </div>
+                        <div class="tab-pane fade" id="panel-ca-excel" role="tabpanel">
+                            <p class="small text-muted mb-2">
+                                Suba un Excel (.xlsx / .xls / .csv) e indique las columnas de <strong>cantidad</strong> y <strong>producto</strong>
+                                (letra A, B, C&hellip; o n&uacute;mero). Por defecto: A = cantidad, B = producto.
+                                Se omiten filas vac&iacute;as, t&iacute;tulos y totales; cada fila v&aacute;lida se importa como l&iacute;nea aparte.
+                            </p>
+                            @if($requiereNumeroCotizacion)
+                                <div class="alert alert-warning py-2 px-3 small mb-2">
+                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el archivo.
+                                </div>
+                            @endif
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-compra-agil-excel-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-compra-agil-excel-col-cant" class="form-control form-control-sm text-uppercase" value="A" maxlength="3" placeholder="A">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-compra-agil-excel-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-compra-agil-excel-col-desc" class="form-control form-control-sm text-uppercase" value="B" maxlength="3" placeholder="B">
+                                </div>
+                            </div>
+                            <input
+                                type="file"
+                                id="importar-compra-agil-excel"
+                                class="form-control form-control-sm mb-2"
+                                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                            >
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-excel">
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Analizar Excel
                             </button>
                         </div>
                     </div>
@@ -1926,6 +1960,8 @@
         limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
         pdfPreview: @json(route('admin.cotizaciones.importar-pdf.preview', $nota->nronota)),
         pdfImportar: @json(route('admin.cotizaciones.importar-pdf', $nota->nronota)),
+        excelPreview: @json(route('admin.cotizaciones.importar-excel.preview', $nota->nronota)),
+        excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota->nronota)),
         apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
@@ -1936,6 +1972,10 @@
     const importarTexto = document.getElementById('importar-compra-agil-texto');
     const importarPdfInput = document.getElementById('importar-compra-agil-pdf');
     const btnImportarAnalizarPdf = document.getElementById('btn-importar-compra-agil-analizar-pdf');
+    const importarExcelInput = document.getElementById('importar-compra-agil-excel');
+    const importarExcelColDesc = document.getElementById('importar-compra-agil-excel-col-desc');
+    const importarExcelColCant = document.getElementById('importar-compra-agil-excel-col-cant');
+    const btnImportarAnalizarExcel = document.getElementById('btn-importar-compra-agil-analizar-excel');
     const importarEstado = document.getElementById('importar-compra-agil-estado');
     const importarCabecera = document.getElementById('importar-compra-agil-cabecera');
     const importarCabeceraTexto = document.getElementById('importar-compra-agil-cabecera-texto');
@@ -1957,6 +1997,7 @@
     let importCodigoApi = null;
     let importModo = 'texto';
     let importPdfFile = null;
+    let importExcelFile = null;
 
     function escHtml(s) {
         return String(s ?? '')
@@ -2091,9 +2132,13 @@
         importCodigoApi = null;
         importModo = 'texto';
         importPdfFile = null;
+        importExcelFile = null;
         importandoCompraAgil = false;
         if (importarTexto) importarTexto.value = '';
         if (importarPdfInput) importarPdfInput.value = '';
+        if (importarExcelInput) importarExcelInput.value = '';
+        if (importarExcelColCant) importarExcelColCant.value = 'A';
+        if (importarExcelColDesc) importarExcelColDesc.value = 'B';
         document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
         if (importarEstado) importarEstado.textContent = '';
         if (importarCabecera) importarCabecera.classList.add('d-none');
@@ -2197,6 +2242,7 @@
     async function analizarImportCompraAgil() {
         importModo = 'texto';
         importPdfFile = null;
+        importExcelFile = null;
         const texto = String(importarTexto?.value || '').trim();
         importCodigoApi = null;
         limpiarImportAlerta();
@@ -2351,6 +2397,7 @@
 
         importModo = 'pdf';
         importCodigoApi = null;
+        importExcelFile = null;
         const file = importarPdfInput?.files?.[0] || null;
         if (!file) {
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx).';
@@ -2432,6 +2479,121 @@
             mostrarImportError('Error de conexión.');
         } finally {
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+        }
+    }
+
+    async function analizarImportExcel() {
+        if (!asegurarNumeroCotizacionGuardada({
+            mensajeVacio: 'Debe ingresar la cotización antes de analizar el Excel.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el Excel.',
+            titulo: 'Número de cotización',
+        })) return;
+
+        importModo = 'excel';
+        importCodigoApi = null;
+        importPdfFile = null;
+        const file = importarExcelInput?.files?.[0] || null;
+        const colDesc = String(importarExcelColDesc?.value || '').trim().toUpperCase();
+        const colCant = String(importarExcelColCant?.value || '').trim().toUpperCase();
+        if (!file) {
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv).';
+            return;
+        }
+        if (!colDesc || !colCant) {
+            if (importarEstado) importarEstado.textContent = 'Indique las columnas de cantidad y producto (ej. A y B).';
+            return;
+        }
+        if (colDesc === colCant) {
+            if (importarEstado) importarEstado.textContent = 'Las columnas de descripción y cantidad deben ser distintas.';
+            return;
+        }
+        importExcelFile = file;
+        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        renderImportPreview(null);
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+
+        try {
+            const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
+            if (!okPrep) return;
+
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Analizando Excel...');
+
+            let todasLineas = [];
+            let cabeceraExcel = {};
+            let total = 0;
+            let desde = 0;
+            let omitidas = 0;
+
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando Excel...');
+
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('excel', importExcelFile);
+                body.append('columna_descripcion', colDesc);
+                body.append('columna_cantidad', colCant);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
+
+                const res = await fetch(importarMpUrls.excelPreview, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el Excel.'));
+                    return;
+                }
+
+                if (json.cabecera && typeof json.cabecera === 'object') {
+                    cabeceraExcel = json.cabecera;
+                }
+                if (typeof json.omitidas === 'number') {
+                    omitidas = json.omitidas;
+                }
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            const previewFinal = {
+                cabecera: cabeceraExcel || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: null,
+                puede_importar: true,
+                omitidas,
+            };
+            renderImportPreview(previewFinal);
+
+            if (importarEstado) {
+                const n = previewFinal.resumen.total || 0;
+                let msg = n > 0
+                    ? 'Análisis listo (Excel).'
+                    : 'No se detectaron productos en el archivo.';
+                if (n > 0 && omitidas > 0) {
+                    msg += ' Se omitieron ' + omitidas + ' fila(s) vacías o de título/total.';
+                }
+                importarEstado.textContent = msg;
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        } finally {
+            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
         }
     }
 
@@ -2534,6 +2696,7 @@
         analizandoCodigoApi = true;
         importModo = 'api';
         importPdfFile = null;
+        importExcelFile = null;
         importCodigoApi = codigo;
         renderImportPreview(null);
         limpiarImportAlerta();
@@ -2658,9 +2821,14 @@
         if (importandoCompraAgil || !importPreviewData) return;
 
         const usarPdf = importModo === 'pdf';
-        if (usarPdf && !asegurarNumeroCotizacionGuardada({
-            mensajeVacio: 'Debe ingresar la cotización antes de importar el PDF o Word.',
-            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF o Word.',
+        const usarExcel = importModo === 'excel';
+        if ((usarPdf || usarExcel) && !asegurarNumeroCotizacionGuardada({
+            mensajeVacio: usarExcel
+                ? 'Debe ingresar la cotización antes de importar el Excel.'
+                : 'Debe ingresar la cotización antes de importar el PDF o Word.',
+            mensajeGuardar: usarExcel
+                ? 'Guarde la cotización con el botón «Guardar número» antes de importar el Excel.'
+                : 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF o Word.',
             titulo: 'Número de cotización',
         })) return;
 
@@ -2672,8 +2840,9 @@
         const texto = String(importarTexto?.value || '').trim();
         const usarApi = !!importCodigoApi;
 
-        if (!usarApi && !usarPdf && !texto) return;
+        if (!usarApi && !usarPdf && !usarExcel && !texto) return;
         if (usarPdf && !(importPreviewData?.lineas?.length) && !importPdfFile) return;
+        if (usarExcel && !(importPreviewData?.lineas?.length) && !importExcelFile) return;
 
         const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
@@ -2684,7 +2853,7 @@
             if (!ok) return;
         }
 
-        if (usarApi || usarPdf) {
+        if (usarApi || usarPdf || usarExcel) {
             const okAgile = await prepararImportAgileAntesPreview();
             if (!okAgile) return;
         }
@@ -2693,6 +2862,7 @@
         if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
         if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
         if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
+        if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
         mostrarProgresoImportar();
 
         const total = importPreviewData?.resumen?.total || 0;
@@ -2720,7 +2890,7 @@
                         return;
                     }
                 }
-            } else if (usarPdf) {
+            } else if (usarPdf || usarExcel) {
                 const lineasPreview = (importPreviewData.lineas || []).map((l) => ({
                     id_agile: l.id_agile,
                     descripcion: l.descripcion,
@@ -2731,10 +2901,14 @@
                     producto: l.producto || null,
                 }));
                 const cabeceraPreview = importPreviewData.cabecera || {};
+                const importUrl = usarExcel ? importarMpUrls.excelImportar : importarMpUrls.pdfImportar;
+                const errorSinLineas = usarExcel
+                    ? 'No hay líneas del análisis para importar. Analice el Excel de nuevo.'
+                    : 'No hay líneas del análisis para importar. Analice el PDF o Word de nuevo.';
 
                 if (lineasPreview.length === 0) {
                     ocultarProgresoImportar();
-                    mostrarImportError('No hay líneas del análisis para importar. Analice el PDF o Word de nuevo.');
+                    mostrarImportError(errorSinLineas);
                     return;
                 }
 
@@ -2753,7 +2927,7 @@
                         body.append('cabecera_json', JSON.stringify(cabeceraPreview));
                     }
 
-                    const res = await fetch(importarMpUrls.pdfImportar, {
+                    const res = await fetch(importUrl, {
                         method: 'POST',
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         body,
@@ -2831,6 +3005,7 @@
             if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
             if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
         }
     }
 
@@ -2843,6 +3018,7 @@
 
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
     btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
+    btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {

@@ -8,6 +8,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\CompraAgilImportService;
+use App\Services\MaterialesExcelImportService;
 use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
@@ -24,6 +25,7 @@ class CotizacionController extends Controller
         protected NotaDetalleService $detalleService,
         protected CompraAgilImportService $compraAgilImport,
         protected MaterialesPdfImportService $materialesPdfImport,
+        protected MaterialesExcelImportService $materialesExcelImport,
     ) {}
 
     public function create(Request $request): RedirectResponse
@@ -749,6 +751,124 @@ class CotizacionController extends Controller
                 'error' => config('app.debug')
                     ? $e->getMessage()
                     : 'Error interno al importar desde PDF o Word.',
+            ], 500);
+        }
+
+        return response()->json(array_merge([
+            'ok' => true,
+        ], $resultado));
+    }
+
+    public function importarExcelPreview(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
+        $datos = $request->validate([
+            'excel' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
+            'columna_descripcion' => ['required', 'string', 'max:10'],
+            'columna_cantidad' => ['required', 'string', 'max:10'],
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            if (isset($datos['desde'], $datos['hasta'])) {
+                $resultado = $this->materialesExcelImport->previewLote(
+                    $request->file('excel'),
+                    (string) $datos['columna_descripcion'],
+                    (string) $datos['columna_cantidad'],
+                    (int) $datos['desde'],
+                    (int) $datos['hasta'],
+                );
+            } else {
+                $resultado = $this->materialesExcelImport->preview(
+                    $request->file('excel'),
+                    (string) $datos['columna_descripcion'],
+                    (string) $datos['columna_cantidad'],
+                );
+            }
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error al analizar el Excel.',
+            ], 500);
+        }
+
+        return response()->json(array_merge($resultado, [
+            'error_cabecera' => null,
+            'puede_importar' => true,
+        ]));
+    }
+
+    public function importarExcel(Request $request, int $nronota): JsonResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->puedeVer($request, $nota)) {
+            abort(403);
+        }
+
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+            return $respuesta;
+        }
+
+        $lineasPreview = $this->lineasImportPdfDesdeRequest($request);
+        if ($lineasPreview === null) {
+            return response()->json([
+                'error' => 'No hay líneas del análisis para importar. Analice el Excel de nuevo.',
+            ], 422);
+        }
+
+        $datos = $request->validate([
+            'desde' => ['nullable', 'integer', 'min:0'],
+            'hasta' => ['nullable', 'integer', 'min:0'],
+            'cabecera' => ['nullable', 'array'],
+            'cabecera.codigo_cotizacion' => ['nullable', 'string', 'max:100'],
+            'cabecera.empresa' => ['nullable', 'string', 'max:255'],
+            'cabecera.rutempresa' => ['nullable', 'string', 'max:30'],
+            'cabecera.nombre' => ['nullable', 'string', 'max:500'],
+            'cabecera_json' => ['nullable', 'string', 'max:20000'],
+            'lineas_json' => ['nullable', 'string', 'max:2000000'],
+            'lineas' => ['nullable', 'array'],
+        ]);
+
+        $cabecera = $this->cabeceraImportPdfDesdeRequest($request, $datos);
+
+        try {
+            $desde = (int) ($datos['desde'] ?? 0);
+            $hasta = (int) ($datos['hasta'] ?? count($lineasPreview));
+            $resultado = $this->materialesExcelImport->aplicarLoteDesdePreview(
+                $nota,
+                [
+                    'cabecera' => $cabecera,
+                    'lineas' => $lineasPreview,
+                ],
+                $request->user()->username,
+                $desde,
+                $hasta,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Error interno al importar desde Excel.',
             ], 500);
         }
 
