@@ -149,7 +149,12 @@ En free verás: `Unable to connect to ssl://mail.romulo.cl:465 (Operation timed 
 
 El contenedor ejecuta `php artisan schedule:run` cada minuto (`RUN_SCHEDULER=true` por defecto).
 
-Además, al **boot** del contenedor (cold start / redeploy) corre un **catch-up**: si el último horario (`10`/`19`) ya pasó y no hubo corrida masiva desde ese slot, encola la consulta. Así, si Render estaba dormido a las 10:00 y despierta a las 14:00, igual se ejecuta.
+Además hay **catch-up** en dos momentos:
+
+1. Al **boot** del contenedor (cold start / redeploy).
+2. En el **primer request web** de un usuario (máx. 1 chequeo/minuto): si el último horario ya pasó y no hubo corrida masiva desde ese slot, encola la consulta.
+
+Así, si Render dormía a las 09:00 y alguien entra a las 10:05, la corrida se encola al conectar.
 
 Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). El botón individual «Consultar MP» sigue pudiendo forzar.
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureMpResultadosScheduleCatchUp;
 use App\Http\Middleware\ForceRequestRootUrl;
 use App\Http\Middleware\EnsureCompraAgilAnalisisAdmin;
 use App\Http\Middleware\EnsureCompraAgilResultadosAdmin;
@@ -31,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => route('admin.login'));
         $middleware->web(prepend: [
             ForceRequestRootUrl::class,
+        ]);
+        $middleware->web(append: [
+            EnsureMpResultadosScheduleCatchUp::class,
         ]);
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
