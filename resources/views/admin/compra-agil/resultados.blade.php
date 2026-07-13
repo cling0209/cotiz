@@ -37,7 +37,7 @@
     </div>
 
     @if($ultimaCorrida)
-        <div class="alert alert-light border small mb-3 py-2" id="banner-ultima-corrida">
+        <div class="alert alert-light border small mb-2 py-2" id="banner-ultima-corrida">
             <strong>Última consulta</strong><br>
             Usuario: <span id="ultima-usuario">{{ $ultimaCorrida->usuario }}</span>
             · Inicio: {{ $ultimaCorrida->inicio->format('d/m/Y H:i:s') }}
@@ -53,7 +53,13 @@
             @endif
         </div>
     @else
-        <p class="small text-muted mb-3" id="banner-sin-corrida">Aún no se ha ejecutado ninguna consulta. Use «Consultar ahora».</p>
+        <p class="small text-muted mb-2" id="banner-sin-corrida">Aún no se ha ejecutado ninguna consulta. Use «Consultar ahora».</p>
+    @endif
+
+    @if(!empty($textoUltimoCatchUp))
+        <div class="alert {{ ($ultimoCatchUp['accion'] ?? '') === 'encolada' ? 'alert-success' : 'alert-secondary' }} border small mb-3 py-2" id="banner-ultimo-catchup">
+            {{ $textoUltimoCatchUp }}
+        </div>
     @endif
 
     <div class="d-flex gap-2 mb-3">

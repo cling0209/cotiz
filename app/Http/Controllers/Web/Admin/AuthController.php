@@ -67,12 +67,11 @@ class AuthController extends Controller
      */
     private function dispararCatchUpMpSiCorresponde(NotaMpResultadosService $resultadosMp): void
     {
-        if (! config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
-            return;
-        }
-
         try {
-            $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde('sistema');
+            $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde(
+                'sistema',
+                NotaMpResultadosService::CATCHUP_ORIGEN_LOGIN,
+            );
             if (($resultado['accion'] ?? '') === 'encolada') {
                 Log::info('Catch-up MP encolado al login admin', $resultado);
             }

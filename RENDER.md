@@ -154,6 +154,8 @@ Además hay **catch-up** en dos momentos:
 1. Al **boot** del contenedor (cold start / redeploy).
 2. Al **login** del admin: si el último horario ya pasó y no hubo corrida masiva desde ese slot, encola la consulta.
 
+El último resultado (encolado u omitido, con hora y origen) se guarda en cache y se muestra en **Resultados Compra Ágil**, debajo de «Última consulta», solo para quien tiene acceso a esa pantalla.
+
 Así, si Render dormía a las 09:00 y un usuario inicia sesión a las 10:05, la corrida se encola al loguearse.
 
 Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). El botón individual «Consultar MP» sigue pudiendo forzar.

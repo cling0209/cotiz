@@ -70,7 +70,10 @@ class ConsultarResultadosMpCommand extends Command
     private function handleCatchUp(NotaMpResultadosService $resultados, string $usuario): int
     {
         try {
-            $resultado = $resultados->asegurarCorridaProgramadaSiCorresponde($usuario);
+            $resultado = $resultados->asegurarCorridaProgramadaSiCorresponde(
+                $usuario,
+                NotaMpResultadosService::CATCHUP_ORIGEN_BOOT,
+            );
         } catch (Throwable $e) {
             $this->error('Catch-up falló: '.$e->getMessage());
 

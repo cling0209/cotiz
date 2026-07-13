@@ -12,6 +12,7 @@ use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +21,12 @@ use RuntimeException;
 class NotaMpResultadosService
 {
     private const LIMITE_CORRIDA_MAX = 10000;
+
+    private const CACHE_ULTIMO_CATCHUP = 'mp_resultados_ultimo_catchup';
+
+    public const CATCHUP_ORIGEN_LOGIN = 'login';
+
+    public const CATCHUP_ORIGEN_BOOT = 'boot';
 
     public function __construct(
         protected CompraAgilApiService $api,
@@ -697,57 +704,160 @@ class NotaMpResultadosService
 
     /**
      * Si el schedule está activo y el último slot ya pasó sin corrida masiva, encola una.
-     * Pensado para el boot del contenedor (Render cold start / redeploy).
+     * Pensado para boot del contenedor y login admin. Persiste el último resultado para la UI.
      *
+     * @param  self::CATCHUP_ORIGEN_*  $origen
      * @return array{accion: string, slot?: string, corrida_id?: int, mensaje?: string}
      */
-    public function asegurarCorridaProgramadaSiCorresponde(string $usuario = 'sistema'): array
-    {
+    public function asegurarCorridaProgramadaSiCorresponde(
+        string $usuario = 'sistema',
+        string $origen = self::CATCHUP_ORIGEN_BOOT,
+    ): array {
         if (! config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
-            return ['accion' => 'omitido', 'mensaje' => 'Schedule deshabilitado.'];
+            return $this->registrarYDevolverCatchUp($origen, [
+                'accion' => 'omitido',
+                'mensaje' => 'Schedule deshabilitado.',
+            ]);
         }
 
         if (! $this->apiConfigurada()) {
-            return ['accion' => 'omitido', 'mensaje' => 'API Mercado Público no configurada.'];
+            return $this->registrarYDevolverCatchUp($origen, [
+                'accion' => 'omitido',
+                'mensaje' => 'API Mercado Público no configurada.',
+            ]);
         }
 
         $slot = $this->ultimoSlotScheduleVencido();
         if ($slot === null) {
-            return ['accion' => 'omitido', 'mensaje' => 'No hay slot de schedule vencido.'];
+            return $this->registrarYDevolverCatchUp($origen, [
+                'accion' => 'omitido',
+                'mensaje' => 'No hay slot de schedule vencido.',
+            ]);
         }
 
         if ($this->huboCorridaMasivaDesde($slot)) {
-            return [
+            return $this->registrarYDevolverCatchUp($origen, [
                 'accion' => 'omitido',
                 'slot' => $slot->toIso8601String(),
                 'mensaje' => 'Ya hubo corrida masiva desde el slot '.$slot->format('Y-m-d H:i'),
-            ];
+            ]);
         }
 
         if ($this->corridaEnCurso() !== null) {
-            return [
+            return $this->registrarYDevolverCatchUp($origen, [
                 'accion' => 'omitido',
                 'slot' => $slot->toIso8601String(),
                 'mensaje' => 'Ya hay una consulta en curso.',
-            ];
+            ]);
         }
 
         try {
             $corrida = $this->encolarCorrida($usuario);
         } catch (RuntimeException $e) {
-            return [
+            return $this->registrarYDevolverCatchUp($origen, [
                 'accion' => 'omitido',
                 'slot' => $slot->toIso8601String(),
                 'mensaje' => $e->getMessage(),
-            ];
+            ]);
         }
 
-        return [
+        return $this->registrarYDevolverCatchUp($origen, [
             'accion' => 'encolada',
             'slot' => $slot->toIso8601String(),
             'corrida_id' => $corrida->id,
             'mensaje' => 'Catch-up: consulta encolada para slot '.$slot->format('Y-m-d H:i'),
+        ]);
+    }
+
+    /**
+     * @return array{
+     *   accion: string,
+     *   origen: string,
+     *   mensaje: string,
+     *   slot: ?string,
+     *   corrida_id: ?int,
+     *   registrado_en: string,
+     *   registrado_en_fmt: string
+     * }|null
+     */
+    public function ultimoCatchUp(): ?array
+    {
+        $data = Cache::get(self::CACHE_ULTIMO_CATCHUP);
+        if (! is_array($data) || ($data['accion'] ?? '') === '') {
+            return null;
+        }
+
+        return [
+            'accion' => (string) ($data['accion'] ?? 'omitido'),
+            'origen' => (string) ($data['origen'] ?? self::CATCHUP_ORIGEN_BOOT),
+            'mensaje' => (string) ($data['mensaje'] ?? ''),
+            'slot' => isset($data['slot']) ? (string) $data['slot'] : null,
+            'corrida_id' => isset($data['corrida_id']) ? (int) $data['corrida_id'] : null,
+            'registrado_en' => (string) ($data['registrado_en'] ?? ''),
+            'registrado_en_fmt' => (string) ($data['registrado_en_fmt'] ?? ''),
         ];
+    }
+
+    /**
+     * Texto legible del último catch-up para la UI de Resultados.
+     */
+    public function textoUltimoCatchUp(): ?string
+    {
+        $u = $this->ultimoCatchUp();
+        if ($u === null) {
+            return null;
+        }
+
+        $origenLabel = match ($u['origen']) {
+            self::CATCHUP_ORIGEN_LOGIN => 'inicio de sesión',
+            self::CATCHUP_ORIGEN_BOOT => 'inicio de contenedor',
+            default => $u['origen'],
+        };
+
+        $hora = $u['registrado_en_fmt'] !== ''
+            ? $u['registrado_en_fmt']
+            : '—';
+
+        $horario = '';
+        if ($u['slot'] !== null && $u['slot'] !== '') {
+            try {
+                $horario = ' (horario '.Carbon::parse($u['slot'])
+                    ->timezone((string) config('app.timezone', 'America/Santiago'))
+                    ->format('H:i').')';
+            } catch (\Throwable) {
+                $horario = '';
+            }
+        }
+
+        if ($u['accion'] === 'encolada') {
+            return 'Catch-up: encolado el '.$hora.' por '.$origenLabel.$horario.'.';
+        }
+
+        $motivo = trim($u['mensaje']) !== '' ? $u['mensaje'] : 'sin detalle';
+
+        return 'Catch-up: omitido el '.$hora.' ('.$origenLabel.'): '.$motivo;
+    }
+
+    /**
+     * @param  array{accion: string, slot?: string, corrida_id?: int, mensaje?: string}  $resultado
+     * @return array{accion: string, slot?: string, corrida_id?: int, mensaje?: string}
+     */
+    private function registrarYDevolverCatchUp(string $origen, array $resultado): array
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $ahora = now()->timezone($tz);
+
+        Cache::forever(self::CACHE_ULTIMO_CATCHUP, [
+            'accion' => $resultado['accion'] ?? 'omitido',
+            'origen' => $origen,
+            'mensaje' => (string) ($resultado['mensaje'] ?? ''),
+            'slot' => $resultado['slot'] ?? null,
+            'corrida_id' => $resultado['corrida_id'] ?? null,
+            'registrado_en' => $ahora->toIso8601String(),
+            'registrado_en_fmt' => $ahora->format('d/m/Y H:i:s'),
+        ]);
+
+        return $resultado;
     }
 
     public function encolarCorrida(string $usuario): NotaMpCorrida

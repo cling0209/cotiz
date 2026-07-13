@@ -31,6 +31,8 @@ class CompraAgilResultadosController extends Controller
             'pendientesSeguimientoCount' => $this->resultados->contarPendientesSeguimiento(),
             'segundoLlamadoCount' => $this->resultados->contarSegundoLlamado(),
             'todasCount' => $this->resultados->contarTodas(),
+            'textoUltimoCatchUp' => $this->resultados->textoUltimoCatchUp(),
+            'ultimoCatchUp' => $this->resultados->ultimoCatchUp(),
         ]);
     }
 
