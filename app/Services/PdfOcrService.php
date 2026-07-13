@@ -7,12 +7,20 @@ use Symfony\Component\Process\Process;
 
 /**
  * OCR de PDFs escaneados vía pdftoppm + tesseract (Docker Alpine / Windows local).
+ *
+ * Optimizado para CPU limitada (Render free/starter): pocos DPI, JPEG gris,
+ * un solo idioma y pocas páginas.
  */
 class PdfOcrService
 {
-    private const MAX_PAGES = 8;
+    private const MAX_PAGES = 3;
 
-    private const DPI = 200;
+    /** Compromiso calidad/velocidad para CPU limitada (Render). */
+    private const DPI = 150;
+
+    private const TIMEOUT_PDFTOPPM = 90;
+
+    private const TIMEOUT_TESSERACT = 180;
 
     public function estaDisponible(): bool
     {
@@ -37,6 +45,10 @@ class PdfOcrService
             );
         }
 
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+
         $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'cotiz-ocr-'.bin2hex(random_bytes(8));
         if (! mkdir($dir, 0700, true) && ! is_dir($dir)) {
             throw new RuntimeException('No se pudo crear directorio temporal para OCR.');
@@ -46,7 +58,8 @@ class PdfOcrService
             $prefijo = $dir.DIRECTORY_SEPARATOR.'page';
             $this->ejecutar([
                 $pdftoppm,
-                '-png',
+                '-jpeg',
+                '-gray',
                 '-r',
                 (string) self::DPI,
                 '-f',
@@ -55,14 +68,18 @@ class PdfOcrService
                 (string) self::MAX_PAGES,
                 $pdfPath,
                 $prefijo,
-            ], 120);
+            ], self::TIMEOUT_PDFTOPPM);
 
-            $imagenes = glob($prefijo.'-*.png') ?: [];
+            $imagenes = glob($prefijo.'-*.jpg') ?: [];
+            if ($imagenes === []) {
+                $imagenes = glob($prefijo.'-*.jpeg') ?: [];
+            }
             sort($imagenes, SORT_NATURAL);
             if ($imagenes === []) {
                 throw new RuntimeException('No se pudieron renderizar páginas del PDF para OCR.');
             }
 
+            $idioma = $this->idiomaRapido($tesseract);
             $textos = [];
             foreach ($imagenes as $imagen) {
                 $salida = $imagen.'.ocr';
@@ -71,18 +88,25 @@ class PdfOcrService
                     $imagen,
                     $salida,
                     '-l',
-                    $this->idiomasTesseract($tesseract),
+                    $idioma,
+                    '--oem',
+                    '1',
                     '--psm',
                     '6',
-                ], 90);
+                ], self::TIMEOUT_TESSERACT, [
+                    'OMP_THREAD_LIMIT' => '1',
+                ]);
 
                 $archivo = $salida.'.txt';
                 if (is_readable($archivo)) {
-                    $textos[] = trim((string) file_get_contents($archivo));
+                    $fragmento = trim((string) file_get_contents($archivo));
+                    if ($fragmento !== '') {
+                        $textos[] = $fragmento;
+                    }
                 }
             }
 
-            $texto = trim(implode("\n\n", array_filter($textos, static fn (string $t) => $t !== '')));
+            $texto = trim(implode("\n\n", $textos));
             if ($texto === '') {
                 throw new RuntimeException('OCR no obtuvo texto legible del PDF escaneado.');
             }
@@ -93,17 +117,20 @@ class PdfOcrService
         }
     }
 
-    private function idiomasTesseract(string $tesseractBin): string
+    /**
+     * Preferir un solo idioma (spa) para no duplicar el costo de spa+eng en CPU débil.
+     */
+    private function idiomaRapido(string $tesseractBin): string
     {
         $disponibles = $this->idiomasInstalados($tesseractBin);
-        $elegidos = [];
-        foreach (['spa', 'eng'] as $idioma) {
-            if (in_array($idioma, $disponibles, true)) {
-                $elegidos[] = $idioma;
-            }
+        if (in_array('spa', $disponibles, true)) {
+            return 'spa';
+        }
+        if (in_array('eng', $disponibles, true)) {
+            return 'eng';
         }
 
-        return $elegidos !== [] ? implode('+', $elegidos) : 'eng';
+        return 'eng';
     }
 
     /**
@@ -111,28 +138,35 @@ class PdfOcrService
      */
     private function idiomasInstalados(string $tesseractBin): array
     {
+        static $cache = null;
+        if (is_array($cache)) {
+            return $cache;
+        }
+
         try {
             $salida = $this->ejecutar([$tesseractBin, '--list-langs'], 15);
-
-            return array_values(array_filter(
+            $cache = array_values(array_filter(
                 array_map('trim', preg_split('/\r\n|\r|\n/', $salida) ?: []),
                 static fn (string $linea) => $linea !== ''
                     && ! str_contains(mb_strtolower($linea), 'available')
                     && ! str_contains(mb_strtolower($linea), 'list of'),
             ));
         } catch (\Throwable) {
-            return ['eng'];
+            $cache = ['eng'];
         }
+
+        return $cache;
     }
 
     /**
      * @param  list<string>  $comando
+     * @param  array<string, string>  $envExtra
      */
-    private function ejecutar(array $comando, int $timeoutSegundos): string
+    private function ejecutar(array $comando, int $timeoutSegundos, array $envExtra = []): string
     {
         $process = new Process($comando);
         $process->setTimeout($timeoutSegundos);
-        $env = $_ENV + $_SERVER;
+        $env = array_merge($_ENV + $_SERVER, $envExtra);
         if (isset($comando[0]) && str_contains(str_replace('\\', '/', $comando[0]), 'Tesseract-OCR')) {
             $env['TESSDATA_PREFIX'] = 'C:\\Program Files\\Tesseract-OCR\\tessdata';
         }
