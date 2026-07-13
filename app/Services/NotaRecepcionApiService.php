@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VinculoOrigen;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
@@ -140,7 +141,12 @@ class NotaRecepcionApiService
                 ],
             );
 
-            $this->detalleService->sincronizarVinculoAgileMaeprod($linea);
+            $usuarioApi = trim((string) ($payload['prod_user_upd'] ?? ''));
+            $this->detalleService->sincronizarVinculoAgileMaeprod(
+                $linea,
+                $usuarioApi !== '' ? $usuarioApi : null,
+                VinculoOrigen::API,
+            );
         });
     }
 

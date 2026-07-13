@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Support\AgileDescripcion;
@@ -80,6 +81,8 @@ class AgileVinculoAprendizajeService
         string $prodItem,
         ?string $codigoCategoriaMp = null,
         ?string $referenciaAgile = null,
+        ?string $usuario = null,
+        VinculoOrigen $origen = VinculoOrigen::SISTEMA,
     ): void {
         $descripcion = trim($descripcion);
         $prodItem = trim($prodItem);
@@ -99,28 +102,35 @@ class AgileVinculoAprendizajeService
         $descGuardada = AgileDescripcion::paraMaeprod($descripcion);
         $claveAgile = 'desc:'.substr($hash, 0, 43);
         $codigoMp = $codigoCategoriaMp ? trim($codigoCategoriaMp) : trim((string) $referenciaAgile);
+        $usuario = $usuario !== null ? mb_substr(trim($usuario), 0, 100) : null;
+
+        $auditoria = [
+            'vinculado_por' => $usuario !== '' ? $usuario : null,
+            'vinculado_en' => now(),
+            'vinculado_origen' => $origen->value,
+        ];
 
         $existente = AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first();
 
         if ($existente) {
-            $existente->update([
+            $existente->update(array_merge([
                 'prod_item' => $prodItem,
                 'prod_descripcion_agile' => $descGuardada,
                 'prod_codigo_categoria_mp' => $codigoMp !== ''
                     ? mb_substr($codigoMp, 0, 50)
                     : $existente->prod_codigo_categoria_mp,
-            ]);
+            ], $auditoria));
 
             return;
         }
 
-        AgileMaeprod::query()->create([
+        AgileMaeprod::query()->create(array_merge([
             'prod_item_agile' => mb_substr($claveAgile, 0, 50),
             'prod_descripcion_agile' => $descGuardada,
             'prod_item' => $prodItem,
             'descripcion_norm_hash' => $hash,
             'prod_codigo_categoria_mp' => $codigoMp !== '' ? mb_substr($codigoMp, 0, 50) : null,
-        ]);
+        ], $auditoria));
     }
 
     /**

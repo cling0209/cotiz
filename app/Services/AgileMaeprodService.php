@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Support\AgileDescripcion;
 
@@ -72,9 +73,13 @@ class AgileMaeprodService
         ]);
     }
 
-    public function vincularCodigoInterno(string $prodItemAgile, string $prodItem): void
-    {
-        $this->vincularCodigoInternoConDescripcion($prodItemAgile, $prodItem, null);
+    public function vincularCodigoInterno(
+        string $prodItemAgile,
+        string $prodItem,
+        ?string $usuario = null,
+        VinculoOrigen $origen = VinculoOrigen::SISTEMA,
+    ): void {
+        $this->vincularCodigoInternoConDescripcion($prodItemAgile, $prodItem, null, null, $usuario, $origen);
     }
 
     public function vincularCodigoInternoConDescripcion(
@@ -82,6 +87,8 @@ class AgileMaeprodService
         string $prodItem,
         ?string $descripcionAgile,
         ?string $codigoCategoriaMp = null,
+        ?string $usuario = null,
+        VinculoOrigen $origen = VinculoOrigen::SISTEMA,
     ): void {
         $codigo = trim($prodItem);
         if ($codigo === '') {
@@ -94,6 +101,9 @@ class AgileMaeprodService
                 $desc,
                 $codigo,
                 $codigoCategoriaMp,
+                null,
+                $usuario,
+                $origen,
             );
 
             return;
@@ -104,9 +114,16 @@ class AgileMaeprodService
             return;
         }
 
+        $usuario = $usuario !== null ? mb_substr(trim($usuario), 0, 100) : null;
+
         AgileMaeprod::query()->updateOrCreate(
             ['prod_item_agile' => $agileId],
-            ['prod_item' => $codigo],
+            [
+                'prod_item' => $codigo,
+                'vinculado_por' => ($usuario !== null && $usuario !== '') ? $usuario : null,
+                'vinculado_en' => now(),
+                'vinculado_origen' => $origen->value,
+            ],
         );
     }
 

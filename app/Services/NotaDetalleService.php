@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Models\Nota;
@@ -186,7 +187,7 @@ class NotaDetalleService
                 ->first();
 
             if ($actualizada) {
-                $this->sincronizarVinculoAgileMaeprod($actualizada);
+                $this->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
             }
         });
     }
@@ -194,8 +195,11 @@ class NotaDetalleService
     /**
      * Persiste agilemaeprod aprendiendo descripción → prod_item (no por codigo_producto MP).
      */
-    public function sincronizarVinculoAgileMaeprod(NotaDetalle $linea): void
-    {
+    public function sincronizarVinculoAgileMaeprod(
+        NotaDetalle $linea,
+        ?string $usuario = null,
+        VinculoOrigen $origen = VinculoOrigen::SISTEMA,
+    ): void {
         $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
         $agileId = trim((string) ($linea->prod_item_agile ?? ''));
 
@@ -221,6 +225,8 @@ class NotaDetalleService
             $codigoInterno,
             $descripcionAgile !== '' ? $descripcionAgile : null,
             $agileId !== '' ? $agileId : null,
+            $usuario,
+            $origen,
         );
     }
 
@@ -339,7 +345,7 @@ class NotaDetalleService
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
             ]);
 
-            $this->sincronizarVinculoAgileMaeprod($linea);
+            $this->sincronizarVinculoAgileMaeprod($linea, $usuarioUpd, VinculoOrigen::MANUAL);
 
             return $linea;
         });
@@ -463,7 +469,7 @@ class NotaDetalleService
                 ->where('prod_item_agile', $agileId)
                 ->firstOrFail();
 
-            $this->sincronizarVinculoAgileMaeprod($actualizada);
+            $this->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
 
             $updates = [];
             if ((int) ($producto->prod_valor ?? 0) !== $valor) {

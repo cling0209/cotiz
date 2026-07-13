@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Services\AgileVinculoAprendizajeService;
@@ -98,6 +99,33 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         $this->assertSame('14111509', $datos['lineas'][0]['id_agile']);
         $this->assertSame('14111509', $datos['lineas'][1]['id_agile']);
         $this->assertNotSame($datos['lineas'][0]['descripcion'], $datos['lineas'][1]['descripcion']);
+    }
+
+    public function test_guardar_aprendizaje_registra_usuario_y_origen(): void
+    {
+        $desc = 'GREDAS ESCOLARES DE 1 KILO';
+        $this->service->guardarAprendizaje($desc, 'PAPEL001', '14111509', null, 'jperez', VinculoOrigen::MANUAL);
+
+        $hash = $this->service->hashDescripcion($desc);
+        $row = AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame('jperez', $row->vinculado_por);
+        $this->assertSame(VinculoOrigen::MANUAL->value, $row->vinculado_origen);
+        $this->assertNotNull($row->vinculado_en);
+    }
+
+    public function test_guardar_aprendizaje_origen_api_sin_usuario(): void
+    {
+        $desc = 'TEMPERAS DE 12 COLORES';
+        $this->service->guardarAprendizaje($desc, 'ARTE001', '14111509', null, null, VinculoOrigen::API);
+
+        $hash = $this->service->hashDescripcion($desc);
+        $row = AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first();
+
+        $this->assertNotNull($row);
+        $this->assertNull($row->vinculado_por);
+        $this->assertSame(VinculoOrigen::API->value, $row->vinculado_origen);
     }
 
     public function test_guardar_aprendizaje_actualiza_vinculo_existente(): void

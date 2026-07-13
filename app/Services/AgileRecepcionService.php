@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\VinculoOrigen;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
@@ -195,7 +196,11 @@ class AgileRecepcionService
                     'prod_descripcion_agile' => $descripcion,
                 ]);
 
-                $this->detalleService->sincronizarVinculoAgileMaeprod($linea);
+                $this->detalleService->sincronizarVinculoAgileMaeprod(
+                    $linea,
+                    $usuario !== '' ? $usuario : null,
+                    VinculoOrigen::API,
+                );
 
                 $orden++;
             }
@@ -329,7 +334,7 @@ class AgileRecepcionService
             ->with('producto')
             ->firstOrFail();
 
-        $this->detalleService->sincronizarVinculoAgileMaeprod($actualizada);
+        $this->detalleService->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
 
         if ($codigoInterno !== '' && $codigoInterno !== '0' && $producto) {
             $producto->update([

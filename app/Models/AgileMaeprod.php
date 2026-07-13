@@ -25,6 +25,13 @@ class AgileMaeprod extends Model
         'prod_item',
         'descripcion_norm_hash',
         'prod_codigo_categoria_mp',
+        'vinculado_por',
+        'vinculado_en',
+        'vinculado_origen',
+    ];
+
+    protected $casts = [
+        'vinculado_en' => 'datetime',
     ];
 
     public function producto(): BelongsTo
