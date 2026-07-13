@@ -671,6 +671,53 @@ class CotizacionController extends Controller
             return $respuesta;
         }
 
+        $lineasPreview = $this->lineasImportPdfDesdeRequest($request);
+        if ($lineasPreview !== null) {
+            $datos = $request->validate([
+                'desde' => ['nullable', 'integer', 'min:0'],
+                'hasta' => ['nullable', 'integer', 'min:0'],
+                'cabecera' => ['nullable', 'array'],
+                'cabecera.codigo_cotizacion' => ['nullable', 'string', 'max:100'],
+                'cabecera.empresa' => ['nullable', 'string', 'max:255'],
+                'cabecera.rutempresa' => ['nullable', 'string', 'max:30'],
+                'cabecera.nombre' => ['nullable', 'string', 'max:500'],
+                'cabecera_json' => ['nullable', 'string', 'max:20000'],
+                'lineas_json' => ['nullable', 'string', 'max:2000000'],
+                'lineas' => ['nullable', 'array'],
+            ]);
+
+            $cabecera = $this->cabeceraImportPdfDesdeRequest($request, $datos);
+
+            try {
+                $desde = (int) ($datos['desde'] ?? 0);
+                $hasta = (int) ($datos['hasta'] ?? count($lineasPreview));
+                $resultado = $this->materialesPdfImport->aplicarLoteDesdePreview(
+                    $nota,
+                    [
+                        'cabecera' => $cabecera,
+                        'lineas' => $lineasPreview,
+                    ],
+                    $request->user()->username,
+                    $desde,
+                    $hasta,
+                );
+            } catch (RuntimeException $e) {
+                return response()->json(['error' => $e->getMessage()], 422);
+            } catch (\Throwable $e) {
+                report($e);
+
+                return response()->json([
+                    'error' => config('app.debug')
+                        ? $e->getMessage()
+                        : 'Error interno al importar desde PDF o Word.',
+                ], 500);
+            }
+
+            return response()->json(array_merge([
+                'ok' => true,
+            ], $resultado));
+        }
+
         $datos = $request->validate([
             'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -832,6 +879,67 @@ class CotizacionController extends Controller
             'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
+        ];
+    }
+
+    /**
+     * Líneas del preview PDF/Word enviadas al confirmar (sin re-subir el archivo).
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function lineasImportPdfDesdeRequest(Request $request): ?array
+    {
+        if ($request->has('lineas') && is_array($request->input('lineas'))) {
+            $decoded = $request->input('lineas');
+        } else {
+            $json = $request->string('lineas_json')->trim()->toString();
+            if ($json === '') {
+                return null;
+            }
+            $decoded = json_decode($json, true);
+        }
+
+        if (! is_array($decoded) || $decoded === []) {
+            return null;
+        }
+
+        $lineas = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $descripcion = trim((string) ($item['descripcion'] ?? ''));
+            if ($descripcion === '') {
+                continue;
+            }
+            $lineas[] = $item;
+        }
+
+        return $lineas === [] ? null : $lineas;
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     * @return array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string}
+     */
+    private function cabeceraImportPdfDesdeRequest(Request $request, array $datos): array
+    {
+        $cabecera = is_array($datos['cabecera'] ?? null) ? $datos['cabecera'] : [];
+        if ($cabecera === []) {
+            $json = $request->string('cabecera_json')->trim()->toString();
+            if ($json !== '') {
+                $decoded = json_decode($json, true);
+                if (is_array($decoded)) {
+                    $cabecera = $decoded;
+                }
+            }
+        }
+
+        return [
+            'codigo_cotizacion' => trim((string) ($cabecera['codigo_cotizacion'] ?? '')),
+            'empresa' => trim((string) ($cabecera['empresa'] ?? '')),
+            'rutempresa' => trim((string) ($cabecera['rutempresa'] ?? '')),
+            'nombre' => trim((string) ($cabecera['nombre'] ?? '')),
         ];
     }
 

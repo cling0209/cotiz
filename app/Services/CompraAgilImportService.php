@@ -376,7 +376,8 @@ class CompraAgilImportService
                 $linea = $preview['lineas'][$i];
                 $descripcionMp = $this->descripcionAgileParaLinea($linea['id_agile'], $linea['descripcion']);
 
-                $vinculo = $this->resolverProductoParaImportar($linea['descripcion']);
+                $vinculo = $this->productoDesdePreviewLinea($linea)
+                    ?? $this->resolverProductoParaImportar($linea['descripcion']);
 
                 if ($vinculo) {
                     $this->detalleService->agregarLinea(
@@ -436,6 +437,36 @@ class CompraAgilImportService
         $row = AgileMaeprod::query()->find(trim($idAgile));
 
         return trim((string) ($row->prod_descripcion_agile ?? ''));
+    }
+
+    /**
+     * Reutiliza el producto ya resuelto en el preview (evita re-score en importación).
+     *
+     * @param  array<string, mixed>  $linea
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function productoDesdePreviewLinea(array $linea): ?array
+    {
+        if (($linea['estado'] ?? '') !== 'vinculado' || ! empty($linea['es_sugerencia'])) {
+            return null;
+        }
+
+        $producto = $linea['producto'] ?? null;
+        if (! is_array($producto)) {
+            return null;
+        }
+
+        $prodItem = trim((string) ($producto['prod_item'] ?? ''));
+        if ($prodItem === '') {
+            return null;
+        }
+
+        return [
+            'prod_item' => $prodItem,
+            'prod_nombre' => (string) ($producto['prod_nombre'] ?? ''),
+            'prod_valor' => (int) ($producto['prod_valor'] ?? 0),
+            'prod_valor_costo' => (int) ($producto['prod_valor_costo'] ?? 0),
+        ];
     }
 
     /**

@@ -2373,6 +2373,7 @@
             actualizarProgresoImportar(0, 0, 'Analizando archivo...');
 
             let todasLineas = [];
+            let cabeceraPdf = {};
             let total = 0;
             let desde = 0;
 
@@ -2399,6 +2400,10 @@
                     return;
                 }
 
+                if (json.cabecera && typeof json.cabecera === 'object') {
+                    cabeceraPdf = json.cabecera;
+                }
+
                 total = json.total ?? total;
                 todasLineas = todasLineas.concat(json.lineas || []);
                 desde = json.procesadas ?? hasta;
@@ -2408,7 +2413,7 @@
 
             ocultarProgresoImportar();
             const previewFinal = {
-                cabecera: {},
+                cabecera: cabeceraPdf || {},
                 lineas: todasLineas,
                 resumen: construirResumenPreview(todasLineas),
                 error_cabecera: null,
@@ -2668,7 +2673,7 @@
         const usarApi = !!importCodigoApi;
 
         if (!usarApi && !usarPdf && !texto) return;
-        if (usarPdf && !importPdfFile) return;
+        if (usarPdf && !(importPreviewData?.lineas?.length) && !importPdfFile) return;
 
         const sinMatch = importPreviewData?.resumen?.pendientes || 0;
         if (sinMatch > 0) {
@@ -2716,12 +2721,37 @@
                     }
                 }
             } else if (usarPdf) {
-                if (total === 0) {
+                const lineasPreview = (importPreviewData.lineas || []).map((l) => ({
+                    id_agile: l.id_agile,
+                    descripcion: l.descripcion,
+                    cantidad: l.cantidad,
+                    categoria: l.categoria || '',
+                    estado: l.estado || '',
+                    es_sugerencia: !!l.es_sugerencia,
+                    producto: l.producto || null,
+                }));
+                const cabeceraPreview = importPreviewData.cabecera || {};
+
+                if (lineasPreview.length === 0) {
+                    ocultarProgresoImportar();
+                    mostrarImportError('No hay líneas del análisis para importar. Analice el PDF o Word de nuevo.');
+                    return;
+                }
+
+                const lote = tamanoLoteImportar(total || lineasPreview.length);
+                const totalLineas = lineasPreview.length;
+                for (let desde = 0; desde < totalLineas; desde += lote) {
+                    const hasta = Math.min(desde + lote, totalLineas);
+                    actualizarProgresoImportar(desde, totalLineas, desde === 0 ? 'Importando líneas al detalle...' : null);
+
                     const body = new FormData();
                     body.append('_token', csrf);
-                    body.append('pdf', importPdfFile);
-                    body.append('desde', '0');
-                    body.append('hasta', '0');
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+                    body.append('lineas_json', JSON.stringify(lineasPreview));
+                    if (desde === 0) {
+                        body.append('cabecera_json', JSON.stringify(cabeceraPreview));
+                    }
 
                     const res = await fetch(importarMpUrls.pdfImportar, {
                         method: 'POST',
@@ -2734,32 +2764,8 @@
                         mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
                     }
-                } else {
-                    const lote = tamanoLoteImportar(total);
-                    for (let desde = 0; desde < total; desde += lote) {
-                        const hasta = Math.min(desde + lote, total);
-                        actualizarProgresoImportar(desde, total, desde === 0 ? 'Importando líneas desde PDF / Word...' : null);
 
-                        const body = new FormData();
-                        body.append('_token', csrf);
-                        body.append('pdf', importPdfFile);
-                        body.append('desde', String(desde));
-                        body.append('hasta', String(hasta));
-
-                        const res = await fetch(importarMpUrls.pdfImportar, {
-                            method: 'POST',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                            body,
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            ocultarProgresoImportar();
-                            mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
-                            return;
-                        }
-
-                        actualizarProgresoImportar(hasta, total);
-                    }
+                    actualizarProgresoImportar(hasta, totalLineas);
                 }
             } else if (total === 0) {
                 const body = new FormData();

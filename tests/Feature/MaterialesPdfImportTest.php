@@ -67,10 +67,18 @@ class MaterialesPdfImportTest extends TestCase
         $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
 
         $mock = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $mock->shouldReceive('parseUploadedFile')
+        $mock->shouldReceive('parseDocumentoCompleto')
             ->once()
             ->andReturn([
-                ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE 12 COLORES C/U'],
+                'cabecera' => [
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ],
+                'lineas' => [
+                    ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE 12 COLORES C/U'],
+                ],
             ]);
         $this->app->instance(ListadoMaterialesPdfParserService::class, $mock);
 
@@ -91,10 +99,18 @@ class MaterialesPdfImportTest extends TestCase
         $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
 
         $mock = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $mock->shouldReceive('parseUploadedFile')
+        $mock->shouldReceive('parseDocumentoCompleto')
             ->once()
             ->andReturn([
-                ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE 12 COLORES C/U'],
+                'cabecera' => [
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ],
+                'lineas' => [
+                    ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE 12 COLORES C/U'],
+                ],
             ]);
         $this->app->instance(ListadoMaterialesPdfParserService::class, $mock);
 
@@ -109,6 +125,51 @@ class MaterialesPdfImportTest extends TestCase
 
         $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->get();
         $this->assertCount(1, $lineas);
+        $this->assertSame(40, (int) $lineas->first()->cantidad);
+    }
+
+    public function test_importar_pdf_desde_preview_sin_releer_archivo(): void
+    {
+        $nota = $this->crearNota();
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-pdf', $nota->nronota),
+            [
+                'desde' => 0,
+                'hasta' => 1,
+                'cabecera_json' => json_encode([
+                    'codigo_cotizacion' => '',
+                    'empresa' => 'Municipalidad Demo',
+                    'rutempresa' => '',
+                    'nombre' => 'Material escolar',
+                ]),
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => 'pdf:abc123',
+                        'descripcion' => 'ACUARELAS DE 12 COLORES C/U',
+                        'cantidad' => 40,
+                        'categoria' => '',
+                        'estado' => 'vinculado',
+                        'es_sugerencia' => false,
+                        'producto' => [
+                            'prod_item' => 'ART001',
+                            'prod_nombre' => 'ACUARELAS DE 12 COLORES',
+                            'prod_valor' => 3500,
+                            'prod_valor_costo' => 2800,
+                        ],
+                    ],
+                ]),
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('ok', true);
+        $response->assertJsonPath('agregadas', 1);
+        $response->assertJsonPath('vinculadas', 1);
+
+        $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->get();
+        $this->assertCount(1, $lineas);
+        $this->assertSame('ART001', $lineas->first()->prod_item);
         $this->assertSame(40, (int) $lineas->first()->cantidad);
     }
 
