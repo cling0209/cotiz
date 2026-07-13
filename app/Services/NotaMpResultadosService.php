@@ -615,7 +615,11 @@ class NotaMpResultadosService
     }
 
     /**
-     * Notas con código CA no finalizadas. Opcionalmente omite las ya consultadas hoy.
+     * Notas candidatas a consulta masiva MP:
+     * - sin seguimiento aún, o
+     * - pendientes de seguimiento (resultado_propio = pendiente), o
+     * - no finalizadas (finalizado = false).
+     * Opcionalmente omite las ya consultadas hoy (SKIP_MISMO_DIA).
      *
      * @return \Illuminate\Database\Eloquent\Builder<Nota>
      */
@@ -626,8 +630,11 @@ class NotaMpResultadosService
             ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
             ->where(function ($q) {
+                // Alineado con el badge «Pendientes seguimiento»: debe poder reconsultarse
+                // aunque MP ya muestre cerrada sin adjudicación (resultado_propio=pendiente).
                 $q->whereNull('seg.nronota')
-                    ->orWhereRaw('seg.finalizado IS FALSE');
+                    ->orWhere('seg.resultado_propio', 'pendiente')
+                    ->orWhereRaw('COALESCE(seg.finalizado, false) = false');
             });
 
         if (config('cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia', true)) {
@@ -868,7 +875,10 @@ class NotaMpResultadosService
 
         $pendientes = $this->notasPendientesConsulta();
         if ($pendientes->isEmpty()) {
-            throw new RuntimeException('No hay cotizaciones pendientes de consultar (sin código CA o ya finalizadas).');
+            throw new RuntimeException(
+                'No hay cotizaciones pendientes de consultar a MP '
+                .'(sin pendientes de seguimiento, ya finalizadas o ya consultadas hoy).',
+            );
         }
 
         $lista = $pendientes->values()->all();

@@ -1129,6 +1129,44 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_incluye_resultado_propio_pendiente_aunque_finalizado_true(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-13 10:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 710,
+            'descripcion' => 'Pendiente seguimiento inconsistente',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'D',
+            'encargado' => '710-1-COT26',
+            'nota_softland' => 71000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 710,
+            'codigo_proceso' => '710-1-COT26',
+            'resultado_propio' => 'pendiente',
+            // Inconsistencia legacy: badge pendiente pero finalizado=true
+            'finalizado' => true,
+            'ultimo_consultado_en' => Carbon::parse('2026-07-11 14:00:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(710, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_limpiar_en_curso_si_detalle_ya_existe(): void
     {
         $corrida = NotaMpCorrida::query()->create([
