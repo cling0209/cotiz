@@ -34,7 +34,7 @@
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
         <div class="alert alert-info py-2 mb-2" role="alert">
-            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF (OCR)</strong>.
+            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF / Word</strong>.
         </div>
     @endif
 
@@ -66,7 +66,7 @@
                                 'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || $errors->has('encargado'),
                                 'is-invalid' => $errors->has('encargado'),
                             ])
-                            placeholder="{{ $requiereNumeroCotizacion ? 'Se completa al importar o para OCR PDF' : '' }}"
+                            placeholder="{{ $requiereNumeroCotizacion ? 'Se completa al importar o para PDF / Word' : '' }}"
                         >
                         @error('encargado')
                             <div class="text-danger small mt-1">{{ $message }}</div>
@@ -123,7 +123,7 @@
                     {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                     ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                 </span>
-                <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto o suba un PDF de listado de materiales.</span>
+                <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto o suba un PDF / Word de listado de materiales.</span>
             </div>
         @endunless
             @unless($desdeAdjudicadas)
@@ -321,7 +321,7 @@
                             <button class="nav-link" id="tab-ca-pegar" data-bs-toggle="tab" data-bs-target="#panel-ca-pegar" type="button" role="tab">Pegar texto</button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-ca-pdf" data-bs-toggle="tab" data-bs-target="#panel-ca-pdf" type="button" role="tab">OCR PDF</button>
+                            <button class="nav-link" id="tab-ca-pdf" data-bs-toggle="tab" data-bs-target="#panel-ca-pdf" type="button" role="tab">PDF y Word</button>
                         </li>
                     </ul>
                     <p class="small mb-2" id="importar-compra-agil-detalle-actual">
@@ -355,20 +355,20 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF con listado de materiales (columnas Cantidad y descripci&oacute;n). Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales (cantidad y producto). Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2">
-                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el PDF.
+                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el archivo.
                                 </div>
                             @endif
                             <input
                                 type="file"
                                 id="importar-compra-agil-pdf"
                                 class="form-control form-control-sm mb-2"
-                                accept=".pdf,application/pdf"
+                                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             >
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-pdf">
-                                <i class="bi bi-file-earmark-pdf"></i> Analizar PDF
+                                <i class="bi bi-file-earmark-text"></i> Analizar PDF / Word
                             </button>
                         </div>
                     </div>
@@ -2344,8 +2344,8 @@
 
     async function analizarImportPdf() {
         if (!asegurarNumeroCotizacionGuardada({
-            mensajeVacio: 'Debe ingresar la cotización antes de analizar el PDF.',
-            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el PDF.',
+            mensajeVacio: 'Debe ingresar la cotización antes de analizar el PDF o Word.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el PDF o Word.',
             titulo: 'Número de cotización',
         })) return;
 
@@ -2353,7 +2353,7 @@
         importCodigoApi = null;
         const file = importarPdfInput?.files?.[0] || null;
         if (!file) {
-            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF.';
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx).';
             return;
         }
         importPdfFile = file;
@@ -2370,7 +2370,7 @@
             if (!okPrep) return;
 
             mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Analizando PDF...');
+            actualizarProgresoImportar(0, 0, 'Analizando archivo...');
 
             let todasLineas = [];
             let total = 0;
@@ -2379,7 +2379,7 @@
             while (desde === 0 || desde < total) {
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                actualizarProgresoImportar(desde, total || hasta, 'Analizando PDF...');
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando archivo...');
 
                 const body = new FormData();
                 body.append('_token', csrf);
@@ -2395,7 +2395,7 @@
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el PDF.'));
+                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el PDF o Word.'));
                     return;
                 }
 
@@ -2419,8 +2419,8 @@
             if (importarEstado) {
                 const n = previewFinal.resumen.total || 0;
                 importarEstado.textContent = n > 0
-                    ? 'Análisis listo (PDF).'
-                    : 'No se detectaron productos en el PDF.';
+                    ? 'Análisis listo (PDF / Word).'
+                    : 'No se detectaron productos en el archivo.';
             }
         } catch (err) {
             ocultarProgresoImportar();
@@ -2654,8 +2654,8 @@
 
         const usarPdf = importModo === 'pdf';
         if (usarPdf && !asegurarNumeroCotizacionGuardada({
-            mensajeVacio: 'Debe ingresar la cotización antes de importar el PDF.',
-            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF.',
+            mensajeVacio: 'Debe ingresar la cotización antes de importar el PDF o Word.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF o Word.',
             titulo: 'Número de cotización',
         })) return;
 
@@ -2738,7 +2738,7 @@
                     const lote = tamanoLoteImportar(total);
                     for (let desde = 0; desde < total; desde += lote) {
                         const hasta = Math.min(desde + lote, total);
-                        actualizarProgresoImportar(desde, total, desde === 0 ? 'Importando líneas desde PDF...' : null);
+                        actualizarProgresoImportar(desde, total, desde === 0 ? 'Importando líneas desde PDF / Word...' : null);
 
                         const body = new FormData();
                         body.append('_token', csrf);

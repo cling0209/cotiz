@@ -626,7 +626,7 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'pdf' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
         ]);
@@ -649,7 +649,7 @@ class CotizacionController extends Controller
             return response()->json([
                 'error' => config('app.debug')
                     ? $e->getMessage()
-                    : 'Error al analizar el PDF.',
+                    : 'Error al analizar el PDF o Word.',
             ], 500);
         }
 
@@ -672,7 +672,7 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'pdf' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
         ]);
@@ -701,7 +701,7 @@ class CotizacionController extends Controller
             return response()->json([
                 'error' => config('app.debug')
                     ? $e->getMessage()
-                    : 'Error interno al importar desde PDF.',
+                    : 'Error interno al importar desde PDF o Word.',
             ], 500);
         }
 
