@@ -116,4 +116,54 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
             $this->service->scoreSimilitudFila($consulta, '797271', $malo)
         );
     }
+
+    public function test_familias_producto_detecta_por_inicio_de_palabra(): void
+    {
+        $this->assertContains('CLIP', $this->service->familiasProducto('CLIP ACCOCLIP METAL 25 UNIDADES'));
+        $this->assertContains('ACCOCLIP', $this->service->familiasProducto('CLIP ACCOCLIP METAL 25 UNIDADES'));
+        $this->assertContains('PORTAMINAS', $this->service->familiasProducto('PORTAMINAS 0.5 MM COLORES'));
+
+        // CLIP no debe activarse dentro de ACCOCLIP (evita match a mitad de palabra).
+        $familias = $this->service->familiasProducto('ACCOCLIP OFICIO CAJA');
+        $this->assertContains('ACCOCLIP', $familias);
+        $this->assertNotContains('CLIP', $familias);
+    }
+
+    public function test_clip_no_matchea_portaminas_por_familia(): void
+    {
+        $this->assertTrue(
+            $this->service->hayConflictoFamilia('CLIP ACCOCLIP METAL', 'PORTAMINAS 0.5 MM')
+        );
+        $this->assertFalse(
+            $this->service->tieneSolapeDistintivo('CLIP ACCOCLIP METAL 25 UNIDADES', 'PORTAMINAS 0.5 MM PUNTA METAL')
+        );
+    }
+
+    public function test_cartulina_no_matchea_destacador_por_familia(): void
+    {
+        $this->assertTrue(
+            $this->service->hayConflictoFamilia('CARTULINA ESPAÑOLA COLORES SURTIDOS', 'DESTACADOR TEXMARKET COLORES')
+        );
+        $this->assertFalse(
+            $this->service->tieneSolapeDistintivo('CARTULINA ESPAÑOLA COLORES SURTIDOS', 'DESTACADOR TEXMARKET 4 COLORES')
+        );
+    }
+
+    public function test_sin_familia_no_marca_conflicto(): void
+    {
+        // GREDAS no tiene familia definida: no debe bloquear un match legítimo.
+        $this->assertFalse(
+            $this->service->hayConflictoFamilia('GREDAS ESCOLARES DE 1 KILO', 'GREDAS ESCOLARES 1 KG')
+        );
+        $this->assertTrue(
+            $this->service->tieneSolapeDistintivo('GREDAS ESCOLARES DE 1 KILO', 'GREDAS ESCOLARES 1 KG')
+        );
+    }
+
+    public function test_misma_familia_no_marca_conflicto(): void
+    {
+        $this->assertFalse(
+            $this->service->hayConflictoFamilia('CINTA MASKING 24 MM', 'CINTA ADHESIVA TRANSPARENTE 24 MM')
+        );
+    }
 }

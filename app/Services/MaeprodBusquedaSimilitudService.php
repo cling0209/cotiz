@@ -27,9 +27,12 @@ class MaeprodBusquedaSimilitudService
         'PACK', 'PAQUETE', 'PAQUETES', 'PACKS',
         'SURTIDO', 'SURTIDOS', 'SURTIDA', 'SURTIDAS',
         'COLOR', 'COLORES', 'COLOREADO', 'COLOREADOS',
+        'AZUL', 'ROJO', 'ROJA', 'VERDE', 'NEGRO', 'NEGRA', 'BLANCO', 'BLANCA',
+        'AMARILLO', 'AMARILLA', 'NARANJA', 'ROSADO', 'ROSADA', 'MORADO', 'MORADA',
+        'GRIS', 'CAFE', 'BEIGE', 'CELESTE', 'FUCSIA', 'TRANSPARENTE',
         'UNIDAD', 'UNIDADES', 'UND', 'UDS',
-        'CM', 'MM', 'MT', 'MTS', 'METRO', 'METROS',
-        'KG', 'KILO', 'KILOS', 'GR', 'GRAMOS',
+        'CM', 'MM', 'MT', 'MTS', 'METRO', 'METROS', 'ML', 'CC', 'FR',
+        'KG', 'KILO', 'KILOS', 'GR', 'GRAMOS', 'GMS',
         'APROX', 'APROXIMADO', 'IDEAL', 'IDEALMENTE',
         'MINIMO', 'MAXIMO', 'GARANTIA', 'MESES',
         'TIPO', 'MODELO', 'MEDIDA', 'MEDIDAS', 'TAMANO', 'TAMAÑO',
@@ -37,6 +40,55 @@ class MaeprodBusquedaSimilitudService
         'CAJA', 'CAJAS', 'BOLSA', 'BOLSAS',
         'PRODUCTO', 'PRODUCTOS', 'ITEM', 'ITEMS', 'ARTICULO', 'ARTICULOS',
         'REQUERIMIENTO', 'DETALLE', 'REFERENCIA', 'IMAGEN',
+        // Atributos/empaque que no identifican el producto (JERINGA≠MARCADOR por DESECHABLE/PUNTA)
+        'DESECHABLE', 'DESECHABLES', 'PUNTA', 'PUNTAS', 'ROMA', 'REDONDA', 'REDONDO',
+        'FINA', 'FINO', 'GRUESA', 'GRUESO', 'METAL', 'PLASTICO', 'PLASTICA',
+        'REF', 'COD', 'CODIGO', 'INT', 'PG', 'PC',
+        'SIMILAR', 'SUPERIOR', 'INFERIOR', 'CUMPLIR', 'ESPECIFICACION', 'EXCLUYENTE',
+        'ORIGINAL', 'GENERICO', 'JUMBO',
+    ];
+
+    /**
+     * Familias de tipo de producto para detectar vínculos sin relación
+     * (ej. CLIP↔PORTAMINAS, CARTULINA↔DESTACADOR). Se usa como guarda: si
+     * ambos textos tienen familia detectada y son disjuntas, no se vincula.
+     *
+     * Cada keyword se compara por INICIO de palabra sobre el texto normalizado
+     * (mayúsculas), por lo que cubre singular/plural (CLIP→CLIPS, PORTAMINA→PORTAMINAS).
+     *
+     * @var array<string, string[]>
+     */
+    private const FAMILIAS_PRODUCTO = [
+        'PORTAMINAS' => ['PORTAMINA'],
+        'ACCOCLIP' => ['ACCOCLIP'],
+        'CLIP' => ['CLIP', 'BINDER', 'APRETADOR'],
+        'CALCULADORA' => ['CALCULADORA'],
+        'RESMA' => ['RESMA'],
+        'CARTULINA' => ['CARTULINA', 'CARTULUNA'],
+        'CINTA' => ['CINTA', 'MASKING'],
+        'CARPETA' => ['CARPETA', 'ARCHIVADOR', 'REVISTERO'],
+        'GOMA_EVA' => ['FOAMI'],
+        'CHINCHE' => ['CHINCHE'],
+        'LLAVERO' => ['LLAVERO'],
+        'CANAMO' => ['CANAMO', 'PITILLA'],
+        'DESTACADOR' => ['DESTACADOR', 'TEXMARKET'],
+        'PLUMON' => ['PLUMON'],
+        'REGLA' => ['REGLA'],
+        'BROCHETA' => ['BROCHETA'],
+        'CREPE' => ['CREPE'],
+        'TERMOLAMINADO' => ['TERMOLAMIN'],
+        'ELASTICO' => ['ELASTICO'],
+        'CORCHETE' => ['CORCHETE', 'CORCHETERA', 'ENGRAP'],
+        'TIJERA' => ['TIJERA'],
+        'TONER' => ['TONER', 'CARTUCHO'],
+        'SACAPUNTA' => ['SACAPUNTA', 'TAJADOR'],
+        'CUADERNO' => ['CUADERNO'],
+        'TIMBRE' => ['FECHADOR', 'FECHERO'],
+        'ESPIRAL' => ['ESPIRAL'],
+        'COMPAS' => ['COMPAS'],
+        'JERINGA' => ['JERINGA'],
+        'PILA' => ['PILA', 'BATERIA'],
+        'TATUAJE' => ['TATUAJE'],
     ];
 
     public function buscar(string $term, ?string $familia = null, int $limit = 15): Collection
@@ -179,8 +231,58 @@ class MaeprodBusquedaSimilitudService
     /**
      * Exige solape de tokens distintivos para evitar vínculos tipo LENCI→EVA o CARTÓN→TINTA.
      */
+    /**
+     * Familias de producto detectadas en el texto (por inicio de palabra).
+     *
+     * @return string[]
+     */
+    public function familiasProducto(string $texto): array
+    {
+        $norm = $this->normalizarTexto($texto);
+        if ($norm === '') {
+            return [];
+        }
+
+        $hay = ' '.$norm.' ';
+        $familias = [];
+        foreach (self::FAMILIAS_PRODUCTO as $familia => $keywords) {
+            foreach ($keywords as $kw) {
+                // Coincidencia por inicio de palabra: cubre plural/sufijo y evita
+                // matches en medio de otra palabra (ej. CLIP dentro de ACCOCLIP).
+                if (str_contains($hay, ' '.$kw)) {
+                    $familias[] = $familia;
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($familias));
+    }
+
+    /**
+     * Verdadero solo cuando AMBOS textos tienen familia de producto y son
+     * disjuntas (sin familia en común). Nunca marca conflicto si algún lado
+     * no tiene familia detectable (evita falsos negativos).
+     */
+    public function hayConflictoFamilia(string $textoA, string $textoB): bool
+    {
+        $fa = $this->familiasProducto($textoA);
+        $fb = $this->familiasProducto($textoB);
+        if ($fa === [] || $fb === []) {
+            return false;
+        }
+
+        return array_intersect($fa, $fb) === [];
+    }
+
     public function tieneSolapeDistintivo(string $textoConsulta, string $textoCandidato): bool
     {
+        // Guarda por familia: descarta vínculos sin relación (CLIP↔PORTAMINAS,
+        // CARTULINA↔DESTACADOR) aunque compartan tokens genéricos residuales.
+        if ($this->hayConflictoFamilia($textoConsulta, $textoCandidato)) {
+            return false;
+        }
+
         $distConsulta = $this->tokensDistintivos($this->normalizarTexto($textoConsulta));
         if ($distConsulta === []) {
             return false;
@@ -192,15 +294,34 @@ class MaeprodBusquedaSimilitudService
         }
 
         $hits = 0;
+        $hitsNucleo = 0;
         foreach ($distConsulta as $token) {
-            if ($this->tokenVarianteCaeEnTexto($token, $candidatoNorm)) {
-                $hits++;
+            if (! $this->tokenVarianteCaeEnTexto($token, $candidatoNorm)) {
+                continue;
+            }
+            $hits++;
+            // Exige que al menos un token “núcleo” (≥5 letras) coincida: evita JERINGA→MARCADOR
+            // solo por atributos cortos/genéricos residuales.
+            if (mb_strlen($token, 'UTF-8') >= 5 && ! preg_match('/^\d+$/', $token)) {
+                $hitsNucleo++;
             }
         }
 
         $requeridos = count($distConsulta) >= 3 ? 2 : 1;
+        if ($hits < $requeridos) {
+            return false;
+        }
 
-        return $hits >= $requeridos;
+        $nucleosConsulta = array_values(array_filter(
+            $distConsulta,
+            static fn (string $t): bool => mb_strlen($t, 'UTF-8') >= 5 && ! preg_match('/^\d+$/', $t),
+        ));
+
+        if ($nucleosConsulta !== [] && $hitsNucleo === 0) {
+            return false;
+        }
+
+        return true;
     }
 
     public function esTokenGenerico(string $token): bool
