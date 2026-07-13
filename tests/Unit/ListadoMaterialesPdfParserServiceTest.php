@@ -165,6 +165,38 @@ TXT;
         $this->assertGreaterThanOrEqual(450, count($lineas));
         $this->assertSame(1, $lineas[0]['cantidad']);
         $this->assertStringContainsString('ACRÍLICO', $lineas[0]['descripcion']);
+        $this->assertStringNotContainsStringIgnoringCase('BASES ADMINISTRATIVAS', $lineas[0]['descripcion']);
+        $this->assertStringNotContainsStringIgnoringCase('INSTITUCIÓN SOLICITANTE', $lineas[0]['descripcion']);
+    }
+
+    public function test_extrae_cabecera_documento_bases(): void
+    {
+        $texto = $this->cargarFixture('bases_las_condes.txt');
+        $cabecera = $this->parser->extraerCabeceraDocumento($texto);
+
+        $this->assertNotSame('', $cabecera['nombre']);
+        $this->assertStringContainsStringIgnoringCase('CONVENIO', $cabecera['nombre']);
+        $this->assertStringContainsStringIgnoringCase('Las Condes', $cabecera['empresa']);
+        $this->assertSame('70902000-5', $cabecera['rutempresa']);
+    }
+
+    public function test_smalot_tabs_no_mezclan_admin_con_productos(): void
+    {
+        $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'..'.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'app'.DIRECTORY_SEPARATOR.'bases_smalot.txt';
+        if (! is_file($path)) {
+            $this->markTestSkipped('Fixture smalot no generada.');
+        }
+
+        $texto = (string) file_get_contents($path);
+        $lineas = $this->parser->parseTexto($texto);
+        $cabecera = $this->parser->extraerCabeceraDocumento($texto);
+
+        $this->assertSame('bases_linea', $this->parser->detectarFormato($texto));
+        $this->assertGreaterThanOrEqual(400, count($lineas));
+        $this->assertStringContainsString('ACRÍLICO', $lineas[0]['descripcion']);
+        $this->assertLessThan(200, mb_strlen($lineas[0]['descripcion']));
+        $this->assertStringNotContainsStringIgnoringCase('BASES ADMINISTRATIVAS', $lineas[0]['descripcion']);
+        $this->assertNotSame('', $cabecera['nombre']);
     }
 
     public function test_fixture_docx_minuta_oficina(): void

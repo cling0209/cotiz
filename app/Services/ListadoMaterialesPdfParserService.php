@@ -22,9 +22,12 @@ class ListadoMaterialesPdfParserService
     private const FORMATO_BASES = 'bases_linea';
 
     /**
-     * @return array<int, array{cantidad: int, descripcion: string}>
+     * @return array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{cantidad: int, descripcion: string}>
+     * }
      */
-    public function parseUploadedFile(UploadedFile $file): array
+    public function parseDocumentoCompleto(UploadedFile $file): array
     {
         $path = $file->getRealPath() ?: $file->getPathname();
         $extension = strtolower((string) ($file->getClientOriginalExtension() ?: pathinfo($path, PATHINFO_EXTENSION)));
@@ -37,18 +40,33 @@ class ListadoMaterialesPdfParserService
 
         if ($extension === 'docx') {
             $desdeTablas = $this->parseDocxTablas($path);
-            if ($desdeTablas !== []) {
-                return $desdeTablas;
+            $texto = '';
+            try {
+                $texto = $this->extraerTextoDocx($path);
+            } catch (RuntimeException) {
+                $texto = '';
             }
 
-            $texto = $this->extraerTextoDocx($path);
-
-            return $this->parseTexto($texto);
+            return [
+                'cabecera' => $this->extraerCabeceraDocumento($texto),
+                'lineas' => $desdeTablas !== [] ? $desdeTablas : $this->parseTexto($texto),
+            ];
         }
 
         $texto = $this->extraerTextoPdf($path);
 
-        return $this->parseTexto($texto);
+        return [
+            'cabecera' => $this->extraerCabeceraDocumento($texto),
+            'lineas' => $this->parseTexto($texto),
+        ];
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    public function parseUploadedFile(UploadedFile $file): array
+    {
+        return $this->parseDocumentoCompleto($file)['lineas'];
     }
 
     /**
@@ -56,19 +74,80 @@ class ListadoMaterialesPdfParserService
      */
     public function parseTexto(string $texto): array
     {
-        $texto = str_replace(["\r\n", "\r"], "\n", $texto);
+        $texto = $this->normalizarEspaciosDocumento($texto);
         $formato = $this->detectarFormato($texto);
 
-        return match ($formato) {
+        $lineas = match ($formato) {
             self::FORMATO_DETALLE => $this->parseDetalleUnidades($texto),
             self::FORMATO_LICITACION => $this->parseLicitacionPedido($texto),
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
             default => $this->parseListadoCantidad($texto),
         };
+
+        return array_values(array_filter(
+            $lineas,
+            fn (array $linea): bool => ! $this->esDescripcionAdministrativa($linea['descripcion']),
+        ));
+    }
+
+    /**
+     * Metadatos del documento (título/empresa/RUT), no líneas de producto.
+     *
+     * @return array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string}
+     */
+    public function extraerCabeceraDocumento(string $texto): array
+    {
+        $texto = $this->normalizarEspaciosDocumento($texto);
+        $vacía = [
+            'codigo_cotizacion' => '',
+            'empresa' => '',
+            'rutempresa' => '',
+            'nombre' => '',
+        ];
+
+        if (trim($texto) === '') {
+            return $vacía;
+        }
+
+        $nombre = '';
+        if (preg_match(
+            '/CONVENIO DE SUMINISTRO[\s\S]{10,180}?(?:PARA LA(?:\s+CORPORACI[OÓ]N[\s\S]{0,80}?)?|P[AÁ]GINA\b|BASES ADMINISTRATIVAS\b)/iu',
+            $texto,
+            $m,
+        ) === 1) {
+            $nombre = trim(preg_replace('/\s+/u', ' ', $m[0]) ?? $m[0]);
+            $nombre = preg_replace('/\s*(?:P[AÁ]GINA\b|BASES ADMINISTRATIVAS\b).*$/iu', '', $nombre) ?? $nombre;
+        } elseif (preg_match(
+            '/BASES ADMINISTRATIVAS Y T[EÉ]CNICAS\s+(.+?)(?:P[AÁ]GINA\b|BASES ADMINISTRATIVAS\b|1\.\s*INSTITUC)/isu',
+            $texto,
+            $m,
+        ) === 1) {
+            $nombre = trim(preg_replace('/\s+/u', ' ', $m[1]) ?? $m[1]);
+        }
+
+        $empresa = '';
+        if (preg_match('/Corporaci[oó]n de Educaci[oó]n y Salud de Las Condes/iu', $texto, $m) === 1) {
+            $empresa = trim($m[0]);
+        } elseif (preg_match('/1\.\s*INSTITUCI[OÓ]N SOLICITANTE[\s\S]{0,200}?Raz[oó]n social\s+([^\n\r]{5,120})/iu', $texto, $m) === 1) {
+            $empresa = trim($m[1]);
+        }
+
+        $rutempresa = '';
+        if (preg_match('/\b(\d{1,2}\.\d{3}\.\d{3}-[\dkK])\b/u', $texto, $m) === 1) {
+            $rutempresa = str_replace('.', '', strtoupper($m[1]));
+        }
+
+        return [
+            'codigo_cotizacion' => '',
+            'empresa' => mb_substr($empresa, 0, 120),
+            'rutempresa' => mb_substr($rutempresa, 0, 12),
+            'nombre' => mb_substr(trim($nombre), 0, 250),
+        ];
     }
 
     public function detectarFormato(string $texto): string
     {
+        $texto = $this->normalizarEspaciosDocumento($texto);
         $upper = mb_strtoupper($texto);
 
         if (str_contains($upper, 'PEDIDO ESTABLECIMIENTO') && str_contains($upper, 'CANTIDAD')) {
@@ -80,13 +159,65 @@ class ListadoMaterialesPdfParserService
         }
 
         if (
-            str_contains($upper, 'LINEA DESCRIPCION')
+            preg_match('/LINEA\s+DESCRIPCION/u', $upper) === 1
             || (str_contains($upper, 'UNIDADES*') && str_contains($upper, 'MONTO TOTAL'))
+            || (str_contains($upper, 'BASES ADMINISTRATIVAS') && str_contains($upper, 'DESCRIPCIÓN TÉCNICA'))
+            || (str_contains($upper, 'BASES ADMINISTRATIVAS') && str_contains($upper, 'DESCRIPCION TECNICA'))
         ) {
             return self::FORMATO_BASES;
         }
 
         return self::FORMATO_LISTADO;
+    }
+
+    private function normalizarEspaciosDocumento(string $texto): string
+    {
+        $texto = str_replace(["\r\n", "\r"], "\n", $texto);
+        $texto = str_replace("\t", ' ', $texto);
+
+        return preg_replace('/[ ]{2,}/u', ' ', $texto) ?? $texto;
+    }
+
+    private function esDescripcionAdministrativa(string $descripcion): bool
+    {
+        $descripcion = trim($descripcion);
+        if ($descripcion === '') {
+            return true;
+        }
+
+        if (mb_strlen($descripcion) > 280) {
+            return true;
+        }
+
+        $upper = mb_strtoupper($descripcion);
+
+        foreach ([
+            'BASES ADMINISTRATIVAS',
+            'INSTITUCIÓN SOLICITANTE',
+            'INSTITUCION SOLICITANTE',
+            'BIENES Y/O SERVICIOS SOLICITADOS',
+            'PARTICIPANTES',
+            'GARANTÍA DE SERIEDAD',
+            'GARANTIA DE SERIEDAD',
+            'CRITERIOS DE EVALUACIÓN',
+            'CRITERIOS DE EVALUACION',
+            'COMISIÓN EVALUADORA',
+            'COMISION EVALUADORA',
+            'MERCADOPUBLICO.CL',
+        ] as $marcador) {
+            if (str_contains($upper, $marcador)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function esOrphanAdministrativo(string $orphan): bool
+    {
+        return $this->esDescripcionAdministrativa($orphan)
+            || mb_strlen(trim($orphan)) > 160
+            || preg_match('/\b\d+\.\s+[A-ZÁÉÍÓÚÑ]{4,}/u', $orphan) === 1;
     }
 
     /**
@@ -305,7 +436,7 @@ class ListadoMaterialesPdfParserService
 
             $descripcion = trim($m[2]);
             $unidades = str_replace('.', '', $m[3]);
-            if ($descripcion === '' || ! ctype_digit($unidades)) {
+            if ($descripcion === '' || ! ctype_digit($unidades) || $this->esDescripcionAdministrativa($descripcion)) {
                 return false;
             }
 
@@ -320,7 +451,9 @@ class ListadoMaterialesPdfParserService
         foreach ($raw as $linea) {
             if (preg_match('/^\d{1,3}$/u', $linea) === 1) {
                 if ($buffer !== '' && ! $tryFlush($buffer)) {
-                    $orphan = trim($orphan.' '.$buffer);
+                    if (! $this->esOrphanAdministrativo($buffer)) {
+                        $orphan = trim($orphan.' '.$buffer);
+                    }
                 }
                 $buffer = $linea;
 
@@ -329,16 +462,18 @@ class ListadoMaterialesPdfParserService
 
             if (preg_match('/^\d{1,3}\s+/u', $linea) === 1) {
                 if ($buffer !== '' && ! $tryFlush($buffer)) {
-                    $orphan = trim($orphan.' '.$buffer);
+                    if (! $this->esOrphanAdministrativo($buffer)) {
+                        $orphan = trim($orphan.' '.$buffer);
+                    }
                 }
 
                 $text = $linea;
-                if ($orphan !== '') {
+                if ($orphan !== '' && ! $this->esOrphanAdministrativo($orphan)) {
                     if (preg_match('/^(\d{1,3})\s+(.*)$/u', $text, $m) === 1) {
                         $text = trim($m[1].' '.$orphan.' '.$m[2]);
                     }
-                    $orphan = '';
                 }
+                $orphan = '';
 
                 $buffer = $text;
                 if ($tryFlush($buffer)) {
@@ -353,7 +488,7 @@ class ListadoMaterialesPdfParserService
                 if ($tryFlush($buffer)) {
                     $buffer = '';
                 }
-            } else {
+            } elseif (! $this->esOrphanAdministrativo($linea)) {
                 $orphan = trim($orphan.' '.$linea);
             }
         }
@@ -367,9 +502,21 @@ class ListadoMaterialesPdfParserService
 
     private function extraerSeccionCatalogoBases(string $texto): string
     {
-        $inicio = mb_stripos($texto, 'LINEA DESCRIPCION');
-        if ($inicio === false) {
-            $inicio = mb_stripos($texto, 'LÍNEA DESCRIPCION');
+        $texto = $this->normalizarEspaciosDocumento($texto);
+
+        $inicio = false;
+        foreach ([
+            'LINEA DESCRIPCION REQUERIMIENTO',
+            'LINEA DESCRIPCION',
+            'LÍNEA DESCRIPCION',
+            '5. DESCRIPCIÓN TÉCNICA',
+            '5. DESCRIPCION TECNICA',
+        ] as $marcador) {
+            $pos = mb_stripos($texto, $marcador);
+            if ($pos !== false) {
+                $inicio = $pos;
+                break;
+            }
         }
 
         $fin = mb_stripos($texto, 'Los oferentes podrán postular');

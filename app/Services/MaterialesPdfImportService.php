@@ -66,10 +66,10 @@ class MaterialesPdfImportService
      */
     private function datosDesdePdf(UploadedFile $file): array
     {
-        $parseadas = $this->parser->parseUploadedFile($file);
+        $documento = $this->parser->parseDocumentoCompleto($file);
         $lineas = [];
 
-        foreach ($parseadas as $fila) {
+        foreach ($documento['lineas'] as $fila) {
             $descripcion = trim($fila['descripcion']);
             if ($descripcion === '') {
                 continue;
@@ -84,12 +84,7 @@ class MaterialesPdfImportService
         }
 
         return [
-            'cabecera' => [
-                'codigo_cotizacion' => '',
-                'empresa' => '',
-                'rutempresa' => '',
-                'nombre' => '',
-            ],
+            'cabecera' => $documento['cabecera'],
             'lineas' => $lineas,
         ];
     }
