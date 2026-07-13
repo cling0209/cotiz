@@ -64,7 +64,7 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
 fi
 
 # Si Render dormía en el horario programado, encolar catch-up al boot.
-# También hay catch-up en el primer request web (middleware EnsureMpResultadosScheduleCatchUp).
+# También hay catch-up al login admin (AuthController).
 if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   echo "Catch-up consulta MP programada (si el slot se perdió por sleep)..." >&2
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true

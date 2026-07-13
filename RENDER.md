@@ -152,9 +152,9 @@ El contenedor ejecuta `php artisan schedule:run` cada minuto (`RUN_SCHEDULER=tru
 Además hay **catch-up** en dos momentos:
 
 1. Al **boot** del contenedor (cold start / redeploy).
-2. En el **primer request web** de un usuario (máx. 1 chequeo/minuto): si el último horario ya pasó y no hubo corrida masiva desde ese slot, encola la consulta.
+2. Al **login** del admin: si el último horario ya pasó y no hubo corrida masiva desde ese slot, encola la consulta.
 
-Así, si Render dormía a las 09:00 y alguien entra a las 10:05, la corrida se encola al conectar.
+Así, si Render dormía a las 09:00 y un usuario inicia sesión a las 10:05, la corrida se encola al loguearse.
 
 Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). El botón individual «Consultar MP» sigue pudiendo forzar.
 

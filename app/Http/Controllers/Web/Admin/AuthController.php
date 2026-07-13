@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\NotaMpResultadosService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -21,7 +24,7 @@ class AuthController extends Controller
         return view('admin.auth.login');
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, NotaMpResultadosService $resultadosMp): RedirectResponse
     {
         $credentials = $request->validate([
             'username' => ['required', 'string', 'max:20'],
@@ -45,6 +48,8 @@ class AuthController extends Controller
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
+        $this->dispararCatchUpMpSiCorresponde($resultadosMp);
+
         return redirect()->intended(route('admin.cotizaciones.index'));
     }
 
@@ -55,5 +60,26 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('admin.login')->with('success', 'Sesión cerrada.');
+    }
+
+    /**
+     * Si el horario programado de consulta MP ya pasó sin corrida, encola catch-up al login.
+     */
+    private function dispararCatchUpMpSiCorresponde(NotaMpResultadosService $resultadosMp): void
+    {
+        if (! config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
+            return;
+        }
+
+        try {
+            $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde('sistema');
+            if (($resultado['accion'] ?? '') === 'encolada') {
+                Log::info('Catch-up MP encolado al login admin', $resultado);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Catch-up MP al login falló', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 }
