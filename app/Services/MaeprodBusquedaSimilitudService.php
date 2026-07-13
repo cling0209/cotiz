@@ -17,6 +17,28 @@ class MaeprodBusquedaSimilitudService
         'UN', 'UNA', 'Y', 'AL', 'POR', 'QUE', 'THE', 'SET',
     ];
 
+    /**
+     * Tokens muy frecuentes en listados que no identifican el producto
+     * (PACK/COLORES/SURTIDOS/CM…) y generan falsos positivos al vincular.
+     *
+     * @var string[]
+     */
+    private const TOKENS_GENERICOS = [
+        'PACK', 'PAQUETE', 'PAQUETES', 'PACKS',
+        'SURTIDO', 'SURTIDOS', 'SURTIDA', 'SURTIDAS',
+        'COLOR', 'COLORES', 'COLOREADO', 'COLOREADOS',
+        'UNIDAD', 'UNIDADES', 'UND', 'UDS',
+        'CM', 'MM', 'MT', 'MTS', 'METRO', 'METROS',
+        'KG', 'KILO', 'KILOS', 'GR', 'GRAMOS',
+        'APROX', 'APROXIMADO', 'IDEAL', 'IDEALMENTE',
+        'MINIMO', 'MAXIMO', 'GARANTIA', 'MESES',
+        'TIPO', 'MODELO', 'MEDIDA', 'MEDIDAS', 'TAMANO', 'TAMAÑO',
+        'PIEZA', 'PIEZAS', 'HOJA', 'HOJAS', 'PLIEGO', 'PLIEGOS',
+        'CAJA', 'CAJAS', 'BOLSA', 'BOLSAS',
+        'PRODUCTO', 'PRODUCTOS', 'ITEM', 'ITEMS', 'ARTICULO', 'ARTICULOS',
+        'REQUERIMIENTO', 'DETALLE', 'REFERENCIA', 'IMAGEN',
+    ];
+
     public function buscar(string $term, ?string $familia = null, int $limit = 15): Collection
     {
         $term = trim($term);
@@ -132,6 +154,73 @@ class MaeprodBusquedaSimilitudService
         return $this->tokensConsultaSql($this->extraerTokens($textoNormalizado));
     }
 
+    /**
+     * Tokens que identifican el producto (excluye stopwords y genéricos PACK/COLORES/…).
+     *
+     * @return string[]
+     */
+    public function tokensDistintivos(string $textoNormalizado): array
+    {
+        $out = [];
+        foreach ($this->tokensSignificativos($textoNormalizado) as $token) {
+            if ($this->esTokenGenerico($token)) {
+                continue;
+            }
+            // Números cortos (10, 12, 4…) son ruido en listados de empaque.
+            if (preg_match('/^\d{1,2}$/', $token)) {
+                continue;
+            }
+            $out[] = $token;
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Exige solape de tokens distintivos para evitar vínculos tipo LENCI→EVA o CARTÓN→TINTA.
+     */
+    public function tieneSolapeDistintivo(string $textoConsulta, string $textoCandidato): bool
+    {
+        $distConsulta = $this->tokensDistintivos($this->normalizarTexto($textoConsulta));
+        if ($distConsulta === []) {
+            return false;
+        }
+
+        $candidatoNorm = $this->normalizarTexto($textoCandidato);
+        if ($candidatoNorm === '') {
+            return false;
+        }
+
+        $hits = 0;
+        foreach ($distConsulta as $token) {
+            if ($this->tokenVarianteCaeEnTexto($token, $candidatoNorm)) {
+                $hits++;
+            }
+        }
+
+        $requeridos = count($distConsulta) >= 3 ? 2 : 1;
+
+        return $hits >= $requeridos;
+    }
+
+    public function esTokenGenerico(string $token): bool
+    {
+        $t = mb_strtoupper(trim($token), 'UTF-8');
+        if ($t === '' || in_array($t, self::TOKENS_GENERICOS, true)) {
+            return true;
+        }
+
+        // Singular/plural simple ya cubierto en la lista; variantes con S.
+        if (str_ends_with($t, 'S') && mb_strlen($t, 'UTF-8') >= 5) {
+            $singular = mb_substr($t, 0, -1, 'UTF-8');
+            if (in_array($singular, self::TOKENS_GENERICOS, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function codificarPayloadBuscarSimilitud(string $textoBusqueda, int $maxLen = 255): string
     {
         $norm = $this->normalizarTexto($textoBusqueda);
@@ -226,9 +315,13 @@ class MaeprodBusquedaSimilitudService
 
     public function pesoToken(string $palabra): float
     {
+        if ($this->esTokenGenerico($palabra)) {
+            return 0.15;
+        }
+
         $longitud = strlen($palabra);
         if (preg_match('/^\d{1,2}$/', $palabra)) {
-            return 1.5;
+            return 0.4;
         }
         if (preg_match('/^\d{3,}$/', $palabra)) {
             return 3.0;
@@ -251,6 +344,7 @@ class MaeprodBusquedaSimilitudService
         $textoCrudo = trim($textoCrudo);
         $textoNorm = $this->normalizarTexto($textoCrudo);
         $tokens = $this->tokensSignificativos($textoNorm);
+        $distintivos = $this->tokensDistintivos($textoNorm);
         $nombreNorm = $this->normalizarTexto($prodNombre);
         $itemU = mb_strtoupper(trim($prodItem), 'UTF-8');
 
@@ -284,15 +378,22 @@ class MaeprodBusquedaSimilitudService
             $score += $pct * 650.0;
         }
 
-        if (count($tokens) > 0 && $nombreNorm !== '') {
+        // Ratio solo con tokens distintivos: evita PACK/COLORES/SURTIDOS como “match”.
+        $tokensRatio = $distintivos !== [] ? $distintivos : $tokens;
+        if (count($tokensRatio) > 0 && $nombreNorm !== '') {
             $coin = 0;
-            foreach ($tokens as $t) {
+            foreach ($tokensRatio as $t) {
                 if ($this->tokenVarianteCaeEnTexto($t, $nombreNorm)) {
                     $coin++;
                 }
             }
-            $ratio = $coin / count($tokens);
+            $ratio = $coin / count($tokensRatio);
             $score += $ratio * 120000.0;
+
+            if ($distintivos !== [] && $coin === 0) {
+                // Sin solape real del producto: no auto-vincular aunque haya ruido genérico.
+                return min($score * 0.05, 800.0);
+            }
         }
 
         return $score;
@@ -517,7 +618,11 @@ class MaeprodBusquedaSimilitudService
         $minPhp = max(1000.0, (float) config('cotiz.buscar_productos_score_php_minimo', 5000));
         $out = [];
         foreach ($filas as $row) {
-            if ($this->scoreSimilitudFila($term, (string) $row->prod_item, (string) $row->prod_nombre) >= $minPhp) {
+            $nombre = (string) $row->prod_nombre;
+            if (! $this->tieneSolapeDistintivo($term, $nombre)) {
+                continue;
+            }
+            if ($this->scoreSimilitudFila($term, (string) $row->prod_item, $nombre) >= $minPhp) {
                 $out[] = $row;
             }
         }

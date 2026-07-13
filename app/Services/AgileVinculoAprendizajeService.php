@@ -169,7 +169,10 @@ class AgileVinculoAprendizajeService
             return null;
         }
 
-        $tokens = $this->busqueda->tokensSignificativos($norm);
+        $tokensDist = $this->busqueda->tokensDistintivos($norm);
+        $tokens = $tokensDist !== []
+            ? $tokensDist
+            : $this->busqueda->tokensSignificativos($norm);
         if ($tokens === []) {
             return null;
         }
@@ -196,10 +199,15 @@ class AgileVinculoAprendizajeService
         $mejorProdItem = null;
 
         foreach ($candidatos as $row) {
+            $descAprendida = (string) ($row->prod_descripcion_agile ?? '');
+            if (! $this->busqueda->tieneSolapeDistintivo($descripcion, $descAprendida)) {
+                continue;
+            }
+
             $score = $this->busqueda->scoreSimilitudFila(
                 $descripcion,
                 (string) $row->prod_item,
-                (string) ($row->prod_descripcion_agile ?? ''),
+                $descAprendida,
             );
 
             if ($score > $mejorScore) {
@@ -214,8 +222,16 @@ class AgileVinculoAprendizajeService
         }
 
         $mae = Maeprod::query()->find($mejorProdItem);
+        if (! $mae) {
+            return null;
+        }
 
-        return $mae ? $this->maeprodArray($mae) : null;
+        // Doble chequeo contra el nombre real del maestro (no solo la descripción aprendida).
+        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, (string) $mae->prod_nombre)) {
+            return null;
+        }
+
+        return $this->maeprodArray($mae);
     }
 
     /**
@@ -226,6 +242,10 @@ class AgileVinculoAprendizajeService
         $resultados = $this->busqueda->buscar($descripcion, null, 1);
         $mae = $resultados->first();
         if (! $mae instanceof Maeprod) {
+            return null;
+        }
+
+        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, (string) $mae->prod_nombre)) {
             return null;
         }
 

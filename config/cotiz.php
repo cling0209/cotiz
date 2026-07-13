@@ -64,7 +64,8 @@ return [
         'sistema' => env('COTIZ_AGILE_SISTEMA', 'API'),
         'maeprod_factor_precio_venta' => (float) env('COTIZ_AGILE_MAEPROD_FACTOR', 1.22),
         // Score mínimo para auto-vincular desde agilemaeprod por similitud de descripción.
-        'vinculo_score_minimo' => (float) env('COTIZ_AGILE_VINCULO_SCORE_MINIMO', 5000),
+        // Tras filtro de tokens distintivos; 20000 evita matches solo por PACK/COLORES/SURTIDOS.
+        'vinculo_score_minimo' => (float) env('COTIZ_AGILE_VINCULO_SCORE_MINIMO', 20000),
     ],
 
     'mercadopublico' => [

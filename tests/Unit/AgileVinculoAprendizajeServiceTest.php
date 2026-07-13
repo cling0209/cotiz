@@ -112,4 +112,31 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame('ARTE001', $row->prod_item);
     }
+
+    public function test_aprendizaje_similitud_no_vincula_por_pack_colores_surtidos(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => '56841S',
+            'prod_nombre' => 'GOMA EVA OFFIONE SURTIDO 20X30 CM PAQUETE DE 10 UNIDADES',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'prod_familia' => 'ARTE',
+        ]);
+
+        $this->service->guardarAprendizaje(
+            'PACK GOMA EVA SURTIDO 10 COLORES CM',
+            '56841S',
+            null,
+        );
+
+        $resultado = $this->service->resolverParaImportacion(
+            'PACK DE PLIEGOS DE PAÑO LENCI DE 10 COLORES SURTIDOS 1MT X 90CM'
+        );
+
+        $this->assertNotSame('vinculado', $resultado['estado']);
+        $this->assertTrue(
+            $resultado['producto'] === null
+            || ($resultado['producto']['prod_item'] ?? null) !== '56841S'
+        );
+    }
 }

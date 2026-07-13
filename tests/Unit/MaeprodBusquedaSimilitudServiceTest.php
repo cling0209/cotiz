@@ -88,4 +88,32 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
 
         $this->assertGreaterThan($parcial, $exacto);
     }
+
+    public function test_puno_lenci_no_matchea_goma_eva_por_tokens_genericos(): void
+    {
+        $consulta = 'PACK DE PLIEGOS DE PAÑO LENCI DE 10 COLORES SURTIDOS 1MT X 90CM';
+        $malo = 'GOMA EVA OFFIONE SURTIDO 20X30 CM PAQUETE DE 10 UNIDADES';
+        $bueno = 'PAÑO LENCI PLIEGOS 90X100 CM COLORES SURTIDOS PACK 10';
+
+        $this->assertFalse($this->service->tieneSolapeDistintivo($consulta, $malo));
+        $this->assertTrue($this->service->tieneSolapeDistintivo($consulta, $bueno));
+
+        $scoreMalo = $this->service->scoreSimilitudFila($consulta, '56841S', $malo);
+        $scoreBueno = $this->service->scoreSimilitudFila($consulta, 'LENCI01', $bueno);
+
+        $this->assertLessThan(5000, $scoreMalo);
+        $this->assertGreaterThan($scoreMalo, $scoreBueno);
+    }
+
+    public function test_carton_forrado_no_matchea_cartucho_tinta_hp(): void
+    {
+        $consulta = 'JARDIN CALABACITAS PACK DE 10 PLIEGOS DE CARTON FORRADO EN COLORES SURTIDOS';
+        $malo = 'PACK CARTUCHO DE TINTA HP 670 4 COLORES';
+
+        $this->assertFalse($this->service->tieneSolapeDistintivo($consulta, $malo));
+        $this->assertLessThan(
+            5000,
+            $this->service->scoreSimilitudFila($consulta, '797271', $malo)
+        );
+    }
 }
