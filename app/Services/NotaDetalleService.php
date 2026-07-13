@@ -220,6 +220,8 @@ class NotaDetalleService
             return;
         }
 
+        $nronota = (int) ($linea->nronota ?? 0);
+
         $this->agileMaeprodService->vincularCodigoInternoConDescripcion(
             $agileId,
             $codigoInterno,
@@ -227,6 +229,7 @@ class NotaDetalleService
             $agileId !== '' ? $agileId : null,
             $usuario,
             $origen,
+            $nronota > 0 ? $nronota : null,
         );
     }
 

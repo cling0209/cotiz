@@ -78,8 +78,9 @@ class AgileMaeprodService
         string $prodItem,
         ?string $usuario = null,
         VinculoOrigen $origen = VinculoOrigen::SISTEMA,
+        ?int $nronota = null,
     ): void {
-        $this->vincularCodigoInternoConDescripcion($prodItemAgile, $prodItem, null, null, $usuario, $origen);
+        $this->vincularCodigoInternoConDescripcion($prodItemAgile, $prodItem, null, null, $usuario, $origen, $nronota);
     }
 
     public function vincularCodigoInternoConDescripcion(
@@ -89,6 +90,7 @@ class AgileMaeprodService
         ?string $codigoCategoriaMp = null,
         ?string $usuario = null,
         VinculoOrigen $origen = VinculoOrigen::SISTEMA,
+        ?int $nronota = null,
     ): void {
         $codigo = trim($prodItem);
         if ($codigo === '') {
@@ -104,6 +106,7 @@ class AgileMaeprodService
                 null,
                 $usuario,
                 $origen,
+                $nronota,
             );
 
             return;
@@ -123,6 +126,7 @@ class AgileMaeprodService
                 'vinculado_por' => ($usuario !== null && $usuario !== '') ? $usuario : null,
                 'vinculado_en' => now(),
                 'vinculado_origen' => $origen->value,
+                'vinculado_nota' => ($nronota !== null && $nronota > 0) ? $nronota : null,
             ],
         );
     }

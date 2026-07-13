@@ -104,7 +104,7 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
     public function test_guardar_aprendizaje_registra_usuario_y_origen(): void
     {
         $desc = 'GREDAS ESCOLARES DE 1 KILO';
-        $this->service->guardarAprendizaje($desc, 'PAPEL001', '14111509', null, 'jperez', VinculoOrigen::MANUAL);
+        $this->service->guardarAprendizaje($desc, 'PAPEL001', '14111509', null, 'jperez', VinculoOrigen::MANUAL, 12345);
 
         $hash = $this->service->hashDescripcion($desc);
         $row = AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first();
@@ -113,6 +113,7 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         $this->assertSame('jperez', $row->vinculado_por);
         $this->assertSame(VinculoOrigen::MANUAL->value, $row->vinculado_origen);
         $this->assertNotNull($row->vinculado_en);
+        $this->assertSame(12345, (int) $row->vinculado_nota);
     }
 
     public function test_guardar_aprendizaje_origen_api_sin_usuario(): void

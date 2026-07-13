@@ -83,6 +83,7 @@ class AgileVinculoAprendizajeService
         ?string $referenciaAgile = null,
         ?string $usuario = null,
         VinculoOrigen $origen = VinculoOrigen::SISTEMA,
+        ?int $nronota = null,
     ): void {
         $descripcion = trim($descripcion);
         $prodItem = trim($prodItem);
@@ -108,6 +109,7 @@ class AgileVinculoAprendizajeService
             'vinculado_por' => $usuario !== '' ? $usuario : null,
             'vinculado_en' => now(),
             'vinculado_origen' => $origen->value,
+            'vinculado_nota' => ($nronota !== null && $nronota > 0) ? $nronota : null,
         ];
 
         $existente = AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first();

@@ -28,6 +28,7 @@ class AgileMaeprod extends Model
         'vinculado_por',
         'vinculado_en',
         'vinculado_origen',
+        'vinculado_nota',
     ];
 
     protected $casts = [
