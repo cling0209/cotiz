@@ -56,6 +56,7 @@
     const urlDetalle = @json(url('/admin/compra-agil/resultados/detalle/__NRO__'));
     const urlConsultarBase = @json(url('/admin/compra-agil/resultados/consultar'));
     const cotizSistema = @json(config('cotiz.sistema'));
+    const usuarioConsultaActual = @json(auth()->user()?->username ?: 'sistema');
     const segLabels = {
         cerrada: 'Cerrada',
         pendiente: 'Pendiente seguimiento',
@@ -70,6 +71,12 @@
         if (!iso) return '—';
         const d = new Date(iso);
         return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
+    };
+    const fmtConsultadoAhora = (usuario) => {
+        const now = new Date();
+        const fecha = now.toLocaleDateString('es-CL') + ' ' + now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+        const quien = (usuario && String(usuario).trim()) ? String(usuario).trim() : 'sistema';
+        return fecha + ' (' + quien + ')';
     };
 
     function labelSeguimiento(codigo) {
@@ -289,8 +296,7 @@
 
         const consultadoCell = row.querySelector('.cell-consultado');
         if (consultadoCell) {
-            const now = new Date();
-            consultadoCell.textContent = now.toLocaleDateString('es-CL') + ' ' + now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+            consultadoCell.textContent = fmtConsultadoAhora(usuarioConsultaActual);
         }
 
         const segCell = row.querySelector('.cell-seguimiento');
@@ -348,6 +354,11 @@
         const ocCell = row.querySelector('.cell-oc');
         if (ocCell && r.id_orden_compra) {
             ocCell.textContent = String(r.id_orden_compra);
+        }
+
+        const consultadoCell = row.querySelector('.cell-consultado');
+        if (consultadoCell) {
+            consultadoCell.textContent = fmtConsultadoAhora(usuarioConsultaActual);
         }
 
         const segCell = row.querySelector('.cell-seguimiento');

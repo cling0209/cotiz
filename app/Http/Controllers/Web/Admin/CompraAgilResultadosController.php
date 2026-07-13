@@ -141,7 +141,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->monto_total_ganador,
                     $this->resultados->nombreEjecutivoNota($seg),
                     $seg->nota?->empresa,
-                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
                     $seg->id_orden_compra,
                 ], ';');
@@ -198,7 +198,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->monto_total_ganador,
                     $this->resultados->nombreEjecutivoNota($seg),
                     $seg->nota?->empresa,
-                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
                     $seg->id_orden_compra,
                 ], ';');
@@ -255,7 +255,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->monto_total_ganador,
                     $this->resultados->nombreEjecutivoNota($seg),
                     $seg->nota?->empresa,
-                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
                     $seg->id_orden_compra,
                 ], ';');
@@ -339,7 +339,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->monto_total_ganador,
                     $this->resultados->nombreEjecutivoNota($seg),
                     $seg->nota?->empresa,
-                    $seg->ultimo_consultado_en?->format('d/m/Y H:i') ?? '',
+                    $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
                     $seg->id_orden_compra,
                 ], ';');

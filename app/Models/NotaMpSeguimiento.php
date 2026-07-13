@@ -60,6 +60,21 @@ class NotaMpSeguimiento extends Model
         return $this->belongsTo(NotaMpCorrida::class, 'ultima_corrida_id');
     }
 
+    /** Fecha de última consulta MP con usuario entre paréntesis (sistema si fue automático). */
+    public function textoConsultado(string $vacio = '—'): string
+    {
+        if ($this->ultimo_consultado_en === null) {
+            return $vacio;
+        }
+
+        $usuario = trim((string) ($this->ultimo_usuario ?? ''));
+        if ($usuario === '') {
+            $usuario = 'sistema';
+        }
+
+        return $this->ultimo_consultado_en->format('d/m/Y H:i').' ('.$usuario.')';
+    }
+
     public function scopeWhereFinalizado(Builder $query): Builder
     {
         return $query->whereRaw('finalizado IS TRUE');

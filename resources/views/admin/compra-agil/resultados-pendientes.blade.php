@@ -156,7 +156,7 @@
                                     —
                                 @endif
                             </td>
-                            <td class="small text-muted cell-consultado">{{ $seg->ultimo_consultado_en?->format('d/m/Y H:i') }}</td>
+                            <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if($apiConfigurada)
                                     <button type="button"

@@ -206,7 +206,7 @@
                                 @endif
                             </td>
                             <td class="small cell-oc">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
-                            <td class="small text-muted cell-consultado">{{ $nov->seguimiento?->ultimo_consultado_en?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small text-muted cell-consultado">{{ $nov->seguimiento?->textoConsultado() ?? '—' }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
                                     <button type="button"
