@@ -360,8 +360,8 @@
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
                             <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales (cantidad y producto). Si el PDF est&aacute; escaneado se intentar&aacute; OCR. Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
                             @if($requiereNumeroCotizacion)
-                                <div class="alert alert-warning py-2 px-3 small mb-2">
-                                    Puede analizar sin n&uacute;mero; al importar deber&aacute; tener ingresado el n&uacute;mero de cotizaci&oacute;n y pulsar <strong>Guardar n&uacute;mero</strong>.
+                                <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
+                                    Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
                                 </div>
                             @endif
                             <input
@@ -381,8 +381,8 @@
                                 Se omiten filas vac&iacute;as, t&iacute;tulos y totales; cada fila v&aacute;lida se importa como l&iacute;nea aparte.
                             </p>
                             @if($requiereNumeroCotizacion)
-                                <div class="alert alert-warning py-2 px-3 small mb-2">
-                                    Puede analizar sin n&uacute;mero; al importar deber&aacute; tener ingresado el n&uacute;mero de cotizaci&oacute;n y pulsar <strong>Guardar n&uacute;mero</strong>.
+                                <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
+                                    Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
                                 </div>
                             @endif
                             <div class="row g-2 mb-2">
@@ -500,7 +500,7 @@
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script>
 (function () {
-    const requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
+    let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
     const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
     const desdeAdjudicadas = @json($desdeAdjudicadas);
     const detalleColspan = @json($detalleColspan);
@@ -522,6 +522,26 @@
         return Promise.resolve(confirm(message));
     }
 
+    function dlgPrompt(message, opts = {}) {
+        if (window.AdminDialog?.prompt) {
+            return AdminDialog.prompt(message, opts);
+        }
+        const valor = window.prompt(message, opts.defaultValue || '');
+        return Promise.resolve(valor === null ? null : String(valor));
+    }
+
+    function marcarNumeroCotizacionGuardadoEnUi(numero) {
+        encargadoActual = String(numero || '').trim();
+        requiereNumeroCotizacion = false;
+        const enc = document.getElementById('encargado');
+        if (enc) {
+            enc.value = encargadoActual;
+            enc.classList.remove('cotiz-campo-numero-cotiz', 'is-invalid');
+        }
+        document.querySelectorAll('.cotiz-guardar-numero').forEach((el) => el.classList.add('d-none'));
+        document.querySelectorAll('.cotiz-alerta-numero-pendiente').forEach((el) => el.classList.add('d-none'));
+    }
+
     function asegurarNumeroCotizacionGuardada(opciones = {}) {
         if (!requiereNumeroCotizacion) {
             return true;
@@ -540,6 +560,75 @@
         );
         enc?.focus();
         return false;
+    }
+
+    /**
+     * Si la nota aún no tiene número guardado: popup → valida sitio par → guarda cabecera (como Guardar número).
+     * @returns {Promise<boolean>}
+     */
+    async function asegurarNumeroCotizacionAlImportar(opciones = {}) {
+        if (!requiereNumeroCotizacion) {
+            return true;
+        }
+
+        const enc = document.getElementById('encargado');
+        const titulo = opciones.titulo || 'Número de cotización';
+        const predeterminado = String(enc?.value || encargadoActual || '').trim().toUpperCase();
+
+        const ingresado = await dlgPrompt(
+            opciones.mensaje || 'Ingrese el número de cotización para importar las líneas.',
+            {
+                title: titulo,
+                defaultValue: predeterminado,
+                placeholder: 'Ej: 1161-172-COT26',
+                okText: opciones.okText || 'Guardar e importar',
+                cancelText: 'Cancelar',
+                type: 'warning',
+                maxLength: 100,
+            },
+        );
+
+        if (ingresado === null) {
+            return false;
+        }
+
+        const numero = String(ingresado || '').trim().toUpperCase();
+        if (!numero) {
+            await dlgAlert('Debe ingresar el número de cotización.', { title: titulo, type: 'warning' });
+            return false;
+        }
+
+        if (enc) {
+            enc.value = numero;
+        }
+
+        try {
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Verificando cotización en el otro sitio…');
+            await validarEncargadoParConEspera(numero, {
+                onProgress: (_intento, _max, msg) => actualizarProgresoImportar(0, 0, msg),
+            });
+
+            actualizarProgresoImportar(0, 0, 'Guardando número de cotización…');
+            const cabecera = collectCabeceraFromForm();
+            cabecera.encargado = numero;
+            const { res, json } = await postJson(cabeceraUrl, cabecera);
+            if (!res.ok) {
+                throw new Error(extraerMensajeError(json, 'No se pudo guardar el número de cotización.'));
+            }
+
+            marcarNumeroCotizacionGuardadoEnUi(numero);
+            ocultarProgresoImportar();
+            return true;
+        } catch (err) {
+            ocultarProgresoImportar();
+            await dlgAlert(err?.message || 'No se puede usar este número de cotización.', {
+                title: titulo,
+                type: 'danger',
+            });
+            enc?.focus();
+            return false;
+        }
     }
 
     const fmt = n => '$' + Math.round(n).toLocaleString('es-CL');
@@ -565,7 +654,7 @@
     const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
     const cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
     const lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
-    const encargadoActual = @json(trim((string) $nota->encargado));
+    let encargadoActual = @json(trim((string) $nota->encargado));
     const consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
     const consultaParConfig = {
         mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
@@ -2810,15 +2899,13 @@
 
         const usarPdf = importModo === 'pdf';
         const usarExcel = importModo === 'excel';
-        if ((usarPdf || usarExcel) && !asegurarNumeroCotizacionGuardada({
-            mensajeVacio: usarExcel
-                ? 'Debe ingresar la cotización antes de importar el Excel.'
-                : 'Debe ingresar la cotización antes de importar el PDF o Word.',
-            mensajeGuardar: usarExcel
-                ? 'Guarde la cotización con el botón «Guardar número» antes de importar el Excel.'
-                : 'Guarde la cotización con el botón «Guardar número» antes de importar el PDF o Word.',
+        if ((usarPdf || usarExcel) && !(await asegurarNumeroCotizacionAlImportar({
+            mensaje: usarExcel
+                ? 'Ingrese el número de cotización para importar el Excel. Se validará en este sitio y en el otro.'
+                : 'Ingrese el número de cotización para importar el PDF o Word. Se validará en este sitio y en el otro.',
             titulo: 'Número de cotización',
-        })) return;
+            okText: 'Guardar e importar',
+        }))) return;
 
         if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
             mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');

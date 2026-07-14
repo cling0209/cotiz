@@ -15,7 +15,8 @@
     const btnCancel = document.getElementById('adminDialogBtnCancel');
 
     let resolvePromise = null;
-    let isConfirm = false;
+    let mode = 'alert'; // alert | confirm | prompt
+    let promptInput = null;
 
     const iconMap = {
         info: ['bi-info-circle-fill', 'admin-dialog-icon--info'],
@@ -30,55 +31,124 @@
     }
 
     function resetModal() {
-        isConfirm = false;
+        mode = 'alert';
+        promptInput = null;
         btnCancel.classList.add('d-none');
         btnOk.classList.remove('btn-danger');
         btnOk.classList.add('btn-primary');
+        bodyEl.replaceChildren();
     }
 
     function show(options) {
         return new Promise((resolve) => {
             resolvePromise = resolve;
-            isConfirm = !!options.confirm;
+            mode = options.confirm ? 'confirm' : 'alert';
+            promptInput = null;
 
             titleEl.textContent = options.title || document.title.split('—')[0]?.trim() || 'Cotiz';
+            bodyEl.replaceChildren();
             bodyEl.textContent = options.message || '';
-            setDialogType(options.type || (isConfirm ? 'warning' : 'info'));
+            setDialogType(options.type || (mode === 'confirm' ? 'warning' : 'info'));
 
-            btnOk.textContent = options.okText || (isConfirm ? 'Confirmar' : 'Aceptar');
-            if (isConfirm) {
+            btnOk.textContent = options.okText || (mode === 'confirm' ? 'Confirmar' : 'Aceptar');
+            if (mode === 'confirm') {
                 btnCancel.classList.remove('d-none');
                 btnCancel.textContent = options.cancelText || 'Cancelar';
                 if (options.type === 'danger') {
                     btnOk.classList.remove('btn-primary');
                     btnOk.classList.add('btn-danger');
                 }
+            } else {
+                btnCancel.classList.add('d-none');
             }
 
             bsModal.show();
         });
     }
 
-    btnOk.addEventListener('click', () => {
-        bsModal.hide();
-        if (resolvePromise) {
-            resolvePromise(true);
-            resolvePromise = null;
+    function showPrompt(options) {
+        return new Promise((resolve) => {
+            resolvePromise = resolve;
+            mode = 'prompt';
+
+            titleEl.textContent = options.title || 'Cotiz';
+            bodyEl.replaceChildren();
+
+            const msg = document.createElement('p');
+            msg.className = 'mb-2';
+            msg.textContent = options.message || '';
+            bodyEl.appendChild(msg);
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control form-control-sm text-uppercase';
+            input.maxLength = options.maxLength || 100;
+            input.placeholder = options.placeholder || '';
+            input.value = options.defaultValue || '';
+            input.autocomplete = 'off';
+            input.id = 'adminDialogPromptInput';
+            bodyEl.appendChild(input);
+            promptInput = input;
+
+            if (options.errorText) {
+                const err = document.createElement('div');
+                err.className = 'text-danger small mt-2';
+                err.textContent = options.errorText;
+                bodyEl.appendChild(err);
+            }
+
+            setDialogType(options.type || 'warning');
+            btnOk.textContent = options.okText || 'Aceptar';
+            btnCancel.classList.remove('d-none');
+            btnCancel.textContent = options.cancelText || 'Cancelar';
+            btnOk.classList.remove('btn-danger');
+            btnOk.classList.add('btn-primary');
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    btnOk.click();
+                }
+            });
+
+            modalEl.addEventListener('shown.bs.modal', function onShown() {
+                modalEl.removeEventListener('shown.bs.modal', onShown);
+                input.focus();
+                input.select();
+            });
+
+            bsModal.show();
+        });
+    }
+
+    function settle(value) {
+        if (!resolvePromise) {
+            return;
         }
+        const resolve = resolvePromise;
+        resolvePromise = null;
+        resolve(value);
+    }
+
+    btnOk.addEventListener('click', () => {
+        if (mode === 'prompt') {
+            const value = String(promptInput?.value || '').trim();
+            bsModal.hide();
+            settle(value);
+            return;
+        }
+        bsModal.hide();
+        settle(true);
     });
 
     btnCancel.addEventListener('click', () => {
         bsModal.hide();
-        if (resolvePromise) {
-            resolvePromise(false);
-            resolvePromise = null;
-        }
+        settle(mode === 'prompt' ? null : false);
     });
 
     modalEl.addEventListener('hidden.bs.modal', () => {
         if (resolvePromise) {
-            resolvePromise(false);
-            resolvePromise = null;
+            settle(mode === 'prompt' ? null : false);
         }
         resetModal();
     });
@@ -89,6 +159,9 @@
         },
         confirm(message, opts = {}) {
             return show({ ...opts, message, confirm: true, type: opts.type || 'warning' });
+        },
+        prompt(message, opts = {}) {
+            return showPrompt({ ...opts, message });
         },
     };
 
