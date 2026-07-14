@@ -47,10 +47,27 @@ class MaterialesExcelImportTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_preview_excel_rechaza_sin_numero_cotizacion(): void
+    public function test_preview_excel_permite_sin_numero_cotizacion(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
         $excel = UploadedFile::fake()->create('oferta.xlsx', 20, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $mock = Mockery::mock(ListadoMaterialesExcelParserService::class);
+        $mock->shouldReceive('parseDocumentoCompleto')
+            ->once()
+            ->andReturn([
+                'cabecera' => [
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ],
+                'lineas' => [
+                    ['cantidad' => 5, 'descripcion' => 'OFICIO 100 HOJAS OPALINA BLANCA'],
+                ],
+                'omitidas' => 3,
+            ]);
+        $this->app->instance(ListadoMaterialesExcelParserService::class, $mock);
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-excel.preview', $nota->nronota),
@@ -58,6 +75,36 @@ class MaterialesExcelImportTest extends TestCase
                 'excel' => $excel,
                 'columna_descripcion' => 'A',
                 'columna_cantidad' => 'D',
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('resumen.total', 1);
+    }
+
+    public function test_importar_excel_rechaza_sin_numero_cotizacion(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-excel', $nota->nronota),
+            [
+                'desde' => 0,
+                'hasta' => 1,
+                'cabecera_json' => json_encode([
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ]),
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => 'xls:abc123',
+                        'descripcion' => 'ACUARELAS DE 12 COLORES C/U',
+                        'cantidad' => 25,
+                        'categoria' => '',
+                    ],
+                ]),
             ],
         );
 

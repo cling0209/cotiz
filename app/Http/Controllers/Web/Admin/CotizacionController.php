@@ -623,10 +623,6 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
-        }
-
         $datos = $request->validate([
             'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -765,10 +761,6 @@ class CotizacionController extends Controller
 
         if (! $this->puedeVer($request, $nota)) {
             abort(403);
-        }
-
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
-            return $respuesta;
         }
 
         $datos = $request->validate([

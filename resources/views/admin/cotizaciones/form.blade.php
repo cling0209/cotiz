@@ -361,7 +361,7 @@
                             <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales (cantidad y producto). Si el PDF est&aacute; escaneado se intentar&aacute; OCR. Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2">
-                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el archivo.
+                                    Puede analizar sin n&uacute;mero; al importar deber&aacute; tener ingresado el n&uacute;mero de cotizaci&oacute;n y pulsar <strong>Guardar n&uacute;mero</strong>.
                                 </div>
                             @endif
                             <input
@@ -382,7 +382,7 @@
                             </p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2">
-                                    Ingrese el n&uacute;mero de cotizaci&oacute;n y pulse <strong>Guardar n&uacute;mero</strong> antes de analizar el archivo.
+                                    Puede analizar sin n&uacute;mero; al importar deber&aacute; tener ingresado el n&uacute;mero de cotizaci&oacute;n y pulsar <strong>Guardar n&uacute;mero</strong>.
                                 </div>
                             @endif
                             <div class="row g-2 mb-2">
@@ -2389,12 +2389,6 @@
     }
 
     async function analizarImportPdf() {
-        if (!asegurarNumeroCotizacionGuardada({
-            mensajeVacio: 'Debe ingresar la cotización antes de analizar el PDF o Word.',
-            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el PDF o Word.',
-            titulo: 'Número de cotización',
-        })) return;
-
         importModo = 'pdf';
         importCodigoApi = null;
         importExcelFile = null;
@@ -2483,12 +2477,6 @@
     }
 
     async function analizarImportExcel() {
-        if (!asegurarNumeroCotizacionGuardada({
-            mensajeVacio: 'Debe ingresar la cotización antes de analizar el Excel.',
-            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de analizar el Excel.',
-            titulo: 'Número de cotización',
-        })) return;
-
         importModo = 'excel';
         importCodigoApi = null;
         importPdfFile = null;

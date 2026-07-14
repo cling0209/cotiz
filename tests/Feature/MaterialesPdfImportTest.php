@@ -47,14 +47,60 @@ class MaterialesPdfImportTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_preview_pdf_rechaza_sin_numero_cotizacion(): void
+    public function test_preview_pdf_permite_sin_numero_cotizacion(): void
     {
         $nota = $this->crearNota(['encargado' => '']);
         $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
 
+        $mock = Mockery::mock(ListadoMaterialesPdfParserService::class);
+        $mock->shouldReceive('parseDocumentoCompleto')
+            ->once()
+            ->andReturn([
+                'cabecera' => [
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ],
+                'lineas' => [
+                    ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE 12 COLORES C/U'],
+                ],
+            ]);
+        $this->app->instance(ListadoMaterialesPdfParserService::class, $mock);
+
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
             ['pdf' => $pdf],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('resumen.total', 1);
+    }
+
+    public function test_importar_pdf_rechaza_sin_numero_cotizacion(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-pdf', $nota->nronota),
+            [
+                'desde' => 0,
+                'hasta' => 1,
+                'cabecera_json' => json_encode([
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ]),
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => 'pdf:abc123',
+                        'descripcion' => 'ACUARELAS DE 12 COLORES C/U',
+                        'cantidad' => 40,
+                        'categoria' => '',
+                    ],
+                ]),
+            ],
         );
 
         $response->assertStatus(422);
