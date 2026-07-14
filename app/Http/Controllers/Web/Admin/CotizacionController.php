@@ -919,6 +919,7 @@ class CotizacionController extends Controller
         return response()->json([
             'data' => $productos->map(fn (Maeprod $p) => [
                 'prod_item' => (string) $p->prod_item,
+                'prod_item_softland' => (string) ($p->prod_item_softland ?? ''),
                 'prod_nombre' => $p->prod_nombre,
                 'prod_valor' => $p->prod_valor,
                 'prod_valor_costo' => $p->prod_valor_costo,

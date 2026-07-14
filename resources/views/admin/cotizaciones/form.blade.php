@@ -3216,6 +3216,7 @@
                             parseInt(p.prod_valor, 10) || 0,
                             p.prod_nombre || '',
                             b,
+                            p.prod_item_softland || '',
                         );
                     });
                 });
@@ -3253,6 +3254,13 @@
 
         const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
         if (hiddenProd) hiddenProd.value = codigoRaw;
+
+        const softlandInput = tr.querySelector('input[name*="[prod_item_softland]"]');
+        if (softlandInput) {
+            softlandInput.value = linea.prod_item_softland != null
+                ? String(linea.prod_item_softland)
+                : '';
+        }
 
         const nombreCell = tr.querySelector('.linea-prod-nombre');
         if (nombreCell) {
@@ -3305,7 +3313,7 @@
         return true;
     }
 
-    async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl) {
+    async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl, softland) {
         if (vincularOrdenActual == null || !vincularAgileIdActual) return;
 
         const filaIdx = vincularFilaActual;
@@ -3353,11 +3361,15 @@
 
             const linea = json.linea || {
                 prod_item: codigo,
+                prod_item_softland: softland != null ? String(softland) : '',
                 prod_nombre: nombre,
                 prod_valor: venta,
                 prod_valor_costo: costo,
                 subtotal: venta * (parseInt(document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"] .linea-cantidad')?.value || '1', 10) || 1),
             };
+            if (linea.prod_item_softland == null && softland != null) {
+                linea.prod_item_softland = String(softland);
+            }
 
             const actualizado = actualizarFilaVinculada(filaIdx, ordenEnvio, agileId, linea);
             cerrarPopupVincularAgile();

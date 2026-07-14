@@ -489,18 +489,20 @@ class NotaDetalleService
                 $producto->update($updates);
             }
 
-            [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua($producto->fresh()->prod_valor_fecha);
+            $productoActualizado = $producto->fresh();
+            [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua($productoActualizado?->prod_valor_fecha);
 
             return [
                 'prod_item' => $codigo,
-                'prod_nombre' => (string) $producto->prod_nombre,
+                'prod_item_softland' => (string) ($productoActualizado?->prod_item_softland ?? $producto->prod_item_softland ?? ''),
+                'prod_nombre' => (string) ($productoActualizado?->prod_nombre ?? $producto->prod_nombre),
                 'prod_valor' => $valor,
                 'prod_valor_costo' => $costo,
                 'prod_valor_fecha_fmt' => $fechaFmt,
                 'prod_valor_fecha_antigua' => $fechaAntigua,
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
-                'image_url' => $producto->imageUrl(),
+                'image_url' => ($productoActualizado ?? $producto)->imageUrl(),
                 'subtotal' => $valor * (int) $linea->cantidad,
             ];
         });
