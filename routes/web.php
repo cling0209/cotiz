@@ -124,6 +124,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('superadmin')->group(function () {
             Route::get('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'index'])
                 ->name('oportunidades.para-cotizar.index');
+            Route::post('oportunidades/para-cotizar/iniciar', [OportunidadParaCotizarController::class, 'iniciar'])
+                ->name('oportunidades.para-cotizar.iniciar');
+            Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
+                ->name('oportunidades.para-cotizar.paso');
             Route::get('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'index'])
                 ->name('oportunidades.palabras-clave.index');
             Route::post('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'store'])
