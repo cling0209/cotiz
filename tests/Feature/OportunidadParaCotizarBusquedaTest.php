@@ -55,7 +55,10 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ], 200),
         ]);
 
-        $user = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
         OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'created_by' => $user->id]);
 
         $this->actingAs($user)
@@ -79,7 +82,10 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
     {
         config(['cotiz.mercadopublico.ticket' => 'ticket-test']);
 
-        $user = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
 
         $this->actingAs($user)
             ->postJson(route('admin.oportunidades.para-cotizar.iniciar'))

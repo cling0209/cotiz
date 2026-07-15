@@ -121,7 +121,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
         });
 
-        Route::middleware('superadmin')->group(function () {
+        Route::middleware('oportunidades-admin')->group(function () {
             Route::get('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'index'])
                 ->name('oportunidades.para-cotizar.index');
             Route::post('oportunidades/para-cotizar/iniciar', [OportunidadParaCotizarController::class, 'iniciar'])
@@ -134,7 +134,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.palabras-clave.store');
             Route::delete('oportunidades/palabras-clave/{palabra}', [OportunidadPalabraClaveController::class, 'destroy'])
                 ->name('oportunidades.palabras-clave.destroy');
+        });
 
+        Route::middleware('superadmin')->group(function () {
             Route::get('cotizaciones/adjudicadas', [AdjudicadaListadoController::class, 'index'])->name('cotizaciones.adjudicadas.index');
             Route::get('cotizaciones/adjudicadas/export/detalle', [AdjudicadaListadoController::class, 'exportDetalle'])->name('cotizaciones.adjudicadas.export.detalle');
             Route::get('cotizaciones/adjudicadas/export/sin-codigo-softland', [AdjudicadaListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.adjudicadas.export.sin-codigo-softland');

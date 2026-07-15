@@ -54,9 +54,11 @@
                         <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
-                <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
-                    <i class="bi bi-lightning-charge"></i> Oportunidades
-                </a>
+                @if(auth()->user()->canAccessOportunidades())
+                    <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
+                        <i class="bi bi-lightning-charge"></i> Oportunidades
+                    </a>
+                @endif
                 <div class="dropdown">
                     <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
@@ -75,12 +77,14 @@
                                 <i class="bi bi-people"></i> Usuarios
                             </a>
                         </li>
-                        <li>
-                            <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
-                               href="{{ route('admin.oportunidades.palabras-clave.index') }}">
-                                <i class="bi bi-tags"></i> Palabras clave
-                            </a>
-                        </li>
+                        @if(auth()->user()->canAccessOportunidades())
+                            <li>
+                                <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
+                                   href="{{ route('admin.oportunidades.palabras-clave.index') }}">
+                                    <i class="bi bi-tags"></i> Palabras clave
+                                </a>
+                            </li>
+                        @endif
                     </ul>
                 </div>
             @elseif(auth()->user()->isEjecutivo())

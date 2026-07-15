@@ -61,6 +61,12 @@ class User extends Authenticatable
             && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
     }
 
+    /** Oportunidades / palabras clave: solo usuario admin mientras esté en desarrollo. */
+    public function canAccessOportunidades(): bool
+    {
+        return $this->username === 'admin';
+    }
+
     public function canAccessCompraAgilResultados(): bool
     {
         return in_array($this->perfil, [self::PERFIL_SUPERADMIN, self::PERFIL_ADMIN_CLIENTE], true)

@@ -30,7 +30,10 @@ class OportunidadPalabraClaveRelayTest extends TestCase
             ], 200),
         ]);
 
-        $user = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
 
         $this->actingAs($user)
             ->post(route('admin.oportunidades.palabras-clave.store'), [
@@ -105,7 +108,10 @@ class OportunidadPalabraClaveRelayTest extends TestCase
             'cotiza.reicol.cl/up' => Http::response('ok', 200),
         ]);
 
-        $user = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
 
         $this->actingAs($user)
             ->post(route('admin.oportunidades.palabras-clave.store'), [

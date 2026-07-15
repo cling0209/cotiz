@@ -36,6 +36,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_superadmin_puede_agregar_y_eliminar_palabra_clave(): void
     {
         $user = User::factory()->create([
+            'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
@@ -62,6 +63,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_no_permite_duplicados(): void
     {
         $user = User::factory()->create([
+            'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
@@ -82,6 +84,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_para_cotizar_muestra_aviso_sin_palabras(): void
     {
         $user = User::factory()->create([
+            'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
@@ -94,6 +97,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_para_cotizar_no_busca_sin_parametro(): void
     {
         $user = User::factory()->create([
+            'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
