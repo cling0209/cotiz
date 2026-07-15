@@ -86,6 +86,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>Cotizaci&oacute;n</th>
+                        <th>Organismo</th>
                         <th>Fecha publicaci&oacute;n</th>
                         <th>Fecha cierre</th>
                         <th class="text-end">Presupuesto</th>
@@ -197,7 +198,7 @@
         relEncontradas.textContent = String(items.length);
 
         if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
@@ -208,11 +209,13 @@
             const codigo = String(item.codigo || '').toUpperCase();
             const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
             const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;">${escapeHtml(item.nombre)}</div>` : '';
+            const organismo = String(item.organismo || '').trim() || '—';
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
             return `<tr${attrs}>
                 <td><code>${escapeHtml(codigo || '—')}</code>${nombre}</td>
+                <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_publicacion))}</td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_cierre))}</td>
                 <td class="text-end tabular-nums text-nowrap">${fmtMonto(item.monto_presupuesto_clp)}</td>
