@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="{{ asset('css/admin.css') }}?v=login-bg9" rel="stylesheet">
+    <link href="{{ asset('css/admin.css') }}?v=dropdown-mantenedores" rel="stylesheet">
     <link href="{{ asset('css/page-loader.css') }}?v=bright" rel="stylesheet">
     @stack('head')
 </head>
@@ -65,15 +65,21 @@
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li>
                             <a class="dropdown-item {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}"
-                               href="{{ route('admin.productos.index') }}">Productos</a>
+                               href="{{ route('admin.productos.index') }}">
+                                <i class="bi bi-box-seam"></i> Productos
+                            </a>
                         </li>
                         <li>
                             <a class="dropdown-item {{ request()->routeIs('admin.users.*') ? 'active' : '' }}"
-                               href="{{ route('admin.users.index') }}">Usuarios</a>
+                               href="{{ route('admin.users.index') }}">
+                                <i class="bi bi-people"></i> Usuarios
+                            </a>
                         </li>
                         <li>
                             <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
-                               href="{{ route('admin.oportunidades.palabras-clave.index') }}">Palabras clave</a>
+                               href="{{ route('admin.oportunidades.palabras-clave.index') }}">
+                                <i class="bi bi-tags"></i> Palabras clave
+                            </a>
                         </li>
                     </ul>
                 </div>
