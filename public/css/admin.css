@@ -145,11 +145,14 @@
     min-height: calc(100vh - 56px);
 }
 
-.admin-main .card.shadow-sm {
-    border: 1px solid rgba(59, 130, 246, 0.1);
-    border-radius: 0.85rem;
-    box-shadow: 0 4px 24px rgba(37, 99, 235, 0.07) !important;
+.admin-main .table tbody tr.oportunidad-fila {
+    cursor: pointer;
 }
+
+.admin-main .table tbody tr.oportunidad-fila:hover {
+    background: #eff6ff;
+}
+
 
 .admin-main .card-header {
     background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);

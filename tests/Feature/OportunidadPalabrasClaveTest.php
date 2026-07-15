@@ -90,4 +90,22 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->assertOk()
             ->assertSee('No hay palabras clave configuradas', false);
     }
+
+    public function test_para_cotizar_no_busca_sin_parametro(): void
+    {
+        $user = User::factory()->create([
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk()
+            ->assertSee('Buscar cotizaciones', false)
+            ->assertSee('Pulse', false);
+    }
 }

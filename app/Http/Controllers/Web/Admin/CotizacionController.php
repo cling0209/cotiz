@@ -33,8 +33,14 @@ class CotizacionController extends Controller
         $usuario = $request->user()->username;
 
         if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+            $params = ['nronota' => $pendiente->nronota];
+            $codigoPendiente = strtoupper(trim((string) $request->query('codigo', '')));
+            if ($codigoPendiente !== '') {
+                $params['codigo'] = $codigoPendiente;
+            }
+
             return redirect()
-                ->route('admin.cotizaciones.edit', $pendiente->nronota)
+                ->route('admin.cotizaciones.edit', $params)
                 ->with('error', 'Complete el número de cotización de la nota #'.$pendiente->nronota.' antes de crear otra.');
         }
 
@@ -46,8 +52,16 @@ class CotizacionController extends Controller
                 ->with('error', 'No se pudo crear la cotización. Intente nuevamente o contacte al administrador.');
         }
 
-        return redirect()->route('admin.cotizaciones.edit', $nota->nronota)
-            ->with('info', 'Importe desde Compra Ágil para comenzar.');
+        $codigo = strtoupper(trim((string) $request->query('codigo', '')));
+        $params = ['nronota' => $nota->nronota];
+        if ($codigo !== '') {
+            $params['codigo'] = $codigo;
+        }
+
+        return redirect()->route('admin.cotizaciones.edit', $params)
+            ->with('info', $codigo !== ''
+                ? 'Importando Compra Ágil '.$codigo.'…'
+                : 'Importe desde Compra Ágil para comenzar.');
     }
 
     public function retomar(Request $request): RedirectResponse
@@ -76,6 +90,7 @@ class CotizacionController extends Controller
 
         $lineas = $this->detalleService->lineasDeNota($nota);
         $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
+        $codigoImportar = strtoupper(trim((string) $request->query('codigo', '')));
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
@@ -88,6 +103,7 @@ class CotizacionController extends Controller
             'abrirImportarAlInicio' => $request->query('from') !== 'adjudicadas'
                 && $nota->requiereNumeroCotizacion()
                 && $lineas->isEmpty(),
+            'codigoImportarCompraAgil' => $codigoImportar,
             'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
         ]);

@@ -502,6 +502,7 @@
 (function () {
     let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
     const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
+    const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
     const desdeAdjudicadas = @json($desdeAdjudicadas);
     const detalleColspan = @json($detalleColspan);
     const mensajeSinLineas = desdeAdjudicadas
@@ -3420,11 +3421,22 @@
         });
     @endif
 
-    if (abrirImportarAlInicio && bsModalImportar) {
+    if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar) {
         resetImportCompraAgilModal();
         actualizarResumenLineas(resumenLineasInicial);
+        if (codigoImportarCompraAgil) {
+            const inputCodigo = document.getElementById('ca-api-codigo');
+            if (inputCodigo) {
+                inputCodigo.value = codigoImportarCompraAgil;
+            }
+            document.getElementById('tab-ca-codigo')?.click();
+        }
         bsModalImportar.show();
-        setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+        if (codigoImportarCompraAgil) {
+            setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
+        } else {
+            setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+        }
     }
 })();
 </script>
