@@ -1,12 +1,12 @@
 @extends('layouts.admin')
 
-@section('title', 'Para cotizar')
+@section('title', 'Oportunidades')
 
 @section('content')
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h1 class="h3 mb-1">Para cotizar</h1>
+            <h1 class="h3 mb-1">Oportunidades</h1>
             <p class="text-muted mb-0 small">
                 Compras &Aacute;giles publicadas que coinciden con sus palabras clave.
                 Orden: presupuesto m&aacute;s alto y regi&oacute;n m&aacute;s cerca de Santiago.

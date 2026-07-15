@@ -54,15 +54,22 @@
                         <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
+                <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
+                    <i class="bi bi-lightning-charge"></i> Oportunidades
+                </a>
                 <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.oportunidades.*') ? 'active' : '' }}"
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-lightning-charge"></i> Oportunidades
+                        <i class="bi bi-gear"></i> Mantenedores
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li>
-                            <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}"
-                               href="{{ route('admin.oportunidades.para-cotizar.index') }}">Para cotizar</a>
+                            <a class="dropdown-item {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}"
+                               href="{{ route('admin.productos.index') }}">Productos</a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ request()->routeIs('admin.users.*') ? 'active' : '' }}"
+                               href="{{ route('admin.users.index') }}">Usuarios</a>
                         </li>
                         <li>
                             <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
@@ -70,29 +77,7 @@
                         </li>
                     </ul>
                 </div>
-                <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
-                    <i class="bi bi-box-seam"></i> Productos
-                </a>
-                <a href="{{ route('admin.users.index') }}" class="nav-link-admin {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                    <i class="bi bi-people"></i> Usuarios
-                </a>
             @elseif(auth()->user()->isEjecutivo())
-                <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.oportunidades.*') ? 'active' : '' }}"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-lightning-charge"></i> Oportunidades
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}"
-                               href="{{ route('admin.oportunidades.para-cotizar.index') }}">Para cotizar</a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
-                               href="{{ route('admin.oportunidades.palabras-clave.index') }}">Palabras clave</a>
-                        </li>
-                    </ul>
-                </div>
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
                 </a>

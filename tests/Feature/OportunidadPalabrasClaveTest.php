@@ -11,10 +11,10 @@ class OportunidadPalabrasClaveTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_ejecutivo_puede_agregar_y_eliminar_palabra_clave(): void
+    public function test_superadmin_puede_agregar_y_eliminar_palabra_clave(): void
     {
         $user = User::factory()->create([
-            'perfil' => User::PERFIL_EJECUTIVO,
+            'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
         $this->actingAs($user)
@@ -40,7 +40,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_no_permite_duplicados(): void
     {
         $user = User::factory()->create([
-            'perfil' => User::PERFIL_EJECUTIVO,
+            'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
         OportunidadPalabraClave::query()->create([
@@ -60,7 +60,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_para_cotizar_muestra_aviso_sin_palabras(): void
     {
         $user = User::factory()->create([
-            'perfil' => User::PERFIL_EJECUTIVO,
+            'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
         $this->actingAs($user)

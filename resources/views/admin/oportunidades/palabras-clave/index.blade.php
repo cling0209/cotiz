@@ -9,11 +9,11 @@
             <h1 class="h3 mb-1">Palabras clave</h1>
             <p class="text-muted mb-0 small">
                 Temas que usa el sistema para encontrar oportunidades publicadas en Compra &Aacute;gil.
-                Luego aparecen en <a href="{{ route('admin.oportunidades.para-cotizar.index') }}">Para cotizar</a>.
+                Luego aparecen en <a href="{{ route('admin.oportunidades.para-cotizar.index') }}">Oportunidades</a>.
             </p>
         </div>
         <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="btn btn-outline-primary btn-sm">
-            <i class="bi bi-briefcase"></i> Ver para cotizar
+            <i class="bi bi-lightning-charge"></i> Ver oportunidades
         </a>
     </div>
 
