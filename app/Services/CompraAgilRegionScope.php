@@ -86,6 +86,38 @@ class CompraAgilRegionScope
         return self::NOMBRES_REGION[$codigo] ?? 'Región '.$codigo;
     }
 
+    /**
+     * Distancia relativa a la Región Metropolitana (menor = más cerca de Santiago).
+     * Usado para ordenar oportunidades: presupuesto, luego cercanía.
+     */
+    public static function distanciaASantiago(?int $region): int
+    {
+        if ($region === null) {
+            return 99;
+        }
+
+        static $orden = [
+            13 => 0,  // Metropolitana
+            5 => 1,   // Valparaíso
+            6 => 2,   // O'Higgins
+            7 => 3,   // Maule
+            16 => 4,  // Ñuble
+            4 => 5,   // Coquimbo
+            8 => 6,   // Biobío
+            14 => 7,  // Los Ríos
+            9 => 8,   // Araucanía
+            3 => 9,   // Atacama
+            10 => 10, // Los Lagos
+            2 => 11,  // Antofagasta
+            1 => 12,  // Tarapacá
+            15 => 13, // Arica y Parinacota
+            11 => 14, // Aysén
+            12 => 15, // Magallanes
+        ];
+
+        return $orden[$region] ?? 50;
+    }
+
     private static function regionFueraDeAlcance(?int $region): bool
     {
         if ($region === null) {

@@ -53,6 +53,28 @@
     background: rgba(255, 255, 255, 0.15);
 }
 
+.admin-navbar .dropdown-toggle {
+    cursor: pointer;
+}
+
+.admin-navbar .dropdown-menu {
+    border: 1px solid rgba(37, 99, 235, 0.12);
+    border-radius: 0.65rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    padding: 0.35rem;
+}
+
+.admin-navbar .dropdown-item {
+    border-radius: 0.45rem;
+    font-size: 0.9rem;
+}
+
+.admin-navbar .dropdown-item.active,
+.admin-navbar .dropdown-item:active {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
 .admin-main {
     min-height: calc(100vh - 56px);
 }

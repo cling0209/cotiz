@@ -12,6 +12,8 @@ use App\Http\Controllers\Web\Admin\CotizacionController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
 use App\Http\Controllers\Web\Admin\CotizacionListadoController;
 use App\Http\Controllers\Web\Admin\MaeprodController;
+use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
+use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
 use App\Http\Controllers\Web\Admin\PasswordResetController;
 use App\Http\Controllers\Web\Admin\UserController;
 use Illuminate\Support\Facades\Route;
@@ -70,6 +72,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
         Route::get('productos/{prod_item}/imagen', [MaeprodController::class, 'editImagen'])->name('productos.imagen.edit')->where('prod_item', '[^/]+');
         Route::put('productos/{prod_item}/imagen', [MaeprodController::class, 'updateImagen'])->name('productos.imagen.update')->where('prod_item', '[^/]+');
+
+        Route::get('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'index'])
+            ->name('oportunidades.para-cotizar.index');
+        Route::get('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'index'])
+            ->name('oportunidades.palabras-clave.index');
+        Route::post('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'store'])
+            ->name('oportunidades.palabras-clave.store');
+        Route::delete('oportunidades/palabras-clave/{palabra}', [OportunidadPalabraClaveController::class, 'destroy'])
+            ->name('oportunidades.palabras-clave.destroy');
+
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
         Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/cabecera', [CotizacionController::class, 'guardarCabecera'])->name('cotizaciones.cabecera.store')->whereNumber('nronota');
