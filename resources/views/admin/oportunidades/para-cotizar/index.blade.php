@@ -70,13 +70,8 @@
     </div>
 
     <div id="oportunidad-placeholder" class="card shadow-sm @if($palabras === []) d-none @endif">
-        <div class="card-body text-center py-5">
-            <p class="text-danger fw-bold display-6 mb-3">
-                NO USAR A&Uacute;N — EST&Aacute; EN DESARROLLO
-            </p>
-            <p class="text-muted mb-0">
-                Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico (solo publicadas hoy).
-            </p>
+        <div class="card-body text-center text-muted py-5">
+            Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico (solo publicadas hoy).
         </div>
     </div>
 
