@@ -65,6 +65,7 @@ class OportunidadPalabraClaveController extends Controller
             return redirect()
                 ->route('admin.oportunidades.palabras-clave.index')
                 ->with('success', $mensajeLocal)
+                ->with('info', 'El otro sitio no respondió; se sincronizará al levantar el contenedor.')
                 ->with('error', $e->getMessage());
         }
     }
@@ -89,6 +90,7 @@ class OportunidadPalabraClaveController extends Controller
             return redirect()
                 ->route('admin.oportunidades.palabras-clave.index')
                 ->with('success', $mensajeLocal)
+                ->with('info', 'El otro sitio no respondió; se sincronizará al levantar el contenedor.')
                 ->with('error', $e->getMessage());
         }
     }

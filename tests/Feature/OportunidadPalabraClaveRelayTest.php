@@ -88,4 +88,42 @@ class OportunidadPalabraClaveRelayTest extends TestCase
 
         $this->assertSame('https://cotiza.romulo.cl/api/v1/palabra-clave', $url);
     }
+
+    public function test_si_par_cae_encola_y_sync_reintenta(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::sequence()
+                ->push('Service Unavailable', 503)
+                ->push(['resultado' => 'OK', 'created' => true, 'frase' => 'limpieza'], 200),
+            'cotiza.reicol.cl/up' => Http::response('ok', 200),
+        ]);
+
+        $user = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.store'), [
+                'frase' => 'limpieza',
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'))
+            ->assertSessionHas('info');
+
+        $this->assertDatabaseHas('oportunidad_palabra_clave_sync_pendientes', [
+            'accion' => 'graba',
+            'frase' => 'limpieza',
+        ]);
+
+        $this->artisan('oportunidad:sync-palabras-par', ['--sin-wake' => true, '--solo-pendientes' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('oportunidad_palabra_clave_sync_pendientes', [
+            'frase' => 'limpieza',
+        ]);
+    }
 }

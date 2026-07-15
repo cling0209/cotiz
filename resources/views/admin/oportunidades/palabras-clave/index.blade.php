@@ -11,6 +11,7 @@
                 Temas que usa el sistema para encontrar oportunidades publicadas en Compra &Aacute;gil.
                 Luego aparecen en <a href="{{ route('admin.oportunidades.para-cotizar.index') }}">Oportunidades</a>.
                 Al agregar o eliminar se replica tambi&eacute;n en el otro sitio (Reicol &harr; Romulo).
+                Si el par est&aacute; dormido, queda pendiente y se sincroniza al levantar el contenedor.
             </p>
         </div>
         <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="btn btn-outline-primary btn-sm">

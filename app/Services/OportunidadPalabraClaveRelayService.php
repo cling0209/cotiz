@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Models\OportunidadPalabraClave;
+use App\Models\OportunidadPalabraClaveSyncPendiente;
+use App\Support\CotizInstanciaPar;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class OportunidadPalabraClaveRelayService
@@ -23,6 +26,110 @@ class OportunidadPalabraClaveRelayService
     public function replicarEliminar(string $frase): string
     {
         return $this->enviar('elimina', $frase);
+    }
+
+    /**
+     * Guarda operación para reintentar cuando el sitio par despierte.
+     */
+    public function encolarPendiente(string $accion, string $frase, ?string $error = null): void
+    {
+        $frase = $this->normalizarFrase($frase);
+        if ($frase === '' || ! in_array($accion, ['graba', 'elimina'], true)) {
+            return;
+        }
+
+        // graba y elimina de la misma frase se anulan: deja solo la última intención.
+        OportunidadPalabraClaveSyncPendiente::query()
+            ->where('frase', $frase)
+            ->delete();
+
+        OportunidadPalabraClaveSyncPendiente::query()->create([
+            'accion' => $accion,
+            'frase' => $frase,
+            'intentos' => 0,
+            'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
+        ]);
+    }
+
+    /**
+     * Despierta el par (/up), reintenta pendientes y empuja frases locales (idempotente).
+     *
+     * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, push_ok: int, push_fail: int, mensaje: string}
+     */
+    public function sincronizarConPar(bool $despertar = true, bool $pushTodas = true): array
+    {
+        if ($this->urlDestino() === '') {
+            return [
+                'ok' => false,
+                'pendientes_ok' => 0,
+                'pendientes_fail' => 0,
+                'push_ok' => 0,
+                'push_fail' => 0,
+                'mensaje' => 'Sin URL del sitio par configurada.',
+            ];
+        }
+
+        if ($despertar) {
+            $this->despertarSitioPar();
+        }
+
+        $pendientesOk = 0;
+        $pendientesFail = 0;
+
+        $pendientes = OportunidadPalabraClaveSyncPendiente::query()
+            ->orderBy('id')
+            ->get();
+
+        foreach ($pendientes as $pendiente) {
+            try {
+                $this->enviar($pendiente->accion, $pendiente->frase, false);
+                $pendiente->delete();
+                $pendientesOk++;
+            } catch (\Throwable $e) {
+                $pendientesFail++;
+                $pendiente->intentos = (int) $pendiente->intentos + 1;
+                $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
+                $pendiente->save();
+                Log::warning('Sync palabra clave pendiente falló', [
+                    'accion' => $pendiente->accion,
+                    'frase' => $pendiente->frase,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $pushOk = 0;
+        $pushFail = 0;
+
+        if ($pushTodas) {
+            $frases = OportunidadPalabraClave::query()
+                ->orderBy('frase')
+                ->pluck('frase');
+
+            foreach ($frases as $frase) {
+                try {
+                    $this->enviar('graba', (string) $frase, false);
+                    $pushOk++;
+                } catch (\Throwable $e) {
+                    $pushFail++;
+                    $this->encolarPendiente('graba', (string) $frase, $e->getMessage());
+                }
+            }
+        }
+
+        $ok = $pendientesFail === 0 && $pushFail === 0;
+        $peer = $this->nombreInstanciaPar($this->urlDestino());
+
+        return [
+            'ok' => $ok,
+            'pendientes_ok' => $pendientesOk,
+            'pendientes_fail' => $pendientesFail,
+            'push_ok' => $pushOk,
+            'push_fail' => $pushFail,
+            'mensaje' => $ok
+                ? 'Sincronización con '.$peer.' OK (pendientes: '.$pendientesOk.', frases: '.$pushOk.').'
+                : 'Sincronización parcial con '.$peer.' (fallos pendientes: '.$pendientesFail.', push: '.$pushFail.').',
+        ];
     }
 
     /**
@@ -60,7 +167,10 @@ class OportunidadPalabraClaveRelayService
         throw new RuntimeException('Accion no existe: '.$accion);
     }
 
-    private function enviar(string $accion, string $frase): string
+    /**
+     * @param  bool  $encolarSiFalla  Si true, encola al fallar (uso admin). Si false, solo lanza (uso sync).
+     */
+    private function enviar(string $accion, string $frase, bool $encolarSiFalla = true): string
     {
         $frase = $this->normalizarFrase($frase);
         $destino = $this->urlDestino();
@@ -94,25 +204,37 @@ class OportunidadPalabraClaveRelayService
                 ->withBasicAuth($userAuth, $passwordAuth)
                 ->post($destino, $payload);
         } catch (\Throwable $e) {
-            throw new RuntimeException(
-                'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage()
-            );
+            $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
+            if ($encolarSiFalla) {
+                $this->encolarPendiente($accion, $frase, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException($this->mensajeErrorHttp($response, $destino, $peer));
+            $mensaje = $this->mensajeErrorHttp($response, $destino, $peer);
+            if ($encolarSiFalla) {
+                $this->encolarPendiente($accion, $frase, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
         }
 
         $data = $response->json();
         if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
-            $mensaje = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
-
-            throw new RuntimeException(
-                $mensaje !== ''
-                    ? $peer.': '.$mensaje
-                    : 'Respuesta inválida de '.$peer.'.'
-            );
+            $detalle = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
+            $mensaje = $detalle !== ''
+                ? $peer.': '.$detalle
+                : 'Respuesta inválida de '.$peer.'.';
+            if ($encolarSiFalla) {
+                $this->encolarPendiente($accion, $frase, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
         }
+
+        // Éxito: limpia pendiente opuesta/igual si existía.
+        OportunidadPalabraClaveSyncPendiente::query()
+            ->where('frase', $frase)
+            ->delete();
 
         if ($accion === 'graba') {
             $created = (bool) ($data['created'] ?? true);
@@ -127,6 +249,23 @@ class OportunidadPalabraClaveRelayService
         return $deleted
             ? 'También se eliminó en '.$peer.'.'
             : 'En '.$peer.' la frase no existía (nada que borrar).';
+    }
+
+    private function despertarSitioPar(): void
+    {
+        $url = CotizInstanciaPar::urlDespertarSitioPar();
+        if ($url === '') {
+            return;
+        }
+
+        try {
+            Http::timeout(5)->get($url);
+        } catch (\Throwable $e) {
+            Log::info('Wake sitio par (/up) para sync palabras clave: sin respuesta aún', [
+                'url' => $url,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function urlDestino(): string

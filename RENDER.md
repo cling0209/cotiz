@@ -102,6 +102,8 @@ Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
 | `COTIZ_SISTEMA` | Nombre de esta instancia (Romulo / Reicol) | `Romulo` |
 | `COTIZ_API_USUARIO_URL` | URL del par para replicar usuarios al crear | Romulo: `https://cotiza.reicol.cl/api/v1/usuario` — Reicol: `https://cotiza.romulo.cl/api/v1/usuario` |
 | `COTIZ_API_PALABRA_CLAVE_URL` | URL del par para replicar palabras clave (opcional) | Si vacío, se deriva de `COTIZ_API_USUARIO_URL` (`.../palabra-clave`) |
+
+Al agregar/eliminar palabras clave se replica al par. Si el par está dormido, la operación queda pendiente y se reintenta al **boot** del contenedor (`oportunidad:sync-palabras-par --solo-pendientes`: wake `/up` + cola pendiente).
 | `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | **Obligatorias** — mismas credenciales en Romulo y Reicol |
 | `COTIZ_API_CONSULTA_NRO_COTIZACION` | URL consulta duplicados (opcional) | Si vacío y `APP_URL` es `cotiza.reicol.cl` o `cotiza.romulo.cl`, se usa el par automáticamente |
 

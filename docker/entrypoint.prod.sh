@@ -63,12 +63,14 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Queue worker loop PID: $!" >&2
 fi
 
-# Si Render dormía en el horario programado, encolar catch-up al boot.
-# También hay catch-up al login admin (AuthController).
+# Catch-up consulta MP + sync palabras clave con sitio par (si estaba dormido).
 if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   echo "Catch-up consulta MP programada (si el slot se perdió por sleep)..." >&2
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true
 fi
+
+echo "Sync palabras clave pendientes con sitio par (wake /up)..." >&2
+run_as_www 'php artisan oportunidad:sync-palabras-par --solo-pendientes --no-interaction 2>&1' || true
 
 # Scheduler Laravel (consulta MP a las 10 y 19, u horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
 if [ "${RUN_SCHEDULER:-true}" = "true" ]; then
