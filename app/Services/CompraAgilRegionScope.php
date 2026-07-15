@@ -27,14 +27,34 @@ class CompraAgilRegionScope
         16 => 'Ñuble',
     ];
 
+    /** Regiones fuera del área de operación (siempre, aunque estén en config). */
+    private const REGIONES_SIEMPRE_EXCLUIDAS = [
+        12, // Magallanes
+    ];
+
+    /**
+     * Comunas excluidas (Isla de Pascua pertenece a Valparaíso en la API).
+     *
+     * @var list<string>
+     */
+    private const COMUNAS_EXCLUIDAS_CONTIENEN = [
+        'isla de pascua',
+        'rapa nui',
+    ];
+
     /** @return list<int> */
     public static function regionesIncluidas(): array
     {
         $regiones = config('cotiz.mercadopublico.regiones', []);
 
-        return is_array($regiones)
+        $incluidas = is_array($regiones)
             ? array_values(array_unique(array_map('intval', $regiones)))
             : [];
+
+        return array_values(array_filter(
+            $incluidas,
+            fn (int $codigo) => ! in_array($codigo, self::REGIONES_SIEMPRE_EXCLUIDAS, true),
+        ));
     }
 
     /**
@@ -44,6 +64,11 @@ class CompraAgilRegionScope
     {
         $institucion = is_array($item['institucion'] ?? null) ? $item['institucion'] : [];
         $region = isset($institucion['region']) ? (int) $institucion['region'] : null;
+        $comuna = trim((string) ($institucion['comuna'] ?? $institucion['nombre_comuna'] ?? ''));
+
+        if (self::comunaExcluida($comuna)) {
+            return true;
+        }
 
         return self::regionFueraDeAlcance($region);
     }
@@ -54,13 +79,18 @@ class CompraAgilRegionScope
     public static function debeExcluirResumen(array $resumen): bool
     {
         $region = isset($resumen['region']) ? (int) $resumen['region'] : null;
+        $comuna = trim((string) ($resumen['comuna'] ?? ''));
+
+        if (self::comunaExcluida($comuna)) {
+            return true;
+        }
 
         return self::regionFueraDeAlcance($region);
     }
 
     public static function mensajeZonaExcluida(): string
     {
-        return 'Esta Compra Ágil pertenece a una región fuera del área de operación configurada.';
+        return 'Esta Compra Ágil pertenece a una zona fuera del área de operación (Magallanes o Isla de Pascua).';
     }
 
     /**
@@ -112,7 +142,6 @@ class CompraAgilRegionScope
             1 => 12,  // Tarapacá
             15 => 13, // Arica y Parinacota
             11 => 14, // Aysén
-            12 => 15, // Magallanes
         ];
 
         return $orden[$region] ?? 50;
@@ -124,8 +153,33 @@ class CompraAgilRegionScope
             return false;
         }
 
+        if (in_array($region, self::REGIONES_SIEMPRE_EXCLUIDAS, true)) {
+            return true;
+        }
+
         $incluidas = self::regionesIncluidas();
 
         return $incluidas !== [] && ! in_array($region, $incluidas, true);
+    }
+
+    private static function comunaExcluida(string $comuna): bool
+    {
+        $norm = mb_strtolower(trim($comuna), 'UTF-8');
+        if ($norm === '') {
+            return false;
+        }
+
+        // Quitar tildes simples para matching robusto.
+        $norm = strtr($norm, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n',
+        ]);
+
+        foreach (self::COMUNAS_EXCLUIDAS_CONTIENEN as $patron) {
+            if (str_contains($norm, $patron)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

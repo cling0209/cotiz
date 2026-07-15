@@ -48,9 +48,45 @@ class CompraAgilRegionScopeTest extends TestCase
         ]));
     }
 
+    public function test_excluye_magallanes_aunque_este_en_config(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [13, 12, 5]]);
+
+        $this->assertNotContains(12, CompraAgilRegionScope::regionesIncluidas());
+        $this->assertTrue(CompraAgilRegionScope::debeExcluirItem([
+            'institucion' => ['region' => 12, 'organismo_comprador' => 'Hospital Punta Arenas'],
+        ]));
+    }
+
+    public function test_excluye_isla_de_pascua_por_comuna(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [5, 13]]);
+
+        $this->assertTrue(CompraAgilRegionScope::debeExcluirItem([
+            'institucion' => [
+                'region' => 5,
+                'comuna' => 'Isla de Pascua',
+                'organismo_comprador' => 'Municipalidad Isla de Pascua',
+            ],
+        ]));
+
+        $this->assertTrue(CompraAgilRegionScope::debeExcluirResumen([
+            'region' => 5,
+            'comuna' => 'Rapa Nui',
+        ]));
+
+        $this->assertFalse(CompraAgilRegionScope::debeExcluirItem([
+            'institucion' => [
+                'region' => 5,
+                'comuna' => 'Valparaíso',
+                'organismo_comprador' => 'Hospital Valparaíso',
+            ],
+        ]));
+    }
+
     public function test_catalogo_regiones_solo_incluidas(): void
     {
-        config(['cotiz.mercadopublico.regiones' => [13, 5, 99]]);
+        config(['cotiz.mercadopublico.regiones' => [13, 5, 12, 99]]);
 
         $catalogo = CompraAgilRegionScope::catalogoRegiones();
 

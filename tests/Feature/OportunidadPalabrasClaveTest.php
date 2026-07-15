@@ -5,11 +5,33 @@ namespace Tests\Feature;
 use App\Models\OportunidadPalabraClave;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class OportunidadPalabrasClaveTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::response([
+                'resultado' => 'OK',
+                'created' => true,
+                'deleted' => true,
+                'frase' => 'x',
+            ], 200),
+        ]);
+    }
 
     public function test_superadmin_puede_agregar_y_eliminar_palabra_clave(): void
     {

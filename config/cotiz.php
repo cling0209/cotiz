@@ -20,6 +20,10 @@ return [
     'api_usuario' => [
         'url' => env('COTIZ_API_USUARIO_URL', ''),
     ],
+    'api_palabra_clave' => [
+        // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../palabra-clave).
+        'url' => env('COTIZ_API_PALABRA_CLAVE_URL', ''),
+    ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),
         'user' => env('COTIZ_API_NOTA_USER', ''),
@@ -71,10 +75,11 @@ return [
     'mercadopublico' => [
         'base_url' => env('MERCADOPUBLICO_BASE_URL', 'https://api2.mercadopublico.cl'),
         'ticket' => env('MERCADOPUBLICO_TICKET', ''),
-        'regiones' => array_values(array_filter(array_map(
+            'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(
                 'MERCADOPUBLICO_REGIONES',
+                // Sin Magallanes (12). Isla de Pascua se excluye por comuna en código.
                 '1,2,3,4,5,6,7,8,9,10,11,13,14,15,16',
             ))),
         ))),

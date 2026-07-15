@@ -10,6 +10,7 @@
             <p class="text-muted mb-0 small">
                 Temas que usa el sistema para encontrar oportunidades publicadas en Compra &Aacute;gil.
                 Luego aparecen en <a href="{{ route('admin.oportunidades.para-cotizar.index') }}">Oportunidades</a>.
+                Al agregar o eliminar se replica tambi&eacute;n en el otro sitio (Reicol &harr; Romulo).
             </p>
         </div>
         <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="btn btn-outline-primary btn-sm">

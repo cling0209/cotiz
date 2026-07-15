@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\OportunidadPalabraClave;
+use App\Services\OportunidadPalabraClaveRelayService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -11,6 +12,10 @@ use Illuminate\View\View;
 
 class OportunidadPalabraClaveController extends Controller
 {
+    public function __construct(
+        protected OportunidadPalabraClaveRelayService $relay,
+    ) {}
+
     public function index(): View
     {
         $palabras = OportunidadPalabraClave::query()
@@ -45,18 +50,47 @@ class OportunidadPalabraClaveController extends Controller
             'created_by' => $request->user()?->id,
         ]);
 
-        return redirect()
-            ->route('admin.oportunidades.palabras-clave.index')
-            ->with('success', 'Palabra clave agregada.');
+        $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
+        $mensajeLocal = 'Palabra clave agregada en '.$local.'.';
+
+        try {
+            $mensajeRemoto = $this->relay->replicarAgregar($frase);
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal)
+                ->with('error', $e->getMessage());
+        }
     }
 
     public function destroy(OportunidadPalabraClave $palabra): RedirectResponse
     {
+        $frase = $palabra->frase;
         $palabra->delete();
 
-        return redirect()
-            ->route('admin.oportunidades.palabras-clave.index')
-            ->with('success', 'Palabra clave eliminada.');
+        $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
+        $mensajeLocal = 'Palabra clave eliminada en '.$local.'.';
+
+        try {
+            $mensajeRemoto = $this->relay->replicarEliminar($frase);
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal)
+                ->with('error', $e->getMessage());
+        }
     }
 
     private function normalizarFrase(string $frase): string
