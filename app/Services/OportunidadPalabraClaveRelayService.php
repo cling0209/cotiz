@@ -29,12 +29,52 @@ class OportunidadPalabraClaveRelayService
     }
 
     /**
-     * Guarda operación para reintentar cuando el sitio par despierte.
+     * Replica el orden de prioridad de búsqueda al sitio par.
+     *
+     * @param  list<string>  $frases  frases en orden de prioridad (1.º = más prioritaria)
      */
-    public function encolarPendiente(string $accion, string $frase, ?string $error = null): void
+    public function replicarOrden(array $frases): string
     {
+        return $this->enviarReordenar($this->normalizarListaFrases($frases));
+    }
+
+    /**
+     * Guarda operación para reintentar cuando el sitio par despierte.
+     *
+     * @param  list<string>|null  $frasesOrden  solo para accion reordenar
+     */
+    public function encolarPendiente(string $accion, string $frase, ?string $error = null, ?array $frasesOrden = null): void
+    {
+        if (! in_array($accion, ['graba', 'elimina', 'reordenar'], true)) {
+            return;
+        }
+
+        if ($accion === 'reordenar') {
+            $frases = $this->normalizarListaFrases($frasesOrden ?? []);
+            if ($frases === []) {
+                return;
+            }
+
+            OportunidadPalabraClaveSyncPendiente::query()
+                ->where(function ($q) {
+                    $q->where('accion', 'reordenar')
+                        ->orWhere('frase', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN);
+                })
+                ->delete();
+
+            OportunidadPalabraClaveSyncPendiente::query()->create([
+                'accion' => 'reordenar',
+                'frase' => OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN,
+                'payload' => json_encode($frases, JSON_UNESCAPED_UNICODE),
+                'intentos' => 0,
+                'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
+            ]);
+
+            return;
+        }
+
         $frase = $this->normalizarFrase($frase);
-        if ($frase === '' || ! in_array($accion, ['graba', 'elimina'], true)) {
+        if ($frase === '') {
             return;
         }
 
@@ -46,13 +86,14 @@ class OportunidadPalabraClaveRelayService
         OportunidadPalabraClaveSyncPendiente::query()->create([
             'accion' => $accion,
             'frase' => $frase,
+            'payload' => null,
             'intentos' => 0,
             'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
         ]);
     }
 
     /**
-     * Despierta el par (/up), reintenta pendientes y empuja frases locales (idempotente).
+     * Despierta el par (/up), reintenta pendientes y empuja frases + orden locales.
      *
      * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, push_ok: int, push_fail: int, mensaje: string}
      */
@@ -82,7 +123,12 @@ class OportunidadPalabraClaveRelayService
 
         foreach ($pendientes as $pendiente) {
             try {
-                $this->enviar($pendiente->accion, $pendiente->frase, false);
+                if ($pendiente->accion === 'reordenar') {
+                    $frases = json_decode((string) ($pendiente->payload ?? '[]'), true);
+                    $this->enviarReordenar(is_array($frases) ? $frases : [], false);
+                } else {
+                    $this->enviar($pendiente->accion, $pendiente->frase, false);
+                }
                 $pendiente->delete();
                 $pendientesOk++;
             } catch (\Throwable $e) {
@@ -103,16 +149,29 @@ class OportunidadPalabraClaveRelayService
 
         if ($pushTodas) {
             $frases = OportunidadPalabraClave::query()
-                ->orderBy('frase')
-                ->pluck('frase');
+                ->orderBy('orden')
+                ->orderBy('id')
+                ->pluck('frase')
+                ->map(fn ($f) => (string) $f)
+                ->all();
 
             foreach ($frases as $frase) {
                 try {
-                    $this->enviar('graba', (string) $frase, false);
+                    $this->enviar('graba', $frase, false);
                     $pushOk++;
                 } catch (\Throwable $e) {
                     $pushFail++;
-                    $this->encolarPendiente('graba', (string) $frase, $e->getMessage());
+                    $this->encolarPendiente('graba', $frase, $e->getMessage());
+                }
+            }
+
+            if ($frases !== []) {
+                try {
+                    $this->enviarReordenar($frases, false);
+                    $pushOk++;
+                } catch (\Throwable $e) {
+                    $pushFail++;
+                    $this->encolarPendiente('reordenar', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN, $e->getMessage(), $frases);
                 }
             }
         }
@@ -127,7 +186,7 @@ class OportunidadPalabraClaveRelayService
             'push_ok' => $pushOk,
             'push_fail' => $pushFail,
             'mensaje' => $ok
-                ? 'Sincronización con '.$peer.' OK (pendientes: '.$pendientesOk.', frases: '.$pushOk.').'
+                ? 'Sincronización con '.$peer.' OK (pendientes: '.$pendientesOk.', push: '.$pushOk.').'
                 : 'Sincronización parcial con '.$peer.' (fallos pendientes: '.$pendientesFail.', push: '.$pushFail.').',
         ];
     }
@@ -135,10 +194,15 @@ class OportunidadPalabraClaveRelayService
     /**
      * Aplica recepción remota. Idempotente. No vuelve a relay (evita bucle).
      *
-     * @return array{ok: bool, created?: bool, deleted?: bool, frase: string}
+     * @param  list<string>|null  $frases
+     * @return array{ok: bool, created?: bool, deleted?: bool, actualizados?: int, frase: string}
      */
-    public function recibir(string $accion, string $frase): array
+    public function recibir(string $accion, string $frase = '', ?array $frases = null): array
     {
+        if ($accion === 'reordenar') {
+            return $this->recibirOrden($frases ?? []);
+        }
+
         $frase = $this->normalizarFrase($frase);
         if ($frase === '') {
             throw new RuntimeException('frase inválida');
@@ -150,8 +214,11 @@ class OportunidadPalabraClaveRelayService
                 return ['ok' => true, 'created' => false, 'frase' => $frase];
             }
 
+            $maxOrden = (int) OportunidadPalabraClave::query()->max('orden');
+
             OportunidadPalabraClave::query()->create([
                 'frase' => $frase,
+                'orden' => $maxOrden + 1,
                 'created_by' => null,
             ]);
 
@@ -165,6 +232,130 @@ class OportunidadPalabraClaveRelayService
         }
 
         throw new RuntimeException('Accion no existe: '.$accion);
+    }
+
+    /**
+     * @param  list<string>  $frases
+     * @return array{ok: bool, actualizados: int, frase: string}
+     */
+    public function recibirOrden(array $frases): array
+    {
+        $frases = $this->normalizarListaFrases($frases);
+        if ($frases === []) {
+            throw new RuntimeException('frases inválidas para reordenar');
+        }
+
+        $n = 1;
+        $actualizados = 0;
+
+        foreach ($frases as $frase) {
+            $row = OportunidadPalabraClave::query()->where('frase', $frase)->first();
+            if ($row === null) {
+                continue;
+            }
+            if ((int) $row->orden !== $n) {
+                $row->orden = $n;
+                $row->save();
+            }
+            $actualizados++;
+            $n++;
+        }
+
+        $resto = OportunidadPalabraClave::query()
+            ->whereNotIn('frase', $frases)
+            ->orderBy('orden')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($resto as $row) {
+            if ((int) $row->orden !== $n) {
+                $row->orden = $n;
+                $row->save();
+            }
+            $n++;
+        }
+
+        return [
+            'ok' => true,
+            'actualizados' => $actualizados,
+            'frase' => OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $frases
+     * @param  bool  $encolarSiFalla  Si true, encola al fallar (uso admin). Si false, solo lanza (uso sync).
+     */
+    private function enviarReordenar(array $frases, bool $encolarSiFalla = true): string
+    {
+        $frases = $this->normalizarListaFrases($frases);
+        $destino = $this->urlDestino();
+        if ($destino === '') {
+            throw new RuntimeException(
+                'No hay URL del sitio par para palabras clave. Configure COTIZ_API_USUARIO_URL '
+                .'(o COTIZ_API_PALABRA_CLAVE_URL) apuntando a la otra instancia.'
+            );
+        }
+
+        $userAuth = (string) config('cotiz.api_nota.user', '');
+        $passwordAuth = (string) config('cotiz.api_nota.password', '');
+        if ($userAuth === '' || $passwordAuth === '') {
+            throw new RuntimeException(
+                'Faltan COTIZ_API_NOTA_USER o COTIZ_API_NOTA_PASSWORD (Basic Auth compartida con la otra instancia).'
+            );
+        }
+
+        $peer = $this->nombreInstanciaPar($destino);
+
+        $payload = [
+            'accion' => 'reordenar',
+            'replicacion' => true,
+            'origen_sistema' => (string) config('cotiz.sistema', config('app.name')),
+            'frases' => $frases,
+            'frase' => OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN,
+        ];
+
+        try {
+            $response = Http::timeout(30)
+                ->asJson()
+                ->withBasicAuth($userAuth, $passwordAuth)
+                ->post($destino, $payload);
+        } catch (\Throwable $e) {
+            $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
+            if ($encolarSiFalla) {
+                $this->encolarPendiente('reordenar', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN, $mensaje, $frases);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        if (! $response->successful()) {
+            $mensaje = $this->mensajeErrorHttp($response, $destino, $peer);
+            if ($encolarSiFalla) {
+                $this->encolarPendiente('reordenar', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN, $mensaje, $frases);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
+            $detalle = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
+            $mensaje = $detalle !== ''
+                ? $peer.': '.$detalle
+                : 'Respuesta inválida de '.$peer.'.';
+            if ($encolarSiFalla) {
+                $this->encolarPendiente('reordenar', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN, $mensaje, $frases);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        OportunidadPalabraClaveSyncPendiente::query()
+            ->where(function ($q) {
+                $q->where('accion', 'reordenar')
+                    ->orWhere('frase', OportunidadPalabraClaveSyncPendiente::FRASE_ORDEN);
+            })
+            ->delete();
+
+        return 'También se actualizó el orden en '.$peer.'.';
     }
 
     /**
@@ -288,6 +479,26 @@ class OportunidadPalabraClaveRelayService
     private function normalizarFrase(string $frase): string
     {
         return trim(preg_replace('/\s+/u', ' ', $frase) ?? $frase);
+    }
+
+    /**
+     * @param  list<mixed>  $frases
+     * @return list<string>
+     */
+    private function normalizarListaFrases(array $frases): array
+    {
+        $out = [];
+        $vistos = [];
+        foreach ($frases as $frase) {
+            $norm = $this->normalizarFrase((string) $frase);
+            if ($norm === '' || isset($vistos[$norm])) {
+                continue;
+            }
+            $vistos[$norm] = true;
+            $out[] = $norm;
+        }
+
+        return $out;
     }
 
     private function mensajeErrorHttp(Response $response, string $destino, string $peer): string

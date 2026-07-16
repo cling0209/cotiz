@@ -11,8 +11,16 @@ class OportunidadPalabraClave extends Model
 
     protected $fillable = [
         'frase',
+        'orden',
         'created_by',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'orden' => 'integer',
+        ];
+    }
 
     public function creador(): BelongsTo
     {

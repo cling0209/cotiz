@@ -59,7 +59,11 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
-        OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'created_by' => $user->id]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
 
         $this->actingAs($user)
             ->postJson(route('admin.oportunidades.para-cotizar.paso'), [
@@ -140,8 +144,16 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
-        OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'created_by' => $user->id]);
-        OportunidadPalabraClave::query()->create(['frase' => 'papel', 'created_by' => $user->id]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
 
         $this->actingAs($user)
             ->postJson(route('admin.oportunidades.para-cotizar.iniciar'))
@@ -149,13 +161,13 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('total_pasos', 4)
             ->assertJsonPath('pasos.0.region', 13)
-            ->assertJsonPath('pasos.0.frase', 'aseo')
+            ->assertJsonPath('pasos.0.frase', 'papel')
             ->assertJsonPath('pasos.1.region', 13)
-            ->assertJsonPath('pasos.1.frase', 'papel')
+            ->assertJsonPath('pasos.1.frase', 'aseo')
             ->assertJsonPath('pasos.2.region', 5)
-            ->assertJsonPath('pasos.2.frase', 'aseo')
+            ->assertJsonPath('pasos.2.frase', 'papel')
             ->assertJsonPath('pasos.3.region', 5)
-            ->assertJsonPath('pasos.3.frase', 'papel');
+            ->assertJsonPath('pasos.3.frase', 'aseo');
     }
 
     public function test_paso_omite_codigos_ya_en_lista(): void

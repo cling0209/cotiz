@@ -49,6 +49,7 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->assertDatabaseHas('oportunidad_palabras_clave', [
             'frase' => 'servicio de aseo',
             'created_by' => $user->id,
+            'orden' => 1,
         ]);
 
         $palabra = OportunidadPalabraClave::query()->firstOrFail();
@@ -69,6 +70,7 @@ class OportunidadPalabrasClaveTest extends TestCase
 
         OportunidadPalabraClave::query()->create([
             'frase' => 'alimentación',
+            'orden' => 1,
             'created_by' => $user->id,
         ]);
 
@@ -103,6 +105,7 @@ class OportunidadPalabrasClaveTest extends TestCase
 
         OportunidadPalabraClave::query()->create([
             'frase' => 'aseo',
+            'orden' => 1,
             'created_by' => $user->id,
         ]);
 
@@ -110,6 +113,84 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->get(route('admin.oportunidades.para-cotizar.index'))
             ->assertOk()
             ->assertSee('Buscar cotizaciones', false)
-            ->assertSee('Pulse', false);
+            ->assertSee('Pulse', false)
+            ->assertSee('prioridad de búsqueda', false);
+    }
+
+    public function test_puede_mover_prioridad_con_flechas(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $papel = OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        $aseo = OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.mover', $aseo), [
+                'direccion' => 'up',
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $this->assertSame(1, (int) $aseo->fresh()->orden);
+        $this->assertSame(2, (int) $papel->fresh()->orden);
+    }
+
+    public function test_puede_reordenar_por_drag(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $a = OportunidadPalabraClave::query()->create([
+            'frase' => 'a',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        $b = OportunidadPalabraClave::query()->create([
+            'frase' => 'b',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+        $c = OportunidadPalabraClave::query()->create([
+            'frase' => 'c',
+            'orden' => 3,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.palabras-clave.reordenar'), [
+                'ids' => [$c->id, $a->id, $b->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertSame(1, (int) $c->fresh()->orden);
+        $this->assertSame(2, (int) $a->fresh()->orden);
+        $this->assertSame(3, (int) $b->fresh()->orden);
+    }
+
+    public function test_index_muestra_mensaje_prioridad(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.palabras-clave.index'))
+            ->assertOk()
+            ->assertSee('Prioridad de búsqueda', false)
+            ->assertSee('de arriba hacia abajo', false);
     }
 }

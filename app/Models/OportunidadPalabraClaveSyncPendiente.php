@@ -8,9 +8,12 @@ class OportunidadPalabraClaveSyncPendiente extends Model
 {
     protected $table = 'oportunidad_palabra_clave_sync_pendientes';
 
+    public const FRASE_ORDEN = '__orden__';
+
     protected $fillable = [
         'accion',
         'frase',
+        'payload',
         'intentos',
         'ultimo_error',
     ];

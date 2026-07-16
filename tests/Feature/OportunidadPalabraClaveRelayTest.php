@@ -132,4 +132,75 @@ class OportunidadPalabraClaveRelayTest extends TestCase
             'frase' => 'limpieza',
         ]);
     }
+
+    public function test_reordenar_replica_orden_al_sitio_par(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::response([
+                'resultado' => 'OK',
+                'actualizados' => 2,
+            ], 200),
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $a = OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        $b = OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.palabras-clave.reordenar'), [
+                'ids' => [$b->id, $a->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://cotiza.reicol.cl/api/v1/palabra-clave'
+                && ($request['accion'] ?? null) === 'reordenar'
+                && ($request['frases'] ?? null) === ['aseo', 'papel']
+                && ($request['replicacion'] ?? null) === true;
+        });
+    }
+
+    public function test_api_recibir_reordenar_aplica_orden(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadPalabraClave::query()->create(['frase' => 'papel', 'orden' => 1]);
+        OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'orden' => 2]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/palabra-clave', [
+                'accion' => 'reordenar',
+                'replicacion' => true,
+                'frases' => ['aseo', 'papel'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('actualizados', 2);
+
+        $this->assertSame(1, (int) OportunidadPalabraClave::query()->where('frase', 'aseo')->value('orden'));
+        $this->assertSame(2, (int) OportunidadPalabraClave::query()->where('frase', 'papel')->value('orden'));
+    }
 }

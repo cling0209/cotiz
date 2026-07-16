@@ -23,7 +23,8 @@ class OportunidadParaCotizarService
     public function palabrasClave(): array
     {
         return OportunidadPalabraClave::query()
-            ->orderBy('frase')
+            ->orderBy('orden')
+            ->orderBy('id')
             ->pluck('frase')
             ->map(fn ($f) => trim((string) $f))
             ->filter(fn ($f) => $f !== '')
@@ -32,7 +33,8 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Plan de consulta: una pareja frase × región por paso (para ir mostrando resultados).
+     * Plan de consulta: una pareja región × frase por paso (para ir mostrando resultados).
+     * Orden: MERCADOPUBLICO_REGIONES, luego prioridad de palabras clave (orden).
      *
      * @return array{
      *   palabras: list<string>,

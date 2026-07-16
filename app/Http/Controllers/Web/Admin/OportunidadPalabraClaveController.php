@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\OportunidadPalabraClave;
 use App\Services\OportunidadPalabraClaveRelayService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -20,7 +22,8 @@ class OportunidadPalabraClaveController extends Controller
     {
         $palabras = OportunidadPalabraClave::query()
             ->with('creador')
-            ->orderBy('frase')
+            ->orderBy('orden')
+            ->orderBy('id')
             ->get();
 
         return view('admin.oportunidades.palabras-clave.index', compact('palabras'));
@@ -45,13 +48,16 @@ class OportunidadPalabraClaveController extends Controller
             'frase.min' => 'La palabra clave debe tener al menos 2 caracteres.',
         ]);
 
+        $maxOrden = (int) OportunidadPalabraClave::query()->max('orden');
+
         OportunidadPalabraClave::query()->create([
             'frase' => $frase,
+            'orden' => $maxOrden + 1,
             'created_by' => $request->user()?->id,
         ]);
 
         $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
-        $mensajeLocal = 'Palabra clave agregada en '.$local.'.';
+        $mensajeLocal = 'Palabra clave agregada en '.$local.' (al final de la prioridad).';
 
         try {
             $mensajeRemoto = $this->relay->replicarAgregar($frase);
@@ -74,6 +80,7 @@ class OportunidadPalabraClaveController extends Controller
     {
         $frase = $palabra->frase;
         $palabra->delete();
+        $this->renumerar();
 
         $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
         $mensajeLocal = 'Palabra clave eliminada en '.$local.'.';
@@ -92,6 +99,143 @@ class OportunidadPalabraClaveController extends Controller
                 ->with('success', $mensajeLocal)
                 ->with('info', 'El otro sitio no respondió; se sincronizará al levantar el contenedor.')
                 ->with('error', $e->getMessage());
+        }
+    }
+
+    public function mover(Request $request, OportunidadPalabraClave $palabra): RedirectResponse
+    {
+        $data = $request->validate([
+            'direccion' => ['required', Rule::in(['up', 'down'])],
+        ]);
+
+        $lista = OportunidadPalabraClave::query()
+            ->orderBy('orden')
+            ->orderBy('id')
+            ->get();
+
+        $indice = $lista->search(fn (OportunidadPalabraClave $p) => (int) $p->id === (int) $palabra->id);
+        if ($indice === false) {
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('error', 'No se encontró la palabra clave.');
+        }
+
+        $otroIndice = $data['direccion'] === 'up' ? $indice - 1 : $indice + 1;
+        if ($otroIndice < 0 || $otroIndice >= $lista->count()) {
+            return redirect()->route('admin.oportunidades.palabras-clave.index');
+        }
+
+        $actual = $lista[$indice];
+        $otro = $lista[$otroIndice];
+        $ordenActual = (int) $actual->orden;
+        $ordenOtro = (int) $otro->orden;
+
+        DB::transaction(function () use ($actual, $otro, $ordenActual, $ordenOtro) {
+            $actual->orden = $ordenOtro;
+            $actual->save();
+            $otro->orden = $ordenActual;
+            $otro->save();
+        });
+
+        $this->renumerar();
+
+        return $this->redirectTrasReplicarOrden('Prioridad de búsqueda actualizada.');
+    }
+
+    public function reordenar(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'distinct', Rule::exists('oportunidad_palabras_clave', 'id')],
+        ]);
+
+        $ids = array_map('intval', $data['ids']);
+        $total = OportunidadPalabraClave::query()->count();
+
+        if (count($ids) !== $total) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'La lista enviada no coincide con las palabras clave actuales.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($ids) {
+            $n = 1;
+            foreach ($ids as $id) {
+                OportunidadPalabraClave::query()
+                    ->where('id', $id)
+                    ->update(['orden' => $n]);
+                $n++;
+            }
+        });
+
+        $mensaje = 'Prioridad de búsqueda actualizada.';
+        $info = null;
+        $error = null;
+
+        try {
+            $mensajeRemoto = $this->relay->replicarOrden($this->frasesEnOrden());
+            $mensaje .= ' '.$mensajeRemoto;
+        } catch (\Throwable $e) {
+            report($e);
+            $info = 'El otro sitio no respondió; el orden se sincronizará al levantar el contenedor.';
+            $error = $e->getMessage();
+        }
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => $mensaje,
+            'info' => $info,
+            'error' => $error,
+        ]);
+    }
+
+    private function redirectTrasReplicarOrden(string $mensajeLocal): RedirectResponse
+    {
+        try {
+            $mensajeRemoto = $this->relay->replicarOrden($this->frasesEnOrden());
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.oportunidades.palabras-clave.index')
+                ->with('success', $mensajeLocal)
+                ->with('info', 'El otro sitio no respondió; el orden se sincronizará al levantar el contenedor.')
+                ->with('error', $e->getMessage());
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function frasesEnOrden(): array
+    {
+        return OportunidadPalabraClave::query()
+            ->orderBy('orden')
+            ->orderBy('id')
+            ->pluck('frase')
+            ->map(fn ($f) => (string) $f)
+            ->all();
+    }
+
+    private function renumerar(): void
+    {
+        $n = 1;
+        foreach (
+            OportunidadPalabraClave::query()
+                ->orderBy('orden')
+                ->orderBy('id')
+                ->get() as $palabra
+        ) {
+            if ((int) $palabra->orden !== $n) {
+                $palabra->orden = $n;
+                $palabra->save();
+            }
+            $n++;
         }
     }
 

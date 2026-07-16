@@ -9,7 +9,9 @@
             <h1 class="h3 mb-1">Oportunidades</h1>
             <p class="text-muted mb-0 small">
                 Solo Compras &Aacute;giles <strong>publicadas hoy</strong>, seg&uacute;n sus palabras clave.
-                Los resultados aparecen a medida que se consultan. Orden: presupuesto y cercan&iacute;a a Santiago.
+                Los resultados aparecen a medida que se consultan.
+                B&uacute;squeda por prioridad: primero las regiones de <code>MERCADOPUBLICO_REGIONES</code>,
+                y dentro de cada regi&oacute;n las palabras clave en el orden configurado.
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -33,9 +35,14 @@
         </div>
     @else
         <div class="mb-3">
-            <span class="small text-muted me-1">Palabras clave:</span>
-            @foreach($palabras as $frase)
-                <span class="badge text-bg-light border me-1">{{ $frase }}</span>
+            <div class="small text-muted mb-1">
+                Palabras clave (prioridad de b&uacute;squeda, de izquierda a derecha):
+                <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">cambiar orden</a>
+            </div>
+            @foreach($palabras as $i => $frase)
+                <span class="badge text-bg-light border me-1" title="Prioridad {{ $i + 1 }}">
+                    <span class="text-muted">{{ $i + 1 }}.</span> {{ $frase }}
+                </span>
             @endforeach
         </div>
     @endif

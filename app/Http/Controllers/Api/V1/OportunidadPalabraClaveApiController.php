@@ -26,13 +26,31 @@ class OportunidadPalabraClaveApiController extends Controller
             return $this->error('no viene accion');
         }
 
-        $frase = trim((string) ($payload['frase'] ?? ''));
-        if ($frase === '') {
-            return $this->error('no viene frase');
-        }
+        $accion = (string) $accion;
 
         try {
-            $resultado = $this->relay->recibir((string) $accion, $frase);
+            if ($accion === 'reordenar') {
+                $frases = $payload['frases'] ?? null;
+                if (! is_array($frases) || $frases === []) {
+                    return $this->error('no vienen frases');
+                }
+
+                $resultado = $this->relay->recibir('reordenar', '', $frases);
+
+                return response()->json([
+                    'resultado' => 'OK',
+                    'mensaje' => 'Orden de palabras clave actualizado',
+                    'actualizados' => $resultado['actualizados'] ?? 0,
+                    'frase' => $resultado['frase'] ?? null,
+                ]);
+            }
+
+            $frase = trim((string) ($payload['frase'] ?? ''));
+            if ($frase === '') {
+                return $this->error('no viene frase');
+            }
+
+            $resultado = $this->relay->recibir($accion, $frase);
 
             return response()->json([
                 'resultado' => 'OK',
