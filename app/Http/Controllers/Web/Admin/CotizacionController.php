@@ -192,7 +192,11 @@ class CotizacionController extends Controller
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
-        $this->notaService->modificarCabecera($nota, $datos);
+        try {
+            $this->notaService->modificarCabecera($nota, $datos);
+        } catch (RuntimeException $e) {
+            return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
+        }
 
         if ($lineas !== []) {
             $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
@@ -242,7 +246,14 @@ class CotizacionController extends Controller
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
-        $this->notaService->modificarCabecera($nota, $datos);
+        try {
+            $this->notaService->modificarCabecera($nota, $datos);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errors' => ['encargado' => [$e->getMessage()]],
+            ], 422);
+        }
 
         $mensaje = $eraSinNumero
             ? 'Número de cotización guardado. Ya puede agregar productos.'

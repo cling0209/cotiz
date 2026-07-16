@@ -36,11 +36,14 @@ class OportunidadEncontradaApiController extends Controller
 
                 return response()->json([
                     'resultado' => 'OK',
-                    'mensaje' => 'Oportunidad marcada como tomada',
+                    'mensaje' => ($resultado['created'] ?? false)
+                        ? 'Oportunidad reservada'
+                        : 'Oportunidad ya reservada por el mismo origen',
                     'codigo' => $resultado['codigo'],
+                    'created' => $resultado['created'] ?? false,
                 ]);
             } catch (RuntimeException $e) {
-                return $this->error($e->getMessage());
+                return $this->conflicto($e->getMessage());
             }
         }
 
@@ -87,5 +90,13 @@ class OportunidadEncontradaApiController extends Controller
             'resultado' => 'ERROR',
             'mensaje' => $mensaje,
         ], 400);
+    }
+
+    private function conflicto(string $mensaje): JsonResponse
+    {
+        return response()->json([
+            'resultado' => 'ERROR',
+            'mensaje' => $mensaje,
+        ], 409);
     }
 }

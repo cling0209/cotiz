@@ -11,6 +11,7 @@ use App\Services\OportunidadParaCotizarService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 class OportunidadEncontradaRelayTest extends TestCase
@@ -208,7 +209,7 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertSame(['1000-1-COT26'], array_column($items, 'codigo'));
     }
 
-    public function test_asignar_codigo_a_nota_marca_tomada_y_avisa_al_par(): void
+    public function test_asignar_codigo_reserva_antes_en_el_par(): void
     {
         config([
             'cotiz.sistema' => 'Romulo',
@@ -221,6 +222,7 @@ class OportunidadEncontradaRelayTest extends TestCase
             'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
                 'resultado' => 'OK',
                 'codigo' => '2000-1-COT26',
+                'created' => true,
             ], 200),
         ]);
 
@@ -233,6 +235,7 @@ class OportunidadEncontradaRelayTest extends TestCase
             'sistema' => 'Romulo',
             'usuario' => 'ejecutivo',
         ]);
+        $this->assertSame('2000-1-COT26', strtoupper(trim((string) $nota->fresh()->encargado)));
 
         Http::assertSent(function ($request) {
             return $request->url() === 'https://cotiza.reicol.cl/api/v1/oportunidad-encontrada'
@@ -241,11 +244,44 @@ class OportunidadEncontradaRelayTest extends TestCase
         });
     }
 
-    public function test_api_recibe_aviso_de_oportunidad_tomada(): void
+    public function test_si_par_rechaza_reserva_no_graba_encargado_ni_queda_tomada_local(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'ERROR',
+                'mensaje' => 'La cotización «2000-2-COT26» ya fue tomada en Reicol.',
+            ], 409),
+        ]);
+
+        $notaService = $this->app->make(NotaService::class);
+        $nota = $notaService->crear('ejecutivo');
+
+        try {
+            $notaService->modificarCabecera($nota, ['encargado' => '2000-2-COT26']);
+            $this->fail('Debía lanzar RuntimeException');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('2000-2-COT26', $e->getMessage());
+        }
+
+        $this->assertSame('', trim((string) $nota->fresh()->encargado));
+        $this->assertDatabaseMissing('oportunidad_tomadas', [
+            'codigo' => '2000-2-COT26',
+        ]);
+    }
+
+    public function test_api_recibe_reserva_atomica_y_rechaza_conflicto(): void
     {
         config([
             'cotiz.api_nota.user' => 'api',
             'cotiz.api_nota.password' => 'secret',
+            'cotiz.sistema' => 'Romulo',
         ]);
 
         $this->withBasicAuth('api', 'secret')
@@ -264,5 +300,15 @@ class OportunidadEncontradaRelayTest extends TestCase
             'sistema' => 'Reicol',
             'usuario' => 'ejecutivo-remoto',
         ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'tomada',
+                'codigo' => '3000-1-COT26',
+                'usuario' => 'otro',
+                'origen_sistema' => 'Romulo',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('resultado', 'ERROR');
     }
 }

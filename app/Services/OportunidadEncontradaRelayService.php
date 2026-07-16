@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadEncontradaSyncPendiente;
 use App\Models\OportunidadTomada;
 use App\Support\CotizInstanciaPar;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -156,49 +158,83 @@ class OportunidadEncontradaRelayService
         return ['ok' => true, 'recibidos' => $recibidos];
     }
 
-    public function registrarTomadaLocal(string $codigo, ?string $usuario = null): void
+    /**
+     * Reserva exclusiva del código CA: candado local + peer.
+     * Si el par no responde o ya está tomado, lanza y no deja continuar.
+     */
+    public function reservarExclusivo(string $codigo, ?string $usuario = null): void
     {
         $codigo = $this->normalizarCodigo($codigo);
         if ($codigo === '') {
             return;
         }
 
-        OportunidadTomada::query()->updateOrCreate(
-            ['codigo' => $codigo],
-            [
-                'sistema' => (string) config('cotiz.sistema', config('app.name')),
-                'usuario' => $usuario !== null ? trim($usuario) ?: null : null,
-                'tomada_at' => now(),
-            ],
-        );
-    }
+        $sistema = (string) config('cotiz.sistema', config('app.name'));
+        $usuarioNorm = $usuario !== null ? trim($usuario) : '';
 
-    public function replicarTomada(string $codigo, ?string $usuario = null): void
-    {
-        $codigo = $this->normalizarCodigo($codigo);
-        if ($codigo === '' || $this->urlDestino() === '') {
+        if ($this->codigoTomadoPorNotaLocal($codigo)) {
+            throw new RuntimeException(
+                'La cotización «'.$codigo.'» ya está tomada en este sitio.'
+            );
+        }
+
+        $creadaLocal = false;
+        $existente = OportunidadTomada::query()->where('codigo', $codigo)->first();
+
+        if ($existente !== null) {
+            $sistemaExistente = trim((string) ($existente->sistema ?? ''));
+            if ($sistemaExistente !== '' && strcasecmp($sistemaExistente, $sistema) !== 0) {
+                throw new RuntimeException(
+                    'La cotización «'.$codigo.'» ya fue tomada'
+                    .($sistemaExistente !== '' ? ' en '.$sistemaExistente : '').'.'
+                );
+            }
+
+            // Ya reservado por este sitio: reconfirmar en el par (idempotente).
+            $existente->fill([
+                'sistema' => $sistema,
+                'usuario' => $usuarioNorm !== '' ? $usuarioNorm : $existente->usuario,
+                'tomada_at' => now(),
+            ]);
+            $existente->save();
+        } else {
+            try {
+                OportunidadTomada::query()->create([
+                    'codigo' => $codigo,
+                    'sistema' => $sistema,
+                    'usuario' => $usuarioNorm !== '' ? $usuarioNorm : null,
+                    'tomada_at' => now(),
+                ]);
+                $creadaLocal = true;
+            } catch (QueryException) {
+                throw new RuntimeException(
+                    'La cotización «'.$codigo.'» ya está tomada.'
+                );
+            }
+        }
+
+        if ($this->urlDestino() === '') {
             return;
         }
 
         try {
-            $this->enviarTomada(
-                $codigo,
-                (string) ($usuario ?? ''),
-                (string) config('cotiz.sistema', config('app.name')),
-                true,
-            );
+            // Bloqueante: no encolar. Si el par falla, no se permite tomar.
+            $this->enviarTomada($codigo, $usuarioNorm, $sistema, false);
         } catch (\Throwable $e) {
-            Log::warning('Sync de oportunidad tomada al par falló (queda pendiente)', [
-                'codigo' => $codigo,
-                'error' => $e->getMessage(),
-            ]);
+            if ($creadaLocal) {
+                OportunidadTomada::query()->where('codigo', $codigo)->delete();
+            }
+
+            throw new RuntimeException(
+                'No se pudo reservar «'.$codigo.'» en el sitio par. '.$e->getMessage()
+            );
         }
     }
 
     /**
-     * Registra el aviso remoto de que la oportunidad ya fue tomada.
+     * Reserva remota atómica. Idempotente solo si el origen es el mismo sistema.
      *
-     * @return array{ok: bool, codigo: string}
+     * @return array{ok: bool, codigo: string, created: bool}
      */
     public function recibirTomada(string $codigo, ?string $usuario = null, ?string $sistema = null): array
     {
@@ -207,16 +243,46 @@ class OportunidadEncontradaRelayService
             throw new RuntimeException('codigo inválido');
         }
 
-        OportunidadTomada::query()->updateOrCreate(
-            ['codigo' => $codigo],
-            [
-                'sistema' => $sistema !== null ? trim($sistema) ?: null : null,
-                'usuario' => $usuario !== null ? trim($usuario) ?: null : null,
-                'tomada_at' => now(),
-            ],
-        );
+        $origen = trim((string) ($sistema ?? ''));
+        $usuarioNorm = $usuario !== null ? trim($usuario) : '';
 
-        return ['ok' => true, 'codigo' => $codigo];
+        if ($this->codigoTomadoPorNotaLocal($codigo)) {
+            throw new RuntimeException(
+                'La cotización «'.$codigo.'» ya existe en este sitio.'
+            );
+        }
+
+        $existente = OportunidadTomada::query()->where('codigo', $codigo)->first();
+        if ($existente !== null) {
+            $sistemaExistente = trim((string) ($existente->sistema ?? ''));
+            if (
+                $origen !== ''
+                && $sistemaExistente !== ''
+                && strcasecmp($sistemaExistente, $origen) === 0
+            ) {
+                return ['ok' => true, 'codigo' => $codigo, 'created' => false];
+            }
+
+            throw new RuntimeException(
+                'La cotización «'.$codigo.'» ya fue tomada'
+                .($sistemaExistente !== '' ? ' en '.$sistemaExistente : '').'.'
+            );
+        }
+
+        try {
+            OportunidadTomada::query()->create([
+                'codigo' => $codigo,
+                'sistema' => $origen !== '' ? $origen : null,
+                'usuario' => $usuarioNorm !== '' ? $usuarioNorm : null,
+                'tomada_at' => now(),
+            ]);
+        } catch (QueryException) {
+            throw new RuntimeException(
+                'La cotización «'.$codigo.'» ya está tomada.'
+            );
+        }
+
+        return ['ok' => true, 'codigo' => $codigo, 'created' => true];
     }
 
     /**
@@ -318,7 +384,7 @@ class OportunidadEncontradaRelayService
                 ->withBasicAuth($userAuth, $passwordAuth)
                 ->post($destino, $payload);
         } catch (\Throwable $e) {
-            $mensaje = 'No se pudo avisar al sitio par que '.$codigo.' fue tomada: '.$e->getMessage();
+            $mensaje = 'No se pudo reservar en el sitio par ('.$codigo.'): '.$e->getMessage();
             if ($encolarSiFalla) {
                 $this->encolarTomada($payload, $mensaje);
             }
@@ -326,11 +392,15 @@ class OportunidadEncontradaRelayService
         }
 
         if (! $response->successful()) {
-            $mensaje = $this->mensajeErrorHttp(
-                $response,
-                $destino,
-                $this->nombreInstanciaPar($destino),
-            );
+            $data = $response->json();
+            $detalle = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
+            $mensaje = $detalle !== ''
+                ? $detalle
+                : $this->mensajeErrorHttp(
+                    $response,
+                    $destino,
+                    $this->nombreInstanciaPar($destino),
+                );
             if ($encolarSiFalla) {
                 $this->encolarTomada($payload, $mensaje);
             }
@@ -548,6 +618,13 @@ class OportunidadEncontradaRelayService
         $codigo = strtoupper(trim($codigo));
 
         return preg_match('/^\d+-\d+-COT\d+$/', $codigo) === 1 ? $codigo : '';
+    }
+
+    private function codigoTomadoPorNotaLocal(string $codigo): bool
+    {
+        return Nota::query()
+            ->whereRaw('upper(trim(encargado)) = ?', [$codigo])
+            ->exists();
     }
 
     private function mensajeErrorHttp(Response $response, string $destino, string $peer): string

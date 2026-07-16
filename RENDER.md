@@ -105,6 +105,8 @@ Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
 | `MERCADOPUBLICO_ANALISIS_ADMIN` | Habilita búsqueda de oportunidades + palabras clave (solo sitio buscador) | `true` en Romulo; `false` en Reicol |
 
 Las **palabras clave no se sincronizan** entre sitios. Lo que se replica al par son las **oportunidades encontradas**. Si el par está dormido, quedan pendientes y se reintentan al **boot** (`oportunidad:sync-encontradas-par`: wake `/up` + cola pendiente).
+
+Al **tomar** un código CA (`*-COT*`), se reserva de forma atómica en este sitio y en el par (`accion=tomada`) **antes** de grabar la nota. Si el par no responde o ya está tomado, se bloquea (no se permite duplicar entre ejecutivos/sitios).
 | `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | **Obligatorias** — mismas credenciales en Romulo y Reicol |
 | `COTIZ_API_CONSULTA_NRO_COTIZACION` | URL consulta duplicados (opcional) | Si vacío y `APP_URL` es `cotiza.reicol.cl` o `cotiza.romulo.cl`, se usa el par automáticamente |
 
