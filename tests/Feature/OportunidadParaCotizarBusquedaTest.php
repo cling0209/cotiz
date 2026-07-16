@@ -13,6 +13,15 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+        ]);
+    }
+
     public function test_paso_devuelve_solo_publicadas_hoy(): void
     {
         config([

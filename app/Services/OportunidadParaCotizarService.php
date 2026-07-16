@@ -16,6 +16,7 @@ class OportunidadParaCotizarService
         protected CompraAgilApiService $api,
         protected CompraAgilOportunidadService $oportunidad,
         protected CompraAgilPayloadMapper $mapper,
+        protected OportunidadEncontradaRelayService $encontradaRelay,
     ) {}
 
     /**
@@ -82,6 +83,7 @@ class OportunidadParaCotizarService
     {
         $dia = $this->fechaBusquedaHoy();
         $guardadas = 0;
+        $paraSync = [];
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -109,14 +111,20 @@ class OportunidadParaCotizarService
                 $existente->fill($this->atributosDesdeResumen($item, $dia, $userId, $merged));
                 $existente->save();
                 $guardadas++;
+                $paraSync[] = $existente->toResumen() + ['fecha_busqueda' => $dia];
 
                 continue;
             }
 
-            OportunidadEncontrada::query()->create(
+            $creada = OportunidadEncontrada::query()->create(
                 $this->atributosDesdeResumen($item, $dia, $userId, $palabras),
             );
             $guardadas++;
+            $paraSync[] = $creada->toResumen() + ['fecha_busqueda' => $dia];
+        }
+
+        if ($paraSync !== []) {
+            $this->encontradaRelay->replicarItems($paraSync);
         }
 
         return $guardadas;
@@ -200,6 +208,11 @@ class OportunidadParaCotizarService
         $prev[] = $frase;
         $row->palabras_coinciden = array_values($prev);
         $row->save();
+
+        $dia = $this->fechaBusquedaHoy();
+        $this->encontradaRelay->replicarItems([
+            $row->toResumen() + ['fecha_busqueda' => $dia],
+        ]);
     }
 
     private function completarCantidadProductosGuardada(string $codigo): ?int

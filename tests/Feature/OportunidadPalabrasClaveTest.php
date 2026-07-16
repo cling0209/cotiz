@@ -18,19 +18,13 @@ class OportunidadPalabrasClaveTest extends TestCase
 
         config([
             'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
             'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
             'cotiz.api_nota.user' => 'api',
             'cotiz.api_nota.password' => 'secret',
         ]);
 
-        Http::fake([
-            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::response([
-                'resultado' => 'OK',
-                'created' => true,
-                'deleted' => true,
-                'frase' => 'x',
-            ], 200),
-        ]);
+        Http::fake();
     }
 
     public function test_superadmin_puede_agregar_y_eliminar_palabra_clave(): void

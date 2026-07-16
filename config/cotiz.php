@@ -21,8 +21,13 @@ return [
         'url' => env('COTIZ_API_USUARIO_URL', ''),
     ],
     'api_palabra_clave' => [
+        // Legacy: ya no se sincronizan palabras clave al par.
         // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../palabra-clave).
         'url' => env('COTIZ_API_PALABRA_CLAVE_URL', ''),
+    ],
+    'api_oportunidad_encontrada' => [
+        // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../oportunidad-encontrada).
+        'url' => env('COTIZ_API_OPORTUNIDAD_ENCONTRADA_URL', ''),
     ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),

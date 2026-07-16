@@ -8,10 +8,9 @@
         <div>
             <h1 class="h3 mb-1">Palabras clave</h1>
             <p class="text-muted mb-0 small">
-                Temas que usa el sistema para encontrar oportunidades publicadas en Compra &Aacute;gil.
-                Luego aparecen en <a href="{{ route('admin.oportunidades.para-cotizar.index') }}">Oportunidades</a>.
-                Al agregar o eliminar se replica tambi&eacute;n en el otro sitio (Reicol &harr; Romulo).
-                Si el par est&aacute; dormido, queda pendiente y se sincroniza al levantar el contenedor.
+                Temas que usa este sitio para encontrar oportunidades publicadas en Compra &Aacute;gil
+                (solo con <code>MERCADOPUBLICO_ANALISIS_ADMIN=true</code>).
+                Las cotizaciones encontradas se sincronizan al sitio par; las palabras clave no.
             </p>
         </div>
         <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="btn btn-outline-primary btn-sm">

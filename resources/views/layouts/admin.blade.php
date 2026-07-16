@@ -54,7 +54,7 @@
                         <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
-                @if(auth()->user()->canAccessOportunidades())
+                @if(auth()->user()->canVerOportunidades())
                     <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
                         <i class="bi bi-lightning-charge"></i> Oportunidades
                     </a>

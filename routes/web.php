@@ -121,9 +121,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
         });
 
-        Route::middleware('oportunidades-admin')->group(function () {
+        Route::middleware('oportunidades-ver')->group(function () {
             Route::get('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'index'])
                 ->name('oportunidades.para-cotizar.index');
+        });
+
+        Route::middleware('oportunidades-admin')->group(function () {
             Route::post('oportunidades/para-cotizar/iniciar', [OportunidadParaCotizarController::class, 'iniciar'])
                 ->name('oportunidades.para-cotizar.iniciar');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])

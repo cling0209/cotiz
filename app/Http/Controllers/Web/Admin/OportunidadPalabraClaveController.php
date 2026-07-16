@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\OportunidadPalabraClave;
-use App\Services\OportunidadPalabraClaveRelayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,10 +13,6 @@ use Illuminate\View\View;
 
 class OportunidadPalabraClaveController extends Controller
 {
-    public function __construct(
-        protected OportunidadPalabraClaveRelayService $relay,
-    ) {}
-
     public function index(): View
     {
         $palabras = OportunidadPalabraClave::query()
@@ -56,50 +51,19 @@ class OportunidadPalabraClaveController extends Controller
             'created_by' => $request->user()?->id,
         ]);
 
-        $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
-        $mensajeLocal = 'Palabra clave agregada en '.$local.' (al final de la prioridad).';
-
-        try {
-            $mensajeRemoto = $this->relay->replicarAgregar($frase);
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal)
-                ->with('info', 'El otro sitio no respondió; se sincronizará al levantar el contenedor.')
-                ->with('error', $e->getMessage());
-        }
+        return redirect()
+            ->route('admin.oportunidades.palabras-clave.index')
+            ->with('success', 'Palabra clave agregada (al final de la prioridad).');
     }
 
     public function destroy(OportunidadPalabraClave $palabra): RedirectResponse
     {
-        $frase = $palabra->frase;
         $palabra->delete();
         $this->renumerar();
 
-        $local = trim((string) config('cotiz.sistema', config('app.name', 'este sistema')));
-        $mensajeLocal = 'Palabra clave eliminada en '.$local.'.';
-
-        try {
-            $mensajeRemoto = $this->relay->replicarEliminar($frase);
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal)
-                ->with('info', 'El otro sitio no respondió; se sincronizará al levantar el contenedor.')
-                ->with('error', $e->getMessage());
-        }
+        return redirect()
+            ->route('admin.oportunidades.palabras-clave.index')
+            ->with('success', 'Palabra clave eliminada.');
     }
 
     public function mover(Request $request, OportunidadPalabraClave $palabra): RedirectResponse
@@ -139,7 +103,9 @@ class OportunidadPalabraClaveController extends Controller
 
         $this->renumerar();
 
-        return $this->redirectTrasReplicarOrden('Prioridad de búsqueda actualizada.');
+        return redirect()
+            ->route('admin.oportunidades.palabras-clave.index')
+            ->with('success', 'Prioridad de búsqueda actualizada.');
     }
 
     public function reordenar(Request $request): JsonResponse
@@ -169,57 +135,12 @@ class OportunidadPalabraClaveController extends Controller
             }
         });
 
-        $mensaje = 'Prioridad de búsqueda actualizada.';
-        $info = null;
-        $error = null;
-
-        try {
-            $mensajeRemoto = $this->relay->replicarOrden($this->frasesEnOrden());
-            $mensaje .= ' '.$mensajeRemoto;
-        } catch (\Throwable $e) {
-            report($e);
-            $info = 'El otro sitio no respondió; el orden se sincronizará al levantar el contenedor.';
-            $error = $e->getMessage();
-        }
-
         return response()->json([
             'ok' => true,
-            'mensaje' => $mensaje,
-            'info' => $info,
-            'error' => $error,
+            'mensaje' => 'Prioridad de búsqueda actualizada.',
+            'info' => null,
+            'error' => null,
         ]);
-    }
-
-    private function redirectTrasReplicarOrden(string $mensajeLocal): RedirectResponse
-    {
-        try {
-            $mensajeRemoto = $this->relay->replicarOrden($this->frasesEnOrden());
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal.' '.$mensajeRemoto);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return redirect()
-                ->route('admin.oportunidades.palabras-clave.index')
-                ->with('success', $mensajeLocal)
-                ->with('info', 'El otro sitio no respondió; el orden se sincronizará al levantar el contenedor.')
-                ->with('error', $e->getMessage());
-        }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function frasesEnOrden(): array
-    {
-        return OportunidadPalabraClave::query()
-            ->orderBy('orden')
-            ->orderBy('id')
-            ->pluck('frase')
-            ->map(fn ($f) => (string) $f)
-            ->all();
     }
 
     private function renumerar(): void

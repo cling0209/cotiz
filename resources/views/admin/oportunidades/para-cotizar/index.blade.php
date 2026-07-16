@@ -7,46 +7,62 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
             <h1 class="h3 mb-1">Oportunidades</h1>
-            <p class="text-muted mb-0 small">
-                Solo Compras &Aacute;giles <strong>publicadas hoy</strong>, seg&uacute;n sus palabras clave.
-                Lo que se va encontrando se <strong>graba</strong> y queda disponible al volver a esta pantalla.
-                B&uacute;squeda por prioridad: primero las regiones de <code>MERCADOPUBLICO_REGIONES</code>,
-                y dentro de cada regi&oacute;n las palabras clave en el orden configurado.
-            </p>
+            @if($puedeBuscar)
+                <p class="text-muted mb-0 small">
+                    Solo Compras &Aacute;giles <strong>publicadas hoy</strong>, seg&uacute;n sus palabras clave.
+                    Lo que se va encontrando se <strong>graba</strong> y se sincroniza con el sitio par.
+                    B&uacute;squeda por prioridad: primero las regiones de <code>MERCADOPUBLICO_REGIONES</code>,
+                    y dentro de cada regi&oacute;n las palabras clave en el orden configurado.
+                </p>
+            @else
+                <p class="text-muted mb-0 small">
+                    Listado de Compras &Aacute;giles del d&iacute;a sincronizadas desde el sitio que realiza la b&uacute;squeda.
+                    En este sitio no se buscan ni se administran palabras clave.
+                </p>
+            @endif
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-            <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-tags"></i> Palabras clave
-            </a>
-            <button type="button" id="btn-buscar-oportunidades" class="btn btn-primary btn-sm" @disabled($palabras === [])>
-                <i class="bi bi-search"></i> Buscar cotizaciones
-            </button>
-            <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
-                <i class="bi bi-x-circle"></i> Cancelar
-            </button>
-        </div>
+        @if($puedeBuscar)
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-tags"></i> Palabras clave
+                </a>
+                <button type="button" id="btn-buscar-oportunidades" class="btn btn-primary btn-sm" @disabled($palabras === [])>
+                    <i class="bi bi-search"></i> Buscar cotizaciones
+                </button>
+                <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
+                    <i class="bi bi-x-circle"></i> Cancelar
+                </button>
+            </div>
+        @endif
     </div>
 
-    @if($palabras === [])
-        <div class="alert alert-warning">
-            No hay palabras clave configuradas.
-            <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="alert-link">Agr&eacute;guelas aqu&iacute;</a>
-            para poder buscar.
-        </div>
-    @else
-        <div class="mb-3">
-            <div class="small text-muted mb-1">
-                Palabras clave (prioridad de b&uacute;squeda, de izquierda a derecha):
-                <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">cambiar orden</a>
+    @if($puedeBuscar)
+        @if($palabras === [])
+            <div class="alert alert-warning">
+                No hay palabras clave configuradas.
+                <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="alert-link">Agr&eacute;guelas aqu&iacute;</a>
+                para poder buscar.
             </div>
-            @foreach($palabras as $i => $frase)
-                <span class="badge text-bg-light border me-1" title="Prioridad {{ $i + 1 }}">
-                    <span class="text-muted">{{ $i + 1 }}.</span> {{ $frase }}
-                </span>
-            @endforeach
+        @else
+            <div class="mb-3">
+                <div class="small text-muted mb-1">
+                    Palabras clave (prioridad de b&uacute;squeda, de izquierda a derecha):
+                    <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">cambiar orden</a>
+                </div>
+                @foreach($palabras as $i => $frase)
+                    <span class="badge text-bg-light border me-1" title="Prioridad {{ $i + 1 }}">
+                        <span class="text-muted">{{ $i + 1 }}.</span> {{ $frase }}
+                    </span>
+                @endforeach
+            </div>
+        @endif
+    @elseif(count($guardadas) === 0)
+        <div class="alert alert-info">
+            A&uacute;n no hay oportunidades sincronizadas para hoy. Cuando el sitio de b&uacute;squeda encuentre cotizaciones, aparecer&aacute;n aqu&iacute;.
         </div>
     @endif
 
+    @if($puedeBuscar)
     <div id="oportunidad-estado" class="card shadow-sm mb-3 d-none">
         <div class="card-body py-3">
             <div class="d-flex flex-wrap gap-3 align-items-center small mb-2">
@@ -76,12 +92,13 @@
         </div>
     </div>
 
-    <div id="oportunidad-placeholder" class="card shadow-sm @if($palabras === [] || count($guardadas) > 0) d-none @endif">
+    <div id="oportunidad-placeholder" class="card shadow-sm @if(! $puedeBuscar || $palabras === [] || count($guardadas) > 0) d-none @endif">
         <div class="card-body text-center text-muted py-5">
             Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico (solo publicadas hoy).
             Cada resultado se graba autom&aacute;ticamente.
         </div>
     </div>
+    @endif
 
     <div id="oportunidad-resultados" class="card shadow-sm @if(count($guardadas) === 0) d-none @endif">
         <div class="table-responsive">
@@ -102,10 +119,16 @@
             </table>
         </div>
         <div class="card-body border-top py-2 small text-muted" id="oportunidad-footer">
-            Haga clic en una fila para cotizarla. Los resultados del d&iacute;a quedan grabados.
+            Haga clic en una fila para cotizarla.
+            @if($puedeBuscar)
+                Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
+            @else
+                Resultados sincronizados desde el sitio de b&uacute;squeda.
+            @endif
         </div>
     </div>
 
+    @if($puedeBuscar)
     <div id="oportunidad-debug" class="card shadow-sm mt-3 d-none">
         <div class="card-header py-2 small fw-semibold bg-light">
             <i class="bi bi-braces"></i> Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
@@ -120,15 +143,17 @@
                  style="max-height:20rem;overflow:auto;white-space:pre-wrap;"></pre>
         </div>
     </div>
+    @endif
 </div>
 @endsection
 
 @push('scripts')
 <script>
 (function () {
+    const puedeBuscar = @json((bool) $puedeBuscar);
     const urls = {
-        iniciar: @json(route('admin.oportunidades.para-cotizar.iniciar')),
-        paso: @json(route('admin.oportunidades.para-cotizar.paso')),
+        iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
+        paso: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.paso') : ''),
         cotizarBase: @json(url('/admin/cotizaciones/create')),
     };
     const mpApi = {
@@ -556,14 +581,20 @@
         if (fechaBusquedaInicial && relFecha) {
             relFecha.textContent = `(${fechaBusquedaInicial})`;
         }
-        estado.classList.remove('d-none');
-        relDetalle.textContent = `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hoy. Pulse Buscar para consultar de nuevo.`;
-        setProgreso(100);
+        if (estado && relDetalle) {
+            estado.classList.remove('d-none');
+            relDetalle.textContent = puedeBuscar
+                ? `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hoy. Pulse Buscar para consultar de nuevo.`
+                : `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} sincronizadas hoy.`;
+            setProgreso(100);
+        }
         renderTabla();
     }
 
-    btn?.addEventListener('click', buscar);
-    btnCancelar?.addEventListener('click', cancelarBusqueda);
+    if (puedeBuscar) {
+        btn?.addEventListener('click', buscar);
+        btnCancelar?.addEventListener('click', cancelarBusqueda);
+    }
 })();
 </script>
 @endpush

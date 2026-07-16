@@ -69,8 +69,8 @@ if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true
 fi
 
-echo "Sync palabras clave pendientes con sitio par (wake /up)..." >&2
-run_as_www 'php artisan oportunidad:sync-palabras-par --solo-pendientes --no-interaction 2>&1' || true
+echo "Sync oportunidades encontradas pendientes con sitio par (wake /up)..." >&2
+run_as_www 'php artisan oportunidad:sync-encontradas-par --no-interaction 2>&1' || true
 
 # Scheduler Laravel (consulta MP a las 10 y 19, u horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
 if [ "${RUN_SCHEDULER:-true}" = "true" ]; then

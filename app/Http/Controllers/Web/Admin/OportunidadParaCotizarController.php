@@ -15,14 +15,16 @@ class OportunidadParaCotizarController extends Controller
         protected OportunidadParaCotizarService $servicio,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $palabras = $this->servicio->palabrasClave();
+        $puedeBuscar = (bool) $request->user()?->canAccessOportunidades();
+        $palabras = $puedeBuscar ? $this->servicio->palabrasClave() : [];
         $guardadas = $this->servicio->listarGuardadasHoy();
 
         return view('admin.oportunidades.para-cotizar.index', [
             'palabras' => $palabras,
             'guardadas' => $guardadas,
+            'puedeBuscar' => $puedeBuscar,
             'fechaBusqueda' => $this->servicio->fechaBusquedaHoy(),
             'apiConfigurada' => true,
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),

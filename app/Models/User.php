@@ -61,8 +61,20 @@ class User extends Authenticatable
             && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
     }
 
-    /** Oportunidades / palabras clave: solo usuario admin mientras esté en desarrollo. */
+    /**
+     * Buscar oportunidades y gestionar palabras clave.
+     * Solo admin y solo si MERCADOPUBLICO_ANALISIS_ADMIN=true (sitio que busca).
+     */
     public function canAccessOportunidades(): bool
+    {
+        return $this->username === 'admin'
+            && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
+    }
+
+    /**
+     * Ver listado de oportunidades (incluye las sincronizadas desde el sitio con análisis).
+     */
+    public function canVerOportunidades(): bool
     {
         return $this->username === 'admin';
     }

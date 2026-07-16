@@ -13,22 +13,17 @@ class OportunidadPalabraClaveRelayTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_agregar_replica_al_sitio_par(): void
+    public function test_agregar_ya_no_replica_al_sitio_par(): void
     {
         config([
             'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
             'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
             'cotiz.api_nota.user' => 'api',
             'cotiz.api_nota.password' => 'secret',
         ]);
 
-        Http::fake([
-            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::response([
-                'resultado' => 'OK',
-                'created' => true,
-                'frase' => 'aseo industrial',
-            ], 200),
-        ]);
+        Http::fake();
 
         $user = User::factory()->create([
             'username' => 'admin',
@@ -46,15 +41,10 @@ class OportunidadPalabraClaveRelayTest extends TestCase
             'frase' => 'aseo industrial',
         ]);
 
-        Http::assertSent(function ($request) {
-            return $request->url() === 'https://cotiza.reicol.cl/api/v1/palabra-clave'
-                && ($request['accion'] ?? null) === 'graba'
-                && ($request['frase'] ?? null) === 'aseo industrial'
-                && ($request['replicacion'] ?? null) === true;
-        });
+        Http::assertNothingSent();
     }
 
-    public function test_api_recibir_graba_no_dispara_bucle(): void
+    public function test_api_recibir_graba_sigue_disponible(): void
     {
         config([
             'cotiz.api_nota.user' => 'api',
@@ -92,62 +82,17 @@ class OportunidadPalabraClaveRelayTest extends TestCase
         $this->assertSame('https://cotiza.romulo.cl/api/v1/palabra-clave', $url);
     }
 
-    public function test_si_par_cae_encola_y_sync_reintenta(): void
+    public function test_reordenar_ya_no_replica_al_sitio_par(): void
     {
         config([
             'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
             'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
             'cotiz.api_nota.user' => 'api',
             'cotiz.api_nota.password' => 'secret',
         ]);
 
-        Http::fake([
-            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::sequence()
-                ->push('Service Unavailable', 503)
-                ->push(['resultado' => 'OK', 'created' => true, 'frase' => 'limpieza'], 200),
-            'cotiza.reicol.cl/up' => Http::response('ok', 200),
-        ]);
-
-        $user = User::factory()->create([
-            'username' => 'admin',
-            'perfil' => User::PERFIL_SUPERADMIN,
-        ]);
-
-        $this->actingAs($user)
-            ->post(route('admin.oportunidades.palabras-clave.store'), [
-                'frase' => 'limpieza',
-            ])
-            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'))
-            ->assertSessionHas('info');
-
-        $this->assertDatabaseHas('oportunidad_palabra_clave_sync_pendientes', [
-            'accion' => 'graba',
-            'frase' => 'limpieza',
-        ]);
-
-        $this->artisan('oportunidad:sync-palabras-par', ['--sin-wake' => true, '--solo-pendientes' => true])
-            ->assertSuccessful();
-
-        $this->assertDatabaseMissing('oportunidad_palabra_clave_sync_pendientes', [
-            'frase' => 'limpieza',
-        ]);
-    }
-
-    public function test_reordenar_replica_orden_al_sitio_par(): void
-    {
-        config([
-            'cotiz.sistema' => 'Romulo',
-            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
-            'cotiz.api_nota.user' => 'api',
-            'cotiz.api_nota.password' => 'secret',
-        ]);
-
-        Http::fake([
-            'cotiza.reicol.cl/api/v1/palabra-clave' => Http::response([
-                'resultado' => 'OK',
-                'actualizados' => 2,
-            ], 200),
-        ]);
+        Http::fake();
 
         $user = User::factory()->create([
             'username' => 'admin',
@@ -172,12 +117,7 @@ class OportunidadPalabraClaveRelayTest extends TestCase
             ->assertOk()
             ->assertJsonPath('ok', true);
 
-        Http::assertSent(function ($request) {
-            return $request->url() === 'https://cotiza.reicol.cl/api/v1/palabra-clave'
-                && ($request['accion'] ?? null) === 'reordenar'
-                && ($request['frases'] ?? null) === ['aseo', 'papel']
-                && ($request['replicacion'] ?? null) === true;
-        });
+        Http::assertNothingSent();
     }
 
     public function test_api_recibir_reordenar_aplica_orden(): void
