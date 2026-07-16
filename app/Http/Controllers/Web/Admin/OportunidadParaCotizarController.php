@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\CompraAgilRegionScope;
 use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadParaCotizarService;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,11 @@ class OportunidadParaCotizarController extends Controller
         $palabras = $puedeBuscar ? $this->servicio->palabrasClave() : [];
         $guardadas = $this->servicio->listarGuardadasHoy();
 
+        $regionesFiltro = [];
+        foreach (CompraAgilRegionScope::regionesIncluidas() as $codigoRegion) {
+            $regionesFiltro[(int) $codigoRegion] = CompraAgilRegionScope::nombreRegion((int) $codigoRegion);
+        }
+
         return view('admin.oportunidades.para-cotizar.index', [
             'palabras' => $palabras,
             'guardadas' => $guardadas,
@@ -32,6 +38,7 @@ class OportunidadParaCotizarController extends Controller
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
             'corridaEstado' => $puedeBuscar ? $this->busqueda->estado() : null,
+            'regionesFiltro' => $regionesFiltro,
         ]);
     }
 

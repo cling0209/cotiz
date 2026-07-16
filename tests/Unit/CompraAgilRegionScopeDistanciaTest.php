@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\CompraAgilRegionScope;
+use App\Services\OportunidadParaCotizarService;
 use PHPUnit\Framework\TestCase;
 
 class CompraAgilRegionScopeDistanciaTest extends TestCase
@@ -17,29 +18,20 @@ class CompraAgilRegionScopeDistanciaTest extends TestCase
         $this->assertSame(99, CompraAgilRegionScope::distanciaASantiago(null));
     }
 
-    public function test_orden_presupuesto_y_luego_region(): void
+    public function test_orden_presupuesto_y_luego_menos_productos(): void
     {
+        $servicio = (new \ReflectionClass(OportunidadParaCotizarService::class))
+            ->newInstanceWithoutConstructor();
+
         $items = [
-            ['monto_presupuesto_clp' => 100_000, 'region' => 13],
-            ['monto_presupuesto_clp' => 500_000, 'region' => 12],
-            ['monto_presupuesto_clp' => 500_000, 'region' => 13],
-            ['monto_presupuesto_clp' => 200_000, 'region' => 5],
+            ['codigo' => 'A', 'monto_presupuesto_clp' => 100_000, 'cantidad_productos' => 1],
+            ['codigo' => 'B', 'monto_presupuesto_clp' => 500_000, 'cantidad_productos' => 5],
+            ['codigo' => 'C', 'monto_presupuesto_clp' => 500_000, 'cantidad_productos' => 2],
+            ['codigo' => 'D', 'monto_presupuesto_clp' => 200_000, 'cantidad_productos' => 3],
         ];
 
-        usort($items, function (array $a, array $b): int {
-            $montoA = (int) ($a['monto_presupuesto_clp'] ?? 0);
-            $montoB = (int) ($b['monto_presupuesto_clp'] ?? 0);
-            if ($montoA !== $montoB) {
-                return $montoB <=> $montoA;
-            }
+        usort($items, [$servicio, 'compararOportunidades']);
 
-            return CompraAgilRegionScope::distanciaASantiago($a['region'] ?? null)
-                <=> CompraAgilRegionScope::distanciaASantiago($b['region'] ?? null);
-        });
-
-        $this->assertSame(13, $items[0]['region']);
-        $this->assertSame(500_000, $items[0]['monto_presupuesto_clp']);
-        $this->assertSame(12, $items[1]['region']);
-        $this->assertSame(200_000, $items[2]['monto_presupuesto_clp']);
+        $this->assertSame(['C', 'B', 'D', 'A'], array_column($items, 'codigo'));
     }
 }

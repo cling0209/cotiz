@@ -101,17 +101,52 @@
     @endif
 
     <div id="oportunidad-resultados" class="card shadow-sm @if(count($guardadas) === 0) d-none @endif">
+        <div class="card-body border-bottom py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-sm-6 col-md-4 col-lg-3">
+                    <label for="filtro-region" class="form-label small mb-1">Regi&oacute;n</label>
+                    <select id="filtro-region" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        @foreach(($regionesFiltro ?? []) as $codigoRegion => $nombreRegion)
+                            <option value="{{ (int) $codigoRegion }}">{{ $nombreRegion }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-8 col-lg-9">
+                    <p class="small text-muted mb-0">
+                        Orden: presupuesto de mayor a menor; a igual presupuesto, menos productos primero.
+                    </p>
+                </div>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
                         <th>Cotizaci&oacute;n</th>
+                        <th>Regi&oacute;n</th>
                         <th>Palabra clave</th>
-                        <th>Organismo</th>
+                        <th data-sort-header="organismo">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="organismo">
+                                Organismo <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                            </button>
+                        </th>
                         <th class="text-center">Productos</th>
-                        <th>Fecha publicaci&oacute;n</th>
-                        <th>Fecha cierre</th>
-                        <th class="text-end">Presupuesto</th>
+                        <th data-sort-header="fecha_publicacion">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="fecha_publicacion">
+                                Fecha publicaci&oacute;n <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                            </button>
+                        </th>
+                        <th data-sort-header="fecha_cierre">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="fecha_cierre">
+                                Fecha cierre <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                            </button>
+                        </th>
+                        <th class="text-end" data-sort-header="presupuesto">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="presupuesto">
+                                Presupuesto <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                            </button>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="oportunidad-tbody">
@@ -182,6 +217,7 @@
     const debugEndpointUrl = document.getElementById('debug-endpoint-url');
     const debugPasoLine = document.getElementById('debug-paso-line');
     const debugConsultaJson = document.getElementById('debug-consulta-json');
+    const filtroRegion = document.getElementById('filtro-region');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -191,6 +227,7 @@
     let buscando = false;
     let cancelado = false;
     let pollTimer = null;
+    let sortState = { column: 'presupuesto', direction: 'desc' };
 
     const guardadasIniciales = @json($guardadas ?? []);
     const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
@@ -239,16 +276,67 @@
             .replace(/"/g, '&quot;');
     }
 
+    function valorOrden(item, column) {
+        if (column === 'organismo') {
+            return String(item.organismo || '').trim();
+        }
+        if (column === 'fecha_publicacion') {
+            const d = new Date(item.fecha_publicacion || '');
+            return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+        }
+        if (column === 'fecha_cierre') {
+            const d = new Date(item.fecha_cierre || '');
+            return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+        }
+        return Number(item.monto_presupuesto_clp) || 0;
+    }
+
     function comparar(a, b) {
-        const ia = Number(a.indice_region_config);
-        const ib = Number(b.indice_region_config);
-        const idxA = Number.isFinite(ia) ? ia : 999;
-        const idxB = Number.isFinite(ib) ? ib : 999;
-        if (idxA !== idxB) return idxA - idxB;
+        const direction = sortState.direction === 'asc' ? 1 : -1;
+        const column = sortState.column;
+        const va = valorOrden(a, column);
+        const vb = valorOrden(b, column);
+
+        if (typeof va === 'string' || typeof vb === 'string') {
+            const texto = String(va).localeCompare(String(vb), 'es', { sensitivity: 'base' });
+            if (texto !== 0) return texto * direction;
+        } else if (va !== vb) {
+            return (va - vb) * direction;
+        }
+
         const ma = Number(a.monto_presupuesto_clp) || 0;
         const mb = Number(b.monto_presupuesto_clp) || 0;
         if (ma !== mb) return mb - ma;
-        return (Number(a.distancia_santiago) || 99) - (Number(b.distancia_santiago) || 99);
+        const tieneA = a.cantidad_productos != null && a.cantidad_productos !== '';
+        const tieneB = b.cantidad_productos != null && b.cantidad_productos !== '';
+        const pa = tieneA ? Number(a.cantidad_productos) : Number.MAX_SAFE_INTEGER;
+        const pb = tieneB ? Number(b.cantidad_productos) : Number.MAX_SAFE_INTEGER;
+        const na = Number.isFinite(pa) ? pa : Number.MAX_SAFE_INTEGER;
+        const nb = Number.isFinite(pb) ? pb : Number.MAX_SAFE_INTEGER;
+        if (na !== nb) return na - nb;
+        return String(a.codigo || '').localeCompare(String(b.codigo || ''), 'es');
+    }
+
+    function actualizarIndicadoresOrden() {
+        document.querySelectorAll('[data-sort-header]').forEach((th) => {
+            const column = th.getAttribute('data-sort-header');
+            const activo = column === sortState.column;
+            th.setAttribute('aria-sort', activo ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+            const indicator = th.querySelector('.sort-indicator');
+            if (indicator) {
+                indicator.textContent = activo ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕';
+            }
+        });
+    }
+
+    function itemsFiltrados() {
+        const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
+        let items = Array.from(porCodigo.values());
+        if (regionSel !== '') {
+            const codigoRegion = Number(regionSel);
+            items = items.filter((item) => Number(item.region) === codigoRegion);
+        }
+        return items.sort(comparar);
     }
 
     function bindFilas() {
@@ -265,14 +353,24 @@
     }
 
     function renderTabla() {
-        const items = Array.from(porCodigo.values()).sort(comparar);
-        relEncontradas.textContent = String(items.length);
+        const total = porCodigo.size;
+        const items = itemsFiltrados();
+        actualizarIndicadoresOrden();
+        if (relEncontradas) relEncontradas.textContent = String(total);
 
-        if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">
+        if (total === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
+            return;
+        }
+
+        if (items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
+                No hay oportunidades en la región seleccionada.
+            </td></tr>`;
+            footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
             return;
         }
 
@@ -281,6 +379,7 @@
             const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
             const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;">${escapeHtml(item.nombre)}</div>` : '';
             const organismo = String(item.organismo || '').trim() || '—';
+            const regionNombre = String(item.nombre_region || '').trim() || '—';
             const frases = Array.isArray(item.palabras_coinciden)
                 ? item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean)
                 : [];
@@ -303,6 +402,7 @@
                 : '';
             return `<tr${attrs}>
                 <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}${productosBajoCodigo}</td>
+                <td class="small text-nowrap">${escapeHtml(regionNombre)}</td>
                 <td class="small" style="min-width:8rem;">${frasesHtml}</td>
                 <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
                 <td class="text-center tabular-nums">${cantidadProductos}</td>
@@ -312,10 +412,36 @@
             </tr>`;
         }).join('');
 
+        const filtroActivo = filtroRegion && String(filtroRegion.value || '').trim() !== '';
         const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
-        footer.textContent = `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo} Haga clic en una fila para cotizarla.`;
+        const visibles = filtroActivo
+            ? `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.`
+            : `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo}`;
+        footer.textContent = `${visibles} Haga clic en una fila para cotizarla.`;
         bindFilas();
     }
+
+    if (filtroRegion) {
+        filtroRegion.addEventListener('change', renderTabla);
+    }
+
+    document.querySelectorAll('[data-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const column = button.getAttribute('data-sort') || 'presupuesto';
+            if (sortState.column === column) {
+                sortState = {
+                    column,
+                    direction: sortState.direction === 'asc' ? 'desc' : 'asc',
+                };
+            } else {
+                sortState = {
+                    column,
+                    direction: column === 'organismo' ? 'asc' : 'desc',
+                };
+            }
+            renderTabla();
+        });
+    });
 
     function setProgreso(pct) {
         const p = Math.max(0, Math.min(100, pct || 0));

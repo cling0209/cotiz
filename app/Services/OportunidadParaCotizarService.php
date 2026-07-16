@@ -76,8 +76,8 @@ class OportunidadParaCotizarService
                 $codigosTomados !== [],
                 fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
             )
-            ->orderBy('indice_region_config')
             ->orderByDesc('monto_presupuesto_clp')
+            ->orderByRaw('cantidad_productos ASC NULLS LAST')
             ->orderBy('codigo')
             ->get()
             ->map(fn (OportunidadEncontrada $row) => $row->toResumen())
@@ -679,24 +679,24 @@ class OportunidadParaCotizarService
      */
     public function compararOportunidades(array $a, array $b): int
     {
-        $regionA = isset($a['region']) ? (int) $a['region'] : null;
-        $regionB = isset($b['region']) ? (int) $b['region'] : null;
-        $idxA = (int) ($a['indice_region_config'] ?? CompraAgilRegionScope::indiceEnConfig($regionA));
-        $idxB = (int) ($b['indice_region_config'] ?? CompraAgilRegionScope::indiceEnConfig($regionB));
-        if ($idxA !== $idxB) {
-            return $idxA <=> $idxB;
-        }
-
         $montoA = (int) ($a['monto_presupuesto_clp'] ?? 0);
         $montoB = (int) ($b['monto_presupuesto_clp'] ?? 0);
         if ($montoA !== $montoB) {
             return $montoB <=> $montoA;
         }
 
-        $distA = (int) ($a['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago($regionA));
-        $distB = (int) ($b['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago($regionB));
+        $prodA = $a['cantidad_productos'] ?? null;
+        $prodB = $b['cantidad_productos'] ?? null;
+        $prodA = $prodA === null || $prodA === '' ? PHP_INT_MAX : (int) $prodA;
+        $prodB = $prodB === null || $prodB === '' ? PHP_INT_MAX : (int) $prodB;
+        if ($prodA !== $prodB) {
+            return $prodA <=> $prodB;
+        }
 
-        return $distA <=> $distB;
+        return strcmp(
+            strtoupper(trim((string) ($a['codigo'] ?? ''))),
+            strtoupper(trim((string) ($b['codigo'] ?? ''))),
+        );
     }
 
     public function esPublicadaHoy(mixed $fecha): bool
