@@ -204,6 +204,12 @@ class OportunidadBusquedaService
 
         $corrida->refresh();
         if ($actualizada !== 1) {
+            // Colisión entre workers: reencolar si aún quedan pasos por procesar.
+            if ($corrida->estado === self::ESTADO_RUNNING
+                && $this->seleccionarSiguiente(is_array($corrida->plan_json) ? $corrida->plan_json : []) !== null) {
+                return true;
+            }
+
             return false;
         }
 
@@ -287,6 +293,9 @@ class OportunidadBusquedaService
         $total = max(0, (int) $corrida->total_pasos);
         $terminados = $this->contarTerminados($pasos);
 
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        $ultimoError = $errores !== [] ? $errores[array_key_last($errores)] : null;
+
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
@@ -298,7 +307,8 @@ class OportunidadBusquedaService
             'oportunidades_encontradas' => (int) $corrida->oportunidades_encontradas,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'mensaje' => $corrida->mensaje,
-            'errores' => is_array($corrida->errores_json) ? $corrida->errores_json : [],
+            'errores' => $errores,
+            'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
             'items' => $this->oportunidades->listarGuardadasHoy(),
         ];
     }

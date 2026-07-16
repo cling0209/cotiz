@@ -651,8 +651,7 @@
     }
 
     function mostrarError(msg) {
-        relError.textContent = msg || 'Error en la consulta.';
-        relError.classList.remove('d-none');
+        mostrarErrorFatal(msg);
     }
 
     function cancelarBusqueda() {
@@ -705,6 +704,18 @@
         }
     }
 
+    function mostrarAvisoPaso(msg) {
+        relError.textContent = msg || '';
+        relError.classList.remove('d-none', 'alert-danger');
+        relError.classList.add('alert-warning');
+    }
+
+    function mostrarErrorFatal(msg) {
+        relError.textContent = msg || 'Error en la consulta.';
+        relError.classList.remove('d-none', 'alert-warning');
+        relError.classList.add('alert-danger');
+    }
+
     function aplicarEstadoCorrida(corrida) {
         if (!corrida) return;
 
@@ -729,9 +740,34 @@
         relBar.classList.toggle('progress-bar-animated', activo);
 
         const fallidos = Number(corrida.pasos_fallidos) || 0;
-        if (!activo && fallidos > 0) {
-            mostrarError(`La búsqueda terminó con ${fallidos} paso(s) fallido(s). Los demás pasos sí fueron procesados.`);
+        const ultimoError = corrida.ultimo_error && typeof corrida.ultimo_error === 'object'
+            ? corrida.ultimo_error
+            : null;
+        if (activo && ultimoError) {
+            const paso = {
+                frase: ultimoError.frase,
+                region: ultimoError.region,
+                region_nombre: ultimoError.region ? `Región ${ultimoError.region}` : '',
+            };
+            const indice = Number.isFinite(Number(ultimoError.indice)) ? Number(ultimoError.indice) : null;
+            const total = Number(corrida.total_pasos) || 0;
+            mostrarDebugConsulta(
+                null,
+                paso,
+                indice,
+                total > 0 ? total : null,
+                `${ultimoError.mensaje || 'Error en paso'} — la búsqueda continúa con la siguiente región o reintento.`,
+            );
+            if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
+                mostrarAvisoPaso('Un paso falló en Mercado Público; la búsqueda sigue con la siguiente región o reintento.');
+            } else {
+                relError.classList.add('d-none');
+            }
+        } else if (!activo && fallidos > 0) {
+            mostrarErrorFatal(`La búsqueda terminó con ${fallidos} paso(s) fallido(s). Los demás pasos sí fueron procesados.`);
         } else if (activo) {
+            relError.classList.add('d-none');
+        } else {
             relError.classList.add('d-none');
         }
 
