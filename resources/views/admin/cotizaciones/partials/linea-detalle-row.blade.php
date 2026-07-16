@@ -102,6 +102,15 @@
             <span class="nv-fill linea-prod-nombre">{{ $row['prod_nombre'] }}</span>
         @endif
     </td>
+    <td class="linea-observacion-cell">
+        <textarea
+            name="lineas[{{ $idx }}][observacion]"
+            class="form-control form-control-sm linea-observacion-input"
+            rows="2"
+            title="Observaci&oacute;n libre del ejecutivo"
+            placeholder="Observaci&oacute;n..."
+        >{{ old('lineas.'.$idx.'.observacion', $row['observacion'] ?? '') }}</textarea>
+    </td>
     <td>
         <span @class(['nv-fill', 'fecha-precio-antigua' => $row['prod_valor_fecha_antigua']])>{{ $row['prod_valor_fecha'] }}</span>
     </td>

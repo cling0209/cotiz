@@ -13,7 +13,7 @@
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
-    $detalleColspan = ($desdeAdjudicadas ? 13 : 14) - ($mostrarSoftland ? 0 : 1);
+    $detalleColspan = ($desdeAdjudicadas ? 14 : 15) - ($mostrarSoftland ? 0 : 1);
 @endphp
 
 <div class="cotizacion-ingreso">
@@ -168,6 +168,7 @@
                         <th>ID Agile</th>
                         <th>Descripci&oacute;n Agile (MP)</th>
                         <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
+                        <th class="linea-observacion-col">Observaci&oacute;n</th>
                         <th>Fecha<br>act.&nbsp;precio</th>
                         <th>Precio Costo</th>
                         <th>Precio Unitario</th>
@@ -784,11 +785,13 @@
             const valor = tr.querySelector('input[name*="[prod_valor]"]');
             const cantidad = tr.querySelector('input[name*="[cantidad]"]');
             const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
+            const observacion = tr.querySelector('textarea[name*="[observacion]"]');
             if (softland) linea.prod_item_softland = softland.value;
             if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
             if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
             if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
             if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
+            if (observacion) linea.observacion = observacion.value;
             lineas.push(linea);
         });
         return lineas;

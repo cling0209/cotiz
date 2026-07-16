@@ -128,6 +128,7 @@ class NotaDetalleService
             'prod_item_agile' => $agileId,
             'prod_descripcion_agile' => $descripcionAgile,
             'prod_descripcion_maestro' => $descripcionMaestro,
+            'observacion' => trim((string) ($linea->observacion ?? '')),
             'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
             'prod_valor_fecha' => $fechaFmt,
             'prod_valor_fecha_antigua' => $fechaAntigua,
@@ -190,6 +191,11 @@ class NotaDetalleService
                 $lineaUpdates['prod_descripcion_maestro'] = AgileDescripcion::paraDetalle(
                     (string) $datos['prod_descripcion_maestro'],
                 );
+            }
+
+            if (array_key_exists('observacion', $datos)) {
+                $obs = trim((string) $datos['observacion']);
+                $lineaUpdates['observacion'] = $obs !== '' ? $obs : null;
             }
 
             NotaDetalle::query()
@@ -532,6 +538,7 @@ class NotaDetalleService
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
                 'prod_descripcion_maestro' => $linea->prod_descripcion_maestro,
+                'observacion' => $linea->observacion,
             ];
 
             if ($linea->prod_item !== $codigo) {
