@@ -178,6 +178,21 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Metadatos de depuración de la consulta MP (sin llamar a la API).
+     *
+     * @return array<string, mixed>
+     */
+    public function consultaDebugPaso(string $frase, int $region, ?int $totalApi = null, ?int $totalHoy = null): array
+    {
+        return $this->metaConsultaPaso(
+            $frase,
+            $region,
+            $totalApi ?? 0,
+            $totalHoy ?? 0,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function metaConsultaPaso(string $frase, int $region, int $totalApi, int $totalHoy): array
@@ -187,6 +202,7 @@ class OportunidadParaCotizarService
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $path = '/v2/compra-agil';
+        $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 
         $paraJson = [
             'endpoint' => $baseUrl.$path,
@@ -196,6 +212,7 @@ class OportunidadParaCotizarService
             'parametros' => $params,
             'total_api' => $totalApi,
             'total_publicadas_hoy' => $totalHoy,
+            'url_completa' => $baseUrl.$path.'?'.$query,
         ];
         ksort($paraJson);
 

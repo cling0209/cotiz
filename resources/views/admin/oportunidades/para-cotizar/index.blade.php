@@ -65,11 +65,6 @@
                      role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="rel-detalle" class="small text-muted">Preparando consulta…</div>
-            <details id="rel-consulta-wrap" class="small mt-2 d-none">
-                <summary class="text-muted user-select-none">Consulta Mercado P&uacute;blico (par&aacute;metros y JSON)</summary>
-                <pre id="rel-consulta-json" class="bg-light border rounded p-2 mb-0 mt-2 small font-monospace text-break"
-                     style="max-height:14rem;overflow:auto;white-space:pre-wrap;"></pre>
-            </details>
             <div id="rel-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
         </div>
     </div>
@@ -100,6 +95,21 @@
             Haga clic en una fila para cotizarla.
         </div>
     </div>
+
+    <div id="oportunidad-debug" class="card shadow-sm mt-3 d-none">
+        <div class="card-header py-2 small fw-semibold bg-light">
+            <i class="bi bi-braces"></i> Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
+        </div>
+        <div class="card-body py-3">
+            <div id="debug-endpoint-line" class="small mb-2">
+                <span class="text-muted">URL:</span>
+                <code id="debug-endpoint-url" class="user-select-all text-break"></code>
+            </div>
+            <div id="debug-paso-line" class="small text-muted mb-2"></div>
+            <pre id="debug-consulta-json" class="bg-light border rounded p-3 mb-0 small font-monospace text-break"
+                 style="max-height:20rem;overflow:auto;white-space:pre-wrap;"></pre>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -110,6 +120,10 @@
         iniciar: @json(route('admin.oportunidades.para-cotizar.iniciar')),
         paso: @json(route('admin.oportunidades.para-cotizar.paso')),
         cotizarBase: @json(url('/admin/cotizaciones/create')),
+    };
+    const mpApi = {
+        baseUrl: @json($mpBaseUrl ?? ''),
+        path: @json($mpPath ?? '/v2/compra-agil'),
     };
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
@@ -127,9 +141,11 @@
     const relFecha = document.getElementById('rel-fecha');
     const relBar = document.getElementById('rel-progreso-bar');
     const relDetalle = document.getElementById('rel-detalle');
-    const relConsultaWrap = document.getElementById('rel-consulta-wrap');
-    const relConsultaJson = document.getElementById('rel-consulta-json');
     const relError = document.getElementById('rel-error');
+    const debugPanel = document.getElementById('oportunidad-debug');
+    const debugEndpointUrl = document.getElementById('debug-endpoint-url');
+    const debugPasoLine = document.getElementById('debug-paso-line');
+    const debugConsultaJson = document.getElementById('debug-consulta-json');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -246,23 +262,80 @@
         relDuracion.textContent = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
     }
 
-    function mostrarConsulta(consulta) {
-        if (!relConsultaWrap || !relConsultaJson || !consulta || typeof consulta !== 'object') {
-            return;
-        }
+    function parametrosConsultaPaso(paso) {
+        const params = {
+            estado: 'publicada',
+            numero_pagina: 1,
+            ordenar_por: 'FechaPublicacion',
+            q: String(paso?.frase ?? '').trim(),
+            region: Number(paso?.region) || 1,
+            tamano_pagina: 50,
+        };
+        return Object.fromEntries(Object.keys(params).sort().map((k) => [k, params[k]]));
+    }
 
-        const ordenado = {
-            metodo: consulta.metodo ?? 'GET',
-            endpoint: consulta.endpoint ?? '',
-            header_ticket: consulta.header_ticket ?? '(configurado)',
-            parametros: consulta.parametros ?? {},
-            filtro_fecha: consulta.filtro_fecha ?? '',
-            total_api: consulta.total_api ?? 0,
-            total_publicadas_hoy: consulta.total_publicadas_hoy ?? 0,
+    function buildConsultaPreview(paso, indice, total) {
+        const params = parametrosConsultaPaso(paso);
+        const endpoint = `${mpApi.baseUrl}${mpApi.path}`;
+        const qs = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => qs.set(k, String(v)));
+
+        const payload = {
+            endpoint,
+            filtro_fecha: new Date().toISOString().slice(0, 10),
+            header_ticket: '(configurado)',
+            metodo: 'GET',
+            parametros: params,
+            paso: indice != null && total != null ? `${indice + 1}/${total}` : null,
+            region_nombre: paso?.region_nombre ?? null,
+            total_api: null,
+            total_publicadas_hoy: null,
+            url_completa: `${endpoint}?${qs.toString()}`,
         };
 
-        relConsultaJson.textContent = consulta.json || JSON.stringify(ordenado, null, 2);
-        relConsultaWrap.classList.remove('d-none');
+        return payload;
+    }
+
+    function mostrarDebugConsulta(consulta, paso, indice, total, nota) {
+        if (!debugPanel || !debugConsultaJson) return;
+
+        const data = consulta && typeof consulta === 'object'
+            ? consulta
+            : buildConsultaPreview(paso, indice, total);
+
+        const url = data.url_completa
+            || (data.endpoint && data.parametros
+                ? `${data.endpoint}?${new URLSearchParams(Object.entries(data.parametros).sort()).toString()}`
+                : '');
+
+        if (debugEndpointUrl) {
+            debugEndpointUrl.textContent = url || `${data.metodo || 'GET'} ${data.endpoint || ''}`;
+        }
+
+        if (debugPasoLine) {
+            const frase = paso?.frase ?? data.parametros?.q ?? '';
+            const regionNombre = paso?.region_nombre || data.region_nombre || (`Región ${paso?.region ?? data.parametros?.region ?? ''}`);
+            const pasoTxt = indice != null && total != null ? `Paso ${indice + 1}/${total}` : '';
+            let linea = [pasoTxt, `«${frase}»`, regionNombre].filter(Boolean).join(' · ');
+            if (nota) linea += ` — ${nota}`;
+            if (data.total_api != null) {
+                linea += ` — API devolvió ${data.total_api}, publicadas hoy: ${data.total_publicadas_hoy ?? 0}`;
+            }
+            debugPasoLine.textContent = linea;
+        }
+
+        const { json: _json, ...sinJson } = data;
+        const ordenado = Object.fromEntries(Object.keys(sinJson).sort().map((k) => [k, sinJson[k]]));
+        debugConsultaJson.textContent = data.json || JSON.stringify(ordenado, null, 2);
+        debugPanel.classList.remove('d-none');
+        debugPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function limpiarDebugConsulta() {
+        debugPanel?.classList.add('d-none');
+        if (debugEndpointUrl) debugEndpointUrl.textContent = '';
+        if (debugPasoLine) debugPasoLine.textContent = '';
+        if (debugConsultaJson) debugConsultaJson.textContent = '';
     }
 
     function textoDetallePaso(paso, indice, total, consulta) {
@@ -304,7 +377,9 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) {
-            throw new Error(data.error || data.message || (`HTTP ${res.status}`));
+            const err = new Error(data.error || data.message || (`HTTP ${res.status}`));
+            err.consulta = data.consulta ?? null;
+            throw err;
         }
         return data;
     }
@@ -323,8 +398,7 @@
         placeholder.classList.add('d-none');
         resultados.classList.remove('d-none');
         relError.classList.add('d-none');
-        relConsultaWrap?.classList.add('d-none');
-        if (relConsultaJson) relConsultaJson.textContent = '';
+        limpiarDebugConsulta();
         relFin.textContent = '—';
         relInicio.textContent = '…';
         setProgreso(0);
@@ -357,16 +431,24 @@
 
                 const paso = pasos[i];
                 relDetalle.textContent = textoDetallePaso(paso, i, total, null);
-                const resp = await postJson(urls.paso, {
-                    frase: paso.frase,
-                    region: paso.region,
-                    indice: i,
-                    total_pasos: total,
-                });
+                mostrarDebugConsulta(null, paso, i, total, 'consultando…');
+
+                let resp;
+                try {
+                    resp = await postJson(urls.paso, {
+                        frase: paso.frase,
+                        region: paso.region,
+                        indice: i,
+                        total_pasos: total,
+                    });
+                } catch (pasoErr) {
+                    mostrarDebugConsulta(pasoErr.consulta, paso, i, total, pasoErr.message || 'error');
+                    throw pasoErr;
+                }
 
                 if (cancelado) break;
 
-                mostrarConsulta(resp.consulta);
+                mostrarDebugConsulta(resp.consulta, paso, i, total, null);
                 relDetalle.textContent = textoDetallePaso(paso, i, total, resp.consulta);
 
                 (resp.nuevos || []).forEach((item) => {
@@ -413,6 +495,9 @@
             } else {
                 mostrarError(e.message || String(e));
                 relDetalle.textContent = 'Consulta interrumpida.';
+                if (e.consulta) {
+                    mostrarDebugConsulta(e.consulta, null, null, null, e.message || 'error');
+                }
             }
             renderTabla();
         } finally {

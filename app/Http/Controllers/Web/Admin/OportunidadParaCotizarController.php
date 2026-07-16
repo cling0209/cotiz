@@ -22,6 +22,8 @@ class OportunidadParaCotizarController extends Controller
         return view('admin.oportunidades.para-cotizar.index', [
             'palabras' => $palabras,
             'apiConfigurada' => true,
+            'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
+            'mpPath' => '/v2/compra-agil',
         ]);
     }
 
@@ -71,7 +73,7 @@ class OportunidadParaCotizarController extends Controller
                 'ok' => false,
                 'error' => $e->getMessage(),
                 'nuevos' => [],
-                'consulta' => null,
+                'consulta' => $this->servicio->consultaDebugPaso($data['frase'], (int) $data['region']),
                 'frase' => $data['frase'],
                 'region' => (int) $data['region'],
             ], 502);

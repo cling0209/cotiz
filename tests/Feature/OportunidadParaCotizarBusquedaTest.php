@@ -84,6 +84,36 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_paso_error_incluye_consulta_debug(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([], 503),
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.paso'), [
+                'frase' => 'aseo',
+                'region' => 13,
+            ])
+            ->assertStatus(502)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('consulta.metodo', 'GET')
+            ->assertJsonPath('consulta.parametros.q', 'aseo')
+            ->assertJsonPath('consulta.parametros.region', 13);
+    }
+
     public function test_iniciar_requiere_palabras(): void
     {
         config(['cotiz.mercadopublico.ticket' => 'ticket-test']);
