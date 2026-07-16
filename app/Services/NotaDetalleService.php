@@ -250,6 +250,39 @@ class NotaDetalleService
         );
     }
 
+    /**
+     * Confirma aprendizaje descripción Agile → prod_item según el estado actual de la nota.
+     * Usado al grabar (vía actualizarLinea) y al generar PDF.
+     */
+    public function confirmarAprendizajeDeNota(
+        Nota $nota,
+        ?string $usuario = null,
+        VinculoOrigen $origen = VinculoOrigen::MANUAL,
+    ): int {
+        $lineas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->orderBy('orden')
+            ->get();
+
+        $confirmadas = 0;
+        foreach ($lineas as $linea) {
+            if (self::lineaPendienteVinculo($linea)) {
+                continue;
+            }
+
+            $codigo = $linea->codigoProducto();
+            $desc = trim((string) ($linea->prod_descripcion_agile ?? ''));
+            if ($codigo === '' || $desc === '') {
+                continue;
+            }
+
+            $this->sincronizarVinculoAgileMaeprod($linea, $usuario, $origen);
+            $confirmadas++;
+        }
+
+        return $confirmadas;
+    }
+
     public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): void
     {
         foreach ($lineas as $data) {
@@ -353,7 +386,7 @@ class NotaDetalleService
             $agileId = trim((string) $prodItemAgile);
             $agileDesc = trim((string) $prodDescripcionAgile);
 
-            $linea = NotaDetalle::create([
+            return NotaDetalle::create([
                 'nronota' => $nota->nronota,
                 'prod_item' => trim($prodItem),
                 'prod_valor' => $prodValor,
@@ -364,10 +397,6 @@ class NotaDetalleService
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
             ]);
-
-            $this->sincronizarVinculoAgileMaeprod($linea, $usuarioUpd, VinculoOrigen::MANUAL);
-
-            return $linea;
         });
     }
 
@@ -521,7 +550,7 @@ class NotaDetalleService
                 ->where('prod_item_agile', $agileId)
                 ->firstOrFail();
 
-            $this->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
+            // Aprendizaje se confirma al grabar o al generar PDF (no al seleccionar).
 
             $updates = [];
             if ((int) ($producto->prod_valor ?? 0) !== $valor) {

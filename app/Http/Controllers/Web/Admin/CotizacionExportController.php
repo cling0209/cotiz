@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Web\Admin;
 
+use App\Enums\VinculoOrigen;
 use App\Http\Controllers\Controller;
 use App\Models\Nota;
 use App\Models\User;
 use App\Services\CotizacionExportService;
+use App\Services\NotaDetalleService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -14,11 +16,19 @@ class CotizacionExportController extends Controller
 {
     public function __construct(
         protected CotizacionExportService $exportService,
+        protected NotaDetalleService $detalleService,
     ) {}
 
     public function pdf(Request $request, int $nronota)
     {
         $nota = $this->notaAutorizada($request, $nronota);
+
+        $this->detalleService->confirmarAprendizajeDeNota(
+            $nota,
+            $request->user()?->username,
+            VinculoOrigen::PDF,
+        );
+
         $datos = $this->exportService->datosPdf($nota);
 
         return Pdf::loadView('exports.cotizacion-pdf', $datos)

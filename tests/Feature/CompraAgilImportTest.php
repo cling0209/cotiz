@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Models\Nota;
@@ -236,11 +237,118 @@ TXT;
 
         $this->assertNotNull($linea);
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
+
         $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
             ->hashDescripcion('LIMPIADOR DE PISOS CON AROMAS 5 LTS');
+        $this->assertNull(
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+            'Seleccionar no debe confirmar aprendizaje; solo al grabar o PDF',
+        );
+    }
+
+    public function test_grabar_confirma_aprendizaje_del_producto_vinculado(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'ASEO001',
+            'prod_valor' => 4500,
+            'cantidad' => 5,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 3200,
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+        ]);
+
+        $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
+            ->hashDescripcion('LIMPIADOR DE PISOS CON AROMAS 5 LTS');
+        $this->assertNull(
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+        );
+
+        $this->actingAs($this->admin)->post(
+            route('admin.cotizaciones.update', $nota->nronota),
+            [
+                'accion' => 'grabar',
+                'descripcion' => $nota->descripcion,
+                'encargado' => $nota->encargado,
+                'empresa' => $nota->empresa,
+                'celular' => '',
+                'contacto' => '',
+                'contactocorreo' => '',
+                'rutempresa' => '',
+                'diashabiles' => 2,
+                'ocompra' => '',
+                'lineas' => [
+                    [
+                        'prod_item' => 'ASEO001',
+                        'orden' => 1,
+                        'cantidad' => 5,
+                        'prod_valor' => 4500,
+                        'prod_valor_costo' => 3200,
+                    ],
+                ],
+            ],
+        )->assertRedirect();
+
         $this->assertSame(
             'ASEO001',
             AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+        );
+    }
+
+    public function test_confirmar_aprendizaje_de_nota_origen_pdf(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'ASEO002',
+            'prod_valor' => 2800,
+            'cantidad' => 3,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 2100,
+            'prod_item_agile' => '31237836',
+            'prod_descripcion_agile' => 'LIMPIADOR PISO FLOTANTE 1 LITRO ESPECIAL',
+        ]);
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-2',
+            'prod_valor' => 0,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 2,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => '99990099',
+            'prod_descripcion_agile' => 'PRODUCTO SIN VINCULAR NOK',
+        ]);
+
+        $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
+            ->hashDescripcion('LIMPIADOR PISO FLOTANTE 1 LITRO ESPECIAL');
+        $hashNok = app(\App\Services\AgileVinculoAprendizajeService::class)
+            ->hashDescripcion('PRODUCTO SIN VINCULAR NOK');
+
+        $confirmadas = app(NotaDetalleService::class)->confirmarAprendizajeDeNota(
+            $nota,
+            'admin',
+            VinculoOrigen::PDF,
+        );
+
+        $this->assertSame(1, $confirmadas);
+        $this->assertSame(
+            'ASEO002',
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
+        );
+        $this->assertSame(
+            'pdf',
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('vinculado_origen'),
+        );
+        $this->assertNull(
+            AgileMaeprod::query()->where('descripcion_norm_hash', $hashNok)->value('prod_item'),
         );
     }
 

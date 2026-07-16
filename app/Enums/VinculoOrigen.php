@@ -7,8 +7,11 @@ namespace App\Enums;
  */
 enum VinculoOrigen: string
 {
-    /** Vinculado/editado por un usuario en el panel. */
+    /** Confirmado al grabar la cotización en el panel. */
     case MANUAL = 'manual';
+
+    /** Confirmado al generar/descargar el PDF de la cotización. */
+    case PDF = 'pdf';
 
     /** Vinculado automáticamente al recibir una cotización por API Agile. */
     case API = 'api';
