@@ -194,6 +194,7 @@ class AgileRecepcionService
                     'prod_valor_costo' => 0,
                     'prod_item_agile' => $idAgile,
                     'prod_descripcion_agile' => $descripcion,
+                    'prod_descripcion_maestro' => $descripcion,
                 ]);
 
                 $this->detalleService->sincronizarVinculoAgileMaeprod(

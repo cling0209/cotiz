@@ -125,6 +125,8 @@ class NotaRecepcionApiService
                     ->max('orden') + 1;
             }
 
+            $descAgile = trim((string) ($payload['prod_descripcion_agile'] ?? '')) ?: null;
+
             $linea = NotaDetalle::query()->updateOrCreate(
                 [
                     'nronota' => $nronota,
@@ -137,7 +139,8 @@ class NotaRecepcionApiService
                     'fechahora' => now(),
                     'prod_valor_costo' => (int) ($payload['prod_valor_costo'] ?? 0),
                     'prod_item_agile' => trim((string) ($payload['prod_item_agile'] ?? '')) ?: null,
-                    'prod_descripcion_agile' => trim((string) ($payload['prod_descripcion_agile'] ?? '')) ?: null,
+                    'prod_descripcion_agile' => $descAgile,
+                    'prod_descripcion_maestro' => $descAgile,
                 ],
             );
 

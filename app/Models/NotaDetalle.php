@@ -18,6 +18,7 @@ class NotaDetalle extends Model
     protected $fillable = [
         'nronota', 'prod_item', 'prod_valor', 'cantidad', 'fechahora',
         'orden', 'prod_valor_costo', 'prod_item_agile', 'prod_descripcion_agile',
+        'prod_descripcion_maestro',
     ];
 
     protected function casts(): array
@@ -54,7 +55,24 @@ class NotaDetalle extends Model
         return $this->prod_valor * $this->cantidad;
     }
 
+    public function descripcionMaestroVisible(): string
+    {
+        $maestro = trim((string) ($this->prod_descripcion_maestro ?? ''));
+        if ($maestro !== '') {
+            return $maestro;
+        }
+
+        return trim((string) ($this->prod_descripcion_agile ?? ''));
+    }
+
     protected function prodDescripcionAgile(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => AgileDescripcion::paraDetalle($value),
+        );
+    }
+
+    protected function prodDescripcionMaestro(): Attribute
     {
         return Attribute::make(
             set: fn (?string $value) => AgileDescripcion::paraDetalle($value),

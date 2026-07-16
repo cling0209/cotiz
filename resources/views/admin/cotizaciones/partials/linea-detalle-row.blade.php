@@ -91,13 +91,13 @@
         @if($row['pendiente_vinculo'])
             <input
                 type="text"
-                name="lineas[{{ $idx }}][prod_descripcion_agile]"
+                name="lineas[{{ $idx }}][prod_descripcion_maestro]"
                 class="form-control form-control-sm linea-prod-nombre-input"
                 maxlength="500"
-                value="{{ old('lineas.'.$idx.'.prod_descripcion_agile', $row['prod_descripcion_agile'] !== '' ? $row['prod_descripcion_agile'] : $row['prod_nombre']) }}"
-                title="Descripci&oacute;n maestro (editable; no crea producto en maestro)"
+                value="{{ old('lineas.'.$idx.'.prod_descripcion_maestro', $row['prod_descripcion_maestro'] !== '' ? $row['prod_descripcion_maestro'] : $row['prod_nombre']) }}"
+                title="Descripci&oacute;n maestro (editable; no modifica la descripci&oacute;n Agile ni el aprendizaje)"
             >
-            <span class="d-none linea-prod-nombre">{{ $row['prod_descripcion_agile'] !== '' ? $row['prod_descripcion_agile'] : $row['prod_nombre'] }}</span>
+            <span class="d-none linea-prod-nombre">{{ $row['prod_descripcion_maestro'] !== '' ? $row['prod_descripcion_maestro'] : $row['prod_nombre'] }}</span>
         @else
             <span class="nv-fill linea-prod-nombre">{{ $row['prod_nombre'] }}</span>
         @endif

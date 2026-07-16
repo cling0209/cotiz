@@ -172,7 +172,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
-            'lineas.*.prod_descripcion_agile' => ['nullable', 'string', 'max:500'],
+            'lineas.*.prod_descripcion_maestro' => ['nullable', 'string', 'max:500'],
         ]));
 
         if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'], false, true)) {
@@ -1009,7 +1009,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_valor' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
-            'lineas.*.prod_descripcion_agile' => ['nullable', 'string', 'max:500'],
+            'lineas.*.prod_descripcion_maestro' => ['nullable', 'string', 'max:500'],
         ];
     }
 
@@ -1104,8 +1104,8 @@ class CotizacionController extends Controller
                 'prod_valor_costo' => isset($item['prod_valor_costo']) ? (int) $item['prod_valor_costo'] : null,
                 'prod_item_softland' => isset($item['prod_item_softland']) ? (string) $item['prod_item_softland'] : null,
             ];
-            if (array_key_exists('prod_descripcion_agile', $item)) {
-                $linea['prod_descripcion_agile'] = (string) $item['prod_descripcion_agile'];
+            if (array_key_exists('prod_descripcion_maestro', $item)) {
+                $linea['prod_descripcion_maestro'] = (string) $item['prod_descripcion_maestro'];
             }
             $lineas[] = $linea;
         }

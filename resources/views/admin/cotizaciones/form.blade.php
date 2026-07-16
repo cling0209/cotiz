@@ -783,12 +783,12 @@
             const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
             const valor = tr.querySelector('input[name*="[prod_valor]"]');
             const cantidad = tr.querySelector('input[name*="[cantidad]"]');
-            const descMaestro = tr.querySelector('input[name*="[prod_descripcion_agile]"]');
+            const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
             if (softland) linea.prod_item_softland = softland.value;
             if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
             if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
             if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
-            if (descMaestro) linea.prod_descripcion_agile = descMaestro.value;
+            if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
             lineas.push(linea);
         });
         return lineas;

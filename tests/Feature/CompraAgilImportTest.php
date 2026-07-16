@@ -658,6 +658,7 @@ TXT;
         $this->assertSame(1, (int) $lineas[0]->orden);
         $this->assertSame('99990001', $lineas[0]->prod_item_agile);
         $this->assertStringContainsString('TORNILLO', (string) $lineas[0]->prod_descripcion_agile);
+        $this->assertStringContainsString('TORNILLO', (string) $lineas[0]->prod_descripcion_maestro);
         $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas[0]));
 
         $this->assertSame('NOK-2', $lineas[1]->prod_item);
@@ -690,6 +691,7 @@ TXT;
             'prod_valor_costo' => 0,
             'prod_item_agile' => '99990001',
             'prod_descripcion_agile' => 'DESCRIPCION ORIGINAL AGILE',
+            'prod_descripcion_maestro' => 'DESCRIPCION ORIGINAL AGILE',
         ]);
 
         $this->actingAs($this->admin)->post(
@@ -712,7 +714,7 @@ TXT;
                         'cantidad' => 2,
                         'prod_valor' => 100,
                         'prod_valor_costo' => 0,
-                        'prod_descripcion_agile' => 'DESCRIPCION MAESTRO EDITADA',
+                        'prod_descripcion_maestro' => 'DESCRIPCION MAESTRO EDITADA',
                     ],
                 ],
             ],
@@ -724,7 +726,8 @@ TXT;
             ->first();
 
         $this->assertSame('NOK-1', $linea->prod_item);
-        $this->assertSame('DESCRIPCION MAESTRO EDITADA', $linea->prod_descripcion_agile);
+        $this->assertSame('DESCRIPCION ORIGINAL AGILE', $linea->prod_descripcion_agile);
+        $this->assertSame('DESCRIPCION MAESTRO EDITADA', $linea->prod_descripcion_maestro);
         $this->assertSame(100, (int) $linea->prod_valor);
         $this->assertFalse(
             AgileMaeprod::query()->where('prod_item', 'NOK-1')->exists(),

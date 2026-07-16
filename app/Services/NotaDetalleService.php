@@ -112,16 +112,22 @@ class NotaDetalleService
             $descripcionAgile = trim((string) ($descripcionesAgile[$agileId] ?? ''));
         }
 
+        $descripcionMaestro = trim((string) ($linea->prod_descripcion_maestro ?? ''));
+        if ($descripcionMaestro === '') {
+            $descripcionMaestro = $descripcionAgile;
+        }
+
         return [
             'linea' => $linea,
             'prod_nombre' => $producto?->prod_nombre
-                ?? ($linea->prod_descripcion_agile ?: $codigoProducto),
+                ?? ($descripcionMaestro !== '' ? $descripcionMaestro : $codigoProducto),
             'prod_familia' => $producto?->prod_familia,
             'prod_imagen' => $producto?->imageUrl(),
             'image_url' => $producto?->imageUrl(),
             'prod_item_softland' => $producto?->prod_item_softland ?? '',
             'prod_item_agile' => $agileId,
             'prod_descripcion_agile' => $descripcionAgile,
+            'prod_descripcion_maestro' => $descripcionMaestro,
             'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
             'prod_valor_fecha' => $fechaFmt,
             'prod_valor_fecha_antigua' => $fechaAntigua,
@@ -178,11 +184,11 @@ class NotaDetalleService
             ];
 
             if (
-                array_key_exists('prod_descripcion_agile', $datos)
+                array_key_exists('prod_descripcion_maestro', $datos)
                 && self::lineaPendienteVinculo($linea)
             ) {
-                $lineaUpdates['prod_descripcion_agile'] = AgileDescripcion::paraDetalle(
-                    (string) $datos['prod_descripcion_agile'],
+                $lineaUpdates['prod_descripcion_maestro'] = AgileDescripcion::paraDetalle(
+                    (string) $datos['prod_descripcion_maestro'],
                 );
             }
 
@@ -396,6 +402,7 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
+                'prod_descripcion_maestro' => $agileDesc !== '' ? $agileDesc : null,
             ]);
         });
     }
@@ -463,6 +470,7 @@ class NotaDetalleService
                 'prod_valor_costo' => 0,
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
+                'prod_descripcion_maestro' => $agileDesc !== '' ? $agileDesc : null,
             ]);
         });
     }
@@ -523,6 +531,7 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
+                'prod_descripcion_maestro' => $linea->prod_descripcion_maestro,
             ];
 
             if ($linea->prod_item !== $codigo) {
