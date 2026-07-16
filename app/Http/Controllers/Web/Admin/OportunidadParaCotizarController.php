@@ -64,10 +64,21 @@ class OportunidadParaCotizarController extends Controller
             'region' => ['required', 'integer', 'min:1', 'max:16'],
             'indice' => ['nullable', 'integer', 'min:0'],
             'total_pasos' => ['nullable', 'integer', 'min:0'],
+            'codigos_excluidos' => ['nullable', 'array'],
+            'codigos_excluidos.*' => ['string', 'max:40'],
         ]);
 
+        $excluidos = array_values(array_filter(array_map(
+            static fn ($c) => strtoupper(trim((string) $c)),
+            $data['codigos_excluidos'] ?? [],
+        )));
+
         try {
-            $resultado = $this->servicio->ejecutarPaso($data['frase'], (int) $data['region']);
+            $resultado = $this->servicio->ejecutarPaso(
+                $data['frase'],
+                (int) $data['region'],
+                $excluidos,
+            );
         } catch (RuntimeException $e) {
             return response()->json([
                 'ok' => false,

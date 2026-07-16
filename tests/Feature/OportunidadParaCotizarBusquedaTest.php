@@ -128,4 +128,93 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('ok', false);
     }
+
+    public function test_iniciar_ordena_pasos_region_luego_palabra(): void
+    {
+        config([
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13, 5],
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'created_by' => $user->id]);
+        OportunidadPalabraClave::query()->create(['frase' => 'papel', 'created_by' => $user->id]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.iniciar'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('total_pasos', 4)
+            ->assertJsonPath('pasos.0.region', 13)
+            ->assertJsonPath('pasos.0.frase', 'aseo')
+            ->assertJsonPath('pasos.1.region', 13)
+            ->assertJsonPath('pasos.1.frase', 'papel')
+            ->assertJsonPath('pasos.2.region', 5)
+            ->assertJsonPath('pasos.2.frase', 'aseo')
+            ->assertJsonPath('pasos.3.region', 5)
+            ->assertJsonPath('pasos.3.frase', 'papel');
+    }
+
+    public function test_paso_omite_codigos_ya_en_lista(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-15 12:00:00', 'America/Santiago'));
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'items' => [
+                        [
+                            'codigo' => '1000-1-COT26',
+                            'nombre' => 'Ya listada',
+                            'fechas' => [
+                                'fecha_publicacion' => '2026-07-15T09:00:00-04:00',
+                                'fecha_cierre' => '2026-07-16T18:00:00-04:00',
+                            ],
+                            'montos' => ['monto_disponible_clp' => 500000],
+                            'institucion' => ['region' => 13, 'comuna' => 'Santiago'],
+                        ],
+                        [
+                            'codigo' => '1000-3-COT26',
+                            'nombre' => 'Nueva',
+                            'fechas' => [
+                                'fecha_publicacion' => '2026-07-15T10:00:00-04:00',
+                                'fecha_cierre' => '2026-07-16T18:00:00-04:00',
+                            ],
+                            'montos' => ['monto_disponible_clp' => 300000],
+                            'institucion' => ['region' => 13, 'comuna' => 'Santiago'],
+                        ],
+                    ],
+                    'paginacion' => [],
+                ],
+            ], 200),
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.paso'), [
+                'frase' => 'papel',
+                'region' => 13,
+                'codigos_excluidos' => ['1000-1-COT26'],
+            ])
+            ->assertOk()
+            ->assertJsonCount(1, 'nuevos')
+            ->assertJsonPath('nuevos.0.codigo', '1000-3-COT26');
+
+        Carbon::setTestNow();
+    }
 }

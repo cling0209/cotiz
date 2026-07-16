@@ -192,6 +192,11 @@
     }
 
     function comparar(a, b) {
+        const ia = Number(a.indice_region_config);
+        const ib = Number(b.indice_region_config);
+        const idxA = Number.isFinite(ia) ? ia : 999;
+        const idxB = Number.isFinite(ib) ? ib : 999;
+        if (idxA !== idxB) return idxA - idxB;
         const ma = Number(a.monto_presupuesto_clp) || 0;
         const mb = Number(b.monto_presupuesto_clp) || 0;
         if (ma !== mb) return mb - ma;
@@ -440,6 +445,7 @@
                         region: paso.region,
                         indice: i,
                         total_pasos: total,
+                        codigos_excluidos: Array.from(porCodigo.keys()),
                     });
                 } catch (pasoErr) {
                     mostrarDebugConsulta(pasoErr.consulta, paso, i, total, pasoErr.message || 'error');
@@ -453,15 +459,8 @@
 
                 (resp.nuevos || []).forEach((item) => {
                     const codigo = String(item.codigo || '').toUpperCase();
-                    if (!codigo) return;
-                    if (!porCodigo.has(codigo)) {
-                        porCodigo.set(codigo, item);
-                    } else {
-                        const prev = porCodigo.get(codigo);
-                        const palabras = new Set([...(prev.palabras_coinciden || []), ...(item.palabras_coinciden || [])]);
-                        prev.palabras_coinciden = Array.from(palabras);
-                        porCodigo.set(codigo, prev);
-                    }
+                    if (!codigo || porCodigo.has(codigo)) return;
+                    porCodigo.set(codigo, item);
                 });
 
                 setProgreso(resp.progreso ?? Math.round(((i + 1) / total) * 100));

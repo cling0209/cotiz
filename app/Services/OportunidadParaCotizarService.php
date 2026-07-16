@@ -71,9 +71,10 @@ class OportunidadParaCotizarService
             ];
         }
 
+        // Región primero (orden MERCADOPUBLICO_REGIONES), luego cada palabra clave.
         $pasos = [];
-        foreach ($palabras as $frase) {
-            foreach ($regiones as $region) {
+        foreach ($regiones as $region) {
+            foreach ($palabras as $frase) {
                 $pasos[] = [
                     'frase' => $frase,
                     'region' => (int) $region,
@@ -113,13 +114,15 @@ class OportunidadParaCotizarService
 
     /**
      * Ejecuta un paso (frase × región) y devuelve solo publicadas hoy.
+     * Omite códigos ya presentes en la lista acumulada ($codigosExcluidos).
      *
+     * @param  list<string>  $codigosExcluidos
      * @return array{
      *   items: list<array<string, mixed>>,
      *   consulta: array<string, mixed>
      * }
      */
-    public function ejecutarPaso(string $frase, int $region): array
+    public function ejecutarPaso(string $frase, int $region, array $codigosExcluidos = []): array
     {
         $frase = trim($frase);
         if ($frase === '' || $region < 1) {
@@ -133,6 +136,14 @@ class OportunidadParaCotizarService
             throw new RuntimeException(
                 'API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.'
             );
+        }
+
+        $yaVistos = [];
+        foreach ($codigosExcluidos as $codigo) {
+            $norm = strtoupper(trim((string) $codigo));
+            if ($norm !== '') {
+                $yaVistos[$norm] = true;
+            }
         }
 
         $dia = now()->timezone(config('app.timezone'))->toDateString();
@@ -152,7 +163,7 @@ class OportunidadParaCotizarService
             }
 
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-            if ($codigo === '') {
+            if ($codigo === '' || isset($yaVistos[$codigo])) {
                 continue;
             }
 
@@ -164,11 +175,12 @@ class OportunidadParaCotizarService
                 continue;
             }
 
+            $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
             $resumen['palabras_coinciden'] = [$frase];
-            $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago(
-                isset($resumen['region']) ? (int) $resumen['region'] : null,
-            );
+            $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
+            $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
             $items[] = $resumen;
+            $yaVistos[$codigo] = true;
         }
 
         return [
@@ -250,16 +262,13 @@ class OportunidadParaCotizarService
         try {
             $porCodigo = [];
             foreach ($plan['pasos'] as $paso) {
-                foreach ($this->ejecutarPaso($paso['frase'], $paso['region'])['items'] as $item) {
+                $excluidos = array_keys($porCodigo);
+                foreach ($this->ejecutarPaso($paso['frase'], $paso['region'], $excluidos)['items'] as $item) {
                     $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-                    if ($codigo === '') {
+                    if ($codigo === '' || isset($porCodigo[$codigo])) {
                         continue;
                     }
-                    if (! isset($porCodigo[$codigo])) {
-                        $porCodigo[$codigo] = $item;
-                    } elseif (! in_array($paso['frase'], $porCodigo[$codigo]['palabras_coinciden'], true)) {
-                        $porCodigo[$codigo]['palabras_coinciden'][] = $paso['frase'];
-                    }
+                    $porCodigo[$codigo] = $item;
                 }
             }
 
@@ -288,18 +297,22 @@ class OportunidadParaCotizarService
      */
     public function compararOportunidades(array $a, array $b): int
     {
+        $regionA = isset($a['region']) ? (int) $a['region'] : null;
+        $regionB = isset($b['region']) ? (int) $b['region'] : null;
+        $idxA = (int) ($a['indice_region_config'] ?? CompraAgilRegionScope::indiceEnConfig($regionA));
+        $idxB = (int) ($b['indice_region_config'] ?? CompraAgilRegionScope::indiceEnConfig($regionB));
+        if ($idxA !== $idxB) {
+            return $idxA <=> $idxB;
+        }
+
         $montoA = (int) ($a['monto_presupuesto_clp'] ?? 0);
         $montoB = (int) ($b['monto_presupuesto_clp'] ?? 0);
         if ($montoA !== $montoB) {
             return $montoB <=> $montoA;
         }
 
-        $distA = (int) ($a['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago(
-            isset($a['region']) ? (int) $a['region'] : null,
-        ));
-        $distB = (int) ($b['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago(
-            isset($b['region']) ? (int) $b['region'] : null,
-        ));
+        $distA = (int) ($a['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago($regionA));
+        $distB = (int) ($b['distancia_santiago'] ?? CompraAgilRegionScope::distanciaASantiago($regionB));
 
         return $distA <=> $distB;
     }

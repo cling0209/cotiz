@@ -117,8 +117,23 @@ class CompraAgilRegionScope
     }
 
     /**
+     * Posición de la región en MERCADOPUBLICO_REGIONES (menor = mayor prioridad).
+     * Regiones fuera de la lista quedan al final.
+     */
+    public static function indiceEnConfig(?int $region): int
+    {
+        if ($region === null) {
+            return 999;
+        }
+
+        $pos = array_search($region, self::regionesIncluidas(), true);
+
+        return $pos === false ? 999 : (int) $pos;
+    }
+
+    /**
      * Distancia relativa a la Región Metropolitana (menor = más cerca de Santiago).
-     * Usado para ordenar oportunidades: presupuesto, luego cercanía.
+     * Usado como desempate al ordenar oportunidades.
      */
     public static function distanciaASantiago(?int $region): int
     {

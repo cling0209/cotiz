@@ -18,6 +18,17 @@ class CompraAgilRegionScopeTest extends TestCase
         $this->assertSame([1, 13, 16], $incluidas);
     }
 
+    public function test_indice_en_config_respeta_orden_env(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [13, 5, 6]]);
+
+        $this->assertSame(0, CompraAgilRegionScope::indiceEnConfig(13));
+        $this->assertSame(1, CompraAgilRegionScope::indiceEnConfig(5));
+        $this->assertSame(2, CompraAgilRegionScope::indiceEnConfig(6));
+        $this->assertSame(999, CompraAgilRegionScope::indiceEnConfig(99));
+        $this->assertSame(999, CompraAgilRegionScope::indiceEnConfig(null));
+    }
+
     public function test_excluye_region_no_configurada(): void
     {
         config(['cotiz.mercadopublico.regiones' => [13, 5]]);
