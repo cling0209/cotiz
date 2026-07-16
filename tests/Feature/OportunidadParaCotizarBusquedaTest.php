@@ -31,7 +31,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                     'items' => [
                         [
                             'codigo' => '1000-1-COT26',
-                            'nombre' => 'Hoy',
+                            'nombre' => 'Servicio de aseo industrial',
                             'fechas' => [
                                 'fecha_publicacion' => '2026-07-15T09:00:00-04:00',
                                 'fecha_cierre' => '2026-07-16T18:00:00-04:00',
@@ -41,12 +41,22 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                         ],
                         [
                             'codigo' => '1000-2-COT26',
-                            'nombre' => 'Ayer',
+                            'nombre' => 'Ayer aseo',
                             'fechas' => [
                                 'fecha_publicacion' => '2026-07-14T09:00:00-04:00',
                                 'fecha_cierre' => '2026-07-16T18:00:00-04:00',
                             ],
                             'montos' => ['monto_disponible_clp' => 900000],
+                            'institucion' => ['region' => 13, 'comuna' => 'Santiago'],
+                        ],
+                        [
+                            'codigo' => '1000-3-COT26',
+                            'nombre' => 'Bomba sumergible y turbo calefactor',
+                            'fechas' => [
+                                'fecha_publicacion' => '2026-07-15T10:00:00-04:00',
+                                'fecha_cierre' => '2026-07-16T18:00:00-04:00',
+                            ],
+                            'montos' => ['monto_disponible_clp' => 700000],
                             'institucion' => ['region' => 13, 'comuna' => 'Santiago'],
                         ],
                     ],
@@ -82,7 +92,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('consulta.parametros.q', 'aseo')
             ->assertJsonPath('consulta.parametros.region', 13)
             ->assertJsonPath('consulta.parametros.estado', 'publicada')
-            ->assertJsonPath('consulta.total_api', 2)
+            ->assertJsonPath('consulta.total_api', 3)
             ->assertJsonPath('consulta.total_publicadas_hoy', 1)
             ->assertJsonPath('guardadas', 1);
 
@@ -92,6 +102,9 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         ]);
         $this->assertDatabaseMissing('oportunidad_encontradas', [
             'codigo' => '1000-2-COT26',
+        ]);
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '1000-3-COT26',
         ]);
 
         Carbon::setTestNow();
@@ -197,7 +210,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                     'items' => [
                         [
                             'codigo' => '1000-1-COT26',
-                            'nombre' => 'Ya listada',
+                            'nombre' => 'Compra de papel bond ya listada',
                             'fechas' => [
                                 'fecha_publicacion' => '2026-07-15T09:00:00-04:00',
                                 'fecha_cierre' => '2026-07-16T18:00:00-04:00',
@@ -207,7 +220,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                         ],
                         [
                             'codigo' => '1000-3-COT26',
-                            'nombre' => 'Nueva',
+                            'nombre' => 'Papel oficio nueva compra',
                             'fechas' => [
                                 'fecha_publicacion' => '2026-07-15T10:00:00-04:00',
                                 'fecha_cierre' => '2026-07-16T18:00:00-04:00',

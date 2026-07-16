@@ -185,6 +185,10 @@ class OportunidadParaCotizarService
             return;
         }
 
+        if (! $this->fraseApareceEnTexto($frase, $row->toResumen())) {
+            return;
+        }
+
         $prev = is_array($row->palabras_coinciden) ? $row->palabras_coinciden : [];
         if (in_array($frase, $prev, true)) {
             return;
@@ -193,6 +197,80 @@ class OportunidadParaCotizarService
         $prev[] = $frase;
         $row->palabras_coinciden = array_values($prev);
         $row->save();
+    }
+
+    /**
+     * La frase (o todas sus palabras significativas) debe aparecer en nombre/organismo.
+     *
+     * @param  array<string, mixed>  $resumen
+     * @param  array<string, mixed>|null  $crudo  ítem crudo API (opcional)
+     */
+    public function fraseApareceEnTexto(string $frase, array $resumen, ?array $crudo = null): bool
+    {
+        $frase = trim($frase);
+        if ($frase === '') {
+            return false;
+        }
+
+        $partes = [
+            (string) ($resumen['nombre'] ?? ''),
+            (string) ($resumen['organismo'] ?? ''),
+            (string) ($resumen['comuna'] ?? ''),
+            (string) ($resumen['nombre_region'] ?? ''),
+        ];
+
+        if (is_array($crudo)) {
+            $partes[] = (string) ($crudo['nombre'] ?? '');
+            $institucion = is_array($crudo['institucion'] ?? null) ? $crudo['institucion'] : [];
+            $partes[] = (string) ($institucion['organismo_comprador'] ?? '');
+            $partes[] = (string) ($institucion['comuna'] ?? $institucion['nombre_comuna'] ?? '');
+        }
+
+        $haystack = $this->normalizarTextoBusqueda(implode(' ', $partes));
+        if ($haystack === '') {
+            return false;
+        }
+
+        $needle = $this->normalizarTextoBusqueda($frase);
+        if ($needle === '') {
+            return false;
+        }
+
+        // Frase completa (ej. "servicio de aseo").
+        if (str_contains($haystack, $needle)) {
+            return true;
+        }
+
+        // Frase multi-palabra: todas las palabras ≥3 chars deben aparecer.
+        $tokens = array_values(array_filter(
+            preg_split('/\s+/u', $needle) ?: [],
+            static fn (string $t) => mb_strlen($t) >= 3,
+        ));
+
+        if ($tokens === []) {
+            return false;
+        }
+
+        foreach ($tokens as $token) {
+            if (! str_contains($haystack, $token)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizarTextoBusqueda(string $texto): string
+    {
+        $texto = mb_strtolower(trim($texto), 'UTF-8');
+        $texto = strtr($texto, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
+        ]);
+        $texto = preg_replace('/[^a-z0-9\s]+/u', ' ', $texto) ?? $texto;
+        $texto = preg_replace('/\s+/u', ' ', $texto) ?? $texto;
+
+        return trim($texto);
     }
 
     /**
@@ -339,16 +417,20 @@ class OportunidadParaCotizarService
                 continue;
             }
 
+            $resumen = $this->oportunidad->enriquecerResumen(
+                $this->mapper->resumenListadoItem($item),
+            );
+
+            // MP puede devolver resultados irrelevantes: exigir que la frase esté en el texto.
+            if (! $this->fraseApareceEnTexto($frase, $resumen, $item)) {
+                continue;
+            }
+
             if (isset($yaVistos[$codigo])) {
-                // Ya grabada: solo agrega la frase con la que también la encontró.
                 $this->agregarPalabraAGuardada($codigo, $frase);
 
                 continue;
             }
-
-            $resumen = $this->oportunidad->enriquecerResumen(
-                $this->mapper->resumenListadoItem($item),
-            );
 
             if (! $this->esPublicadaHoy($resumen['fecha_publicacion'] ?? null)) {
                 continue;

@@ -23,4 +23,29 @@ class OportunidadParaCotizarHoyTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_frase_debe_aparecer_en_nombre_u_organismo(): void
+    {
+        $svc = $this->app->make(OportunidadParaCotizarService::class);
+
+        $this->assertTrue($svc->fraseApareceEnTexto('aseo', [
+            'nombre' => 'Servicio de Aseo Industrial',
+            'organismo' => 'Hospital',
+        ]));
+
+        $this->assertTrue($svc->fraseApareceEnTexto('servicio de aseo', [
+            'nombre' => 'Contratación servicio de aseo 2026',
+            'organismo' => '',
+        ]));
+
+        $this->assertFalse($svc->fraseApareceEnTexto('aseo', [
+            'nombre' => 'Adquisición de Bomba Sumergible y Turbo Calefactor',
+            'organismo' => 'Municipalidad',
+        ]));
+
+        $this->assertTrue($svc->fraseApareceEnTexto('papel bond', [
+            'nombre' => 'Compra de papel y bond oficio',
+            'organismo' => '',
+        ]));
+    }
 }
