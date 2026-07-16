@@ -93,15 +93,40 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Parámetros de consulta a Mercado Público para un paso (frase × región).
+     *
+     * @return array<string, mixed>
+     */
+    public function parametrosConsultaPaso(string $frase, int $region): array
+    {
+        $frase = trim($frase);
+
+        return [
+            'estado' => 'publicada',
+            'numero_pagina' => 1,
+            'ordenar_por' => 'FechaPublicacion',
+            'q' => $frase,
+            'region' => max(1, $region),
+            'tamano_pagina' => 50,
+        ];
+    }
+
+    /**
      * Ejecuta un paso (frase × región) y devuelve solo publicadas hoy.
      *
-     * @return list<array<string, mixed>>
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>
+     * }
      */
     public function ejecutarPaso(string $frase, int $region): array
     {
         $frase = trim($frase);
         if ($frase === '' || $region < 1) {
-            return [];
+            return [
+                'items' => [],
+                'consulta' => $this->metaConsultaPaso($frase, $region, 0, 0),
+            ];
         }
 
         if (! $this->api->isConfigured()) {
@@ -112,16 +137,10 @@ class OportunidadParaCotizarService
 
         $dia = now()->timezone(config('app.timezone'))->toDateString();
         $cacheKey = 'oportunidad_para_cotizar:'.$dia.':'.md5(mb_strtolower($frase).'|'.$region);
+        $params = $this->parametrosConsultaPaso($frase, $region);
 
-        $crudos = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($frase, $region) {
-            $resultado = $this->api->listar([
-                'estado' => 'publicada',
-                'q' => $frase,
-                'region' => (int) $region,
-                'tamano_pagina' => 50,
-                'numero_pagina' => 1,
-                'ordenar_por' => 'FechaPublicacion',
-            ]);
+        $crudos = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
+            $resultado = $this->api->listar($params);
 
             return $resultado['items'] ?? [];
         });
@@ -152,7 +171,40 @@ class OportunidadParaCotizarService
             $items[] = $resumen;
         }
 
-        return $items;
+        return [
+            'items' => $items,
+            'consulta' => $this->metaConsultaPaso($frase, $region, count($crudos), count($items)),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function metaConsultaPaso(string $frase, int $region, int $totalApi, int $totalHoy): array
+    {
+        $params = $this->parametrosConsultaPaso($frase, $region);
+        ksort($params);
+
+        $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
+        $path = '/v2/compra-agil';
+
+        $paraJson = [
+            'endpoint' => $baseUrl.$path,
+            'filtro_fecha' => now()->timezone(config('app.timezone'))->toDateString(),
+            'header_ticket' => '(configurado)',
+            'metodo' => 'GET',
+            'parametros' => $params,
+            'total_api' => $totalApi,
+            'total_publicadas_hoy' => $totalHoy,
+        ];
+        ksort($paraJson);
+
+        return array_merge($paraJson, [
+            'json' => json_encode(
+                $paraJson,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            ) ?: '{}',
+        ]);
     }
 
     /**
@@ -181,7 +233,7 @@ class OportunidadParaCotizarService
         try {
             $porCodigo = [];
             foreach ($plan['pasos'] as $paso) {
-                foreach ($this->ejecutarPaso($paso['frase'], $paso['region']) as $item) {
+                foreach ($this->ejecutarPaso($paso['frase'], $paso['region'])['items'] as $item) {
                     $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
                     if ($codigo === '') {
                         continue;

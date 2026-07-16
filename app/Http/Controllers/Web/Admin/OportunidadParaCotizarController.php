@@ -65,12 +65,13 @@ class OportunidadParaCotizarController extends Controller
         ]);
 
         try {
-            $nuevos = $this->servicio->ejecutarPaso($data['frase'], (int) $data['region']);
+            $resultado = $this->servicio->ejecutarPaso($data['frase'], (int) $data['region']);
         } catch (RuntimeException $e) {
             return response()->json([
                 'ok' => false,
                 'error' => $e->getMessage(),
                 'nuevos' => [],
+                'consulta' => null,
                 'frase' => $data['frase'],
                 'region' => (int) $data['region'],
             ], 502);
@@ -84,7 +85,8 @@ class OportunidadParaCotizarController extends Controller
         return response()->json([
             'ok' => true,
             'error' => null,
-            'nuevos' => $nuevos,
+            'nuevos' => $resultado['items'],
+            'consulta' => $resultado['consulta'],
             'frase' => $data['frase'],
             'region' => (int) $data['region'],
             'indice' => $indice,

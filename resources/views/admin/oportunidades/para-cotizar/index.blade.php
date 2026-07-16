@@ -65,6 +65,11 @@
                      role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="rel-detalle" class="small text-muted">Preparando consulta…</div>
+            <details id="rel-consulta-wrap" class="small mt-2 d-none">
+                <summary class="text-muted user-select-none">Consulta Mercado P&uacute;blico (par&aacute;metros y JSON)</summary>
+                <pre id="rel-consulta-json" class="bg-light border rounded p-2 mb-0 mt-2 small font-monospace text-break"
+                     style="max-height:14rem;overflow:auto;white-space:pre-wrap;"></pre>
+            </details>
             <div id="rel-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
         </div>
     </div>
@@ -122,6 +127,8 @@
     const relFecha = document.getElementById('rel-fecha');
     const relBar = document.getElementById('rel-progreso-bar');
     const relDetalle = document.getElementById('rel-detalle');
+    const relConsultaWrap = document.getElementById('rel-consulta-wrap');
+    const relConsultaJson = document.getElementById('rel-consulta-json');
     const relError = document.getElementById('rel-error');
 
     /** @type {Map<string, object>} */
@@ -239,6 +246,35 @@
         relDuracion.textContent = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
     }
 
+    function mostrarConsulta(consulta) {
+        if (!relConsultaWrap || !relConsultaJson || !consulta || typeof consulta !== 'object') {
+            return;
+        }
+
+        const ordenado = {
+            metodo: consulta.metodo ?? 'GET',
+            endpoint: consulta.endpoint ?? '',
+            header_ticket: consulta.header_ticket ?? '(configurado)',
+            parametros: consulta.parametros ?? {},
+            filtro_fecha: consulta.filtro_fecha ?? '',
+            total_api: consulta.total_api ?? 0,
+            total_publicadas_hoy: consulta.total_publicadas_hoy ?? 0,
+        };
+
+        relConsultaJson.textContent = consulta.json || JSON.stringify(ordenado, null, 2);
+        relConsultaWrap.classList.remove('d-none');
+    }
+
+    function textoDetallePaso(paso, indice, total, consulta) {
+        const frase = paso?.frase ?? '';
+        const regionNombre = paso?.region_nombre || ('Región ' + (paso?.region ?? ''));
+        let texto = `Consultando «${frase}» · ${regionNombre} (${indice + 1}/${total})`;
+        if (consulta) {
+            texto += ` — API: ${consulta.total_api ?? 0}, publicadas hoy: ${consulta.total_publicadas_hoy ?? 0}`;
+        }
+        return texto;
+    }
+
     function mostrarError(msg) {
         relError.textContent = msg || 'Error en la consulta.';
         relError.classList.remove('d-none');
@@ -287,6 +323,8 @@
         placeholder.classList.add('d-none');
         resultados.classList.remove('d-none');
         relError.classList.add('d-none');
+        relConsultaWrap?.classList.add('d-none');
+        if (relConsultaJson) relConsultaJson.textContent = '';
         relFin.textContent = '—';
         relInicio.textContent = '…';
         setProgreso(0);
@@ -318,7 +356,7 @@
                 if (cancelado) break;
 
                 const paso = pasos[i];
-                relDetalle.textContent = `Consultando «${paso.frase}» · ${paso.region_nombre || ('Región ' + paso.region)} (${i + 1}/${total})`;
+                relDetalle.textContent = textoDetallePaso(paso, i, total, null);
                 const resp = await postJson(urls.paso, {
                     frase: paso.frase,
                     region: paso.region,
@@ -327,6 +365,9 @@
                 });
 
                 if (cancelado) break;
+
+                mostrarConsulta(resp.consulta);
+                relDetalle.textContent = textoDetallePaso(paso, i, total, resp.consulta);
 
                 (resp.nuevos || []).forEach((item) => {
                     const codigo = String(item.codigo || '').toUpperCase();

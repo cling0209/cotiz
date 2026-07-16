@@ -73,7 +73,13 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('terminado', true)
             ->assertJsonCount(1, 'nuevos')
             ->assertJsonPath('nuevos.0.codigo', '1000-1-COT26')
-            ->assertJsonPath('fin_label', now()->format('H:i:s'));
+            ->assertJsonPath('fin_label', now()->format('H:i:s'))
+            ->assertJsonPath('consulta.metodo', 'GET')
+            ->assertJsonPath('consulta.parametros.q', 'aseo')
+            ->assertJsonPath('consulta.parametros.region', 13)
+            ->assertJsonPath('consulta.parametros.estado', 'publicada')
+            ->assertJsonPath('consulta.total_api', 2)
+            ->assertJsonPath('consulta.total_publicadas_hoy', 1);
 
         Carbon::setTestNow();
     }
