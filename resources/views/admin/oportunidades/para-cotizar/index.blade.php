@@ -285,17 +285,22 @@
             const frasesHtml = frases.length
                 ? frases.map((f) => `<span class="badge text-bg-light border me-1 mb-1" title="Encontrada con «${escapeHtml(f)}»">${escapeHtml(f)}</span>`).join('')
                 : '<span class="text-muted">—</span>';
-            const cantidadProductos = item.cantidad_productos == null
+            const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
+            const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : null;
+            const cantidadProductos = ! tieneCantidad || Number.isNaN(cantidadNum)
                 ? '<span class="text-muted">—</span>'
-                : escapeHtml(String(item.cantidad_productos));
+                : escapeHtml(String(cantidadNum));
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
             const fraseBajoCodigo = frases.length
                 ? `<div class="small mt-1">Encontrada con: <strong>${escapeHtml(frases.join(', '))}</strong></div>`
                 : '';
+            const productosBajoCodigo = tieneCantidad && ! Number.isNaN(cantidadNum)
+                ? `<div class="small mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>`
+                : '';
             return `<tr${attrs}>
-                <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}</td>
+                <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}${productosBajoCodigo}</td>
                 <td class="small" style="min-width:8rem;">${frasesHtml}</td>
                 <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
                 <td class="text-center tabular-nums">${cantidadProductos}</td>

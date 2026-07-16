@@ -127,6 +127,9 @@ class OportunidadEncontradaRelayService
             if ($existente !== null) {
                 $prev = is_array($existente->palabras_coinciden) ? $existente->palabras_coinciden : [];
                 $attrs['palabras_coinciden'] = array_values(array_unique(array_merge($prev, $palabras)));
+                if (($attrs['cantidad_productos'] ?? null) === null && $existente->cantidad_productos !== null) {
+                    unset($attrs['cantidad_productos']);
+                }
                 $existente->fill($attrs);
                 $existente->save();
             } else {
