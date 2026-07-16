@@ -148,6 +148,9 @@ class OportunidadParaCotizarService
             'estado_codigo' => mb_substr(trim((string) ($item['estado_codigo'] ?? '')), 0, 40) ?: null,
             'estado_glosa' => mb_substr(trim((string) ($item['estado_glosa'] ?? '')), 0, 120) ?: null,
             'palabras_coinciden' => $palabras,
+            'cantidad_productos' => isset($item['cantidad_productos'])
+                ? (int) $item['cantidad_productos']
+                : null,
             'fecha_busqueda' => $dia,
             'indice_region_config' => (int) ($item['indice_region_config']
                 ?? CompraAgilRegionScope::indiceEnConfig($region)),
@@ -197,6 +200,44 @@ class OportunidadParaCotizarService
         $prev[] = $frase;
         $row->palabras_coinciden = array_values($prev);
         $row->save();
+    }
+
+    private function completarCantidadProductosGuardada(string $codigo): ?int
+    {
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        if ($row->cantidad_productos !== null) {
+            return (int) $row->cantidad_productos;
+        }
+
+        $cantidad = $this->obtenerCantidadProductosReal($codigo);
+        if ($cantidad !== null) {
+            $row->cantidad_productos = $cantidad;
+            $row->save();
+        }
+
+        return $cantidad;
+    }
+
+    private function obtenerCantidadProductosReal(string $codigo): ?int
+    {
+        try {
+            // detalle() usa cache: como máximo una consulta real por código durante su TTL.
+            $detalle = $this->api->detalle($codigo);
+
+            return $this->mapper->cantidadProductosDetalle($detalle);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**
@@ -426,18 +467,20 @@ class OportunidadParaCotizarService
                 continue;
             }
 
-            if (isset($yaVistos[$codigo])) {
-                $this->agregarPalabraAGuardada($codigo, $frase);
-
+            if (! $this->esPublicadaHoy($resumen['fecha_publicacion'] ?? null)) {
                 continue;
             }
 
-            if (! $this->esPublicadaHoy($resumen['fecha_publicacion'] ?? null)) {
+            if (isset($yaVistos[$codigo])) {
+                $this->agregarPalabraAGuardada($codigo, $frase);
+                $this->completarCantidadProductosGuardada($codigo);
+
                 continue;
             }
 
             $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
             $resumen['palabras_coinciden'] = [$frase];
+            $resumen['cantidad_productos'] = $this->obtenerCantidadProductosReal($codigo);
             $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
             $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
             $resumen['guardada'] = true;

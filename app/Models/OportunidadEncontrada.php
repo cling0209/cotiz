@@ -24,6 +24,7 @@ class OportunidadEncontrada extends Model
         'estado_codigo',
         'estado_glosa',
         'palabras_coinciden',
+        'cantidad_productos',
         'fecha_busqueda',
         'indice_region_config',
         'found_by',
@@ -37,6 +38,7 @@ class OportunidadEncontrada extends Model
             'fecha_publicacion' => 'datetime',
             'fecha_cierre' => 'datetime',
             'palabras_coinciden' => 'array',
+            'cantidad_productos' => 'integer',
             'fecha_busqueda' => 'date',
             'indice_region_config' => 'integer',
         ];
@@ -67,6 +69,7 @@ class OportunidadEncontrada extends Model
             'estado_codigo' => (string) ($this->estado_codigo ?? ''),
             'estado_glosa' => (string) ($this->estado_glosa ?? ''),
             'palabras_coinciden' => array_values($this->palabras_coinciden ?? []),
+            'cantidad_productos' => $this->cantidad_productos,
             'indice_region_config' => (int) $this->indice_region_config,
             'guardada' => true,
         ];

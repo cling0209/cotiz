@@ -60,6 +60,10 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                             'institucion' => ['region' => 13, 'comuna' => 'Santiago'],
                         ],
                     ],
+                    'productos_solicitados' => [
+                        ['id' => 1],
+                        ['id' => 2],
+                    ],
                     'paginacion' => [],
                 ],
             ], 200),
@@ -87,6 +91,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('terminado', true)
             ->assertJsonCount(1, 'nuevos')
             ->assertJsonPath('nuevos.0.codigo', '1000-1-COT26')
+            ->assertJsonPath('nuevos.0.cantidad_productos', 2)
             ->assertJsonPath('fin_label', now()->format('H:i:s'))
             ->assertJsonPath('consulta.metodo', 'GET')
             ->assertJsonPath('consulta.parametros.q', 'aseo')
@@ -99,6 +104,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertDatabaseHas('oportunidad_encontradas', [
             'codigo' => '1000-1-COT26',
             'fecha_busqueda' => '2026-07-15',
+            'cantidad_productos' => 2,
         ]);
         $this->assertDatabaseMissing('oportunidad_encontradas', [
             'codigo' => '1000-2-COT26',

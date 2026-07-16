@@ -91,6 +91,7 @@
                         <th>Cotizaci&oacute;n</th>
                         <th>Palabra clave</th>
                         <th>Organismo</th>
+                        <th class="text-center">Productos</th>
                         <th>Fecha publicaci&oacute;n</th>
                         <th>Fecha cierre</th>
                         <th class="text-end">Presupuesto</th>
@@ -241,7 +242,7 @@
         relEncontradas.textContent = String(items.length);
 
         if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
@@ -259,6 +260,9 @@
             const frasesHtml = frases.length
                 ? frases.map((f) => `<span class="badge text-bg-light border me-1 mb-1" title="Encontrada con «${escapeHtml(f)}»">${escapeHtml(f)}</span>`).join('')
                 : '<span class="text-muted">—</span>';
+            const cantidadProductos = item.cantidad_productos == null
+                ? '<span class="text-muted">—</span>'
+                : escapeHtml(String(item.cantidad_productos));
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
@@ -269,6 +273,7 @@
                 <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}</td>
                 <td class="small" style="min-width:8rem;">${frasesHtml}</td>
                 <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
+                <td class="text-center tabular-nums">${cantidadProductos}</td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_publicacion))}</td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_cierre))}</td>
                 <td class="text-end tabular-nums text-nowrap">${fmtMonto(item.monto_presupuesto_clp)}</td>
