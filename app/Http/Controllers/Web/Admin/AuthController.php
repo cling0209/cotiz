@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
+use App\Services\OportunidadBusquedaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,7 +25,11 @@ class AuthController extends Controller
         return view('admin.auth.login');
     }
 
-    public function login(Request $request, NotaMpResultadosService $resultadosMp): RedirectResponse
+    public function login(
+        Request $request,
+        NotaMpResultadosService $resultadosMp,
+        OportunidadBusquedaService $oportunidades,
+    ): RedirectResponse
     {
         $credentials = $request->validate([
             'username' => ['required', 'string', 'max:20'],
@@ -49,6 +54,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         $this->dispararCatchUpMpSiCorresponde($resultadosMp);
+        $this->dispararCatchUpOportunidades($oportunidades);
 
         return redirect()->intended(route('admin.cotizaciones.index'));
     }
@@ -77,6 +83,20 @@ class AuthController extends Controller
             }
         } catch (Throwable $e) {
             Log::warning('Catch-up MP al login falló', [
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function dispararCatchUpOportunidades(OportunidadBusquedaService $oportunidades): void
+    {
+        try {
+            $resultado = $oportunidades->catchUp('sistema', false);
+            if (in_array($resultado['accion'] ?? '', ['encolada', 'reanudada'], true)) {
+                Log::info('Catch-up de oportunidades encolado al login admin', $resultado);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Catch-up de oportunidades al login falló', [
                 'message' => $e->getMessage(),
             ]);
         }

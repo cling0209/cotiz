@@ -21,6 +21,11 @@ class OportunidadParaCotizarService
         protected OportunidadEncontradaRelayService $encontradaRelay,
     ) {}
 
+    public function apiConfigurada(): bool
+    {
+        return $this->api->isConfigured();
+    }
+
     /**
      * @return list<string>
      */

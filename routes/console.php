@@ -21,5 +21,10 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
             ->cron('0 '.$horas->implode(',').' * * *')
             ->timezone(config('app.timezone', 'America/Santiago'))
             ->withoutOverlapping(120);
+
+        Schedule::command('oportunidad:buscar')
+            ->cron('0 '.$horas->implode(',').' * * *')
+            ->timezone(config('app.timezone', 'America/Santiago'))
+            ->withoutOverlapping(120);
     }
 }

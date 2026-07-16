@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadParaCotizarService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class OportunidadParaCotizarController extends Controller
 {
     public function __construct(
         protected OportunidadParaCotizarService $servicio,
+        protected OportunidadBusquedaService $busqueda,
     ) {}
 
     public function index(Request $request): View
@@ -29,39 +31,42 @@ class OportunidadParaCotizarController extends Controller
             'apiConfigurada' => true,
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
+            'corridaEstado' => $puedeBuscar ? $this->busqueda->estado() : null,
         ]);
     }
 
-    public function iniciar(): JsonResponse
+    public function iniciar(Request $request): JsonResponse
     {
-        $plan = $this->servicio->planBusqueda();
-        $inicio = now()->timezone(config('app.timezone'));
-        $guardadas = $this->servicio->listarGuardadasHoy();
-
-        if ($plan['error'] !== null) {
+        try {
+            $corrida = $this->busqueda->iniciar((string) ($request->user()?->username ?? 'sistema'));
+        } catch (RuntimeException $e) {
             return response()->json([
                 'ok' => false,
-                'error' => $plan['error'],
-                'palabras' => $plan['palabras'],
-                'pasos' => [],
-                'total_pasos' => 0,
-                'fecha' => $plan['fecha'],
-                'guardadas' => $guardadas,
-                'inicio' => $inicio->toIso8601String(),
-                'inicio_label' => $inicio->format('H:i:s'),
-            ], $plan['api_configurada'] ? 422 : 503);
+                'error' => $e->getMessage(),
+            ], 422);
         }
 
         return response()->json([
             'ok' => true,
-            'error' => null,
-            'palabras' => $plan['palabras'],
-            'pasos' => $plan['pasos'],
-            'total_pasos' => $plan['total_pasos'],
-            'fecha' => $plan['fecha'],
-            'guardadas' => $guardadas,
-            'inicio' => $inicio->toIso8601String(),
-            'inicio_label' => $inicio->format('H:i:s'),
+            'corrida' => $this->busqueda->estado($corrida),
+        ]);
+    }
+
+    public function estado(): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'corrida' => $this->busqueda->estado(),
+        ]);
+    }
+
+    public function cancelar(): JsonResponse
+    {
+        $corrida = $this->busqueda->cancelar();
+
+        return response()->json([
+            'ok' => true,
+            'corrida' => $corrida !== null ? $this->busqueda->estado($corrida) : null,
         ]);
     }
 

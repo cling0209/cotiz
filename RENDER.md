@@ -177,6 +177,14 @@ Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados
 
 Catch-up manual: `php artisan compra-agil:consultar-resultados --catch-up`.
 
+La búsqueda de **Oportunidades** usa los mismos horarios y parámetros HTTP de Mercado Público:
+
+- Schedule: `php artisan oportunidad:buscar` en las horas de `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS`.
+- Catch-up/retoma al boot (`php artisan oportunidad:buscar --catch-up`) y al login admin.
+- Solo se ejecuta donde `MERCADOPUBLICO_ANALISIS_ADMIN=true`.
+- La corrida queda persistida y continúa desde el siguiente paso si Render reinicia.
+- Un error temporal de MP afecta solo al paso `palabra × región`; los pasos restantes continúan.
+
 ## OCR de PDFs escaneados
 
 El importador PDF/Word puede leer listados escaneados (p. ej. EETT) con **pdftoppm** + **tesseract** (paquetes en el `Dockerfile`: `poppler-utils`, `tesseract-ocr`, `tesseract-ocr-data-spa/eng`).

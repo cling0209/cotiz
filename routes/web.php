@@ -129,6 +129,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('oportunidades-admin')->group(function () {
             Route::post('oportunidades/para-cotizar/iniciar', [OportunidadParaCotizarController::class, 'iniciar'])
                 ->name('oportunidades.para-cotizar.iniciar');
+            Route::get('oportunidades/para-cotizar/estado', [OportunidadParaCotizarController::class, 'estado'])
+                ->name('oportunidades.para-cotizar.estado');
+            Route::post('oportunidades/para-cotizar/cancelar', [OportunidadParaCotizarController::class, 'cancelar'])
+                ->name('oportunidades.para-cotizar.cancelar');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
             Route::get('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'index'])

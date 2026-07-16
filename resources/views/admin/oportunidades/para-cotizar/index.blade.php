@@ -153,7 +153,8 @@
     const puedeBuscar = @json((bool) $puedeBuscar);
     const urls = {
         iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
-        paso: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.paso') : ''),
+        estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
+        cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
         cotizarBase: @json(url('/admin/cotizaciones/create')),
     };
     const mpApi = {
@@ -185,14 +186,15 @@
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
     let inicioMs = null;
+    let finMs = null;
     let tickTimer = null;
     let buscando = false;
     let cancelado = false;
-    /** @type {AbortController|null} */
-    let abortCtrl = null;
+    let pollTimer = null;
 
     const guardadasIniciales = @json($guardadas ?? []);
     const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
+    const corridaInicial = @json($corridaEstado ?? null);
 
     function cargarItems(items) {
         (items || []).forEach((item) => {
@@ -326,7 +328,7 @@
             relDuracion.textContent = '—';
             return;
         }
-        const segs = Math.max(0, Math.floor((Date.now() - inicioMs) / 1000));
+        const segs = Math.max(0, Math.floor(((finMs || Date.now()) - inicioMs) / 1000));
         const m = Math.floor(segs / 60);
         const s = segs % 60;
         relDuracion.textContent = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
@@ -424,19 +426,17 @@
     }
 
     function cancelarBusqueda() {
-        if (!buscando) return;
-        cancelado = true;
-        if (abortCtrl) {
-            abortCtrl.abort();
-        }
+        if (!buscando || !urls.cancelar) return;
         if (btnCancelar) btnCancelar.disabled = true;
         relDetalle.textContent = 'Cancelando…';
+        postJson(urls.cancelar, {})
+            .then((data) => aplicarEstadoCorrida(data.corrida))
+            .catch((e) => mostrarError(e.message || String(e)));
     }
 
     async function postJson(url, body) {
         const res = await fetch(url, {
             method: 'POST',
-            signal: abortCtrl ? abortCtrl.signal : undefined,
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
@@ -454,12 +454,88 @@
         return data;
     }
 
+    async function getJson(url) {
+        const res = await fetch(url, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+            throw new Error(data.error || data.message || (`HTTP ${res.status}`));
+        }
+        return data;
+    }
+
+    function detenerPolling() {
+        if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    function aplicarEstadoCorrida(corrida) {
+        if (!corrida) return;
+
+        estado.classList.remove('d-none');
+        placeholder.classList.add('d-none');
+        const inicio = corrida.inicio ? new Date(corrida.inicio) : null;
+        const fin = corrida.fin ? new Date(corrida.fin) : null;
+        inicioMs = inicio && !Number.isNaN(inicio.getTime()) ? inicio.getTime() : inicioMs;
+        finMs = fin && !Number.isNaN(fin.getTime()) ? fin.getTime() : null;
+        relInicio.textContent = inicio ? inicio.toLocaleTimeString('es-CL', { hour12: false }) : '—';
+        relFin.textContent = fin ? fin.toLocaleTimeString('es-CL', { hour12: false }) : '—';
+        setProgreso(Number(corrida.progreso) || 0);
+        relDetalle.textContent = corrida.mensaje || 'Procesando en segundo plano…';
+
+        porCodigo = new Map();
+        cargarItems(corrida.items || []);
+        renderTabla();
+
+        const activo = corrida.estado === 'running';
+        cancelado = corrida.estado === 'cancelled';
+        setModoBusqueda(activo);
+        relBar.classList.toggle('progress-bar-animated', activo);
+
+        const fallidos = Number(corrida.pasos_fallidos) || 0;
+        if (!activo && fallidos > 0) {
+            mostrarError(`La búsqueda terminó con ${fallidos} paso(s) fallido(s). Los demás pasos sí fueron procesados.`);
+        } else if (activo) {
+            relError.classList.add('d-none');
+        }
+
+        if (activo) {
+            detenerPolling();
+            pollTimer = setTimeout(consultarEstado, 2000);
+        } else {
+            detenerPolling();
+            if (tickTimer) {
+                clearInterval(tickTimer);
+                tickTimer = null;
+            }
+            actualizarDuracion();
+        }
+    }
+
+    async function consultarEstado() {
+        if (!urls.estado) return;
+        try {
+            const data = await getJson(urls.estado);
+            aplicarEstadoCorrida(data.corrida);
+        } catch (e) {
+            relDetalle.textContent = 'Conexión interrumpida; reintentando estado de la búsqueda…';
+            detenerPolling();
+            pollTimer = setTimeout(consultarEstado, 5000);
+        }
+    }
+
     async function buscar() {
         if (buscando || !btn || btn.disabled) return;
         cancelado = false;
-        abortCtrl = new AbortController();
         setModoBusqueda(true);
         inicioMs = Date.now();
+        finMs = null;
         if (tickTimer) clearInterval(tickTimer);
         tickTimer = setInterval(actualizarDuracion, 250);
 
@@ -476,106 +552,13 @@
         renderTabla();
 
         try {
-            const plan = await postJson(urls.iniciar, {});
-            if (cancelado) throw new DOMException('Aborted', 'AbortError');
-
-            // Conserva lo ya grabado hoy y agrega solo códigos nuevos.
-            porCodigo = new Map();
-            cargarItems(plan.guardadas || []);
-            renderTabla();
-
-            relInicio.textContent = plan.inicio_label || horaAhora();
-            if (plan.fecha) {
-                relFecha.textContent = `(${plan.fecha})`;
-            }
-            const pasos = Array.isArray(plan.pasos) ? plan.pasos : [];
-            const total = pasos.length;
-
-            if (total === 0) {
-                relFin.textContent = plan.inicio_label || '—';
-                setProgreso(100);
-                relBar.classList.remove('progress-bar-animated');
-                relDetalle.textContent = 'Sin pasos que consultar.';
-                renderTabla();
-                return;
-            }
-
-            for (let i = 0; i < total; i++) {
-                if (cancelado) break;
-
-                const paso = pasos[i];
-                relDetalle.textContent = textoDetallePaso(paso, i, total, null);
-                mostrarDebugConsulta(null, paso, i, total, 'consultando…');
-
-                let resp;
-                try {
-                    resp = await postJson(urls.paso, {
-                        frase: paso.frase,
-                        region: paso.region,
-                        indice: i,
-                        total_pasos: total,
-                        codigos_excluidos: Array.from(porCodigo.keys()),
-                    });
-                } catch (pasoErr) {
-                    mostrarDebugConsulta(pasoErr.consulta, paso, i, total, pasoErr.message || 'error');
-                    throw pasoErr;
-                }
-
-                if (cancelado) break;
-
-                mostrarDebugConsulta(resp.consulta, paso, i, total, null);
-                const nGuard = Number(resp.guardadas) || 0;
-                let detallePaso = textoDetallePaso(paso, i, total, resp.consulta);
-                if (nGuard > 0) {
-                    detallePaso += ` — grabadas: ${nGuard}`;
-                }
-                relDetalle.textContent = detallePaso;
-
-                cargarItems(resp.nuevos || []);
-
-                setProgreso(resp.progreso ?? Math.round(((i + 1) / total) * 100));
-                renderTabla();
-
-                if (resp.terminado) {
-                    relFin.textContent = resp.fin_label || horaAhora();
-                }
-            }
-
-            if (relFin.textContent === '—') {
-                relFin.textContent = horaAhora();
-            }
-            relBar.classList.remove('progress-bar-animated');
-
-            if (cancelado) {
-                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hasta el momento.`;
-            } else {
-                setProgreso(100);
-                relDetalle.textContent = `Consulta terminada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} del día (grabadas).`;
-            }
-            renderTabla();
+            const data = await postJson(urls.iniciar, {});
+            aplicarEstadoCorrida(data.corrida);
         } catch (e) {
             relBar.classList.remove('progress-bar-animated');
-            if (relFin.textContent === '—') {
-                relFin.textContent = horaAhora();
-            }
-            if (cancelado || e.name === 'AbortError') {
-                cancelado = true;
-                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hasta el momento.`;
-            } else {
-                mostrarError(e.message || String(e));
-                relDetalle.textContent = 'Consulta interrumpida.';
-                if (e.consulta) {
-                    mostrarDebugConsulta(e.consulta, null, null, null, e.message || 'error');
-                }
-            }
+            mostrarError(e.message || String(e));
+            relDetalle.textContent = 'No se pudo encolar la búsqueda.';
             renderTabla();
-        } finally {
-            if (tickTimer) {
-                clearInterval(tickTimer);
-                tickTimer = null;
-            }
-            actualizarDuracion();
-            abortCtrl = null;
             setModoBusqueda(false);
         }
     }
@@ -594,6 +577,13 @@
             setProgreso(100);
         }
         renderTabla();
+    }
+
+    if (corridaInicial) {
+        aplicarEstadoCorrida(corridaInicial);
+        if (corridaInicial.estado === 'running' && !tickTimer) {
+            tickTimer = setInterval(actualizarDuracion, 250);
+        }
     }
 
     if (puedeBuscar) {

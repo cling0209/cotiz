@@ -63,10 +63,12 @@ if [ "$RUN_QUEUE_WORKER" = "true" ]; then
   echo "Queue worker loop PID: $!" >&2
 fi
 
-# Catch-up consulta MP + sync palabras clave con sitio par (si estaba dormido).
+# Catch-up de consultas MP y sync de oportunidades con el sitio par.
 if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   echo "Catch-up consulta MP programada (si el slot se perdió por sleep)..." >&2
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true
+  echo "Catch-up búsqueda de oportunidades (solo ANALISIS_ADMIN)..." >&2
+  run_as_www 'php artisan oportunidad:buscar --catch-up --no-interaction 2>&1' || true
 fi
 
 echo "Sync oportunidades encontradas pendientes con sitio par (wake /up)..." >&2

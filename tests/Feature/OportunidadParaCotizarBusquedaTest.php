@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessOportunidadBusquedaJob;
+use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadPalabraClave;
 use App\Models\User;
+use App\Services\OportunidadBusquedaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class OportunidadParaCotizarBusquedaTest extends TestCase
@@ -172,6 +176,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
     public function test_iniciar_ordena_pasos_region_luego_palabra(): void
     {
+        Queue::fake();
         config([
             'cotiz.mercadopublico.ticket' => 'ticket-test',
             'cotiz.mercadopublico.regiones' => [13, 5],
@@ -196,15 +201,77 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->postJson(route('admin.oportunidades.para-cotizar.iniciar'))
             ->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('total_pasos', 4)
-            ->assertJsonPath('pasos.0.region', 13)
-            ->assertJsonPath('pasos.0.frase', 'papel')
-            ->assertJsonPath('pasos.1.region', 13)
-            ->assertJsonPath('pasos.1.frase', 'aseo')
-            ->assertJsonPath('pasos.2.region', 5)
-            ->assertJsonPath('pasos.2.frase', 'papel')
-            ->assertJsonPath('pasos.3.region', 5)
-            ->assertJsonPath('pasos.3.frase', 'aseo');
+            ->assertJsonPath('corrida.total_pasos', 4)
+            ->assertJsonPath('corrida.estado', 'running');
+
+        $corrida = OportunidadBusquedaCorrida::query()->firstOrFail();
+        $this->assertSame(13, $corrida->plan_json[0]['region']);
+        $this->assertSame('papel', $corrida->plan_json[0]['frase']);
+        $this->assertSame(13, $corrida->plan_json[1]['region']);
+        $this->assertSame('aseo', $corrida->plan_json[1]['frase']);
+        $this->assertSame(5, $corrida->plan_json[2]['region']);
+        $this->assertSame('papel', $corrida->plan_json[2]['frase']);
+        $this->assertSame(5, $corrida->plan_json[3]['region']);
+        $this->assertSame('aseo', $corrida->plan_json[3]['frase']);
+
+        Queue::assertPushed(ProcessOportunidadBusquedaJob::class, fn ($job) => $job->corridaId === $corrida->id);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.id', $corrida->id)
+            ->assertJsonPath('corrida.progreso', 0);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.cancelar'))
+            ->assertOk()
+            ->assertJsonPath('corrida.estado', OportunidadBusquedaService::ESTADO_CANCELLED);
+    }
+
+    public function test_corrida_en_segundo_plano_continua_si_un_paso_falla(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13, 5],
+            'cotiz.mercadopublico.api_reintentos_http' => 1,
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        Http::fake(function ($request) {
+            if ((int) ($request->data()['region'] ?? 0) === 13) {
+                return Http::response([], 503);
+            }
+
+            return Http::response([
+                'success' => 'OK',
+                'payload' => ['items' => [], 'paginacion' => []],
+            ]);
+        });
+
+        Queue::fake();
+        $servicio = $this->app->make(OportunidadBusquedaService::class);
+        $corrida = $servicio->iniciar('admin');
+        $servicio->procesar($corrida);
+        $corrida->refresh();
+
+        $this->assertSame(OportunidadBusquedaService::ESTADO_COMPLETED, $corrida->estado);
+        $this->assertSame(2, $corrida->pasos_procesados);
+        $this->assertSame(1, $corrida->pasos_fallidos);
+        $this->assertCount(1, $corrida->errores_json);
+
+        Carbon::setTestNow();
     }
 
     public function test_paso_omite_codigos_ya_en_lista(): void
