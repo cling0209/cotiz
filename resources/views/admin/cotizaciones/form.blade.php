@@ -607,7 +607,7 @@
             mostrarProgresoImportar();
             actualizarProgresoImportar(0, 0, 'Verificando cotización en el otro sitio…');
             await validarEncargadoParConEspera(numero, {
-                onProgress: (_intento, _max, msg) => actualizarProgresoImportar(0, 0, msg),
+                onProgress: (intento, max, msg) => mostrarProgresoConsultaPar(intento, max, msg),
             });
 
             actualizarProgresoImportar(0, 0, 'Guardando número de cotización…');
@@ -712,16 +712,30 @@
     });
 
     function setLoaderMensaje(texto) {
-        const loader = document.getElementById('page-loader');
-        if (!loader) return;
-        let msg = loader.querySelector('.page-loader__msg');
-        if (!msg) {
-            msg = document.createElement('p');
-            msg.className = 'page-loader__msg small text-white mt-2 mb-0 text-center px-3';
-            loader.querySelector('.page-loader__scene')?.appendChild(msg);
+        if (window.PageLoader?.setStatus) {
+            window.PageLoader.setStatus(texto || '', { showBar: false });
+            return;
         }
-        msg.textContent = texto || '';
-        msg.hidden = !texto;
+        const msg = document.getElementById('page-loader-msg');
+        const status = document.getElementById('page-loader-status');
+        if (!msg || !status) return;
+        const valor = String(texto || '').trim();
+        status.hidden = !valor;
+        msg.textContent = valor;
+        msg.hidden = !valor;
+    }
+
+    function setLoaderConsultaParProgreso(intento, max, mensaje) {
+        const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
+        if (window.PageLoader?.setStatus) {
+            window.PageLoader.setStatus(texto, {
+                showBar: true,
+                intento: intento,
+                max: max,
+            });
+            return;
+        }
+        setLoaderMensaje(texto);
     }
 
     function extraerMensajeError(json, fallback) {
@@ -903,7 +917,7 @@
             if (necesitaConsultaParEncargado(cabecera.encargado)) {
                 setLoaderMensaje('Verificando cotización en el otro sitio…');
                 await validarEncargadoParConEspera(cabecera.encargado, {
-                    onProgress: (_intento, _max, msg) => setLoaderMensaje(msg),
+                    onProgress: (intento, max, msg) => setLoaderConsultaParProgreso(intento, max, msg),
                 });
             }
 
@@ -2744,23 +2758,26 @@
 
     function mostrarProgresoConsultaPar(intento, max, mensaje) {
         limpiarImportAlerta();
+        const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
+        const total = Math.max(1, Number(max) || 1);
+        const actual = Math.max(0, Number(intento) || 0);
         if (importarConsultaPar && importarConsultaParTexto) {
             importarConsultaPar.classList.remove('d-none');
-            importarConsultaParTexto.textContent = mensaje;
+            importarConsultaParTexto.textContent = texto;
         }
         if (importarProgresoWrap) {
             importarProgresoWrap.classList.remove('d-none');
             importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-        const pct = Math.min(95, Math.round((intento / max) * 100));
+        const pct = Math.min(95, Math.round((actual / total) * 100));
         if (importarProgresoBar) {
             importarProgresoBar.style.width = pct + '%';
             importarProgresoBar.setAttribute('aria-valuenow', String(pct));
             importarProgresoBar.textContent = pct + '%';
-            importarProgresoBar.classList.add('progress-bar-animated');
+            importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
         }
         if (importarProgresoTexto) {
-            importarProgresoTexto.textContent = mensaje + ' (' + intento + ' de ' + max + ')';
+            importarProgresoTexto.textContent = texto + ' (' + actual + ' de ' + total + ')';
         }
         if (importarEstado) importarEstado.textContent = '';
     }

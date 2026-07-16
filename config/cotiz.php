@@ -39,7 +39,7 @@ return [
         'consulta_par_espera_segundos' => max(1, (int) env('COTIZ_CONSULTA_PAR_ESPERA_SEGUNDOS', 3)),
         'consulta_par_mensaje_iniciando' => env(
             'COTIZ_CONSULTA_PAR_MENSAJE_INICIANDO',
-            'Iniciando servicio de consulta, espere unos segundos.',
+            'Levantando servicio, espere unos momentos.',
         ),
     ],
 

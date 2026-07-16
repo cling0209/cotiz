@@ -97,7 +97,7 @@ class NotaConsultaRemotaService
     {
         return trim((string) config(
             'cotiz.api_nota.consulta_par_mensaje_iniciando',
-            'Iniciando servicio de consulta, espere unos segundos.',
+            'Levantando servicio, espere unos momentos.',
         ));
     }
 

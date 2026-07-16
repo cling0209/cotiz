@@ -247,19 +247,40 @@
     const mensajeConsultaPar = @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando'));
 
     function activarLoaderConsultaPar() {
-        const loader = document.getElementById('page-loader');
-        if (!loader) return;
-        document.documentElement.classList.add('page-loader-active');
-        loader.classList.add('is-active');
-        loader.setAttribute('aria-hidden', 'false');
-        let msg = loader.querySelector('.page-loader__msg');
-        if (!msg) {
-            msg = document.createElement('p');
-            msg.className = 'page-loader__msg small text-white mt-2 mb-0 text-center px-3';
-            loader.querySelector('.page-loader__scene')?.appendChild(msg);
+        if (window.PageLoader?.show) {
+            window.PageLoader.show();
+        } else {
+            const loader = document.getElementById('page-loader');
+            if (!loader) return;
+            document.documentElement.classList.add('page-loader-active');
+            loader.classList.add('is-active');
+            loader.setAttribute('aria-hidden', 'false');
         }
-        msg.textContent = mensajeConsultaPar;
-        msg.hidden = false;
+
+        if (window.PageLoader?.setStatus) {
+            window.PageLoader.setStatus(mensajeConsultaPar, {
+                showBar: true,
+                intento: 1,
+                max: 8,
+            });
+            return;
+        }
+
+        const status = document.getElementById('page-loader-status');
+        const msg = document.getElementById('page-loader-msg');
+        const progressWrap = document.getElementById('page-loader-progress-wrap');
+        const progressBar = document.getElementById('page-loader-progress-bar');
+        if (status) status.hidden = false;
+        if (msg) {
+            msg.textContent = mensajeConsultaPar;
+            msg.hidden = false;
+        }
+        if (progressWrap) progressWrap.hidden = false;
+        if (progressBar) {
+            progressBar.style.width = '15%';
+            progressBar.setAttribute('aria-valuenow', '15');
+            progressBar.classList.add('progress-bar-striped', 'progress-bar-animated');
+        }
     }
 
     document.querySelectorAll('form[action="{{ route('admin.cotizaciones.carga-archivo.previsualizar') }}"], form[action="{{ route('admin.cotizaciones.carga-archivo.confirmar') }}"]').forEach(function (form) {

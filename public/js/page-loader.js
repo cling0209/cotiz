@@ -41,11 +41,69 @@
     }
 
     function hideLoader() {
+        clearStatus();
         loader.classList.remove('is-active');
         loader.setAttribute('aria-hidden', 'true');
         document.documentElement.classList.remove('page-loader-active');
         document.body.classList.remove('is-loading');
         clearNavigationPending();
+    }
+
+    function setStatus(message, options) {
+        const opts = options || {};
+        const status = document.getElementById('page-loader-status');
+        const msg = document.getElementById('page-loader-msg');
+        const progressWrap = document.getElementById('page-loader-progress-wrap');
+        const progressBar = document.getElementById('page-loader-progress-bar');
+        const texto = String(message || '').trim();
+
+        if (!status || !msg) {
+            return;
+        }
+
+        if (!texto && !opts.showBar) {
+            clearStatus();
+            return;
+        }
+
+        status.hidden = false;
+        msg.textContent = texto;
+        msg.hidden = !texto;
+
+        if (progressWrap && progressBar && opts.showBar) {
+            const max = Math.max(1, Number(opts.max) || 1);
+            const intento = Math.max(0, Number(opts.intento) || 0);
+            const pct = Math.min(95, Math.round((intento / max) * 100));
+
+            progressWrap.hidden = false;
+            progressBar.style.width = pct + '%';
+            progressBar.setAttribute('aria-valuenow', String(pct));
+            progressBar.classList.add('progress-bar-striped', 'progress-bar-animated');
+        } else if (progressWrap) {
+            progressWrap.hidden = true;
+        }
+    }
+
+    function clearStatus() {
+        const status = document.getElementById('page-loader-status');
+        const msg = document.getElementById('page-loader-msg');
+        const progressWrap = document.getElementById('page-loader-progress-wrap');
+        const progressBar = document.getElementById('page-loader-progress-bar');
+
+        if (msg) {
+            msg.textContent = '';
+            msg.hidden = true;
+        }
+        if (progressWrap) {
+            progressWrap.hidden = true;
+        }
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', '0');
+        }
+        if (status) {
+            status.hidden = true;
+        }
     }
 
     function markDownloadIntent() {
@@ -138,7 +196,12 @@
         }
     }
 
-    window.PageLoader = { show: showLoader, hide: hideLoader };
+    window.PageLoader = {
+        show: showLoader,
+        hide: hideLoader,
+        setStatus: setStatus,
+        clearStatus: clearStatus,
+    };
 
     if (document.readyState !== 'complete' || isNavigationPending()) {
         showLoader();
