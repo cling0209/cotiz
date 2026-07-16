@@ -87,7 +87,15 @@
     </td>
     <td>
         @if($row['pendiente_vinculo'])
-            <span class="nv-fill linea-prod-nombre text-warning-emphasis">Sin vincular</span>
+            <input
+                type="text"
+                name="lineas[{{ $idx }}][prod_descripcion_agile]"
+                class="form-control form-control-sm linea-prod-nombre-input"
+                maxlength="500"
+                value="{{ old('lineas.'.$idx.'.prod_descripcion_agile', $row['prod_descripcion_agile'] !== '' ? $row['prod_descripcion_agile'] : $row['prod_nombre']) }}"
+                title="Descripci&oacute;n maestro (editable; no crea producto en maestro)"
+            >
+            <span class="d-none linea-prod-nombre">{{ $row['prod_descripcion_agile'] !== '' ? $row['prod_descripcion_agile'] : $row['prod_nombre'] }}</span>
         @else
             <span class="nv-fill linea-prod-nombre">{{ $row['prod_nombre'] }}</span>
         @endif

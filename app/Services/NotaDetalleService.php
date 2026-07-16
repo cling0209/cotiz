@@ -7,6 +7,7 @@ use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
+use App\Support\AgileDescripcion;
 use App\Support\ProdValorFechaUi;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -170,15 +171,26 @@ class NotaDetalleService
                 }
             }
 
+            $lineaUpdates = [
+                'prod_valor' => $prodValor,
+                'cantidad' => $cantidad,
+                'prod_valor_costo' => $costo,
+            ];
+
+            if (
+                array_key_exists('prod_descripcion_agile', $datos)
+                && self::lineaPendienteVinculo($linea)
+            ) {
+                $lineaUpdates['prod_descripcion_agile'] = AgileDescripcion::paraDetalle(
+                    (string) $datos['prod_descripcion_agile'],
+                );
+            }
+
             NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->where('prod_item', $prodItem)
                 ->where('orden', $orden)
-                ->update([
-                    'prod_valor' => $prodValor,
-                    'cantidad' => $cantidad,
-                    'prod_valor_costo' => $costo,
-                ]);
+                ->update($lineaUpdates);
 
             $actualizada = NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
@@ -207,13 +219,18 @@ class NotaDetalleService
             return;
         }
 
-        if ($descripcionAgile !== '') {
-            $this->agileMaeprodService->registrarSiNoExiste($agileId, $descripcionAgile);
+        $codigoInterno = $linea->codigoProducto();
+        if (
+            $codigoInterno === ''
+            || $codigoInterno === '0'
+            || $codigoInterno === $agileId
+            || self::esCodigoNokPendiente($codigoInterno)
+        ) {
+            return;
         }
 
-        $codigoInterno = $linea->codigoProducto();
-        if ($codigoInterno === '' || $codigoInterno === '0' || $codigoInterno === $agileId) {
-            return;
+        if ($descripcionAgile !== '') {
+            $this->agileMaeprodService->registrarSiNoExiste($agileId, $descripcionAgile);
         }
 
         if (! Maeprod::query()->where('prod_item', $codigoInterno)->exists()) {
@@ -354,6 +371,18 @@ class NotaDetalleService
         });
     }
 
+    public static function esCodigoNokPendiente(string $prodItem): bool
+    {
+        return str_starts_with(strtoupper(trim($prodItem)), 'NOK-');
+    }
+
+    public static function codigoNokParaOrden(int $orden): string
+    {
+        $orden = max(1, $orden);
+
+        return 'NOK-'.$orden;
+    }
+
     public static function lineaPendienteVinculo(NotaDetalle $linea): bool
     {
         $agile = trim((string) ($linea->prod_item_agile ?? ''));
@@ -366,27 +395,47 @@ class NotaDetalleService
             return true;
         }
 
+        if (self::esCodigoNokPendiente($codigo)) {
+            return true;
+        }
+
         return $linea->resolveProducto() === null;
     }
 
+    /**
+     * Línea sin match en maestro: código NOK-{orden}, descripción Agile en la línea.
+     * No crea maeprod ni guarda aprendizaje de vínculo.
+     */
     public function agregarLineaAgilePendiente(
         Nota $nota,
         string $idAgile,
         string $descripcionAgile,
         int $cantidad,
     ): NotaDetalle {
-        $id = trim($idAgile);
+        return DB::transaction(function () use ($nota, $idAgile, $descripcionAgile, $cantidad) {
+            $orden = ((int) NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->max('orden')) + 1;
+            if ($orden < 1) {
+                $orden = 1;
+            }
 
-        return $this->agregarLinea(
-            $nota,
-            $id,
-            max(1, $cantidad),
-            0,
-            0,
-            null,
-            $id,
-            $descripcionAgile,
-        );
+            $prodItem = self::codigoNokParaOrden($orden);
+            $agileId = trim($idAgile);
+            $agileDesc = trim($descripcionAgile);
+
+            return NotaDetalle::create([
+                'nronota' => $nota->nronota,
+                'prod_item' => $prodItem,
+                'prod_valor' => 0,
+                'cantidad' => max(1, $cantidad),
+                'fechahora' => now(),
+                'orden' => $orden,
+                'prod_valor_costo' => 0,
+                'prod_item_agile' => $agileId !== '' ? $agileId : null,
+                'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
+            ]);
+        });
     }
 
     /**

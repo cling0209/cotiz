@@ -81,4 +81,16 @@ class NotaDetalleResolveProductoTest extends TestCase
 
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
     }
+
+    public function test_linea_pendiente_vinculo_reconoce_codigo_nok(): void
+    {
+        $linea = new NotaDetalle([
+            'prod_item' => 'NOK-3',
+            'prod_item_agile' => '99990001',
+        ]);
+
+        $this->assertTrue(NotaDetalleService::esCodigoNokPendiente('NOK-3'));
+        $this->assertSame('NOK-3', NotaDetalleService::codigoNokParaOrden(3));
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($linea));
+    }
 }

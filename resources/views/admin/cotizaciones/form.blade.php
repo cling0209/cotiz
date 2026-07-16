@@ -783,10 +783,12 @@
             const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
             const valor = tr.querySelector('input[name*="[prod_valor]"]');
             const cantidad = tr.querySelector('input[name*="[cantidad]"]');
+            const descMaestro = tr.querySelector('input[name*="[prod_descripcion_agile]"]');
             if (softland) linea.prod_item_softland = softland.value;
             if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
             if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
             if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
+            if (descMaestro) linea.prod_descripcion_agile = descMaestro.value;
             lineas.push(linea);
         });
         return lineas;
@@ -3280,9 +3282,19 @@
                 : '';
         }
 
+        const nombreInput = tr.querySelector('.linea-prod-nombre-input');
         const nombreCell = tr.querySelector('.linea-prod-nombre');
-        if (nombreCell) {
-            nombreCell.textContent = linea.prod_nombre || codigoMostrar;
+        const nombreTexto = linea.prod_nombre || codigoMostrar;
+        if (nombreInput) {
+            const span = document.createElement('span');
+            span.className = 'nv-fill linea-prod-nombre';
+            span.textContent = nombreTexto;
+            nombreInput.replaceWith(span);
+            if (nombreCell && nombreCell !== nombreInput) {
+                nombreCell.remove();
+            }
+        } else if (nombreCell) {
+            nombreCell.textContent = nombreTexto;
             nombreCell.classList.remove('text-warning-emphasis');
         }
 

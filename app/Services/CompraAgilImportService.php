@@ -470,13 +470,18 @@ class CompraAgilImportService
     }
 
     /**
-     * Resuelve producto interno: aprendizaje por descripción en agilemaeprod, luego similitud en maeprod.
+     * Solo vínculo firme (aprendizaje). Sugerencias por similitud no se auto-aplican:
+     * quedan como NOK-{orden} para vincular después con Buscar.
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
     private function resolverProductoParaImportar(string $descripcion): ?array
     {
         $resuelto = $this->vinculoAprendizaje->resolverParaImportacion($descripcion);
+
+        if (($resuelto['estado'] ?? '') !== 'vinculado' || ! empty($resuelto['es_sugerencia'])) {
+            return null;
+        }
 
         return $resuelto['producto'];
     }

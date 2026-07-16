@@ -96,8 +96,8 @@ TXT;
         $response->assertOk();
         $response->assertJsonPath('ok', true);
         $response->assertJsonPath('agregadas', 2);
-        $response->assertJsonPath('vinculadas', 2);
-        $response->assertJsonPath('pendientes', 0);
+        $response->assertJsonPath('vinculadas', 0);
+        $response->assertJsonPath('pendientes', 2);
 
         $nota->refresh();
         $this->assertSame('1161-172-COT26', trim((string) $nota->encargado));
@@ -106,14 +106,17 @@ TXT;
 
         $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->orderBy('orden')->get();
         $this->assertCount(2, $lineas);
-        $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($lineas->first()));
-        $this->assertSame('ASEO001', $lineas->first()->prod_item);
-        $this->assertSame('ASEO002', $lineas->get(1)->prod_item);
-        $this->assertTrue(
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas->first()));
+        $this->assertSame('NOK-1', $lineas->first()->prod_item);
+        $this->assertSame('NOK-2', $lineas->get(1)->prod_item);
+        $this->assertStringContainsString('LIMPIADOR', (string) $lineas->first()->prod_descripcion_agile);
+        $this->assertFalse(
+            Maeprod::query()->where('prod_item', 'like', 'NOK-%')->exists(),
+        );
+        $this->assertFalse(
             AgileMaeprod::query()
-                ->where('prod_codigo_categoria_mp', '31237835')
-                ->orWhere('prod_item_agile', '31237835')
-                ->exists()
+                ->whereIn('prod_item', ['NOK-1', 'NOK-2'])
+                ->exists(),
         );
     }
 
@@ -176,8 +179,8 @@ TXT;
         );
 
         $response->assertOk();
-        $response->assertJsonPath('vinculadas', 2);
-        $response->assertJsonPath('pendientes', 0);
+        $response->assertJsonPath('vinculadas', 1);
+        $response->assertJsonPath('pendientes', 1);
 
         $vinculada = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
@@ -186,6 +189,15 @@ TXT;
 
         $this->assertSame('ASEO001', $vinculada->prod_item);
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($vinculada));
+
+        $pendiente = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('prod_item_agile', '31237836')
+            ->first();
+
+        $this->assertNotNull($pendiente);
+        $this->assertSame('NOK-2', $pendiente->prod_item);
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($pendiente));
     }
 
     public function test_vincular_linea_agile_asigna_producto_maestro(): void
@@ -498,6 +510,117 @@ TXT;
         $this->assertNotNull($linea);
         $this->assertNotSame('', trim((string) $linea->prod_descripcion_agile));
         $this->assertStringContainsString('LIMPIADOR', (string) $linea->prod_descripcion_agile);
+    }
+
+    public function test_importar_sin_match_usa_codigo_nok_por_orden(): void
+    {
+        $nota = $this->crearNota(['encargado' => '9999-001-COT26']);
+
+        $texto = <<<'TXT'
+Detalle de la cotización 9999-001-COT26
+Nombre
+COMPRA DE MATERIALES VARIOS
+EMPRESA DEMO SPA
+RUT 76.123.456-0
+Productos varios ID: 99990001
+TORNILLO HEXAGONAL M8X20 GALVANIZADO CAJA 100 UNIDADES
+10 Unidad
+Productos varios ID: 99990002
+CINTA AISLADORA NEGRA 18MM X 20M ROLLO INDUSTRIAL
+3 Unidad
+TXT;
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $texto],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('agregadas', 2);
+        $response->assertJsonPath('pendientes', 2);
+        $response->assertJsonPath('vinculadas', 0);
+
+        $lineas = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->orderBy('orden')
+            ->get();
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame('NOK-1', $lineas[0]->prod_item);
+        $this->assertSame(1, (int) $lineas[0]->orden);
+        $this->assertSame('99990001', $lineas[0]->prod_item_agile);
+        $this->assertStringContainsString('TORNILLO', (string) $lineas[0]->prod_descripcion_agile);
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas[0]));
+
+        $this->assertSame('NOK-2', $lineas[1]->prod_item);
+        $this->assertSame(2, (int) $lineas[1]->orden);
+        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($lineas[1]));
+
+        $this->assertFalse(
+            Maeprod::query()->where('prod_item', 'like', 'NOK-%')->exists(),
+            'No debe crear productos NOK en el maestro',
+        );
+        $this->assertFalse(
+            AgileMaeprod::query()
+                ->whereIn('prod_item', ['NOK-1', 'NOK-2'])
+                ->exists(),
+            'No debe guardar aprendizaje con códigos NOK',
+        );
+    }
+
+    public function test_guardar_permite_editar_descripcion_maestro_en_linea_nok(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 2,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => '99990001',
+            'prod_descripcion_agile' => 'DESCRIPCION ORIGINAL AGILE',
+        ]);
+
+        $this->actingAs($this->admin)->post(
+            route('admin.cotizaciones.update', $nota->nronota),
+            [
+                'accion' => 'grabar',
+                'descripcion' => $nota->descripcion,
+                'encargado' => $nota->encargado,
+                'empresa' => $nota->empresa,
+                'celular' => '',
+                'contacto' => '',
+                'contactocorreo' => '',
+                'rutempresa' => '',
+                'diashabiles' => 2,
+                'ocompra' => '',
+                'lineas' => [
+                    [
+                        'prod_item' => 'NOK-1',
+                        'orden' => 1,
+                        'cantidad' => 2,
+                        'prod_valor' => 100,
+                        'prod_valor_costo' => 0,
+                        'prod_descripcion_agile' => 'DESCRIPCION MAESTRO EDITADA',
+                    ],
+                ],
+            ],
+        )->assertRedirect();
+
+        $linea = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', 1)
+            ->first();
+
+        $this->assertSame('NOK-1', $linea->prod_item);
+        $this->assertSame('DESCRIPCION MAESTRO EDITADA', $linea->prod_descripcion_agile);
+        $this->assertSame(100, (int) $linea->prod_valor);
+        $this->assertFalse(
+            AgileMaeprod::query()->where('prod_item', 'NOK-1')->exists(),
+        );
     }
 
     public function test_grabar_lineas_sincroniza_vinculo_agilemaeprod(): void
