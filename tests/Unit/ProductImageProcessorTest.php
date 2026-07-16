@@ -43,6 +43,46 @@ class ProductImageProcessorTest extends TestCase
         imagedestroy($processed);
     }
 
+    public function test_convierte_webp_a_jpeg(): void
+    {
+        if (! extension_loaded('gd') || ! function_exists('imagejpeg') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD with JPEG/WebP support not available.');
+        }
+
+        $info = gd_info();
+        if (empty($info['WebP Support'])) {
+            $this->markTestSkipped('GD compiled without WebP support.');
+        }
+
+        config([
+            'products.image_listing_size' => 400,
+            'products.image_jpeg_quality' => 85,
+        ]);
+
+        $source = imagecreatetruecolor(600, 600);
+        $green = imagecolorallocate($source, 22, 163, 74);
+        imagefilledrectangle($source, 0, 0, 600, 600, $green);
+
+        ob_start();
+        imagewebp($source);
+        $webp = ob_get_clean();
+        imagedestroy($source);
+
+        $file = UploadedFile::fake()->createWithContent('producto.webp', $webp);
+
+        $result = (new ProductImageProcessor)->processUploadedFile($file);
+
+        $this->assertNotNull($result);
+        $this->assertSame('image/jpeg', $result['mime']);
+        $this->assertSame('jpg', $result['extension']);
+
+        $processed = imagecreatefromstring($result['contents']);
+        $this->assertNotFalse($processed);
+        $this->assertSame(400, imagesx($processed));
+        $this->assertSame(400, imagesy($processed));
+        imagedestroy($processed);
+    }
+
     public function test_no_ampliar_imagen_pequena(): void
     {
         if (! extension_loaded('gd') || ! function_exists('imagejpeg')) {
