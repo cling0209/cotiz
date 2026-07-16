@@ -186,7 +186,7 @@ class CompraAgilBusquedaController extends Controller
                 'cold_start' => true,
                 'message' => NotaConsultaRemotaService::mensajeIniciandoConsulta(),
                 'intento' => $consultaPar['intento'] ?? 1,
-                'max_intentos' => $consultaPar['max_intentos'] ?? (int) config('cotiz.api_nota.consulta_par_max_intentos', 8),
+                'max_intentos' => $consultaPar['max_intentos'] ?? (int) config('cotiz.api_nota.consulta_par_max_intentos', 15),
                 'consulta_par' => $consultaPar,
             ], 503);
         }

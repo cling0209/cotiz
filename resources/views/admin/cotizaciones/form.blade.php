@@ -659,8 +659,8 @@
     const consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
     const consultaParConfig = {
         mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
-        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 8)),
-        esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 3) * 1000),
+        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 15)),
+        esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 5) * 1000),
     };
     const lineasPorLote = 10;
     const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');

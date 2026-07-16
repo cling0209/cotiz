@@ -250,7 +250,7 @@ class NotaConsultaRemotaService
                 'encargado' => $codigo,
                 'intento' => $intento,
             ]);
-            $base['error'] = 'Error al consultar cotización en el otro sitio.';
+            $base['error'] = 'Error al consultar el otro sitio. Reintente nuevamente.';
 
             return $base;
         }
@@ -289,7 +289,7 @@ class NotaConsultaRemotaService
         }
 
         try {
-            Http::timeout(5)->get($url);
+            Http::timeout(10)->get($url);
         } catch (\Throwable $e) {
             Log::info('Wake sitio par (/up): sin respuesta aún', [
                 'url' => $url,
@@ -300,7 +300,8 @@ class NotaConsultaRemotaService
 
     private function esHttpRecuperable(int $status): bool
     {
-        return $status === 0 || $status === 502 || $status === 503 || $status === 504;
+        // 500: frecuente en Render free al despertar; tratar como cold start.
+        return $status === 0 || $status === 500 || $status === 502 || $status === 503 || $status === 504;
     }
 
     private function timeoutSegundos(): int
@@ -310,12 +311,12 @@ class NotaConsultaRemotaService
 
     private function maxIntentos(): int
     {
-        return max(1, (int) config('cotiz.api_nota.consulta_par_max_intentos', 8));
+        return max(1, (int) config('cotiz.api_nota.consulta_par_max_intentos', 15));
     }
 
     private function esperaEntreIntentosSegundos(): int
     {
-        return max(1, (int) config('cotiz.api_nota.consulta_par_espera_segundos', 3));
+        return max(1, (int) config('cotiz.api_nota.consulta_par_espera_segundos', 5));
     }
 
     /**

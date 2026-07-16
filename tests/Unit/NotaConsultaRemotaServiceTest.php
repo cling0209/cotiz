@@ -152,6 +152,30 @@ class NotaConsultaRemotaServiceTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/up'));
     }
 
+    public function test_http_500_devuelve_cold_start_y_despierta_sitio_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.reicol.cl',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.consulta_par_max_intentos' => 1,
+        ]);
+
+        Http::fake([
+            'cotiza.romulo.cl/api/v1/nota-consulta' => Http::response('Internal Server Error', 500),
+            'cotiza.romulo.cl/up' => Http::response('OK', 200),
+        ]);
+
+        $consulta = $this->service->consultarEncargadoEnPar('2686-279-COT26');
+
+        $this->assertTrue($consulta['cold_start']);
+        $this->assertSame(NotaConsultaRemotaService::mensajeIniciandoConsulta(), $consulta['mensaje']);
+        $this->assertNull($consulta['error']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/up'));
+    }
+
     public function test_con_espera_reintenta_hasta_responder(): void
     {
         config([
