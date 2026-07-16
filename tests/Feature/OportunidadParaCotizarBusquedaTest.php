@@ -228,7 +228,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('corrida.estado', OportunidadBusquedaService::ESTADO_CANCELLED);
     }
 
-    public function test_corrida_en_segundo_plano_continua_si_un_paso_falla(): void
+    public function test_corrida_reintenta_fallidos_de_region_antes_de_seguir(): void
     {
         config([
             'app.timezone' => 'America/Santiago',
@@ -249,8 +249,12 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'created_by' => $user->id,
         ]);
 
-        Http::fake(function ($request) {
-            if ((int) ($request->data()['region'] ?? 0) === 13) {
+        $llamadasRegion13 = 0;
+        Http::fake(function ($request) use (&$llamadasRegion13) {
+            $region = (int) ($request->data()['region'] ?? 0);
+            if ($region === 13) {
+                $llamadasRegion13++;
+
                 return Http::response([], 503);
             }
 
@@ -266,10 +270,63 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $servicio->procesar($corrida);
         $corrida->refresh();
 
+        // Región 13: intento + reintento; luego región 5.
+        $this->assertSame(2, $llamadasRegion13);
         $this->assertSame(OportunidadBusquedaService::ESTADO_COMPLETED, $corrida->estado);
-        $this->assertSame(2, $corrida->pasos_procesados);
+        $this->assertSame(3, $corrida->pasos_procesados);
         $this->assertSame(1, $corrida->pasos_fallidos);
-        $this->assertCount(1, $corrida->errores_json);
+        $this->assertSame('retry_failed', $corrida->plan_json[0]['estado']);
+        $this->assertSame('ok', $corrida->plan_json[1]['estado']);
+        $this->assertCount(2, $corrida->errores_json);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_reintento_de_region_puede_recuperar_paso_fallido(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.api_reintentos_http' => 1,
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $llamadas = 0;
+        Http::fake(function () use (&$llamadas) {
+            $llamadas++;
+            if ($llamadas === 1) {
+                return Http::response([], 503);
+            }
+
+            return Http::response([
+                'success' => 'OK',
+                'payload' => ['items' => [], 'paginacion' => []],
+            ]);
+        });
+
+        Queue::fake();
+        $servicio = $this->app->make(OportunidadBusquedaService::class);
+        $corrida = $servicio->iniciar('admin');
+        $servicio->procesar($corrida);
+        $corrida->refresh();
+
+        $this->assertSame(2, $llamadas);
+        $this->assertSame(OportunidadBusquedaService::ESTADO_COMPLETED, $corrida->estado);
+        $this->assertSame(0, $corrida->pasos_fallidos);
+        $this->assertSame('ok', $corrida->plan_json[0]['estado']);
+        $this->assertSame(2, $corrida->plan_json[0]['intentos']);
 
         Carbon::setTestNow();
     }

@@ -17,6 +17,14 @@ class OportunidadBusquedaService
 
     public const ESTADO_ERROR = 'error';
 
+    private const PASO_PENDING = 'pending';
+
+    private const PASO_OK = 'ok';
+
+    private const PASO_FAILED = 'failed';
+
+    private const PASO_RETRY_FAILED = 'retry_failed';
+
     public function __construct(
         protected OportunidadParaCotizarService $oportunidades,
     ) {}
@@ -70,6 +78,8 @@ class OportunidadBusquedaService
             throw new RuntimeException('No hay palabras clave o regiones configuradas para buscar.');
         }
 
+        $pasos = $this->enriquecerPlan($pasos);
+
         $corrida = OportunidadBusquedaCorrida::query()->create([
             'usuario' => trim($usuario) ?: 'sistema',
             'fecha_busqueda' => $this->oportunidades->fechaBusquedaHoy(),
@@ -97,8 +107,8 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Procesa un único paso. El avance condicional evita que dos jobs de retoma
-     * incrementen el índice dos veces si coinciden después de un reinicio.
+     * Procesa un único paso (o reintento de región).
+     * Orden: región completa → reintentar fallidos de esa región → siguiente región.
      */
     public function procesarPaso(OportunidadBusquedaCorrida $corrida): bool
     {
@@ -108,53 +118,85 @@ class OportunidadBusquedaService
         }
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
-        $indice = (int) $corrida->pasos_procesados;
-        if ($indice >= count($pasos)) {
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        $cursor = (int) $corrida->pasos_procesados;
+        $pasos = $this->asegurarEstadosPlan($pasos, $cursor, $errores);
+
+        $seleccion = $this->seleccionarSiguiente($pasos);
+        if ($seleccion === null) {
+            $this->persistirPlan($corrida, $pasos, $errores, (int) $corrida->pasos_fallidos, $corrida->mensaje);
             $this->finalizar($corrida);
 
             return false;
         }
 
+        $indice = (int) $seleccion['indice'];
+        $fase = (string) $seleccion['fase'];
         $paso = is_array($pasos[$indice] ?? null) ? $pasos[$indice] : [];
         $frase = trim((string) ($paso['frase'] ?? ''));
         $region = (int) ($paso['region'] ?? 0);
-        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
-        $fallidos = (int) $corrida->pasos_fallidos;
+        $fallidos = $this->contarFallidosDefinitivos($pasos);
 
         try {
             $this->oportunidades->ejecutarPaso($frase, $region, [], null);
-            $mensaje = sprintf(
-                'Paso %d/%d completado: «%s» · región %d.',
-                $indice + 1,
-                count($pasos),
-                $frase,
-                $region,
-            );
+            $pasos[$indice]['estado'] = self::PASO_OK;
+            $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+            $mensaje = $fase === 'reintento'
+                ? sprintf(
+                    'Reintento OK región %d · «%s» (%d/%d pasos).',
+                    $region,
+                    $frase,
+                    $this->contarTerminados($pasos),
+                    count($pasos),
+                )
+                : sprintf(
+                    'Paso región %d · «%s» completado (%d/%d).',
+                    $region,
+                    $frase,
+                    $this->contarTerminados($pasos),
+                    count($pasos),
+                );
         } catch (\Throwable $e) {
+            $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+            $pasos[$indice]['intentos'] = $intentos;
+            $pasos[$indice]['estado'] = $intentos >= 2
+                ? self::PASO_RETRY_FAILED
+                : self::PASO_FAILED;
+
             $errores[] = [
                 'indice' => $indice,
                 'frase' => $frase,
                 'region' => $region,
+                'fase' => $fase,
+                'intento' => $intentos,
                 'mensaje' => mb_substr($e->getMessage(), 0, 500),
                 'fecha' => now()->toIso8601String(),
             ];
-            $fallidos++;
-            $mensaje = sprintf(
-                'Paso %d/%d falló; se continúa con el siguiente: %s',
-                $indice + 1,
-                count($pasos),
-                mb_substr($e->getMessage(), 0, 300),
-            );
+            $fallidos = $this->contarFallidosDefinitivos($pasos);
+            $mensaje = $fase === 'reintento'
+                ? sprintf(
+                    'Reintento fallido región %d · «%s»; se sigue con la siguiente región. %s',
+                    $region,
+                    $frase,
+                    mb_substr($e->getMessage(), 0, 200),
+                )
+                : sprintf(
+                    'Paso fallido región %d · «%s»; al cerrar la región se reintentará. %s',
+                    $region,
+                    $frase,
+                    mb_substr($e->getMessage(), 0, 200),
+                );
         }
 
         $actualizada = OportunidadBusquedaCorrida::query()
             ->whereKey($corrida->id)
             ->where('estado', self::ESTADO_RUNNING)
-            ->where('pasos_procesados', $indice)
+            ->where('pasos_procesados', $cursor)
             ->update([
-                'pasos_procesados' => $indice + 1,
+                'pasos_procesados' => $cursor + 1,
                 'pasos_fallidos' => $fallidos,
                 'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+                'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
                 'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
                 'mensaje' => $mensaje,
                 'updated_at' => now(),
@@ -165,7 +207,7 @@ class OportunidadBusquedaService
             return false;
         }
 
-        if ((int) $corrida->pasos_procesados >= count($pasos)) {
+        if ($this->seleccionarSiguiente(is_array($corrida->plan_json) ? $corrida->plan_json : []) === null) {
             $this->finalizar($corrida);
 
             return false;
@@ -191,8 +233,6 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Reanuda una corrida activa o crea la corrida omitida del último horario programado.
-     *
      * @return array{accion: string, mensaje: string, corrida_id: int|null}
      */
     public function catchUp(string $usuario = 'sistema', bool $reanudarActiva = true): array
@@ -243,8 +283,9 @@ class OportunidadBusquedaService
             return null;
         }
 
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $total = max(0, (int) $corrida->total_pasos);
-        $procesados = min($total, (int) $corrida->pasos_procesados);
+        $terminados = $this->contarTerminados($pasos);
 
         return [
             'id' => $corrida->id,
@@ -252,14 +293,174 @@ class OportunidadBusquedaService
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
             'total_pasos' => $total,
-            'pasos_procesados' => $procesados,
+            'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'oportunidades_encontradas' => (int) $corrida->oportunidades_encontradas,
-            'progreso' => $total > 0 ? min(100, (int) round(($procesados / $total) * 100)) : 0,
+            'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'mensaje' => $corrida->mensaje,
             'errores' => is_array($corrida->errores_json) ? $corrida->errores_json : [],
             'items' => $this->oportunidades->listarGuardadasHoy(),
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @return list<array<string, mixed>>
+     */
+    private function enriquecerPlan(array $pasos): array
+    {
+        $out = [];
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $out[] = [
+                'frase' => trim((string) ($paso['frase'] ?? '')),
+                'region' => (int) ($paso['region'] ?? 0),
+                'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
+                'estado' => self::PASO_PENDING,
+                'intentos' => 0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Compatibilidad con corridas creadas antes del estado por paso.
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     * @param  list<array<string, mixed>>  $errores
+     * @return list<array<string, mixed>>
+     */
+    private function asegurarEstadosPlan(array $pasos, int $cursorLineal, array $errores): array
+    {
+        if ($pasos === [] || isset($pasos[0]['estado'])) {
+            return $pasos;
+        }
+
+        $fallidosIdx = [];
+        foreach ($errores as $error) {
+            if (is_array($error) && isset($error['indice'])) {
+                $fallidosIdx[(int) $error['indice']] = true;
+            }
+        }
+
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            if ($i < $cursorLineal) {
+                $pasos[$i]['estado'] = isset($fallidosIdx[$i]) ? self::PASO_FAILED : self::PASO_OK;
+                $pasos[$i]['intentos'] = 1;
+            } else {
+                $pasos[$i]['estado'] = self::PASO_PENDING;
+                $pasos[$i]['intentos'] = 0;
+            }
+        }
+
+        return $pasos;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @return array{indice: int, fase: string}|null
+     */
+    private function seleccionarSiguiente(array $pasos): ?array
+    {
+        $regiones = [];
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $region = (int) ($paso['region'] ?? 0);
+            if (! in_array($region, $regiones, true)) {
+                $regiones[] = $region;
+            }
+        }
+
+        foreach ($regiones as $region) {
+            $indices = [];
+            foreach ($pasos as $i => $paso) {
+                if (is_array($paso) && (int) ($paso['region'] ?? 0) === $region) {
+                    $indices[] = $i;
+                }
+            }
+
+            foreach ($indices as $i) {
+                if (($pasos[$i]['estado'] ?? '') === self::PASO_PENDING) {
+                    return ['indice' => $i, 'fase' => 'primario'];
+                }
+            }
+
+            // Región sin pendientes: reintentar fallidos una vez antes de pasar a la siguiente.
+            foreach ($indices as $i) {
+                $estado = (string) ($pasos[$i]['estado'] ?? '');
+                $intentos = (int) ($pasos[$i]['intentos'] ?? 0);
+                if ($estado === self::PASO_FAILED && $intentos === 1) {
+                    return ['indice' => $i, 'fase' => 'reintento'];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function contarTerminados(array $pasos): int
+    {
+        $n = 0;
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $estado = (string) ($paso['estado'] ?? '');
+            if (in_array($estado, [self::PASO_OK, self::PASO_RETRY_FAILED], true)) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function contarFallidosDefinitivos(array $pasos): int
+    {
+        $n = 0;
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            if (($paso['estado'] ?? '') === self::PASO_RETRY_FAILED) {
+                $n++;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @param  list<array<string, mixed>>  $errores
+     */
+    private function persistirPlan(
+        OportunidadBusquedaCorrida $corrida,
+        array $pasos,
+        array $errores,
+        int $fallidos,
+        ?string $mensaje,
+    ): void {
+        $corrida->fill([
+            'plan_json' => array_values($pasos),
+            'errores_json' => array_slice($errores, -100),
+            'pasos_fallidos' => $fallidos,
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+            'mensaje' => $mensaje,
+        ])->save();
     }
 
     private function ultimoHorarioProgramado(): ?Carbon
@@ -293,13 +494,15 @@ class OportunidadBusquedaService
             return;
         }
 
-        $fallidos = (int) $corrida->pasos_fallidos;
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $fallidos = $this->contarFallidosDefinitivos($pasos);
         $corrida->fill([
             'estado' => self::ESTADO_COMPLETED,
             'fin' => now(),
+            'pasos_fallidos' => $fallidos,
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
             'mensaje' => $fallidos > 0
-                ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s).'
+                ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región.'
                 : 'Búsqueda terminada correctamente.',
         ])->save();
     }
