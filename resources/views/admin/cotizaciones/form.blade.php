@@ -167,7 +167,7 @@
                         @endif
                         <th>ID Agile</th>
                         <th>Descripci&oacute;n Agile (MP)</th>
-                        <th>Descripci&oacute;n maestro</th>
+                        <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
                         <th>Fecha<br>act.&nbsp;precio</th>
                         <th>Precio Costo</th>
                         <th>Precio Unitario</th>

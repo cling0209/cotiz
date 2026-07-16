@@ -87,7 +87,7 @@
             <span class="text-muted">—</span>
         @endif
     </td>
-    <td>
+    <td class="linea-desc-maestro-cell">
         @if($row['pendiente_vinculo'])
             <input
                 type="text"
