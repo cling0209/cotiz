@@ -9,6 +9,10 @@ class NotaService
 {
     private const PAR_VERIFICADO_TTL_SEGUNDOS = 300;
 
+    public function __construct(
+        protected OportunidadEncontradaRelayService $oportunidadRelay,
+    ) {}
+
     public function crear(string $usuario, ?string $descripcion = null, ?int $notaOrigen = null, ?string $sistema = null): Nota
     {
         return DB::transaction(function () use ($usuario, $descripcion, $notaOrigen, $sistema) {
@@ -56,6 +60,7 @@ class NotaService
 
     public function modificarCabecera(Nota $nota, array $datos): Nota
     {
+        $encargadoAnterior = strtoupper(trim((string) $nota->encargado));
         $factorParsed = array_key_exists('factor_precio_venta', $datos)
             ? $this->parseFactorPrecioVenta($datos['factor_precio_venta'])
             : null;
@@ -75,6 +80,25 @@ class NotaService
             'fechaentrega' => $datos['fechaentrega'] ?? $nota->fechaentrega,
             'factor_precio_venta' => $factor,
         ]);
+
+        $encargadoNuevo = strtoupper(trim((string) $nota->encargado));
+        if (
+            $encargadoNuevo !== $encargadoAnterior
+            && preg_match('/^\d+-\d+-COT\d+$/', $encargadoNuevo) === 1
+        ) {
+            $usuario = trim((string) $nota->usuario);
+            $this->oportunidadRelay->registrarTomadaLocal($encargadoNuevo, $usuario);
+
+            $replicar = function () use ($encargadoNuevo, $usuario): void {
+                $this->oportunidadRelay->replicarTomada($encargadoNuevo, $usuario);
+            };
+
+            if (DB::transactionLevel() > 0) {
+                DB::afterCommit($replicar);
+            } else {
+                $replicar();
+            }
+        }
 
         return $nota->fresh();
     }

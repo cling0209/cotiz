@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadEncontradaSyncPendiente;
+use App\Models\OportunidadTomada;
 use App\Support\CotizInstanciaPar;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -66,7 +67,16 @@ class OportunidadEncontradaRelayService
         foreach ($pendientes as $pendiente) {
             $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
             try {
-                $this->enviar($this->normalizarItems($payload), false);
+                if ($pendiente->accion === 'tomada') {
+                    $this->enviarTomada(
+                        (string) ($payload['codigo'] ?? ''),
+                        (string) ($payload['usuario'] ?? ''),
+                        (string) ($payload['sistema'] ?? ''),
+                        false,
+                    );
+                } else {
+                    $this->enviar($this->normalizarItems($payload), false);
+                }
                 $pendiente->delete();
                 $pendientesOk++;
             } catch (\Throwable $e) {
@@ -111,6 +121,10 @@ class OportunidadEncontradaRelayService
                 continue;
             }
 
+            if (OportunidadTomada::query()->where('codigo', $codigo)->exists()) {
+                continue;
+            }
+
             $dia = $this->fechaBusquedaItem($item);
             $palabras = array_values(array_unique(array_filter(array_map(
                 static fn ($p) => trim((string) $p),
@@ -140,6 +154,69 @@ class OportunidadEncontradaRelayService
         }
 
         return ['ok' => true, 'recibidos' => $recibidos];
+    }
+
+    public function registrarTomadaLocal(string $codigo, ?string $usuario = null): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return;
+        }
+
+        OportunidadTomada::query()->updateOrCreate(
+            ['codigo' => $codigo],
+            [
+                'sistema' => (string) config('cotiz.sistema', config('app.name')),
+                'usuario' => $usuario !== null ? trim($usuario) ?: null : null,
+                'tomada_at' => now(),
+            ],
+        );
+    }
+
+    public function replicarTomada(string $codigo, ?string $usuario = null): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '' || $this->urlDestino() === '') {
+            return;
+        }
+
+        try {
+            $this->enviarTomada(
+                $codigo,
+                (string) ($usuario ?? ''),
+                (string) config('cotiz.sistema', config('app.name')),
+                true,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Sync de oportunidad tomada al par falló (queda pendiente)', [
+                'codigo' => $codigo,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Registra el aviso remoto de que la oportunidad ya fue tomada.
+     *
+     * @return array{ok: bool, codigo: string}
+     */
+    public function recibirTomada(string $codigo, ?string $usuario = null, ?string $sistema = null): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            throw new RuntimeException('codigo inválido');
+        }
+
+        OportunidadTomada::query()->updateOrCreate(
+            ['codigo' => $codigo],
+            [
+                'sistema' => $sistema !== null ? trim($sistema) ?: null : null,
+                'usuario' => $usuario !== null ? trim($usuario) ?: null : null,
+                'tomada_at' => now(),
+            ],
+        );
+
+        return ['ok' => true, 'codigo' => $codigo];
     }
 
     /**
@@ -207,6 +284,71 @@ class OportunidadEncontradaRelayService
         }
     }
 
+    private function enviarTomada(
+        string $codigo,
+        string $usuario,
+        string $sistema,
+        bool $encolarSiFalla,
+    ): void {
+        $codigo = $this->normalizarCodigo($codigo);
+        $destino = $this->urlDestino();
+        if ($codigo === '' || $destino === '') {
+            return;
+        }
+
+        $userAuth = (string) config('cotiz.api_nota.user', '');
+        $passwordAuth = (string) config('cotiz.api_nota.password', '');
+        if ($userAuth === '' || $passwordAuth === '') {
+            throw new RuntimeException(
+                'Faltan COTIZ_API_NOTA_USER o COTIZ_API_NOTA_PASSWORD (Basic Auth compartida con la otra instancia).'
+            );
+        }
+
+        $payload = [
+            'accion' => 'tomada',
+            'replicacion' => true,
+            'origen_sistema' => $sistema,
+            'codigo' => $codigo,
+            'usuario' => $usuario,
+        ];
+
+        try {
+            $response = Http::timeout(30)
+                ->asJson()
+                ->withBasicAuth($userAuth, $passwordAuth)
+                ->post($destino, $payload);
+        } catch (\Throwable $e) {
+            $mensaje = 'No se pudo avisar al sitio par que '.$codigo.' fue tomada: '.$e->getMessage();
+            if ($encolarSiFalla) {
+                $this->encolarTomada($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        if (! $response->successful()) {
+            $mensaje = $this->mensajeErrorHttp(
+                $response,
+                $destino,
+                $this->nombreInstanciaPar($destino),
+            );
+            if ($encolarSiFalla) {
+                $this->encolarTomada($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
+            $mensaje = is_array($data)
+                ? trim((string) ($data['mensaje'] ?? 'Respuesta inválida del sitio par.'))
+                : 'Respuesta inválida del sitio par.';
+            if ($encolarSiFalla) {
+                $this->encolarTomada($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+    }
+
     /**
      * @param  list<array<string, mixed>>  $items
      */
@@ -218,7 +360,27 @@ class OportunidadEncontradaRelayService
         }
 
         OportunidadEncontradaSyncPendiente::query()->create([
+            'accion' => 'graba',
             'payload' => $items,
+            'intentos' => 0,
+            'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function encolarTomada(array $payload, ?string $error = null): void
+    {
+        $codigo = $this->normalizarCodigo((string) ($payload['codigo'] ?? ''));
+        if ($codigo === '') {
+            return;
+        }
+
+        $payload['codigo'] = $codigo;
+        OportunidadEncontradaSyncPendiente::query()->create([
+            'accion' => 'tomada',
+            'payload' => $payload,
             'intentos' => 0,
             'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
         ]);
@@ -379,6 +541,13 @@ class OportunidadEncontradaRelayService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function normalizarCodigo(string $codigo): string
+    {
+        $codigo = strtoupper(trim($codigo));
+
+        return preg_match('/^\d+-\d+-COT\d+$/', $codigo) === 1 ? $codigo : '';
     }
 
     private function mensajeErrorHttp(Response $response, string $destino, string $peer): string

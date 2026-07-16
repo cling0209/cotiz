@@ -26,6 +26,24 @@ class OportunidadEncontradaApiController extends Controller
             return $this->error('no viene accion');
         }
 
+        if ($accion === 'tomada') {
+            try {
+                $resultado = $this->relay->recibirTomada(
+                    (string) ($payload['codigo'] ?? ''),
+                    isset($payload['usuario']) ? (string) $payload['usuario'] : null,
+                    isset($payload['origen_sistema']) ? (string) $payload['origen_sistema'] : null,
+                );
+
+                return response()->json([
+                    'resultado' => 'OK',
+                    'mensaje' => 'Oportunidad marcada como tomada',
+                    'codigo' => $resultado['codigo'],
+                ]);
+            } catch (RuntimeException $e) {
+                return $this->error($e->getMessage());
+            }
+        }
+
         if ($accion !== 'graba') {
             return $this->error('Accion no existe: '.$accion);
         }

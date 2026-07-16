@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
+use App\Models\OportunidadTomada;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
@@ -46,8 +48,29 @@ class OportunidadParaCotizarService
      */
     public function listarGuardadasHoy(): array
     {
+        $codigosTomados = OportunidadTomada::query()
+            ->pluck('codigo')
+            ->merge(
+                Nota::query()
+                    ->whereRaw("trim(coalesce(encargado, '')) <> ''")
+                    ->pluck('encargado'),
+            )
+            ->map(fn ($codigo) => strtoupper(trim((string) $codigo)))
+            ->filter(fn ($codigo) => $codigo !== '')
+            ->unique()
+            ->values()
+            ->all();
+
         $items = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->where(function ($query) {
+                $query->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>', now());
+            })
+            ->when(
+                $codigosTomados !== [],
+                fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
+            )
             ->orderBy('indice_region_config')
             ->orderByDesc('monto_presupuesto_clp')
             ->orderBy('codigo')
@@ -92,6 +115,10 @@ class OportunidadParaCotizarService
 
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
             if ($codigo === '') {
+                continue;
+            }
+
+            if (! $this->estaVigente($item['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
                 continue;
             }
 
@@ -183,6 +210,26 @@ class OportunidadParaCotizarService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function estaVigente(mixed $fechaCierre): bool
+    {
+        $fecha = $this->parseFechaNullable($fechaCierre);
+
+        return $fecha === null || $fecha->isAfter(now());
+    }
+
+    private function estaTomada(string $codigo): bool
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return false;
+        }
+
+        return OportunidadTomada::query()->where('codigo', $codigo)->exists()
+            || Nota::query()
+                ->whereRaw('upper(trim(encargado)) = ?', [$codigo])
+                ->exists();
     }
 
     private function agregarPalabraAGuardada(string $codigo, string $frase): void
@@ -486,6 +533,10 @@ class OportunidadParaCotizarService
             }
 
             if (! $this->esPublicadaHoy($resumen['fecha_publicacion'] ?? null)) {
+                continue;
+            }
+
+            if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
                 continue;
             }
 

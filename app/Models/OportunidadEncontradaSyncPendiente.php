@@ -9,6 +9,7 @@ class OportunidadEncontradaSyncPendiente extends Model
     protected $table = 'oportunidad_encontrada_sync_pendientes';
 
     protected $fillable = [
+        'accion',
         'payload',
         'intentos',
         'ultimo_error',

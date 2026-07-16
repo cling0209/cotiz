@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\OportunidadEncontrada;
+use App\Models\OportunidadTomada;
 use App\Models\User;
+use App\Services\NotaService;
 use App\Services\OportunidadEncontradaRelayService;
 use App\Services\OportunidadParaCotizarService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -163,5 +165,104 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.oportunidades.palabras-clave.index'))
             ->assertForbidden();
+    }
+
+    public function test_listado_oculta_vencidas_y_tomadas_local_o_remotamente(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.api_usuario.url' => '',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        foreach ([
+            ['codigo' => '1000-1-COT26', 'fecha_cierre' => '2026-07-16 13:00:00'],
+            ['codigo' => '1000-2-COT26', 'fecha_cierre' => '2026-07-16 11:59:59'],
+            ['codigo' => '1000-3-COT26', 'fecha_cierre' => '2026-07-16 13:00:00'],
+            ['codigo' => '1000-4-COT26', 'fecha_cierre' => '2026-07-16 13:00:00'],
+        ] as $item) {
+            OportunidadEncontrada::query()->create([
+                'codigo' => $item['codigo'],
+                'nombre' => $item['codigo'],
+                'fecha_busqueda' => '2026-07-16',
+                'fecha_cierre' => $item['fecha_cierre'],
+                'palabras_coinciden' => ['aseo'],
+                'indice_region_config' => 0,
+            ]);
+        }
+
+        $notaService = $this->app->make(NotaService::class);
+        $notaLocal = $notaService->crear('ejecutivo');
+        $notaLocal->update(['encargado' => '1000-3-COT26']);
+
+        OportunidadTomada::query()->create([
+            'codigo' => '1000-4-COT26',
+            'sistema' => 'Reicol',
+            'usuario' => 'otro',
+            'tomada_at' => now(),
+        ]);
+
+        $items = $this->app->make(OportunidadParaCotizarService::class)->listarGuardadasHoy();
+
+        $this->assertSame(['1000-1-COT26'], array_column($items, 'codigo'));
+    }
+
+    public function test_asignar_codigo_a_nota_marca_tomada_y_avisa_al_par(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'codigo' => '2000-1-COT26',
+            ], 200),
+        ]);
+
+        $notaService = $this->app->make(NotaService::class);
+        $nota = $notaService->crear('ejecutivo');
+        $notaService->modificarCabecera($nota, ['encargado' => '2000-1-COT26']);
+
+        $this->assertDatabaseHas('oportunidad_tomadas', [
+            'codigo' => '2000-1-COT26',
+            'sistema' => 'Romulo',
+            'usuario' => 'ejecutivo',
+        ]);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://cotiza.reicol.cl/api/v1/oportunidad-encontrada'
+                && ($request['accion'] ?? null) === 'tomada'
+                && ($request['codigo'] ?? null) === '2000-1-COT26';
+        });
+    }
+
+    public function test_api_recibe_aviso_de_oportunidad_tomada(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'tomada',
+                'codigo' => '3000-1-COT26',
+                'usuario' => 'ejecutivo-remoto',
+                'origen_sistema' => 'Reicol',
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('codigo', '3000-1-COT26');
+
+        $this->assertDatabaseHas('oportunidad_tomadas', [
+            'codigo' => '3000-1-COT26',
+            'sistema' => 'Reicol',
+            'usuario' => 'ejecutivo-remoto',
+        ]);
     }
 }
