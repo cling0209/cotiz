@@ -262,9 +262,12 @@
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
+            const fraseBajoCodigo = frases.length
+                ? `<div class="small mt-1">Encontrada con: <strong>${escapeHtml(frases.join(', '))}</strong></div>`
+                : '';
             return `<tr${attrs}>
-                <td><code>${escapeHtml(codigo || '—')}</code>${nombre}</td>
-                <td class="small">${frasesHtml}</td>
+                <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}</td>
+                <td class="small" style="min-width:8rem;">${frasesHtml}</td>
                 <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_publicacion))}</td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_cierre))}</td>
