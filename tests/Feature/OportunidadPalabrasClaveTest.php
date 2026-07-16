@@ -113,8 +113,8 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->get(route('admin.oportunidades.para-cotizar.index'))
             ->assertOk()
             ->assertSee('Buscar cotizaciones', false)
-            ->assertSee('Pulse', false)
-            ->assertSee('prioridad de búsqueda', false);
+            ->assertSee('prioridad de búsqueda', false)
+            ->assertSee('graba', false);
     }
 
     public function test_puede_mover_prioridad_con_flechas(): void

@@ -18,9 +18,12 @@ class OportunidadParaCotizarController extends Controller
     public function index(): View
     {
         $palabras = $this->servicio->palabrasClave();
+        $guardadas = $this->servicio->listarGuardadasHoy();
 
         return view('admin.oportunidades.para-cotizar.index', [
             'palabras' => $palabras,
+            'guardadas' => $guardadas,
+            'fechaBusqueda' => $this->servicio->fechaBusquedaHoy(),
             'apiConfigurada' => true,
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
@@ -31,6 +34,7 @@ class OportunidadParaCotizarController extends Controller
     {
         $plan = $this->servicio->planBusqueda();
         $inicio = now()->timezone(config('app.timezone'));
+        $guardadas = $this->servicio->listarGuardadasHoy();
 
         if ($plan['error'] !== null) {
             return response()->json([
@@ -40,6 +44,7 @@ class OportunidadParaCotizarController extends Controller
                 'pasos' => [],
                 'total_pasos' => 0,
                 'fecha' => $plan['fecha'],
+                'guardadas' => $guardadas,
                 'inicio' => $inicio->toIso8601String(),
                 'inicio_label' => $inicio->format('H:i:s'),
             ], $plan['api_configurada'] ? 422 : 503);
@@ -52,6 +57,7 @@ class OportunidadParaCotizarController extends Controller
             'pasos' => $plan['pasos'],
             'total_pasos' => $plan['total_pasos'],
             'fecha' => $plan['fecha'],
+            'guardadas' => $guardadas,
             'inicio' => $inicio->toIso8601String(),
             'inicio_label' => $inicio->format('H:i:s'),
         ]);
@@ -78,12 +84,14 @@ class OportunidadParaCotizarController extends Controller
                 $data['frase'],
                 (int) $data['region'],
                 $excluidos,
+                $request->user()?->id,
             );
         } catch (RuntimeException $e) {
             return response()->json([
                 'ok' => false,
                 'error' => $e->getMessage(),
                 'nuevos' => [],
+                'guardadas' => 0,
                 'consulta' => $this->servicio->consultaDebugPaso($data['frase'], (int) $data['region']),
                 'frase' => $data['frase'],
                 'region' => (int) $data['region'],
@@ -99,6 +107,7 @@ class OportunidadParaCotizarController extends Controller
             'ok' => true,
             'error' => null,
             'nuevos' => $resultado['items'],
+            'guardadas' => $resultado['guardadas'] ?? 0,
             'consulta' => $resultado['consulta'],
             'frase' => $data['frase'],
             'region' => (int) $data['region'],

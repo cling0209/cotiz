@@ -83,7 +83,16 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('consulta.parametros.region', 13)
             ->assertJsonPath('consulta.parametros.estado', 'publicada')
             ->assertJsonPath('consulta.total_api', 2)
-            ->assertJsonPath('consulta.total_publicadas_hoy', 1);
+            ->assertJsonPath('consulta.total_publicadas_hoy', 1)
+            ->assertJsonPath('guardadas', 1);
+
+        $this->assertDatabaseHas('oportunidad_encontradas', [
+            'codigo' => '1000-1-COT26',
+            'fecha_busqueda' => '2026-07-15',
+        ]);
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '1000-2-COT26',
+        ]);
 
         Carbon::setTestNow();
     }

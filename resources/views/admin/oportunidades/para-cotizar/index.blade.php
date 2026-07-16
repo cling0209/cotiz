@@ -9,7 +9,7 @@
             <h1 class="h3 mb-1">Oportunidades</h1>
             <p class="text-muted mb-0 small">
                 Solo Compras &Aacute;giles <strong>publicadas hoy</strong>, seg&uacute;n sus palabras clave.
-                Los resultados aparecen a medida que se consultan.
+                Lo que se va encontrando se <strong>graba</strong> y queda disponible al volver a esta pantalla.
                 B&uacute;squeda por prioridad: primero las regiones de <code>MERCADOPUBLICO_REGIONES</code>,
                 y dentro de cada regi&oacute;n las palabras clave en el orden configurado.
             </p>
@@ -76,18 +76,20 @@
         </div>
     </div>
 
-    <div id="oportunidad-placeholder" class="card shadow-sm @if($palabras === []) d-none @endif">
+    <div id="oportunidad-placeholder" class="card shadow-sm @if($palabras === [] || count($guardadas) > 0) d-none @endif">
         <div class="card-body text-center text-muted py-5">
             Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico (solo publicadas hoy).
+            Cada resultado se graba autom&aacute;ticamente.
         </div>
     </div>
 
-    <div id="oportunidad-resultados" class="card shadow-sm d-none">
+    <div id="oportunidad-resultados" class="card shadow-sm @if(count($guardadas) === 0) d-none @endif">
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
                         <th>Cotizaci&oacute;n</th>
+                        <th>Palabra clave</th>
                         <th>Organismo</th>
                         <th>Fecha publicaci&oacute;n</th>
                         <th>Fecha cierre</th>
@@ -99,7 +101,7 @@
             </table>
         </div>
         <div class="card-body border-top py-2 small text-muted" id="oportunidad-footer">
-            Haga clic en una fila para cotizarla.
+            Haga clic en una fila para cotizarla. Los resultados del d&iacute;a quedan grabados.
         </div>
     </div>
 
@@ -162,6 +164,17 @@
     let cancelado = false;
     /** @type {AbortController|null} */
     let abortCtrl = null;
+
+    const guardadasIniciales = @json($guardadas ?? []);
+    const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
+
+    function cargarItems(items) {
+        (items || []).forEach((item) => {
+            const codigo = String(item.codigo || '').toUpperCase();
+            if (!codigo || porCodigo.has(codigo)) return;
+            porCodigo.set(codigo, item);
+        });
+    }
 
     function setModoBusqueda(activo) {
         buscando = activo;
@@ -228,7 +241,7 @@
         relEncontradas.textContent = String(items.length);
 
         if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
@@ -240,11 +253,18 @@
             const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
             const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;">${escapeHtml(item.nombre)}</div>` : '';
             const organismo = String(item.organismo || '').trim() || '—';
+            const frases = Array.isArray(item.palabras_coinciden)
+                ? item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean)
+                : [];
+            const frasesHtml = frases.length
+                ? frases.map((f) => `<span class="badge text-bg-light border me-1 mb-1" title="Encontrada con «${escapeHtml(f)}»">${escapeHtml(f)}</span>`).join('')
+                : '<span class="text-muted">—</span>';
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
             return `<tr${attrs}>
                 <td><code>${escapeHtml(codigo || '—')}</code>${nombre}</td>
+                <td class="small">${frasesHtml}</td>
                 <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_publicacion))}</td>
                 <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_cierre))}</td>
@@ -401,7 +421,6 @@
         cancelado = false;
         abortCtrl = new AbortController();
         setModoBusqueda(true);
-        porCodigo = new Map();
         inicioMs = Date.now();
         if (tickTimer) clearInterval(tickTimer);
         tickTimer = setInterval(actualizarDuracion, 250);
@@ -421,6 +440,11 @@
         try {
             const plan = await postJson(urls.iniciar, {});
             if (cancelado) throw new DOMException('Aborted', 'AbortError');
+
+            // Conserva lo ya grabado hoy y agrega solo códigos nuevos.
+            porCodigo = new Map();
+            cargarItems(plan.guardadas || []);
+            renderTabla();
 
             relInicio.textContent = plan.inicio_label || horaAhora();
             if (plan.fecha) {
@@ -462,13 +486,14 @@
                 if (cancelado) break;
 
                 mostrarDebugConsulta(resp.consulta, paso, i, total, null);
-                relDetalle.textContent = textoDetallePaso(paso, i, total, resp.consulta);
+                const nGuard = Number(resp.guardadas) || 0;
+                let detallePaso = textoDetallePaso(paso, i, total, resp.consulta);
+                if (nGuard > 0) {
+                    detallePaso += ` — grabadas: ${nGuard}`;
+                }
+                relDetalle.textContent = detallePaso;
 
-                (resp.nuevos || []).forEach((item) => {
-                    const codigo = String(item.codigo || '').toUpperCase();
-                    if (!codigo || porCodigo.has(codigo)) return;
-                    porCodigo.set(codigo, item);
-                });
+                cargarItems(resp.nuevos || []);
 
                 setProgreso(resp.progreso ?? Math.round(((i + 1) / total) * 100));
                 renderTabla();
@@ -484,10 +509,10 @@
             relBar.classList.remove('progress-bar-animated');
 
             if (cancelado) {
-                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} encontradas hasta el momento.`;
+                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hasta el momento.`;
             } else {
                 setProgreso(100);
-                relDetalle.textContent = `Consulta terminada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} publicadas hoy.`;
+                relDetalle.textContent = `Consulta terminada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} del día (grabadas).`;
             }
             renderTabla();
         } catch (e) {
@@ -497,7 +522,7 @@
             }
             if (cancelado || e.name === 'AbortError') {
                 cancelado = true;
-                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} encontradas hasta el momento.`;
+                relDetalle.textContent = `Consulta cancelada. ${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hasta el momento.`;
             } else {
                 mostrarError(e.message || String(e));
                 relDetalle.textContent = 'Consulta interrumpida.';
@@ -515,6 +540,18 @@
             abortCtrl = null;
             setModoBusqueda(false);
         }
+    }
+
+    // Al abrir: muestra lo ya grabado hoy.
+    if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
+        cargarItems(guardadasIniciales);
+        if (fechaBusquedaInicial && relFecha) {
+            relFecha.textContent = `(${fechaBusquedaInicial})`;
+        }
+        estado.classList.remove('d-none');
+        relDetalle.textContent = `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hoy. Pulse Buscar para consultar de nuevo.`;
+        setProgreso(100);
+        renderTabla();
     }
 
     btn?.addEventListener('click', buscar);
