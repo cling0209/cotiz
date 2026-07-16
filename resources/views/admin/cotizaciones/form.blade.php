@@ -3272,6 +3272,10 @@
             codigoSpan.classList.remove('text-warning', 'fw-semibold');
         }
 
+        tr.querySelectorAll('.linea-id-agile, .linea-desc-agile').forEach((el) => {
+            el.classList.remove('text-warning', 'fw-semibold');
+        });
+
         const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
         if (hiddenProd) hiddenProd.value = codigoRaw;
 

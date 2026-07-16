@@ -77,10 +77,12 @@
         <input type="text" name="lineas[{{ $idx }}][prod_item_softland]" maxlength="20" value="{{ old('lineas.'.$idx.'.prod_item_softland', $row['prod_item_softland']) }}" title="C&oacute;digo Softland">
     </td>
     @endif
-    <td><span class="nv-fill linea-id-agile">{{ $row['prod_item_agile'] }}</span></td>
+    <td>
+        <span class="nv-fill linea-id-agile @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ $row['prod_item_agile'] }}</span>
+    </td>
     <td>
         @if($row['prod_item_agile'] !== '' && $row['prod_descripcion_agile'] !== '')
-            <span class="nv-fill linea-desc-agile small">{{ $row['prod_descripcion_agile'] }}</span>
+            <span class="nv-fill linea-desc-agile small @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ $row['prod_descripcion_agile'] }}</span>
         @else
             <span class="text-muted">—</span>
         @endif
