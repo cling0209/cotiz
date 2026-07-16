@@ -176,6 +176,29 @@ class NotaConsultaRemotaServiceTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/up'));
     }
 
+    public function test_http_520_tambien_cold_start_y_despierta(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.consulta_par_max_intentos' => 1,
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/nota-consulta' => Http::response('error code: 520', 520),
+            'cotiza.reicol.cl/up' => Http::response('OK', 200),
+        ]);
+
+        $consulta = $this->service->consultarEncargadoEnPar('1057494-420-COT26');
+
+        $this->assertTrue($consulta['cold_start']);
+        $this->assertNull($consulta['error']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/up'));
+    }
+
     public function test_con_espera_reintenta_hasta_responder(): void
     {
         config([

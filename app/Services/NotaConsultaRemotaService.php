@@ -103,7 +103,7 @@ class NotaConsultaRemotaService
 
     public static function mensajeSinConexionConsultaPar(): string
     {
-        return 'No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.';
+        return 'Error al consultar el otro sitio. Reintente nuevamente.';
     }
 
     /**
@@ -231,7 +231,15 @@ class NotaConsultaRemotaService
             return $base;
         }
 
-        if ($this->esHttpRecuperable($response->status())) {
+        if ($response->status() === 403) {
+            $base['error'] = 'Error de permisos al consultar cotización en el otro sitio. Verifique COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD.';
+
+            return $base;
+        }
+
+        // Cualquier otro HTTP no exitoso (5xx, 408, 429, HTML de Render, etc.):
+        // wake + cold_start para que el cliente muestre barra y reintente ~1 min.
+        if (! $response->successful() || $this->esHttpRecuperable($response->status())) {
             Log::warning('Consulta encargado en sitio par: sitio no disponible', [
                 'url' => $url,
                 'status' => $response->status(),
@@ -241,18 +249,6 @@ class NotaConsultaRemotaService
             $this->despertarSitioPar();
 
             return $this->marcarColdStart($base);
-        }
-
-        if (! $response->successful()) {
-            Log::warning('Consulta encargado en sitio par falló', [
-                'url' => $url,
-                'status' => $response->status(),
-                'encargado' => $codigo,
-                'intento' => $intento,
-            ]);
-            $base['error'] = 'Error al consultar el otro sitio. Reintente nuevamente.';
-
-            return $base;
         }
 
         return $base;
@@ -300,8 +296,12 @@ class NotaConsultaRemotaService
 
     private function esHttpRecuperable(int $status): bool
     {
-        // 500: frecuente en Render free al despertar; tratar como cold start.
-        return $status === 0 || $status === 500 || $status === 502 || $status === 503 || $status === 504;
+        if ($status === 0 || $status === 408 || $status === 429) {
+            return true;
+        }
+
+        // 5xx (incl. 500/502/503/504 y códigos Cloudflare 520–524)
+        return $status >= 500 && $status <= 599;
     }
 
     private function timeoutSegundos(): int

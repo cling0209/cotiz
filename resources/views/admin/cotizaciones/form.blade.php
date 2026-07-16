@@ -859,21 +859,29 @@
             return true;
         }
 
-        return res.status === 503 && String(json?.message || '').trim() === String(consultaParConfig.mensaje || '').trim();
+        if (res.status === 503 && String(json?.message || '').trim() === String(consultaParConfig.mensaje || '').trim()) {
+            return true;
+        }
+
+        // Compat: respuestas viejas que cortaban sin cold_start
+        const err = String(json?.error || json?.message || '');
+        return /otro sitio/i.test(err) && /reintent/i.test(err);
     }
 
     function mensajeErrorSinConexionConsultaPar() {
-        return 'No se pudo conectar con el servicio de consulta. Intente nuevamente en unos momentos.';
+        return 'Error al consultar el otro sitio. Reintente nuevamente.';
     }
 
     async function validarEncargadoParConEspera(codigo, opciones = {}) {
         const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
         const max = consultaParConfig.maxIntentos;
         const mensajeIniciando = consultaParConfig.mensaje;
-        let enColdStart = false;
+
+        // Barra visible desde el primer intento (Importar Compra Ágil / Guardar número)
+        opciones.onProgress?.(1, max, mensajeIniciando);
 
         for (let intento = 1; intento <= max; intento++) {
-            if (enColdStart) {
+            if (intento > 1) {
                 opciones.onProgress?.(intento, max, mensajeIniciando);
             }
 
@@ -885,7 +893,6 @@
             }
 
             if (esRespuestaColdStartConsultaPar(res, json)) {
-                enColdStart = true;
                 opciones.onProgress?.(intento, max, mensajeIniciando);
                 if (intento >= max) {
                     throw new Error(mensajeErrorSinConexionConsultaPar());
