@@ -105,6 +105,39 @@ class OportunidadEncontradaRelayTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_api_no_registra_zona_excluida_isla_de_pascua(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'graba',
+                'replicacion' => true,
+                'items' => [
+                    [
+                        'codigo' => '8888-1-COT26',
+                        'nombre' => 'Papel',
+                        'fecha_busqueda' => '2026-07-16',
+                        'region' => 5,
+                        'comuna' => 'Isla de Pascua',
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('recibidos', 0);
+
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '8888-1-COT26',
+        ]);
+    }
+
     public function test_sync_pendientes_reintenta_cola(): void
     {
         config([

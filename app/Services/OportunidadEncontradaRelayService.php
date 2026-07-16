@@ -123,6 +123,11 @@ class OportunidadEncontradaRelayService
                 continue;
             }
 
+            // Zona fuera del área de operación (ej. Isla de Pascua): no registrar.
+            if (CompraAgilRegionScope::debeExcluirResumen($item)) {
+                continue;
+            }
+
             if (OportunidadTomada::query()->where('codigo', $codigo)->exists()) {
                 continue;
             }
