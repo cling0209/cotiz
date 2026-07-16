@@ -112,12 +112,21 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-sm-6 col-md-8 col-lg-9">
-                    <p class="small text-muted mb-0">
-                        Orden: presupuesto de mayor a menor; a igual presupuesto, menos productos primero.
-                    </p>
+                <div class="col-sm-6 col-md-5 col-lg-4">
+                    <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
+                    <input type="search" id="filtro-organismo" class="form-control form-control-sm"
+                           placeholder="Buscar organismo…" autocomplete="off">
+                </div>
+                <div class="col-sm-12 col-md-3 col-lg-5 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                    <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
+                        <i class="bi bi-download"></i> Descargar CSV
+                    </button>
                 </div>
             </div>
+            <p class="small text-muted mb-0 mt-2">
+                Orden por defecto: presupuesto de mayor a menor; a igual presupuesto, menos productos primero.
+                El CSV exporta exactamente lo visible con los filtros actuales.
+            </p>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 align-middle">
@@ -218,6 +227,8 @@
     const debugPasoLine = document.getElementById('debug-paso-line');
     const debugConsultaJson = document.getElementById('debug-consulta-json');
     const filtroRegion = document.getElementById('filtro-region');
+    const filtroOrganismo = document.getElementById('filtro-organismo');
+    const btnDescargarCsv = document.getElementById('btn-descargar-csv');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -228,6 +239,7 @@
     let cancelado = false;
     let pollTimer = null;
     let sortState = { column: 'presupuesto', direction: 'desc' };
+    let filtroOrganismoTimer = null;
 
     const guardadasIniciales = @json($guardadas ?? []);
     const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
@@ -329,14 +341,84 @@
         });
     }
 
+    function normalizarTexto(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+    }
+
     function itemsFiltrados() {
         const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
+        const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
         let items = Array.from(porCodigo.values());
         if (regionSel !== '') {
             const codigoRegion = Number(regionSel);
             items = items.filter((item) => Number(item.region) === codigoRegion);
         }
+        if (organismoSel !== '') {
+            items = items.filter((item) => normalizarTexto(item.organismo).includes(organismoSel));
+        }
         return items.sort(comparar);
+    }
+
+    function csvEscape(valor) {
+        const texto = String(valor ?? '');
+        if (/[;"\r\n]/.test(texto)) {
+            return '"' + texto.replace(/"/g, '""') + '"';
+        }
+        return texto;
+    }
+
+    function descargarCsv() {
+        const items = itemsFiltrados();
+        if (items.length === 0) {
+            return;
+        }
+
+        const headers = [
+            'Cotizacion',
+            'Nombre',
+            'Region',
+            'Palabra clave',
+            'Organismo',
+            'Productos',
+            'Fecha publicacion',
+            'Fecha cierre',
+            'Presupuesto CLP',
+        ];
+        const rows = items.map((item) => {
+            const frases = Array.isArray(item.palabras_coinciden)
+                ? item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean).join(' | ')
+                : '';
+            const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
+            const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : '';
+            return [
+                String(item.codigo || '').toUpperCase(),
+                String(item.nombre || '').trim(),
+                String(item.nombre_region || '').trim(),
+                frases,
+                String(item.organismo || '').trim(),
+                Number.isFinite(cantidadNum) ? cantidadNum : '',
+                fmtFecha(item.fecha_publicacion),
+                fmtFecha(item.fecha_cierre),
+                Number(item.monto_presupuesto_clp) || 0,
+            ].map(csvEscape).join(';');
+        });
+
+        const contenido = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+        const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const fecha = (fechaBusquedaInicial || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+        a.href = url;
+        a.download = `oportunidades_${fecha}.csv`;
+        a.setAttribute('data-no-loader', '');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     }
 
     function bindFilas() {
@@ -363,14 +445,16 @@
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
+            if (btnDescargarCsv) btnDescargarCsv.disabled = true;
             return;
         }
 
         if (items.length === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
-                No hay oportunidades en la región seleccionada.
+                No hay oportunidades con los filtros seleccionados.
             </td></tr>`;
             footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
+            if (btnDescargarCsv) btnDescargarCsv.disabled = true;
             return;
         }
 
@@ -412,17 +496,37 @@
             </tr>`;
         }).join('');
 
-        const filtroActivo = filtroRegion && String(filtroRegion.value || '').trim() !== '';
+        const filtroActivo = (filtroRegion && String(filtroRegion.value || '').trim() !== '')
+            || (filtroOrganismo && String(filtroOrganismo.value || '').trim() !== '');
         const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
         const visibles = filtroActivo
             ? `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.`
             : `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo}`;
         footer.textContent = `${visibles} Haga clic en una fila para cotizarla.`;
+        if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
         bindFilas();
     }
 
     if (filtroRegion) {
         filtroRegion.addEventListener('change', renderTabla);
+    }
+
+    if (filtroOrganismo) {
+        filtroOrganismo.addEventListener('input', () => {
+            if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
+            filtroOrganismoTimer = setTimeout(renderTabla, 200);
+        });
+        filtroOrganismo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
+                renderTabla();
+            }
+        });
+    }
+
+    if (btnDescargarCsv) {
+        btnDescargarCsv.addEventListener('click', descargarCsv);
     }
 
     document.querySelectorAll('[data-sort]').forEach((button) => {
