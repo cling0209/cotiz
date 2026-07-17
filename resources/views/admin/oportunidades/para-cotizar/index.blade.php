@@ -107,11 +107,13 @@
             <div id="rel-detalle" class="small text-muted">Preparando consulta…</div>
             <div id="rel-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
             <div id="rel-pasos" class="mt-3 d-none">
-                <button type="button" id="rel-pasos-toggle" class="btn btn-sm btn-outline-secondary mb-2">
+                <button type="button" id="rel-pasos-toggle" class="btn btn-sm btn-outline-secondary mb-2"
+                        aria-expanded="false" aria-controls="rel-pasos-panel">
                     <i class="bi bi-list-check"></i>
                     Detalle por regi&oacute;n <span id="rel-pasos-contador" class="badge text-bg-secondary ms-1">0</span>
+                    <i id="rel-pasos-chevron" class="bi bi-chevron-down ms-1"></i>
                 </button>
-                <div id="rel-pasos-panel" class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                <div id="rel-pasos-panel" class="table-responsive d-none" style="max-height: 320px; overflow-y: auto;">
                     <table class="table table-sm table-striped align-middle small mb-0">
                         <thead class="table-light" style="position: sticky; top: 0;">
                             <tr>
@@ -1063,7 +1065,6 @@
         }
 
         relPasos.classList.remove('d-none');
-        relPasosPanel?.classList.remove('d-none');
         const terminados = pasos.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
         if (relPasosContador) {
             relPasosContador.textContent = `${terminados}/${pasos.length}`;
@@ -1128,9 +1129,21 @@
         });
     }
 
+    const relPasosChevron = document.getElementById('rel-pasos-chevron');
+    function setPasosPanelAbierto(abierto) {
+        if (!relPasosPanel) return;
+        relPasosPanel.classList.toggle('d-none', !abierto);
+        if (relPasosToggle) {
+            relPasosToggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+        }
+        if (relPasosChevron) {
+            relPasosChevron.classList.toggle('bi-chevron-down', !abierto);
+            relPasosChevron.classList.toggle('bi-chevron-up', abierto);
+        }
+    }
     if (relPasosToggle && relPasosPanel) {
         relPasosToggle.addEventListener('click', () => {
-            relPasosPanel.classList.toggle('d-none');
+            setPasosPanelAbierto(relPasosPanel.classList.contains('d-none'));
         });
     }
 
@@ -1178,9 +1191,6 @@
         }
         renderTabla();
         renderPasosCorrida(corrida.pasos_resumen || []);
-        if (activo && relPasosPanel) {
-            relPasosPanel.classList.remove('d-none');
-        }
         actualizarDebugDesdeCorrida(corrida);
         if (corrida.fecha_busqueda && relFecha) {
             relFecha.textContent = cambiandoDia
