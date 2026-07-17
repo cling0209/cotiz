@@ -180,19 +180,6 @@
                            placeholder="Buscar organismo…" autocomplete="off">
                 </div>
                 <div class="col-sm-12 col-md-3 col-lg-5 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
-                    <nav id="oportunidad-paginacion-top" aria-label="Paginaci&oacute;n superior de oportunidades">
-                        <ul class="pagination pagination-sm mb-0">
-                            <li class="page-item" id="oportunidad-pag-prev-top">
-                                <button type="button" class="page-link" id="btn-oportunidad-prev-top">&laquo;</button>
-                            </li>
-                            <li class="page-item disabled">
-                                <span class="page-link tabular-nums" id="oportunidad-pag-label-top">1 / 1</span>
-                            </li>
-                            <li class="page-item" id="oportunidad-pag-next-top">
-                                <button type="button" class="page-link" id="btn-oportunidad-next-top">&raquo;</button>
-                            </li>
-                        </ul>
-                    </nav>
                     <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
                         <i class="bi bi-download"></i> Descargar CSV
                     </button>
@@ -229,8 +216,8 @@
                 </tbody>
             </table>
         </div>
-        <div class="card-body border-top py-2 d-flex flex-wrap gap-2 align-items-center justify-content-between">
-            <div class="small text-muted" id="oportunidad-footer">
+        <div class="card-body border-top py-2">
+            <div class="small text-muted mb-2" id="oportunidad-footer">
                 Haga clic en una fila para cotizarla.
                 @if($puedeBuscar)
                     Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
@@ -238,18 +225,8 @@
                     Resultados sincronizados desde el sitio de b&uacute;squeda.
                 @endif
             </div>
-            <nav id="oportunidad-paginacion" aria-label="Paginaci&oacute;n de oportunidades">
-                <ul class="pagination pagination-sm mb-0">
-                    <li class="page-item" id="oportunidad-pag-prev">
-                        <button type="button" class="page-link" id="btn-oportunidad-prev">&laquo;</button>
-                    </li>
-                    <li class="page-item disabled">
-                        <span class="page-link tabular-nums" id="oportunidad-pag-label">1 / 1</span>
-                    </li>
-                    <li class="page-item" id="oportunidad-pag-next">
-                        <button type="button" class="page-link" id="btn-oportunidad-next">&raquo;</button>
-                    </li>
-                </ul>
+            <nav id="oportunidad-paginacion" class="d-flex justify-content-center" aria-label="Paginaci&oacute;n de oportunidades">
+                <ul class="pagination mb-0" id="oportunidad-paginacion-lista"></ul>
             </nav>
         </div>
     </div>
@@ -325,16 +302,7 @@
     const filtroOrganismo = document.getElementById('filtro-organismo');
     const btnDescargarCsv = document.getElementById('btn-descargar-csv');
     const paginacionNav = document.getElementById('oportunidad-paginacion');
-    const pagLabel = document.getElementById('oportunidad-pag-label');
-    const btnPagPrev = document.getElementById('btn-oportunidad-prev');
-    const btnPagNext = document.getElementById('btn-oportunidad-next');
-    const pagPrevItem = document.getElementById('oportunidad-pag-prev');
-    const pagNextItem = document.getElementById('oportunidad-pag-next');
-    const pagLabelTop = document.getElementById('oportunidad-pag-label-top');
-    const btnPagPrevTop = document.getElementById('btn-oportunidad-prev-top');
-    const btnPagNextTop = document.getElementById('btn-oportunidad-next-top');
-    const pagPrevItemTop = document.getElementById('oportunidad-pag-prev-top');
-    const pagNextItemTop = document.getElementById('oportunidad-pag-next-top');
+    const paginacionLista = document.getElementById('oportunidad-paginacion-lista');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -642,37 +610,77 @@
         bindFilas();
     }
 
+    /** Ventana de páginas con elipsis (mismo criterio visual que Laravel/Bootstrap). */
+    function elementosPaginacion(actual, total) {
+        if (total <= 1) {
+            return [1];
+        }
+        const onEachSide = 2;
+        const windowStart = Math.max(2, actual - onEachSide);
+        const windowEnd = Math.min(total - 1, actual + onEachSide);
+        const items = [1];
+        if (windowStart > 2) {
+            items.push('...');
+        }
+        for (let i = windowStart; i <= windowEnd; i++) {
+            items.push(i);
+        }
+        if (windowEnd < total - 1) {
+            items.push('...');
+        }
+        if (total > 1) {
+            items.push(total);
+        }
+        return items;
+    }
+
+    function irAPagina(pagina) {
+        const totalPaginas = Math.max(1, Math.ceil(itemsFiltrados().length / PAGE_SIZE));
+        const destino = Math.max(1, Math.min(totalPaginas, Number(pagina) || 1));
+        if (destino === paginaActual) {
+            return;
+        }
+        paginaActual = destino;
+        renderTabla(false);
+    }
+
     function actualizarPaginadores(totalPaginas) {
+        if (!paginacionLista) {
+            return;
+        }
         const total = Math.max(1, Number(totalPaginas) || 1);
         const esPrimera = paginaActual <= 1;
         const esUltima = paginaActual >= total;
-        const etiqueta = `${paginaActual} / ${total}`;
+        const partes = [];
 
-        if (paginacionNav) paginacionNav.classList.remove('d-none');
-        if (pagLabel) pagLabel.textContent = etiqueta;
-        if (pagLabelTop) pagLabelTop.textContent = etiqueta;
-        if (pagPrevItem) pagPrevItem.classList.toggle('disabled', esPrimera);
-        if (pagNextItem) pagNextItem.classList.toggle('disabled', esUltima);
-        if (pagPrevItemTop) pagPrevItemTop.classList.toggle('disabled', esPrimera);
-        if (pagNextItemTop) pagNextItemTop.classList.toggle('disabled', esUltima);
-        if (btnPagPrev) btnPagPrev.disabled = esPrimera;
-        if (btnPagNext) btnPagNext.disabled = esUltima;
-        if (btnPagPrevTop) btnPagPrevTop.disabled = esPrimera;
-        if (btnPagNextTop) btnPagNextTop.disabled = esUltima;
-    }
+        partes.push(
+            `<li class="page-item${esPrimera ? ' disabled' : ''}">`
+            + `<button type="button" class="page-link" data-pagina="${paginaActual - 1}" aria-label="Anterior" ${esPrimera ? 'disabled' : ''}>&laquo;</button>`
+            + `</li>`
+        );
 
-    function paginaAnterior() {
-        if (paginaActual > 1) {
-            paginaActual -= 1;
-            renderTabla(false);
-        }
-    }
+        elementosPaginacion(paginaActual, total).forEach((item) => {
+            if (item === '...') {
+                partes.push('<li class="page-item disabled"><span class="page-link">…</span></li>');
+                return;
+            }
+            const activa = item === paginaActual;
+            partes.push(
+                `<li class="page-item${activa ? ' active' : ''}">`
+                + `<button type="button" class="page-link" data-pagina="${item}" ${activa ? 'aria-current="page"' : ''}>${item}</button>`
+                + `</li>`
+            );
+        });
 
-    function paginaSiguiente() {
-        const totalPaginas = Math.max(1, Math.ceil(itemsFiltrados().length / PAGE_SIZE));
-        if (paginaActual < totalPaginas) {
-            paginaActual += 1;
-            renderTabla(false);
+        partes.push(
+            `<li class="page-item${esUltima ? ' disabled' : ''}">`
+            + `<button type="button" class="page-link" data-pagina="${paginaActual + 1}" aria-label="Siguiente" ${esUltima ? 'disabled' : ''}>&raquo;</button>`
+            + `</li>`
+        );
+
+        paginacionLista.innerHTML = partes.join('');
+        if (paginacionNav) {
+            paginacionNav.classList.toggle('d-none', total <= 1 && porCodigo.size === 0);
         }
     }
 
@@ -694,17 +702,14 @@
         });
     }
 
-    if (btnPagPrev) {
-        btnPagPrev.addEventListener('click', paginaAnterior);
-    }
-    if (btnPagNext) {
-        btnPagNext.addEventListener('click', paginaSiguiente);
-    }
-    if (btnPagPrevTop) {
-        btnPagPrevTop.addEventListener('click', paginaAnterior);
-    }
-    if (btnPagNextTop) {
-        btnPagNextTop.addEventListener('click', paginaSiguiente);
+    if (paginacionLista) {
+        paginacionLista.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-pagina]');
+            if (!btn || btn.disabled) {
+                return;
+            }
+            irAPagina(btn.getAttribute('data-pagina'));
+        });
     }
 
     if (btnDescargarCsv) {
