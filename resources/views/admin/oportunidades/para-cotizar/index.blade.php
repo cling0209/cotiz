@@ -132,7 +132,13 @@
                         <code id="debug-endpoint-url" class="user-select-all text-break"></code>
                     </div>
                     <div id="debug-paso-line" class="small text-muted mb-2"></div>
-                    <pre id="debug-consulta-json" class="bg-white border rounded p-3 mb-0 small font-monospace text-break"
+                    <pre id="debug-consulta-json" class="bg-white border rounded p-3 mb-2 small font-monospace text-break"
+                         style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
+                    <div class="small fw-semibold mb-1 mt-2">
+                        <i class="bi bi-arrow-return-left"></i> Respuesta de Mercado P&uacute;blico
+                    </div>
+                    <div id="debug-respuesta-line" class="small text-muted mb-1"></div>
+                    <pre id="debug-respuesta-json" class="bg-white border rounded p-3 mb-0 small font-monospace text-break"
                          style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
                 </div>
             </div>
@@ -263,6 +269,8 @@
     const debugEndpointUrl = document.getElementById('debug-endpoint-url');
     const debugPasoLine = document.getElementById('debug-paso-line');
     const debugConsultaJson = document.getElementById('debug-consulta-json');
+    const debugRespuestaLine = document.getElementById('debug-respuesta-line');
+    const debugRespuestaJson = document.getElementById('debug-respuesta-json');
     const filtroRegion = document.getElementById('filtro-region');
     const filtroOrganismo = document.getElementById('filtro-organismo');
     const btnDescargarCsv = document.getElementById('btn-descargar-csv');
@@ -682,9 +690,31 @@
             debugPasoLine.textContent = linea;
         }
 
-        const { json: _json, ...sinJson } = data;
+        const { json: _json, respuesta_json: _rjson, respuesta: _resp, ...sinJson } = data;
         const ordenado = Object.fromEntries(Object.keys(sinJson).sort().map((k) => [k, sinJson[k]]));
         debugConsultaJson.textContent = data.json || JSON.stringify(ordenado, null, 2);
+
+        if (debugRespuestaJson) {
+            const resp = data.respuesta && typeof data.respuesta === 'object' ? data.respuesta : null;
+            const terminado = paso?.resultado && paso.resultado !== 'pendiente';
+            if (!terminado) {
+                debugRespuestaJson.textContent = 'Esperando respuesta de Mercado Público…';
+                if (debugRespuestaLine) debugRespuestaLine.textContent = '';
+            } else if (resp) {
+                debugRespuestaJson.textContent = data.respuesta_json || JSON.stringify(resp, null, 2);
+                if (debugRespuestaLine) {
+                    const recibidos = resp.items_recibidos ?? 0;
+                    const coinciden = resp.coinciden_hoy ?? 0;
+                    debugRespuestaLine.textContent = recibidos === 0
+                        ? 'MP no devolvió ítems para esta región/fecha.'
+                        : `MP devolvió ${recibidos} ítem(s); coinciden hoy: ${coinciden}.`;
+                }
+            } else {
+                debugRespuestaJson.textContent = 'Sin respuesta registrada para este paso.';
+                if (debugRespuestaLine) debugRespuestaLine.textContent = '';
+            }
+        }
+
         debugPanel.classList.remove('d-none');
     }
 
@@ -725,6 +755,8 @@
         if (debugEndpointUrl) debugEndpointUrl.textContent = '';
         if (debugPasoLine) debugPasoLine.textContent = '';
         if (debugConsultaJson) debugConsultaJson.textContent = '';
+        if (debugRespuestaLine) debugRespuestaLine.textContent = '';
+        if (debugRespuestaJson) debugRespuestaJson.textContent = '';
     }
 
     function textoDetallePaso(paso, indice, total, consulta) {

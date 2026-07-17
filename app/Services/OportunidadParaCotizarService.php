@@ -729,7 +729,14 @@ class OportunidadParaCotizarService
 
         return [
             'items' => $items,
-            'consulta' => $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia),
+            'consulta' => $this->metaConsultaPaso(
+                '(todas)',
+                $region,
+                count($crudos),
+                count($items),
+                $dia,
+                $this->muestraRespuestaCruda($crudos),
+            ),
             'guardadas' => $guardadas,
         ];
     }
@@ -830,7 +837,14 @@ class OportunidadParaCotizarService
 
         return [
             'items' => $items,
-            'consulta' => $this->metaConsultaPaso($frase, $region, count($crudos), count($items), $dia),
+            'consulta' => $this->metaConsultaPaso(
+                $frase,
+                $region,
+                count($crudos),
+                count($items),
+                $dia,
+                $this->muestraRespuestaCruda(is_array($crudos) ? $crudos : []),
+            ),
             'guardadas' => $guardadas,
         ];
     }
@@ -887,6 +901,7 @@ class OportunidadParaCotizarService
         int $totalApi,
         int $totalHoy,
         mixed $fechaBusqueda = null,
+        ?array $muestraRespuesta = null,
     ): array {
         $params = $this->parametrosConsultaPaso($frase, $region);
         ksort($params);
@@ -908,12 +923,48 @@ class OportunidadParaCotizarService
         ];
         ksort($paraJson);
 
+        $respuesta = [
+            'items_recibidos' => $totalApi,
+            'coinciden_hoy' => $totalHoy,
+            'muestra' => is_array($muestraRespuesta) ? array_values($muestraRespuesta) : [],
+        ];
+
         return array_merge($paraJson, [
+            'respuesta' => $respuesta,
+            'respuesta_json' => json_encode(
+                $respuesta,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            ) ?: '{}',
             'json' => json_encode(
                 $paraJson,
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
             ) ?: '{}',
         ]);
+    }
+
+    /**
+     * Muestra compacta de la respuesta cruda de MP para depuración (máx. 3 ítems).
+     *
+     * @param  list<mixed>  $crudos
+     * @return list<array<string, mixed>>
+     */
+    private function muestraRespuestaCruda(array $crudos): array
+    {
+        $muestra = [];
+        foreach (array_slice(array_values($crudos), 0, 3) as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $muestra[] = [
+                'codigo' => (string) ($item['codigo'] ?? ''),
+                'nombre' => mb_substr((string) ($item['nombre'] ?? $item['Nombre'] ?? ''), 0, 120),
+                'fecha_publicacion' => (string) ($item['fechaPublicacion'] ?? $item['fecha_publicacion'] ?? ''),
+                'fecha_cierre' => (string) ($item['fechaCierre'] ?? $item['fecha_cierre'] ?? ''),
+                'region' => $item['region'] ?? $item['Region'] ?? null,
+            ];
+        }
+
+        return $muestra;
     }
 
     /**
