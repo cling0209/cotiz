@@ -80,24 +80,58 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Vigentes acumuladas desde la fecha de inicio de búsqueda (catch-up),
+     * sin duplicar código si aparece en más de un día.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarGuardadasVigentesDesde(?string $desde = null): array
+    {
+        $desde = $this->normalizarFechaBusqueda(
+            $desde ?? config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
+        );
+        $hasta = $this->fechaBusquedaHoy();
+        $codigosTomados = $this->codigosTomadosNormalizados();
+
+        $rows = OportunidadEncontrada::query()
+            ->whereDate('fecha_busqueda', '>=', $desde)
+            ->whereDate('fecha_busqueda', '<=', $hasta)
+            ->where(function ($query) {
+                $query->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>', now());
+            })
+            ->when(
+                $codigosTomados !== [],
+                fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
+            )
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('monto_presupuesto_clp')
+            ->orderByRaw('cantidad_productos ASC NULLS LAST')
+            ->orderBy('codigo')
+            ->get();
+
+        $porCodigo = [];
+        foreach ($rows as $row) {
+            $codigo = strtoupper(trim((string) $row->codigo));
+            if ($codigo === '' || isset($porCodigo[$codigo])) {
+                continue;
+            }
+            $porCodigo[$codigo] = $row->toResumen();
+        }
+
+        $items = array_values($porCodigo);
+        usort($items, [$this, 'compararOportunidades']);
+
+        return $items;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function listarGuardadasEn(mixed $fechaBusqueda = null): array
     {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
-
-        $codigosTomados = OportunidadTomada::query()
-            ->pluck('codigo')
-            ->merge(
-                Nota::query()
-                    ->whereRaw("trim(coalesce(encargado, '')) <> ''")
-                    ->pluck('encargado'),
-            )
-            ->map(fn ($codigo) => strtoupper(trim((string) $codigo)))
-            ->filter(fn ($codigo) => $codigo !== '')
-            ->unique()
-            ->values()
-            ->all();
+        $codigosTomados = $this->codigosTomadosNormalizados();
 
         $items = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', $dia)
@@ -119,6 +153,25 @@ class OportunidadParaCotizarService
         usort($items, [$this, 'compararOportunidades']);
 
         return $items;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function codigosTomadosNormalizados(): array
+    {
+        return OportunidadTomada::query()
+            ->pluck('codigo')
+            ->merge(
+                Nota::query()
+                    ->whereRaw("trim(coalesce(encargado, '')) <> ''")
+                    ->pluck('encargado'),
+            )
+            ->map(fn ($codigo) => strtoupper(trim((string) $codigo)))
+            ->filter(fn ($codigo) => $codigo !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

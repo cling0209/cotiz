@@ -154,7 +154,11 @@ class OportunidadBusquedaService
 
         try {
             $resultado = $this->oportunidades->ejecutarPaso($frase, $region, [], null, $fechaBusqueda);
-            $encontradas = count(is_array($resultado['items'] ?? null) ? $resultado['items'] : []);
+            // Contar lo realmente grabado y listable, no solo matches en memoria.
+            $encontradas = (int) ($resultado['guardadas'] ?? 0);
+            if ($encontradas <= 0 && is_array($resultado['items'] ?? null)) {
+                $encontradas = count($resultado['items']);
+            }
             $pasos[$indice]['estado'] = self::PASO_OK;
             $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $pasos[$indice]['encontradas'] = $encontradas;
@@ -343,7 +347,8 @@ class OportunidadBusquedaService
             'errores' => $errores,
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
             'pasos_resumen' => $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda),
-            'items' => $this->oportunidades->listarGuardadasEn($fechaBusqueda),
+            // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
+            'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
         ];
     }
 

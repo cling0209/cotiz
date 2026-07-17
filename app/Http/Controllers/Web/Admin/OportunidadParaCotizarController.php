@@ -22,7 +22,8 @@ class OportunidadParaCotizarController extends Controller
     {
         $puedeBuscar = (bool) $request->user()?->canAccessOportunidades();
         $palabras = $puedeBuscar ? $this->servicio->palabrasClave() : [];
-        $guardadas = $this->servicio->listarGuardadasHoy();
+        $guardadas = $this->servicio->listarGuardadasVigentesDesde();
+        $corridaEstado = $puedeBuscar ? $this->busqueda->estado() : null;
 
         $regionesFiltro = [];
         foreach (CompraAgilRegionScope::regionesIncluidas() as $codigoRegion) {
@@ -33,11 +34,13 @@ class OportunidadParaCotizarController extends Controller
             'palabras' => $palabras,
             'guardadas' => $guardadas,
             'puedeBuscar' => $puedeBuscar,
-            'fechaBusqueda' => $this->servicio->fechaBusquedaHoy(),
+            'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
+                ? (string) $corridaEstado['fecha_busqueda']
+                : $this->servicio->fechaBusquedaHoy(),
             'apiConfigurada' => true,
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
-            'corridaEstado' => $puedeBuscar ? $this->busqueda->estado() : null,
+            'corridaEstado' => $corridaEstado,
             'regionesFiltro' => $regionesFiltro,
         ]);
     }

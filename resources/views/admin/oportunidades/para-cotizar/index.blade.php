@@ -79,7 +79,7 @@
                 </div>
                 <div class="text-nowrap ms-auto">
                     <span id="rel-encontradas" class="badge text-bg-primary">0</span>
-                    <span class="text-muted">del d&iacute;a</span>
+                    <span class="text-muted">vigentes</span>
                     <span id="rel-fecha" class="text-muted ms-1"></span>
                 </div>
             </div>
@@ -115,8 +115,9 @@
 
     <div id="oportunidad-placeholder" class="card shadow-sm @if(! $puedeBuscar || $palabras === [] || count($guardadas) > 0) d-none @endif">
         <div class="card-body text-center text-muted py-5">
-            Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico (solo publicadas hoy).
-            Cada resultado se graba autom&aacute;ticamente.
+            Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico
+            (d&iacute;as pendientes desde la fecha de inicio configurada).
+            Cada resultado vigente se graba autom&aacute;ticamente.
         </div>
     </div>
     @endif
@@ -468,9 +469,9 @@
 
         if (total === 0) {
             tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
-                ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No se encontraron compras publicadas hoy con esas palabras clave.')}
+                ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No hay oportunidades vigentes para cotizar.')}
             </td></tr>`;
-            footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados del día.');
+            footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados vigentes.');
             if (btnDescargarCsv) btnDescargarCsv.disabled = true;
             return;
         }
@@ -839,13 +840,18 @@
 
         porCodigo = new Map();
         cargarItems(corrida.items || []);
+        const activo = corrida.estado === 'running';
+        // Mostrar el listado si hay filas o si la búsqueda está en curso (antes quedaba oculto
+        // cuando listarGuardadasHoy() venía vacío en catch-up de días anteriores).
+        if (resultados && (porCodigo.size > 0 || activo)) {
+            resultados.classList.remove('d-none');
+        }
         renderTabla();
         renderPasosCorrida(corrida.pasos_resumen || []);
         if (corrida.fecha_busqueda && relFecha) {
-            relFecha.textContent = `(${formatearDia(corrida.fecha_busqueda)})`;
+            relFecha.textContent = `(buscando ${formatearDia(corrida.fecha_busqueda)})`;
         }
 
-        const activo = corrida.estado === 'running';
         cancelado = corrida.estado === 'cancelled';
         setModoBusqueda(activo);
         relBar.classList.toggle('progress-bar-animated', activo);
@@ -940,7 +946,7 @@
         }
     }
 
-    // Al abrir: muestra lo ya grabado hoy.
+    // Al abrir: muestra lo ya grabado (vigentes desde fecha de inicio).
     if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
         cargarItems(guardadasIniciales);
         if (fechaBusquedaInicial && relFecha) {
@@ -949,10 +955,11 @@
         if (estado && relDetalle) {
             estado.classList.remove('d-none');
             relDetalle.textContent = puedeBuscar
-                ? `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} grabadas hoy. Pulse Buscar para consultar de nuevo.`
-                : `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} sincronizadas hoy.`;
+                ? `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} vigentes. Pulse Buscar para consultar de nuevo.`
+                : `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} sincronizadas vigentes.`;
             setProgreso(100);
         }
+        if (resultados) resultados.classList.remove('d-none');
         renderTabla();
     }
 
