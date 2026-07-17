@@ -90,6 +90,10 @@
                     <i class="bi bi-hourglass-split"></i>
                     Tiempo: <strong id="rel-duracion" class="tabular-nums">—</strong>
                 </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-person"></i>
+                    Solicitado por: <strong id="rel-usuario">—</strong>
+                </div>
                 <div class="text-nowrap ms-auto">
                     <span id="rel-encontradas" class="badge text-bg-primary">0</span>
                     <span class="text-muted">vigentes</span>
@@ -279,6 +283,7 @@
     const relInicio = document.getElementById('rel-inicio');
     const relFin = document.getElementById('rel-fin');
     const relDuracion = document.getElementById('rel-duracion');
+    const relUsuario = document.getElementById('rel-usuario');
     const relEncontradas = document.getElementById('rel-encontradas');
     const relFecha = document.getElementById('rel-fecha');
     const relBar = document.getElementById('rel-progreso-bar');
@@ -1145,6 +1150,10 @@
         finMs = fin && !Number.isNaN(fin.getTime()) ? fin.getTime() : null;
         relInicio.textContent = inicio ? inicio.toLocaleTimeString('es-CL', { hour12: false }) : '—';
         relFin.textContent = fin ? fin.toLocaleTimeString('es-CL', { hour12: false }) : '—';
+        if (relUsuario) {
+            const usuario = String(corrida.usuario || '').trim();
+            relUsuario.textContent = usuario !== '' ? usuario : 'sistema';
+        }
         setProgreso(Number(corrida.progreso) || 0);
         const duracionTexto = corrida.duracion_texto
             || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null)

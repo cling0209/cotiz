@@ -621,6 +621,7 @@ class OportunidadBusquedaService
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
+            'usuario' => $this->etiquetaUsuarioCorrida($corrida->usuario ?? null),
             'fecha_busqueda' => $fechaBusqueda,
             'fecha_siguiente_pendiente' => $siguienteFecha,
             'inicio' => $corrida->inicio?->toIso8601String(),
@@ -643,6 +644,16 @@ class OportunidadBusquedaService
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
         ];
+    }
+
+    private function etiquetaUsuarioCorrida(mixed $usuario): string
+    {
+        $valor = trim((string) $usuario);
+        if ($valor === '' || strcasecmp($valor, 'sistema') === 0) {
+            return 'sistema';
+        }
+
+        return $valor;
     }
 
     private function duracionSegundos(mixed $inicio, mixed $fin): ?int
