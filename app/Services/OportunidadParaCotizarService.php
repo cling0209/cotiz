@@ -411,7 +411,8 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * La frase (o todas sus palabras significativas) debe aparecer en nombre/organismo.
+     * La frase debe aparecer como palabra(s) completa(s) en nombre/organismo
+     * (no como subcadena dentro de otra palabra). Acepta plurales simples en español.
      *
      * @param  array<string, mixed>  $resumen
      * @param  array<string, mixed>|null  $crudo  ítem crudo API (opcional)
@@ -447,15 +448,21 @@ class OportunidadParaCotizarService
             return false;
         }
 
-        // Frase completa (ej. "servicio de aseo").
-        if (str_contains($haystack, $needle)) {
+        $haystackWords = array_values(array_filter(preg_split('/\s+/u', $haystack) ?: []));
+        $needleTokens = array_values(array_filter(preg_split('/\s+/u', $needle) ?: []));
+        if ($haystackWords === [] || $needleTokens === []) {
+            return false;
+        }
+
+        // Frase completa en orden (ej. "servicio de aseo").
+        if ($this->secuenciaPalabrasCoincide($needleTokens, $haystackWords)) {
             return true;
         }
 
-        // Frase multi-palabra: todas las palabras ≥3 chars deben aparecer.
+        // Frase multi-palabra: todas las palabras ≥3 chars como palabra completa (con plural).
         $tokens = array_values(array_filter(
-            preg_split('/\s+/u', $needle) ?: [],
-            static fn (string $t) => mb_strlen($t) >= 3,
+            $needleTokens,
+            static fn (string $t) => mb_strlen($t, 'UTF-8') >= 3,
         ));
 
         if ($tokens === []) {
@@ -463,12 +470,105 @@ class OportunidadParaCotizarService
         }
 
         foreach ($tokens as $token) {
-            if (! str_contains($haystack, $token)) {
+            if (! $this->tokenApareceComoPalabra($token, $haystackWords)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * @param  list<string>  $needleTokens
+     * @param  list<string>  $haystackWords
+     */
+    private function secuenciaPalabrasCoincide(array $needleTokens, array $haystackWords): bool
+    {
+        $n = count($needleTokens);
+        $m = count($haystackWords);
+        if ($n === 0 || $n > $m) {
+            return false;
+        }
+
+        for ($i = 0; $i <= $m - $n; $i++) {
+            $ok = true;
+            for ($j = 0; $j < $n; $j++) {
+                if (! $this->tokensEquivalentes($needleTokens[$j], $haystackWords[$i + $j])) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<string>  $haystackWords
+     */
+    private function tokenApareceComoPalabra(string $token, array $haystackWords): bool
+    {
+        foreach ($haystackWords as $word) {
+            if ($this->tokensEquivalentes($token, $word)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function tokensEquivalentes(string $a, string $b): bool
+    {
+        if ($a === $b) {
+            return true;
+        }
+
+        $va = $this->variantesPluralSingular($a);
+        $vb = $this->variantesPluralSingular($b);
+
+        return array_intersect($va, $vb) !== [];
+    }
+
+    /**
+     * Variantes singular/plural simples en español (tras normalizar acentos).
+     *
+     * @return list<string>
+     */
+    private function variantesPluralSingular(string $palabra): array
+    {
+        $palabra = trim($palabra);
+        if ($palabra === '') {
+            return [];
+        }
+
+        $out = [$palabra];
+        $len = mb_strlen($palabra, 'UTF-8');
+        if ($len < 2) {
+            return $out;
+        }
+
+        $ultima = mb_substr($palabra, -1, 1, 'UTF-8');
+
+        if (in_array($ultima, ['a', 'e', 'i', 'o', 'u'], true)) {
+            $out[] = $palabra.'s';
+        } elseif ($ultima === 'z') {
+            $out[] = mb_substr($palabra, 0, -1, 'UTF-8').'ces';
+        } elseif ($ultima !== 's') {
+            $out[] = $palabra.'es';
+        }
+
+        if (str_ends_with($palabra, 'ces') && $len > 3) {
+            $out[] = mb_substr($palabra, 0, -3, 'UTF-8').'z';
+        } elseif (str_ends_with($palabra, 'es') && $len > 3) {
+            $out[] = mb_substr($palabra, 0, -2, 'UTF-8');
+        } elseif ($ultima === 's' && $len > 2) {
+            $out[] = mb_substr($palabra, 0, -1, 'UTF-8');
+        }
+
+        return array_values(array_unique($out));
     }
 
     private function normalizarTextoBusqueda(string $texto): string

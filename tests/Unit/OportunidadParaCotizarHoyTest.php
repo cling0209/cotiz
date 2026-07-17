@@ -47,5 +47,25 @@ class OportunidadParaCotizarHoyTest extends TestCase
             'nombre' => 'Compra de papel y bond oficio',
             'organismo' => '',
         ]));
+
+        // Subcadena dentro de otra palabra: no debe coincidir.
+        $this->assertFalse($svc->fraseApareceEnTexto('MICAS', [
+            'nombre' => 'ADJUNTAR ANEXO N°1 CAJAS TERMICAS Y TERMOGRAFOS',
+            'organismo' => '',
+        ]));
+
+        // Plurales simples.
+        $this->assertTrue($svc->fraseApareceEnTexto('RESMA', [
+            'nombre' => 'Compra de resmas oficio',
+            'organismo' => '',
+        ]));
+        $this->assertTrue($svc->fraseApareceEnTexto('RESMAS', [
+            'nombre' => 'Adquisición resma bond',
+            'organismo' => '',
+        ]));
+        $this->assertTrue($svc->fraseApareceEnTexto('lapiz', [
+            'nombre' => 'Set de lápices grafito',
+            'organismo' => '',
+        ]));
     }
 }
