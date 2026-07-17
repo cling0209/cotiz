@@ -107,7 +107,7 @@
                     <i class="bi bi-list-check"></i>
                     Detalle por regi&oacute;n <span id="rel-pasos-contador" class="badge text-bg-secondary ms-1">0</span>
                 </button>
-                <div id="rel-pasos-panel" class="table-responsive d-none" style="max-height: 320px; overflow-y: auto;">
+                <div id="rel-pasos-panel" class="table-responsive" style="max-height: 320px; overflow-y: auto;">
                     <table class="table table-sm table-striped align-middle small mb-0">
                         <thead class="table-light" style="position: sticky; top: 0;">
                             <tr>
@@ -825,6 +825,7 @@
         }
 
         relPasos.classList.remove('d-none');
+        relPasosPanel?.classList.remove('d-none');
         const terminados = pasos.filter((p) => p.resultado && p.resultado !== 'pendiente').length;
         if (relPasosContador) {
             relPasosContador.textContent = `${terminados}/${pasos.length}`;
