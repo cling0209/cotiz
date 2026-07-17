@@ -621,14 +621,17 @@
     }
 
     function parametrosConsultaPaso(paso) {
+        const frase = String(paso?.frase ?? '').trim();
         const params = {
             estado: 'publicada',
             numero_pagina: 1,
             ordenar_por: 'FechaPublicacion',
-            q: String(paso?.frase ?? '').trim(),
             region: Number(paso?.region) || 1,
             tamano_pagina: 50,
         };
+        if (frase && frase !== '(todas)') {
+            params.q = frase;
+        }
         return Object.fromEntries(Object.keys(params).sort().map((k) => [k, params[k]]));
     }
 
@@ -671,7 +674,8 @@
         }
 
         if (debugPasoLine) {
-            const frase = paso?.frase ?? data.parametros?.q ?? '';
+            const fraseRaw = paso?.frase ?? data.parametros?.q ?? '';
+            const frase = (!fraseRaw || fraseRaw === '(todas)') ? 'todas las frases' : fraseRaw;
             const regionNombre = paso?.region_nombre || data.region_nombre || (`Región ${paso?.region ?? data.parametros?.region ?? ''}`);
             const pasoTxt = indice != null && total != null ? `Paso ${indice + 1}/${total}` : '';
             let linea = [pasoTxt, `«${frase}»`, regionNombre].filter(Boolean).join(' · ');
@@ -686,7 +690,39 @@
         const ordenado = Object.fromEntries(Object.keys(sinJson).sort().map((k) => [k, sinJson[k]]));
         debugConsultaJson.textContent = data.json || JSON.stringify(ordenado, null, 2);
         debugPanel.classList.remove('d-none');
-        debugPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function actualizarDebugDesdeCorrida(corrida) {
+        const pasos = Array.isArray(corrida?.pasos_resumen) ? corrida.pasos_resumen : [];
+        const total = pasos.length;
+        if (total === 0) {
+            return;
+        }
+
+        let idx = -1;
+        for (let i = pasos.length - 1; i >= 0; i--) {
+            if (pasos[i]?.consulta && typeof pasos[i].consulta === 'object') {
+                idx = i;
+                break;
+            }
+        }
+
+        if (idx < 0) {
+            idx = pasos.findIndex((p) => p?.resultado === 'pendiente');
+            if (idx < 0 && corrida.estado === 'running') {
+                idx = 0;
+            }
+        }
+
+        if (idx < 0) {
+            return;
+        }
+
+        const paso = pasos[idx];
+        const nota = paso?.error
+            ? `${paso.error} — la búsqueda continúa con la siguiente región o reintento.`
+            : null;
+        mostrarDebugConsulta(paso?.consulta || null, paso, idx, total, nota);
     }
 
     function limpiarDebugConsulta() {
@@ -896,6 +932,7 @@
         }
         renderTabla();
         renderPasosCorrida(corrida.pasos_resumen || []);
+        actualizarDebugDesdeCorrida(corrida);
         if (corrida.fecha_busqueda && relFecha) {
             relFecha.textContent = `(buscando ${formatearDia(corrida.fecha_busqueda)})`;
         }
@@ -909,20 +946,6 @@
             ? corrida.ultimo_error
             : null;
         if (activo && ultimoError) {
-            const paso = {
-                frase: ultimoError.frase,
-                region: ultimoError.region,
-                region_nombre: ultimoError.region ? `Región ${ultimoError.region}` : '',
-            };
-            const indice = Number.isFinite(Number(ultimoError.indice)) ? Number(ultimoError.indice) : null;
-            const total = Number(corrida.total_pasos) || 0;
-            mostrarDebugConsulta(
-                null,
-                paso,
-                indice,
-                total > 0 ? total : null,
-                `${ultimoError.mensaje || 'Error en paso'} — la búsqueda continúa con la siguiente región o reintento.`,
-            );
             if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
                 mostrarAvisoPaso('Un paso falló en Mercado Público; la búsqueda sigue con la siguiente región o reintento.');
             } else {

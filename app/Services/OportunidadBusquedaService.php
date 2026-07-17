@@ -165,6 +165,7 @@ class OportunidadBusquedaService
             $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $pasos[$indice]['encontradas'] = $encontradas;
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
+            $pasos[$indice]['consulta'] = is_array($resultado['consulta'] ?? null) ? $resultado['consulta'] : null;
             $fallidos = $this->contarFallidosDefinitivos($pasos);
             $mensaje = $fase === 'reintento'
                 ? sprintf(
@@ -189,6 +190,13 @@ class OportunidadBusquedaService
                 : self::PASO_FAILED;
             $pasos[$indice]['encontradas'] = 0;
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
+            $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+                $frase !== '' ? $frase : '(todas)',
+                $region,
+                null,
+                null,
+                $fechaBusqueda,
+            );
 
             $errores[] = [
                 'indice' => $indice,
@@ -336,6 +344,14 @@ class OportunidadBusquedaService
         $ultimoError = $errores !== [] ? $errores[array_key_last($errores)] : null;
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
         $duracionSegundos = $this->duracionSegundos($corrida->inicio, $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null));
+        $pasosResumen = $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda);
+        $ultimaConsulta = null;
+        foreach (array_reverse($pasosResumen) as $pasoResumen) {
+            if (is_array($pasoResumen['consulta'] ?? null)) {
+                $ultimaConsulta = $pasoResumen['consulta'];
+                break;
+            }
+        }
 
         return [
             'id' => $corrida->id,
@@ -353,7 +369,8 @@ class OportunidadBusquedaService
             'mensaje' => $corrida->mensaje,
             'errores' => $errores,
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
-            'pasos_resumen' => $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda),
+            'ultima_consulta' => $ultimaConsulta,
+            'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
         ];
@@ -441,6 +458,8 @@ class OportunidadBusquedaService
                 ? max(0, (int) $paso['duracion_segundos'])
                 : null;
 
+            $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
+
             $out[] = [
                 'indice' => $i,
                 'fecha_busqueda' => $fechaBusqueda,
@@ -451,6 +470,7 @@ class OportunidadBusquedaService
                 'encontradas' => $encontradas,
                 'duracion_segundos' => $duracionSegundos,
                 'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
+                'consulta' => $consulta,
                 'resultado' => $resultado,
                 'etiqueta' => $etiqueta,
                 'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED
@@ -481,6 +501,7 @@ class OportunidadBusquedaService
                 'intentos' => 0,
                 'encontradas' => null,
                 'duracion_segundos' => null,
+                'consulta' => null,
             ];
         }
 

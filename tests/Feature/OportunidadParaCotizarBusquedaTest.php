@@ -282,11 +282,15 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertSame(0, $estado['pasos_resumen'][0]['encontradas']);
         $this->assertIsInt($estado['pasos_resumen'][0]['duracion_segundos']);
         $this->assertNotNull($estado['pasos_resumen'][0]['duracion_texto']);
+        $this->assertIsArray($estado['pasos_resumen'][0]['consulta']);
+        $this->assertArrayHasKey('url_completa', $estado['pasos_resumen'][0]['consulta']);
         $this->assertSame('ok', $estado['pasos_resumen'][1]['resultado']);
         $this->assertSame('OK (1.er intento)', $estado['pasos_resumen'][1]['etiqueta']);
         $this->assertSame(0, $estado['pasos_resumen'][1]['encontradas']);
         $this->assertIsInt($estado['pasos_resumen'][1]['duracion_segundos']);
         $this->assertNotNull($estado['pasos_resumen'][1]['duracion_texto']);
+        $this->assertIsArray($estado['pasos_resumen'][1]['consulta']);
+        $this->assertIsArray($estado['ultima_consulta']);
 
         Carbon::setTestNow();
     }
