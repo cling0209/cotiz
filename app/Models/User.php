@@ -73,11 +73,12 @@ class User extends Authenticatable
 
     /**
      * Ver y gestionar palabras clave de oportunidades.
-     * Cualquier superadministrador (en ambos sitios).
+     * Solo en el sitio de búsqueda (MERCADOPUBLICO_ANALISIS_ADMIN=true).
      */
     public function canAccessPalabrasClave(): bool
     {
-        return $this->isSuperAdmin();
+        return $this->isSuperAdmin()
+            && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
     }
 
     /**

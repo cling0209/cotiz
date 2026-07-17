@@ -177,7 +177,7 @@ class OportunidadPalabrasClaveTest extends TestCase
     public function test_superadmin_distinto_de_admin_puede_agregar_palabra(): void
     {
         config([
-            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
         ]);
 
         $user = User::factory()->create([
@@ -195,6 +195,28 @@ class OportunidadPalabrasClaveTest extends TestCase
             'frase' => 'papel bond',
             'created_by' => $user->id,
         ]);
+    }
+
+    public function test_sin_analisis_no_muestra_ni_permite_palabras_clave(): void
+    {
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.palabras-clave.index'))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.store'), [
+                'frase' => 'papel',
+            ])
+            ->assertForbidden();
     }
 
     public function test_index_muestra_mensaje_orden_lista(): void
