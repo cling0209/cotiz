@@ -506,7 +506,7 @@
         tbody.innerHTML = items.map((item) => {
             const codigo = String(item.codigo || '').toUpperCase();
             const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
-            const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;">${escapeHtml(item.nombre)}</div>` : '';
+            const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;" title="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</div>` : '';
             const organismo = String(item.organismo || '').trim() || '—';
             const regionNombre = String(item.nombre_region || '').trim() || '—';
             const frases = Array.isArray(item.palabras_coinciden)
