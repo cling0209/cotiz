@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureCompraAgilResultadosAdmin;
 use App\Http\Middleware\EnsureAgileBasicAuth;
 use App\Http\Middleware\EnsureNotaApiBasicAuth;
 use App\Http\Middleware\EnsureOportunidadesAdmin;
+use App\Http\Middleware\EnsureOportunidadesPalabrasClave;
 use App\Http\Middleware\EnsureOportunidadesViewer;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Foundation\Application;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
             'oportunidades-admin' => EnsureOportunidadesAdmin::class,
+            'oportunidades-palabras' => EnsureOportunidadesPalabrasClave::class,
             'oportunidades-ver' => EnsureOportunidadesViewer::class,
             'compra-agil-analisis' => EnsureCompraAgilAnalisisAdmin::class,
             'compra-agil-resultados' => EnsureCompraAgilResultadosAdmin::class,

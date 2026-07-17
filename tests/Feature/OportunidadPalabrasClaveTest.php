@@ -174,6 +174,29 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->assertSame(3, (int) $b->fresh()->orden);
     }
 
+    public function test_superadmin_distinto_de_admin_puede_agregar_palabra(): void
+    {
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'gerencia',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.store'), [
+                'frase' => 'papel bond',
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $this->assertDatabaseHas('oportunidad_palabras_clave', [
+            'frase' => 'papel bond',
+            'created_by' => $user->id,
+        ]);
+    }
+
     public function test_index_muestra_mensaje_orden_lista(): void
     {
         $user = User::factory()->create([

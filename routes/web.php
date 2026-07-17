@@ -135,6 +135,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.cancelar');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
+        });
+
+        Route::middleware('oportunidades-palabras')->group(function () {
             Route::get('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'index'])
                 ->name('oportunidades.palabras-clave.index');
             Route::post('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'store'])

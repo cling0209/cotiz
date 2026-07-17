@@ -21,7 +21,8 @@ class OportunidadParaCotizarController extends Controller
     public function index(Request $request): View
     {
         $puedeBuscar = (bool) $request->user()?->canAccessOportunidades();
-        $palabras = $puedeBuscar ? $this->servicio->palabrasClave() : [];
+        $puedePalabras = (bool) $request->user()?->canAccessPalabrasClave();
+        $palabras = ($puedeBuscar || $puedePalabras) ? $this->servicio->palabrasClave() : [];
         $guardadas = $this->servicio->listarGuardadasVigentesDesde();
         $corridaEstado = $puedeBuscar ? $this->busqueda->estado() : null;
 
@@ -34,6 +35,7 @@ class OportunidadParaCotizarController extends Controller
             'palabras' => $palabras,
             'guardadas' => $guardadas,
             'puedeBuscar' => $puedeBuscar,
+            'puedePalabras' => $puedePalabras,
             'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
                 ? (string) $corridaEstado['fecha_busqueda']
                 : $this->servicio->fechaBusquedaHoy(),

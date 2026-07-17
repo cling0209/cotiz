@@ -62,13 +62,22 @@ class User extends Authenticatable
     }
 
     /**
-     * Buscar oportunidades y gestionar palabras clave.
-     * Solo admin y solo si MERCADOPUBLICO_ANALISIS_ADMIN=true (sitio que busca).
+     * Buscar oportunidades en Mercado Público.
+     * Solo el usuario admin y solo si MERCADOPUBLICO_ANALISIS_ADMIN=true (sitio que busca).
      */
     public function canAccessOportunidades(): bool
     {
         return $this->username === 'admin'
             && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
+    }
+
+    /**
+     * Ver y gestionar palabras clave de oportunidades.
+     * Cualquier superadministrador (en ambos sitios).
+     */
+    public function canAccessPalabrasClave(): bool
+    {
+        return $this->isSuperAdmin();
     }
 
     /**

@@ -77,7 +77,7 @@
                                 <i class="bi bi-people"></i> Usuarios
                             </a>
                         </li>
-                        @if(auth()->user()->canAccessOportunidades())
+                        @if(auth()->user()->canAccessPalabrasClave())
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
                                    href="{{ route('admin.oportunidades.palabras-clave.index') }}">

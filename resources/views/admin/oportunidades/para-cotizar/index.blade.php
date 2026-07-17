@@ -17,23 +17,25 @@
             @else
                 <p class="text-muted mb-0 small">
                     Listado de Compras &Aacute;giles del d&iacute;a sincronizadas desde el sitio que realiza la b&uacute;squeda.
-                    En este sitio no se buscan ni se administran palabras clave.
+                    En este sitio no se ejecuta la b&uacute;squeda autom&aacute;tica.
                 </p>
             @endif
         </div>
-        @if($puedeBuscar)
-            <div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            @if($puedePalabras ?? false)
                 <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-tags"></i> Palabras clave
                 </a>
+            @endif
+            @if($puedeBuscar)
                 <button type="button" id="btn-buscar-oportunidades" class="btn btn-primary btn-sm" @disabled($palabras === [])>
                     <i class="bi bi-search"></i> Buscar cotizaciones
                 </button>
                 <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
                     <i class="bi bi-x-circle"></i> Cancelar
                 </button>
-            </div>
-        @endif
+            @endif
+        </div>
     </div>
 
     @if($puedeBuscar)
@@ -56,6 +58,16 @@
                 @endforeach
             </div>
         @endif
+    @elseif(($puedePalabras ?? false) && $palabras !== [])
+        <div class="mb-3">
+            <div class="small text-muted mb-1">
+                Palabras clave del sitio:
+                <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">administrar</a>
+            </div>
+            @foreach($palabras as $frase)
+                <span class="badge text-bg-light border me-1">{{ $frase }}</span>
+            @endforeach
+        </div>
     @elseif(count($guardadas) === 0)
         <div class="alert alert-info">
             A&uacute;n no hay oportunidades sincronizadas para hoy. Cuando el sitio de b&uacute;squeda encuentre cotizaciones, aparecer&aacute;n aqu&iacute;.

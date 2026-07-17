@@ -171,7 +171,7 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertDatabaseCount('oportunidad_encontrada_sync_pendientes', 0);
     }
 
-    public function test_sitio_sin_analisis_ve_listado_pero_no_palabras(): void
+    public function test_sitio_sin_analisis_ve_listado_y_palabras(): void
     {
         config([
             'cotiz.mercadopublico.analisis_admin_habilitado' => false,
@@ -195,6 +195,34 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertOk()
             ->assertSee('sincronizadas desde el sitio', false)
             ->assertDontSee('Buscar cotizaciones', false);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.palabras-clave.index'))
+            ->assertOk();
+    }
+
+    public function test_cualquier_superadmin_puede_ver_palabras_clave(): void
+    {
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'otro_admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.palabras-clave.index'))
+            ->assertOk();
+    }
+
+    public function test_ejecutivo_no_accede_a_palabras_clave(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'ejecutivo',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
 
         $this->actingAs($user)
             ->get(route('admin.oportunidades.palabras-clave.index'))
