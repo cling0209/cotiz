@@ -253,7 +253,7 @@ class OportunidadBusquedaService
         $corrida->fill([
             'estado' => self::ESTADO_CANCELLED,
             'fin' => now(),
-            'mensaje' => 'Búsqueda cancelada por el usuario.',
+            'mensaje' => 'Búsqueda cancelada por el usuario. Tiempo: '.$this->formatearDuracion($corrida->inicio, now()),
         ])->save();
 
         return $corrida;
@@ -331,6 +331,7 @@ class OportunidadBusquedaService
         $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
         $ultimoError = $errores !== [] ? $errores[array_key_last($errores)] : null;
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+        $duracionSegundos = $this->duracionSegundos($corrida->inicio, $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null));
 
         return [
             'id' => $corrida->id,
@@ -338,6 +339,8 @@ class OportunidadBusquedaService
             'fecha_busqueda' => $fechaBusqueda,
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
+            'duracion_segundos' => $duracionSegundos,
+            'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
             'total_pasos' => $total,
             'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
@@ -350,6 +353,46 @@ class OportunidadBusquedaService
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
         ];
+    }
+
+    private function duracionSegundos(mixed $inicio, mixed $fin): ?int
+    {
+        if ($inicio === null || $fin === null) {
+            return null;
+        }
+
+        try {
+            $from = $inicio instanceof Carbon ? $inicio : Carbon::parse($inicio);
+            $to = $fin instanceof Carbon ? $fin : Carbon::parse($fin);
+
+            return max(0, (int) $from->diffInSeconds($to));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function formatearDuracion(mixed $inicio, mixed $fin): string
+    {
+        $segs = $this->duracionSegundos($inicio, $fin);
+
+        return $segs === null ? '—' : $this->formatearSegundos($segs);
+    }
+
+    private function formatearSegundos(int $segs): string
+    {
+        $h = intdiv($segs, 3600);
+        $m = intdiv($segs % 3600, 60);
+        $s = $segs % 60;
+
+        if ($h > 0) {
+            return sprintf('%dh %02dm %02ds', $h, $m, $s);
+        }
+
+        if ($m > 0) {
+            return sprintf('%dm %02ds', $m, $s);
+        }
+
+        return $s.'s';
     }
 
     /**
@@ -678,14 +721,16 @@ class OportunidadBusquedaService
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $fallidos = $this->contarFallidosDefinitivos($pasos);
+        $fin = now();
+        $tiempo = $this->formatearDuracion($corrida->inicio, $fin);
         $corrida->fill([
             'estado' => self::ESTADO_COMPLETED,
-            'fin' => now(),
+            'fin' => $fin,
             'pasos_fallidos' => $fallidos,
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
             'mensaje' => $fallidos > 0
-                ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región.'
-                : 'Búsqueda terminada correctamente.',
+                ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región. Tiempo: '.$tiempo
+                : 'Búsqueda terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
 
         $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);

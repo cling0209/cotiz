@@ -86,8 +86,9 @@
                     <i class="bi bi-flag"></i>
                     Fin: <strong id="rel-fin" class="tabular-nums">—</strong>
                 </div>
-                <div class="text-nowrap text-muted">
-                    Duraci&oacute;n: <strong id="rel-duracion" class="tabular-nums">—</strong>
+                <div class="text-nowrap">
+                    <i class="bi bi-hourglass-split"></i>
+                    Tiempo: <strong id="rel-duracion" class="tabular-nums">—</strong>
                 </div>
                 <div class="text-nowrap ms-auto">
                     <span id="rel-encontradas" class="badge text-bg-primary">0</span>
@@ -592,15 +593,30 @@
         relBar.textContent = p + '%';
     }
 
+    function formatearDuracionSegs(segs) {
+        const total = Math.max(0, Math.floor(Number(segs) || 0));
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+        if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+        return `${s}s`;
+    }
+
     function actualizarDuracion() {
         if (!inicioMs) {
             relDuracion.textContent = '—';
             return;
         }
         const segs = Math.max(0, Math.floor(((finMs || Date.now()) - inicioMs) / 1000));
-        const m = Math.floor(segs / 60);
-        const s = segs % 60;
-        relDuracion.textContent = m > 0 ? `${m}m ${String(s).padStart(2, '0')}s` : `${s}s`;
+        relDuracion.textContent = formatearDuracionSegs(segs);
+    }
+
+    function mensajeConTiempo(mensaje, duracionTexto) {
+        const base = String(mensaje || '').trim();
+        if (!duracionTexto) return base || 'Procesando en segundo plano…';
+        if (/tiempo\s*:/i.test(base)) return base;
+        return base ? `${base} Tiempo: ${duracionTexto}` : `Tiempo: ${duracionTexto}`;
     }
 
     function parametrosConsultaPaso(paso) {
@@ -848,7 +864,15 @@
         relInicio.textContent = inicio ? inicio.toLocaleTimeString('es-CL', { hour12: false }) : '—';
         relFin.textContent = fin ? fin.toLocaleTimeString('es-CL', { hour12: false }) : '—';
         setProgreso(Number(corrida.progreso) || 0);
-        relDetalle.textContent = corrida.mensaje || 'Procesando en segundo plano…';
+        const duracionTexto = corrida.duracion_texto
+            || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null)
+            || (inicioMs ? formatearDuracionSegs(((finMs || Date.now()) - inicioMs) / 1000) : null);
+        if (duracionTexto) {
+            relDuracion.textContent = duracionTexto;
+        } else {
+            actualizarDuracion();
+        }
+        relDetalle.textContent = mensajeConTiempo(corrida.mensaje, !corrida.estado || corrida.estado === 'running' ? null : duracionTexto);
 
         porCodigo = new Map();
         cargarItems(corrida.items || []);
