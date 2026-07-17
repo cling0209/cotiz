@@ -96,7 +96,7 @@
                     <span id="rel-fecha" class="text-muted ms-1"></span>
                 </div>
             </div>
-            <div class="progress mb-2" style="height: 0.75rem;">
+            <div id="rel-progreso-wrap" class="progress mb-2" style="height: 0.75rem;">
                 <div id="rel-progreso-bar" class="progress-bar progress-bar-striped progress-bar-animated"
                      role="progressbar" style="width: 0%">0%</div>
             </div>
@@ -282,6 +282,7 @@
     const relEncontradas = document.getElementById('rel-encontradas');
     const relFecha = document.getElementById('rel-fecha');
     const relBar = document.getElementById('rel-progreso-bar');
+    const relProgresoWrap = document.getElementById('rel-progreso-wrap');
     const relDetalle = document.getElementById('rel-detalle');
     const relError = document.getElementById('rel-error');
     const relPasos = document.getElementById('rel-pasos');
@@ -1181,6 +1182,9 @@
         cancelado = corrida.estado === 'cancelled';
         setModoBusqueda(activo || cambiandoDia);
         relBar.classList.toggle('progress-bar-animated', activo || cambiandoDia);
+        if (relProgresoWrap) {
+            relProgresoWrap.classList.toggle('d-none', !(activo || cambiandoDia));
+        }
 
         const fallidos = Number(corrida.pasos_fallidos) || 0;
         const ultimoError = corrida.ultimo_error && typeof corrida.ultimo_error === 'object'
@@ -1260,6 +1264,7 @@
         relInicio.textContent = '…';
         setProgreso(0);
         relBar.classList.add('progress-bar-animated');
+        if (relProgresoWrap) relProgresoWrap.classList.remove('d-none');
         relDetalle.textContent = 'Iniciando consulta a Mercado Público…';
         renderTabla();
 
@@ -1268,6 +1273,7 @@
             aplicarEstadoCorrida(data.corrida);
         } catch (e) {
             relBar.classList.remove('progress-bar-animated');
+            if (relProgresoWrap) relProgresoWrap.classList.add('d-none');
             mostrarError(e.message || String(e));
             relDetalle.textContent = 'No se pudo encolar la búsqueda.';
             renderTabla();
@@ -1287,6 +1293,7 @@
                 ? `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} vigentes. Pulse Buscar para consultar de nuevo.`
                 : `${porCodigo.size} oportunidad${porCodigo.size === 1 ? '' : 'es'} sincronizadas vigentes.`;
             setProgreso(100);
+            if (relProgresoWrap) relProgresoWrap.classList.add('d-none');
         }
         if (resultados) resultados.classList.remove('d-none');
         renderTabla();
