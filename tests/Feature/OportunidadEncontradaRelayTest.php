@@ -202,6 +202,32 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_otro_superadmin_sin_analisis_ve_listado(): void
+    {
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'otro_admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '3333-1-COT26',
+            'nombre' => 'Sync otro',
+            'fecha_busqueda' => now()->toDateString(),
+            'palabras_coinciden' => ['aseo'],
+            'indice_region_config' => 0,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk()
+            ->assertSee('3333-1-COT26', false)
+            ->assertDontSee('Buscar cotizaciones', false);
+    }
+
     public function test_superadmin_sin_analisis_no_accede_a_palabras_clave(): void
     {
         config([

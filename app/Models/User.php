@@ -63,11 +63,11 @@ class User extends Authenticatable
 
     /**
      * Buscar oportunidades en Mercado Público.
-     * Solo el usuario admin y solo si MERCADOPUBLICO_ANALISIS_ADMIN=true (sitio que busca).
+     * Cualquier superadministrador si MERCADOPUBLICO_ANALISIS_ADMIN=true (sitio que busca).
      */
     public function canAccessOportunidades(): bool
     {
-        return $this->username === 'admin'
+        return $this->isSuperAdmin()
             && config('cotiz.mercadopublico.analisis_admin_habilitado', false);
     }
 
@@ -83,10 +83,11 @@ class User extends Authenticatable
 
     /**
      * Ver listado de oportunidades (incluye las sincronizadas desde el sitio con análisis).
+     * Cualquier superadministrador.
      */
     public function canVerOportunidades(): bool
     {
-        return $this->username === 'admin';
+        return $this->isSuperAdmin();
     }
 
     public function canAccessCompraAgilResultados(): bool

@@ -197,6 +197,43 @@ class OportunidadPalabrasClaveTest extends TestCase
         ]);
     }
 
+    public function test_otro_superadmin_puede_ver_y_buscar_oportunidades(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'otro_admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk()
+            ->assertSee('Buscar cotizaciones', false)
+            ->assertSee('Detalle por regi', false);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+    }
+
+    public function test_ejecutivo_no_ve_oportunidades(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'ejecutivo',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertForbidden();
+    }
+
     public function test_sin_analisis_no_muestra_ni_permite_palabras_clave(): void
     {
         config([
