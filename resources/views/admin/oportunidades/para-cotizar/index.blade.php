@@ -123,23 +123,31 @@
                         <tbody id="rel-pasos-tbody"></tbody>
                     </table>
                 </div>
-                <div id="oportunidad-debug" class="border rounded bg-light mt-3 p-3 d-none">
-                    <div class="small fw-semibold mb-2">
-                        <i class="bi bi-braces"></i> Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
+                <div id="oportunidad-debug" class="mt-3 d-none">
+                    <button type="button" id="debug-toggle" class="btn btn-sm btn-outline-secondary mb-2"
+                            aria-expanded="false" aria-controls="debug-panel">
+                        <i class="bi bi-braces"></i>
+                        Detalle API (JSON)
+                        <i id="debug-toggle-chevron" class="bi bi-chevron-down ms-1"></i>
+                    </button>
+                    <div id="debug-panel" class="border rounded bg-light p-3 d-none">
+                        <div class="small fw-semibold mb-2">
+                            Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
+                        </div>
+                        <div id="debug-endpoint-line" class="small mb-2">
+                            <span class="text-muted">URL:</span>
+                            <code id="debug-endpoint-url" class="user-select-all text-break"></code>
+                        </div>
+                        <div id="debug-paso-line" class="small text-muted mb-2"></div>
+                        <pre id="debug-consulta-json" class="bg-white border rounded p-3 mb-2 small font-monospace text-break"
+                             style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
+                        <div class="small fw-semibold mb-1 mt-2">
+                            <i class="bi bi-arrow-return-left"></i> Respuesta de Mercado P&uacute;blico
+                        </div>
+                        <div id="debug-respuesta-line" class="small text-muted mb-1"></div>
+                        <pre id="debug-respuesta-json" class="bg-white border rounded p-3 mb-0 small font-monospace text-break"
+                             style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
                     </div>
-                    <div id="debug-endpoint-line" class="small mb-2">
-                        <span class="text-muted">URL:</span>
-                        <code id="debug-endpoint-url" class="user-select-all text-break"></code>
-                    </div>
-                    <div id="debug-paso-line" class="small text-muted mb-2"></div>
-                    <pre id="debug-consulta-json" class="bg-white border rounded p-3 mb-2 small font-monospace text-break"
-                         style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
-                    <div class="small fw-semibold mb-1 mt-2">
-                        <i class="bi bi-arrow-return-left"></i> Respuesta de Mercado P&uacute;blico
-                    </div>
-                    <div id="debug-respuesta-line" class="small text-muted mb-1"></div>
-                    <pre id="debug-respuesta-json" class="bg-white border rounded p-3 mb-0 small font-monospace text-break"
-                         style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
                 </div>
             </div>
         </div>
@@ -266,6 +274,9 @@
     const relPasosTbody = document.getElementById('rel-pasos-tbody');
     const relPasosContador = document.getElementById('rel-pasos-contador');
     const debugPanel = document.getElementById('oportunidad-debug');
+    const debugToggle = document.getElementById('debug-toggle');
+    const debugToggleChevron = document.getElementById('debug-toggle-chevron');
+    const debugBody = document.getElementById('debug-panel');
     const debugEndpointUrl = document.getElementById('debug-endpoint-url');
     const debugPasoLine = document.getElementById('debug-paso-line');
     const debugConsultaJson = document.getElementById('debug-consulta-json');
@@ -663,6 +674,24 @@
         return payload;
     }
 
+    function setDebugAbierto(abierto) {
+        if (!debugBody) return;
+        debugBody.classList.toggle('d-none', !abierto);
+        if (debugToggle) {
+            debugToggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+        }
+        if (debugToggleChevron) {
+            debugToggleChevron.classList.toggle('bi-chevron-down', !abierto);
+            debugToggleChevron.classList.toggle('bi-chevron-up', abierto);
+        }
+    }
+
+    if (debugToggle && debugBody) {
+        debugToggle.addEventListener('click', () => {
+            setDebugAbierto(debugBody.classList.contains('d-none'));
+        });
+    }
+
     function mostrarDebugConsulta(consulta, paso, indice, total, nota) {
         if (!debugPanel || !debugConsultaJson) return;
 
@@ -775,6 +804,7 @@
 
     function limpiarDebugConsulta() {
         debugPanel?.classList.add('d-none');
+        setDebugAbierto(false);
         if (debugEndpointUrl) debugEndpointUrl.textContent = '';
         if (debugPasoLine) debugPasoLine.textContent = '';
         if (debugConsultaJson) debugConsultaJson.textContent = '';
