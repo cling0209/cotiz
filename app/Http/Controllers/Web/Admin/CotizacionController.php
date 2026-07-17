@@ -28,15 +28,16 @@ class CotizacionController extends Controller
         protected MaterialesExcelImportService $materialesExcelImport,
     ) {}
 
-    public function create(Request $request): RedirectResponse
+    public function create(Request $request): View|RedirectResponse
     {
         $usuario = $request->user()->username;
+        $codigo = strtoupper(trim((string) $request->query('codigo', '')));
 
         if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+            $this->olvidarNotaMaterializada();
             $params = ['nronota' => $pendiente->nronota];
-            $codigoPendiente = strtoupper(trim((string) $request->query('codigo', '')));
-            if ($codigoPendiente !== '') {
-                $params['codigo'] = $codigoPendiente;
+            if ($codigo !== '') {
+                $params['codigo'] = $codigo;
             }
 
             return redirect()
@@ -45,10 +46,10 @@ class CotizacionController extends Controller
         }
 
         if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+            $this->olvidarNotaMaterializada();
             $params = ['nronota' => $vacia->nronota];
-            $codigoVacia = strtoupper(trim((string) $request->query('codigo', '')));
-            if ($codigoVacia !== '') {
-                $params['codigo'] = $codigoVacia;
+            if ($codigo !== '') {
+                $params['codigo'] = $codigo;
             }
 
             return redirect()
@@ -56,24 +57,17 @@ class CotizacionController extends Controller
                 ->with('info', 'La nota #'.$vacia->nronota.' no tiene productos. Complétela antes de crear otra.');
         }
 
-        $nota = $this->notaService->crear($usuario);
+        // Borrador: no reserva nronota hasta importar productos o grabar.
+        $this->olvidarNotaMaterializada();
 
-        if (! Nota::query()->whereKey($nota->nronota)->exists()) {
-            return redirect()
-                ->route('admin.cotizaciones.index')
-                ->with('error', 'No se pudo crear la cotización. Intente nuevamente o contacte al administrador.');
-        }
-
-        $codigo = strtoupper(trim((string) $request->query('codigo', '')));
-        $params = ['nronota' => $nota->nronota];
-        if ($codigo !== '') {
-            $params['codigo'] = $codigo;
-        }
-
-        return redirect()->route('admin.cotizaciones.edit', $params)
-            ->with('info', $codigo !== ''
+        return $this->vistaFormulario(
+            $request,
+            $this->notaService->borrador($usuario),
+            $codigo,
+            $codigo !== ''
                 ? 'Importando Compra Ágil '.$codigo.'…'
-                : 'Importe desde Compra Ágil para comenzar.');
+                : 'Importe desde Compra Ágil para comenzar. El número de nota se genera al importar o al grabar.',
+        );
     }
 
     public function retomar(Request $request): RedirectResponse
@@ -82,7 +76,7 @@ class CotizacionController extends Controller
 
         if (! $nota) {
             return redirect()->route('admin.cotizaciones.create')
-                ->with('error', 'No hay cotizaciones anteriores. Se creará una nueva.');
+                ->with('error', 'No hay cotizaciones anteriores. Se abrirá una nueva.');
         }
 
         return redirect()->route('admin.cotizaciones.edit', $nota->nronota);
@@ -90,6 +84,10 @@ class CotizacionController extends Controller
 
     public function edit(Request $request, int $nronota): View|RedirectResponse
     {
+        if ($nronota === 0) {
+            return $this->create($request);
+        }
+
         $nota = Nota::query()->with('detalle.producto')->find($nronota);
 
         if (! $nota) {
@@ -100,15 +98,38 @@ class CotizacionController extends Controller
             abort(403);
         }
 
-        $lineas = $this->detalleService->lineasDeNota($nota);
-        $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
         $codigoImportar = strtoupper(trim((string) $request->query('codigo', '')));
+
+        return $this->vistaFormulario($request, $nota, $codigoImportar);
+    }
+
+    /**
+     * @return View
+     */
+    private function vistaFormulario(
+        Request $request,
+        Nota $nota,
+        string $codigoImportar = '',
+        ?string $flashInfo = null,
+    ): View {
+        if ($flashInfo !== null) {
+            session()->flash('info', $flashInfo);
+        }
+
+        $esBorrador = $this->notaService->esBorrador($nota);
+        $lineas = $esBorrador
+            ? collect()
+            : $this->detalleService->lineasDeNota($nota);
+        $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
+            'esBorrador' => $esBorrador,
             'lineas' => $lineas,
             'total' => $lineas->sum(fn ($row) => $row['total']),
-            'resumenLineas' => $this->detalleService->resumenLineasNota($nota),
+            'resumenLineas' => $esBorrador
+                ? ['total' => 0, 'con_agile' => 0, 'sin_agile' => 0]
+                : $this->detalleService->resumenLineasNota($nota),
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
@@ -121,21 +142,112 @@ class CotizacionController extends Controller
         ]);
     }
 
-    public function update(Request $request, int $nronota): RedirectResponse
+    /**
+     * Resuelve la nota: existente, borrador en memoria, o la materializa al grabar/importar.
+     *
+     * @return array{0: Nota|null, 1: bool} [nota, recienCreada]
+     */
+    private function resolverNota(Request $request, int $nronota, bool $persistir = false): array
     {
-        $nota = Nota::query()->find($nronota);
+        if ($nronota > 0) {
+            $nota = Nota::query()->find($nronota);
+            if (! $nota) {
+                return [null, false];
+            }
+            if (! $this->puedeVer($request, $nota)) {
+                abort(403);
+            }
 
-        if (! $nota) {
-            return $this->notaNoEncontrada($nronota);
+            return [$nota, false];
         }
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        $usuario = $request->user()->username;
+
+        if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+            return [$pendiente, false];
+        }
+
+        if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+            return [$vacia, false];
+        }
+
+        if (! $persistir) {
+            return [$this->notaService->borrador($usuario), false];
+        }
+
+        if ($materializada = $this->notaMaterializadaEnSesion($usuario)) {
+            return [$materializada, false];
+        }
+
+        $nota = $this->notaService->crear($usuario);
+        $this->recordarNotaMaterializada($nota);
+
+        return [$nota, true];
+    }
+
+    private function notaMaterializadaEnSesion(string $usuario): ?Nota
+    {
+        $id = (int) session('cotiz.borrador_materializado_nronota', 0);
+        if ($id <= 0) {
+            return null;
+        }
+
+        $nota = Nota::query()->find($id);
+        if (! $nota || $nota->usuario !== $usuario) {
+            session()->forget('cotiz.borrador_materializado_nronota');
+
+            return null;
+        }
+
+        return $nota;
+    }
+
+    private function recordarNotaMaterializada(Nota $nota): void
+    {
+        session(['cotiz.borrador_materializado_nronota' => (int) $nota->nronota]);
+    }
+
+    private function olvidarNotaMaterializada(): void
+    {
+        session()->forget('cotiz.borrador_materializado_nronota');
+    }
+
+    /**
+     * @return array{nronota: int, edit_url: string, recien_creada: bool}
+     */
+    private function metaNotaJson(Nota $nota, bool $recienCreada = false): array
+    {
+        return [
+            'nronota' => (int) $nota->nronota,
+            'edit_url' => route('admin.cotizaciones.edit', $nota->nronota),
+            'recien_creada' => $recienCreada,
+        ];
+    }
+
+    private function respuestaNotaNoExiste(int $nronota): JsonResponse
+    {
+        return response()->json([
+            'error' => "La cotización #{$nronota} no existe.",
+        ], 404);
+    }
+
+    public function update(Request $request, int $nronota): RedirectResponse
+    {
+        [$notaCheck] = $this->resolverNota($request, $nronota, false);
+
+        if (! $notaCheck && $nronota > 0) {
+            return $this->notaNoEncontrada($nronota);
         }
 
         $accion = $request->string('accion')->toString();
 
         if ($accion === 'aplicar_factor') {
+            [$nota] = $this->resolverNota($request, $nronota, true);
+            if (! $nota) {
+                return $this->notaNoEncontrada($nronota);
+            }
+            $nronota = (int) $nota->nronota;
+
             $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
 
             if ($factor === null) {
@@ -188,9 +300,18 @@ class CotizacionController extends Controller
             'lineas.*.observacion' => ['nullable', 'string'],
         ]));
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'], false, true)) {
+        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username);
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaParaValidar, $datos['encargado'], false, true)) {
             return back()->withInput()->withErrors(['encargado' => $error]);
         }
+
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
+
+        if (! $nota) {
+            return $this->notaNoEncontrada($nronota);
+        }
+
+        $nronota = (int) $nota->nronota;
 
         $lineas = $datos['lineas'] ?? [];
         unset($datos['lineas']);
@@ -214,25 +335,21 @@ class CotizacionController extends Controller
             $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
         }
 
-        $mensaje = $eraSinNumero
-            ? 'Número de cotización guardado. Ya puede agregar productos.'
-            : 'Cotización guardada.';
+        $mensaje = $recienCreada
+            ? 'Cotización #'.$nronota.' creada y guardada.'
+            : ($eraSinNumero
+                ? 'Número de cotización guardado. Ya puede agregar productos.'
+                : 'Cotización guardada.');
 
         return $this->redirectTrasGuardar($request, $nronota, $mensaje);
     }
 
     public function guardarCabecera(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->find($nronota);
+        [$notaCheck] = $this->resolverNota($request, $nronota, false);
 
-        if (! $nota) {
-            return response()->json([
-                'error' => "La cotización #{$nronota} no existe.",
-            ], 404);
-        }
-
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $notaCheck) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         if (array_key_exists('factor_precio_venta', $request->all())
@@ -249,11 +366,17 @@ class CotizacionController extends Controller
 
         $datos = $request->validate($this->reglasCabecera());
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datos['encargado'], false, true)) {
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaCheck, $datos['encargado'], false, true)) {
             return response()->json([
                 'error' => $error,
                 'errors' => ['encargado' => [$error]],
             ], 422);
+        }
+
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
+
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
@@ -267,29 +390,25 @@ class CotizacionController extends Controller
             ], 422);
         }
 
-        $mensaje = $eraSinNumero
-            ? 'Número de cotización guardado. Ya puede agregar productos.'
-            : 'Cotización guardada.';
+        $mensaje = $recienCreada
+            ? 'Cotización #'.$nota->nronota.' creada y guardada.'
+            : ($eraSinNumero
+                ? 'Número de cotización guardado. Ya puede agregar productos.'
+                : 'Cotización guardada.');
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'mensaje' => $mensaje,
             'era_sin_numero' => $eraSinNumero,
-        ]);
+        ], $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function guardarLineasLote(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->find($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
         if (! $nota) {
-            return response()->json([
-                'error' => "La cotización #{$nronota} no existe.",
-            ], 404);
-        }
-
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate($this->reglasLineasLote());
@@ -309,18 +428,18 @@ class CotizacionController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'guardadas' => count($lineas),
-        ]);
+        ], $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function aplicarFactor(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $factor = $this->notaService->parseFactorPrecioVenta($request->input('factor_precio_venta'));
@@ -336,25 +455,32 @@ class CotizacionController extends Controller
             $request->user()->username,
         );
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'factor_precio_venta_fmt' => number_format($result['factor'], 2, ',', ''),
             'ok_count' => $result['ok'],
             'total' => $result['total'],
             'lineas' => $result['lineas'],
-        ]);
+        ], $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function agregarLinea(Request $request, int $nronota): RedirectResponse|JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$notaCheck] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $notaCheck && $nronota > 0) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
-        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
+        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username);
+        if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $notaParaValidar)) {
             return $respuesta;
+        }
+
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
+
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -389,7 +515,7 @@ class CotizacionController extends Controller
             $idx = max(0, $totalLineas - 1);
             $row = $this->detalleService->filaLineaParaFormulario($nota, $detalle);
 
-            return response()->json([
+            return response()->json(array_merge([
                 'ok' => true,
                 'idx' => $idx,
                 'orden' => $detalle->orden,
@@ -409,18 +535,20 @@ class CotizacionController extends Controller
                     'row' => $row,
                 ])->render(),
                 'resumen' => $this->detalleService->resumenLineasNota($nota),
-            ]);
+            ], $this->metaNotaJson($nota, $recienCreada)));
         }
 
-        return back()->with('success', 'Línea agregada.');
+        return redirect()
+            ->route('admin.cotizaciones.edit', $nota->nronota)
+            ->with('success', 'Línea agregada.');
     }
 
     public function eliminarLinea(Request $request, int $nronota): RedirectResponse|JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -455,10 +583,10 @@ class CotizacionController extends Controller
 
     public function cambiarOrdenLinea(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -502,10 +630,10 @@ class CotizacionController extends Controller
 
     public function importarCompraAgilPreview(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -564,10 +692,10 @@ class CotizacionController extends Controller
 
     public function coincidenciasCompraAgil(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $request->validate([
@@ -585,27 +713,27 @@ class CotizacionController extends Controller
 
     public function limpiarLineasAgileCompraAgil(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $eliminadas = $this->detalleService->eliminarTodasLineasAgile($nota);
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'eliminadas' => $eliminadas,
             'detalle' => $this->detalleService->resumenLineasNota($nota->fresh()),
-        ]);
+        ], $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function importarCompraAgil(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$notaCheck] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $notaCheck) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -619,12 +747,18 @@ class CotizacionController extends Controller
         if (($parseado['cabecera']['codigo_cotizacion'] ?? '') !== ''
             && (! isset($datos['desde']) || (int) $datos['desde'] === 0)) {
             if ($error = $this->notaService->validarNumeroCotizacionDisponible(
-                $nota,
+                $notaCheck,
                 $parseado['cabecera']['codigo_cotizacion'],
                 true,
             )) {
                 return response()->json(['error' => $error], 422);
             }
+        }
+
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
+
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         try {
@@ -653,15 +787,15 @@ class CotizacionController extends Controller
 
         return response()->json(array_merge([
             'ok' => true,
-        ], $resultado));
+        ], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function importarPdfPreview(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -700,10 +834,10 @@ class CotizacionController extends Controller
 
     public function importarPdf(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
@@ -793,15 +927,15 @@ class CotizacionController extends Controller
 
         return response()->json(array_merge([
             'ok' => true,
-        ], $resultado));
+        ], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function importarExcelPreview(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota] = $this->resolverNota($request, $nronota, false);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -848,10 +982,10 @@ class CotizacionController extends Controller
 
     public function importarExcel(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $nota)) {
@@ -907,15 +1041,15 @@ class CotizacionController extends Controller
 
         return response()->json(array_merge([
             'ok' => true,
-        ], $resultado));
+        ], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function vincularLineaAgile(Request $request, int $nronota): JsonResponse
     {
-        $nota = Nota::query()->findOrFail($nronota);
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
-        if (! $this->puedeVer($request, $nota)) {
-            abort(403);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
         }
 
         $datos = $request->validate([
@@ -938,10 +1072,10 @@ class CotizacionController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'linea' => $resultado,
-        ]);
+        ], $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function buscarProductos(Request $request): JsonResponse

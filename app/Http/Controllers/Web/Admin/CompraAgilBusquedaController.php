@@ -28,7 +28,7 @@ class CompraAgilBusquedaController extends Controller
 
     public function buscar(Request $request, int $nronota): JsonResponse
     {
-        $nota = $this->notaAutorizada($request, $nronota);
+        [$nota] = $this->notaAutorizada($request, $nronota, false);
 
         if (! $this->api->isConfigured()) {
             return response()->json([
@@ -80,7 +80,7 @@ class CompraAgilBusquedaController extends Controller
 
     public function previewCodigo(Request $request, int $nronota): JsonResponse
     {
-        $nota = $this->notaAutorizada($request, $nronota);
+        [$nota] = $this->notaAutorizada($request, $nronota, false);
 
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
@@ -118,7 +118,7 @@ class CompraAgilBusquedaController extends Controller
 
     public function importarCodigo(Request $request, int $nronota): JsonResponse
     {
-        $nota = $this->notaAutorizada($request, $nronota);
+        [$notaCheck] = $this->notaAutorizada($request, $nronota, false);
 
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
@@ -128,7 +128,7 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->validarCodigoCabecera($nota, $codigo, true)) {
+            if ($error = $this->validarCodigoCabecera($notaCheck, $codigo, true)) {
                 return response()->json(['error' => $error], 422);
             }
 
@@ -137,6 +137,8 @@ class CompraAgilBusquedaController extends Controller
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
             $parseado = $this->mapper->fromDetalle($payload);
+
+            [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
 
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->importService->aplicarLoteDesdeDatos(
@@ -161,12 +163,12 @@ class CompraAgilBusquedaController extends Controller
             return response()->json(['error' => 'Error interno al importar desde API.'], 500);
         }
 
-        return response()->json(array_merge(['ok' => true], $resultado));
+        return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
 
     public function validarCodigo(Request $request, int $nronota): JsonResponse
     {
-        $nota = $this->notaAutorizada($request, $nronota);
+        [$nota] = $this->notaAutorizada($request, $nronota, false);
 
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
@@ -253,16 +255,58 @@ class CompraAgilBusquedaController extends Controller
         );
     }
 
-    private function notaAutorizada(Request $request, int $nronota): Nota
+    private function notaAutorizada(Request $request, int $nronota, bool $persistir = false): array
     {
-        $nota = Nota::query()->findOrFail($nronota);
-        $user = $request->user();
+        if ($nronota > 0) {
+            $nota = Nota::query()->findOrFail($nronota);
+            $user = $request->user();
 
-        if ($user->perfil !== User::PERFIL_SUPERADMIN && $nota->usuario !== $user->username) {
-            abort(403);
+            if ($user->perfil !== User::PERFIL_SUPERADMIN && $nota->usuario !== $user->username) {
+                abort(403);
+            }
+
+            return [$nota, false];
         }
 
-        return $nota;
+        $usuario = $request->user()->username;
+
+        if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+            return [$pendiente, false];
+        }
+
+        if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+            return [$vacia, false];
+        }
+
+        if (! $persistir) {
+            return [$this->notaService->borrador($usuario), false];
+        }
+
+        $idSesion = (int) session('cotiz.borrador_materializado_nronota', 0);
+        if ($idSesion > 0) {
+            $existente = Nota::query()->find($idSesion);
+            if ($existente && $existente->usuario === $usuario) {
+                return [$existente, false];
+            }
+            session()->forget('cotiz.borrador_materializado_nronota');
+        }
+
+        $nota = $this->notaService->crear($usuario);
+        session(['cotiz.borrador_materializado_nronota' => (int) $nota->nronota]);
+
+        return [$nota, true];
+    }
+
+    /**
+     * @return array{nronota: int, edit_url: string, recien_creada: bool}
+     */
+    private function metaNotaJson(Nota $nota, bool $recienCreada = false): array
+    {
+        return [
+            'nronota' => (int) $nota->nronota,
+            'edit_url' => route('admin.cotizaciones.edit', $nota->nronota),
+            'recien_creada' => $recienCreada,
+        ];
     }
 
     private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): ?JsonResponse

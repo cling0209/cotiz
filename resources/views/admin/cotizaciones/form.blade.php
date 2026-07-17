@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : 'Cotización '.$nota->nronota)
+@section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
 <link href="{{ asset('css/cotizacion-form.css') }}?v=img-zoom-50" rel="stylesheet">
@@ -9,6 +9,7 @@
 @section('content')
 @php
     $desdeAdjudicadas = $desdeAdjudicadas ?? false;
+    $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
@@ -18,9 +19,11 @@
 
 <div class="cotizacion-ingreso">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h1 class="h5 mb-0">
+        <h1 class="h5 mb-0" id="cotiz-titulo-nota">
             @if($desdeAdjudicadas)
                 Cotizaciones adjudicadas
+            @elseif($esBorrador)
+                Nueva cotizaci&oacute;n
             @else
                 Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
             @endif
@@ -34,7 +37,12 @@
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
         <div class="alert alert-info py-2 mb-2" role="alert">
-            Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF / Word</strong>.
+            @if($esBorrador)
+                Use <strong>Importar desde Compra &Aacute;gil</strong> o <strong>Grabar</strong> para comenzar.
+                El <strong>n&uacute;mero de nota</strong> se genera solo al importar productos o al grabar.
+            @else
+                Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF / Word</strong>.
+            @endif
         </div>
     @endif
 
@@ -653,11 +661,65 @@
 
     const montototal = document.getElementById('montototal');
     const factorInput = document.getElementById('factor_precio_venta');
-    const factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
-    const cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
-    const lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
+    let factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
+    let cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
+    let lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
     let encargadoActual = @json(trim((string) $nota->encargado));
-    const consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
+    let consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
+    let cotizNronotaActual = @json((int) $nota->nronota);
+    const cotizEditUrlTpl = @json(route('admin.cotizaciones.edit', ['nronota' => 999999999]));
+
+    function rewriteCotizUrl(url, fromNro, toNro) {
+        return String(url || '').split('/cotizaciones/' + fromNro).join('/cotizaciones/' + toNro);
+    }
+
+    function sincronizarNronotaDesdeJson(json) {
+        const n = Number(json?.nronota || 0);
+        if (!n || n === cotizNronotaActual) {
+            return false;
+        }
+        const prev = String(cotizNronotaActual);
+        const neu = String(n);
+        factorUrl = rewriteCotizUrl(factorUrl, prev, neu);
+        cabeceraUrl = rewriteCotizUrl(cabeceraUrl, prev, neu);
+        lineasLoteUrl = rewriteCotizUrl(lineasLoteUrl, prev, neu);
+        consultaParValidarUrl = rewriteCotizUrl(consultaParValidarUrl, prev, neu);
+        if (typeof ordenUrl !== 'undefined') ordenUrl = rewriteCotizUrl(ordenUrl, prev, neu);
+        if (typeof lineasUrl !== 'undefined') lineasUrl = rewriteCotizUrl(lineasUrl, prev, neu);
+        if (typeof vincularAgileUrl !== 'undefined') vincularAgileUrl = rewriteCotizUrl(vincularAgileUrl, prev, neu);
+        if (typeof importarMpUrls === 'object' && importarMpUrls) {
+            Object.keys(importarMpUrls).forEach((k) => {
+                importarMpUrls[k] = rewriteCotizUrl(importarMpUrls[k], prev, neu);
+            });
+        }
+        cotizNronotaActual = n;
+        const hidden = document.getElementById('nronota');
+        if (hidden) hidden.value = neu;
+        const form = document.getElementById('form-cotizacion');
+        if (form?.action) form.action = rewriteCotizUrl(form.action, prev, neu);
+        const titulo = document.getElementById('cotiz-titulo-nota');
+        if (titulo) titulo.innerHTML = 'Ingreso Cotizaci&oacute;n #' + neu;
+        const editUrl = json.edit_url || String(cotizEditUrlTpl).replace('999999999', neu);
+        try {
+            history.replaceState(null, '', editUrl);
+        } catch (e) {}
+        document.title = String(document.title || '').replace(/Cotización\s+\d+|Nueva cotización/i, 'Cotización ' + neu);
+        return true;
+    }
+
+    function irANotaTrasAccion(json) {
+        const n = Number(json?.nronota || 0);
+        const url = json?.edit_url;
+        if (url && n > 0 && (cotizNronotaActual === 0 || Number(document.getElementById('nronota')?.value || 0) === 0)) {
+            window.location.href = url;
+            return true;
+        }
+        if (sincronizarNronotaDesdeJson(json) && url && json?.recien_creada) {
+            // Ya actualizado en la misma página; el caller decide si recarga.
+        }
+        return false;
+    }
+
     const consultaParConfig = {
         mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
         maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 15)),
@@ -938,6 +1000,7 @@
             if (!resCab.ok) {
                 throw new Error(extraerMensajeError(jsonCab, 'No se pudo guardar la cabecera.'));
             }
+            sincronizarNronotaDesdeJson(jsonCab);
 
             const lineas = collectLineasFromTable();
             const lotes = chunkArray(lineas, lineasPorLote);
@@ -952,6 +1015,7 @@
                         : '';
                     throw new Error(extraerMensajeError(json, 'No se pudo guardar el detalle.') + parcial);
                 }
+                sincronizarNronotaDesdeJson(json);
                 guardadasTotal += json.guardadas ?? lotes[i].length;
             }
 
@@ -961,7 +1025,11 @@
                 sessionStorage.setItem('page-loader-pending', '1');
             } catch (e) {}
             dlgAlert(jsonCab.mensaje || 'Cotización guardada.', { title: 'Guardado', type: 'success' });
-            window.location.reload();
+            if (jsonCab.edit_url && jsonCab.recien_creada) {
+                window.location.href = jsonCab.edit_url;
+            } else {
+                window.location.reload();
+            }
         } catch (err) {
             setLoaderMensaje('');
             ocultarLoaderCotiz();
@@ -1248,7 +1316,7 @@
         }
     }
 
-    const ordenUrl = @json(route('admin.cotizaciones.lineas.orden', $nota->nronota));
+    let ordenUrl = @json(route('admin.cotizaciones.lineas.orden', $nota->nronota));
     const csrfOrden = document.querySelector('meta[name="csrf-token"]')?.content;
     let ordenEnProceso = false;
 
@@ -1508,7 +1576,7 @@
         });
     }
 
-    const lineasUrl = @json(route('admin.cotizaciones.lineas.store', $nota->nronota));
+    let lineasUrl = @json(route('admin.cotizaciones.lineas.store', $nota->nronota));
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     let agregandoLinea = false;
 
@@ -2069,7 +2137,7 @@
     });
 
     const resumenLineasInicial = @json($resumenLineas);
-    const importarMpUrls = {
+    let importarMpUrls = {
         preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota)),
         importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
         coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
@@ -2082,7 +2150,6 @@
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
     };
-    const cotizNronotaActual = @json($nota->nronota);
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
     const importarTexto = document.getElementById('importar-compra-agil-texto');
@@ -2994,6 +3061,7 @@
                         mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
                     }
+                    sincronizarNronotaDesdeJson(json);
                 }
             } else if (usarPdf || usarExcel) {
                 const lineasPreview = (importPreviewData.lineas || []).map((l) => ({
@@ -3043,6 +3111,7 @@
                         mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
                     }
+                    sincronizarNronotaDesdeJson(json);
 
                     actualizarProgresoImportar(hasta, totalLineas);
                 }
@@ -3064,6 +3133,7 @@
                     mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                     return;
                 }
+                sincronizarNronotaDesdeJson(json);
             } else {
                 const lote = tamanoLoteImportar(total);
                 for (let desde = 0; desde < total; desde += lote) {
@@ -3091,6 +3161,7 @@
                         mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
                         return;
                     }
+                    sincronizarNronotaDesdeJson(json);
 
                     actualizarProgresoImportar(hasta, total);
                 }
@@ -3101,7 +3172,10 @@
                 importarProgresoBar.classList.remove('progress-bar-animated');
             }
             mostrarLoaderCotiz();
-            window.location.reload();
+            const destino = cotizNronotaActual > 0
+                ? String(cotizEditUrlTpl).replace('999999999', String(cotizNronotaActual))
+                : window.location.href;
+            window.location.href = destino;
         } catch (err) {
             ocultarProgresoImportar();
             mostrarImportError('Error de conexión.');
@@ -3130,7 +3204,7 @@
         resetImportCompraAgilModal();
     });
 
-    const vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota));
+    let vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota));
     const popupVincularEl = document.getElementById('popupVincularAgile');
     const popupVincularDesc = document.getElementById('popupVincularDescAgile');
     const popupVincularBusqueda = document.getElementById('popupVincularBusqueda');

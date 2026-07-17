@@ -37,8 +37,63 @@ class NotaService
                 'factor_precio_venta' => config('cotiz.factor_precio_venta'),
             ]);
 
+            $this->adoptarVerificacionParDesdeBorrador($nronota);
+
             return $nota;
         });
+    }
+
+    /**
+     * Nota en memoria (sin grabar) para el formulario de ingreso.
+     * El nronota se asigna recién al importar productos o al grabar.
+     */
+    public function borrador(string $usuario): Nota
+    {
+        $nota = new Nota([
+            'nronota' => 0,
+            'descripcion' => 'Nueva cotización',
+            'fecha' => now()->toDateString(),
+            'usuario' => $usuario,
+            'encargado' => '',
+            'empresa' => '',
+            'celular' => '',
+            'contacto' => '',
+            'contactocorreo' => '',
+            'rutempresa' => '',
+            'nota_softland' => 0,
+            'notaorigen' => 0,
+            'sistema' => config('app.name'),
+            'enviadoapi' => 0,
+            'diashabiles' => 2,
+            'factor_precio_venta' => config('cotiz.factor_precio_venta'),
+            'ocompra' => '',
+        ]);
+        $nota->exists = false;
+
+        return $nota;
+    }
+
+    public function esBorrador(Nota $nota): bool
+    {
+        return ! $nota->exists || (int) $nota->nronota === 0;
+    }
+
+    /**
+     * Tras validar en borrador (nronota 0), reutiliza la verificación par en la nota real.
+     */
+    public function adoptarVerificacionParDesdeBorrador(int $nronotaNuevo): void
+    {
+        if ($nronotaNuevo <= 0) {
+            return;
+        }
+
+        $data = session()->get($this->claveParVerificado(0));
+        if (! is_array($data)) {
+            return;
+        }
+
+        session()->put($this->claveParVerificado($nronotaNuevo), $data);
+        session()->forget($this->claveParVerificado(0));
     }
 
     public function obtenerUltima(string $usuario): ?Nota

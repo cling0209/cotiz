@@ -36,7 +36,7 @@ class CotizacionCreateReuseEmptyTest extends TestCase
         $this->assertSame(1, Nota::query()->where('usuario', $this->ejecutivo->username)->count());
     }
 
-    public function test_nueva_crea_si_ultima_tiene_productos(): void
+    public function test_nueva_muestra_borrador_sin_crear_si_ultima_tiene_productos(): void
     {
         $conProductos = $this->crearNota(101, '1000-2-COT26');
         NotaDetalle::query()->create([
@@ -53,12 +53,36 @@ class CotizacionCreateReuseEmptyTest extends TestCase
 
         $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.create'));
 
-        $response->assertRedirect();
+        $response->assertOk();
+        $response->assertSee('Nueva cotización', false);
+        $this->assertSame($antes, Nota::query()->where('usuario', $this->ejecutivo->username)->count());
+    }
+
+    public function test_grabar_cabecera_en_borrador_crea_nronota(): void
+    {
+        $antes = Nota::query()->where('usuario', $this->ejecutivo->username)->count();
+
+        $response = $this->actingAs($this->ejecutivo)->postJson(
+            route('admin.cotizaciones.cabecera.store', 0),
+            [
+                'descripcion' => 'Cotización de prueba',
+                'encargado' => '1161-999-COT26',
+                'empresa' => 'Municipalidad Demo',
+                'diashabiles' => 2,
+            ],
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('recien_creada', true);
+
         $this->assertSame($antes + 1, Nota::query()->where('usuario', $this->ejecutivo->username)->count());
-        $nueva = Nota::query()->where('usuario', $this->ejecutivo->username)->orderByDesc('nronota')->first();
-        $this->assertNotNull($nueva);
-        $this->assertNotSame($conProductos->nronota, $nueva->nronota);
-        $response->assertRedirect(route('admin.cotizaciones.edit', $nueva->nronota));
+        $nronota = (int) $response->json('nronota');
+        $this->assertGreaterThan(0, $nronota);
+        $this->assertSame(
+            '1161-999-COT26',
+            Nota::query()->find($nronota)?->encargado,
+        );
     }
 
     private function crearNota(int $nronota, string $encargado): Nota

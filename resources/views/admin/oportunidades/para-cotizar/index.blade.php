@@ -216,6 +216,7 @@
                                 Presupuesto <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
                         </th>
+                        <th class="text-end text-nowrap" style="min-width:8rem;">Acci&oacute;n</th>
                     </tr>
                 </thead>
                 <tbody id="oportunidad-tbody">
@@ -224,7 +225,7 @@
         </div>
         <div class="card-body border-top py-2">
             <div class="small text-muted mb-2" id="oportunidad-footer">
-                Haga clic en una fila para cotizarla.
+                Use <strong>Ir a cotizar</strong> en la fila deseada.
                 @if($puedeBuscar)
                     Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
                 @else
@@ -507,19 +508,6 @@
         URL.revokeObjectURL(url);
     }
 
-    function bindFilas() {
-        tbody.querySelectorAll('.oportunidad-fila[data-href]').forEach((row) => {
-            const go = () => { window.location.href = row.getAttribute('data-href'); };
-            row.addEventListener('click', go);
-            row.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    go();
-                }
-            });
-        });
-    }
-
     function renderTabla(resetPage) {
         if (resetPage) {
             paginaActual = 1;
@@ -537,7 +525,7 @@
         if (relEncontradas) relEncontradas.textContent = String(total);
 
         if (total === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No hay oportunidades vigentes para cotizar.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados vigentes.');
@@ -547,7 +535,7 @@
         }
 
         if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">
                 No hay oportunidades con los filtros seleccionados.
             </td></tr>`;
             footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
@@ -570,9 +558,6 @@
                 : [];
             const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
             const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : null;
-            const attrs = href
-                ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
-                : '';
             const fraseBajoCodigo = frases.length
                 ? `<div class="opc-meta mt-1">Encontrada con: <strong>${escapeHtml(frases.join(', '))}</strong></div>`
                 : '';
@@ -582,7 +567,12 @@
             const nombreHtml = nombre
                 ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
-            return `<tr${attrs}>
+            const accionHtml = href
+                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap" data-no-loader>
+                        <i class="bi bi-cart-plus"></i> Ir a cotizar
+                   </a>`
+                : '<span class="text-muted small">—</span>';
+            return `<tr>
                 <td>
                     <code>${escapeHtml(codigo || '—')}</code>
                     ${nombreHtml}
@@ -598,6 +588,7 @@
                     <div class="mt-1"><span class="opc-meta">Cierre</span> ${escapeHtml(fmtFecha(item.fecha_cierre))}</div>
                 </td>
                 <td class="text-end tabular-nums text-nowrap fw-semibold">${fmtMonto(item.monto_presupuesto_clp)}</td>
+                <td class="text-end">${accionHtml}</td>
             </tr>`;
         }).join('');
 
@@ -610,12 +601,10 @@
         const rango = items.length > PAGE_SIZE
             ? ` Mostrando ${desde + 1}–${Math.min(desde + PAGE_SIZE, items.length)}.`
             : '';
-        footer.textContent = `${visibles}${rango} Haga clic en una fila para cotizarla.`;
+        footer.textContent = `${visibles}${rango} Use «Ir a cotizar» en la fila deseada.`;
         if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
 
         actualizarPaginadores(totalPaginas);
-
-        bindFilas();
     }
 
     /** Ventana de páginas con elipsis (mismo criterio visual que Laravel/Bootstrap). */
