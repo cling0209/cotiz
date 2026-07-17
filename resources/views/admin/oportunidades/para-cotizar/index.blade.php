@@ -206,8 +206,8 @@
                                 Regi&oacute;n / Organismo <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
                         </th>
-                        <th data-sort-header="fecha_cierre" style="min-width:9rem;">
-                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold text-start" data-sort="fecha_cierre">
+                        <th data-sort-header="fecha_publicacion" style="min-width:9rem;">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold text-start" data-sort="fecha_publicacion">
                                 Fechas <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
                         </th>
