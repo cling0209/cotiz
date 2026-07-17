@@ -191,29 +191,21 @@
             </p>
         </div>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 align-middle">
+            <table class="table table-sm table-hover mb-0 align-middle oportunidades-tabla-compacta">
                 <thead class="table-light">
                     <tr>
-                        <th>Cotizaci&oacute;n</th>
-                        <th>Regi&oacute;n</th>
-                        <th>Palabra clave</th>
-                        <th data-sort-header="organismo">
-                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="organismo">
-                                Organismo <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                        <th style="min-width:14rem;">Cotizaci&oacute;n</th>
+                        <th data-sort-header="organismo" style="min-width:12rem;">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold text-start" data-sort="organismo">
+                                Regi&oacute;n / Organismo <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
                         </th>
-                        <th class="text-center">Productos</th>
-                        <th data-sort-header="fecha_publicacion">
-                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="fecha_publicacion">
-                                Fecha publicaci&oacute;n <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
+                        <th data-sort-header="fecha_cierre" style="min-width:9rem;">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold text-start" data-sort="fecha_cierre">
+                                Fechas <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
                         </th>
-                        <th data-sort-header="fecha_cierre">
-                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="fecha_cierre">
-                                Fecha cierre <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
-                            </button>
-                        </th>
-                        <th class="text-end" data-sort-header="presupuesto">
+                        <th class="text-end" data-sort-header="presupuesto" style="min-width:7rem;">
                             <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-dark fw-semibold" data-sort="presupuesto">
                                 Presupuesto <span class="sort-indicator text-muted" aria-hidden="true">↕</span>
                             </button>
@@ -224,17 +216,50 @@
                 </tbody>
             </table>
         </div>
-        <div class="card-body border-top py-2 small text-muted" id="oportunidad-footer">
-            Haga clic en una fila para cotizarla.
-            @if($puedeBuscar)
-                Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
-            @else
-                Resultados sincronizados desde el sitio de b&uacute;squeda.
-            @endif
+        <div class="card-body border-top py-2 d-flex flex-wrap gap-2 align-items-center justify-content-between">
+            <div class="small text-muted" id="oportunidad-footer">
+                Haga clic en una fila para cotizarla.
+                @if($puedeBuscar)
+                    Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
+                @else
+                    Resultados sincronizados desde el sitio de b&uacute;squeda.
+                @endif
+            </div>
+            <nav id="oportunidad-paginacion" class="d-none" aria-label="Paginaci&oacute;n de oportunidades">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item" id="oportunidad-pag-prev">
+                        <button type="button" class="page-link" id="btn-oportunidad-prev">&laquo;</button>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link tabular-nums" id="oportunidad-pag-label">1 / 1</span>
+                    </li>
+                    <li class="page-item" id="oportunidad-pag-next">
+                        <button type="button" class="page-link" id="btn-oportunidad-next">&raquo;</button>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 
 </div>
+<style>
+    .oportunidades-tabla-compacta td {
+        vertical-align: top;
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
+    }
+    .oportunidades-tabla-compacta .opc-linea-2 {
+        line-height: 1.25;
+        max-width: 22rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .oportunidades-tabla-compacta .opc-meta {
+        color: var(--bs-secondary-color);
+        font-size: 0.8rem;
+    }
+</style>
 @endsection
 
 @push('scripts')
@@ -286,6 +311,12 @@
     const filtroRegion = document.getElementById('filtro-region');
     const filtroOrganismo = document.getElementById('filtro-organismo');
     const btnDescargarCsv = document.getElementById('btn-descargar-csv');
+    const paginacionNav = document.getElementById('oportunidad-paginacion');
+    const pagLabel = document.getElementById('oportunidad-pag-label');
+    const btnPagPrev = document.getElementById('btn-oportunidad-prev');
+    const btnPagNext = document.getElementById('btn-oportunidad-next');
+    const pagPrevItem = document.getElementById('oportunidad-pag-prev');
+    const pagNextItem = document.getElementById('oportunidad-pag-next');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -297,6 +328,8 @@
     let pollTimer = null;
     let ultimaCorridaId = null;
     let intentosCambioDia = 0;
+    const PAGE_SIZE = 20;
+    let paginaActual = 1;
     let sortState = { column: 'presupuesto', direction: 'desc' };
     let filtroOrganismoTimer = null;
 
@@ -493,65 +526,84 @@
         });
     }
 
-    function renderTabla() {
+    function renderTabla(resetPage) {
+        if (resetPage) {
+            paginaActual = 1;
+        }
         const total = porCodigo.size;
         const items = itemsFiltrados();
+        const totalPaginas = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        if (paginaActual > totalPaginas) {
+            paginaActual = totalPaginas;
+        }
+        if (paginaActual < 1) {
+            paginaActual = 1;
+        }
         actualizarIndicadoresOrden();
         if (relEncontradas) relEncontradas.textContent = String(total);
 
         if (total === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">
                 ${buscando ? 'Buscando…' : (cancelado ? 'Búsqueda cancelada. Sin resultados aún.' : 'No hay oportunidades vigentes para cotizar.')}
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados vigentes.');
             if (btnDescargarCsv) btnDescargarCsv.disabled = true;
+            if (paginacionNav) paginacionNav.classList.add('d-none');
             return;
         }
 
         if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">
                 No hay oportunidades con los filtros seleccionados.
             </td></tr>`;
             footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
             if (btnDescargarCsv) btnDescargarCsv.disabled = true;
+            if (paginacionNav) paginacionNav.classList.add('d-none');
             return;
         }
 
-        tbody.innerHTML = items.map((item) => {
+        const desde = (paginaActual - 1) * PAGE_SIZE;
+        const paginaItems = items.slice(desde, desde + PAGE_SIZE);
+
+        tbody.innerHTML = paginaItems.map((item) => {
             const codigo = String(item.codigo || '').toUpperCase();
             const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
-            const nombre = item.nombre ? `<div class="small text-muted text-truncate" style="max-width:28rem;" title="${escapeHtml(item.nombre)}">${escapeHtml(item.nombre)}</div>` : '';
+            const nombre = String(item.nombre || '').trim();
             const organismo = String(item.organismo || '').trim() || '—';
             const regionNombre = String(item.nombre_region || '').trim() || '—';
             const frases = Array.isArray(item.palabras_coinciden)
                 ? item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean)
                 : [];
-            const frasesHtml = frases.length
-                ? frases.map((f) => `<span class="badge text-bg-light border me-1 mb-1" title="Encontrada con «${escapeHtml(f)}»">${escapeHtml(f)}</span>`).join('')
-                : '<span class="text-muted">—</span>';
             const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
             const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : null;
-            const cantidadProductos = ! tieneCantidad || Number.isNaN(cantidadNum)
-                ? '<span class="text-muted">—</span>'
-                : escapeHtml(String(cantidadNum));
             const attrs = href
                 ? ` class="oportunidad-fila" role="button" tabindex="0" data-href="${escapeHtml(href)}" title="Cotizar ${escapeHtml(codigo)}"`
                 : '';
             const fraseBajoCodigo = frases.length
-                ? `<div class="small mt-1">Encontrada con: <strong>${escapeHtml(frases.join(', '))}</strong></div>`
+                ? `<div class="opc-meta mt-1">Encontrada con: <strong>${escapeHtml(frases.join(', '))}</strong></div>`
                 : '';
             const productosBajoCodigo = tieneCantidad && ! Number.isNaN(cantidadNum)
-                ? `<div class="small mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>`
+                ? `<div class="opc-meta mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>`
+                : '';
+            const nombreHtml = nombre
+                ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
             return `<tr${attrs}>
-                <td><code>${escapeHtml(codigo || '—')}</code>${nombre}${fraseBajoCodigo}${productosBajoCodigo}</td>
-                <td class="small text-nowrap">${escapeHtml(regionNombre)}</td>
-                <td class="small" style="min-width:8rem;">${frasesHtml}</td>
-                <td class="small"><div class="text-truncate" style="max-width:18rem;" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div></td>
-                <td class="text-center tabular-nums">${cantidadProductos}</td>
-                <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_publicacion))}</td>
-                <td class="small text-nowrap">${escapeHtml(fmtFecha(item.fecha_cierre))}</td>
-                <td class="text-end tabular-nums text-nowrap">${fmtMonto(item.monto_presupuesto_clp)}</td>
+                <td>
+                    <code>${escapeHtml(codigo || '—')}</code>
+                    ${nombreHtml}
+                    ${fraseBajoCodigo}
+                    ${productosBajoCodigo}
+                </td>
+                <td class="small">
+                    <div class="fw-semibold opc-linea-2" title="${escapeHtml(regionNombre)}">${escapeHtml(regionNombre)}</div>
+                    <div class="opc-linea-2 opc-meta mt-1" title="${escapeHtml(organismo)}">${escapeHtml(organismo)}</div>
+                </td>
+                <td class="small text-nowrap">
+                    <div><span class="opc-meta">Pub.</span> ${escapeHtml(fmtFecha(item.fecha_publicacion))}</div>
+                    <div class="mt-1"><span class="opc-meta">Cierre</span> ${escapeHtml(fmtFecha(item.fecha_cierre))}</div>
+                </td>
+                <td class="text-end tabular-nums text-nowrap fw-semibold">${fmtMonto(item.monto_presupuesto_clp)}</td>
             </tr>`;
         }).join('');
 
@@ -561,26 +613,58 @@
         const visibles = filtroActivo
             ? `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.`
             : `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo}`;
-        footer.textContent = `${visibles} Haga clic en una fila para cotizarla.`;
+        const rango = items.length > PAGE_SIZE
+            ? ` Mostrando ${desde + 1}–${Math.min(desde + PAGE_SIZE, items.length)}.`
+            : '';
+        footer.textContent = `${visibles}${rango} Haga clic en una fila para cotizarla.`;
         if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
+
+        if (paginacionNav && pagLabel) {
+            if (totalPaginas > 1) {
+                paginacionNav.classList.remove('d-none');
+                pagLabel.textContent = `${paginaActual} / ${totalPaginas}`;
+                if (pagPrevItem) pagPrevItem.classList.toggle('disabled', paginaActual <= 1);
+                if (pagNextItem) pagNextItem.classList.toggle('disabled', paginaActual >= totalPaginas);
+                if (btnPagPrev) btnPagPrev.disabled = paginaActual <= 1;
+                if (btnPagNext) btnPagNext.disabled = paginaActual >= totalPaginas;
+            } else {
+                paginacionNav.classList.add('d-none');
+            }
+        }
+
         bindFilas();
     }
 
     if (filtroRegion) {
-        filtroRegion.addEventListener('change', renderTabla);
+        filtroRegion.addEventListener('change', () => renderTabla(true));
     }
 
     if (filtroOrganismo) {
         filtroOrganismo.addEventListener('input', () => {
             if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
-            filtroOrganismoTimer = setTimeout(renderTabla, 200);
+            filtroOrganismoTimer = setTimeout(() => renderTabla(true), 200);
         });
         filtroOrganismo.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
-                renderTabla();
+                renderTabla(true);
             }
+        });
+    }
+
+    if (btnPagPrev) {
+        btnPagPrev.addEventListener('click', () => {
+            if (paginaActual > 1) {
+                paginaActual -= 1;
+                renderTabla(false);
+            }
+        });
+    }
+    if (btnPagNext) {
+        btnPagNext.addEventListener('click', () => {
+            paginaActual += 1;
+            renderTabla(false);
         });
     }
 
@@ -602,7 +686,7 @@
                     direction: column === 'organismo' ? 'asc' : 'desc',
                 };
             }
-            renderTabla();
+            renderTabla(true);
         });
     });
 
