@@ -19,6 +19,8 @@ class OportunidadBusquedaService
 
     private const PASO_PENDING = 'pending';
 
+    private const PASO_RUNNING = 'running';
+
     private const PASO_OK = 'ok';
 
     private const PASO_FAILED = 'failed';
@@ -153,9 +155,53 @@ class OportunidadBusquedaService
         $duracionPrevia = max(0, (int) ($pasos[$indice]['duracion_segundos'] ?? 0));
 
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+        $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
+        $pasos[$indice]['estado'] = self::PASO_RUNNING;
+        $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+            $frase !== '' ? $frase : '(todas)',
+            $region,
+            null,
+            null,
+            $fechaBusqueda,
+        );
+        $mensajeInicio = sprintf(
+            'Consultando %s (paso %d/%d)…',
+            $regionNombre !== '' ? $regionNombre : ('región '.$region),
+            $this->contarTerminados($pasos) + 1,
+            count($pasos),
+        );
+        $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio);
+        $corrida->refresh();
+
+        $onProgreso = function (int $pagina, int $itemsPagina, int $itemsAcumulados, array $consulta) use (
+            $corrida,
+            &$pasos,
+            $indice,
+            $errores,
+            $fallidos,
+            $regionNombre,
+            $region,
+        ): void {
+            $pasos[$indice]['estado'] = self::PASO_RUNNING;
+            $pasos[$indice]['consulta'] = $consulta;
+            $mensaje = sprintf(
+                'Consultando %s — página %d (%d ítems leídos)…',
+                $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                $pagina,
+                $itemsAcumulados,
+            );
+            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje);
+        };
 
         try {
-            $resultado = $this->oportunidades->ejecutarPaso($frase, $region, [], null, $fechaBusqueda);
+            $resultado = $this->oportunidades->ejecutarPaso(
+                $frase,
+                $region,
+                [],
+                null,
+                $fechaBusqueda,
+                $onProgreso,
+            );
             // Contar lo realmente grabado y listable, no solo matches en memoria.
             $encontradas = (int) ($resultado['guardadas'] ?? 0);
             if ($encontradas <= 0 && is_array($resultado['items'] ?? null)) {
@@ -353,12 +399,18 @@ class OportunidadBusquedaService
             }
         }
 
+        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
+        $workerStalled = $corrida->estado === self::ESTADO_RUNNING
+            && $corrida->updated_at !== null
+            && $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
             'fecha_busqueda' => $fechaBusqueda,
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
+            'updated_at' => $corrida->updated_at?->toIso8601String(),
             'duracion_segundos' => $duracionSegundos,
             'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
             'total_pasos' => $total,
@@ -370,6 +422,7 @@ class OportunidadBusquedaService
             'errores' => $errores,
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
             'ultima_consulta' => $ultimaConsulta,
+            'worker_stalled' => $workerStalled,
             'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
@@ -447,6 +500,7 @@ class OportunidadBusquedaService
                 $estado === self::PASO_OK => ['ok', 'OK (1.er intento)'],
                 $estado === self::PASO_RETRY_FAILED => ['fallo_definitivo', 'Falló (definitivo)'],
                 $estado === self::PASO_FAILED => ['fallo_reintentara', 'Falló (se reintentará)'],
+                $estado === self::PASO_RUNNING => ['en_curso', 'En curso'],
                 default => ['pendiente', 'Pendiente'],
             };
 
@@ -579,7 +633,8 @@ class OportunidadBusquedaService
             }
 
             foreach ($indices as $i) {
-                if (($pasos[$i]['estado'] ?? '') === self::PASO_PENDING) {
+                $estadoPaso = (string) ($pasos[$i]['estado'] ?? '');
+                if ($estadoPaso === self::PASO_PENDING || $estadoPaso === self::PASO_RUNNING) {
                     return ['indice' => $i, 'fase' => 'primario'];
                 }
             }

@@ -16,7 +16,8 @@ class OportunidadParaCotizarService
 
     private const REGION_TAMANO_PAGINA = 50;
 
-    private const REGION_MAX_PAGINAS = 20;
+    /** Tope de páginas por región (evita colgarse 10+ min en Metropolitana). */
+    private const REGION_MAX_PAGINAS = 8;
 
     public function __construct(
         protected CompraAgilApiService $api,
@@ -586,24 +587,43 @@ class OportunidadParaCotizarService
      *   guardadas: int
      * }
      */
+    /**
+     * @param  list<string>  $codigosExcluidos
+     * @param  (callable(int, int, int, array<string, mixed>): void)|null  $onProgreso
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>,
+     *   guardadas: int
+     * }
+     */
     public function ejecutarPaso(
         string $frase,
         int $region,
         array $codigosExcluidos = [],
         ?int $userId = null,
         mixed $fechaBusqueda = null,
+        ?callable $onProgreso = null,
     ): array {
         $frase = trim($frase);
         // Plan nuevo: un paso = región completa. Frase vacía/"(todas)" → match local de todas.
         if ($frase === '' || $frase === '(todas)') {
-            return $this->ejecutarPasoRegion($region, $codigosExcluidos, $userId, $fechaBusqueda);
+            return $this->ejecutarPasoRegion($region, $codigosExcluidos, $userId, $fechaBusqueda, $onProgreso);
         }
 
-        return $this->ejecutarPasoConFrase($frase, $region, $codigosExcluidos, $userId, $fechaBusqueda);
+        return $this->ejecutarPasoConFrase($frase, $region, $codigosExcluidos, $userId, $fechaBusqueda, $onProgreso);
     }
 
     /**
      * @param  list<string>  $codigosExcluidos
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>,
+     *   guardadas: int
+     * }
+     */
+    /**
+     * @param  list<string>  $codigosExcluidos
+     * @param  (callable(int, int, int, array<string, mixed>): void)|null  $onProgreso
      * @return array{
      *   items: list<array<string, mixed>>,
      *   consulta: array<string, mixed>,
@@ -615,9 +635,11 @@ class OportunidadParaCotizarService
         array $codigosExcluidos = [],
         ?int $userId = null,
         mixed $fechaBusqueda = null,
+        ?callable $onProgreso = null,
     ): array {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $palabras = $this->palabrasClave();
+        $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
         if ($region < 1 || $palabras === []) {
             return [
                 'items' => [],
@@ -642,14 +664,39 @@ class OportunidadParaCotizarService
 
         $crudos = [];
         $items = [];
-        for ($pagina = 1; $pagina <= self::REGION_MAX_PAGINAS; $pagina++) {
+        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
             $params = $this->parametrosConsultaRegion($region, $pagina);
+            if ($onProgreso) {
+                $onProgreso(
+                    $pagina,
+                    0,
+                    count($crudos),
+                    $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia, $this->muestraRespuestaCruda($crudos)),
+                );
+            }
+
             $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina;
             $lote = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
                 $resultado = $this->api->listar($params);
 
                 return is_array($resultado['items'] ?? null) ? $resultado['items'] : [];
             });
+
+            if ($onProgreso) {
+                $onProgreso(
+                    $pagina,
+                    count($lote),
+                    count($crudos) + count($lote),
+                    $this->metaConsultaPaso(
+                        '(todas)',
+                        $region,
+                        count($crudos) + count($lote),
+                        count($items),
+                        $dia,
+                        $this->muestraRespuestaCruda(array_merge($crudos, $lote)),
+                    ),
+                );
+            }
 
             if ($lote === []) {
                 break;
@@ -743,6 +790,7 @@ class OportunidadParaCotizarService
 
     /**
      * @param  list<string>  $codigosExcluidos
+     * @param  (callable(int, int, int, array<string, mixed>): void)|null  $onProgreso
      * @return array{
      *   items: list<array<string, mixed>>,
      *   consulta: array<string, mixed>,
@@ -755,6 +803,7 @@ class OportunidadParaCotizarService
         array $codigosExcluidos = [],
         ?int $userId = null,
         mixed $fechaBusqueda = null,
+        ?callable $onProgreso = null,
     ): array {
         $frase = trim($frase);
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
@@ -770,6 +819,10 @@ class OportunidadParaCotizarService
             throw new RuntimeException(
                 'API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.'
             );
+        }
+
+        if ($onProgreso) {
+            $onProgreso(1, 0, 0, $this->metaConsultaPaso($frase, $region, 0, 0, $dia));
         }
 
         $yaVistos = [];
@@ -955,12 +1008,14 @@ class OportunidadParaCotizarService
             if (! is_array($item)) {
                 continue;
             }
+            $fechas = is_array($item['fechas'] ?? null) ? $item['fechas'] : [];
+            $institucion = is_array($item['institucion'] ?? null) ? $item['institucion'] : [];
             $muestra[] = [
                 'codigo' => (string) ($item['codigo'] ?? ''),
                 'nombre' => mb_substr((string) ($item['nombre'] ?? $item['Nombre'] ?? ''), 0, 120),
-                'fecha_publicacion' => (string) ($item['fechaPublicacion'] ?? $item['fecha_publicacion'] ?? ''),
-                'fecha_cierre' => (string) ($item['fechaCierre'] ?? $item['fecha_cierre'] ?? ''),
-                'region' => $item['region'] ?? $item['Region'] ?? null,
+                'fecha_publicacion' => (string) ($fechas['fecha_publicacion'] ?? $item['fechaPublicacion'] ?? $item['fecha_publicacion'] ?? ''),
+                'fecha_cierre' => (string) ($fechas['fecha_cierre'] ?? $item['fechaCierre'] ?? $item['fecha_cierre'] ?? ''),
+                'region' => $institucion['region'] ?? $item['region'] ?? $item['Region'] ?? null,
             ];
         }
 

@@ -103,6 +103,10 @@ return [
         'api_low_speed_limit_bytes' => max(0, (int) env('MERCADOPUBLICO_API_LOW_SPEED_LIMIT_BYTES', 10)),
         'api_reintentos_http' => max(1, (int) env('MERCADOPUBLICO_API_REINTENTOS', 3)),
         'api_espera_reintento_seg' => max(1, (int) env('MERCADOPUBLICO_API_ESPERA_REINTENTO_SEG', 5)),
+        // Tope de páginas MP por región en búsqueda de oportunidades (Metropolitana puede ser lenta).
+        'oportunidad_max_paginas' => max(1, min(20, (int) env('MERCADOPUBLICO_OPORTUNIDAD_MAX_PAGINAS', 8))),
+        // Segundos sin update_at para considerar la corrida colgada (worker caído o HTTP trabado).
+        'oportunidad_corrida_stalled_segundos' => max(60, (int) env('MERCADOPUBLICO_OPORTUNIDAD_STALLED_SEG', 90)),
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 500)),

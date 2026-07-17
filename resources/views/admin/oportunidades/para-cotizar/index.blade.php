@@ -684,7 +684,8 @@
             const pasoTxt = indice != null && total != null ? `Paso ${indice + 1}/${total}` : '';
             let linea = [pasoTxt, `«${frase}»`, regionNombre].filter(Boolean).join(' · ');
             if (nota) linea += ` — ${nota}`;
-            if (data.total_api != null) {
+            const terminado = paso?.resultado && !['pendiente', 'en_curso'].includes(paso.resultado);
+            if (terminado && data.total_api != null) {
                 linea += ` — API devolvió ${data.total_api}, publicadas hoy: ${data.total_publicadas_hoy ?? 0}`;
             }
             debugPasoLine.textContent = linea;
@@ -696,10 +697,17 @@
 
         if (debugRespuestaJson) {
             const resp = data.respuesta && typeof data.respuesta === 'object' ? data.respuesta : null;
-            const terminado = paso?.resultado && paso.resultado !== 'pendiente';
+            const terminado = paso?.resultado && !['pendiente', 'en_curso'].includes(paso.resultado);
             if (!terminado) {
-                debugRespuestaJson.textContent = 'Esperando respuesta de Mercado Público…';
-                if (debugRespuestaLine) debugRespuestaLine.textContent = '';
+                const items = resp?.items_recibidos;
+                debugRespuestaJson.textContent = (items != null && Number(items) > 0)
+                    ? (data.respuesta_json || JSON.stringify(resp, null, 2))
+                    : 'Esperando respuesta de Mercado Público…';
+                if (debugRespuestaLine) {
+                    debugRespuestaLine.textContent = items != null
+                        ? `En curso — ${items} ítem(s) leídos hasta ahora.`
+                        : '';
+                }
             } else if (resp) {
                 debugRespuestaJson.textContent = data.respuesta_json || JSON.stringify(resp, null, 2);
                 if (debugRespuestaLine) {
@@ -726,9 +734,12 @@
         }
 
         let idx = -1;
-        // Mientras corre: mostrar el paso pendiente actual (consulta en curso).
+        // Mientras corre: preferir el paso en curso; si no, el pendiente.
         if (corrida.estado === 'running') {
-            idx = pasos.findIndex((p) => p?.resultado === 'pendiente');
+            idx = pasos.findIndex((p) => p?.resultado === 'en_curso');
+            if (idx < 0) {
+                idx = pasos.findIndex((p) => p?.resultado === 'pendiente');
+            }
         }
         // Si no hay pendiente (o ya terminó): último paso con consulta real.
         if (idx < 0) {
@@ -746,7 +757,9 @@
         const paso = pasos[idx];
         const nota = paso?.error
             ? `${paso.error} — la búsqueda continúa con la siguiente región o reintento.`
-            : (corrida.estado === 'running' && paso?.resultado === 'pendiente' ? 'consulta en curso…' : null);
+            : (corrida.estado === 'running' && (paso?.resultado === 'pendiente' || paso?.resultado === 'en_curso')
+                ? 'consulta en curso…'
+                : null);
         mostrarDebugConsulta(paso?.consulta || null, paso, idx, total, nota);
     }
 
@@ -840,6 +853,7 @@
         ok_reintento: 'text-bg-success',
         fallo_reintentara: 'text-bg-warning',
         fallo_definitivo: 'text-bg-danger',
+        en_curso: 'text-bg-primary',
         pendiente: 'text-bg-secondary',
     };
 
@@ -858,7 +872,7 @@
 
         relPasos.classList.remove('d-none');
         relPasosPanel?.classList.remove('d-none');
-        const terminados = pasos.filter((p) => p.resultado && p.resultado !== 'pendiente').length;
+        const terminados = pasos.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
         if (relPasosContador) {
             relPasosContador.textContent = `${terminados}/${pasos.length}`;
         }
@@ -887,7 +901,7 @@
 
             const tdEncontradas = document.createElement('td');
             tdEncontradas.className = 'text-end tabular-nums';
-            if (paso.resultado === 'pendiente' || paso.encontradas === null || paso.encontradas === undefined) {
+            if (paso.resultado === 'pendiente' || paso.resultado === 'en_curso' || paso.encontradas === null || paso.encontradas === undefined) {
                 tdEncontradas.textContent = '—';
                 tdEncontradas.classList.add('text-muted');
             } else {
@@ -976,7 +990,12 @@
         const ultimoError = corrida.ultimo_error && typeof corrida.ultimo_error === 'object'
             ? corrida.ultimo_error
             : null;
-        if (activo && ultimoError) {
+        if (corrida.worker_stalled) {
+            mostrarAvisoPaso(
+                'La búsqueda no avanza en el servidor (posible worker detenido o Mercado Público colgado). '
+                + 'Verifique RUN_QUEUE_WORKER=true en Render, o cancele y reintente.',
+            );
+        } else if (activo && ultimoError) {
             if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
                 mostrarAvisoPaso('Un paso falló en Mercado Público; la búsqueda sigue con la siguiente región o reintento.');
             } else {
