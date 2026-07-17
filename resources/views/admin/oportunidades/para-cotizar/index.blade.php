@@ -116,6 +116,7 @@
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
+                                <th class="text-nowrap text-end">Tiempo</th>
                                 <th class="text-nowrap">Resultado</th>
                             </tr>
                         </thead>
@@ -829,6 +830,17 @@
                 tdEncontradas.textContent = String(Number(paso.encontradas) || 0);
             }
 
+            const tdTiempo = document.createElement('td');
+            tdTiempo.className = 'text-end text-nowrap tabular-nums';
+            const duracionTexto = paso.duracion_texto
+                || (paso.duracion_segundos != null ? formatearDuracionSegs(paso.duracion_segundos) : null);
+            if (duracionTexto) {
+                tdTiempo.textContent = duracionTexto;
+            } else {
+                tdTiempo.textContent = '—';
+                tdTiempo.classList.add('text-muted');
+            }
+
             const tdResultado = document.createElement('td');
             const badge = document.createElement('span');
             badge.className = `badge ${BADGE_PASO[paso.resultado] || 'text-bg-secondary'}`;
@@ -841,7 +853,7 @@
                 tdResultado.appendChild(err);
             }
 
-            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdResultado);
+            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdTiempo, tdResultado);
             relPasosTbody.appendChild(tr);
         });
     }

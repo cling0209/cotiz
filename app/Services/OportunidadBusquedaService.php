@@ -149,6 +149,8 @@ class OportunidadBusquedaService
         $frase = trim((string) ($paso['frase'] ?? ''));
         $region = (int) ($paso['region'] ?? 0);
         $fallidos = $this->contarFallidosDefinitivos($pasos);
+        $inicioPaso = now();
+        $duracionPrevia = max(0, (int) ($pasos[$indice]['duracion_segundos'] ?? 0));
 
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
 
@@ -162,6 +164,7 @@ class OportunidadBusquedaService
             $pasos[$indice]['estado'] = self::PASO_OK;
             $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $pasos[$indice]['encontradas'] = $encontradas;
+            $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $fallidos = $this->contarFallidosDefinitivos($pasos);
             $mensaje = $fase === 'reintento'
                 ? sprintf(
@@ -185,6 +188,7 @@ class OportunidadBusquedaService
                 ? self::PASO_RETRY_FAILED
                 : self::PASO_FAILED;
             $pasos[$indice]['encontradas'] = 0;
+            $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
 
             $errores[] = [
                 'indice' => $indice,
@@ -433,6 +437,10 @@ class OportunidadBusquedaService
                 ? (int) $paso['encontradas']
                 : null;
 
+            $duracionSegundos = array_key_exists('duracion_segundos', $paso) && $paso['duracion_segundos'] !== null
+                ? max(0, (int) $paso['duracion_segundos'])
+                : null;
+
             $out[] = [
                 'indice' => $i,
                 'fecha_busqueda' => $fechaBusqueda,
@@ -441,6 +449,8 @@ class OportunidadBusquedaService
                 'frase' => (string) ($paso['frase'] ?? ''),
                 'intentos' => $intentos,
                 'encontradas' => $encontradas,
+                'duracion_segundos' => $duracionSegundos,
+                'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
                 'resultado' => $resultado,
                 'etiqueta' => $etiqueta,
                 'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED
@@ -470,6 +480,7 @@ class OportunidadBusquedaService
                 'estado' => self::PASO_PENDING,
                 'intentos' => 0,
                 'encontradas' => null,
+                'duracion_segundos' => null,
             ];
         }
 

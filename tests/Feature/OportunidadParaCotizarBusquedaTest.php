@@ -280,9 +280,13 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertSame('fallo_definitivo', $estado['pasos_resumen'][0]['resultado']);
         $this->assertNotNull($estado['pasos_resumen'][0]['error']);
         $this->assertSame(0, $estado['pasos_resumen'][0]['encontradas']);
+        $this->assertIsInt($estado['pasos_resumen'][0]['duracion_segundos']);
+        $this->assertNotNull($estado['pasos_resumen'][0]['duracion_texto']);
         $this->assertSame('ok', $estado['pasos_resumen'][1]['resultado']);
         $this->assertSame('OK (1.er intento)', $estado['pasos_resumen'][1]['etiqueta']);
         $this->assertSame(0, $estado['pasos_resumen'][1]['encontradas']);
+        $this->assertIsInt($estado['pasos_resumen'][1]['duracion_segundos']);
+        $this->assertNotNull($estado['pasos_resumen'][1]['duracion_texto']);
 
         Carbon::setTestNow();
     }
@@ -343,6 +347,8 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertSame('2026-07-16', $estado['pasos_resumen'][0]['fecha_busqueda']);
         $this->assertSame(13, $estado['pasos_resumen'][0]['region']);
         $this->assertSame(0, $estado['pasos_resumen'][0]['encontradas']);
+        $this->assertIsInt($estado['pasos_resumen'][0]['duracion_segundos']);
+        $this->assertNotNull($estado['pasos_resumen'][0]['duracion_texto']);
 
         Carbon::setTestNow();
     }
