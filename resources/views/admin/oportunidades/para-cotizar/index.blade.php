@@ -220,7 +220,7 @@
         iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
         estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
         cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
-        cotizarBase: @json(url('/admin/cotizaciones/create')),
+        cotizarBase: @json(route('admin.cotizaciones.create')),
     };
     const mpApi = {
         baseUrl: @json($mpBaseUrl ?? ''),
