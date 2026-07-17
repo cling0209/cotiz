@@ -123,6 +123,18 @@
                         <tbody id="rel-pasos-tbody"></tbody>
                     </table>
                 </div>
+                <div id="oportunidad-debug" class="border rounded bg-light mt-3 p-3 d-none">
+                    <div class="small fw-semibold mb-2">
+                        <i class="bi bi-braces"></i> Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
+                    </div>
+                    <div id="debug-endpoint-line" class="small mb-2">
+                        <span class="text-muted">URL:</span>
+                        <code id="debug-endpoint-url" class="user-select-all text-break"></code>
+                    </div>
+                    <div id="debug-paso-line" class="small text-muted mb-2"></div>
+                    <pre id="debug-consulta-json" class="bg-white border rounded p-3 mb-0 small font-monospace text-break"
+                         style="max-height:16rem;overflow:auto;white-space:pre-wrap;"></pre>
+                </div>
             </div>
         </div>
     </div>
@@ -208,22 +220,6 @@
         </div>
     </div>
 
-    @if($puedeBuscar)
-    <div id="oportunidad-debug" class="card shadow-sm mt-3 d-none">
-        <div class="card-header py-2 small fw-semibold bg-light">
-            <i class="bi bi-braces"></i> Consulta Mercado P&uacute;blico &mdash; endpoint y par&aacute;metros
-        </div>
-        <div class="card-body py-3">
-            <div id="debug-endpoint-line" class="small mb-2">
-                <span class="text-muted">URL:</span>
-                <code id="debug-endpoint-url" class="user-select-all text-break"></code>
-            </div>
-            <div id="debug-paso-line" class="small text-muted mb-2"></div>
-            <pre id="debug-consulta-json" class="bg-light border rounded p-3 mb-0 small font-monospace text-break"
-                 style="max-height:20rem;overflow:auto;white-space:pre-wrap;"></pre>
-        </div>
-    </div>
-    @endif
 </div>
 @endsection
 
@@ -700,28 +696,27 @@
         }
 
         let idx = -1;
-        for (let i = pasos.length - 1; i >= 0; i--) {
-            if (pasos[i]?.consulta && typeof pasos[i].consulta === 'object') {
-                idx = i;
-                break;
-            }
-        }
-
-        if (idx < 0) {
+        // Mientras corre: mostrar el paso pendiente actual (consulta en curso).
+        if (corrida.estado === 'running') {
             idx = pasos.findIndex((p) => p?.resultado === 'pendiente');
-            if (idx < 0 && corrida.estado === 'running') {
-                idx = 0;
+        }
+        // Si no hay pendiente (o ya terminó): último paso con consulta real.
+        if (idx < 0) {
+            for (let i = pasos.length - 1; i >= 0; i--) {
+                if (pasos[i]?.consulta && typeof pasos[i].consulta === 'object') {
+                    idx = i;
+                    break;
+                }
             }
         }
-
         if (idx < 0) {
-            return;
+            idx = 0;
         }
 
         const paso = pasos[idx];
         const nota = paso?.error
             ? `${paso.error} — la búsqueda continúa con la siguiente región o reintento.`
-            : null;
+            : (corrida.estado === 'running' && paso?.resultado === 'pendiente' ? 'consulta en curso…' : null);
         mostrarDebugConsulta(paso?.consulta || null, paso, idx, total, nota);
     }
 
@@ -932,6 +927,9 @@
         }
         renderTabla();
         renderPasosCorrida(corrida.pasos_resumen || []);
+        if (activo && relPasosPanel) {
+            relPasosPanel.classList.remove('d-none');
+        }
         actualizarDebugDesdeCorrida(corrida);
         if (corrida.fecha_busqueda && relFecha) {
             relFecha.textContent = `(buscando ${formatearDia(corrida.fecha_busqueda)})`;

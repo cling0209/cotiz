@@ -459,6 +459,15 @@ class OportunidadBusquedaService
                 : null;
 
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
+            if ($consulta === null) {
+                $consulta = $this->oportunidades->consultaDebugPaso(
+                    (string) ($paso['frase'] ?? '(todas)'),
+                    (int) ($paso['region'] ?? 0),
+                    null,
+                    $encontradas,
+                    $fechaBusqueda,
+                );
+            }
 
             $out[] = [
                 'indice' => $i,
