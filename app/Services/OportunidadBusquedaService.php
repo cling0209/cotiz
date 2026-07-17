@@ -101,6 +101,15 @@ class OportunidadBusquedaService
         }
 
         $pasos = $this->enriquecerPlan($pasos);
+        $cambioDesdeIso = $this->resolverCambioDesdeIncremental($dia);
+        if ($cambioDesdeIso !== null) {
+            $pasos = array_map(static function (array $paso) use ($cambioDesdeIso): array {
+                $paso['cambio_desde'] = $cambioDesdeIso;
+                $paso['incremental'] = true;
+
+                return $paso;
+            }, $pasos);
+        }
 
         $corrida = OportunidadBusquedaCorrida::query()->create([
             'usuario' => trim($usuario) ?: 'sistema',
@@ -113,12 +122,42 @@ class OportunidadBusquedaService
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($dia)),
             'plan_json' => $pasos,
             'errores_json' => [],
-            'mensaje' => 'Búsqueda encolada para '.$this->formatearFechaMensaje($dia).'.',
+            'mensaje' => $cambioDesdeIso !== null
+                ? 'Búsqueda incremental encolada para '.$this->formatearFechaMensaje($dia)
+                    .' desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.'
+                : 'Búsqueda encolada para '.$this->formatearFechaMensaje($dia).'.',
         ]);
 
         ProcessOportunidadBusquedaJob::dispatch($corrida->id);
 
         return $corrida;
+    }
+
+    /**
+     * Si el día (hoy) ya tiene corrida completa, retoma desde la última publicación conocida.
+     */
+    private function resolverCambioDesdeIncremental(string $dia): ?string
+    {
+        $hoy = $this->oportunidades->fechaBusquedaHoy();
+        if ($dia !== $hoy || ! $this->fechaTieneCorridaCompleta($dia)) {
+            return null;
+        }
+
+        $ultima = $this->oportunidades->ultimaFechaPublicacionEn($dia);
+        if ($ultima === null) {
+            return null;
+        }
+
+        return $ultima->toIso8601String();
+    }
+
+    private function formatearFechaHoraMensaje(string $iso): string
+    {
+        try {
+            return Carbon::parse($iso)->timezone((string) config('app.timezone'))->format('d-m-Y H:i');
+        } catch (\Throwable) {
+            return $iso;
+        }
     }
 
     public function procesar(OportunidadBusquedaCorrida $corrida): void
@@ -169,6 +208,8 @@ class OportunidadBusquedaService
         $duracionPrevia = max(0, (int) ($pasos[$indice]['duracion_segundos'] ?? 0));
 
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+        $cambioDesde = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
+        $cambioDesde = $cambioDesde !== '' ? $cambioDesde : null;
         $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
         $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
@@ -177,6 +218,7 @@ class OportunidadBusquedaService
             null,
             null,
             $fechaBusqueda,
+            $cambioDesde,
         );
         $mensajeInicio = sprintf(
             'Consultando %s (paso %d/%d)…',
@@ -233,6 +275,7 @@ class OportunidadBusquedaService
                 null,
                 $fechaBusqueda,
                 $onProgreso,
+                $cambioDesde,
             );
             $assertCorridaActiva();
             // Contar lo realmente grabado y listable, no solo matches en memoria.
@@ -281,6 +324,7 @@ class OportunidadBusquedaService
                 null,
                 null,
                 $fechaBusqueda,
+                $cambioDesde,
             );
 
             $errores[] = [
@@ -742,12 +786,14 @@ class OportunidadBusquedaService
 
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
             if ($consulta === null) {
+                $cambioDesdePaso = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
                 $consulta = $this->oportunidades->consultaDebugPaso(
                     (string) ($paso['frase'] ?? '(todas)'),
                     (int) ($paso['region'] ?? 0),
                     null,
                     $encontradas,
                     $fechaBusqueda,
+                    $cambioDesdePaso !== '' ? $cambioDesdePaso : null,
                 );
             }
 
@@ -986,6 +1032,11 @@ class OportunidadBusquedaService
         for ($dia = $inicio->copy(); $dia->lessThanOrEqualTo($hoy); $dia->addDay()) {
             $fecha = $dia->toDateString();
             if (! $this->fechaTieneCorridaCompleta($fecha)) {
+                return $fecha;
+            }
+
+            // Día en curso ya completo: permite otra corrida incremental (nuevas pubs. del día).
+            if ($dia->equalTo($hoy)) {
                 return $fecha;
             }
         }

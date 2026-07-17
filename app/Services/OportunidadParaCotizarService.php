@@ -650,8 +650,12 @@ class OportunidadParaCotizarService
      *
      * @return array<string, mixed>
      */
-    public function parametrosConsultaRegion(int $region, int $numeroPagina = 1, mixed $fechaBusqueda = null): array
-    {
+    public function parametrosConsultaRegion(
+        int $region,
+        int $numeroPagina = 1,
+        mixed $fechaBusqueda = null,
+        mixed $cambioDesde = null,
+    ): array {
         $params = [
             'estado' => 'publicada',
             'numero_pagina' => max(1, $numeroPagina),
@@ -660,7 +664,7 @@ class OportunidadParaCotizarService
             'tamano_pagina' => self::REGION_TAMANO_PAGINA,
         ];
 
-        $ventana = $this->ventanaCambioParaDia($fechaBusqueda);
+        $ventana = $this->ventanaCambioParaDia($fechaBusqueda, $cambioDesde);
         if ($ventana !== null) {
             $params['cambio_desde'] = $ventana['desde'];
             $params['cambio_hasta'] = $ventana['hasta'];
@@ -671,10 +675,11 @@ class OportunidadParaCotizarService
 
     /**
      * Ventana ISO8601 del día de búsqueda (timezone app) para filtro API cambio_*.
+     * Si $cambioDesde está dentro del día, acota el inicio (corrida incremental).
      *
      * @return array{desde: string, hasta: string}|null
      */
-    public function ventanaCambioParaDia(mixed $fechaBusqueda = null): ?array
+    public function ventanaCambioParaDia(mixed $fechaBusqueda = null, mixed $cambioDesde = null): ?array
     {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         try {
@@ -684,6 +689,17 @@ class OportunidadParaCotizarService
             return null;
         }
 
+        if ($cambioDesde !== null && trim((string) $cambioDesde) !== '') {
+            try {
+                $desde = Carbon::parse($cambioDesde)->timezone((string) config('app.timezone'));
+                if ($desde->toDateString() === $dia && $desde->greaterThan($inicio) && $desde->lessThanOrEqualTo($fin)) {
+                    $inicio = $desde->copy();
+                }
+            } catch (\Throwable) {
+                // Mantener ventana completa del día.
+            }
+        }
+
         return [
             'desde' => $inicio->toIso8601String(),
             'hasta' => $fin->toIso8601String(),
@@ -691,14 +707,40 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Última fecha_publicacion conocida para el día (corrida incremental).
+     */
+    public function ultimaFechaPublicacionEn(mixed $fechaBusqueda = null): ?Carbon
+    {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        $valor = OportunidadEncontrada::query()
+            ->whereDate('fecha_busqueda', $dia)
+            ->whereNotNull('fecha_publicacion')
+            ->max('fecha_publicacion');
+
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($valor)->timezone((string) config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Compatibilidad con endpoint /paso y debug: consulta con q=frase.
      *
      * @return array<string, mixed>
      */
-    public function parametrosConsultaPaso(string $frase, int $region, mixed $fechaBusqueda = null): array
-    {
+    public function parametrosConsultaPaso(
+        string $frase,
+        int $region,
+        mixed $fechaBusqueda = null,
+        mixed $cambioDesde = null,
+    ): array {
         $frase = trim($frase);
-        $params = $this->parametrosConsultaRegion($region, 1, $fechaBusqueda);
+        $params = $this->parametrosConsultaRegion($region, 1, $fechaBusqueda, $cambioDesde);
         if ($frase !== '' && $frase !== '(todas)') {
             $params['q'] = $frase;
         }
@@ -733,24 +775,32 @@ class OportunidadParaCotizarService
         ?int $userId = null,
         mixed $fechaBusqueda = null,
         ?callable $onProgreso = null,
+        mixed $cambioDesde = null,
     ): array {
         $frase = trim($frase);
         // Plan nuevo: un paso = región completa. Frase vacía/"(todas)" → match local de todas.
         if ($frase === '' || $frase === '(todas)') {
-            return $this->ejecutarPasoRegion($region, $codigosExcluidos, $userId, $fechaBusqueda, $onProgreso);
+            return $this->ejecutarPasoRegion(
+                $region,
+                $codigosExcluidos,
+                $userId,
+                $fechaBusqueda,
+                $onProgreso,
+                $cambioDesde,
+            );
         }
 
-        return $this->ejecutarPasoConFrase($frase, $region, $codigosExcluidos, $userId, $fechaBusqueda, $onProgreso);
+        return $this->ejecutarPasoConFrase(
+            $frase,
+            $region,
+            $codigosExcluidos,
+            $userId,
+            $fechaBusqueda,
+            $onProgreso,
+            $cambioDesde,
+        );
     }
 
-    /**
-     * @param  list<string>  $codigosExcluidos
-     * @return array{
-     *   items: list<array<string, mixed>>,
-     *   consulta: array<string, mixed>,
-     *   guardadas: int
-     * }
-     */
     /**
      * @param  list<string>  $codigosExcluidos
      * @param  (callable(int, int, int, array<string, mixed>): void)|null  $onProgreso
@@ -766,6 +816,7 @@ class OportunidadParaCotizarService
         ?int $userId = null,
         mixed $fechaBusqueda = null,
         ?callable $onProgreso = null,
+        mixed $cambioDesde = null,
     ): array {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $palabras = $this->palabrasClave();
@@ -773,7 +824,7 @@ class OportunidadParaCotizarService
         if ($region < 1 || $palabras === []) {
             return [
                 'items' => [],
-                'consulta' => $this->metaConsultaPaso('(todas)', $region, 0, 0, $dia),
+                'consulta' => $this->metaConsultaPaso('(todas)', $region, 0, 0, $dia, null, $cambioDesde),
                 'guardadas' => 0,
             ];
         }
@@ -792,20 +843,25 @@ class OportunidadParaCotizarService
             }
         }
 
+        $ventanaKey = $this->ventanaCambioParaDia($dia, $cambioDesde);
+        $cacheSufijo = is_array($ventanaKey)
+            ? ':'.md5(($ventanaKey['desde'] ?? '').'|'.($ventanaKey['hasta'] ?? ''))
+            : '';
+
         $crudos = [];
         $items = [];
         for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
-            $params = $this->parametrosConsultaRegion($region, $pagina, $dia);
+            $params = $this->parametrosConsultaRegion($region, $pagina, $dia, $cambioDesde);
             if ($onProgreso) {
                 $onProgreso(
                     $pagina,
                     0,
                     count($crudos),
-                    $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia, $this->muestraRespuestaCruda($crudos)),
+                    $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia, $this->muestraRespuestaCruda($crudos), $cambioDesde),
                 );
             }
 
-            $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina;
+            $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina.$cacheSufijo;
             $lote = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
                 $resultado = $this->api->listar($params);
 
@@ -824,6 +880,7 @@ class OportunidadParaCotizarService
                         count($items),
                         $dia,
                         $this->muestraRespuestaCruda(array_merge($crudos, $lote)),
+                        $cambioDesde,
                     ),
                 );
             }
@@ -913,6 +970,7 @@ class OportunidadParaCotizarService
                 count($items),
                 $dia,
                 $this->muestraRespuestaCruda($crudos),
+                $cambioDesde,
             ),
             'guardadas' => $guardadas,
         ];
@@ -934,13 +992,14 @@ class OportunidadParaCotizarService
         ?int $userId = null,
         mixed $fechaBusqueda = null,
         ?callable $onProgreso = null,
+        mixed $cambioDesde = null,
     ): array {
         $frase = trim($frase);
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         if ($frase === '' || $region < 1) {
             return [
                 'items' => [],
-                'consulta' => $this->metaConsultaPaso($frase, $region, 0, 0, $dia),
+                'consulta' => $this->metaConsultaPaso($frase, $region, 0, 0, $dia, null, $cambioDesde),
                 'guardadas' => 0,
             ];
         }
@@ -952,7 +1011,7 @@ class OportunidadParaCotizarService
         }
 
         if ($onProgreso) {
-            $onProgreso(1, 0, 0, $this->metaConsultaPaso($frase, $region, 0, 0, $dia));
+            $onProgreso(1, 0, 0, $this->metaConsultaPaso($frase, $region, 0, 0, $dia, null, $cambioDesde));
         }
 
         $yaVistos = [];
@@ -963,8 +1022,12 @@ class OportunidadParaCotizarService
             }
         }
 
-        $cacheKey = 'oportunidad_para_cotizar:'.$dia.':'.md5(mb_strtolower($frase).'|'.$region);
-        $params = $this->parametrosConsultaPaso($frase, $region, $dia);
+        $ventanaKey = $this->ventanaCambioParaDia($dia, $cambioDesde);
+        $cacheSufijo = is_array($ventanaKey)
+            ? ':'.md5(($ventanaKey['desde'] ?? '').'|'.($ventanaKey['hasta'] ?? ''))
+            : '';
+        $cacheKey = 'oportunidad_para_cotizar:'.$dia.':'.md5(mb_strtolower($frase).'|'.$region).$cacheSufijo;
+        $params = $this->parametrosConsultaPaso($frase, $region, $dia, $cambioDesde);
 
         $crudos = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
             $resultado = $this->api->listar($params);
@@ -1027,6 +1090,7 @@ class OportunidadParaCotizarService
                 count($items),
                 $dia,
                 $this->muestraRespuestaCruda(is_array($crudos) ? $crudos : []),
+                $cambioDesde,
             ),
             'guardadas' => $guardadas,
         ];
@@ -1065,6 +1129,7 @@ class OportunidadParaCotizarService
         ?int $totalApi = null,
         ?int $totalHoy = null,
         mixed $fechaBusqueda = null,
+        mixed $cambioDesde = null,
     ): array {
         return $this->metaConsultaPaso(
             $frase,
@@ -1072,6 +1137,8 @@ class OportunidadParaCotizarService
             $totalApi ?? 0,
             $totalHoy ?? 0,
             $fechaBusqueda,
+            null,
+            $cambioDesde,
         );
     }
 
@@ -1085,8 +1152,9 @@ class OportunidadParaCotizarService
         int $totalHoy,
         mixed $fechaBusqueda = null,
         ?array $muestraRespuesta = null,
+        mixed $cambioDesde = null,
     ): array {
-        $params = $this->parametrosConsultaPaso($frase, $region, $fechaBusqueda);
+        $params = $this->parametrosConsultaPaso($frase, $region, $fechaBusqueda, $cambioDesde);
         ksort($params);
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');

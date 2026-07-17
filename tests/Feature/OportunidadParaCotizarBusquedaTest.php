@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Jobs\ProcessOportunidadBusquedaJob;
 use App\Models\OportunidadBusquedaCorrida;
+use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
 use App\Models\User;
 use App\Services\OportunidadBusquedaService;
+use App\Services\OportunidadParaCotizarService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -547,5 +549,80 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('corrida.id', $corrida->id);
 
         Queue::assertPushed(ProcessOportunidadBusquedaJob::class, fn ($job) => $job->corridaId === $corrida->id);
+    }
+
+    public function test_segunda_corrida_del_dia_es_incremental_desde_ultima_publicacion(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-17',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-17 19:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'escritorio',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'sistema',
+            'fecha_busqueda' => '2026-07-17',
+            'inicio' => Carbon::parse('2026-07-17 10:00:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-07-17 10:30:00', 'America/Santiago'),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada correctamente.',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '517-148-COT26',
+            'nombre' => 'Sillas',
+            'organismo' => 'SAG',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 488733,
+            'fecha_publicacion' => Carbon::parse('2026-07-17 10:17:00', 'America/Santiago'),
+            'fecha_cierre' => Carbon::parse('2026-07-20 11:00:00', 'America/Santiago'),
+            'palabras_coinciden' => ['escritorio'],
+            'fecha_busqueda' => '2026-07-17',
+            'indice_region_config' => 0,
+        ]);
+
+        $servicio = $this->app->make(OportunidadParaCotizarService::class);
+        $ventana = $servicio->ventanaCambioParaDia(
+            '2026-07-17',
+            Carbon::parse('2026-07-17 10:17:00', 'America/Santiago')->toIso8601String(),
+        );
+        $this->assertNotNull($ventana);
+        $this->assertSame(
+            Carbon::parse('2026-07-17 10:17:00', 'America/Santiago')->toIso8601String(),
+            $ventana['desde'],
+        );
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('sistema');
+
+        $this->assertSame('2026-07-17', $corrida->fecha_busqueda->toDateString());
+        $this->assertTrue((bool) ($corrida->plan_json[0]['incremental'] ?? false));
+        $this->assertNotEmpty($corrida->plan_json[0]['cambio_desde'] ?? null);
+        $this->assertStringContainsString('incremental', (string) $corrida->mensaje);
+
+        $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
+            ->timezone('America/Santiago');
+        $this->assertSame('2026-07-17 10:17:00', $cambioDesde->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
     }
 }
