@@ -180,6 +180,19 @@
                            placeholder="Buscar organismo…" autocomplete="off">
                 </div>
                 <div class="col-sm-12 col-md-3 col-lg-5 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                    <nav id="oportunidad-paginacion-top" aria-label="Paginaci&oacute;n superior de oportunidades">
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item" id="oportunidad-pag-prev-top">
+                                <button type="button" class="page-link" id="btn-oportunidad-prev-top">&laquo;</button>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link tabular-nums" id="oportunidad-pag-label-top">1 / 1</span>
+                            </li>
+                            <li class="page-item" id="oportunidad-pag-next-top">
+                                <button type="button" class="page-link" id="btn-oportunidad-next-top">&raquo;</button>
+                            </li>
+                        </ul>
+                    </nav>
                     <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
                         <i class="bi bi-download"></i> Descargar CSV
                     </button>
@@ -225,7 +238,7 @@
                     Resultados sincronizados desde el sitio de b&uacute;squeda.
                 @endif
             </div>
-            <nav id="oportunidad-paginacion" class="d-none" aria-label="Paginaci&oacute;n de oportunidades">
+            <nav id="oportunidad-paginacion" aria-label="Paginaci&oacute;n de oportunidades">
                 <ul class="pagination pagination-sm mb-0">
                     <li class="page-item" id="oportunidad-pag-prev">
                         <button type="button" class="page-link" id="btn-oportunidad-prev">&laquo;</button>
@@ -317,6 +330,11 @@
     const btnPagNext = document.getElementById('btn-oportunidad-next');
     const pagPrevItem = document.getElementById('oportunidad-pag-prev');
     const pagNextItem = document.getElementById('oportunidad-pag-next');
+    const pagLabelTop = document.getElementById('oportunidad-pag-label-top');
+    const btnPagPrevTop = document.getElementById('btn-oportunidad-prev-top');
+    const btnPagNextTop = document.getElementById('btn-oportunidad-next-top');
+    const pagPrevItemTop = document.getElementById('oportunidad-pag-prev-top');
+    const pagNextItemTop = document.getElementById('oportunidad-pag-next-top');
 
     /** @type {Map<string, object>} */
     let porCodigo = new Map();
@@ -548,7 +566,7 @@
             </td></tr>`;
             footer.textContent = buscando ? 'Consulta en curso…' : (cancelado ? 'Consulta cancelada.' : 'Sin resultados vigentes.');
             if (btnDescargarCsv) btnDescargarCsv.disabled = true;
-            if (paginacionNav) paginacionNav.classList.add('d-none');
+            actualizarPaginadores(1);
             return;
         }
 
@@ -558,7 +576,7 @@
             </td></tr>`;
             footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
             if (btnDescargarCsv) btnDescargarCsv.disabled = true;
-            if (paginacionNav) paginacionNav.classList.add('d-none');
+            actualizarPaginadores(1);
             return;
         }
 
@@ -619,20 +637,43 @@
         footer.textContent = `${visibles}${rango} Haga clic en una fila para cotizarla.`;
         if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
 
-        if (paginacionNav && pagLabel) {
-            if (totalPaginas > 1) {
-                paginacionNav.classList.remove('d-none');
-                pagLabel.textContent = `${paginaActual} / ${totalPaginas}`;
-                if (pagPrevItem) pagPrevItem.classList.toggle('disabled', paginaActual <= 1);
-                if (pagNextItem) pagNextItem.classList.toggle('disabled', paginaActual >= totalPaginas);
-                if (btnPagPrev) btnPagPrev.disabled = paginaActual <= 1;
-                if (btnPagNext) btnPagNext.disabled = paginaActual >= totalPaginas;
-            } else {
-                paginacionNav.classList.add('d-none');
-            }
-        }
+        actualizarPaginadores(totalPaginas);
 
         bindFilas();
+    }
+
+    function actualizarPaginadores(totalPaginas) {
+        const total = Math.max(1, Number(totalPaginas) || 1);
+        const esPrimera = paginaActual <= 1;
+        const esUltima = paginaActual >= total;
+        const etiqueta = `${paginaActual} / ${total}`;
+
+        if (paginacionNav) paginacionNav.classList.remove('d-none');
+        if (pagLabel) pagLabel.textContent = etiqueta;
+        if (pagLabelTop) pagLabelTop.textContent = etiqueta;
+        if (pagPrevItem) pagPrevItem.classList.toggle('disabled', esPrimera);
+        if (pagNextItem) pagNextItem.classList.toggle('disabled', esUltima);
+        if (pagPrevItemTop) pagPrevItemTop.classList.toggle('disabled', esPrimera);
+        if (pagNextItemTop) pagNextItemTop.classList.toggle('disabled', esUltima);
+        if (btnPagPrev) btnPagPrev.disabled = esPrimera;
+        if (btnPagNext) btnPagNext.disabled = esUltima;
+        if (btnPagPrevTop) btnPagPrevTop.disabled = esPrimera;
+        if (btnPagNextTop) btnPagNextTop.disabled = esUltima;
+    }
+
+    function paginaAnterior() {
+        if (paginaActual > 1) {
+            paginaActual -= 1;
+            renderTabla(false);
+        }
+    }
+
+    function paginaSiguiente() {
+        const totalPaginas = Math.max(1, Math.ceil(itemsFiltrados().length / PAGE_SIZE));
+        if (paginaActual < totalPaginas) {
+            paginaActual += 1;
+            renderTabla(false);
+        }
     }
 
     if (filtroRegion) {
@@ -654,18 +695,16 @@
     }
 
     if (btnPagPrev) {
-        btnPagPrev.addEventListener('click', () => {
-            if (paginaActual > 1) {
-                paginaActual -= 1;
-                renderTabla(false);
-            }
-        });
+        btnPagPrev.addEventListener('click', paginaAnterior);
     }
     if (btnPagNext) {
-        btnPagNext.addEventListener('click', () => {
-            paginaActual += 1;
-            renderTabla(false);
-        });
+        btnPagNext.addEventListener('click', paginaSiguiente);
+    }
+    if (btnPagPrevTop) {
+        btnPagPrevTop.addEventListener('click', paginaAnterior);
+    }
+    if (btnPagNextTop) {
+        btnPagNextTop.addEventListener('click', paginaSiguiente);
     }
 
     if (btnDescargarCsv) {
