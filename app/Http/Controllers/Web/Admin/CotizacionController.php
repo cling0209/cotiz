@@ -44,6 +44,18 @@ class CotizacionController extends Controller
                 ->with('error', 'Complete el número de cotización de la nota #'.$pendiente->nronota.' antes de crear otra.');
         }
 
+        if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+            $params = ['nronota' => $vacia->nronota];
+            $codigoVacia = strtoupper(trim((string) $request->query('codigo', '')));
+            if ($codigoVacia !== '') {
+                $params['codigo'] = $codigoVacia;
+            }
+
+            return redirect()
+                ->route('admin.cotizaciones.edit', $params)
+                ->with('info', 'La nota #'.$vacia->nronota.' no tiene productos. Complétela antes de crear otra.');
+        }
+
         $nota = $this->notaService->crear($usuario);
 
         if (! Nota::query()->whereKey($nota->nronota)->exists()) {

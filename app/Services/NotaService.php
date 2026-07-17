@@ -58,6 +58,23 @@ class NotaService
             ->first();
     }
 
+    /**
+     * Última nota del usuario sin líneas de detalle (sin productos).
+     */
+    public function ultimaSinProductos(string $usuario): ?Nota
+    {
+        $ultima = $this->obtenerUltima($usuario);
+        if ($ultima === null) {
+            return null;
+        }
+
+        if ($ultima->detalle()->exists()) {
+            return null;
+        }
+
+        return $ultima;
+    }
+
     public function modificarCabecera(Nota $nota, array $datos): Nota
     {
         $encargadoAnterior = strtoupper(trim((string) $nota->encargado));
