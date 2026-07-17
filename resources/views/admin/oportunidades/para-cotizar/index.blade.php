@@ -11,8 +11,8 @@
                 <p class="text-muted mb-0 small">
                     Solo Compras &Aacute;giles <strong>publicadas hoy</strong>, seg&uacute;n sus palabras clave.
                     Lo que se va encontrando se <strong>graba</strong> y se sincroniza con el sitio par.
-                    B&uacute;squeda por prioridad: primero las regiones de <code>MERCADOPUBLICO_REGIONES</code>,
-                    y dentro de cada regi&oacute;n las palabras clave en el orden configurado.
+                    Un recorrido por regi&oacute;n (<code>MERCADOPUBLICO_REGIONES</code>);
+                    al leer cada cotizaci&oacute;n se hace match local con <strong>todas</strong> las palabras clave.
                 </p>
             @else
                 <p class="text-muted mb-0 small">
@@ -46,12 +46,12 @@
         @else
             <div class="mb-3">
                 <div class="small text-muted mb-1">
-                    Palabras clave (prioridad de b&uacute;squeda, de izquierda a derecha):
-                    <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">cambiar orden</a>
+                    Palabras clave (match local en cada regi&oacute;n):
+                    <a href="{{ route('admin.oportunidades.palabras-clave.index') }}">administrar</a>
                 </div>
                 @foreach($palabras as $i => $frase)
-                    <span class="badge text-bg-light border me-1" title="Prioridad {{ $i + 1 }}">
-                        <span class="text-muted">{{ $i + 1 }}.</span> {{ $frase }}
+                    <span class="badge text-bg-light border me-1">
+                        {{ $frase }}
                     </span>
                 @endforeach
             </div>
@@ -101,7 +101,7 @@
                                 <th class="text-nowrap">#</th>
                                 <th class="text-nowrap">D&iacute;a</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
-                                <th class="text-nowrap">Palabra clave</th>
+                                <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap">Resultado</th>
                             </tr>
@@ -786,7 +786,10 @@
             tdRegion.textContent = paso.region_nombre || (paso.region ? `Región ${paso.region}` : '—');
 
             const tdFrase = document.createElement('td');
-            tdFrase.textContent = paso.frase || '—';
+            const frasePaso = paso.frase || '';
+            tdFrase.textContent = (!frasePaso || frasePaso === '(todas)')
+                ? 'todas las frases'
+                : frasePaso;
 
             const tdEncontradas = document.createElement('td');
             tdEncontradas.className = 'text-end tabular-nums';

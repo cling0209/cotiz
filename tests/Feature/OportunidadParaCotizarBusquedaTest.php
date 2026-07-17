@@ -174,7 +174,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('ok', false);
     }
 
-    public function test_iniciar_ordena_pasos_region_luego_palabra(): void
+    public function test_iniciar_ordena_pasos_por_region(): void
     {
         Queue::fake();
         config([
@@ -201,18 +201,14 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->postJson(route('admin.oportunidades.para-cotizar.iniciar'))
             ->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('corrida.total_pasos', 4)
+            ->assertJsonPath('corrida.total_pasos', 2)
             ->assertJsonPath('corrida.estado', 'running');
 
         $corrida = OportunidadBusquedaCorrida::query()->firstOrFail();
         $this->assertSame(13, $corrida->plan_json[0]['region']);
-        $this->assertSame('papel', $corrida->plan_json[0]['frase']);
-        $this->assertSame(13, $corrida->plan_json[1]['region']);
-        $this->assertSame('aseo', $corrida->plan_json[1]['frase']);
-        $this->assertSame(5, $corrida->plan_json[2]['region']);
-        $this->assertSame('papel', $corrida->plan_json[2]['frase']);
-        $this->assertSame(5, $corrida->plan_json[3]['region']);
-        $this->assertSame('aseo', $corrida->plan_json[3]['frase']);
+        $this->assertSame('(todas)', $corrida->plan_json[0]['frase']);
+        $this->assertSame(5, $corrida->plan_json[1]['region']);
+        $this->assertSame('(todas)', $corrida->plan_json[1]['frase']);
 
         Queue::assertPushed(ProcessOportunidadBusquedaJob::class, fn ($job) => $job->corridaId === $corrida->id);
 

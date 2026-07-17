@@ -161,17 +161,15 @@ class OportunidadBusquedaService
             $fallidos = $this->contarFallidosDefinitivos($pasos);
             $mensaje = $fase === 'reintento'
                 ? sprintf(
-                    'Reintento OK región %d · «%s»: %d cotización(es) (%d/%d pasos).',
+                    'Reintento OK región %d: %d cotización(es) (%d/%d pasos).',
                     $region,
-                    $frase,
                     $encontradas,
                     $this->contarTerminados($pasos),
                     count($pasos),
                 )
                 : sprintf(
-                    'Paso región %d · «%s»: %d cotización(es) (%d/%d).',
+                    'Paso región %d: %d cotización(es) (%d/%d).',
                     $region,
-                    $frase,
                     $encontradas,
                     $this->contarTerminados($pasos),
                     count($pasos),
@@ -186,7 +184,7 @@ class OportunidadBusquedaService
 
             $errores[] = [
                 'indice' => $indice,
-                'frase' => $frase,
+                'frase' => $frase !== '' ? $frase : '(todas)',
                 'region' => $region,
                 'fase' => $fase,
                 'intento' => $intentos,
@@ -196,15 +194,13 @@ class OportunidadBusquedaService
             $fallidos = $this->contarFallidosDefinitivos($pasos);
             $mensaje = $fase === 'reintento'
                 ? sprintf(
-                    'Reintento fallido región %d · «%s»; se sigue con la siguiente región. %s',
+                    'Reintento fallido región %d; se sigue con la siguiente. %s',
                     $region,
-                    $frase,
                     mb_substr($e->getMessage(), 0, 200),
                 )
                 : sprintf(
-                    'Paso fallido región %d · «%s»; al cerrar la región se reintentará. %s',
+                    'Paso fallido región %d; al cerrar la región se reintentará. %s',
                     $region,
-                    $frase,
                     mb_substr($e->getMessage(), 0, 200),
                 );
         }
@@ -420,7 +416,7 @@ class OportunidadBusquedaService
                 continue;
             }
             $out[] = [
-                'frase' => trim((string) ($paso['frase'] ?? '')),
+                'frase' => trim((string) ($paso['frase'] ?? '')) ?: '(todas)',
                 'region' => (int) ($paso['region'] ?? 0),
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'estado' => self::PASO_PENDING,

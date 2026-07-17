@@ -20,9 +20,10 @@
 
     <div class="alert alert-info py-2 small" role="status">
         <i class="bi bi-info-circle"></i>
-        <strong>Prioridad de b&uacute;squeda:</strong>
-        la lista se consulta de arriba hacia abajo.
-        La palabra en la posici&oacute;n 1 se busca primero (dentro de cada regi&oacute;n).
+        <strong>Orden de la lista:</strong>
+        solo organiza c&oacute;mo se muestran aqu&iacute;.
+        La b&uacute;squeda de oportunidades hace match con <strong>todas</strong> las palabras en cada regi&oacute;n
+        (el orden no cambia qu&eacute; se encuentra).
         Puede reordenar con las flechas <i class="bi bi-arrow-up"></i>/<i class="bi bi-arrow-down"></i>
         o arrastrando la fila por el &iacute;cono <i class="bi bi-grip-vertical"></i>.
     </div>
@@ -41,7 +42,7 @@
                     @error('frase')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
-                    <div class="form-text">Se agrega al final (menor prioridad). Luego puede subirla.</div>
+                    <div class="form-text">Se agrega al final de la lista. Luego puede reordenarla.</div>
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">
@@ -62,7 +63,7 @@
                         <th>Palabra clave</th>
                         <th>Agregada por</th>
                         <th>Fecha</th>
-                        <th class="text-end">Prioridad</th>
+                        <th class="text-end">Orden</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -88,7 +89,7 @@
                                     <input type="hidden" name="direccion" value="up">
                                     <button type="submit"
                                             class="btn btn-outline-secondary btn-sm py-0 px-1"
-                                            title="Subir prioridad (buscar antes)"
+                                            title="Subir en la lista"
                                             @disabled($index === 0)>
                                         <i class="bi bi-arrow-up"></i>
                                     </button>
@@ -100,7 +101,7 @@
                                     <input type="hidden" name="direccion" value="down">
                                     <button type="submit"
                                             class="btn btn-outline-secondary btn-sm py-0 px-1"
-                                            title="Bajar prioridad (buscar después)"
+                                            title="Bajar en la lista"
                                             @disabled($index === $palabras->count() - 1)>
                                         <i class="bi bi-arrow-down"></i>
                                     </button>
@@ -192,7 +193,7 @@
                 if (!res.ok || data.ok === false) {
                     throw new Error(data.error || data.message || `HTTP ${res.status}`);
                 }
-                let msg = data.mensaje || 'Prioridad de búsqueda actualizada. En Oportunidades se busca en este orden.';
+                let msg = data.mensaje || 'Orden de la lista actualizado.';
                 if (data.info) msg += ' ' + data.info;
                 mostrarFeedback(msg, !data.error);
             } catch (e) {

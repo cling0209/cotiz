@@ -14,6 +14,10 @@ class OportunidadParaCotizarService
 {
     private const CACHE_SEGUNDOS = 60;
 
+    private const REGION_TAMANO_PAGINA = 50;
+
+    private const REGION_MAX_PAGINAS = 20;
+
     public function __construct(
         protected CompraAgilApiService $api,
         protected CompraAgilOportunidadService $oportunidad,
@@ -427,8 +431,8 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Plan de consulta: una pareja región × frase por paso (para ir mostrando resultados).
-     * Orden: MERCADOPUBLICO_REGIONES, luego prioridad de palabras clave (orden).
+     * Plan de consulta: un paso por región (orden MERCADOPUBLICO_REGIONES).
+     * Las frases se cruzan en local al leer cada cotización (no van en la query a MP).
      *
      * @return array{
      *   palabras: list<string>,
@@ -467,16 +471,13 @@ class OportunidadParaCotizarService
             ];
         }
 
-        // Región primero (orden MERCADOPUBLICO_REGIONES), luego cada palabra clave.
         $pasos = [];
         foreach ($regiones as $region) {
-            foreach ($palabras as $frase) {
-                $pasos[] = [
-                    'frase' => $frase,
-                    'region' => (int) $region,
-                    'region_nombre' => CompraAgilRegionScope::nombreRegion((int) $region),
-                ];
-            }
+            $pasos[] = [
+                'frase' => '(todas)',
+                'region' => (int) $region,
+                'region_nombre' => CompraAgilRegionScope::nombreRegion((int) $region),
+            ];
         }
 
         return [
@@ -490,28 +491,40 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Parámetros de consulta a Mercado Público para un paso (frase × región).
+     * Parámetros de listado por región (sin q): el match de frases se hace en local.
+     *
+     * @return array<string, mixed>
+     */
+    public function parametrosConsultaRegion(int $region, int $numeroPagina = 1): array
+    {
+        return [
+            'estado' => 'publicada',
+            'numero_pagina' => max(1, $numeroPagina),
+            'ordenar_por' => 'FechaPublicacion',
+            'region' => max(1, $region),
+            'tamano_pagina' => self::REGION_TAMANO_PAGINA,
+        ];
+    }
+
+    /**
+     * Compatibilidad con endpoint /paso y debug: consulta con q=frase.
      *
      * @return array<string, mixed>
      */
     public function parametrosConsultaPaso(string $frase, int $region): array
     {
         $frase = trim($frase);
+        $params = $this->parametrosConsultaRegion($region, 1);
+        if ($frase !== '' && $frase !== '(todas)') {
+            $params['q'] = $frase;
+        }
 
-        return [
-            'estado' => 'publicada',
-            'numero_pagina' => 1,
-            'ordenar_por' => 'FechaPublicacion',
-            'q' => $frase,
-            'region' => max(1, $region),
-            'tamano_pagina' => 50,
-        ];
+        return $params;
     }
 
     /**
-     * Ejecuta un paso (frase × región) y devuelve solo publicadas hoy.
-     * Omite códigos ya presentes en la lista acumulada o ya grabados hoy.
-     * Graba en BD cada oportunidad nueva encontrada.
+     * Ejecuta un paso de región: lista publicadas (paginado), filtra por día
+     * y hace match local contra todas las palabras clave.
      *
      * @param  list<string>  $codigosExcluidos
      * @return array{
@@ -521,6 +534,162 @@ class OportunidadParaCotizarService
      * }
      */
     public function ejecutarPaso(
+        string $frase,
+        int $region,
+        array $codigosExcluidos = [],
+        ?int $userId = null,
+        mixed $fechaBusqueda = null,
+    ): array {
+        $frase = trim($frase);
+        // Plan nuevo: un paso = región completa. Frase vacía/"(todas)" → match local de todas.
+        if ($frase === '' || $frase === '(todas)') {
+            return $this->ejecutarPasoRegion($region, $codigosExcluidos, $userId, $fechaBusqueda);
+        }
+
+        return $this->ejecutarPasoConFrase($frase, $region, $codigosExcluidos, $userId, $fechaBusqueda);
+    }
+
+    /**
+     * @param  list<string>  $codigosExcluidos
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>,
+     *   guardadas: int
+     * }
+     */
+    public function ejecutarPasoRegion(
+        int $region,
+        array $codigosExcluidos = [],
+        ?int $userId = null,
+        mixed $fechaBusqueda = null,
+    ): array {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        $palabras = $this->palabrasClave();
+        if ($region < 1 || $palabras === []) {
+            return [
+                'items' => [],
+                'consulta' => $this->metaConsultaPaso('(todas)', $region, 0, 0, $dia),
+                'guardadas' => 0,
+            ];
+        }
+
+        if (! $this->api->isConfigured()) {
+            throw new RuntimeException(
+                'API Mercado Público no configurada. Defina MERCADOPUBLICO_TICKET en el servidor.'
+            );
+        }
+
+        $yaVistos = [];
+        foreach (array_merge($codigosExcluidos, $this->codigosGuardadosEn($dia)) as $codigo) {
+            $norm = strtoupper(trim((string) $codigo));
+            if ($norm !== '') {
+                $yaVistos[$norm] = true;
+            }
+        }
+
+        $crudos = [];
+        $items = [];
+        for ($pagina = 1; $pagina <= self::REGION_MAX_PAGINAS; $pagina++) {
+            $params = $this->parametrosConsultaRegion($region, $pagina);
+            $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina;
+            $lote = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
+                $resultado = $this->api->listar($params);
+
+                return is_array($resultado['items'] ?? null) ? $resultado['items'] : [];
+            });
+
+            if ($lote === []) {
+                break;
+            }
+
+            $crudos = array_merge($crudos, $lote);
+            $todasAnterioresAlDia = true;
+
+            foreach ($lote as $item) {
+                if (! is_array($item) || CompraAgilRegionScope::debeExcluirItem($item)) {
+                    continue;
+                }
+
+                $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+                if ($codigo === '') {
+                    continue;
+                }
+
+                $resumen = $this->oportunidad->enriquecerResumen(
+                    $this->mapper->resumenListadoItem($item),
+                );
+
+                $fechaPub = trim((string) ($resumen['fecha_publicacion'] ?? ''));
+                $fechaPubDia = null;
+                if ($fechaPub !== '') {
+                    try {
+                        $fechaPubDia = Carbon::parse($fechaPub)
+                            ->timezone(config('app.timezone'))
+                            ->toDateString();
+                    } catch (\Throwable) {
+                        $fechaPubDia = null;
+                    }
+                }
+
+                if ($fechaPubDia !== null && $fechaPubDia >= $dia) {
+                    $todasAnterioresAlDia = false;
+                }
+
+                if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
+                    continue;
+                }
+
+                $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
+                if ($coinciden === []) {
+                    continue;
+                }
+
+                if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
+                    continue;
+                }
+
+                if (isset($yaVistos[$codigo])) {
+                    foreach ($coinciden as $fraseOk) {
+                        $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
+                    }
+                    $this->completarCantidadProductosGuardada($codigo, $dia);
+
+                    continue;
+                }
+
+                $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
+                $resumen['palabras_coinciden'] = $coinciden;
+                $resumen['cantidad_productos'] = $this->obtenerCantidadProductosReal($codigo);
+                $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
+                $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
+                $resumen['guardada'] = true;
+                $items[] = $resumen;
+                $yaVistos[$codigo] = true;
+            }
+
+            if ($todasAnterioresAlDia || count($lote) < self::REGION_TAMANO_PAGINA) {
+                break;
+            }
+        }
+
+        $guardadas = $this->guardarEncontradas($items, $userId, $dia);
+
+        return [
+            'items' => $items,
+            'consulta' => $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia),
+            'guardadas' => $guardadas,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $codigosExcluidos
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>,
+     *   guardadas: int
+     * }
+     */
+    private function ejecutarPasoConFrase(
         string $frase,
         int $region,
         array $codigosExcluidos = [],
@@ -575,7 +744,6 @@ class OportunidadParaCotizarService
                 $this->mapper->resumenListadoItem($item),
             );
 
-            // MP puede devolver resultados irrelevantes: exigir que la frase esté en el texto.
             if (! $this->fraseApareceEnTexto($frase, $resumen, $item)) {
                 continue;
             }
@@ -612,6 +780,28 @@ class OportunidadParaCotizarService
             'consulta' => $this->metaConsultaPaso($frase, $region, count($crudos), count($items), $dia),
             'guardadas' => $guardadas,
         ];
+    }
+
+    /**
+     * @param  list<string>  $palabras
+     * @param  array<string, mixed>  $resumen
+     * @param  array<string, mixed>|null  $crudo
+     * @return list<string>
+     */
+    public function frasesQueCoinciden(array $palabras, array $resumen, ?array $crudo = null): array
+    {
+        $out = [];
+        foreach ($palabras as $frase) {
+            $frase = trim((string) $frase);
+            if ($frase === '') {
+                continue;
+            }
+            if ($this->fraseApareceEnTexto($frase, $resumen, $crudo)) {
+                $out[] = $frase;
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

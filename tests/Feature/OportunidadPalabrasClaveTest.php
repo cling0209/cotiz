@@ -107,7 +107,7 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->get(route('admin.oportunidades.para-cotizar.index'))
             ->assertOk()
             ->assertSee('Buscar cotizaciones', false)
-            ->assertSee('prioridad de búsqueda', false)
+            ->assertSee('match local', false)
             ->assertSee('graba', false);
     }
 
@@ -174,7 +174,7 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->assertSame(3, (int) $b->fresh()->orden);
     }
 
-    public function test_index_muestra_mensaje_prioridad(): void
+    public function test_index_muestra_mensaje_orden_lista(): void
     {
         $user = User::factory()->create([
             'username' => 'admin',
@@ -184,7 +184,7 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.oportunidades.palabras-clave.index'))
             ->assertOk()
-            ->assertSee('Prioridad de búsqueda', false)
-            ->assertSee('de arriba hacia abajo', false);
+            ->assertSee('Orden de la lista', false)
+            ->assertSee('todas', false);
     }
 }
