@@ -236,6 +236,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
             'cotiz.mercadopublico.regiones' => [13, 5],
             'cotiz.mercadopublico.api_reintentos_http' => 1,
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
         ]);
         Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
 
@@ -298,6 +299,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
             'cotiz.mercadopublico.regiones' => [13],
             'cotiz.mercadopublico.api_reintentos_http' => 1,
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
         ]);
         Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
 

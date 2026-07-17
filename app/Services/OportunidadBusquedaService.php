@@ -47,7 +47,7 @@ class OportunidadBusquedaService
         return OportunidadBusquedaCorrida::query()->latest('id')->first();
     }
 
-    public function iniciar(string $usuario = 'sistema'): OportunidadBusquedaCorrida
+    public function iniciar(string $usuario = 'sistema', mixed $fechaBusqueda = null): OportunidadBusquedaCorrida
     {
         if (! $this->habilitada()) {
             throw new RuntimeException('La búsqueda automática de oportunidades no está habilitada en este sitio.');
@@ -68,6 +68,19 @@ class OportunidadBusquedaService
             return $existente;
         }
 
+        $dia = $fechaBusqueda === null
+            ? $this->primeraFechaPendiente()
+            : $this->normalizarFechaCorrida($fechaBusqueda);
+
+        if ($dia === null) {
+            $ultima = $this->ultimaCorrida();
+            if ($ultima !== null) {
+                return $ultima;
+            }
+
+            throw new RuntimeException('No hay fechas pendientes para buscar oportunidades.');
+        }
+
         $plan = $this->oportunidades->planBusqueda();
         if ($plan['error'] !== null) {
             throw new RuntimeException((string) $plan['error']);
@@ -82,16 +95,16 @@ class OportunidadBusquedaService
 
         $corrida = OportunidadBusquedaCorrida::query()->create([
             'usuario' => trim($usuario) ?: 'sistema',
-            'fecha_busqueda' => $this->oportunidades->fechaBusquedaHoy(),
+            'fecha_busqueda' => $dia,
             'inicio' => now(),
             'estado' => self::ESTADO_RUNNING,
             'total_pasos' => count($pasos),
             'pasos_procesados' => 0,
             'pasos_fallidos' => 0,
-            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($dia)),
             'plan_json' => $pasos,
             'errores_json' => [],
-            'mensaje' => 'Búsqueda encolada.',
+            'mensaje' => 'Búsqueda encolada para '.$this->formatearFechaMensaje($dia).'.',
         ]);
 
         ProcessOportunidadBusquedaJob::dispatch($corrida->id);
@@ -275,16 +288,30 @@ class OportunidadBusquedaService
             return ['accion' => 'omitido', 'mensaje' => 'No hay horarios programados válidos.', 'corrida_id' => null];
         }
 
-        $yaEjecutada = OportunidadBusquedaCorrida::query()
-            ->where('inicio', '>=', $slot)
-            ->exists();
-        if ($yaEjecutada) {
-            return ['accion' => 'omitido', 'mensaje' => 'El último horario programado ya tiene corrida.', 'corrida_id' => null];
+        $fechaPendiente = $this->primeraFechaPendiente();
+        if ($fechaPendiente === null) {
+            return ['accion' => 'omitido', 'mensaje' => 'Todas las fechas hasta hoy ya tienen corrida.', 'corrida_id' => null];
         }
 
-        $corrida = $this->iniciar($usuario);
+        $yaEjecutada = OportunidadBusquedaCorrida::query()
+            ->where('inicio', '>=', $slot)
+            ->whereDate('fecha_busqueda', $fechaPendiente)
+            ->exists();
+        if ($yaEjecutada) {
+            return [
+                'accion' => 'omitido',
+                'mensaje' => 'El último horario programado ya tiene corrida para '.$this->formatearFechaMensaje($fechaPendiente).'.',
+                'corrida_id' => null,
+            ];
+        }
 
-        return ['accion' => 'encolada', 'mensaje' => 'Catch-up de oportunidades encolado.', 'corrida_id' => $corrida->id];
+        $corrida = $this->iniciar($usuario, $fechaPendiente);
+
+        return [
+            'accion' => 'encolada',
+            'mensaje' => 'Catch-up de oportunidades encolado para '.$this->formatearFechaMensaje($fechaPendiente).'.',
+            'corrida_id' => $corrida->id,
+        ];
     }
 
     /**
@@ -542,6 +569,81 @@ class OportunidadBusquedaService
         ])->save();
     }
 
+    private function fechaInicioBusqueda(): string
+    {
+        return $this->normalizarFechaCorrida(
+            config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
+        ) ?? '2026-07-14';
+    }
+
+    private function normalizarFechaCorrida(mixed $fecha): ?string
+    {
+        $texto = trim((string) ($fecha ?? ''));
+        if ($texto === '') {
+            return null;
+        }
+
+        try {
+            $dia = Carbon::parse($texto)
+                ->timezone(config('app.timezone'))
+                ->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $hoy = $this->oportunidades->fechaBusquedaHoy();
+
+        return $dia > $hoy ? $hoy : $dia;
+    }
+
+    private function primeraFechaPendiente(?string $desde = null): ?string
+    {
+        $inicio = Carbon::parse($desde ?? $this->fechaInicioBusqueda(), config('app.timezone'))->startOfDay();
+        $hoy = Carbon::parse($this->oportunidades->fechaBusquedaHoy(), config('app.timezone'))->startOfDay();
+
+        if ($inicio->greaterThan($hoy)) {
+            return null;
+        }
+
+        for ($dia = $inicio->copy(); $dia->lessThanOrEqualTo($hoy); $dia->addDay()) {
+            $fecha = $dia->toDateString();
+            if (! $this->fechaTieneCorridaCompleta($fecha)) {
+                return $fecha;
+            }
+        }
+
+        return null;
+    }
+
+    private function proximaFechaPendienteDespues(mixed $fecha): ?string
+    {
+        $dia = $this->normalizarFechaCorrida($fecha);
+        if ($dia === null) {
+            return $this->primeraFechaPendiente();
+        }
+
+        $siguiente = Carbon::parse($dia, config('app.timezone'))->addDay()->toDateString();
+
+        return $this->primeraFechaPendiente($siguiente);
+    }
+
+    private function fechaTieneCorridaCompleta(string $fecha): bool
+    {
+        return OportunidadBusquedaCorrida::query()
+            ->whereDate('fecha_busqueda', $fecha)
+            ->where('estado', self::ESTADO_COMPLETED)
+            ->exists();
+    }
+
+    private function formatearFechaMensaje(string $fecha): string
+    {
+        try {
+            return Carbon::parse($fecha, config('app.timezone'))->format('d-m-Y');
+        } catch (\Throwable) {
+            return $fecha;
+        }
+    }
+
     private function ultimoHorarioProgramado(): ?Carbon
     {
         $horas = collect(explode(',', (string) config('cotiz.mercadopublico.resultados_schedule_hours', '10,19')))
@@ -584,5 +686,10 @@ class OportunidadBusquedaService
                 ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región.'
                 : 'Búsqueda terminada correctamente.',
         ])->save();
+
+        $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);
+        if ($siguienteFecha !== null && $this->corridaEnCurso() === null) {
+            $this->iniciar((string) ($corrida->usuario ?? 'sistema'), $siguienteFecha);
+        }
     }
 }

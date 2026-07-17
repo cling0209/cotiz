@@ -89,6 +89,9 @@ return [
             ))),
         ))),
         'analisis_admin_habilitado' => filter_var(env('MERCADOPUBLICO_ANALISIS_ADMIN', false), FILTER_VALIDATE_BOOL),
+        // Primer día histórico para la búsqueda automática de oportunidades.
+        // Si quedan días sin corrida completed, se procesan desde esta fecha hasta hoy.
+        'fecha_inicio_busqueda' => env('MERCADOPUBLICO_FECHA_INICIO_BUSQUEDA', '2026-07-14'),
         'sync_dias' => max(1, (int) env('MERCADOPUBLICO_SYNC_DIAS', 30)),
         'sync_dias_inicial' => max(1, (int) env('MERCADOPUBLICO_SYNC_DIAS_INICIAL', 180)),
         'sync_max_detalle' => (int) env('MERCADOPUBLICO_SYNC_MAX_DETALLE', 50),
