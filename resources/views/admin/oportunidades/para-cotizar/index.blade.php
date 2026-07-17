@@ -102,6 +102,7 @@
                                 <th class="text-nowrap">D&iacute;a</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Palabra clave</th>
+                                <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap">Resultado</th>
                             </tr>
                         </thead>
@@ -787,6 +788,15 @@
             const tdFrase = document.createElement('td');
             tdFrase.textContent = paso.frase || '—';
 
+            const tdEncontradas = document.createElement('td');
+            tdEncontradas.className = 'text-end tabular-nums';
+            if (paso.resultado === 'pendiente' || paso.encontradas === null || paso.encontradas === undefined) {
+                tdEncontradas.textContent = '—';
+                tdEncontradas.classList.add('text-muted');
+            } else {
+                tdEncontradas.textContent = String(Number(paso.encontradas) || 0);
+            }
+
             const tdResultado = document.createElement('td');
             const badge = document.createElement('span');
             badge.className = `badge ${BADGE_PASO[paso.resultado] || 'text-bg-secondary'}`;
@@ -799,7 +809,7 @@
                 tdResultado.appendChild(err);
             }
 
-            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdResultado);
+            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdResultado);
             relPasosTbody.appendChild(tr);
         });
     }

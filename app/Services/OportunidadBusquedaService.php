@@ -140,21 +140,26 @@ class OportunidadBusquedaService
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
 
         try {
-            $this->oportunidades->ejecutarPaso($frase, $region, [], null, $fechaBusqueda);
+            $resultado = $this->oportunidades->ejecutarPaso($frase, $region, [], null, $fechaBusqueda);
+            $encontradas = count(is_array($resultado['items'] ?? null) ? $resultado['items'] : []);
             $pasos[$indice]['estado'] = self::PASO_OK;
             $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+            $pasos[$indice]['encontradas'] = $encontradas;
+            $fallidos = $this->contarFallidosDefinitivos($pasos);
             $mensaje = $fase === 'reintento'
                 ? sprintf(
-                    'Reintento OK región %d · «%s» (%d/%d pasos).',
+                    'Reintento OK región %d · «%s»: %d cotización(es) (%d/%d pasos).',
                     $region,
                     $frase,
+                    $encontradas,
                     $this->contarTerminados($pasos),
                     count($pasos),
                 )
                 : sprintf(
-                    'Paso región %d · «%s» completado (%d/%d).',
+                    'Paso región %d · «%s»: %d cotización(es) (%d/%d).',
                     $region,
                     $frase,
+                    $encontradas,
                     $this->contarTerminados($pasos),
                     count($pasos),
                 );
@@ -164,6 +169,7 @@ class OportunidadBusquedaService
             $pasos[$indice]['estado'] = $intentos >= 2
                 ? self::PASO_RETRY_FAILED
                 : self::PASO_FAILED;
+            $pasos[$indice]['encontradas'] = 0;
 
             $errores[] = [
                 'indice' => $indice,
@@ -352,6 +358,10 @@ class OportunidadBusquedaService
                 default => ['pendiente', 'Pendiente'],
             };
 
+            $encontradas = array_key_exists('encontradas', $paso)
+                ? (int) $paso['encontradas']
+                : null;
+
             $out[] = [
                 'indice' => $i,
                 'fecha_busqueda' => $fechaBusqueda,
@@ -359,6 +369,7 @@ class OportunidadBusquedaService
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'frase' => (string) ($paso['frase'] ?? ''),
                 'intentos' => $intentos,
+                'encontradas' => $encontradas,
                 'resultado' => $resultado,
                 'etiqueta' => $etiqueta,
                 'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED
@@ -387,6 +398,7 @@ class OportunidadBusquedaService
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'estado' => self::PASO_PENDING,
                 'intentos' => 0,
+                'encontradas' => null,
             ];
         }
 
