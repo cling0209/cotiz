@@ -283,6 +283,8 @@
     let buscando = false;
     let cancelado = false;
     let pollTimer = null;
+    let ultimaCorridaId = null;
+    let intentosCambioDia = 0;
     let sortState = { column: 'presupuesto', direction: 'desc' };
     let filtroOrganismoTimer = null;
 
@@ -954,6 +956,11 @@
     function aplicarEstadoCorrida(corrida) {
         if (!corrida) return;
 
+        if (ultimaCorridaId !== corrida.id) {
+            ultimaCorridaId = corrida.id;
+            intentosCambioDia = 0;
+        }
+
         estado.classList.remove('d-none');
         placeholder.classList.add('d-none');
         const inicio = corrida.inicio ? new Date(corrida.inicio) : null;
@@ -976,6 +983,9 @@
         porCodigo = new Map();
         cargarItems(corrida.items || []);
         const activo = corrida.estado === 'running';
+        const cambiandoDia = corrida.estado === 'completed'
+            && Boolean(corrida.fecha_siguiente_pendiente)
+            && intentosCambioDia < 30;
         // Mostrar el listado si hay filas o si la búsqueda está en curso (antes quedaba oculto
         // cuando listarGuardadasHoy() venía vacío en catch-up de días anteriores).
         if (resultados && (porCodigo.size > 0 || activo)) {
@@ -988,12 +998,14 @@
         }
         actualizarDebugDesdeCorrida(corrida);
         if (corrida.fecha_busqueda && relFecha) {
-            relFecha.textContent = `(buscando ${formatearDia(corrida.fecha_busqueda)})`;
+            relFecha.textContent = cambiandoDia
+                ? `(finalizado ${formatearDia(corrida.fecha_busqueda)}; sigue ${formatearDia(corrida.fecha_siguiente_pendiente)})`
+                : `(buscando ${formatearDia(corrida.fecha_busqueda)})`;
         }
 
         cancelado = corrida.estado === 'cancelled';
-        setModoBusqueda(activo);
-        relBar.classList.toggle('progress-bar-animated', activo);
+        setModoBusqueda(activo || cambiandoDia);
+        relBar.classList.toggle('progress-bar-animated', activo || cambiandoDia);
 
         const fallidos = Number(corrida.pasos_fallidos) || 0;
         const ultimoError = corrida.ultimo_error && typeof corrida.ultimo_error === 'object'
@@ -1018,8 +1030,12 @@
             relError.classList.add('d-none');
         }
 
-        if (activo) {
+        if (activo || cambiandoDia) {
             detenerPolling();
+            if (cambiandoDia) {
+                intentosCambioDia++;
+                relDetalle.textContent = `Día ${formatearDia(corrida.fecha_busqueda)} terminado. Iniciando búsqueda del ${formatearDia(corrida.fecha_siguiente_pendiente)}…`;
+            }
             pollTimer = setTimeout(consultarEstado, 2000);
         } else {
             detenerPolling();

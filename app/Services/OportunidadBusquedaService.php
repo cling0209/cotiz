@@ -452,11 +452,15 @@ class OportunidadBusquedaService
         $workerStalled = $corrida->estado === self::ESTADO_RUNNING
             && $corrida->updated_at !== null
             && $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+        $siguienteFecha = $corrida->estado === self::ESTADO_COMPLETED
+            ? $this->proximaFechaPendienteDespues($fechaBusqueda)
+            : null;
 
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
             'fecha_busqueda' => $fechaBusqueda,
+            'fecha_siguiente_pendiente' => $siguienteFecha,
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
             'updated_at' => $corrida->updated_at?->toIso8601String(),

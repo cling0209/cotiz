@@ -26,6 +26,36 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         ]);
     }
 
+    public function test_estado_informa_siguiente_fecha_pendiente_para_refrescar_catch_up(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-14',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $corrida = OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-14',
+            'inicio' => now()->subMinute(),
+            'fin' => now(),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 0,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 0,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada correctamente.',
+        ]);
+
+        $estado = $this->app->make(OportunidadBusquedaService::class)->estado($corrida);
+
+        $this->assertSame('2026-07-15', $estado['fecha_siguiente_pendiente']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_paso_devuelve_solo_publicadas_hoy(): void
     {
         config([
