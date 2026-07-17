@@ -68,4 +68,22 @@ class OportunidadParaCotizarHoyTest extends TestCase
             'organismo' => '',
         ]));
     }
+
+    public function test_parametros_region_incluyen_ventana_cambio_del_dia(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+        Carbon::setTestNow(Carbon::parse('2026-07-15 12:00:00', 'America/Santiago'));
+
+        $svc = $this->app->make(OportunidadParaCotizarService::class);
+        $params = $svc->parametrosConsultaRegion(13, 1, '2026-07-14');
+
+        $this->assertSame('publicada', $params['estado']);
+        $this->assertSame(13, $params['region']);
+        $this->assertArrayHasKey('cambio_desde', $params);
+        $this->assertArrayHasKey('cambio_hasta', $params);
+        $this->assertStringStartsWith('2026-07-14', $params['cambio_desde']);
+        $this->assertStringStartsWith('2026-07-14', $params['cambio_hasta']);
+
+        Carbon::setTestNow();
+    }
 }

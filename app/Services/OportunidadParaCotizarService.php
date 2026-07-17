@@ -646,17 +646,47 @@ class OportunidadParaCotizarService
 
     /**
      * Parámetros de listado por región (sin q): el match de frases se hace en local.
+     * Limita la ventana con cambio_desde/cambio_hasta al día buscado (API Compra Ágil v2).
      *
      * @return array<string, mixed>
      */
-    public function parametrosConsultaRegion(int $region, int $numeroPagina = 1): array
+    public function parametrosConsultaRegion(int $region, int $numeroPagina = 1, mixed $fechaBusqueda = null): array
     {
-        return [
+        $params = [
             'estado' => 'publicada',
             'numero_pagina' => max(1, $numeroPagina),
             'ordenar_por' => 'FechaPublicacion',
             'region' => max(1, $region),
             'tamano_pagina' => self::REGION_TAMANO_PAGINA,
+        ];
+
+        $ventana = $this->ventanaCambioParaDia($fechaBusqueda);
+        if ($ventana !== null) {
+            $params['cambio_desde'] = $ventana['desde'];
+            $params['cambio_hasta'] = $ventana['hasta'];
+        }
+
+        return $params;
+    }
+
+    /**
+     * Ventana ISO8601 del día de búsqueda (timezone app) para filtro API cambio_*.
+     *
+     * @return array{desde: string, hasta: string}|null
+     */
+    public function ventanaCambioParaDia(mixed $fechaBusqueda = null): ?array
+    {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        try {
+            $inicio = Carbon::parse($dia, config('app.timezone'))->startOfDay();
+            $fin = Carbon::parse($dia, config('app.timezone'))->endOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return [
+            'desde' => $inicio->toIso8601String(),
+            'hasta' => $fin->toIso8601String(),
         ];
     }
 
@@ -665,10 +695,10 @@ class OportunidadParaCotizarService
      *
      * @return array<string, mixed>
      */
-    public function parametrosConsultaPaso(string $frase, int $region): array
+    public function parametrosConsultaPaso(string $frase, int $region, mixed $fechaBusqueda = null): array
     {
         $frase = trim($frase);
-        $params = $this->parametrosConsultaRegion($region, 1);
+        $params = $this->parametrosConsultaRegion($region, 1, $fechaBusqueda);
         if ($frase !== '' && $frase !== '(todas)') {
             $params['q'] = $frase;
         }
@@ -765,7 +795,7 @@ class OportunidadParaCotizarService
         $crudos = [];
         $items = [];
         for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
-            $params = $this->parametrosConsultaRegion($region, $pagina);
+            $params = $this->parametrosConsultaRegion($region, $pagina, $dia);
             if ($onProgreso) {
                 $onProgreso(
                     $pagina,
@@ -934,7 +964,7 @@ class OportunidadParaCotizarService
         }
 
         $cacheKey = 'oportunidad_para_cotizar:'.$dia.':'.md5(mb_strtolower($frase).'|'.$region);
-        $params = $this->parametrosConsultaPaso($frase, $region);
+        $params = $this->parametrosConsultaPaso($frase, $region, $dia);
 
         $crudos = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
             $resultado = $this->api->listar($params);
@@ -1056,7 +1086,7 @@ class OportunidadParaCotizarService
         mixed $fechaBusqueda = null,
         ?array $muestraRespuesta = null,
     ): array {
-        $params = $this->parametrosConsultaPaso($frase, $region);
+        $params = $this->parametrosConsultaPaso($frase, $region, $fechaBusqueda);
         ksort($params);
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');

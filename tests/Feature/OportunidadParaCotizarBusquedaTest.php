@@ -114,6 +114,13 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             ->assertJsonPath('consulta.total_publicadas_hoy', 1)
             ->assertJsonPath('guardadas', 1);
 
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'compra-agil')
+                && str_contains($request->url(), 'cambio_desde=')
+                && str_contains($request->url(), 'cambio_hasta=')
+                && str_contains(urldecode($request->url()), '2026-07-15');
+        });
+
         $this->assertDatabaseHas('oportunidad_encontradas', [
             'codigo' => '1000-1-COT26',
             'fecha_busqueda' => '2026-07-15',
