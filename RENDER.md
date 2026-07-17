@@ -183,6 +183,7 @@ La búsqueda de **Oportunidades** usa los mismos horarios y parámetros HTTP de 
 - Catch-up/retoma al boot (`php artisan oportunidad:buscar --catch-up`) y al login admin.
 - Solo se ejecuta donde `MERCADOPUBLICO_ANALISIS_ADMIN=true`.
 - La corrida queda persistida y continúa desde el siguiente paso si Render reinicia.
+- Si el worker se cae o Mercado Público deja la corrida sin avance (`updated_at` viejo), el poll de estado / login / catch-up **reencola automáticamente** desde el checkpoint (`plan_json`). Endpoint manual: `POST .../oportunidades/para-cotizar/reanudar`.
 - Un error temporal de MP afecta solo al paso `palabra × región`.
 - Al terminar una región, se **reintenta una vez** lo fallido de esa región; si sigue fallando, se pasa a la siguiente región del orden configurado.
 

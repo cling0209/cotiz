@@ -133,6 +133,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.estado');
             Route::post('oportunidades/para-cotizar/cancelar', [OportunidadParaCotizarController::class, 'cancelar'])
                 ->name('oportunidades.para-cotizar.cancelar');
+            Route::post('oportunidades/para-cotizar/reanudar', [OportunidadParaCotizarController::class, 'reanudar'])
+                ->name('oportunidades.para-cotizar.reanudar');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
         });

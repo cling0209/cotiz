@@ -6,6 +6,7 @@ use App\Models\OportunidadBusquedaCorrida;
 use App\Services\OportunidadBusquedaService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -22,6 +23,18 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
     public function __construct(
         public int $corridaId,
     ) {}
+
+    /**
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping('oportunidad-busqueda-'.$this->corridaId))
+                ->releaseAfter(30)
+                ->expireAfter(300),
+        ];
+    }
 
     public function retryUntil(): \DateTime
     {

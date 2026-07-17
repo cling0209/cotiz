@@ -91,7 +91,7 @@ class AuthController extends Controller
     private function dispararCatchUpOportunidades(OportunidadBusquedaService $oportunidades): void
     {
         try {
-            $resultado = $oportunidades->catchUp('sistema', false);
+            $resultado = $oportunidades->catchUp('sistema', true);
             if (in_array($resultado['accion'] ?? '', ['encolada', 'reanudada'], true)) {
                 Log::info('Catch-up de oportunidades encolado al login admin', $resultado);
             }

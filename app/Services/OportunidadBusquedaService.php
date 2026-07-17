@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Jobs\ProcessOportunidadBusquedaJob;
 use App\Models\OportunidadBusquedaCorrida;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class OportunidadBusquedaService
@@ -367,6 +370,157 @@ class OportunidadBusquedaService
     }
 
     /**
+     * Reencola la corrida activa si el worker se detuvo o el job quedó colgado.
+     * Seguro ante polls repetidos: no duplica jobs si ya hay uno en cola.
+     */
+    public function liberarCorridaColgadaIfNeeded(?OportunidadBusquedaCorrida $corrida = null): bool
+    {
+        $corrida ??= $this->corridaEnCurso();
+        if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
+            return false;
+        }
+
+        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
+        if ($corrida->updated_at === null || ! $corrida->updated_at->lt(now()->subSeconds($stalledSeg))) {
+            return false;
+        }
+
+        $pendientes = $this->contarJobsOportunidadPendientes($corrida->id);
+        $reservados = $this->contarJobsOportunidadReservados($corrida->id);
+
+        // Job en cola sin reservar: el worker no está corriendo. Solo avisa (touch evita spam).
+        if ($pendientes > 0 && $reservados === 0) {
+            $corrida->fill([
+                'mensaje' => 'Búsqueda en cola esperando worker. Verifique RUN_QUEUE_WORKER=true en Render.',
+            ])->save();
+
+            Log::warning('OportunidadBusqueda: corrida stalled con job pendiente (sin worker)', [
+                'corrida_id' => $corrida->id,
+                'jobs_pendientes' => $pendientes,
+            ]);
+
+            return true;
+        }
+
+        // Job reservado demasiado tiempo o sin job: liberar y reencolar desde el checkpoint del plan.
+        if ($reservados > 0) {
+            $this->eliminarJobsOportunidad($corrida->id);
+        }
+
+        if ($this->jobOportunidadEncolado($corrida->id)) {
+            return false;
+        }
+
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $terminados = $this->contarTerminados($pasos);
+        $siguiente = $terminados + 1;
+
+        $corrida->fill([
+            'mensaje' => 'Búsqueda retomada automáticamente tras detectar worker detenido (paso '
+                .$siguiente.'/'.max(1, (int) $corrida->total_pasos).').',
+        ])->save();
+
+        ProcessOportunidadBusquedaJob::dispatch($corrida->id);
+
+        Log::warning('OportunidadBusqueda: corrida colgada reencolada', [
+            'corrida_id' => $corrida->id,
+            'pasos_terminados' => $terminados,
+            'jobs_reservados_antes' => $reservados,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Endpoint/manual: forzar reencolado de la corrida en curso (desde checkpoint).
+     */
+    public function reanudar(?OportunidadBusquedaCorrida $corrida = null): ?OportunidadBusquedaCorrida
+    {
+        $corrida ??= $this->corridaEnCurso();
+        if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
+            return $corrida;
+        }
+
+        if ($this->liberarCorridaColgadaIfNeeded($corrida)) {
+            return $corrida->fresh() ?? $corrida;
+        }
+
+        if (! $this->jobOportunidadEncolado($corrida->id)) {
+            ProcessOportunidadBusquedaJob::dispatch($corrida->id);
+            $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+            $corrida->fill([
+                'mensaje' => 'Búsqueda reencolada (paso '
+                    .($this->contarTerminados($pasos) + 1).'/'.max(1, (int) $corrida->total_pasos).').',
+            ])->save();
+        }
+
+        return $corrida->fresh() ?? $corrida;
+    }
+
+    public function jobOportunidadEncolado(int $corridaId): bool
+    {
+        return $this->contarJobsOportunidadPendientes($corridaId) > 0
+            || $this->contarJobsOportunidadReservados($corridaId) > 0;
+    }
+
+    public function contarJobsOportunidadPendientes(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadBusquedaJob%')
+            ->whereNull('reserved_at');
+
+        return (int) $this->filtrarJobsOportunidadPorCorrida($query, $corridaId)->count();
+    }
+
+    public function contarJobsOportunidadReservados(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadBusquedaJob%')
+            ->whereNotNull('reserved_at');
+
+        return (int) $this->filtrarJobsOportunidadPorCorrida($query, $corridaId)->count();
+    }
+
+    public function eliminarJobsOportunidad(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')->where('payload', 'like', '%ProcessOportunidadBusquedaJob%');
+
+        return $this->filtrarJobsOportunidadPorCorrida($query, $corridaId)->delete();
+    }
+
+    private function filtrarJobsOportunidadPorCorrida(\Illuminate\Database\Query\Builder $query, ?int $corridaId): \Illuminate\Database\Query\Builder
+    {
+        if ($corridaId === null) {
+            return $query;
+        }
+
+        return $query->where('payload', 'like', '%i:'.$corridaId.';%');
+    }
+
+    private function corridaEstaStalled(OportunidadBusquedaCorrida $corrida): bool
+    {
+        if ($corrida->estado !== self::ESTADO_RUNNING || $corrida->updated_at === null) {
+            return false;
+        }
+
+        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
+
+        return $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+    }
+
+    /**
      * @return array{accion: string, mensaje: string, corrida_id: int|null}
      */
     public function catchUp(string $usuario = 'sistema', bool $reanudarActiva = true): array
@@ -377,13 +531,18 @@ class OportunidadBusquedaService
 
         $activa = $this->corridaEnCurso();
         if ($activa !== null) {
+            $reanudada = false;
             if ($reanudarActiva) {
-                ProcessOportunidadBusquedaJob::dispatch($activa->id);
+                $reanudada = $this->liberarCorridaColgadaIfNeeded($activa);
+                if (! $reanudada && ! $this->jobOportunidadEncolado($activa->id)) {
+                    ProcessOportunidadBusquedaJob::dispatch($activa->id);
+                    $reanudada = true;
+                }
             }
 
             return [
-                'accion' => $reanudarActiva ? 'reanudada' : 'en_curso',
-                'mensaje' => $reanudarActiva
+                'accion' => $reanudada ? 'reanudada' : 'en_curso',
+                'mensaje' => $reanudada
                     ? 'Corrida de oportunidades reanudada.'
                     : 'Ya hay una corrida de oportunidades en curso.',
                 'corrida_id' => $activa->id,
@@ -431,6 +590,12 @@ class OportunidadBusquedaService
             return null;
         }
 
+        $reanudadaAuto = false;
+        if ($corrida->estado === self::ESTADO_RUNNING) {
+            $reanudadaAuto = $this->liberarCorridaColgadaIfNeeded($corrida);
+            $corrida = $corrida->fresh() ?? $corrida;
+        }
+
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $total = max(0, (int) $corrida->total_pasos);
         $terminados = $this->contarTerminados($pasos);
@@ -448,10 +613,7 @@ class OportunidadBusquedaService
             }
         }
 
-        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
-        $workerStalled = $corrida->estado === self::ESTADO_RUNNING
-            && $corrida->updated_at !== null
-            && $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+        $workerStalled = $this->corridaEstaStalled($corrida);
         $siguienteFecha = $corrida->estado === self::ESTADO_COMPLETED
             ? $this->proximaFechaPendienteDespues($fechaBusqueda)
             : null;
@@ -476,6 +638,7 @@ class OportunidadBusquedaService
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
             'ultima_consulta' => $ultimaConsulta,
             'worker_stalled' => $workerStalled,
+            'reanudada_auto' => $reanudadaAuto,
             'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),

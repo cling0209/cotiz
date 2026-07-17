@@ -455,4 +455,97 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_estado_reencola_corrida_colgada_sin_job(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.mercadopublico.oportunidad_corrida_stalled_segundos' => 60,
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
+            'queue.default' => 'database',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $corrida = OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHours(2),
+            'estado' => OportunidadBusquedaService::ESTADO_RUNNING,
+            'total_pasos' => 2,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 5,
+            'plan_json' => [
+                ['frase' => '(todas)', 'region' => 13, 'estado' => 'ok', 'intentos' => 1, 'encontradas' => 5],
+                ['frase' => '(todas)', 'region' => 5, 'estado' => 'pending', 'intentos' => 0],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Paso región 13: 5 cotización(es) (1/2).',
+        ]);
+        OportunidadBusquedaCorrida::query()->whereKey($corrida->id)->update([
+            'updated_at' => now()->subMinutes(5),
+        ]);
+        $corrida->refresh();
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.id', $corrida->id)
+            ->assertJsonPath('corrida.reanudada_auto', true)
+            ->assertJsonPath('corrida.worker_stalled', false);
+
+        Queue::assertPushed(ProcessOportunidadBusquedaJob::class, fn ($job) => $job->corridaId === $corrida->id);
+
+        $corrida->refresh();
+        $this->assertStringContainsString('retomada automáticamente', (string) $corrida->mensaje);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_reanudar_endpoint_encola_si_no_hay_job(): void
+    {
+        config([
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'queue.default' => 'database',
+        ]);
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $corrida = OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now(),
+            'estado' => OportunidadBusquedaService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 0,
+            'plan_json' => [
+                ['frase' => '(todas)', 'region' => 13, 'estado' => 'pending', 'intentos' => 0],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda encolada.',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.reanudar'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('corrida.id', $corrida->id);
+
+        Queue::assertPushed(ProcessOportunidadBusquedaJob::class, fn ($job) => $job->corridaId === $corrida->id);
+    }
 }

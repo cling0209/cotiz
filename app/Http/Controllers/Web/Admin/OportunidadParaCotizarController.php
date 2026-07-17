@@ -82,6 +82,22 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
+    public function reanudar(): JsonResponse
+    {
+        $corrida = $this->busqueda->reanudar();
+        if ($corrida === null) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'No hay una búsqueda en curso para retomar.',
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'corrida' => $this->busqueda->estado($corrida),
+        ]);
+    }
+
     public function paso(Request $request): JsonResponse
     {
         $data = $request->validate([

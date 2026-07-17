@@ -245,6 +245,7 @@
         iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
         estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
         cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
+        reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
         cotizarBase: @json(route('admin.cotizaciones.create')),
     };
     const mpApi = {
@@ -835,6 +836,22 @@
             .catch((e) => mostrarError(e.message || String(e)));
     }
 
+    let reanudandoSilencioso = false;
+    function reanudarBusquedaSilencioso() {
+        if (!urls.reanudar || reanudandoSilencioso) return;
+        reanudandoSilencioso = true;
+        postJson(urls.reanudar, {})
+            .then((data) => {
+                if (data && data.corrida) {
+                    aplicarEstadoCorrida(data.corrida);
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                setTimeout(() => { reanudandoSilencioso = false; }, 5000);
+            });
+    }
+
     async function postJson(url, body) {
         const res = await fetch(url, {
             method: 'POST',
@@ -1041,11 +1058,19 @@
         const ultimoError = corrida.ultimo_error && typeof corrida.ultimo_error === 'object'
             ? corrida.ultimo_error
             : null;
-        if (corrida.worker_stalled) {
+        if (corrida.reanudada_auto) {
+            mostrarAvisoPaso(
+                corrida.mensaje
+                    || 'La búsqueda se retomó automáticamente desde el último paso guardado.',
+            );
+        } else if (corrida.worker_stalled) {
             mostrarAvisoPaso(
                 'La búsqueda no avanza en el servidor (posible worker detenido o Mercado Público colgado). '
-                + 'Verifique RUN_QUEUE_WORKER=true en Render, o cancele y reintente.',
+                + 'Se intentará retomar automáticamente; si no avanza, verifique RUN_QUEUE_WORKER=true en Render.',
             );
+            if (urls.reanudar) {
+                reanudarBusquedaSilencioso();
+            }
         } else if (activo && ultimoError) {
             if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
                 mostrarAvisoPaso('Un paso falló en Mercado Público; la búsqueda sigue con la siguiente región o reintento.');
