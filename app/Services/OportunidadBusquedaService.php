@@ -137,8 +137,10 @@ class OportunidadBusquedaService
         $region = (int) ($paso['region'] ?? 0);
         $fallidos = $this->contarFallidosDefinitivos($pasos);
 
+        $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+
         try {
-            $this->oportunidades->ejecutarPaso($frase, $region, [], null);
+            $this->oportunidades->ejecutarPaso($frase, $region, [], null, $fechaBusqueda);
             $pasos[$indice]['estado'] = self::PASO_OK;
             $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $mensaje = $fase === 'reintento'
@@ -195,7 +197,7 @@ class OportunidadBusquedaService
             ->update([
                 'pasos_procesados' => $cursor + 1,
                 'pasos_fallidos' => $fallidos,
-                'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+                'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($fechaBusqueda)),
                 'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
                 'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
                 'mensaje' => $mensaje,
@@ -295,10 +297,12 @@ class OportunidadBusquedaService
 
         $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
         $ultimoError = $errores !== [] ? $errores[array_key_last($errores)] : null;
+        $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
 
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
+            'fecha_busqueda' => $fechaBusqueda,
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
             'total_pasos' => $total,
@@ -309,8 +313,61 @@ class OportunidadBusquedaService
             'mensaje' => $corrida->mensaje,
             'errores' => $errores,
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
-            'items' => $this->oportunidades->listarGuardadasHoy(),
+            'pasos_resumen' => $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda),
+            'items' => $this->oportunidades->listarGuardadasEn($fechaBusqueda),
         ];
+    }
+
+    /**
+     * Resumen por paso para la UI: región, frase y resultado
+     * (OK 1.er intento, OK en reintento, fallido pendiente de reintento, fallido definitivo).
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     * @param  list<array<string, mixed>>  $errores
+     * @return list<array<string, mixed>>
+     */
+    private function resumirPasosCorrida(array $pasos, array $errores, string $fechaBusqueda): array
+    {
+        $ultimoErrorPorIndice = [];
+        foreach ($errores as $error) {
+            if (is_array($error) && isset($error['indice'])) {
+                $ultimoErrorPorIndice[(int) $error['indice']] = trim((string) ($error['mensaje'] ?? ''));
+            }
+        }
+
+        $out = [];
+        foreach (array_values($pasos) as $i => $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+
+            $estado = (string) ($paso['estado'] ?? self::PASO_PENDING);
+            $intentos = (int) ($paso['intentos'] ?? 0);
+
+            [$resultado, $etiqueta] = match (true) {
+                $estado === self::PASO_OK && $intentos > 1 => ['ok_reintento', 'OK (reintento)'],
+                $estado === self::PASO_OK => ['ok', 'OK (1.er intento)'],
+                $estado === self::PASO_RETRY_FAILED => ['fallo_definitivo', 'Falló (definitivo)'],
+                $estado === self::PASO_FAILED => ['fallo_reintentara', 'Falló (se reintentará)'],
+                default => ['pendiente', 'Pendiente'],
+            };
+
+            $out[] = [
+                'indice' => $i,
+                'fecha_busqueda' => $fechaBusqueda,
+                'region' => (int) ($paso['region'] ?? 0),
+                'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
+                'frase' => (string) ($paso['frase'] ?? ''),
+                'intentos' => $intentos,
+                'resultado' => $resultado,
+                'etiqueta' => $etiqueta,
+                'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED
+                    ? ($ultimoErrorPorIndice[$i] ?? null)
+                    : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -468,7 +525,7 @@ class OportunidadBusquedaService
             'plan_json' => array_values($pasos),
             'errores_json' => array_slice($errores, -100),
             'pasos_fallidos' => $fallidos,
-            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
             'mensaje' => $mensaje,
         ])->save();
     }
@@ -510,7 +567,7 @@ class OportunidadBusquedaService
             'estado' => self::ESTADO_COMPLETED,
             'fin' => now(),
             'pasos_fallidos' => $fallidos,
-            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasHoy()),
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
             'mensaje' => $fallidos > 0
                 ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región.'
                 : 'Búsqueda terminada correctamente.',

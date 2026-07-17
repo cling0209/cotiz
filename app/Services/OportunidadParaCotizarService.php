@@ -47,12 +47,41 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Normaliza una fecha de búsqueda (Y-m-d). Si viene vacía, usa hoy.
+     */
+    public function normalizarFechaBusqueda(mixed $fecha = null): string
+    {
+        $texto = trim((string) ($fecha ?? ''));
+        if ($texto === '') {
+            return $this->fechaBusquedaHoy();
+        }
+
+        try {
+            return Carbon::parse($texto)
+                ->timezone(config('app.timezone'))
+                ->toDateString();
+        } catch (\Throwable) {
+            return $this->fechaBusquedaHoy();
+        }
+    }
+
+    /**
      * Oportunidades ya grabadas hoy (para mostrar al abrir la pantalla).
      *
      * @return list<array<string, mixed>>
      */
     public function listarGuardadasHoy(): array
     {
+        return $this->listarGuardadasEn($this->fechaBusquedaHoy());
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarGuardadasEn(mixed $fechaBusqueda = null): array
+    {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+
         $codigosTomados = OportunidadTomada::query()
             ->pluck('codigo')
             ->merge(
@@ -67,7 +96,7 @@ class OportunidadParaCotizarService
             ->all();
 
         $items = OportunidadEncontrada::query()
-            ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->whereDate('fecha_busqueda', $dia)
             ->where(function ($query) {
                 $query->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>', now());
@@ -93,8 +122,18 @@ class OportunidadParaCotizarService
      */
     public function codigosGuardadosHoy(): array
     {
+        return $this->codigosGuardadosEn($this->fechaBusquedaHoy());
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function codigosGuardadosEn(mixed $fechaBusqueda = null): array
+    {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+
         return OportunidadEncontrada::query()
-            ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->whereDate('fecha_busqueda', $dia)
             ->pluck('codigo')
             ->map(fn ($c) => strtoupper(trim((string) $c)))
             ->filter(fn ($c) => $c !== '')
@@ -107,9 +146,9 @@ class OportunidadParaCotizarService
      *
      * @param  list<array<string, mixed>>  $items
      */
-    public function guardarEncontradas(array $items, ?int $userId = null): int
+    public function guardarEncontradas(array $items, ?int $userId = null, mixed $fechaBusqueda = null): int
     {
-        $dia = $this->fechaBusquedaHoy();
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $guardadas = 0;
         $paraSync = [];
 
@@ -237,16 +276,18 @@ class OportunidadParaCotizarService
                 ->exists();
     }
 
-    private function agregarPalabraAGuardada(string $codigo, string $frase): void
+    private function agregarPalabraAGuardada(string $codigo, string $frase, mixed $fechaBusqueda = null): void
     {
         $frase = trim($frase);
         if ($codigo === '' || $frase === '') {
             return;
         }
 
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+
         $row = OportunidadEncontrada::query()
             ->where('codigo', $codigo)
-            ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->whereDate('fecha_busqueda', $dia)
             ->first();
 
         if ($row === null) {
@@ -266,17 +307,18 @@ class OportunidadParaCotizarService
         $row->palabras_coinciden = array_values($prev);
         $row->save();
 
-        $dia = $this->fechaBusquedaHoy();
         $this->encontradaRelay->replicarItems([
             $row->toResumen() + ['fecha_busqueda' => $dia],
         ]);
     }
 
-    private function completarCantidadProductosGuardada(string $codigo): ?int
+    private function completarCantidadProductosGuardada(string $codigo, mixed $fechaBusqueda = null): ?int
     {
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+
         $row = OportunidadEncontrada::query()
             ->where('codigo', $codigo)
-            ->whereDate('fecha_busqueda', $this->fechaBusquedaHoy())
+            ->whereDate('fecha_busqueda', $dia)
             ->first();
 
         if ($row === null) {
@@ -483,12 +525,14 @@ class OportunidadParaCotizarService
         int $region,
         array $codigosExcluidos = [],
         ?int $userId = null,
+        mixed $fechaBusqueda = null,
     ): array {
         $frase = trim($frase);
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         if ($frase === '' || $region < 1) {
             return [
                 'items' => [],
-                'consulta' => $this->metaConsultaPaso($frase, $region, 0, 0),
+                'consulta' => $this->metaConsultaPaso($frase, $region, 0, 0, $dia),
                 'guardadas' => 0,
             ];
         }
@@ -500,14 +544,13 @@ class OportunidadParaCotizarService
         }
 
         $yaVistos = [];
-        foreach (array_merge($codigosExcluidos, $this->codigosGuardadosHoy()) as $codigo) {
+        foreach (array_merge($codigosExcluidos, $this->codigosGuardadosEn($dia)) as $codigo) {
             $norm = strtoupper(trim((string) $codigo));
             if ($norm !== '') {
                 $yaVistos[$norm] = true;
             }
         }
 
-        $dia = $this->fechaBusquedaHoy();
         $cacheKey = 'oportunidad_para_cotizar:'.$dia.':'.md5(mb_strtolower($frase).'|'.$region);
         $params = $this->parametrosConsultaPaso($frase, $region);
 
@@ -537,7 +580,7 @@ class OportunidadParaCotizarService
                 continue;
             }
 
-            if (! $this->esPublicadaHoy($resumen['fecha_publicacion'] ?? null)) {
+            if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
                 continue;
             }
 
@@ -546,8 +589,8 @@ class OportunidadParaCotizarService
             }
 
             if (isset($yaVistos[$codigo])) {
-                $this->agregarPalabraAGuardada($codigo, $frase);
-                $this->completarCantidadProductosGuardada($codigo);
+                $this->agregarPalabraAGuardada($codigo, $frase, $dia);
+                $this->completarCantidadProductosGuardada($codigo, $dia);
 
                 continue;
             }
@@ -562,11 +605,11 @@ class OportunidadParaCotizarService
             $yaVistos[$codigo] = true;
         }
 
-        $guardadas = $this->guardarEncontradas($items, $userId);
+        $guardadas = $this->guardarEncontradas($items, $userId, $dia);
 
         return [
             'items' => $items,
-            'consulta' => $this->metaConsultaPaso($frase, $region, count($crudos), count($items)),
+            'consulta' => $this->metaConsultaPaso($frase, $region, count($crudos), count($items), $dia),
             'guardadas' => $guardadas,
         ];
     }
@@ -576,31 +619,43 @@ class OportunidadParaCotizarService
      *
      * @return array<string, mixed>
      */
-    public function consultaDebugPaso(string $frase, int $region, ?int $totalApi = null, ?int $totalHoy = null): array
-    {
+    public function consultaDebugPaso(
+        string $frase,
+        int $region,
+        ?int $totalApi = null,
+        ?int $totalHoy = null,
+        mixed $fechaBusqueda = null,
+    ): array {
         return $this->metaConsultaPaso(
             $frase,
             $region,
             $totalApi ?? 0,
             $totalHoy ?? 0,
+            $fechaBusqueda,
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function metaConsultaPaso(string $frase, int $region, int $totalApi, int $totalHoy): array
-    {
+    private function metaConsultaPaso(
+        string $frase,
+        int $region,
+        int $totalApi,
+        int $totalHoy,
+        mixed $fechaBusqueda = null,
+    ): array {
         $params = $this->parametrosConsultaPaso($frase, $region);
         ksort($params);
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $path = '/v2/compra-agil';
         $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
 
         $paraJson = [
             'endpoint' => $baseUrl.$path,
-            'filtro_fecha' => now()->timezone(config('app.timezone'))->toDateString(),
+            'filtro_fecha' => $dia,
             'header_ticket' => '(configurado)',
             'metodo' => 'GET',
             'parametros' => $params,
@@ -701,15 +756,25 @@ class OportunidadParaCotizarService
 
     public function esPublicadaHoy(mixed $fecha): bool
     {
+        return $this->esPublicadaEnFecha($fecha, $this->fechaBusquedaHoy());
+    }
+
+    /**
+     * Verifica si la fecha de publicación corresponde al día de búsqueda indicado.
+     */
+    public function esPublicadaEnFecha(mixed $fecha, mixed $fechaBusqueda = null): bool
+    {
         $fecha = trim((string) $fecha);
         if ($fecha === '') {
             return false;
         }
 
+        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+
         try {
             return Carbon::parse($fecha)
                 ->timezone(config('app.timezone'))
-                ->isToday();
+                ->toDateString() === $dia;
         } catch (\Throwable) {
             return false;
         }

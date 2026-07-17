@@ -279,6 +279,12 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertSame('ok', $corrida->plan_json[1]['estado']);
         $this->assertCount(2, $corrida->errores_json);
 
+        $estado = $servicio->estado($corrida);
+        $this->assertSame('fallo_definitivo', $estado['pasos_resumen'][0]['resultado']);
+        $this->assertNotNull($estado['pasos_resumen'][0]['error']);
+        $this->assertSame('ok', $estado['pasos_resumen'][1]['resultado']);
+        $this->assertSame('OK (1.er intento)', $estado['pasos_resumen'][1]['etiqueta']);
+
         Carbon::setTestNow();
     }
 
@@ -327,6 +333,14 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertSame(0, $corrida->pasos_fallidos);
         $this->assertSame('ok', $corrida->plan_json[0]['estado']);
         $this->assertSame(2, $corrida->plan_json[0]['intentos']);
+
+        $estado = $servicio->estado($corrida);
+        $this->assertSame('2026-07-16', $estado['fecha_busqueda']);
+        $this->assertCount(1, $estado['pasos_resumen']);
+        $this->assertSame('ok_reintento', $estado['pasos_resumen'][0]['resultado']);
+        $this->assertSame('OK (reintento)', $estado['pasos_resumen'][0]['etiqueta']);
+        $this->assertSame('2026-07-16', $estado['pasos_resumen'][0]['fecha_busqueda']);
+        $this->assertSame(13, $estado['pasos_resumen'][0]['region']);
 
         Carbon::setTestNow();
     }

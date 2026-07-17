@@ -89,6 +89,26 @@
             </div>
             <div id="rel-detalle" class="small text-muted">Preparando consulta…</div>
             <div id="rel-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
+            <div id="rel-pasos" class="mt-3 d-none">
+                <button type="button" id="rel-pasos-toggle" class="btn btn-sm btn-outline-secondary mb-2">
+                    <i class="bi bi-list-check"></i>
+                    Detalle por regi&oacute;n <span id="rel-pasos-contador" class="badge text-bg-secondary ms-1">0</span>
+                </button>
+                <div id="rel-pasos-panel" class="table-responsive d-none" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm table-striped align-middle small mb-0">
+                        <thead class="table-light" style="position: sticky; top: 0;">
+                            <tr>
+                                <th class="text-nowrap">#</th>
+                                <th class="text-nowrap">D&iacute;a</th>
+                                <th class="text-nowrap">Regi&oacute;n</th>
+                                <th class="text-nowrap">Palabra clave</th>
+                                <th class="text-nowrap">Resultado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rel-pasos-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -222,6 +242,11 @@
     const relBar = document.getElementById('rel-progreso-bar');
     const relDetalle = document.getElementById('rel-detalle');
     const relError = document.getElementById('rel-error');
+    const relPasos = document.getElementById('rel-pasos');
+    const relPasosToggle = document.getElementById('rel-pasos-toggle');
+    const relPasosPanel = document.getElementById('rel-pasos-panel');
+    const relPasosTbody = document.getElementById('rel-pasos-tbody');
+    const relPasosContador = document.getElementById('rel-pasos-contador');
     const debugPanel = document.getElementById('oportunidad-debug');
     const debugEndpointUrl = document.getElementById('debug-endpoint-url');
     const debugPasoLine = document.getElementById('debug-paso-line');
@@ -716,6 +741,75 @@
         relError.classList.add('alert-danger');
     }
 
+    const BADGE_PASO = {
+        ok: 'text-bg-success',
+        ok_reintento: 'text-bg-success',
+        fallo_reintentara: 'text-bg-warning',
+        fallo_definitivo: 'text-bg-danger',
+        pendiente: 'text-bg-secondary',
+    };
+
+    function formatearDia(fecha) {
+        if (!fecha) return '—';
+        const [anio, mes, dia] = String(fecha).split('-');
+        return (anio && mes && dia) ? `${dia}-${mes}-${anio}` : String(fecha);
+    }
+
+    function renderPasosCorrida(pasos) {
+        if (!relPasos || !relPasosTbody) return;
+        if (!Array.isArray(pasos) || pasos.length === 0) {
+            relPasos.classList.add('d-none');
+            return;
+        }
+
+        relPasos.classList.remove('d-none');
+        const terminados = pasos.filter((p) => p.resultado && p.resultado !== 'pendiente').length;
+        if (relPasosContador) {
+            relPasosContador.textContent = `${terminados}/${pasos.length}`;
+        }
+
+        relPasosTbody.innerHTML = '';
+        pasos.forEach((paso, idx) => {
+            const tr = document.createElement('tr');
+
+            const tdNum = document.createElement('td');
+            tdNum.className = 'text-muted tabular-nums';
+            tdNum.textContent = String(idx + 1);
+
+            const tdDia = document.createElement('td');
+            tdDia.className = 'text-nowrap tabular-nums';
+            tdDia.textContent = formatearDia(paso.fecha_busqueda);
+
+            const tdRegion = document.createElement('td');
+            tdRegion.className = 'text-nowrap';
+            tdRegion.textContent = paso.region_nombre || (paso.region ? `Región ${paso.region}` : '—');
+
+            const tdFrase = document.createElement('td');
+            tdFrase.textContent = paso.frase || '—';
+
+            const tdResultado = document.createElement('td');
+            const badge = document.createElement('span');
+            badge.className = `badge ${BADGE_PASO[paso.resultado] || 'text-bg-secondary'}`;
+            badge.textContent = paso.etiqueta || 'Pendiente';
+            tdResultado.appendChild(badge);
+            if (paso.error) {
+                const err = document.createElement('div');
+                err.className = 'text-danger small mt-1';
+                err.textContent = paso.error;
+                tdResultado.appendChild(err);
+            }
+
+            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdResultado);
+            relPasosTbody.appendChild(tr);
+        });
+    }
+
+    if (relPasosToggle && relPasosPanel) {
+        relPasosToggle.addEventListener('click', () => {
+            relPasosPanel.classList.toggle('d-none');
+        });
+    }
+
     function aplicarEstadoCorrida(corrida) {
         if (!corrida) return;
 
@@ -733,6 +827,10 @@
         porCodigo = new Map();
         cargarItems(corrida.items || []);
         renderTabla();
+        renderPasosCorrida(corrida.pasos_resumen || []);
+        if (corrida.fecha_busqueda && relFecha) {
+            relFecha.textContent = `(${formatearDia(corrida.fecha_busqueda)})`;
+        }
 
         const activo = corrida.estado === 'running';
         cancelado = corrida.estado === 'cancelled';
