@@ -27,6 +27,10 @@ class OportunidadBusquedaService
 
     private const PASO_RETRY_FAILED = 'retry_failed';
 
+    private const PASO_CANCELLED = 'cancelled';
+
+    public const MENSAJE_CANCELADA = 'Búsqueda cancelada por el usuario.';
+
     public function __construct(
         protected OportunidadParaCotizarService $oportunidades,
     ) {}
@@ -139,7 +143,14 @@ class OportunidadBusquedaService
 
         $seleccion = $this->seleccionarSiguiente($pasos);
         if ($seleccion === null) {
-            $this->persistirPlan($corrida, $pasos, $errores, (int) $corrida->pasos_fallidos, $corrida->mensaje);
+            try {
+                $this->persistirPlan($corrida, $pasos, $errores, (int) $corrida->pasos_fallidos, $corrida->mensaje);
+            } catch (RuntimeException $e) {
+                if (str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
+                    return false;
+                }
+                throw $e;
+            }
             $this->finalizar($corrida);
 
             return false;
@@ -170,8 +181,23 @@ class OportunidadBusquedaService
             $this->contarTerminados($pasos) + 1,
             count($pasos),
         );
-        $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio);
+
+        try {
+            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio);
+        } catch (RuntimeException $e) {
+            if (str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
+                return false;
+            }
+            throw $e;
+        }
         $corrida->refresh();
+
+        $assertCorridaActiva = function () use ($corrida): void {
+            $corrida->refresh();
+            if ($corrida->estado !== self::ESTADO_RUNNING) {
+                throw new RuntimeException(self::MENSAJE_CANCELADA);
+            }
+        };
 
         $onProgreso = function (int $pagina, int $itemsPagina, int $itemsAcumulados, array $consulta) use (
             $corrida,
@@ -181,7 +207,9 @@ class OportunidadBusquedaService
             $fallidos,
             $regionNombre,
             $region,
+            $assertCorridaActiva,
         ): void {
+            $assertCorridaActiva();
             $pasos[$indice]['estado'] = self::PASO_RUNNING;
             $pasos[$indice]['consulta'] = $consulta;
             $mensaje = sprintf(
@@ -194,6 +222,7 @@ class OportunidadBusquedaService
         };
 
         try {
+            $assertCorridaActiva();
             $resultado = $this->oportunidades->ejecutarPaso(
                 $frase,
                 $region,
@@ -202,6 +231,7 @@ class OportunidadBusquedaService
                 $fechaBusqueda,
                 $onProgreso,
             );
+            $assertCorridaActiva();
             // Contar lo realmente grabado y listable, no solo matches en memoria.
             $encontradas = (int) ($resultado['guardadas'] ?? 0);
             if ($encontradas <= 0 && is_array($resultado['items'] ?? null)) {
@@ -229,6 +259,12 @@ class OportunidadBusquedaService
                     count($pasos),
                 );
         } catch (\Throwable $e) {
+            $corrida->refresh();
+            if ($corrida->estado === self::ESTADO_CANCELLED
+                || str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
+                return false;
+            }
+
             $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $pasos[$indice]['intentos'] = $intentos;
             $pasos[$indice]['estado'] = $intentos >= 2
@@ -308,10 +344,23 @@ class OportunidadBusquedaService
             return null;
         }
 
+        $fin = now();
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $estadoPaso = (string) ($paso['estado'] ?? self::PASO_PENDING);
+            if ($estadoPaso === self::PASO_RUNNING || $estadoPaso === self::PASO_PENDING) {
+                $pasos[$i]['estado'] = self::PASO_CANCELLED;
+            }
+        }
+
         $corrida->fill([
             'estado' => self::ESTADO_CANCELLED,
-            'fin' => now(),
-            'mensaje' => 'Búsqueda cancelada por el usuario. Tiempo: '.$this->formatearDuracion($corrida->inicio, now()),
+            'fin' => $fin,
+            'plan_json' => array_values($pasos),
+            'mensaje' => self::MENSAJE_CANCELADA.' Tiempo: '.$this->formatearDuracion($corrida->inicio, $fin),
         ])->save();
 
         return $corrida;
@@ -500,6 +549,7 @@ class OportunidadBusquedaService
                 $estado === self::PASO_OK => ['ok', 'OK (1.er intento)'],
                 $estado === self::PASO_RETRY_FAILED => ['fallo_definitivo', 'Falló (definitivo)'],
                 $estado === self::PASO_FAILED => ['fallo_reintentara', 'Falló (se reintentará)'],
+                $estado === self::PASO_CANCELLED => ['cancelado', 'Cancelado'],
                 $estado === self::PASO_RUNNING => ['en_curso', 'En curso'],
                 default => ['pendiente', 'Pendiente'],
             };
@@ -700,13 +750,23 @@ class OportunidadBusquedaService
         int $fallidos,
         ?string $mensaje,
     ): void {
-        $corrida->fill([
-            'plan_json' => array_values($pasos),
-            'errores_json' => array_slice($errores, -100),
-            'pasos_fallidos' => $fallidos,
-            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
-            'mensaje' => $mensaje,
-        ])->save();
+        $actualizada = OportunidadBusquedaCorrida::query()
+            ->whereKey($corrida->id)
+            ->where('estado', self::ESTADO_RUNNING)
+            ->update([
+                'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
+                'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
+                'pasos_fallidos' => $fallidos,
+                'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
+                'mensaje' => $mensaje,
+                'updated_at' => now(),
+            ]);
+
+        $corrida->refresh();
+
+        if ($actualizada !== 1) {
+            throw new RuntimeException(self::MENSAJE_CANCELADA);
+        }
     }
 
     private function fechaInicioBusqueda(): string

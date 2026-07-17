@@ -698,7 +698,13 @@
         if (debugRespuestaJson) {
             const resp = data.respuesta && typeof data.respuesta === 'object' ? data.respuesta : null;
             const terminado = paso?.resultado && !['pendiente', 'en_curso'].includes(paso.resultado);
-            if (!terminado) {
+            const cancelado = paso?.resultado === 'cancelado';
+            if (cancelado) {
+                debugRespuestaJson.textContent = 'Búsqueda cancelada; se detuvo la espera a Mercado Público.';
+                if (debugRespuestaLine) {
+                    debugRespuestaLine.textContent = 'Cancelado — la consulta en curso no se completó.';
+                }
+            } else if (!terminado) {
                 const items = resp?.items_recibidos;
                 debugRespuestaJson.textContent = (items != null && Number(items) > 0)
                     ? (data.respuesta_json || JSON.stringify(resp, null, 2))
@@ -757,9 +763,11 @@
         const paso = pasos[idx];
         const nota = paso?.error
             ? `${paso.error} — la búsqueda continúa con la siguiente región o reintento.`
-            : (corrida.estado === 'running' && (paso?.resultado === 'pendiente' || paso?.resultado === 'en_curso')
-                ? 'consulta en curso…'
-                : null);
+            : (corrida.estado === 'cancelled'
+                ? 'búsqueda cancelada'
+                : (corrida.estado === 'running' && (paso?.resultado === 'pendiente' || paso?.resultado === 'en_curso')
+                    ? 'consulta en curso…'
+                    : null));
         mostrarDebugConsulta(paso?.consulta || null, paso, idx, total, nota);
     }
 
@@ -855,6 +863,7 @@
         fallo_definitivo: 'text-bg-danger',
         en_curso: 'text-bg-primary',
         pendiente: 'text-bg-secondary',
+        cancelado: 'text-bg-dark',
     };
 
     function formatearDia(fecha) {
@@ -901,7 +910,7 @@
 
             const tdEncontradas = document.createElement('td');
             tdEncontradas.className = 'text-end tabular-nums';
-            if (paso.resultado === 'pendiente' || paso.resultado === 'en_curso' || paso.encontradas === null || paso.encontradas === undefined) {
+            if (['pendiente', 'en_curso', 'cancelado'].includes(paso.resultado) || paso.encontradas === null || paso.encontradas === undefined) {
                 tdEncontradas.textContent = '—';
                 tdEncontradas.classList.add('text-muted');
             } else {

@@ -221,7 +221,9 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->actingAs($user)
             ->postJson(route('admin.oportunidades.para-cotizar.cancelar'))
             ->assertOk()
-            ->assertJsonPath('corrida.estado', OportunidadBusquedaService::ESTADO_CANCELLED);
+            ->assertJsonPath('corrida.estado', OportunidadBusquedaService::ESTADO_CANCELLED)
+            ->assertJsonPath('corrida.pasos_resumen.0.resultado', 'cancelado')
+            ->assertJsonPath('corrida.pasos_resumen.1.resultado', 'cancelado');
     }
 
     public function test_corrida_reintenta_fallidos_de_region_antes_de_seguir(): void
