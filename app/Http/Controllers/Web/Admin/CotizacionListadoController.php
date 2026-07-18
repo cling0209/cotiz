@@ -25,8 +25,9 @@ class CotizacionListadoController extends Controller
 
     public function index(Request $request): View
     {
-        $filtros = $this->normalizarFiltros($request);
         $user = $request->user();
+        $puedeVerEstadoMp = $this->listadoService->puedeVerEstadoMp($user);
+        $filtros = $this->normalizarFiltros($request, $puedeVerEstadoMp);
         $cotizaciones = $this->listadoService->listar($user, $filtros);
         $segundoLlamado = $this->listadoService->cotizacionesSegundoLlamadoParaPostular($user);
 
@@ -34,6 +35,8 @@ class CotizacionListadoController extends Controller
             'cotizaciones' => $cotizaciones,
             'filtros' => $filtros,
             'puedeGestionar' => $this->listadoService->puedeGestionar($user),
+            'puedeVerEstadoMp' => $puedeVerEstadoMp,
+            'estadosMpFiltro' => NotaListadoService::ESTADOS_MP_FILTRO,
             'segundoLlamadoParaPostular' => $segundoLlamado,
             'nronotasSegundoLlamado' => $segundoLlamado->pluck('nronota')->all(),
         ]);
@@ -176,6 +179,7 @@ class CotizacionListadoController extends Controller
             'fechahasta' => $request->input('fechahasta'),
             'nronota' => $request->input('nronota'),
             'cotizacion' => $request->input('cotizacion'),
+            'estado_mp' => $request->input('estado_mp'),
             'orden_campo' => $request->input('orden_campo'),
             'orden_dir' => $request->input('orden_dir'),
             'page' => $request->input('page'),
@@ -184,7 +188,7 @@ class CotizacionListadoController extends Controller
         return redirect()->route('admin.cotizaciones.index', $query);
     }
 
-    private function normalizarFiltros(Request $request): array
+    private function normalizarFiltros(Request $request, bool $puedeVerEstadoMp = false): array
     {
         $nronota = (int) $request->input('nronota', 0);
         $cotizacion = trim((string) $request->input('cotizacion', ''));
@@ -207,11 +211,20 @@ class CotizacionListadoController extends Controller
             $ordenDir = 'DESC';
         }
 
+        $estadoMp = '';
+        if ($puedeVerEstadoMp) {
+            $estadoMp = trim((string) $request->input('estado_mp', ''));
+            if ($estadoMp !== '' && ! array_key_exists($estadoMp, NotaListadoService::ESTADOS_MP_FILTRO)) {
+                $estadoMp = '';
+            }
+        }
+
         return [
             'nronota' => $nronota,
             'cotizacion' => $cotizacion,
             'fechadesde' => $fechadesde,
             'fechahasta' => $fechahasta,
+            'estado_mp' => $estadoMp,
             'orden_campo' => $ordenCampo,
             'orden_dir' => $ordenDir,
         ];

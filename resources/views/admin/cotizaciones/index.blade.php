@@ -53,6 +53,20 @@
                 <div class="col-md-auto">
                     <button type="submit" class="btn btn-secondary btn-sm">Buscar cotiz.</button>
                 </div>
+                @if($puedeVerEstadoMp ?? false)
+                    <div class="col-md-2">
+                        <label class="form-label" for="filtro-estado-mp">Estado MP</label>
+                        <select name="estado_mp" id="filtro-estado-mp" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            @foreach(($estadosMpFiltro ?? []) as $valor => $label)
+                                <option value="{{ $valor }}" @selected(($filtros['estado_mp'] ?? '') === $valor)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-auto">
+                        <button type="submit" class="btn btn-secondary btn-sm">Filtrar estado MP</button>
+                    </div>
+                @endif
             </form>
         </div>
     </div>
@@ -124,15 +138,22 @@
                         <th>Cotizaci&oacute;n</th>
                         <th>Usuario</th>
                         <th>Estado</th>
+                        @if($puedeVerEstadoMp ?? false)
+                            <th>Estado MP</th>
+                        @endif
                         <th class="text-end" style="min-width:18rem">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
+                    @php
+                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 10 : 9;
+                    @endphp
                     @forelse($cotizaciones as $nota)
                         @php
                             $estaAceptada = strtolower(trim((string) $nota->estado)) === 'aceptada';
                             $sinUsuario = trim((string) $nota->usuario) === '';
                             $esSegundoLlamado = in_array((int) $nota->nronota, $nronotasSegundoLlamado, true);
+                            $estadoMp = $nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar';
                         @endphp
                         <tr @class(['table-warning fila-segundo-llamado' => $esSegundoLlamado])>
                             <td>
@@ -167,6 +188,9 @@
                             </td>
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->estado ?: '—' }}</td>
+                            @if($puedeVerEstadoMp ?? false)
+                                <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
+                            @endif
                             <td class="text-end">
                                 <div class="d-flex flex-wrap gap-1 justify-content-end">
                                     <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
@@ -205,7 +229,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted py-4">Sin cotizaciones.</td></tr>
+                        <tr><td colspan="{{ $colspanListado }}" class="text-center text-muted py-4">Sin cotizaciones.</td></tr>
                     @endforelse
                 </tbody>
             </table>

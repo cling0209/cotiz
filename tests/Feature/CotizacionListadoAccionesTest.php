@@ -300,6 +300,103 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertDontSee('postular a segundo llamado', false);
     }
 
+    public function test_admin_ve_columna_y_filtro_estado_mp(): void
+    {
+        $nota = $this->crearNota([
+            'nronota' => 301,
+            'usuario' => 'ejecutivo',
+            'fecha' => now()->toDateString(),
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '301-1-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'estado_mp_glosa' => 'Proveedor seleccionado',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin)->get(route('admin.cotizaciones.index', [
+            'fechadesde' => now()->subDay()->toDateString(),
+            'fechahasta' => now()->toDateString(),
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('Estado MP', false);
+        $response->assertSee('name="estado_mp"', false);
+        $response->assertSee('Cerrada', false);
+    }
+
+    public function test_ejecutivo_no_ve_columna_ni_filtro_estado_mp(): void
+    {
+        $this->crearNota([
+            'nronota' => 302,
+            'usuario' => 'ejecutivo',
+            'fecha' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index', [
+            'fechadesde' => now()->subDay()->toDateString(),
+            'fechahasta' => now()->toDateString(),
+        ]));
+
+        $response->assertOk();
+        $response->assertDontSee('filtro-estado-mp', false);
+        $response->assertDontSee('>Estado MP<', false);
+    }
+
+    public function test_pame_ve_filtro_estado_mp_y_puede_filtrar(): void
+    {
+        config(['cotiz.mercadopublico.oportunidades_viewers' => ['pame']]);
+
+        $pame = User::factory()->create([
+            'username' => 'pame',
+            'nombre' => 'Pame',
+            'apellidop' => 'G',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $cerrada = $this->crearNota([
+            'nronota' => 303,
+            'usuario' => 'pame',
+            'fecha' => now()->toDateString(),
+            'encargado' => '303-CERRADA',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $cerrada->nronota,
+            'codigo_proceso' => '303-CERRADA',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $pendiente = $this->crearNota([
+            'nronota' => 304,
+            'usuario' => 'pame',
+            'fecha' => now()->toDateString(),
+            'encargado' => '304-PEND',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $pendiente->nronota,
+            'codigo_proceso' => '304-PEND',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $response = $this->actingAs($pame)->get(route('admin.cotizaciones.index', [
+            'fechadesde' => now()->subDay()->toDateString(),
+            'fechahasta' => now()->toDateString(),
+            'estado_mp' => 'cerrada',
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('Estado MP', false);
+        $response->assertSee('303-CERRADA', false);
+        $response->assertDontSee('304-PEND', false);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

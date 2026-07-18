@@ -11,6 +11,16 @@ use Illuminate\Support\Facades\DB;
 
 class NotaListadoService
 {
+    /** Estados de seguimiento MP disponibles en filtro/columna del listado. */
+    public const ESTADOS_MP_FILTRO = [
+        'sin_consultar' => 'Sin consultar MP',
+        'pendiente' => 'Pendiente seguimiento',
+        'cerrada' => 'Cerrada',
+        'desierta' => 'Desierta',
+        'cancelada' => 'Cancelada',
+        'no_encontrada' => 'No existe en MP',
+    ];
+
     public function listar(User $user, array $filtros): LengthAwarePaginator
     {
         $porPagina = config('cotiz.listado_por_pagina', 20);
@@ -28,6 +38,12 @@ class NotaListadoService
         }
 
         return $query->paginate($porPagina)->withQueryString();
+    }
+
+    /** Columna y filtro de estado MP: solo admin/superadmin y viewers (p. ej. pame). */
+    public function puedeVerEstadoMp(User $user): bool
+    {
+        return $user->canVerOportunidades();
     }
 
     /**
@@ -70,6 +86,7 @@ class NotaListadoService
             ->with(['usuarioRel', 'mpSeguimiento']);
 
         $this->aplicarReglasPerfil($query, $user);
+        $this->aplicarFiltroEstadoMp($query, $user, $filtros);
 
         if (! empty($filtros['nronota'])) {
             $query->where('notas.nronota', (int) $filtros['nronota']);
@@ -86,6 +103,28 @@ class NotaListadoService
         }
 
         return $query;
+    }
+
+    private function aplicarFiltroEstadoMp(Builder $query, User $user, array $filtros): void
+    {
+        $estado = (string) ($filtros['estado_mp'] ?? '');
+        if ($estado === '' || ! $this->puedeVerEstadoMp($user)) {
+            return;
+        }
+
+        if (! array_key_exists($estado, self::ESTADOS_MP_FILTRO)) {
+            return;
+        }
+
+        if ($estado === 'sin_consultar') {
+            $query->whereDoesntHave('mpSeguimiento');
+
+            return;
+        }
+
+        $query->whereHas('mpSeguimiento', function (Builder $q) use ($estado): void {
+            $q->where('resultado_propio', $estado);
+        });
     }
 
     private function aplicarReglasPerfil(Builder $query, User $user): void
