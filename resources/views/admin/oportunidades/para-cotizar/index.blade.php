@@ -803,8 +803,10 @@
                 const productosBajoCodigo = tieneCantidad && !Number.isNaN(cantidadNum) ?
                     `<div class="opc-meta mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>` :
                     '';
-                const vinculoCompleto = !!item.vinculo_completo;
-                const vinculoHtml = vinculoCompleto
+                const vinculoProcesado = item.vinculo_completo === true
+                    || item.vinculo_completo === 1
+                    || item.vinculo_completo === '1';
+                const vinculoHtml = vinculoProcesado
                     ? (() => {
                         const vinc = Number(item.productos_vinculados) || 0;
                         const tot = Number(item.cantidad_productos) || 0;
@@ -813,7 +815,7 @@
                             : (tot > 0 ? Math.round((vinc / tot) * 100) : 0);
                         return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
                     })()
-                    : '<div class="opc-meta mt-1 text-warning-emphasis">Vinculaci&oacute;n no procesada</div>';
+                    : '<div class="mt-1"><span class="badge text-bg-warning">Vinculación no procesada</span></div>';
                 const nombreHtml = nombre ?
                     `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>` :
                     '';
