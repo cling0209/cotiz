@@ -60,8 +60,11 @@
                 <tr>
                     <th>Cliente</th>
                     <td><input type="text" name="empresa" id="empresa" maxlength="100" value="{{ old('empresa', $nota->empresa) }}"></td>
-                    <th>
+                    <th class="text-nowrap">
                         Cotizaci&oacute;n
+                        <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" id="btn-copiar-encargado" title="Copiar n&uacute;mero de cotizaci&oacute;n" aria-label="Copiar n&uacute;mero de cotizaci&oacute;n">
+                            <i class="bi bi-clipboard" aria-hidden="true"></i>
+                        </button>
                     </th>
                     <td>
                         <input
@@ -2122,6 +2125,44 @@
             }
         });
     }
+
+    function feedbackIconoCopiado(btn, tituloOk) {
+        if (!btn) {
+            return;
+        }
+        const icon = btn.querySelector('i');
+        const prevClass = icon ? icon.className : '';
+        const prevTitle = btn.title || '';
+        if (icon) {
+            icon.className = 'bi bi-clipboard-check text-success';
+        }
+        btn.title = '¡Copiado!';
+        window.setTimeout(() => {
+            if (icon) {
+                icon.className = prevClass || 'bi bi-clipboard';
+            }
+            btn.title = tituloOk || prevTitle || 'Copiar';
+        }, 1500);
+    }
+
+    document.getElementById('btn-copiar-encargado')?.addEventListener('click', () => {
+        const enc = document.getElementById('encargado');
+        const cod = String(enc?.value || '').trim();
+        const btn = document.getElementById('btn-copiar-encargado');
+        if (!cod) {
+            if (btn) {
+                btn.title = 'No hay número de cotización';
+            }
+            return;
+        }
+        copiarTextoPortapapeles(cod).then(() => {
+            feedbackIconoCopiado(btn, 'Copiar número de cotización');
+        }).catch(() => {
+            if (btn) {
+                btn.title = 'No se pudo copiar';
+            }
+        });
+    });
 
     document.getElementById('btnCopiarMP')?.addEventListener('click', async () => {
         const items = recolectarItemsMercadoPublico();
