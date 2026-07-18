@@ -269,6 +269,7 @@
                         <option value="con">Con v&iacute;nculo</option>
                         <option value="50">≥ 50%</option>
                         <option value="80">≥ 80%</option>
+                        <option value="90">≥ 90%</option>
                         <option value="100">100%</option>
                     </select>
                 </div>
@@ -398,6 +399,7 @@
             iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
             cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
             detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
+            visita: @json(route('admin.oportunidades.para-cotizar.visita')),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
@@ -791,6 +793,40 @@
                 item.visitas_usuario = Math.max(Number(item.visitas_usuario) || 0, veces);
             }
             return veces;
+        }
+
+        function registrarVisitaServidor(codigo) {
+            const codigoNorm = String(codigo || '').toUpperCase().trim();
+            if (!codigoNorm || !urls.visita || !csrf) {
+                return;
+            }
+            const body = new FormData();
+            body.append('_token', csrf);
+            body.append('codigo', codigoNorm);
+            fetch(urls.visita, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body,
+            }).then((res) => res.json().catch(() => ({}))).then((data) => {
+                if (!data || !data.ok) {
+                    return;
+                }
+                const veces = Number(data.visitas_usuario) || 0;
+                const item = porCodigo.get(codigoNorm);
+                if (item && veces > 0) {
+                    item.visitas_usuario = Math.max(Number(item.visitas_usuario) || 0, veces);
+                    const mapa = leerVisitasLocales();
+                    mapa[codigoNorm] = Math.max(Number(mapa[codigoNorm]) || 0, veces);
+                    guardarVisitasLocales(mapa);
+                    renderTabla(false);
+                }
+            }).catch(() => {
+                // silencioso: el contador local ya quedó
+            });
         }
 
         function visitasDeItem(item) {
@@ -1283,7 +1319,11 @@
                 const btnVinculo = e.target.closest('button.btn-ver-vinculo');
                 if (btnVinculo) {
                     e.preventDefault();
-                    abrirDetalleVinculo(btnVinculo.getAttribute('data-codigo') || '');
+                    const codVinculo = btnVinculo.getAttribute('data-codigo') || '';
+                    incrementarVisitaLocal(codVinculo);
+                    renderTabla(false);
+                    registrarVisitaServidor(codVinculo);
+                    abrirDetalleVinculo(codVinculo);
                     return;
                 }
                 const btnCopiar = e.target.closest('button.btn-copiar-codigo');
