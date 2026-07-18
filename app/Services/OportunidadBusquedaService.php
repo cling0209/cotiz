@@ -641,6 +641,21 @@ class OportunidadBusquedaService
             $corrida = $corrida->fresh() ?? $corrida;
         }
 
+        // Recuperación: búsqueda ya terminada y aún hay pendientes sin vincular.
+        if ($corrida->estado === self::ESTADO_COMPLETED) {
+            try {
+                $this->vinculos->asegurarTrasBusquedaCompletada(
+                    $corrida->fecha_busqueda,
+                    (string) ($corrida->usuario ?? 'sistema'),
+                );
+            } catch (\Throwable $e) {
+                Log::warning('No se pudo retomar vinculación tras búsqueda completada', [
+                    'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $total = max(0, (int) $corrida->total_pasos);
         $terminados = $this->contarTerminados($pasos);
@@ -1155,12 +1170,7 @@ class OportunidadBusquedaService
                 : 'Búsqueda terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
 
-        $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);
-        if ($siguienteFecha !== null && $this->corridaEnCurso() === null) {
-            $this->iniciar((string) ($corrida->usuario ?? 'sistema'), $siguienteFecha);
-        }
-
-        // Tras la búsqueda del día: vinculación interna maestro (orden MERCADOPUBLICO_REGIONES).
+        // Primero el 2.º proceso (vinculación), luego catch-up del día siguiente si corresponde.
         try {
             $this->vinculos->iniciarTrasBusqueda(
                 $corrida->fecha_busqueda,
@@ -1171,6 +1181,11 @@ class OportunidadBusquedaService
                 'fecha_busqueda' => (string) $corrida->fecha_busqueda,
                 'message' => $e->getMessage(),
             ]);
+        }
+
+        $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);
+        if ($siguienteFecha !== null && $this->corridaEnCurso() === null) {
+            $this->iniciar((string) ($corrida->usuario ?? 'sistema'), $siguienteFecha);
         }
     }
 }

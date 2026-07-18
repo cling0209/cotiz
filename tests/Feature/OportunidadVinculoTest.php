@@ -57,7 +57,7 @@ class OportunidadVinculoTest extends TestCase
             'nombre' => 'Atacama',
             'region' => 3,
             'nombre_region' => 'Atacama',
-            'fecha_busqueda' => '2026-07-16',
+            'fecha_busqueda' => '2026-07-15',
             'indice_region_config' => 0,
             'vinculo_completo' => false,
             'fecha_cierre' => now()->addDays(3),
@@ -73,6 +73,30 @@ class OportunidadVinculoTest extends TestCase
         $this->assertSame('A-AT-001', $plan[0]['codigo']);
         $this->assertSame('B-RM-001', $plan[1]['codigo']);
 
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_asegurar_tras_busqueda_completa_reencola_si_hay_pendientes(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'C-AT-009',
+            'nombre' => 'Atacama',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-14',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarTrasBusquedaCompletada('2026-07-16', 'admin');
+
+        $this->assertNotNull($corrida);
+        $this->assertSame('running', $corrida->estado);
+        $this->assertSame('C-AT-009', $corrida->plan_json[0]['codigo']);
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
     }
 

@@ -90,6 +90,19 @@ class OportunidadVinculoService
         return $corrida;
     }
 
+    /**
+     * Si la búsqueda ya terminó y aún hay cotizaciones sin vincular, encola (o retoma) el 2.º proceso.
+     * Sirve de recuperación cuando el encolado al finalizar falló o el plan del día quedó vacío.
+     */
+    public function asegurarTrasBusquedaCompletada(mixed $fechaBusqueda, string $usuario = 'sistema'): ?OportunidadVinculoCorrida
+    {
+        if ($this->corridaEnCurso() !== null) {
+            return $this->corridaEnCurso();
+        }
+
+        return $this->iniciarTrasBusqueda($fechaBusqueda, $usuario);
+    }
+
     private function agregarPasosPendientes(OportunidadVinculoCorrida $corrida, string $dia): void
     {
         $nuevos = $this->construirPlan($dia);
@@ -133,8 +146,16 @@ class OportunidadVinculoService
      */
     private function construirPlan(string $dia): array
     {
+        // Incluir vigentes pendientes desde la fecha de inicio (catch-up), no solo el día
+        // que acaba de terminar: si el último día no trajo filas nuevas, igual hay que vincular.
+        $desde = $this->oportunidades->normalizarFechaBusqueda(
+            config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
+        );
+        $hasta = $this->oportunidades->normalizarFechaBusqueda($dia);
+
         $rows = OportunidadEncontrada::query()
-            ->whereDate('fecha_busqueda', $dia)
+            ->whereDate('fecha_busqueda', '>=', $desde)
+            ->whereDate('fecha_busqueda', '<=', $hasta)
             ->where(function ($query) {
                 $query->where('vinculo_completo', false)
                     ->orWhereNull('vinculo_completo');
@@ -144,15 +165,18 @@ class OportunidadVinculoService
                     ->orWhere('fecha_cierre', '>', now());
             })
             ->orderBy('indice_region_config')
+            ->orderBy('fecha_busqueda')
             ->orderBy('codigo')
             ->get(['codigo', 'region', 'nombre_region', 'indice_region_config']);
 
         $pasos = [];
+        $vistos = [];
         foreach ($rows as $row) {
             $codigo = strtoupper(trim((string) $row->codigo));
-            if ($codigo === '') {
+            if ($codigo === '' || isset($vistos[$codigo])) {
                 continue;
             }
+            $vistos[$codigo] = true;
             $pasos[] = [
                 'codigo' => $codigo,
                 'region' => $row->region !== null ? (int) $row->region : null,
