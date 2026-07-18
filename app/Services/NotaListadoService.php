@@ -85,6 +85,11 @@ class NotaListadoService
             }
         }
 
+        $usuario = trim((string) ($filtros['usuario'] ?? ''));
+        if ($usuario !== '') {
+            $query->where('notas.usuario', $usuario);
+        }
+
         return $query;
     }
 
@@ -130,9 +135,20 @@ class NotaListadoService
      */
     public function usuariosParaAsignar(): Collection
     {
+        return $this->usuariosParaFiltroEjecutivo();
+    }
+
+    /**
+     * Usuarios que pueden figurar como dueño de una nota (filtro combo).
+     *
+     * @return Collection<int, User>
+     */
+    public function usuariosParaFiltroEjecutivo(): Collection
+    {
         return User::query()
             ->whereIn('perfil', [User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])
             ->orderBy('nombre')
+            ->orderBy('apellidop')
             ->orderBy('username')
             ->get();
     }

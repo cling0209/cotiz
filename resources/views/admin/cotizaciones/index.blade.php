@@ -53,6 +53,22 @@
                 <div class="col-md-auto">
                     <button type="submit" class="btn btn-secondary btn-sm">Buscar cotiz.</button>
                 </div>
+                @if(($puedeGestionar ?? false) && ($ejecutivosFiltro ?? collect())->isNotEmpty())
+                    <div class="col-md-3">
+                        <label class="form-label" for="filtro-usuario">Ejecutivo</label>
+                        <select name="usuario" id="filtro-usuario" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            @foreach($ejecutivosFiltro as $ejecutivo)
+                                <option value="{{ $ejecutivo->username }}" @selected(($filtros['usuario'] ?? '') === $ejecutivo->username)>
+                                    {{ $ejecutivo->fullName() ?: $ejecutivo->username }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-auto">
+                        <button type="submit" class="btn btn-secondary btn-sm">Filtrar ejecutivo</button>
+                    </div>
+                @endif
             </form>
         </div>
     </div>

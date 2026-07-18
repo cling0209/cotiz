@@ -300,6 +300,37 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertDontSee('postular a segundo llamado', false);
     }
 
+    public function test_superadmin_filtra_listado_por_ejecutivo(): void
+    {
+        User::factory()->create([
+            'username' => 'otro_ej',
+            'nombre' => 'Otro',
+            'apellidop' => 'Ejecutivo',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $this->crearNota([
+            'nronota' => 220,
+            'usuario' => 'ejecutivo',
+            'empresa' => 'Empresa De Ejecutivo',
+            'fecha' => now()->toDateString(),
+        ]);
+        $this->crearNota([
+            'nronota' => 221,
+            'usuario' => 'otro_ej',
+            'empresa' => 'Empresa De Otro',
+            'fecha' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.index', ['usuario' => 'ejecutivo']))
+            ->assertOk()
+            ->assertSee('Empresa De Ejecutivo')
+            ->assertDontSee('Empresa De Otro')
+            ->assertSee('name="usuario"', false)
+            ->assertSee('Filtrar ejecutivo', false);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

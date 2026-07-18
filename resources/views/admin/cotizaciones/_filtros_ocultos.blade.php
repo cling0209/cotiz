@@ -10,6 +10,9 @@
 @if(!empty($filtros['cotizacion']))
     <input type="hidden" name="cotizacion" value="{{ $filtros['cotizacion'] }}">
 @endif
+@if(!empty($filtros['usuario']))
+    <input type="hidden" name="usuario" value="{{ $filtros['usuario'] }}">
+@endif
 <input type="hidden" name="orden_campo" value="{{ $filtros['orden_campo'] ?? 'nronota' }}">
 <input type="hidden" name="orden_dir" value="{{ $filtros['orden_dir'] ?? 'DESC' }}">
 @if(!empty($page))

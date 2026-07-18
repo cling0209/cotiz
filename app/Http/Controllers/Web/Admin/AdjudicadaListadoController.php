@@ -25,6 +25,7 @@ class AdjudicadaListadoController extends Controller
             return redirect()
                 ->route('admin.cotizaciones.adjudicadas.index', array_filter([
                     'nronota' => $filtros['nronota'] ?: null,
+                    'usuario' => $filtros['usuario'] ?: null,
                 ]))
                 ->with('error', 'Debe ingresar fecha entrega desde y hasta.');
         }
@@ -34,6 +35,7 @@ class AdjudicadaListadoController extends Controller
         return view('admin.cotizaciones.adjudicadas.index', [
             'cotizaciones' => $cotizaciones,
             'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->adjudicadaService->usuariosParaFiltroEjecutivo(),
         ]);
     }
 

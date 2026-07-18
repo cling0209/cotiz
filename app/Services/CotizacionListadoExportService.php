@@ -129,7 +129,7 @@ class CotizacionListadoExportService
     }
 
     /**
-     * @param  array{nronota: int, fechaentregadesde: ?string, fechaentregahasta: ?string}  $filtros
+     * @param  array{nronota: int, usuario?: string, fechaentregadesde: ?string, fechaentregahasta: ?string}  $filtros
      */
     public function respuestaAceptadasDetalleCsv(User $user, array $filtros): StreamedResponse
     {
@@ -162,6 +162,11 @@ class CotizacionListadoExportService
 
             if (! empty($filtros['nronota'])) {
                 $query->where('n.nronota', (int) $filtros['nronota']);
+            }
+
+            $usuario = trim((string) ($filtros['usuario'] ?? ''));
+            if ($usuario !== '') {
+                $query->where('n.usuario', $usuario);
             }
 
             $desde = $filtros['fechaentregadesde'] ?? null;

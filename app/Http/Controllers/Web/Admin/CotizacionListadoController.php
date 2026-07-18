@@ -30,10 +30,15 @@ class CotizacionListadoController extends Controller
         $cotizaciones = $this->listadoService->listar($user, $filtros);
         $segundoLlamado = $this->listadoService->cotizacionesSegundoLlamadoParaPostular($user);
 
+        $puedeGestionar = $this->listadoService->puedeGestionar($user);
+
         return view('admin.cotizaciones.index', [
             'cotizaciones' => $cotizaciones,
             'filtros' => $filtros,
-            'puedeGestionar' => $this->listadoService->puedeGestionar($user),
+            'puedeGestionar' => $puedeGestionar,
+            'ejecutivosFiltro' => $puedeGestionar
+                ? $this->listadoService->usuariosParaFiltroEjecutivo()
+                : collect(),
             'segundoLlamadoParaPostular' => $segundoLlamado,
             'nronotasSegundoLlamado' => $segundoLlamado->pluck('nronota')->all(),
         ]);
@@ -176,6 +181,7 @@ class CotizacionListadoController extends Controller
             'fechahasta' => $request->input('fechahasta'),
             'nronota' => $request->input('nronota'),
             'cotizacion' => $request->input('cotizacion'),
+            'usuario' => $request->input('usuario'),
             'orden_campo' => $request->input('orden_campo'),
             'orden_dir' => $request->input('orden_dir'),
             'page' => $request->input('page'),
@@ -188,6 +194,7 @@ class CotizacionListadoController extends Controller
     {
         $nronota = (int) $request->input('nronota', 0);
         $cotizacion = trim((string) $request->input('cotizacion', ''));
+        $usuario = trim((string) $request->input('usuario', ''));
 
         $fechadesde = $request->input('fechadesde');
         $fechahasta = $request->input('fechahasta');
@@ -210,6 +217,7 @@ class CotizacionListadoController extends Controller
         return [
             'nronota' => $nronota,
             'cotizacion' => $cotizacion,
+            'usuario' => $usuario,
             'fechadesde' => $fechadesde,
             'fechahasta' => $fechahasta,
             'orden_campo' => $ordenCampo,
