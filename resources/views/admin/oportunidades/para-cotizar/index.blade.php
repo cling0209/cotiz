@@ -159,6 +159,36 @@
         </div>
     </div>
 
+    <div id="vinculo-estado" class="card shadow-sm mb-3 d-none">
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap gap-3 align-items-center small mb-2">
+                <div class="fw-semibold text-nowrap">
+                    <i class="bi bi-link-45deg"></i> Vinculaciones internas
+                </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-clock"></i>
+                    Inicio: <strong id="vin-inicio" class="tabular-nums">—</strong>
+                </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-flag"></i>
+                    Fin: <strong id="vin-fin" class="tabular-nums">—</strong>
+                </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-hourglass-split"></i>
+                    Tiempo: <strong id="vin-duracion" class="tabular-nums">—</strong>
+                </div>
+                <div class="text-nowrap ms-auto">
+                    <span id="vin-progreso-txt" class="badge text-bg-secondary">0/0</span>
+                </div>
+            </div>
+            <div id="vin-progreso-wrap" class="progress mb-2" style="height: 0.75rem;">
+                <div id="vin-progreso-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                     role="progressbar" style="width: 0%">0%</div>
+            </div>
+            <div id="vin-detalle" class="small text-muted">Preparando vinculación con maestro…</div>
+        </div>
+    </div>
+
     <div id="oportunidad-placeholder" class="card shadow-sm @if(! $puedeBuscar || $palabras === [] || count($guardadas) > 0) d-none @endif">
         <div class="card-body text-center text-muted py-5">
             Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico
@@ -354,7 +384,19 @@
     function cargarItems(items) {
         (items || []).forEach((item) => {
             const codigo = String(item.codigo || '').toUpperCase();
-            if (!codigo || porCodigo.has(codigo)) return;
+            if (!codigo) return;
+            if (porCodigo.has(codigo)) {
+                const prev = porCodigo.get(codigo);
+                porCodigo.set(codigo, {
+                    ...prev,
+                    ...item,
+                    visitas_usuario: Math.max(
+                        Number(prev.visitas_usuario) || 0,
+                        Number(item.visitas_usuario) || 0,
+                    ),
+                });
+                return;
+            }
             porCodigo.set(codigo, item);
         });
     }
@@ -729,6 +771,17 @@
             const productosBajoCodigo = tieneCantidad && ! Number.isNaN(cantidadNum)
                 ? `<div class="opc-meta mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>`
                 : '';
+            const vinculoCompleto = !!item.vinculo_completo;
+            const vinculoHtml = vinculoCompleto
+                ? (() => {
+                    const vinc = Number(item.productos_vinculados) || 0;
+                    const tot = Number(item.cantidad_productos) || 0;
+                    const pct = item.porcentaje_vinculo != null
+                        ? Number(item.porcentaje_vinculo)
+                        : (tot > 0 ? Math.round((vinc / tot) * 100) : 0);
+                    return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
+                })()
+                : '';
             const nombreHtml = nombre
                 ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
@@ -747,6 +800,7 @@
                     ${nombreHtml}
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
+                    ${vinculoHtml}
                 </td>
                 <td class="small">
                     <div class="fw-semibold opc-linea-2" title="${escapeHtml(regionNombre)}">${escapeHtml(regionNombre)}</div>
@@ -1369,10 +1423,13 @@
 
         porCodigo = new Map();
         cargarItems(corrida.items || []);
+        sincronizarVisitasLocalesEnMapa();
+        aplicarEstadoVinculo(corrida.vinculo || null);
         const activo = corrida.estado === 'running';
         const cambiandoDia = corrida.estado === 'completed'
             && Boolean(corrida.fecha_siguiente_pendiente)
             && intentosCambioDia < 30;
+        const vinculoActivo = corrida.vinculo && corrida.vinculo.estado === 'running';
         // Mostrar el listado si hay filas o si la búsqueda está en curso (antes quedaba oculto
         // cuando listarGuardadasHoy() venía vacío en catch-up de días anteriores).
         if (resultados && (porCodigo.size > 0 || activo)) {
@@ -1425,7 +1482,7 @@
             relError.classList.add('d-none');
         }
 
-        if (activo || cambiandoDia) {
+        if (activo || cambiandoDia || vinculoActivo) {
             detenerPolling();
             if (cambiandoDia) {
                 intentosCambioDia++;
@@ -1439,6 +1496,60 @@
                 tickTimer = null;
             }
             actualizarDuracion();
+        }
+    }
+
+    function aplicarEstadoVinculo(vinculo) {
+        const card = document.getElementById('vinculo-estado');
+        const vinInicio = document.getElementById('vin-inicio');
+        const vinFin = document.getElementById('vin-fin');
+        const vinDuracion = document.getElementById('vin-duracion');
+        const vinBar = document.getElementById('vin-progreso-bar');
+        const vinWrap = document.getElementById('vin-progreso-wrap');
+        const vinDetalle = document.getElementById('vin-detalle');
+        const vinTxt = document.getElementById('vin-progreso-txt');
+        if (!card) {
+            return;
+        }
+        if (!vinculo) {
+            card.classList.add('d-none');
+            return;
+        }
+
+        card.classList.remove('d-none');
+        const inicio = vinculo.inicio ? new Date(vinculo.inicio) : null;
+        const fin = vinculo.fin ? new Date(vinculo.fin) : null;
+        if (vinInicio) {
+            vinInicio.textContent = inicio && !Number.isNaN(inicio.getTime())
+                ? inicio.toLocaleTimeString('es-CL', { hour12: false })
+                : '—';
+        }
+        if (vinFin) {
+            vinFin.textContent = fin && !Number.isNaN(fin.getTime())
+                ? fin.toLocaleTimeString('es-CL', { hour12: false })
+                : '—';
+        }
+        const duracionTexto = vinculo.duracion_texto
+            || (vinculo.duracion_segundos != null ? formatearDuracionSegs(vinculo.duracion_segundos) : null);
+        if (vinDuracion) {
+            vinDuracion.textContent = duracionTexto || '—';
+        }
+        const progreso = Number(vinculo.progreso) || 0;
+        const total = Number(vinculo.total_pasos) || 0;
+        const hechos = Number(vinculo.pasos_procesados) || 0;
+        if (vinTxt) {
+            vinTxt.textContent = `${hechos}/${total}`;
+        }
+        if (vinBar) {
+            vinBar.style.width = `${progreso}%`;
+            vinBar.textContent = `${progreso}%`;
+            vinBar.classList.toggle('progress-bar-animated', vinculo.estado === 'running');
+        }
+        if (vinWrap) {
+            vinWrap.classList.toggle('d-none', vinculo.estado !== 'running' && progreso >= 100);
+        }
+        if (vinDetalle) {
+            vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');
         }
     }
 

@@ -36,6 +36,7 @@ class OportunidadBusquedaService
 
     public function __construct(
         protected OportunidadParaCotizarService $oportunidades,
+        protected OportunidadVinculoService $vinculos,
     ) {}
 
     public function habilitada(): bool
@@ -687,6 +688,7 @@ class OportunidadBusquedaService
             'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
+            'vinculo' => $this->vinculos->estado(),
         ];
     }
 
@@ -1121,6 +1123,19 @@ class OportunidadBusquedaService
         $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);
         if ($siguienteFecha !== null && $this->corridaEnCurso() === null) {
             $this->iniciar((string) ($corrida->usuario ?? 'sistema'), $siguienteFecha);
+        }
+
+        // Tras la búsqueda del día: vinculación interna maestro (orden MERCADOPUBLICO_REGIONES).
+        try {
+            $this->vinculos->iniciarTrasBusqueda(
+                $corrida->fecha_busqueda,
+                (string) ($corrida->usuario ?? 'sistema'),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo encolar vinculación de oportunidades', [
+                'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 }

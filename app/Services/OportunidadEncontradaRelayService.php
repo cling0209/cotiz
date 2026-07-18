@@ -544,6 +544,13 @@ class OportunidadEncontradaRelayService
                 'cantidad_productos' => isset($item['cantidad_productos'])
                     ? (int) $item['cantidad_productos']
                     : null,
+                'vinculo_completo' => (bool) ($item['vinculo_completo'] ?? false),
+                'productos_vinculados' => isset($item['productos_vinculados'])
+                    ? (int) $item['productos_vinculados']
+                    : null,
+                'porcentaje_vinculo' => isset($item['porcentaje_vinculo'])
+                    ? (int) $item['porcentaje_vinculo']
+                    : null,
                 'fecha_busqueda' => $dia,
                 'indice_region_config' => (int) ($item['indice_region_config'] ?? 999),
             ];
@@ -578,7 +585,7 @@ class OportunidadEncontradaRelayService
     {
         $region = isset($item['region']) ? (int) $item['region'] : null;
 
-        return [
+        $attrs = [
             'codigo' => strtoupper(trim((string) ($item['codigo'] ?? ''))),
             'nombre' => mb_substr(trim((string) ($item['nombre'] ?? '')), 0, 500) ?: null,
             'organismo' => mb_substr(trim((string) ($item['organismo'] ?? '')), 0, 500) ?: null,
@@ -602,6 +609,18 @@ class OportunidadEncontradaRelayService
             'indice_region_config' => (int) ($item['indice_region_config'] ?? 999),
             'found_by' => null,
         ];
+
+        if (array_key_exists('vinculo_completo', $item)) {
+            $attrs['vinculo_completo'] = (bool) $item['vinculo_completo'];
+            $attrs['productos_vinculados'] = isset($item['productos_vinculados'])
+                ? (int) $item['productos_vinculados']
+                : null;
+            $attrs['porcentaje_vinculo'] = isset($item['porcentaje_vinculo'])
+                ? (int) $item['porcentaje_vinculo']
+                : null;
+        }
+
+        return $attrs;
     }
 
     private function parseFechaNullable(mixed $valor): ?Carbon
