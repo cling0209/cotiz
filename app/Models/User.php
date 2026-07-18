@@ -95,7 +95,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Ejecutivo u otros usuarios listados en MERCADOPUBLICO_OPORTUNIDADES_VIEWERS,
+     * Usuarios listados en MERCADOPUBLICO_OPORTUNIDADES_VIEWERS (p. ej. pame),
      * o Pame G reconocida por nombre + apellido que empieza con G.
      */
     private function estaEnViewersOportunidades(): bool

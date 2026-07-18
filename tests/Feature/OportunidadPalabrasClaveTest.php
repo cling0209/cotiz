@@ -238,11 +238,11 @@ class OportunidadPalabrasClaveTest extends TestCase
     {
         config([
             'cotiz.mercadopublico.analisis_admin_habilitado' => false,
-            'cotiz.mercadopublico.oportunidades_viewers' => ['pameg'],
+            'cotiz.mercadopublico.oportunidades_viewers' => ['pame'],
         ]);
 
         $user = User::factory()->create([
-            'username' => 'pameg',
+            'username' => 'pame',
             'nombre' => 'Pame',
             'apellidop' => 'González',
             'perfil' => User::PERFIL_EJECUTIVO,
