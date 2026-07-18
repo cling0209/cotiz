@@ -62,6 +62,33 @@ class OportunidadVinculoTest extends TestCase
             'vinculo_completo' => false,
             'fecha_cierre' => now()->addDays(3),
         ]);
+        // Cerrada: no debe entrar al plan.
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'Z-CLOSED',
+            'nombre' => 'Cerrada',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->subHour(),
+        ]);
+        // Tomada: no debe entrar al plan.
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'Z-TOMADA',
+            'nombre' => 'Tomada',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+        \App\Models\OportunidadTomada::query()->create([
+            'codigo' => 'Z-TOMADA',
+            'usuario' => 'admin',
+            'tomada_at' => now(),
+        ]);
 
         $corrida = $this->app->make(OportunidadVinculoService::class)
             ->iniciarTrasBusqueda('2026-07-16', 'admin');
@@ -72,6 +99,9 @@ class OportunidadVinculoTest extends TestCase
         $this->assertCount(2, $plan);
         $this->assertSame('A-AT-001', $plan[0]['codigo']);
         $this->assertSame('B-RM-001', $plan[1]['codigo']);
+        $codigos = array_column($plan, 'codigo');
+        $this->assertNotContains('Z-CLOSED', $codigos);
+        $this->assertNotContains('Z-TOMADA', $codigos);
 
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
     }

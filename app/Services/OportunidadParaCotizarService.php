@@ -232,9 +232,11 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Códigos ya tomados (tabla oportunidad_tomadas + notas con encargado).
+     *
      * @return list<string>
      */
-    private function codigosTomadosNormalizados(): array
+    public function codigosTomadosNormalizados(): array
     {
         return OportunidadTomada::query()
             ->pluck('codigo')

@@ -259,12 +259,12 @@ class OportunidadVinculoService
      */
     private function construirPlan(string $dia): array
     {
-        // Incluir vigentes pendientes desde la fecha de inicio (catch-up), no solo el día
-        // que acaba de terminar: si el último día no trajo filas nuevas, igual hay que vincular.
+        // Vigentes pendientes desde fecha de inicio (catch-up): sin cerrar, sin vincular, sin tomadas.
         $desde = $this->oportunidades->normalizarFechaBusqueda(
             config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
         );
         $hasta = $this->oportunidades->normalizarFechaBusqueda($dia);
+        $codigosTomados = $this->oportunidades->codigosTomadosNormalizados();
 
         $rows = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', '>=', $desde)
@@ -275,6 +275,10 @@ class OportunidadVinculoService
                 $query->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>', now());
             })
+            ->when(
+                $codigosTomados !== [],
+                fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
+            )
             ->orderBy('indice_region_config')
             ->orderBy('fecha_busqueda')
             ->orderBy('codigo')
