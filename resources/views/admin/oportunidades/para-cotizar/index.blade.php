@@ -276,7 +276,6 @@
         estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
         cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
         reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
-        visita: @json(route('admin.oportunidades.para-cotizar.visita')),
         cotizarBase: @json(route('admin.cotizaciones.create')),
     };
     const filtrosUserId = @json((int) ($filtrosUserId ?? 0));
@@ -543,30 +542,6 @@
             : (filtroPalabraClave ? normalizarTexto(filtroPalabraClave.value) : '');
     }
 
-    async function registrarVisitaYCotizar(codigo, href) {
-        const codigoNorm = String(codigo || '').toUpperCase().trim();
-        if (!codigoNorm || !href) {
-            return;
-        }
-        try {
-            await fetch(urls.visita, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrf,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                body: JSON.stringify({ codigo: codigoNorm }),
-                credentials: 'same-origin',
-                keepalive: true,
-            });
-        } catch (e) {
-            // Continuar a cotizar aunque falle el registro
-        }
-        window.location.href = href;
-    }
-
     function csvEscape(valor) {
         const texto = String(valor ?? '');
         if (/[;"\r\n]/.test(texto)) {
@@ -689,7 +664,7 @@
                 ? `${escapeHtml(codigo || '—')} visto ${visitas}`
                 : escapeHtml(codigo || '—');
             const accionHtml = href
-                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}" data-href="${escapeHtml(href)}">
+                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap" data-no-loader>
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
                    </a>`
                 : '<span class="text-muted small">—</span>';
@@ -837,20 +812,6 @@
                 e.preventDefault();
                 aplicarFiltros();
             }
-        });
-    }
-
-    if (tbody) {
-        tbody.addEventListener('click', (e) => {
-            const link = e.target.closest('a.btn-ir-cotizar');
-            if (!link) {
-                return;
-            }
-            e.preventDefault();
-            registrarVisitaYCotizar(
-                link.getAttribute('data-codigo') || '',
-                link.getAttribute('data-href') || link.getAttribute('href') || '',
-            );
         });
     }
 

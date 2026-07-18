@@ -12,11 +12,13 @@ use App\Services\MaterialesExcelImportService;
 use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
+use App\Services\OportunidadParaCotizarService;
 use RuntimeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Throwable;
 
 class CotizacionController extends Controller
 {
@@ -26,6 +28,7 @@ class CotizacionController extends Controller
         protected CompraAgilImportService $compraAgilImport,
         protected MaterialesPdfImportService $materialesPdfImport,
         protected MaterialesExcelImportService $materialesExcelImport,
+        protected OportunidadParaCotizarService $oportunidadParaCotizar,
     ) {}
 
     public function create(Request $request): View|RedirectResponse
@@ -115,6 +118,8 @@ class CotizacionController extends Controller
         if ($flashInfo !== null) {
             session()->flash('info', $flashInfo);
         }
+
+        $this->registrarVisitaOportunidadSiCorresponde($request, $codigoImportar);
 
         $esBorrador = $this->notaService->esBorrador($nota);
         $lineas = $esBorrador
@@ -210,6 +215,24 @@ class CotizacionController extends Controller
     private function olvidarNotaMaterializada(): void
     {
         session()->forget('cotiz.borrador_materializado_nronota');
+    }
+
+    /**
+     * Cuenta una visita al llegar a cotizar desde Oportunidades (?codigo=...).
+     */
+    private function registrarVisitaOportunidadSiCorresponde(Request $request, string $codigo): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        $userId = (int) ($request->user()?->id ?? 0);
+        if ($codigo === '' || $userId <= 0) {
+            return;
+        }
+
+        try {
+            $this->oportunidadParaCotizar->registrarVisita($userId, $codigo);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**

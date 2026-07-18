@@ -115,6 +115,34 @@ class OportunidadVisitasTest extends TestCase
         $this->assertStringNotContainsString('"visitas_usuario":9', $html);
     }
 
+    public function test_ir_a_cotizar_con_codigo_registra_visita(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.cotizaciones.create', ['codigo' => '607603-40-COT26']))
+            ->assertOk();
+
+        $this->assertDatabaseHas('oportunidad_visitas', [
+            'user_id' => $user->id,
+            'codigo' => '607603-40-COT26',
+            'veces' => 1,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.cotizaciones.create', ['codigo' => '607603-40-COT26']))
+            ->assertOk();
+
+        $this->assertDatabaseHas('oportunidad_visitas', [
+            'user_id' => $user->id,
+            'codigo' => '607603-40-COT26',
+            'veces' => 2,
+        ]);
+    }
+
     public function test_ejecutivo_sin_permiso_no_registra_visita(): void
     {
         $user = User::factory()->create([
