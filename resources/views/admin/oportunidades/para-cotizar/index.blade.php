@@ -125,6 +125,7 @@
                                 <th class="text-nowrap">D&iacute;a</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
+                                <th class="text-nowrap text-end">V&iacute;nculo</th>
                                 <th class="text-nowrap text-end">V&iacute;nculo %</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
@@ -1407,24 +1408,26 @@
                     'todas las frases' :
                     frasePaso;
 
-                const tdVinculo = document.createElement('td');
-                tdVinculo.className = 'text-end text-nowrap tabular-nums';
+                const tdVinculoCant = document.createElement('td');
+                tdVinculoCant.className = 'text-end text-nowrap tabular-nums';
+                const tdVinculoPct = document.createElement('td');
+                tdVinculoPct.className = 'text-end text-nowrap tabular-nums';
                 if (paso.vinculo_total != null && Number(paso.vinculo_total) > 0) {
                     const pct = Number(paso.vinculo_porcentaje) || 0;
                     const hechos = Number(paso.vinculo_hechos) || 0;
                     const total = Number(paso.vinculo_total) || 0;
-                    tdVinculo.textContent = `${pct}%`;
-                    tdVinculo.title = `${hechos}/${total}`;
-                    if (pct >= 100) {
-                        tdVinculo.classList.add('text-success');
-                    } else if (hechos > 0) {
-                        tdVinculo.classList.add('text-primary');
-                    } else {
-                        tdVinculo.classList.add('text-muted');
-                    }
+                    tdVinculoCant.textContent = `${hechos}/${total}`;
+                    tdVinculoPct.textContent = `${pct}%`;
+                    const colorClass = pct >= 100
+                        ? 'text-success'
+                        : (hechos > 0 ? 'text-primary' : 'text-muted');
+                    tdVinculoCant.classList.add(colorClass);
+                    tdVinculoPct.classList.add(colorClass);
                 } else {
-                    tdVinculo.textContent = '—';
-                    tdVinculo.classList.add('text-muted');
+                    tdVinculoCant.textContent = '—';
+                    tdVinculoCant.classList.add('text-muted');
+                    tdVinculoPct.textContent = '—';
+                    tdVinculoPct.classList.add('text-muted');
                 }
 
                 const tdEncontradas = document.createElement('td');
@@ -1459,7 +1462,7 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdVinculo, tdEncontradas, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdVinculoCant, tdVinculoPct, tdEncontradas, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }
