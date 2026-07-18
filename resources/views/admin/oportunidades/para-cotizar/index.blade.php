@@ -251,17 +251,28 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-sm-6 col-md-4 col-lg-3">
+                <div class="col-sm-6 col-md-4 col-lg-2">
                     <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
                     <input type="search" id="filtro-organismo" class="form-control form-control-sm"
                         placeholder="Buscar organismo…" autocomplete="off">
                 </div>
-                <div class="col-sm-8 col-md-5 col-lg-4">
+                <div class="col-sm-6 col-md-4 col-lg-3">
                     <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
                     <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
                         placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
                 </div>
-                <div class="col-sm-4 col-md-3 col-lg-3 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                <div class="col-sm-6 col-md-4 col-lg-2">
+                    <label for="filtro-vinculo" class="form-label small mb-1">% v&iacute;nculo</label>
+                    <select id="filtro-vinculo" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        <option value="sin">Sin vincular</option>
+                        <option value="con">Con v&iacute;nculo</option>
+                        <option value="50">≥ 50%</option>
+                        <option value="80">≥ 80%</option>
+                        <option value="100">100%</option>
+                    </select>
+                </div>
+                <div class="col-sm-12 col-md-4 col-lg-3 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
                     <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
                         <i class="bi bi-funnel"></i> Filtrar
                     </button>
@@ -408,6 +419,7 @@
         const filtroRegion = document.getElementById('filtro-region');
         const filtroOrganismo = document.getElementById('filtro-organismo');
         const filtroPalabraClave = document.getElementById('filtro-palabra-clave');
+        const filtroVinculo = document.getElementById('filtro-vinculo');
         const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
         const btnDescargarCsv = document.getElementById('btn-descargar-csv');
         const paginacionNav = document.getElementById('oportunidad-paginacion');
@@ -571,10 +583,51 @@
             return frases.some((f) => normalizarTexto(f).includes(criterio));
         }
 
+        function itemVinculoProcesado(item) {
+            return item.vinculo_completo === true
+                || item.vinculo_completo === 1
+                || item.vinculo_completo === '1';
+        }
+
+        function porcentajeVinculoItem(item) {
+            if (!itemVinculoProcesado(item)) {
+                return null;
+            }
+            if (item.porcentaje_vinculo != null && item.porcentaje_vinculo !== '') {
+                return Number(item.porcentaje_vinculo) || 0;
+            }
+            const vinc = Number(item.productos_vinculados) || 0;
+            const tot = Number(item.cantidad_productos) || 0;
+            return tot > 0 ? Math.round((vinc / tot) * 100) : 0;
+        }
+
+        function itemCoincideVinculo(item, criterio) {
+            const sel = String(criterio || '').trim();
+            if (sel === '') {
+                return true;
+            }
+            const procesado = itemVinculoProcesado(item);
+            if (sel === 'sin') {
+                return !procesado;
+            }
+            if (sel === 'con') {
+                return procesado;
+            }
+            const minimo = Number(sel);
+            if (!Number.isFinite(minimo)) {
+                return true;
+            }
+            if (!procesado) {
+                return false;
+            }
+            return porcentajeVinculoItem(item) >= minimo;
+        }
+
         function itemsFiltrados() {
             const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
             const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
             const palabraSel = filtroPalabraClaveAplicado;
+            const vinculoSel = filtroVinculo ? String(filtroVinculo.value || '').trim() : '';
             let items = Array.from(porCodigo.values());
             if (regionSel !== '') {
                 const codigoRegion = Number(regionSel);
@@ -585,6 +638,9 @@
             }
             if (palabraSel !== '') {
                 items = items.filter((item) => itemCoincidePalabraClave(item, palabraSel));
+            }
+            if (vinculoSel !== '') {
+                items = items.filter((item) => itemCoincideVinculo(item, vinculoSel));
             }
             return items.sort(comparar);
         }
@@ -623,6 +679,7 @@
                     organismo: filtroOrganismo ? String(filtroOrganismo.value || '') : '',
                     palabra_clave: filtroPalabraClave ? String(filtroPalabraClave.value || '') : '',
                     palabra_clave_aplicada: filtroPalabraClaveAplicado,
+                    vinculo: filtroVinculo ? String(filtroVinculo.value || '') : '',
                 }));
             } catch (e) {
                 // localStorage no disponible
@@ -642,6 +699,9 @@
             }
             if (filtroPalabraClave && data.palabra_clave != null) {
                 filtroPalabraClave.value = String(data.palabra_clave || '');
+            }
+            if (filtroVinculo && data.vinculo != null) {
+                filtroVinculo.value = String(data.vinculo || '');
             }
             filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null ?
                 String(data.palabra_clave_aplicada || '') :
@@ -834,16 +894,12 @@
                 const productosBajoCodigo = tieneCantidad && !Number.isNaN(cantidadNum) ?
                     `<div class="opc-meta mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>` :
                     '';
-                const vinculoProcesado = item.vinculo_completo === true
-                    || item.vinculo_completo === 1
-                    || item.vinculo_completo === '1';
+                const vinculoProcesado = itemVinculoProcesado(item);
                 const vinculoHtml = vinculoProcesado
                     ? (() => {
                         const vinc = Number(item.productos_vinculados) || 0;
                         const tot = Number(item.cantidad_productos) || 0;
-                        const pct = item.porcentaje_vinculo != null
-                            ? Number(item.porcentaje_vinculo)
-                            : (tot > 0 ? Math.round((vinc / tot) * 100) : 0);
+                        const pct = porcentajeVinculoItem(item) ?? 0;
                         return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
                     })()
                     : '<div class="mt-1"><span class="badge text-bg-warning">Vinculación no procesada</span></div>';
