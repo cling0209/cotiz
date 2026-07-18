@@ -89,6 +89,12 @@ return [
             ))),
         ))),
         'analisis_admin_habilitado' => filter_var(env('MERCADOPUBLICO_ANALISIS_ADMIN', false), FILTER_VALIDATE_BOOL),
+        // Usernames (CSV) con permiso de ver Oportunidades sin ser superadmin (solo listado / Ir a cotizar).
+        // Default: Pame G (login habitual pameg). Ajustar en .env si el username real difiere.
+        'oportunidades_viewers' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('MERCADOPUBLICO_OPORTUNIDADES_VIEWERS', 'pameg')),
+        ))),
         // Primer día histórico para la búsqueda automática de oportunidades.
         // Si quedan días sin corrida completed, se procesan desde esta fecha hasta hoy.
         'fecha_inicio_busqueda' => env('MERCADOPUBLICO_FECHA_INICIO_BUSQUEDA', '2026-07-14'),

@@ -234,6 +234,51 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_pame_g_puede_ver_oportunidades_sin_buscar(): void
+    {
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => false,
+            'cotiz.mercadopublico.oportunidades_viewers' => ['pameg'],
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'pameg',
+            'nombre' => 'Pame',
+            'apellidop' => 'González',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk()
+            ->assertSee('Oportunidades', false)
+            ->assertDontSee('Buscar cotizaciones', false);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertForbidden();
+    }
+
+    public function test_pame_g_por_nombre_puede_ver_oportunidades(): void
+    {
+        config([
+            'cotiz.mercadopublico.oportunidades_viewers' => [],
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'pgonzalez',
+            'nombre' => 'Pame',
+            'apellidop' => 'García',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $this->assertTrue($user->canVerOportunidades());
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk();
+    }
+
     public function test_sin_analisis_no_muestra_ni_permite_palabras_clave(): void
     {
         config([
