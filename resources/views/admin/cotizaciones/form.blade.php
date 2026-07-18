@@ -227,6 +227,11 @@
             @endunless
             <input type="hidden" name="nronota" id="nronota" value="{{ $nota->nronota }}">
             @if($lineas->isNotEmpty())
+                @if(in_array(mb_strtolower(trim((string) auth()->user()?->username)), ['pame', 'admin'], true))
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-copiar-frase-cotiz" title="Copiar saludo para pegar en otro lado" aria-label="Copiar saludo de cotizaci&oacute;n">
+                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                    </button>
+                @endif
                 <a href="{{ route('admin.cotizaciones.export.pdf', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar PDF</a>
                 @unless($desdeAdjudicadas)
                     <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
@@ -2157,6 +2162,18 @@
         }
         copiarTextoPortapapeles(cod).then(() => {
             feedbackIconoCopiado(btn, 'Copiar número de cotización');
+        }).catch(() => {
+            if (btn) {
+                btn.title = 'No se pudo copiar';
+            }
+        });
+    });
+
+    document.getElementById('btn-copiar-frase-cotiz')?.addEventListener('click', () => {
+        const btn = document.getElementById('btn-copiar-frase-cotiz');
+        const frase = 'Buen día!, comparto la cotización con el detalle completo, según lo solicitado.(P.G.)';
+        copiarTextoPortapapeles(frase).then(() => {
+            feedbackIconoCopiado(btn, 'Copiar saludo para pegar en otro lado');
         }).catch(() => {
             if (btn) {
                 btn.title = 'No se pudo copiar';
