@@ -453,6 +453,7 @@
                                     <th style="width:70px">Cant.</th>
                                     <th style="width:100px">C&oacute;digo</th>
                                     <th>Producto maestro</th>
+                                    <th class="text-end" style="width:90px">Precio</th>
                                     <th style="width:80px">Estado</th>
                                 </tr>
                             </thead>
@@ -2487,6 +2488,9 @@
             const prodTxt = prod
                 ? escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre) + (ln.es_sugerencia ? ' <span class="text-muted">(sugerencia)</span>' : '')
                 : '<span class="text-muted">Buscar despu&eacute;s de importar</span>';
+            const precioTxt = prod && prod.prod_valor != null && prod.prod_valor !== ''
+                ? fmtPrecio(prod.prod_valor)
+                : '—';
 
             return '<tr>'
                 + '<td>' + escHtml(ln.id_agile) + '</td>'
@@ -2494,6 +2498,7 @@
                 + '<td class="text-end">' + escHtml(ln.cantidad) + '</td>'
                 + '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>'
                 + '<td>' + prodTxt + '</td>'
+                + '<td class="text-end text-nowrap tabular-nums">' + precioTxt + '</td>'
                 + '<td>' + estadoHtml + '</td>'
                 + '</tr>';
         }).join('');

@@ -351,6 +351,7 @@
                                     <th class="text-end text-nowrap">Cant.</th>
                                     <th>Estado</th>
                                     <th>Producto maestro</th>
+                                    <th class="text-end text-nowrap">Precio</th>
                                 </tr>
                             </thead>
                             <tbody id="modal-vinculo-tbody"></tbody>
@@ -1242,13 +1243,17 @@
                                   ? `<div class="opc-meta">${escapeHtml(String(prod.prod_nombre))}</div>`
                                   : '')
                             : '<span class="text-muted">—</span>';
+                        const precioTxt = prod && prod.prod_valor != null && prod.prod_valor !== ''
+                            ? ('$' + Math.round(Number(prod.prod_valor) || 0).toLocaleString('es-CL'))
+                            : '—';
                         return `<tr>
                             <td class="small">${escapeHtml(desc)}</td>
                             <td class="text-end tabular-nums small">${escapeHtml(cant)}</td>
                             <td class="small">${badgeEstadoVinculo(linea.estado, linea.es_sugerencia)}</td>
                             <td class="small">${prodTxt}</td>
+                            <td class="text-end tabular-nums text-nowrap small">${escapeHtml(precioTxt)}</td>
                         </tr>`;
-                    }).join('') || '<tr><td colspan="4" class="text-muted text-center">Sin productos.</td></tr>';
+                    }).join('') || '<tr><td colspan="5" class="text-muted text-center">Sin productos.</td></tr>';
                 }
                 if (modalVinculoTablaWrap) {
                     modalVinculoTablaWrap.classList.remove('d-none');
