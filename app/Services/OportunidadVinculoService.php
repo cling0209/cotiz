@@ -6,7 +6,9 @@ use App\Jobs\ProcessOportunidadVinculoJob;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Throwable;
 
@@ -80,6 +82,8 @@ class OportunidadVinculoService
         $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
         $existente = $this->corridaEnCurso();
         if ($existente !== null) {
+            $this->liberarCorridaColgadaIfNeeded($existente);
+            $existente = $existente->fresh() ?? $existente;
             $this->agregarPasosPendientes($existente, $dia);
 
             return [
@@ -153,8 +157,11 @@ class OportunidadVinculoService
      */
     public function asegurarTrasBusquedaCompletada(mixed $fechaBusqueda, string $usuario = 'sistema'): ?OportunidadVinculoCorrida
     {
-        if ($this->corridaEnCurso() !== null) {
-            return $this->corridaEnCurso();
+        $enCurso = $this->corridaEnCurso();
+        if ($enCurso !== null) {
+            $this->liberarCorridaColgadaIfNeeded($enCurso);
+
+            return $this->corridaEnCurso() ?? $enCurso->fresh() ?? $enCurso;
         }
 
         return $this->iniciarTrasBusqueda($fechaBusqueda, $usuario);
@@ -595,6 +602,216 @@ class OportunidadVinculoService
     }
 
     /**
+     * Reencola la corrida de vinculación si el worker se detuvo o el job quedó colgado.
+     * Si hay un paso en "running" demasiado tiempo, lo marca fallido y sigue con el siguiente.
+     */
+    public function liberarCorridaColgadaIfNeeded(?OportunidadVinculoCorrida $corrida = null): bool
+    {
+        $corrida ??= $this->corridaEnCurso();
+        if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
+            return false;
+        }
+
+        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
+        if ($corrida->updated_at === null || ! $corrida->updated_at->lt(now()->subSeconds($stalledSeg))) {
+            return false;
+        }
+
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        $fallidosExtra = 0;
+        [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, $stalledSeg, $corrida);
+
+        $pendientes = $this->contarJobsVinculoPendientes($corrida->id);
+        $reservados = $this->contarJobsVinculoReservados($corrida->id);
+
+        if ($pendientes > 0 && $reservados === 0) {
+            $terminadosCola = $this->contarTerminados($pasos);
+            $corrida->fill([
+                'plan_json' => $pasos,
+                'errores_json' => $errores,
+                'pasos_procesados' => $terminadosCola,
+                'pasos_fallidos' => (int) $corrida->pasos_fallidos + $fallidosExtra,
+                'mensaje' => 'Vinculación en cola esperando worker. Verifique RUN_QUEUE_WORKER=true en Render.',
+            ])->save();
+
+            Log::warning('OportunidadVinculo: corrida stalled con job pendiente (sin worker)', [
+                'corrida_id' => $corrida->id,
+                'jobs_pendientes' => $pendientes,
+            ]);
+
+            if ($this->indiceSiguientePendiente($pasos) === null) {
+                $this->finalizar($corrida->fresh() ?? $corrida);
+            }
+
+            return true;
+        }
+
+        if ($reservados > 0) {
+            $this->eliminarJobsVinculo($corrida->id);
+        }
+
+        if ($this->jobVinculoEncolado($corrida->id)) {
+            if ($fallidosExtra > 0) {
+                $corrida->fill([
+                    'plan_json' => $pasos,
+                    'errores_json' => $errores,
+                    'pasos_procesados' => $this->contarTerminados($pasos),
+                    'pasos_fallidos' => (int) $corrida->pasos_fallidos + $fallidosExtra,
+                ])->save();
+            }
+
+            return false;
+        }
+
+        $terminados = $this->contarTerminados($pasos);
+        $siguiente = $terminados + 1;
+        $mensaje = 'Vinculación retomada automáticamente tras detectar worker detenido (paso '
+            .$siguiente.'/'.max(1, (int) $corrida->total_pasos).').';
+
+        $corrida->fill([
+            'plan_json' => $pasos,
+            'errores_json' => $errores,
+            'pasos_procesados' => $terminados,
+            'pasos_fallidos' => (int) $corrida->pasos_fallidos + $fallidosExtra,
+            'mensaje' => $mensaje,
+        ])->save();
+
+        if ($this->indiceSiguientePendiente($pasos) === null) {
+            $this->finalizar($corrida->fresh() ?? $corrida);
+
+            return true;
+        }
+
+        ProcessOportunidadVinculoJob::dispatch($corrida->id);
+
+        Log::warning('OportunidadVinculo: corrida colgada reencolada', [
+            'corrida_id' => $corrida->id,
+            'pasos_terminados' => $terminados,
+            'pasos_marcados_fallidos' => $fallidosExtra,
+            'jobs_reservados_antes' => $reservados,
+        ]);
+
+        return true;
+    }
+
+    public function jobVinculoEncolado(int $corridaId): bool
+    {
+        return $this->contarJobsVinculoPendientes($corridaId) > 0
+            || $this->contarJobsVinculoReservados($corridaId) > 0;
+    }
+
+    public function contarJobsVinculoPendientes(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadVinculoJob%')
+            ->whereNull('reserved_at');
+
+        return (int) $this->filtrarJobsVinculoPorCorrida($query, $corridaId)->count();
+    }
+
+    public function contarJobsVinculoReservados(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadVinculoJob%')
+            ->whereNotNull('reserved_at');
+
+        return (int) $this->filtrarJobsVinculoPorCorrida($query, $corridaId)->count();
+    }
+
+    public function eliminarJobsVinculo(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')->where('payload', 'like', '%ProcessOportunidadVinculoJob%');
+
+        return $this->filtrarJobsVinculoPorCorrida($query, $corridaId)->delete();
+    }
+
+    private function filtrarJobsVinculoPorCorrida(\Illuminate\Database\Query\Builder $query, ?int $corridaId): \Illuminate\Database\Query\Builder
+    {
+        if ($corridaId === null) {
+            return $query;
+        }
+
+        return $query->where('payload', 'like', '%i:'.$corridaId.';%');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @param  list<array<string, mixed>>  $errores
+     * @return array{0: list<array<string, mixed>>, 1: int, 2: list<array<string, mixed>>}
+     */
+    private function marcarPasosRunningColgados(
+        array $pasos,
+        array $errores,
+        int $stalledSeg,
+        OportunidadVinculoCorrida $corrida,
+    ): array {
+        $fallidos = 0;
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso) || ($paso['estado'] ?? '') !== self::PASO_RUNNING) {
+                continue;
+            }
+
+            $inicioRaw = trim((string) ($paso['inicio'] ?? ''));
+            $colgado = true;
+            if ($inicioRaw !== '') {
+                try {
+                    $colgado = Carbon::parse($inicioRaw)->lt(now()->subSeconds($stalledSeg));
+                } catch (Throwable) {
+                    $colgado = true;
+                }
+            }
+
+            if (! $colgado) {
+                // Worker murió entre pasos: devolver a pending para reintentar.
+                $pasos[$i]['estado'] = self::PASO_PENDING;
+                unset($pasos[$i]['inicio']);
+
+                continue;
+            }
+
+            $codigo = (string) ($paso['codigo'] ?? '');
+            $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
+            $this->marcarEncontradaSinVinculo($codigo, $fechaPaso);
+
+            $pasos[$i]['estado'] = self::PASO_FAILED;
+            $pasos[$i]['fin'] = now()->toIso8601String();
+            $pasos[$i]['error'] = 'Paso colgado (sin avance); se marcó fallido para continuar.';
+            $errores[] = [
+                'codigo' => $codigo !== '' ? $codigo : null,
+                'error' => 'Paso colgado: worker sin avance.',
+                'at' => now()->toIso8601String(),
+            ];
+            $fallidos++;
+        }
+
+        return [$pasos, $fallidos, $errores];
+    }
+
+    private function corridaEstaStalled(OportunidadVinculoCorrida $corrida): bool
+    {
+        if ($corrida->estado !== self::ESTADO_RUNNING || $corrida->updated_at === null) {
+            return false;
+        }
+
+        $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
+
+        return $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function estado(?OportunidadVinculoCorrida $corrida = null): ?array
@@ -602,6 +819,12 @@ class OportunidadVinculoService
         $corrida ??= $this->ultimaCorrida();
         if ($corrida === null) {
             return null;
+        }
+
+        $reanudadaAuto = false;
+        if ($corrida->estado === self::ESTADO_RUNNING) {
+            $reanudadaAuto = $this->liberarCorridaColgadaIfNeeded($corrida);
+            $corrida = $corrida->fresh() ?? $corrida;
         }
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
@@ -621,6 +844,8 @@ class OportunidadVinculoService
             }
         }
 
+        $workerStalled = $this->corridaEstaStalled($corrida);
+
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
@@ -638,6 +863,8 @@ class OportunidadVinculoService
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'progreso_por_region' => $this->progresoPorRegion($pasos),
             'mensaje' => $corrida->mensaje,
+            'worker_stalled' => $workerStalled,
+            'reanudada_auto' => $reanudadaAuto,
         ];
     }
 

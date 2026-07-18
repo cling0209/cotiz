@@ -418,4 +418,167 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region', 3)
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region_nombre', 'Atacama');
     }
+
+    public function test_estado_reencola_vinculo_colgado_sin_job(): void
+    {
+        config([
+            'cotiz.mercadopublico.oportunidad_corrida_stalled_segundos' => 60,
+            'queue.default' => 'database',
+        ]);
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHours(2),
+            'fin' => now()->subHour(),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [
+                ['frase' => '(todas)', 'region' => 3, 'estado' => 'ok', 'intentos' => 1, 'encontradas' => 1],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2324-684-COT26',
+            'fecha_busqueda' => '2026-07-16',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'indice_region_config' => 0,
+            'nombre' => 'Cotización colgada',
+            'vinculo_completo' => false,
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHour(),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 2,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'A-AT-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'ok',
+                ],
+                [
+                    'codigo' => '2324-684-COT26',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'running',
+                    'inicio' => now()->subMinutes(10)->toIso8601String(),
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculando 2324-684-COT26 (2/2)…',
+        ]);
+        OportunidadVinculoCorrida::query()->whereKey($corrida->id)->update([
+            'updated_at' => now()->subMinutes(5),
+        ]);
+        $corrida->refresh();
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.vinculo.reanudada_auto', true);
+
+        $corrida->refresh();
+        $this->assertStringContainsString('retomada automáticamente', (string) $corrida->mensaje);
+        $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $this->assertSame('failed', $plan[1]['estado'] ?? null);
+        $this->assertTrue((bool) OportunidadEncontrada::query()->where('codigo', '2324-684-COT26')->value('vinculo_completo'));
+        // Último paso fallido → corrida finaliza (no quedan pending).
+        $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
+        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_estado_reencola_vinculo_con_pasos_pendientes(): void
+    {
+        config([
+            'cotiz.mercadopublico.oportunidad_corrida_stalled_segundos' => 60,
+            'queue.default' => 'database',
+        ]);
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHours(2),
+            'fin' => now()->subHour(),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 0,
+            'plan_json' => [
+                ['frase' => '(todas)', 'region' => 3, 'estado' => 'ok', 'intentos' => 1, 'encontradas' => 0],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHour(),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 3,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'A-AT-001',
+                    'region' => 3,
+                    'estado' => 'ok',
+                ],
+                [
+                    'codigo' => 'A-AT-002',
+                    'region' => 3,
+                    'estado' => 'running',
+                    'inicio' => now()->subMinutes(10)->toIso8601String(),
+                ],
+                [
+                    'codigo' => 'A-AT-003',
+                    'region' => 3,
+                    'estado' => 'pending',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculando A-AT-002 (2/3)…',
+        ]);
+        OportunidadVinculoCorrida::query()->whereKey($corrida->id)->update([
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.vinculo.reanudada_auto', true)
+            ->assertJsonPath('corrida.vinculo.estado', 'running');
+
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $corrida->id);
+
+        $corrida->refresh();
+        $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $this->assertSame('failed', $plan[1]['estado'] ?? null);
+        $this->assertSame('pending', $plan[2]['estado'] ?? null);
+    }
 }

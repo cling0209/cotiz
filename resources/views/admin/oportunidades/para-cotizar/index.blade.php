@@ -1748,6 +1748,18 @@
             }
             if (vinDetalle) {
                 vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');
+                if (vinculo.reanudada_auto) {
+                    vinDetalle.classList.remove('text-muted');
+                    vinDetalle.classList.add('text-warning');
+                } else if (vinculo.worker_stalled) {
+                    vinDetalle.textContent = String(vinculo.mensaje || '') ||
+                        'Vinculación sin avance; se intentará retomar automáticamente…';
+                    vinDetalle.classList.remove('text-muted');
+                    vinDetalle.classList.add('text-danger');
+                } else {
+                    vinDetalle.classList.add('text-muted');
+                    vinDetalle.classList.remove('text-warning', 'text-danger');
+                }
             }
             renderVinculoRegiones(vinculo);
         }
