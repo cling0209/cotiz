@@ -943,9 +943,15 @@
                     `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>` :
                     '';
                 const visitas = visitasDeItem(item);
-                const codigoLabel = visitas > 0 ?
-                    `${escapeHtml(codigo || '—')} visto ${visitas}` :
-                    escapeHtml(codigo || '—');
+                const codigoSolo = escapeHtml(codigo || '—');
+                const vistoHtml = visitas > 0
+                    ? ` <span class="opc-meta">visto ${visitas}</span>`
+                    : '';
+                const btnCopiarCodigo = codigo
+                    ? `<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline btn-copiar-codigo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Copiar código ${escapeHtml(codigo)}" aria-label="Copiar código">
+                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                    </button>`
+                    : '';
                 const btnProductos = codigo
                     ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-ver-vinculo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Ver productos y vinculación">
                         <i class="bi bi-list-ul"></i> Productos
@@ -961,7 +967,7 @@
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
-                    <code>${codigoLabel}</code>
+                    <span class="text-nowrap"><code>${codigoSolo}</code>${btnCopiarCodigo}${vistoHtml}</span>
                     ${nombreHtml}
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
@@ -1222,6 +1228,47 @@
             }
         }
 
+        function copiarTextoPortapapeles(texto) {
+            if (navigator.clipboard?.writeText && window.isSecureContext) {
+                return navigator.clipboard.writeText(texto);
+            }
+            return new Promise((resolve, reject) => {
+                const ta = document.createElement('textarea');
+                ta.value = texto;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    ok ? resolve(true) : reject(new Error('No se pudo copiar'));
+                } catch (err) {
+                    document.body.removeChild(ta);
+                    reject(err);
+                }
+            });
+        }
+
+        function feedbackCopiado(btn) {
+            if (!btn) {
+                return;
+            }
+            const icon = btn.querySelector('i');
+            if (!icon) {
+                return;
+            }
+            const prev = icon.className;
+            icon.className = 'bi bi-clipboard-check text-success';
+            btn.title = '¡Copiado!';
+            window.setTimeout(() => {
+                icon.className = prev;
+                const cod = btn.getAttribute('data-codigo') || '';
+                btn.title = cod ? `Copiar código ${cod}` : 'Copiar código';
+            }, 1500);
+        }
+
         if (tbody) {
             // capture: contar antes de que page-loader u otros handlers naveguen
             tbody.addEventListener('click', (e) => {
@@ -1233,12 +1280,26 @@
             }, true);
 
             tbody.addEventListener('click', (e) => {
-                const btn = e.target.closest('button.btn-ver-vinculo');
-                if (!btn) {
+                const btnVinculo = e.target.closest('button.btn-ver-vinculo');
+                if (btnVinculo) {
+                    e.preventDefault();
+                    abrirDetalleVinculo(btnVinculo.getAttribute('data-codigo') || '');
+                    return;
+                }
+                const btnCopiar = e.target.closest('button.btn-copiar-codigo');
+                if (!btnCopiar) {
                     return;
                 }
                 e.preventDefault();
-                abrirDetalleVinculo(btn.getAttribute('data-codigo') || '');
+                const cod = String(btnCopiar.getAttribute('data-codigo') || '').trim().toUpperCase();
+                if (!cod) {
+                    return;
+                }
+                copiarTextoPortapapeles(cod).then(() => {
+                    feedbackCopiado(btnCopiar);
+                }).catch(() => {
+                    btnCopiar.title = 'No se pudo copiar';
+                });
             });
         }
 
