@@ -34,8 +34,9 @@
                 <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
                     <i class="bi bi-x-circle"></i> Cancelar
                 </button>
-                <button type="button" id="btn-iniciar-vinculo" class="btn btn-outline-success btn-sm d-none" data-no-loader>
-                    <i class="bi bi-link-45deg"></i> Iniciar vinculaci&oacute;n
+                <button type="button" id="btn-iniciar-vinculo" class="btn btn-outline-success btn-sm" data-no-loader title="Puede correr en paralelo con la b&uacute;squeda">
+                    <i class="bi bi-link-45deg"></i> Procesar vinculaciones
+                    <span id="btn-iniciar-vinculo-badge" class="badge text-bg-light text-dark ms-1 d-none">0</span>
                 </button>
             @endif
         </div>
@@ -167,7 +168,7 @@
         <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
             <div id="vinculo-aviso-texto" class="small mb-0"></div>
             <button type="button" id="btn-iniciar-vinculo-aviso" class="btn btn-success btn-sm" data-no-loader>
-                <i class="bi bi-link-45deg"></i> Iniciar vinculaci&oacute;n
+                <i class="bi bi-link-45deg"></i> Procesar vinculaciones
             </button>
         </div>
     </div>
@@ -338,6 +339,7 @@
     const btn = document.getElementById('btn-buscar-oportunidades');
     const btnCancelar = document.getElementById('btn-cancelar-oportunidades');
     const btnIniciarVinculo = document.getElementById('btn-iniciar-vinculo');
+    const btnIniciarVinculoBadge = document.getElementById('btn-iniciar-vinculo-badge');
     const btnIniciarVinculoAviso = document.getElementById('btn-iniciar-vinculo-aviso');
     const vinculoAviso = document.getElementById('vinculo-aviso');
     const vinculoAvisoTexto = document.getElementById('vinculo-aviso-texto');
@@ -398,6 +400,7 @@
     const guardadasIniciales = @json($guardadas ?? []);
     const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
     const corridaInicial = @json($corridaEstado ?? null);
+    const vinculoPendientesInicial = @json((int) ($vinculoPendientes ?? 0));
 
     function cargarItems(items) {
         (items || []).forEach((item) => {
@@ -1493,7 +1496,7 @@
         cargarItems(corrida.items || []);
         sincronizarVisitasLocalesEnMapa();
         aplicarEstadoVinculo(corrida.vinculo || null);
-        aplicarVinculoAviso(corrida.vinculo_aviso || null, corrida.vinculo || null);
+        actualizarBotonProcesarVinculo(corrida.vinculo || null, corrida.vinculo_aviso || null, corrida.vinculo_pendientes);
         const activo = corrida.estado === 'running';
         const cambiandoDia = corrida.estado === 'completed'
             && Boolean(corrida.fecha_siguiente_pendiente)
@@ -1629,21 +1632,36 @@
         }
     }
 
-    function aplicarVinculoAviso(aviso, vinculo) {
+    function actualizarBotonProcesarVinculo(vinculo, aviso, pendientesRaw) {
         const vinculoActivo = vinculo && vinculo.estado === 'running';
-        const mostrar = !vinculoActivo && aviso && aviso.puede_iniciar;
+        const pendientes = Number(pendientesRaw);
+        const nPendientes = Number.isFinite(pendientes)
+            ? pendientes
+            : (aviso && Number(aviso.pendientes) > 0 ? Number(aviso.pendientes) : 0);
+
+        // Visible siempre que el 2.º proceso no esté corriendo (puede ir en paralelo a la búsqueda).
+        if (btnIniciarVinculo) {
+            btnIniciarVinculo.classList.toggle('d-none', !!vinculoActivo);
+            btnIniciarVinculo.disabled = !!vinculoActivo || iniciandoVinculo;
+        }
+        if (btnIniciarVinculoBadge) {
+            if (!vinculoActivo && nPendientes > 0) {
+                btnIniciarVinculoBadge.textContent = String(nPendientes);
+                btnIniciarVinculoBadge.classList.remove('d-none');
+            } else {
+                btnIniciarVinculoBadge.classList.add('d-none');
+            }
+        }
+
+        const mostrarAviso = !vinculoActivo && aviso && aviso.puede_iniciar;
         if (vinculoAviso) {
-            vinculoAviso.classList.toggle('d-none', !mostrar);
+            vinculoAviso.classList.toggle('d-none', !mostrarAviso);
         }
         if (vinculoAvisoTexto && aviso) {
             vinculoAvisoTexto.textContent = String(aviso.mensaje || '');
         }
-        if (btnIniciarVinculo) {
-            btnIniciarVinculo.classList.toggle('d-none', !mostrar);
-            btnIniciarVinculo.disabled = false;
-        }
         if (btnIniciarVinculoAviso) {
-            btnIniciarVinculoAviso.disabled = false;
+            btnIniciarVinculoAviso.disabled = iniciandoVinculo;
         }
     }
 
@@ -1745,6 +1763,8 @@
         if (corridaInicial.estado === 'running' && !tickTimer) {
             tickTimer = setInterval(actualizarDuracion, 250);
         }
+    } else if (puedeBuscar) {
+        actualizarBotonProcesarVinculo(null, null, vinculoPendientesInicial);
     }
 
     if (puedeBuscar) {

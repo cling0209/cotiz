@@ -46,6 +46,7 @@ class OportunidadParaCotizarController extends Controller
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
             'corridaEstado' => $corridaEstado,
+            'vinculoPendientes' => $puedeBuscar ? $this->vinculos->contarPendientesSafe() : 0,
             'regionesFiltro' => $regionesFiltro,
             'filtrosUserId' => $userId,
         ]);

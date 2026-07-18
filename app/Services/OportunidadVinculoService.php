@@ -207,6 +207,15 @@ class OportunidadVinculoService
         return count($this->construirPlan($dia));
     }
 
+    public function contarPendientesSafe(mixed $fechaBusqueda = null): int
+    {
+        try {
+            return $this->contarPendientes($fechaBusqueda);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
     private function agregarPasosPendientes(OportunidadVinculoCorrida $corrida, string $dia): void
     {
         $nuevos = $this->construirPlan($dia);
