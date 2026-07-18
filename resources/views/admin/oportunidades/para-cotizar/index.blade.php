@@ -1455,18 +1455,18 @@
         }
 
         function listaProgresoRegiones(vinculo) {
+            // Preferir lista ordenada del servidor (evita que JSON reordene claves "3","13",…).
+            if (vinculo && Array.isArray(vinculo.progreso_regiones) && vinculo.progreso_regiones.length > 0) {
+                return vinculo.progreso_regiones.filter((s) => s && Number(s.total) > 0);
+            }
             const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object'
                 ? vinculo.progreso_por_region
                 : {};
             return Object.values(porRegion)
                 .filter((s) => s && Number(s.total) > 0)
                 .sort((a, b) => {
-                    const ia = a.indice_region_config != null
-                        ? Number(a.indice_region_config)
-                        : indiceRegionConfig(a.region);
-                    const ib = b.indice_region_config != null
-                        ? Number(b.indice_region_config)
-                        : indiceRegionConfig(b.region);
+                    const ia = indiceRegionConfig(a.region);
+                    const ib = indiceRegionConfig(b.region);
                     if (ia !== ib) return ia - ib;
                     return (Number(a.region) || 0) - (Number(b.region) || 0);
                 });

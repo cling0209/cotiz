@@ -417,7 +417,9 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.porcentaje', 50)
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region', 3)
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region_nombre', 'Atacama')
-            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.indice_region_config', 0);
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.indice_region_config', 0)
+            ->assertJsonPath('corrida.vinculo.progreso_regiones.0.region', 3)
+            ->assertJsonPath('corrida.vinculo.progreso_regiones.0.indice_region_config', 0);
     }
 
     public function test_estado_reencola_vinculo_colgado_sin_job(): void

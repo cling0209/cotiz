@@ -888,6 +888,7 @@ class OportunidadVinculoService
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $total = max(0, (int) $corrida->total_pasos);
         $terminados = $this->contarTerminados($pasos);
+        $progresoPorRegion = $this->progresoPorRegion($pasos);
         $duracionSegundos = $this->duracionSegundos(
             $corrida->inicio,
             $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null),
@@ -919,7 +920,9 @@ class OportunidadVinculoService
             'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
-            'progreso_por_region' => $this->progresoPorRegion($pasos),
+            // Lista 0..n: conserva el orden de MERCADOPUBLICO_REGIONES (JSON no reordena).
+            'progreso_regiones' => array_values($progresoPorRegion),
+            'progreso_por_region' => $progresoPorRegion,
             'mensaje' => $corrida->mensaje,
             'worker_stalled' => $workerStalled,
             'reanudada_auto' => $reanudadaAuto,
@@ -993,9 +996,8 @@ class OportunidadVinculoService
 
             $region = (int) ($paso['region'] ?? 0);
             $key = (string) $region;
-            $indice = array_key_exists('indice_region_config', $paso)
-                ? (int) $paso['indice_region_config']
-                : CompraAgilRegionScope::indiceEnConfig($region > 0 ? $region : null);
+            // Siempre el orden actual de MERCADOPUBLICO_REGIONES (no el índice guardado en el plan).
+            $indice = CompraAgilRegionScope::indiceEnConfig($region > 0 ? $region : null);
 
             if (! isset($byRegion[$key])) {
                 $byRegion[$key] = [
@@ -1011,12 +1013,6 @@ class OportunidadVinculoService
                     'ok' => 0,
                     'failed' => 0,
                 ];
-            } else {
-                // Conservar el menor índice visto (prioridad de config).
-                $byRegion[$key]['indice_region_config'] = min(
-                    (int) $byRegion[$key]['indice_region_config'],
-                    $indice,
-                );
             }
 
             $byRegion[$key]['total']++;
