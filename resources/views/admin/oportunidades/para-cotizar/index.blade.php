@@ -242,7 +242,7 @@
     <div id="oportunidad-resultados" class="card shadow-sm @if(count($guardadas) === 0) d-none @endif">
         <div class="card-body border-bottom py-2">
             <div class="row g-2 align-items-end">
-                <div class="col-sm-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-3 col-xl-2">
                     <label for="filtro-region" class="form-label small mb-1">Regi&oacute;n</label>
                     <select id="filtro-region" class="form-select form-select-sm">
                         <option value="">Todas</option>
@@ -251,19 +251,9 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-sm-6 col-md-4 col-lg-2">
-                    <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
-                    <input type="search" id="filtro-organismo" class="form-control form-control-sm"
-                        placeholder="Buscar organismo…" autocomplete="off">
-                </div>
-                <div class="col-sm-6 col-md-4 col-lg-3">
-                    <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
-                    <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
-                        placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
-                </div>
-                <div class="col-sm-6 col-md-4 col-lg-2">
+                <div class="col-6 col-md-3 col-xl-2">
                     <label for="filtro-vinculo" class="form-label small mb-1">% v&iacute;nculo</label>
-                    <select id="filtro-vinculo" class="form-select form-select-sm">
+                    <select id="filtro-vinculo" class="form-select form-select-sm" title="Filtrar por porcentaje de vinculaci&oacute;n al maestro">
                         <option value="">Todas</option>
                         <option value="sin">Sin vincular</option>
                         <option value="con">Con v&iacute;nculo</option>
@@ -272,12 +262,22 @@
                         <option value="100">100%</option>
                     </select>
                 </div>
-                <div class="col-sm-12 col-md-4 col-lg-3 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
+                    <input type="search" id="filtro-organismo" class="form-control form-control-sm"
+                        placeholder="Buscar organismo…" autocomplete="off">
+                </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
+                    <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
+                        placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
+                </div>
+                <div class="col-12 col-md-6 col-xl-2 d-flex flex-wrap gap-2 align-items-end">
                     <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
                         <i class="bi bi-funnel"></i> Filtrar
                     </button>
                     <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
-                        <i class="bi bi-download"></i> Descargar CSV
+                        <i class="bi bi-download"></i> CSV
                     </button>
                 </div>
             </div>
