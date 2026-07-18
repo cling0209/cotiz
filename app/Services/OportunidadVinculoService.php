@@ -269,10 +269,8 @@ class OportunidadVinculoService
         $rows = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', '>=', $desde)
             ->whereDate('fecha_busqueda', '<=', $hasta)
-            ->where(function ($query) {
-                $query->where('vinculo_completo', false)
-                    ->orWhereNull('vinculo_completo');
-            })
+            // PostgreSQL: boolean no acepta = 0; IS NOT TRUE cubre false y null.
+            ->whereRaw('vinculo_completo IS NOT TRUE')
             ->where(function ($query) {
                 $query->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>', now());
@@ -447,7 +445,7 @@ class OportunidadVinculoService
 
         $row = OportunidadEncontrada::query()
             ->where('codigo', $codigo)
-            ->where('vinculo_completo', true)
+            ->whereRaw('vinculo_completo IS TRUE')
             ->whereNotNull('vinculo_preview_json')
             ->orderByDesc('fecha_busqueda')
             ->orderByDesc('id')
