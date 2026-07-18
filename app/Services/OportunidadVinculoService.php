@@ -294,6 +294,7 @@ class OportunidadVinculoService
             $vistos[$codigo] = true;
             $pasos[] = [
                 'codigo' => $codigo,
+                'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
                 'region' => $row->region !== null ? (int) $row->region : null,
                 'region_nombre' => (string) ($row->nombre_region ?: CompraAgilRegionScope::nombreRegion((int) ($row->region ?? 0))),
                 'indice_region_config' => (int) $row->indice_region_config,
@@ -332,7 +333,8 @@ class OportunidadVinculoService
 
         $inicioMs = microtime(true);
         try {
-            $resultado = $this->vincularCodigo((string) $paso['codigo'], $corrida->fecha_busqueda);
+            $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
+            $resultado = $this->vincularCodigo((string) $paso['codigo'], $fechaPaso);
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_OK;
             $pasos[$indice]['fin'] = now()->toIso8601String();
@@ -345,7 +347,8 @@ class OportunidadVinculoService
                 'codigo' => $paso['codigo'] ?? null,
                 'message' => $e->getMessage(),
             ]);
-            $this->marcarEncontradaSinVinculo((string) ($paso['codigo'] ?? ''), $corrida->fecha_busqueda);
+            $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
+            $this->marcarEncontradaSinVinculo((string) ($paso['codigo'] ?? ''), $fechaPaso);
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_FAILED;
             $pasos[$indice]['fin'] = now()->toIso8601String();
@@ -399,25 +402,27 @@ class OportunidadVinculoService
         $vinculados = (int) ($resumen['vinculados'] ?? 0);
         $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
         $previewCache = $this->empaquetarPreviewCache($preview);
+        $attrs = [
+            'cantidad_productos' => $total > 0 ? $total : null,
+            'productos_vinculados' => $vinculados,
+            'porcentaje_vinculo' => $porcentaje,
+            'vinculo_completo' => true,
+            'vinculo_at' => now(),
+            'vinculo_preview_json' => $previewCache,
+        ];
 
-        $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
-        $row = OportunidadEncontrada::query()
-            ->where('codigo', $codigo)
-            ->whereDate('fecha_busqueda', $dia)
-            ->first();
-
-        if ($row !== null) {
-            $row->fill([
-                'cantidad_productos' => $total > 0 ? $total : ($row->cantidad_productos ?? 0),
-                'productos_vinculados' => $vinculados,
-                'porcentaje_vinculo' => $porcentaje,
-                'vinculo_completo' => true,
-                'vinculo_at' => now(),
-                'vinculo_preview_json' => $previewCache,
-            ])->save();
+        $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
+        foreach ($rows as $row) {
+            $fill = $attrs;
+            if ($fill['cantidad_productos'] === null) {
+                $fill['cantidad_productos'] = $row->cantidad_productos ?? 0;
+            }
+            $row->fill($fill)->save();
 
             $this->encontradaRelay->replicarItems([
-                $row->toResumen() + ['fecha_busqueda' => $dia],
+                $row->toResumen() + [
+                    'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
+                ],
             ]);
         }
 
@@ -426,6 +431,50 @@ class OportunidadVinculoService
             'vinculados' => $vinculados,
             'porcentaje' => $porcentaje,
         ];
+    }
+
+    /**
+     * Localiza la(s) fila(s) de oportunidad_encontradas a actualizar.
+     * Preferir fecha_busqueda del paso; si no hay match, cualquier fila del código (días anteriores del catch-up).
+     *
+     * @return \Illuminate\Support\Collection<int, OportunidadEncontrada>
+     */
+    private function encontrarFilasParaCodigo(string $codigo, mixed $fechaBusqueda = null): \Illuminate\Support\Collection
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return collect();
+        }
+
+        if ($fechaBusqueda !== null && trim((string) $fechaBusqueda) !== '') {
+            $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
+            $porDia = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->whereDate('fecha_busqueda', $dia)
+                ->get();
+            if ($porDia->isNotEmpty()) {
+                return $porDia;
+            }
+        }
+
+        // Fallback: todas las del código aún sin vincular; si ninguna, la más reciente.
+        $pendientes = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->whereRaw('vinculo_completo IS NOT TRUE')
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->get();
+        if ($pendientes->isNotEmpty()) {
+            return $pendientes;
+        }
+
+        $ultima = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        return $ultima !== null ? collect([$ultima]) : collect();
     }
 
     /**
@@ -504,29 +553,22 @@ class OportunidadVinculoService
             return;
         }
 
-        $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
-        $row = OportunidadEncontrada::query()
-            ->where('codigo', $codigo)
-            ->whereDate('fecha_busqueda', $dia)
-            ->first();
+        $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
+        foreach ($rows as $row) {
+            $row->fill([
+                'productos_vinculados' => 0,
+                'porcentaje_vinculo' => 0,
+                'vinculo_completo' => true,
+                'vinculo_at' => now(),
+                'vinculo_preview_json' => null,
+            ])->save();
 
-        if ($row === null) {
-            return;
+            $this->encontradaRelay->replicarItems([
+                $row->toResumen() + [
+                    'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
+                ],
+            ]);
         }
-
-        // Completo con 0 para no reintentar eternamente; no se muestra % si total es null?
-        // Usuario: mostrar solo si completo. Marcamos completo con 0/0.
-        $row->fill([
-            'productos_vinculados' => 0,
-            'porcentaje_vinculo' => 0,
-            'vinculo_completo' => true,
-            'vinculo_at' => now(),
-            'vinculo_preview_json' => null,
-        ])->save();
-
-        $this->encontradaRelay->replicarItems([
-            $row->toResumen() + ['fecha_busqueda' => $dia],
-        ]);
     }
 
     private function finalizar(OportunidadVinculoCorrida $corrida): void

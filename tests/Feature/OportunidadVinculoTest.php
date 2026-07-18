@@ -303,6 +303,52 @@ class OportunidadVinculoTest extends TestCase
         $this->assertCount(2, $cache['lineas']);
     }
 
+    public function test_vincular_codigo_actualiza_fila_de_dia_anterior(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '2568-40-COT26',
+                    'nombre' => 'Sillas',
+                    'institucion' => [
+                        'organismo_comprador' => 'CORP',
+                        'region' => 6,
+                    ],
+                    'productos_solicitados' => [
+                        [
+                            'codigo_producto' => '1',
+                            'nombre' => 'Silla',
+                            'descripcion' => 'Silla escritorio',
+                            'cantidad' => 1,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        // Encontrada en día anterior al de la corrida de vinculación.
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2568-40-COT26',
+            'nombre' => 'Sillas de escritorio',
+            'region' => 6,
+            'nombre_region' => "O'Higgins",
+            'fecha_busqueda' => '2026-07-15',
+            'indice_region_config' => 2,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $this->app->make(OportunidadVinculoService::class)
+            ->vincularCodigo('2568-40-COT26', '2026-07-18');
+
+        $this->assertDatabaseHas('oportunidad_encontradas', [
+            'codigo' => '2568-40-COT26',
+            'fecha_busqueda' => '2026-07-15',
+            'vinculo_completo' => true,
+        ]);
+    }
+
     public function test_estado_busqueda_incluye_vinculo(): void
     {
         $user = User::factory()->create([
