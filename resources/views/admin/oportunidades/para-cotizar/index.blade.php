@@ -171,7 +171,7 @@
     <div id="oportunidad-resultados" class="card shadow-sm @if(count($guardadas) === 0) d-none @endif">
         <div class="card-body border-bottom py-2">
             <div class="row g-2 align-items-end">
-                <div class="col-sm-6 col-md-4 col-lg-3">
+                <div class="col-sm-6 col-md-4 col-lg-2">
                     <label for="filtro-region" class="form-label small mb-1">Regi&oacute;n</label>
                     <select id="filtro-region" class="form-select form-select-sm">
                         <option value="">Todas</option>
@@ -180,12 +180,20 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-sm-6 col-md-5 col-lg-4">
+                <div class="col-sm-6 col-md-4 col-lg-3">
                     <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
                     <input type="search" id="filtro-organismo" class="form-control form-control-sm"
                            placeholder="Buscar organismo…" autocomplete="off">
                 </div>
-                <div class="col-sm-12 col-md-3 col-lg-5 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                <div class="col-sm-8 col-md-5 col-lg-4">
+                    <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
+                    <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
+                           placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
+                </div>
+                <div class="col-sm-4 col-md-3 col-lg-3 d-flex flex-wrap gap-2 justify-content-md-end align-items-end">
+                    <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
+                        <i class="bi bi-funnel"></i> Filtrar
+                    </button>
                     <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
                         <i class="bi bi-download"></i> Descargar CSV
                     </button>
@@ -309,6 +317,8 @@
     const debugRespuestaJson = document.getElementById('debug-respuesta-json');
     const filtroRegion = document.getElementById('filtro-region');
     const filtroOrganismo = document.getElementById('filtro-organismo');
+    const filtroPalabraClave = document.getElementById('filtro-palabra-clave');
+    const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
     const btnDescargarCsv = document.getElementById('btn-descargar-csv');
     const paginacionNav = document.getElementById('oportunidad-paginacion');
     const paginacionLista = document.getElementById('oportunidad-paginacion-lista');
@@ -327,6 +337,8 @@
     let paginaActual = 1;
     let sortState = { column: 'presupuesto', direction: 'desc' };
     let filtroOrganismoTimer = null;
+    /** Criterio de palabra clave aplicado al pulsar Filtrar (no al tipear). */
+    let filtroPalabraClaveAplicado = '';
 
     const guardadasIniciales = @json($guardadas ?? []);
     const fechaBusquedaInicial = @json($fechaBusqueda ?? null);
@@ -436,9 +448,23 @@
             .trim();
     }
 
+    function itemCoincidePalabraClave(item, criterio) {
+        if (criterio === '') {
+            return true;
+        }
+        const codigo = normalizarTexto(item.codigo);
+        const nombre = normalizarTexto(item.nombre);
+        if (codigo.includes(criterio) || nombre.includes(criterio)) {
+            return true;
+        }
+        const frases = Array.isArray(item.palabras_coinciden) ? item.palabras_coinciden : [];
+        return frases.some((f) => normalizarTexto(f).includes(criterio));
+    }
+
     function itemsFiltrados() {
         const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
         const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
+        const palabraSel = filtroPalabraClaveAplicado;
         let items = Array.from(porCodigo.values());
         if (regionSel !== '') {
             const codigoRegion = Number(regionSel);
@@ -447,7 +473,17 @@
         if (organismoSel !== '') {
             items = items.filter((item) => normalizarTexto(item.organismo).includes(organismoSel));
         }
+        if (palabraSel !== '') {
+            items = items.filter((item) => itemCoincidePalabraClave(item, palabraSel));
+        }
         return items.sort(comparar);
+    }
+
+    function aplicarFiltros() {
+        filtroPalabraClaveAplicado = filtroPalabraClave
+            ? normalizarTexto(filtroPalabraClave.value)
+            : '';
+        renderTabla(true);
     }
 
     function csvEscape(valor) {
@@ -593,7 +629,8 @@
         }).join('');
 
         const filtroActivo = (filtroRegion && String(filtroRegion.value || '').trim() !== '')
-            || (filtroOrganismo && String(filtroOrganismo.value || '').trim() !== '');
+            || (filtroOrganismo && String(filtroOrganismo.value || '').trim() !== '')
+            || filtroPalabraClaveAplicado !== '';
         const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
         const visibles = filtroActivo
             ? `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.`
@@ -694,7 +731,20 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
-                renderTabla(true);
+                aplicarFiltros();
+            }
+        });
+    }
+
+    if (btnFiltrarOportunidades) {
+        btnFiltrarOportunidades.addEventListener('click', () => aplicarFiltros());
+    }
+
+    if (filtroPalabraClave) {
+        filtroPalabraClave.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                aplicarFiltros();
             }
         });
     }
