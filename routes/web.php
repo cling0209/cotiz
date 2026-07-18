@@ -124,6 +124,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::middleware('oportunidades-ver')->group(function () {
             Route::get('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'index'])
                 ->name('oportunidades.para-cotizar.index');
+            Route::post('oportunidades/para-cotizar/visita', [OportunidadParaCotizarController::class, 'registrarVisita'])
+                ->name('oportunidades.para-cotizar.visita');
         });
 
         Route::middleware('oportunidades-admin')->group(function () {

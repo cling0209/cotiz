@@ -276,8 +276,13 @@
         estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
         cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
         reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
+        visita: @json(route('admin.oportunidades.para-cotizar.visita')),
         cotizarBase: @json(route('admin.cotizaciones.create')),
     };
+    const filtrosUserId = @json((int) ($filtrosUserId ?? 0));
+    const FILTROS_STORAGE_KEY = filtrosUserId > 0
+        ? `cotiz.oportunidades.filtros.${filtrosUserId}`
+        : '';
     const mpApi = {
         baseUrl: @json($mpBaseUrl ?? ''),
         path: @json($mpPath ?? '/v2/compra-agil'),
@@ -483,7 +488,83 @@
         filtroPalabraClaveAplicado = filtroPalabraClave
             ? normalizarTexto(filtroPalabraClave.value)
             : '';
+        guardarFiltros();
         renderTabla(true);
+    }
+
+    function leerFiltrosGuardados() {
+        if (!FILTROS_STORAGE_KEY) {
+            return null;
+        }
+        try {
+            const raw = localStorage.getItem(FILTROS_STORAGE_KEY);
+            if (!raw) {
+                return null;
+            }
+            const data = JSON.parse(raw);
+            return data && typeof data === 'object' ? data : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function guardarFiltros() {
+        if (!FILTROS_STORAGE_KEY) {
+            return;
+        }
+        try {
+            localStorage.setItem(FILTROS_STORAGE_KEY, JSON.stringify({
+                region: filtroRegion ? String(filtroRegion.value || '') : '',
+                organismo: filtroOrganismo ? String(filtroOrganismo.value || '') : '',
+                palabra_clave: filtroPalabraClave ? String(filtroPalabraClave.value || '') : '',
+                palabra_clave_aplicada: filtroPalabraClaveAplicado,
+            }));
+        } catch (e) {
+            // localStorage no disponible
+        }
+    }
+
+    function restaurarFiltros() {
+        const data = leerFiltrosGuardados();
+        if (!data) {
+            return;
+        }
+        if (filtroRegion && data.region != null) {
+            filtroRegion.value = String(data.region || '');
+        }
+        if (filtroOrganismo && data.organismo != null) {
+            filtroOrganismo.value = String(data.organismo || '');
+        }
+        if (filtroPalabraClave && data.palabra_clave != null) {
+            filtroPalabraClave.value = String(data.palabra_clave || '');
+        }
+        filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null
+            ? String(data.palabra_clave_aplicada || '')
+            : (filtroPalabraClave ? normalizarTexto(filtroPalabraClave.value) : '');
+    }
+
+    async function registrarVisitaYCotizar(codigo, href) {
+        const codigoNorm = String(codigo || '').toUpperCase().trim();
+        if (!codigoNorm || !href) {
+            return;
+        }
+        try {
+            await fetch(urls.visita, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ codigo: codigoNorm }),
+                credentials: 'same-origin',
+                keepalive: true,
+            });
+        } catch (e) {
+            // Continuar a cotizar aunque falle el registro
+        }
+        window.location.href = href;
     }
 
     function csvEscape(valor) {
@@ -603,14 +684,18 @@
             const nombreHtml = nombre
                 ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
+            const visitas = Number(item.visitas_usuario) || 0;
+            const codigoLabel = visitas > 0
+                ? `${escapeHtml(codigo || '—')} ${visitas}`
+                : escapeHtml(codigo || '—');
             const accionHtml = href
-                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap" data-no-loader>
+                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}" data-href="${escapeHtml(href)}">
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
                    </a>`
                 : '<span class="text-muted small">—</span>';
             return `<tr>
                 <td>
-                    <code>${escapeHtml(codigo || '—')}</code>
+                    <code>${codigoLabel}</code>
                     ${nombreHtml}
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
@@ -719,13 +804,19 @@
     }
 
     if (filtroRegion) {
-        filtroRegion.addEventListener('change', () => renderTabla(true));
+        filtroRegion.addEventListener('change', () => {
+            guardarFiltros();
+            renderTabla(true);
+        });
     }
 
     if (filtroOrganismo) {
         filtroOrganismo.addEventListener('input', () => {
             if (filtroOrganismoTimer) clearTimeout(filtroOrganismoTimer);
-            filtroOrganismoTimer = setTimeout(() => renderTabla(true), 200);
+            filtroOrganismoTimer = setTimeout(() => {
+                guardarFiltros();
+                renderTabla(true);
+            }, 200);
         });
         filtroOrganismo.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -746,6 +837,20 @@
                 e.preventDefault();
                 aplicarFiltros();
             }
+        });
+    }
+
+    if (tbody) {
+        tbody.addEventListener('click', (e) => {
+            const link = e.target.closest('a.btn-ir-cotizar');
+            if (!link) {
+                return;
+            }
+            e.preventDefault();
+            registrarVisitaYCotizar(
+                link.getAttribute('data-codigo') || '',
+                link.getAttribute('data-href') || link.getAttribute('href') || '',
+            );
         });
     }
 
@@ -1339,7 +1444,8 @@
         }
     }
 
-    // Al abrir: muestra lo ya grabado (vigentes desde fecha de inicio).
+    // Al abrir: restaura filtros del usuario y muestra lo ya grabado.
+    restaurarFiltros();
     if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
         cargarItems(guardadasIniciales);
         if (fechaBusquedaInicial && relFecha) {

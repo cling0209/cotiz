@@ -6,8 +6,10 @@ use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
 use App\Models\OportunidadTomada;
+use App\Models\OportunidadVisita;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class OportunidadParaCotizarService
@@ -86,7 +88,7 @@ class OportunidadParaCotizarService
      *
      * @return list<array<string, mixed>>
      */
-    public function listarGuardadasVigentesDesde(?string $desde = null): array
+    public function listarGuardadasVigentesDesde(?string $desde = null, ?int $userId = null): array
     {
         $desde = $this->normalizarFechaBusqueda(
             $desde ?? config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
@@ -122,6 +124,70 @@ class OportunidadParaCotizarService
 
         $items = array_values($porCodigo);
         usort($items, [$this, 'compararOportunidades']);
+
+        return $this->adjuntarVisitasUsuario($items, $userId);
+    }
+
+    /**
+     * Registra una visita del usuario a una oportunidad (Ir a cotizar).
+     */
+    public function registrarVisita(int $userId, string $codigo): int
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($userId <= 0 || $codigo === '') {
+            return 0;
+        }
+
+        return (int) DB::transaction(function () use ($userId, $codigo) {
+            $visita = OportunidadVisita::query()->firstOrNew([
+                'user_id' => $userId,
+                'codigo' => $codigo,
+            ]);
+            $visita->veces = (int) ($visita->veces ?? 0) + 1;
+            $visita->ultima_visita_at = now();
+            $visita->save();
+
+            return (int) $visita->veces;
+        });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function adjuntarVisitasUsuario(array $items, ?int $userId): array
+    {
+        if ($userId === null || $userId <= 0 || $items === []) {
+            foreach ($items as &$item) {
+                $item['visitas_usuario'] = 0;
+            }
+            unset($item);
+
+            return $items;
+        }
+
+        $codigos = [];
+        foreach ($items as $item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $codigos[$codigo] = true;
+            }
+        }
+
+        if ($codigos === []) {
+            return $items;
+        }
+
+        $conteos = OportunidadVisita::query()
+            ->where('user_id', $userId)
+            ->whereIn('codigo', array_keys($codigos))
+            ->pluck('veces', 'codigo');
+
+        foreach ($items as &$item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            $item['visitas_usuario'] = (int) ($conteos[$codigo] ?? 0);
+        }
+        unset($item);
 
         return $items;
     }

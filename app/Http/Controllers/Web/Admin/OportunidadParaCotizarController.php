@@ -23,7 +23,8 @@ class OportunidadParaCotizarController extends Controller
         $puedeBuscar = (bool) $request->user()?->canAccessOportunidades();
         $puedePalabras = (bool) $request->user()?->canAccessPalabrasClave();
         $palabras = ($puedeBuscar || $puedePalabras) ? $this->servicio->palabrasClave() : [];
-        $guardadas = $this->servicio->listarGuardadasVigentesDesde();
+        $userId = (int) ($request->user()?->id ?? 0);
+        $guardadas = $this->servicio->listarGuardadasVigentesDesde(null, $userId > 0 ? $userId : null);
         $corridaEstado = $puedeBuscar ? $this->busqueda->estado() : null;
 
         $regionesFiltro = [];
@@ -44,6 +45,27 @@ class OportunidadParaCotizarController extends Controller
             'mpPath' => '/v2/compra-agil',
             'corridaEstado' => $corridaEstado,
             'regionesFiltro' => $regionesFiltro,
+            'filtrosUserId' => $userId,
+        ]);
+    }
+
+    public function registrarVisita(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        $userId = (int) ($request->user()?->id ?? 0);
+        if ($userId <= 0) {
+            return response()->json(['ok' => false, 'error' => 'No autenticado.'], 401);
+        }
+
+        $veces = $this->servicio->registrarVisita($userId, $data['codigo']);
+
+        return response()->json([
+            'ok' => true,
+            'codigo' => strtoupper(trim($data['codigo'])),
+            'visitas_usuario' => $veces,
         ]);
     }
 
