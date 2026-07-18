@@ -138,6 +138,10 @@ class OportunidadParaCotizarService
             return 0;
         }
 
+        if (! \Illuminate\Support\Facades\Schema::hasTable('oportunidad_visitas')) {
+            return 0;
+        }
+
         return (int) DB::transaction(function () use ($userId, $codigo) {
             $visita = OportunidadVisita::query()->firstOrNew([
                 'user_id' => $userId,
@@ -178,10 +182,15 @@ class OportunidadParaCotizarService
             return $items;
         }
 
-        $conteos = OportunidadVisita::query()
-            ->where('user_id', $userId)
-            ->whereIn('codigo', array_keys($codigos))
-            ->pluck('veces', 'codigo');
+        try {
+            $conteos = OportunidadVisita::query()
+                ->where('user_id', $userId)
+                ->whereIn('codigo', array_keys($codigos))
+                ->pluck('veces', 'codigo')
+                ->all();
+        } catch (\Throwable) {
+            $conteos = [];
+        }
 
         foreach ($items as &$item) {
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));

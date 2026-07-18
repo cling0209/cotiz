@@ -22,6 +22,8 @@ use Throwable;
 
 class CotizacionController extends Controller
 {
+    private bool $visitaOportunidadRegistrada = false;
+
     public function __construct(
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
@@ -35,6 +37,9 @@ class CotizacionController extends Controller
     {
         $usuario = $request->user()->username;
         $codigo = strtoupper(trim((string) $request->query('codigo', '')));
+
+        // Contar visita apenas llega desde Oportunidades (antes de posibles redirects).
+        $this->registrarVisitaOportunidadSiCorresponde($request, $codigo);
 
         if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
             $this->olvidarNotaMaterializada();
@@ -228,8 +233,19 @@ class CotizacionController extends Controller
             return;
         }
 
+        $omitKey = 'oportunidad_visita_omitir.'.$userId;
+        $omitir = strtoupper(trim((string) $request->session()->pull($omitKey, '')));
+        if ($omitir === $codigo || $this->visitaOportunidadRegistrada) {
+            $this->visitaOportunidadRegistrada = true;
+
+            return;
+        }
+
         try {
             $this->oportunidadParaCotizar->registrarVisita($userId, $codigo);
+            $this->visitaOportunidadRegistrada = true;
+            // Si create redirige a edit con el mismo codigo, no contar dos veces.
+            $request->session()->flash($omitKey, $codigo);
         } catch (Throwable $e) {
             report($e);
         }

@@ -282,6 +282,9 @@
     const FILTROS_STORAGE_KEY = filtrosUserId > 0
         ? `cotiz.oportunidades.filtros.${filtrosUserId}`
         : '';
+    const VISITAS_STORAGE_KEY = filtrosUserId > 0
+        ? `cotiz.oportunidades.visitas.${filtrosUserId}`
+        : '';
     const mpApi = {
         baseUrl: @json($mpBaseUrl ?? ''),
         path: @json($mpPath ?? '/v2/compra-agil'),
@@ -542,6 +545,52 @@
             : (filtroPalabraClave ? normalizarTexto(filtroPalabraClave.value) : '');
     }
 
+    function leerVisitasLocales() {
+        if (!VISITAS_STORAGE_KEY) {
+            return {};
+        }
+        try {
+            const raw = localStorage.getItem(VISITAS_STORAGE_KEY);
+            if (!raw) {
+                return {};
+            }
+            const data = JSON.parse(raw);
+            return data && typeof data === 'object' ? data : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function guardarVisitasLocales(mapa) {
+        if (!VISITAS_STORAGE_KEY) {
+            return;
+        }
+        try {
+            localStorage.setItem(VISITAS_STORAGE_KEY, JSON.stringify(mapa || {}));
+        } catch (e) {
+            // localStorage no disponible
+        }
+    }
+
+    function incrementarVisitaLocal(codigo) {
+        const codigoNorm = String(codigo || '').toUpperCase().trim();
+        if (!codigoNorm || !VISITAS_STORAGE_KEY) {
+            return 0;
+        }
+        const mapa = leerVisitasLocales();
+        const veces = (Number(mapa[codigoNorm]) || 0) + 1;
+        mapa[codigoNorm] = veces;
+        guardarVisitasLocales(mapa);
+        return veces;
+    }
+
+    function visitasDeItem(item) {
+        const codigo = String(item?.codigo || '').toUpperCase().trim();
+        const servidor = Number(item?.visitas_usuario) || 0;
+        const local = Number(leerVisitasLocales()[codigo]) || 0;
+        return Math.max(servidor, local);
+    }
+
     function csvEscape(valor) {
         const texto = String(valor ?? '');
         if (/[;"\r\n]/.test(texto)) {
@@ -659,12 +708,12 @@
             const nombreHtml = nombre
                 ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
-            const visitas = Number(item.visitas_usuario) || 0;
+            const visitas = visitasDeItem(item);
             const codigoLabel = visitas > 0
                 ? `${escapeHtml(codigo || '—')} visto ${visitas}`
                 : escapeHtml(codigo || '—');
             const accionHtml = href
-                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap" data-no-loader>
+                ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
                    </a>`
                 : '<span class="text-muted small">—</span>';
@@ -812,6 +861,17 @@
                 e.preventDefault();
                 aplicarFiltros();
             }
+        });
+    }
+
+    if (tbody) {
+        tbody.addEventListener('click', (e) => {
+            const link = e.target.closest('a.btn-ir-cotizar');
+            if (!link) {
+                return;
+            }
+            // Contar en localStorage de inmediato (antes de navegar).
+            incrementarVisitaLocal(link.getAttribute('data-codigo') || '');
         });
     }
 
