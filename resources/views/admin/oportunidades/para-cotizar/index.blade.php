@@ -686,7 +686,7 @@
                 : '';
             const visitas = Number(item.visitas_usuario) || 0;
             const codigoLabel = visitas > 0
-                ? `${escapeHtml(codigo || '—')} ${visitas}`
+                ? `${escapeHtml(codigo || '—')} visto ${visitas}`
                 : escapeHtml(codigo || '—');
             const accionHtml = href
                 ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}" data-href="${escapeHtml(href)}">
