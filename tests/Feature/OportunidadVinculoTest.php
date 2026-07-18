@@ -301,6 +301,25 @@ class OportunidadVinculoTest extends TestCase
         $this->assertNotNull($cache);
         $this->assertTrue($cache['desde_cache']);
         $this->assertCount(2, $cache['lineas']);
+
+        $guardado = $this->app->make(OportunidadVinculoService::class)
+            ->previewGuardado('607603-40-COT26');
+        $this->assertNotNull($guardado);
+        $this->assertSame('607603-40-COT26', $guardado['codigo']);
+        $this->assertCount(2, $guardado['lineas']);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.detalle-vinculo', [
+                'codigo' => '607603-40-COT26',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('codigo', '607603-40-COT26')
+            ->assertJsonCount(2, 'lineas');
     }
 
     public function test_vincular_codigo_actualiza_fila_de_dia_anterior(): void

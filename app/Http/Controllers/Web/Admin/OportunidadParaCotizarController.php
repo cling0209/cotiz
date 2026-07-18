@@ -163,6 +163,36 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
+    public function detalleVinculo(string $codigo): JsonResponse
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Código vacío.',
+            ], 422);
+        }
+
+        $preview = $this->vinculos->previewGuardado($codigo);
+        if ($preview === null) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Sin detalle de vinculación para esta cotización. Procese las vinculaciones primero.',
+                'codigo' => $codigo,
+            ], 404);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'codigo' => $preview['codigo'],
+            'lineas' => $preview['lineas'],
+            'resumen' => $preview['resumen'],
+            'porcentaje_vinculo' => $preview['porcentaje_vinculo'],
+            'productos_vinculados' => $preview['productos_vinculados'],
+            'cantidad_productos' => $preview['cantidad_productos'],
+        ]);
+    }
+
     public function paso(Request $request): JsonResponse
     {
         $data = $request->validate([

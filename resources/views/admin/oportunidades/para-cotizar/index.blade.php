@@ -328,6 +328,41 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-vinculo-productos" tabindex="-1" aria-labelledby="modal-vinculo-productos-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="modal-vinculo-productos-label">Productos y vinculaci&oacute;n</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="modal-vinculo-resumen" class="small text-muted mb-2"></p>
+                    <div id="modal-vinculo-loading" class="text-center text-muted py-4 d-none">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Cargando productos…</span>
+                    </div>
+                    <div id="modal-vinculo-error" class="alert alert-warning py-2 small d-none mb-0"></div>
+                    <div id="modal-vinculo-tabla-wrap" class="table-responsive d-none">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto MP</th>
+                                    <th class="text-end text-nowrap">Cant.</th>
+                                    <th>Estado</th>
+                                    <th>Producto maestro</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modal-vinculo-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 <style>
     .oportunidades-tabla-compacta td {
@@ -362,6 +397,7 @@
             reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
             iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
             cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
+            detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
@@ -910,11 +946,19 @@
                 const codigoLabel = visitas > 0 ?
                     `${escapeHtml(codigo || '—')} visto ${visitas}` :
                     escapeHtml(codigo || '—');
-                const accionHtml = href ?
-                    `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
+                const btnProductos = codigo
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-ver-vinculo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Ver productos y vinculación">
+                        <i class="bi bi-list-ul"></i> Productos
+                    </button>`
+                    : '';
+                const btnCotizar = href
+                    ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
-                   </a>` :
-                    '<span class="text-muted small">—</span>';
+                   </a>`
+                    : '';
+                const accionHtml = (btnProductos || btnCotizar)
+                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}</div>`
+                    : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
                     <code>${codigoLabel}</code>
@@ -1063,6 +1107,121 @@
             });
         }
 
+        const modalVinculoEl = document.getElementById('modal-vinculo-productos');
+        const modalVinculoLabel = document.getElementById('modal-vinculo-productos-label');
+        const modalVinculoResumen = document.getElementById('modal-vinculo-resumen');
+        const modalVinculoLoading = document.getElementById('modal-vinculo-loading');
+        const modalVinculoError = document.getElementById('modal-vinculo-error');
+        const modalVinculoTablaWrap = document.getElementById('modal-vinculo-tabla-wrap');
+        const modalVinculoTbody = document.getElementById('modal-vinculo-tbody');
+        const bsModalVinculo = modalVinculoEl && typeof bootstrap !== 'undefined'
+            ? bootstrap.Modal.getOrCreateInstance(modalVinculoEl)
+            : null;
+
+        function badgeEstadoVinculo(estado, esSugerencia) {
+            const e = String(estado || '').toLowerCase();
+            if (e === 'vinculado') {
+                return esSugerencia
+                    ? '<span class="badge text-bg-info">Sugerencia</span>'
+                    : '<span class="badge text-bg-success">Vinculado</span>';
+            }
+            if (e === 'pendiente' || e === '') {
+                return '<span class="badge text-bg-warning">Sin vínculo</span>';
+            }
+            return `<span class="badge text-bg-secondary">${escapeHtml(e)}</span>`;
+        }
+
+        async function abrirDetalleVinculo(codigo) {
+            const cod = String(codigo || '').trim().toUpperCase();
+            if (!cod || !bsModalVinculo) {
+                return;
+            }
+            if (modalVinculoLabel) {
+                modalVinculoLabel.textContent = `Productos — ${cod}`;
+            }
+            if (modalVinculoResumen) {
+                modalVinculoResumen.textContent = '';
+            }
+            if (modalVinculoError) {
+                modalVinculoError.classList.add('d-none');
+                modalVinculoError.textContent = '';
+            }
+            if (modalVinculoTablaWrap) {
+                modalVinculoTablaWrap.classList.add('d-none');
+            }
+            if (modalVinculoTbody) {
+                modalVinculoTbody.innerHTML = '';
+            }
+            if (modalVinculoLoading) {
+                modalVinculoLoading.classList.remove('d-none');
+            }
+            bsModalVinculo.show();
+
+            try {
+                const urlDetalle = String(urls.detalleVinculoBase || '').replace('__CODIGO__', encodeURIComponent(cod));
+                const res = await fetch(urlDetalle, {
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+                const data = await res.json().catch(() => ({}));
+                if (modalVinculoLoading) {
+                    modalVinculoLoading.classList.add('d-none');
+                }
+                if (!res.ok || !data.ok) {
+                    if (modalVinculoError) {
+                        modalVinculoError.textContent = data.error ||
+                            'Sin detalle de vinculación. Procese las vinculaciones primero.';
+                        modalVinculoError.classList.remove('d-none');
+                    }
+                    return;
+                }
+                const resumen = data.resumen || {};
+                const vinc = data.productos_vinculados ?? resumen.vinculados ?? 0;
+                const tot = data.cantidad_productos ?? resumen.total ?? (Array.isArray(data.lineas) ? data.lineas.length : 0);
+                const pct = data.porcentaje_vinculo != null
+                    ? data.porcentaje_vinculo
+                    : (tot > 0 ? Math.round((Number(vinc) / Number(tot)) * 100) : 0);
+                if (modalVinculoResumen) {
+                    modalVinculoResumen.textContent =
+                        `Vinculados ${vinc}/${tot} (${pct}%).`;
+                }
+                const lineas = Array.isArray(data.lineas) ? data.lineas : [];
+                if (modalVinculoTbody) {
+                    modalVinculoTbody.innerHTML = lineas.map((linea) => {
+                        const desc = String(linea.descripcion || '').trim() || '—';
+                        const cant = linea.cantidad != null ? String(linea.cantidad) : '—';
+                        const prod = linea.producto && typeof linea.producto === 'object' ? linea.producto : null;
+                        const prodTxt = prod
+                            ? `<code>${escapeHtml(String(prod.prod_item || ''))}</code>` +
+                              (prod.prod_nombre
+                                  ? `<div class="opc-meta">${escapeHtml(String(prod.prod_nombre))}</div>`
+                                  : '')
+                            : '<span class="text-muted">—</span>';
+                        return `<tr>
+                            <td class="small">${escapeHtml(desc)}</td>
+                            <td class="text-end tabular-nums small">${escapeHtml(cant)}</td>
+                            <td class="small">${badgeEstadoVinculo(linea.estado, linea.es_sugerencia)}</td>
+                            <td class="small">${prodTxt}</td>
+                        </tr>`;
+                    }).join('') || '<tr><td colspan="4" class="text-muted text-center">Sin productos.</td></tr>';
+                }
+                if (modalVinculoTablaWrap) {
+                    modalVinculoTablaWrap.classList.remove('d-none');
+                }
+            } catch (err) {
+                if (modalVinculoLoading) {
+                    modalVinculoLoading.classList.add('d-none');
+                }
+                if (modalVinculoError) {
+                    modalVinculoError.textContent = 'No se pudo cargar el detalle de productos.';
+                    modalVinculoError.classList.remove('d-none');
+                }
+            }
+        }
+
         if (tbody) {
             // capture: contar antes de que page-loader u otros handlers naveguen
             tbody.addEventListener('click', (e) => {
@@ -1072,6 +1231,15 @@
                 }
                 incrementarVisitaLocal(link.getAttribute('data-codigo') || '');
             }, true);
+
+            tbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('button.btn-ver-vinculo');
+                if (!btn) {
+                    return;
+                }
+                e.preventDefault();
+                abrirDetalleVinculo(btn.getAttribute('data-codigo') || '');
+            });
         }
 
         if (paginacionLista) {
@@ -1849,10 +2017,9 @@
                 vinBar.textContent = `${progreso}%`;
                 vinBar.classList.toggle('progress-bar-animated', vinculo.estado === 'running');
             }
-            // Barra visible mientras corre o hay avance (queda arriba de los botones el título).
+            // Barra solo mientras la vinculación está en curso.
             if (vinWrap) {
-                const mostrarBarra = vinculo.estado === 'running' || progreso > 0 || total > 0;
-                vinWrap.classList.toggle('d-none', !mostrarBarra);
+                vinWrap.classList.toggle('d-none', vinculo.estado !== 'running');
             }
             if (vinDetalle) {
                 vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');

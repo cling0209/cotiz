@@ -519,7 +519,70 @@ class OportunidadVinculoService
             return null;
         }
 
-        $preview = is_array($row->vinculo_preview_json) ? $row->vinculo_preview_json : null;
+        return $this->armarRespuestaPreview($row->vinculo_preview_json, true);
+    }
+
+    /**
+     * Preview guardado de una oportunidad (consulta en listado), aunque no esté 100% vinculada.
+     *
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: list<array<string, mixed>>,
+     *   resumen: array<string, mixed>,
+     *   desde_cache: bool,
+     *   puede_importar: bool,
+     *   error_cabecera: null,
+     *   codigo: string,
+     *   porcentaje_vinculo: int|null,
+     *   productos_vinculados: int|null,
+     *   cantidad_productos: int|null
+     * }|null
+     */
+    public function previewGuardado(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->whereNotNull('vinculo_preview_json')
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $base = $this->armarRespuestaPreview($row->vinculo_preview_json, true);
+        if ($base === null) {
+            return null;
+        }
+
+        return $base + [
+            'codigo' => $codigo,
+            'porcentaje_vinculo' => $row->porcentaje_vinculo !== null ? (int) $row->porcentaje_vinculo : null,
+            'productos_vinculados' => $row->productos_vinculados !== null ? (int) $row->productos_vinculados : null,
+            'cantidad_productos' => $row->cantidad_productos !== null ? (int) $row->cantidad_productos : null,
+        ];
+    }
+
+    /**
+     * @param  mixed  $previewRaw
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: list<array<string, mixed>>,
+     *   resumen: array<string, mixed>,
+     *   desde_cache: bool,
+     *   puede_importar: bool,
+     *   error_cabecera: null
+     * }|null
+     */
+    private function armarRespuestaPreview(mixed $previewRaw, bool $puedeImportar): ?array
+    {
+        $preview = is_array($previewRaw) ? $previewRaw : null;
         if ($preview === null || ! is_array($preview['lineas'] ?? null)) {
             return null;
         }
@@ -534,7 +597,7 @@ class OportunidadVinculoService
             'lineas' => $lineas,
             'resumen' => $resumen,
             'desde_cache' => true,
-            'puede_importar' => true,
+            'puede_importar' => $puedeImportar,
             'error_cabecera' => null,
         ];
     }
