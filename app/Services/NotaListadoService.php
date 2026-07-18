@@ -16,6 +16,7 @@ class NotaListadoService
         'sin_consultar' => 'Sin consultar MP',
         'pendiente' => 'Pendiente seguimiento',
         'cerrada' => 'Cerrada',
+        'ganada_propio' => 'Ganador propio',
         'desierta' => 'Desierta',
         'cancelada' => 'Cancelada',
         'no_encontrada' => 'No existe en MP',
@@ -147,8 +148,34 @@ class NotaListadoService
             return;
         }
 
+        if ($estado === 'ganada_propio') {
+            $this->aplicarFiltroGanadorPropio($query);
+
+            return;
+        }
+
         $query->whereHas('mpSeguimiento', function (Builder $q) use ($estado): void {
             $q->where('resultado_propio', $estado);
+        });
+    }
+
+    private function aplicarFiltroGanadorPropio(Builder $query): void
+    {
+        $rutPropio = $this->ganadorResolver->rutEmpresaPropia();
+        $rutNorm = preg_replace('/[^0-9kK]/', '', $rutPropio) ?? '';
+        if ($rutNorm === '') {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereHas('mpSeguimiento', function (Builder $q) use ($rutNorm): void {
+            $q->where('resultado_propio', 'cerrada')
+                ->whereNotNull('rut_ganador')
+                ->whereRaw(
+                    "replace(replace(replace(replace(lower(coalesce(rut_ganador, '')), '.', ''), '-', ''), ' ', ''), '/', '') = ?",
+                    [mb_strtolower($rutNorm)]
+                );
         });
     }
 

@@ -328,7 +328,7 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertSee('Cerrada', false);
     }
 
-    public function test_cerrada_muestra_ganador_propio_sin_rut(): void
+    public function test_cerrada_muestra_columna_ganador_propio_con_destello_sin_rut(): void
     {
         config(['cotiz.empresa_rut' => '76.356.855-5']);
 
@@ -354,10 +354,56 @@ class CotizacionListadoAccionesTest extends TestCase
         ]));
 
         $response->assertOk();
-        $response->assertSee('Cerrada', false);
-        $response->assertSee('Ganador propio', false);
+        $response->assertSee('>Ganador propio</th>', false);
+        $response->assertSee('badge-ganador-propio-destello', false);
+        $response->assertSee('value="ganada_propio"', false);
         $response->assertDontSee('76356855', false);
         $response->assertDontSee('76.356.855', false);
+    }
+
+    public function test_filtro_ganada_propio_solo_muestra_ganadoras(): void
+    {
+        config(['cotiz.empresa_rut' => '76.356.855-5']);
+
+        $propia = $this->crearNota([
+            'nronota' => 306,
+            'usuario' => 'ejecutivo',
+            'fecha' => now()->toDateString(),
+            'encargado' => '306-PROPIA',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $propia->nronota,
+            'codigo_proceso' => '306-PROPIA',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '76.356.855-5',
+            'finalizado' => true,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $ajena = $this->crearNota([
+            'nronota' => 307,
+            'usuario' => 'ejecutivo',
+            'fecha' => now()->toDateString(),
+            'encargado' => '307-AJENA',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $ajena->nronota,
+            'codigo_proceso' => '307-AJENA',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '11.111.111-1',
+            'finalizado' => true,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin)->get(route('admin.cotizaciones.index', [
+            'fechadesde' => now()->subDay()->toDateString(),
+            'fechahasta' => now()->toDateString(),
+            'estado_mp' => 'ganada_propio',
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('306-PROPIA', false);
+        $response->assertDontSee('307-AJENA', false);
     }
 
     public function test_ejecutivo_no_ve_columna_ni_filtro_estado_mp(): void

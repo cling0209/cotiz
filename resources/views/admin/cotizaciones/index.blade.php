@@ -140,13 +140,14 @@
                         <th>Estado</th>
                         @if($puedeVerEstadoMp ?? false)
                             <th>Estado MP</th>
+                            <th>Ganador propio</th>
                         @endif
                         <th class="text-end" style="min-width:18rem">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     @php
-                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 10 : 9;
+                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 11 : 9;
                     @endphp
                     @forelse($cotizaciones as $nota)
                         @php
@@ -154,8 +155,12 @@
                             $sinUsuario = trim((string) $nota->usuario) === '';
                             $esSegundoLlamado = in_array((int) $nota->nronota, $nronotasSegundoLlamado, true);
                             $estadoMp = $nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar';
+                            $esGanadorPropio = $estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio);
                         @endphp
-                        <tr @class(['table-warning fila-segundo-llamado' => $esSegundoLlamado])>
+                        <tr @class([
+                            'table-warning fila-segundo-llamado' => $esSegundoLlamado,
+                            'fila-ganador-propio' => $esGanadorPropio,
+                        ])>
                             <td>
                                 {{ $nota->nronota }}
                                 @if($esSegundoLlamado)
@@ -189,10 +194,12 @@
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->estado ?: '—' }}</td>
                             @if($puedeVerEstadoMp ?? false)
+                                <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
                                 <td>
-                                    @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])
-                                    @if($estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio))
-                                        <span class="badge text-bg-success">Ganador propio</span>
+                                    @if($esGanadorPropio)
+                                        <span class="badge text-bg-success badge-ganador-propio-destello">Ganador propio</span>
+                                    @else
+                                        <span class="text-muted">&mdash;</span>
                                     @endif
                                 </td>
                             @endif
@@ -268,6 +275,16 @@
     animation: alerta-segundo-llamado-destello 1.2s ease-in-out infinite;
 }
 .fila-segundo-llamado td {
+    font-weight: 500;
+}
+@keyframes ganador-propio-destello {
+    0%, 100% { background-color: #198754; box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.55); }
+    50% { background-color: #146c43; box-shadow: 0 0 0 5px rgba(25, 135, 84, 0.35); }
+}
+.badge-ganador-propio-destello {
+    animation: ganador-propio-destello 1.2s ease-in-out infinite;
+}
+.fila-ganador-propio td {
     font-weight: 500;
 }
 </style>
