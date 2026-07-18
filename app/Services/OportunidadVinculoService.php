@@ -611,6 +611,15 @@ class OportunidadVinculoService
             $corrida->inicio,
             $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null),
         );
+        $ultimaActividad = $this->ultimaActividadIso($pasos, $corrida);
+        $ultimaHace = null;
+        if ($ultimaActividad !== null) {
+            try {
+                $ultimaHace = max(0, (int) Carbon::parse($ultimaActividad)->diffInSeconds(now()));
+            } catch (Throwable) {
+                $ultimaHace = null;
+            }
+        }
 
         return [
             'id' => $corrida->id,
@@ -621,6 +630,8 @@ class OportunidadVinculoService
             'fin' => $corrida->fin?->toIso8601String(),
             'duracion_segundos' => $duracionSegundos,
             'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
+            'ultima_actividad' => $ultimaActividad,
+            'ultima_actividad_hace_segundos' => $ultimaHace,
             'total_pasos' => $total,
             'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
@@ -628,6 +639,44 @@ class OportunidadVinculoService
             'progreso_por_region' => $this->progresoPorRegion($pasos),
             'mensaje' => $corrida->mensaje,
         ];
+    }
+
+    /**
+     * ISO de la última actividad del plan (fin de paso, inicio de paso en curso o updated_at).
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function ultimaActividadIso(array $pasos, OportunidadVinculoCorrida $corrida): ?string
+    {
+        $mejor = null;
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            foreach (['fin', 'inicio'] as $campo) {
+                $raw = trim((string) ($paso[$campo] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                try {
+                    $ts = Carbon::parse($raw);
+                } catch (Throwable) {
+                    continue;
+                }
+                if ($mejor === null || $ts->gt($mejor)) {
+                    $mejor = $ts;
+                }
+            }
+        }
+
+        if ($mejor === null && $corrida->updated_at !== null) {
+            $mejor = $corrida->updated_at;
+        }
+        if ($mejor === null && $corrida->inicio !== null) {
+            $mejor = $corrida->inicio;
+        }
+
+        return $mejor?->toIso8601String();
     }
 
     /**

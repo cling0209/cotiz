@@ -192,6 +192,11 @@
                     <i class="bi bi-hourglass-split"></i>
                     Tiempo: <strong id="vin-duracion" class="tabular-nums">—</strong>
                 </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-activity"></i>
+                    &Uacute;ltima: <strong id="vin-ultima" class="tabular-nums">—</strong>
+                    <span id="vin-ultima-hace" class="text-muted ms-1"></span>
+                </div>
                 <div class="text-nowrap ms-auto">
                     <span id="vin-progreso-txt" class="badge text-bg-secondary">0/0</span>
                 </div>
@@ -1606,6 +1611,8 @@
             const vinInicio = document.getElementById('vin-inicio');
             const vinFin = document.getElementById('vin-fin');
             const vinDuracion = document.getElementById('vin-duracion');
+            const vinUltima = document.getElementById('vin-ultima');
+            const vinUltimaHace = document.getElementById('vin-ultima-hace');
             const vinBar = document.getElementById('vin-progreso-bar');
             const vinWrap = document.getElementById('vin-progreso-wrap');
             const vinDetalle = document.getElementById('vin-detalle');
@@ -1642,6 +1649,30 @@
                 (vinculo.duracion_segundos != null ? formatearDuracionSegs(vinculo.duracion_segundos) : null);
             if (vinDuracion) {
                 vinDuracion.textContent = duracionTexto || '—';
+            }
+            const ultima = vinculo.ultima_actividad ? new Date(vinculo.ultima_actividad) : null;
+            if (vinUltima) {
+                vinUltima.textContent = ultima && !Number.isNaN(ultima.getTime())
+                    ? ultima.toLocaleTimeString('es-CL', { hour12: false })
+                    : '—';
+            }
+            if (vinUltimaHace) {
+                const hace = Number(vinculo.ultima_actividad_hace_segundos);
+                if (Number.isFinite(hace) && vinculo.estado === 'running') {
+                    if (hace < 60) {
+                        vinUltimaHace.textContent = `(hace ${hace}s)`;
+                        vinUltimaHace.className = hace > 120
+                            ? 'text-danger ms-1'
+                            : (hace > 45 ? 'text-warning ms-1' : 'text-muted ms-1');
+                    } else {
+                        const mins = Math.floor(hace / 60);
+                        const segs = hace % 60;
+                        vinUltimaHace.textContent = `(hace ${mins}m ${String(segs).padStart(2, '0')}s)`;
+                        vinUltimaHace.className = hace > 120 ? 'text-danger ms-1' : 'text-warning ms-1';
+                    }
+                } else {
+                    vinUltimaHace.textContent = '';
+                }
             }
             const progreso = Number(vinculo.progreso) || 0;
             const total = Number(vinculo.total_pasos) || 0;
