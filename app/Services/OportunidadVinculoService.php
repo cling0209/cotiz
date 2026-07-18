@@ -566,13 +566,23 @@ class OportunidadVinculoService
 
         $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
         foreach ($rows as $row) {
-            $row->fill([
-                'productos_vinculados' => 0,
-                'porcentaje_vinculo' => 0,
-                'vinculo_completo' => true,
-                'vinculo_at' => now(),
-                'vinculo_preview_json' => null,
-            ])->save();
+            try {
+                $row->fill([
+                    'productos_vinculados' => 0,
+                    'porcentaje_vinculo' => 0,
+                    'vinculo_completo' => true,
+                    'vinculo_at' => now(),
+                    'vinculo_preview_json' => null,
+                ])->save();
+            } catch (Throwable $e) {
+                Log::warning('OportunidadVinculo: no se pudo marcar encontrada sin vínculo', [
+                    'codigo' => $codigo,
+                    'id' => $row->id,
+                    'message' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
 
             $this->encontradaRelay->replicarItems([
                 $row->toResumen() + [
@@ -864,8 +874,15 @@ class OportunidadVinculoService
 
         $reanudadaAuto = false;
         if ($corrida->estado === self::ESTADO_RUNNING) {
-            $reanudadaAuto = $this->liberarCorridaColgadaIfNeeded($corrida);
-            $corrida = $corrida->fresh() ?? $corrida;
+            try {
+                $reanudadaAuto = $this->liberarCorridaColgadaIfNeeded($corrida);
+                $corrida = $corrida->fresh() ?? $corrida;
+            } catch (Throwable $e) {
+                Log::warning('OportunidadVinculo: no se pudo liberar corrida colgada', [
+                    'corrida_id' => $corrida->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];

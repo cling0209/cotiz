@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\PgBoolean;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -44,7 +45,8 @@ class OportunidadEncontrada extends Model
             'fecha_cierre' => 'datetime',
             'palabras_coinciden' => 'array',
             'cantidad_productos' => 'integer',
-            'vinculo_completo' => 'boolean',
+            // Neon pooler + emulate prepares: true/false llegan como 1/0 y PG rechaza boolean.
+            'vinculo_completo' => PgBoolean::class,
             'productos_vinculados' => 'integer',
             'porcentaje_vinculo' => 'integer',
             'vinculo_at' => 'datetime',
