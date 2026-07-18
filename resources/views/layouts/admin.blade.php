@@ -54,11 +54,6 @@
                         <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
-                @if(auth()->user()->canVerOportunidades())
-                    <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
-                        <i class="bi bi-lightning-charge"></i> Oportunidades
-                    </a>
-                @endif
                 <div class="dropdown">
                     <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
@@ -90,6 +85,11 @@
             @elseif(auth()->user()->isEjecutivo())
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
+                </a>
+            @endif
+            @if(auth()->user()->canVerOportunidades())
+                <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}">
+                    <i class="bi bi-lightning-charge"></i> Oportunidades
                 </a>
             @endif
             <span class="text-white-50 small d-none d-md-inline">{{ auth()->user()->fullName() ?: auth()->user()->username }}</span>

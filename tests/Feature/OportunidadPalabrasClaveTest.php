@@ -255,6 +255,12 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->assertDontSee('Buscar cotizaciones', false);
 
         $this->actingAs($user)
+            ->get(route('admin.cotizaciones.index'))
+            ->assertOk()
+            ->assertSee('Oportunidades', false)
+            ->assertSee(route('admin.oportunidades.para-cotizar.index'), false);
+
+        $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.estado'))
             ->assertForbidden();
     }
