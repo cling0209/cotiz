@@ -55,8 +55,26 @@ class OportunidadVinculoService
      */
     public function iniciarTrasBusqueda(mixed $fechaBusqueda, string $usuario = 'sistema'): ?OportunidadVinculoCorrida
     {
+        return $this->iniciarConDetalle($fechaBusqueda, $usuario)['corrida'];
+    }
+
+    /**
+     * @return array{
+     *   ok: bool,
+     *   corrida: ?OportunidadVinculoCorrida,
+     *   motivo: ?string,
+     *   pendientes: int
+     * }
+     */
+    public function iniciarConDetalle(mixed $fechaBusqueda, string $usuario = 'sistema'): array
+    {
         if (! $this->oportunidades->apiConfigurada()) {
-            return null;
+            return [
+                'ok' => false,
+                'corrida' => null,
+                'motivo' => 'API Mercado Público no configurada (falta ticket).',
+                'pendientes' => 0,
+            ];
         }
 
         $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
@@ -64,30 +82,69 @@ class OportunidadVinculoService
         if ($existente !== null) {
             $this->agregarPasosPendientes($existente, $dia);
 
-            return $existente->fresh() ?? $existente;
+            return [
+                'ok' => true,
+                'corrida' => $existente->fresh() ?? $existente,
+                'motivo' => null,
+                'pendientes' => $this->contarPendientes($dia),
+            ];
         }
 
         $pasos = $this->construirPlan($dia);
+        $pendientes = count($pasos);
         if ($pasos === []) {
-            return null;
+            return [
+                'ok' => false,
+                'corrida' => null,
+                'motivo' => 'No hay cotizaciones vigentes pendientes de vincular.',
+                'pendientes' => 0,
+            ];
         }
 
-        $corrida = OportunidadVinculoCorrida::query()->create([
-            'usuario' => trim($usuario) ?: 'sistema',
-            'fecha_busqueda' => $dia,
-            'inicio' => now(),
-            'estado' => self::ESTADO_RUNNING,
-            'total_pasos' => count($pasos),
-            'pasos_procesados' => 0,
-            'pasos_fallidos' => 0,
-            'plan_json' => $pasos,
-            'errores_json' => [],
-            'mensaje' => 'Vinculación interna encolada ('.$this->formatearFecha($dia).').',
-        ]);
+        try {
+            $corrida = OportunidadVinculoCorrida::query()->create([
+                'usuario' => trim($usuario) ?: 'sistema',
+                'fecha_busqueda' => $dia,
+                'inicio' => now(),
+                'estado' => self::ESTADO_RUNNING,
+                'total_pasos' => count($pasos),
+                'pasos_procesados' => 0,
+                'pasos_fallidos' => 0,
+                'plan_json' => $pasos,
+                'errores_json' => [],
+                'mensaje' => 'Vinculación interna encolada ('.$this->formatearFecha($dia).').',
+            ]);
+        } catch (Throwable $e) {
+            Log::error('OportunidadVinculoService: no se pudo crear corrida', [
+                'fecha_busqueda' => $dia,
+                'message' => $e->getMessage(),
+            ]);
+
+            $motivo = 'No se pudo iniciar la vinculación: '.$e->getMessage();
+            $msg = mb_strtolower($e->getMessage());
+            if (str_contains($msg, 'oportunidad_vinculo')
+                || str_contains($msg, 'undefined table')
+                || str_contains($msg, 'does not exist')
+                || str_contains($msg, 'no such table')) {
+                $motivo = 'Falta la migración de vinculaciones en el servidor. Ejecute php artisan migrate.';
+            }
+
+            return [
+                'ok' => false,
+                'corrida' => null,
+                'motivo' => $motivo,
+                'pendientes' => $pendientes,
+            ];
+        }
 
         ProcessOportunidadVinculoJob::dispatch($corrida->id);
 
-        return $corrida;
+        return [
+            'ok' => true,
+            'corrida' => $corrida,
+            'motivo' => null,
+            'pendientes' => $pendientes,
+        ];
     }
 
     /**
@@ -101,6 +158,53 @@ class OportunidadVinculoService
         }
 
         return $this->iniciarTrasBusqueda($fechaBusqueda, $usuario);
+    }
+
+    /**
+     * Aviso para la UI cuando hay pendientes y no hay corrida de vínculo en curso.
+     *
+     * @return array{pendientes: int, mensaje: string, puede_iniciar: bool}|null
+     */
+    public function avisoPendientes(mixed $fechaBusqueda = null): ?array
+    {
+        if ($this->corridaEnCurso() !== null) {
+            return null;
+        }
+
+        try {
+            $pendientes = $this->contarPendientes($fechaBusqueda);
+        } catch (Throwable $e) {
+            Log::warning('OportunidadVinculoService: no se pudo contar pendientes', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'pendientes' => 0,
+                'mensaje' => 'No se pudo consultar pendientes de vinculación (¿faltan migraciones?). '
+                    .'Detalle: '.mb_substr($e->getMessage(), 0, 160),
+                'puede_iniciar' => true,
+            ];
+        }
+
+        if ($pendientes <= 0) {
+            return null;
+        }
+
+        return [
+            'pendientes' => $pendientes,
+            'mensaje' => 'Hay '.$pendientes.' cotización(es) vigente(s) sin vincular al maestro. '
+                .'Pulse «Iniciar vinculación» para arrancar el 2.º proceso.',
+            'puede_iniciar' => true,
+        ];
+    }
+
+    public function contarPendientes(mixed $fechaBusqueda = null): int
+    {
+        $dia = $this->oportunidades->normalizarFechaBusqueda(
+            $fechaBusqueda ?? $this->oportunidades->fechaBusquedaHoy(),
+        );
+
+        return count($this->construirPlan($dia));
     }
 
     private function agregarPasosPendientes(OportunidadVinculoCorrida $corrida, string $dia): void

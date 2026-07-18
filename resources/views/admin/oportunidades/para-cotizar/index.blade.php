@@ -34,6 +34,9 @@
                 <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
                     <i class="bi bi-x-circle"></i> Cancelar
                 </button>
+                <button type="button" id="btn-iniciar-vinculo" class="btn btn-outline-success btn-sm d-none" data-no-loader>
+                    <i class="bi bi-link-45deg"></i> Iniciar vinculaci&oacute;n
+                </button>
             @endif
         </div>
     </div>
@@ -157,6 +160,15 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="vinculo-aviso" class="alert alert-warning d-none mb-3" role="status">
+        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
+            <div id="vinculo-aviso-texto" class="small mb-0"></div>
+            <button type="button" id="btn-iniciar-vinculo-aviso" class="btn btn-success btn-sm" data-no-loader>
+                <i class="bi bi-link-45deg"></i> Iniciar vinculaci&oacute;n
+            </button>
         </div>
     </div>
 
@@ -307,6 +319,7 @@
         estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
         cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
         reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
+        iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
         cotizarBase: @json(route('admin.cotizaciones.create')),
     };
     const filtrosUserId = @json((int) ($filtrosUserId ?? 0));
@@ -324,6 +337,10 @@
 
     const btn = document.getElementById('btn-buscar-oportunidades');
     const btnCancelar = document.getElementById('btn-cancelar-oportunidades');
+    const btnIniciarVinculo = document.getElementById('btn-iniciar-vinculo');
+    const btnIniciarVinculoAviso = document.getElementById('btn-iniciar-vinculo-aviso');
+    const vinculoAviso = document.getElementById('vinculo-aviso');
+    const vinculoAvisoTexto = document.getElementById('vinculo-aviso-texto');
     const estado = document.getElementById('oportunidad-estado');
     const placeholder = document.getElementById('oportunidad-placeholder');
     const resultados = document.getElementById('oportunidad-resultados');
@@ -1476,6 +1493,7 @@
         cargarItems(corrida.items || []);
         sincronizarVisitasLocalesEnMapa();
         aplicarEstadoVinculo(corrida.vinculo || null);
+        aplicarVinculoAviso(corrida.vinculo_aviso || null, corrida.vinculo || null);
         const activo = corrida.estado === 'running';
         const cambiandoDia = corrida.estado === 'completed'
             && Boolean(corrida.fecha_siguiente_pendiente)
@@ -1611,6 +1629,50 @@
         }
     }
 
+    function aplicarVinculoAviso(aviso, vinculo) {
+        const vinculoActivo = vinculo && vinculo.estado === 'running';
+        const mostrar = !vinculoActivo && aviso && aviso.puede_iniciar;
+        if (vinculoAviso) {
+            vinculoAviso.classList.toggle('d-none', !mostrar);
+        }
+        if (vinculoAvisoTexto && aviso) {
+            vinculoAvisoTexto.textContent = String(aviso.mensaje || '');
+        }
+        if (btnIniciarVinculo) {
+            btnIniciarVinculo.classList.toggle('d-none', !mostrar);
+            btnIniciarVinculo.disabled = false;
+        }
+        if (btnIniciarVinculoAviso) {
+            btnIniciarVinculoAviso.disabled = false;
+        }
+    }
+
+    let iniciandoVinculo = false;
+    async function iniciarVinculoManual() {
+        if (!urls.iniciarVinculo || iniciandoVinculo) return;
+        iniciandoVinculo = true;
+        if (btnIniciarVinculo) btnIniciarVinculo.disabled = true;
+        if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = true;
+        try {
+            const data = await postJson(urls.iniciarVinculo, {});
+            if (data && data.corrida) {
+                aplicarEstadoCorrida(data.corrida);
+            }
+        } catch (e) {
+            if (vinculoAviso) vinculoAviso.classList.remove('d-none');
+            if (vinculoAvisoTexto) {
+                vinculoAvisoTexto.textContent = e.message || String(e);
+            }
+            if (btnIniciarVinculo) {
+                btnIniciarVinculo.classList.remove('d-none');
+                btnIniciarVinculo.disabled = false;
+            }
+            if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = false;
+        } finally {
+            iniciandoVinculo = false;
+        }
+    }
+
     async function consultarEstado() {
         if (!urls.estado) return;
         try {
@@ -1688,6 +1750,8 @@
     if (puedeBuscar) {
         btn?.addEventListener('click', buscar);
         btnCancelar?.addEventListener('click', cancelarBusqueda);
+        btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);
+        btnIniciarVinculoAviso?.addEventListener('click', iniciarVinculoManual);
     }
 })();
 </script>

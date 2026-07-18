@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\CompraAgilRegionScope;
 use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadParaCotizarService;
+use App\Services\OportunidadVinculoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -16,6 +17,7 @@ class OportunidadParaCotizarController extends Controller
     public function __construct(
         protected OportunidadParaCotizarService $servicio,
         protected OportunidadBusquedaService $busqueda,
+        protected OportunidadVinculoService $vinculos,
     ) {}
 
     public function index(Request $request): View
@@ -117,6 +119,35 @@ class OportunidadParaCotizarController extends Controller
         return response()->json([
             'ok' => true,
             'corrida' => $this->busqueda->estado($corrida),
+        ]);
+    }
+
+    public function iniciarVinculo(Request $request): JsonResponse
+    {
+        $fecha = $request->input('fecha_busqueda');
+        if ($fecha === null || trim((string) $fecha) === '') {
+            $fecha = $this->busqueda->ultimaCorrida()?->fecha_busqueda
+                ?? $this->servicio->fechaBusquedaHoy();
+        }
+
+        $resultado = $this->vinculos->iniciarConDetalle(
+            $fecha,
+            (string) ($request->user()?->username ?? 'sistema'),
+        );
+
+        if (! $resultado['ok']) {
+            return response()->json([
+                'ok' => false,
+                'error' => $resultado['motivo'] ?? 'No se pudo iniciar la vinculación.',
+                'pendientes' => $resultado['pendientes'],
+                'corrida' => $this->busqueda->estado(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'pendientes' => $resultado['pendientes'],
+            'corrida' => $this->busqueda->estado(),
         ]);
     }
 

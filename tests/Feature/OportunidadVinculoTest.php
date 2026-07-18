@@ -100,6 +100,115 @@ class OportunidadVinculoTest extends TestCase
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
     }
 
+    public function test_iniciar_vinculo_endpoint_manual(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'D-AT-010',
+            'nombre' => 'Atacama',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHour(),
+            'fin' => now()->subMinutes(5),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.iniciar-vinculo'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('corrida.vinculo.estado', 'running')
+            ->assertJsonPath('corrida.vinculo.total_pasos', 1);
+
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_estado_reencola_vinculo_si_busqueda_completa_con_pendientes(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'E-AT-011',
+            'nombre' => 'Atacama',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHour(),
+            'fin' => now()->subMinutes(5),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.vinculo.estado', 'running');
+
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_aviso_pendientes_cuando_no_hay_corrida_de_vinculo(): void
+    {
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'F-AT-012',
+            'nombre' => 'Atacama',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $aviso = $this->app->make(OportunidadVinculoService::class)
+            ->avisoPendientes('2026-07-16');
+
+        $this->assertNotNull($aviso);
+        $this->assertSame(1, $aviso['pendientes']);
+        $this->assertTrue($aviso['puede_iniciar']);
+    }
+
     public function test_vincular_codigo_marca_completo_y_porcentaje(): void
     {
         Http::fake([

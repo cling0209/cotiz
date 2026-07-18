@@ -708,6 +708,9 @@ class OportunidadBusquedaService
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
             'vinculo' => $vinculoEstado,
+            'vinculo_aviso' => (($vinculoEstado['estado'] ?? null) === OportunidadVinculoService::ESTADO_RUNNING)
+                ? null
+                : $this->vinculos->avisoPendientes($fechaBusqueda),
         ];
     }
 
