@@ -189,7 +189,12 @@
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->estado ?: '—' }}</td>
                             @if($puedeVerEstadoMp ?? false)
-                                <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
+                                <td>
+                                    @include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])
+                                    @if($estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio))
+                                        <span class="badge text-bg-success">Ganador propio</span>
+                                    @endif
+                                </td>
                             @endif
                             <td class="text-end">
                                 <div class="d-flex flex-wrap gap-1 justify-content-end">

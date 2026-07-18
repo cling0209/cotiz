@@ -21,6 +21,10 @@ class NotaListadoService
         'no_encontrada' => 'No existe en MP',
     ];
 
+    public function __construct(
+        protected CompraAgilGanadorResolver $ganadorResolver,
+    ) {}
+
     public function listar(User $user, array $filtros): LengthAwarePaginator
     {
         $porPagina = config('cotiz.listado_por_pagina', 20);
@@ -37,7 +41,28 @@ class NotaListadoService
             $query->orderBy('notas.nronota', $dir);
         }
 
-        return $query->paginate($porPagina)->withQueryString();
+        $paginado = $query->paginate($porPagina)->withQueryString();
+        $this->marcarGanadorPropio($paginado->getCollection());
+
+        return $paginado;
+    }
+
+    /**
+     * @param  Collection<int, Nota>  $notas
+     */
+    private function marcarGanadorPropio(Collection $notas): void
+    {
+        $rutPropio = $this->ganadorResolver->rutEmpresaPropia();
+
+        foreach ($notas as $nota) {
+            $seg = $nota->mpSeguimiento;
+            if ($seg === null) {
+                continue;
+            }
+
+            $seg->es_ganador_propio = $rutPropio !== ''
+                && $this->ganadorResolver->rutsCoinciden($seg->rut_ganador, $rutPropio);
+        }
     }
 
     /** Columna y filtro de estado MP: solo admin/superadmin y viewers (p. ej. pame). */

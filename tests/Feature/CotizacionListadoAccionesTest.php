@@ -328,6 +328,38 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertSee('Cerrada', false);
     }
 
+    public function test_cerrada_muestra_ganador_propio_sin_rut(): void
+    {
+        config(['cotiz.empresa_rut' => '76.356.855-5']);
+
+        $nota = $this->crearNota([
+            'nronota' => 305,
+            'usuario' => 'ejecutivo',
+            'fecha' => now()->toDateString(),
+            'encargado' => '305-GANADA',
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '305-GANADA',
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '76356855-5',
+            'razon_social_ganador' => 'Comercializadora Reicol SPA',
+            'finalizado' => true,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin)->get(route('admin.cotizaciones.index', [
+            'fechadesde' => now()->subDay()->toDateString(),
+            'fechahasta' => now()->toDateString(),
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('Cerrada', false);
+        $response->assertSee('Ganador propio', false);
+        $response->assertDontSee('76356855', false);
+        $response->assertDontSee('76.356.855', false);
+    }
+
     public function test_ejecutivo_no_ve_columna_ni_filtro_estado_mp(): void
     {
         $this->crearNota([
