@@ -58,40 +58,6 @@ class AdjudicadaListadoTest extends TestCase
             ->assertDontSee('Empresa Filtro 202');
     }
 
-    public function test_filtra_por_ejecutivo(): void
-    {
-        User::factory()->create([
-            'username' => 'otro_ej',
-            'nombre' => 'Otro',
-            'apellidop' => 'Ejecutivo',
-            'perfil' => User::PERFIL_EJECUTIVO,
-        ]);
-
-        $this->crearNota([
-            'nronota' => 211,
-            'estado' => 'aceptada',
-            'usuario' => 'ejecutivo',
-            'empresa' => 'Empresa De Ejecutivo',
-            'fechaentrega' => '2026-06-10',
-        ]);
-        $this->crearNota([
-            'nronota' => 212,
-            'estado' => 'aceptada',
-            'usuario' => 'otro_ej',
-            'empresa' => 'Empresa De Otro',
-            'fechaentrega' => '2026-06-10',
-        ]);
-
-        $this->actingAs($this->admin)
-            ->get(route('admin.cotizaciones.adjudicadas.index', [
-                'usuario' => 'ejecutivo',
-            ]))
-            ->assertOk()
-            ->assertSee('Empresa De Ejecutivo')
-            ->assertDontSee('Empresa De Otro')
-            ->assertSee('name="usuario"', false);
-    }
-
     public function test_rechaza_filtro_fecha_incompleto(): void
     {
         $this->actingAs($this->admin)

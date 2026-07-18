@@ -2321,6 +2321,11 @@ class NotaMpResultadosService
             $query->where('seg.razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
         }
 
+        $usuario = trim((string) ($filtros['usuario'] ?? ''));
+        if ($usuario !== '') {
+            $query->where('notas.usuario', $usuario);
+        }
+
         if (! empty($filtros['fecha_desde'])) {
             $query->where(function ($q) use ($filtros): void {
                 $q->where('seg.fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00')
@@ -2432,6 +2437,11 @@ class NotaMpResultadosService
 
         if (! empty($filtros['proveedor'])) {
             $query->where('razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+        }
+
+        $usuario = trim((string) ($filtros['usuario'] ?? ''));
+        if ($usuario !== '') {
+            $query->whereHas('nota', fn ($q) => $q->where('usuario', $usuario));
         }
 
         if (! empty($filtros['fecha_desde'])) {

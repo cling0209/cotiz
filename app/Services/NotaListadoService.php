@@ -85,11 +85,6 @@ class NotaListadoService
             }
         }
 
-        $usuario = trim((string) ($filtros['usuario'] ?? ''));
-        if ($usuario !== '') {
-            $query->where('notas.usuario', $usuario);
-        }
-
         return $query;
     }
 

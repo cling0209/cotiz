@@ -6,14 +6,9 @@ use App\Models\Nota;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 
 class NotaAdjudicadaListadoService
 {
-    public function __construct(
-        protected NotaListadoService $notaListadoService,
-    ) {}
-
     public function listar(User $user, array $filtros): LengthAwarePaginator
     {
         $porPagina = config('cotiz.listado_por_pagina', 20);
@@ -22,14 +17,6 @@ class NotaAdjudicadaListadoService
             ->orderByDesc('notas.nronota')
             ->paginate($porPagina)
             ->withQueryString();
-    }
-
-    /**
-     * @return Collection<int, User>
-     */
-    public function usuariosParaFiltroEjecutivo(): Collection
-    {
-        return $this->notaListadoService->usuariosParaFiltroEjecutivo();
     }
 
     private function baseQuery(User $user, array $filtros): Builder
@@ -47,11 +34,6 @@ class NotaAdjudicadaListadoService
             $query->where('notas.nronota', (int) $filtros['nronota']);
         }
 
-        $usuario = trim((string) ($filtros['usuario'] ?? ''));
-        if ($usuario !== '') {
-            $query->where('notas.usuario', $usuario);
-        }
-
         $desde = trim((string) ($filtros['fechaentregadesde'] ?? ''));
         $hasta = trim((string) ($filtros['fechaentregahasta'] ?? ''));
 
@@ -64,13 +46,12 @@ class NotaAdjudicadaListadoService
     }
 
     /**
-     * @return array{nronota: int, usuario: string, fechaentregadesde: ?string, fechaentregahasta: ?string}
+     * @return array{nronota: int, fechaentregadesde: ?string, fechaentregahasta: ?string}
      */
     public function normalizarFiltros(array $input): array
     {
         return [
             'nronota' => max(0, (int) ($input['nronota'] ?? 0)),
-            'usuario' => trim((string) ($input['usuario'] ?? '')),
             'fechaentregadesde' => $this->nullableDate($input['fechaentregadesde'] ?? null),
             'fechaentregahasta' => $this->nullableDate($input['fechaentregahasta'] ?? null),
         ];

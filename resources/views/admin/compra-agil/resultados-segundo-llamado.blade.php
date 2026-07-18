@@ -46,6 +46,7 @@
                     <input type="text" class="form-control form-control-sm" id="f-proveedor" name="proveedor"
                         value="{{ $filtros['proveedor'] ?? '' }}" placeholder="Razón social..." style="width:12rem">
                 </div>
+                @include('admin.compra-agil.partials.filtro-ejecutivo')
                 <div class="col-auto">
                     <label for="f-fecha-desde" class="form-label small mb-0">Publicación desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-fecha-desde" name="fecha_desde"

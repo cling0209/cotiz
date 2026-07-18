@@ -46,6 +46,7 @@
                     <input type="text" class="form-control form-control-sm" id="f-proveedor" name="proveedor"
                         value="{{ $filtros['proveedor'] ?? '' }}" placeholder="Razón social..." style="width:12rem">
                 </div>
+                @include('admin.compra-agil.partials.filtro-ejecutivo')
                 <div class="col-auto">
                     <label for="f-seguimiento" class="form-label small mb-0">Seguimiento</label>
                     <select class="form-select form-select-sm" id="f-seguimiento" name="seguimiento" style="width:11rem">

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\NotaListadoService;
 use App\Services\NotaMpResultadosService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,6 +15,7 @@ class CompraAgilResultadosController extends Controller
 {
     public function __construct(
         protected NotaMpResultadosService $resultados,
+        protected NotaListadoService $notaListado,
     ) {}
 
     public function index(Request $request): View
@@ -54,6 +57,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-cerradas', [
             'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
             'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->ejecutivosFiltro(),
         ]);
     }
 
@@ -64,6 +68,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-pendientes', [
             'pendientes' => $this->resultados->listadoPendientesPaginado(20, $filtros),
             'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
             'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
         ]);
@@ -76,6 +81,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-segundo-llamado', [
             'items' => $this->resultados->listadoPendientesPaginado(20, $this->filtrosSegundoLlamado($filtros)),
             'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
             'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
         ]);
@@ -88,6 +94,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-todas', [
             'todas' => $this->resultados->listadoTodasPaginado(20, $filtros),
             'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
             'corridaEnCurso' => $this->resultados->corridaEnCurso() !== null,
         ]);
@@ -516,7 +523,7 @@ class CompraAgilResultadosController extends Controller
     private function filtrosListadoSeguimiento(Request $request): array
     {
         return $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor', 'usuario',
             'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
             'seguimiento', 'estado_mp', 'convocatoria',
         ]);
@@ -530,9 +537,17 @@ class CompraAgilResultadosController extends Controller
     private function filtrosSegundoLlamadoUi(Request $request): array
     {
         return $request->only([
-            'nronota', 'codigo_proceso', 'organismo', 'proveedor',
+            'nronota', 'codigo_proceso', 'organismo', 'proveedor', 'usuario',
             'fecha_desde', 'fecha_hasta', 'cambio_desde', 'cambio_hasta',
         ]);
+    }
+
+    /**
+     * @return Collection<int, \App\Models\User>
+     */
+    private function ejecutivosFiltro(): Collection
+    {
+        return $this->notaListado->usuariosParaFiltroEjecutivo();
     }
 
     /**

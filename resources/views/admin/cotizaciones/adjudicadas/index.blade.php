@@ -18,17 +18,6 @@
                     <label class="form-label" for="nronota">N&ordm; nota</label>
                     <input type="number" name="nronota" id="nronota" class="form-control form-control-sm" value="{{ $filtros['nronota'] ?: '' }}" min="0">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="filtro-usuario">Ejecutivo</label>
-                    <select name="usuario" id="filtro-usuario" class="form-select form-select-sm">
-                        <option value="">Todos</option>
-                        @foreach(($ejecutivosFiltro ?? []) as $ejecutivo)
-                            <option value="{{ $ejecutivo->username }}" @selected(($filtros['usuario'] ?? '') === $ejecutivo->username)>
-                                {{ $ejecutivo->fullName() ?: $ejecutivo->username }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
                 <div class="col-md-2">
                     <label class="form-label" for="fechaentregadesde">Fecha entrega desde</label>
                     <input type="date" name="fechaentregadesde" id="fechaentregadesde" class="form-control form-control-sm" value="{{ $filtros['fechaentregadesde'] }}">
@@ -90,7 +79,6 @@
             </a>
             <a href="{{ route('admin.cotizaciones.adjudicadas.export.detalle', array_filter([
                 'nronota' => $filtros['nronota'] ?: null,
-                'usuario' => $filtros['usuario'] ?: null,
                 'fechaentregadesde' => $filtros['fechaentregadesde'],
                 'fechaentregahasta' => $filtros['fechaentregahasta'],
             ])) }}" class="btn btn-secondary btn-sm" data-no-loader>
@@ -105,8 +93,6 @@ document.getElementById('btn-limpiar-adjudicadas')?.addEventListener('click', fu
     const form = document.getElementById('form-adjudicadas-filtros');
     if (!form) return;
     form.querySelector('#nronota').value = '';
-    const usuario = form.querySelector('#filtro-usuario');
-    if (usuario) usuario.value = '';
     form.querySelector('#fechaentregadesde').value = '';
     form.querySelector('#fechaentregahasta').value = '';
     form.submit();

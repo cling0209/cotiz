@@ -1822,6 +1822,55 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('Seguimiento', $csv);
     }
 
+    public function test_todas_filtra_por_ejecutivo(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+        User::factory()->create([
+            'username' => 'ejecutivo',
+            'nombre' => 'Juan',
+            'apellidop' => 'Pérez',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+        User::factory()->create([
+            'username' => 'otro_ej',
+            'nombre' => 'Ana',
+            'apellidop' => 'López',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 933,
+            'descripcion' => 'De ejecutivo',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'ejecutivo',
+            'empresa' => 'Cliente Ejecutivo',
+            'encargado' => '933-1-COT26',
+            'nota_softland' => 93300,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 934,
+            'descripcion' => 'De otro',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'otro_ej',
+            'empresa' => 'Cliente Otro',
+            'encargado' => '934-1-COT26',
+            'nota_softland' => 93400,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.todas', ['usuario' => 'ejecutivo']))
+            ->assertOk()
+            ->assertSee('name="usuario"', false)
+            ->assertSee('933-1-COT26', false)
+            ->assertDontSee('934-1-COT26', false)
+            ->assertSee('Juan Pérez', false);
+    }
+
     public function test_todas_incluye_nota_sin_consultar_mp_por_codigo_ca(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
