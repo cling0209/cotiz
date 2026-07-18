@@ -29,6 +29,7 @@ class OportunidadEncontrada extends Model
         'productos_vinculados',
         'porcentaje_vinculo',
         'vinculo_at',
+        'vinculo_preview_json',
         'fecha_busqueda',
         'indice_region_config',
         'found_by',
@@ -47,6 +48,7 @@ class OportunidadEncontrada extends Model
             'productos_vinculados' => 'integer',
             'porcentaje_vinculo' => 'integer',
             'vinculo_at' => 'datetime',
+            'vinculo_preview_json' => 'array',
             'fecha_busqueda' => 'date',
             'indice_region_config' => 'integer',
         ];

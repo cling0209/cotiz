@@ -13,6 +13,7 @@ use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
 use App\Services\OportunidadParaCotizarService;
+use App\Services\OportunidadVinculoService;
 use RuntimeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -31,6 +32,7 @@ class CotizacionController extends Controller
         protected MaterialesPdfImportService $materialesPdfImport,
         protected MaterialesExcelImportService $materialesExcelImport,
         protected OportunidadParaCotizarService $oportunidadParaCotizar,
+        protected OportunidadVinculoService $oportunidadVinculo,
     ) {}
 
     public function create(Request $request): View|RedirectResponse
@@ -131,6 +133,7 @@ class CotizacionController extends Controller
             ? collect()
             : $this->detalleService->lineasDeNota($nota);
         $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
+        $previewImportarCompraAgil = $this->previewVinculoCacheadoParaFormulario($nota, $codigoImportar);
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
@@ -147,9 +150,36 @@ class CotizacionController extends Controller
                 && $nota->requiereNumeroCotizacion()
                 && $lineas->isEmpty(),
             'codigoImportarCompraAgil' => $codigoImportar,
+            'previewImportarCompraAgil' => $previewImportarCompraAgil,
             'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
         ]);
+    }
+
+    /**
+     * Si la oportunidad ya fue vinculada en segundo plano, reutiliza ese preview.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function previewVinculoCacheadoParaFormulario(Nota $nota, string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        $preview = $this->oportunidadVinculo->previewCacheado($codigo);
+        if ($preview === null) {
+            return null;
+        }
+
+        $errorLocal = $this->notaService->validarNumeroCotizacion($nota, $codigo);
+        if ($errorLocal !== null) {
+            $preview['error_cabecera'] = $errorLocal;
+            $preview['puede_importar'] = false;
+        }
+
+        return $preview;
     }
 
     /**

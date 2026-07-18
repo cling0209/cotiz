@@ -259,6 +259,7 @@ class OportunidadVinculoService
         $total = (int) ($resumen['total'] ?? 0);
         $vinculados = (int) ($resumen['vinculados'] ?? 0);
         $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
+        $previewCache = $this->empaquetarPreviewCache($preview);
 
         $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
         $row = OportunidadEncontrada::query()
@@ -273,6 +274,7 @@ class OportunidadVinculoService
                 'porcentaje_vinculo' => $porcentaje,
                 'vinculo_completo' => true,
                 'vinculo_at' => now(),
+                'vinculo_preview_json' => $previewCache,
             ])->save();
 
             $this->encontradaRelay->replicarItems([
@@ -284,6 +286,75 @@ class OportunidadVinculoService
             'total' => $total,
             'vinculados' => $vinculados,
             'porcentaje' => $porcentaje,
+        ];
+    }
+
+    /**
+     * Preview ya calculado en la vinculación masiva (para no reanalizar al cotizar).
+     *
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: list<array<string, mixed>>,
+     *   resumen: array<string, mixed>,
+     *   desde_cache: bool,
+     *   puede_importar: bool,
+     *   error_cabecera: null
+     * }|null
+     */
+    public function previewCacheado(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->where('vinculo_completo', true)
+            ->whereNotNull('vinculo_preview_json')
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $preview = is_array($row->vinculo_preview_json) ? $row->vinculo_preview_json : null;
+        if ($preview === null || ! is_array($preview['lineas'] ?? null)) {
+            return null;
+        }
+
+        $lineas = array_values($preview['lineas']);
+        $resumen = is_array($preview['resumen'] ?? null)
+            ? $preview['resumen']
+            : $this->importService->resumenDesdeLineasPreview($lineas);
+
+        return [
+            'cabecera' => is_array($preview['cabecera'] ?? null) ? $preview['cabecera'] : [],
+            'lineas' => $lineas,
+            'resumen' => $resumen,
+            'desde_cache' => true,
+            'puede_importar' => true,
+            'error_cabecera' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $preview
+     * @return array{cabecera: array<string, mixed>, lineas: list<array<string, mixed>>, resumen: array<string, mixed>}
+     */
+    private function empaquetarPreviewCache(array $preview): array
+    {
+        $lineas = is_array($preview['lineas'] ?? null) ? array_values($preview['lineas']) : [];
+        $resumen = is_array($preview['resumen'] ?? null)
+            ? $preview['resumen']
+            : $this->importService->resumenDesdeLineasPreview($lineas);
+
+        return [
+            'cabecera' => is_array($preview['cabecera'] ?? null) ? $preview['cabecera'] : [],
+            'lineas' => $lineas,
+            'resumen' => $resumen,
         ];
     }
 
@@ -311,6 +382,7 @@ class OportunidadVinculoService
             'porcentaje_vinculo' => 0,
             'vinculo_completo' => true,
             'vinculo_at' => now(),
+            'vinculo_preview_json' => null,
         ])->save();
 
         $this->encontradaRelay->replicarItems([

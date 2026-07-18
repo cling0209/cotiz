@@ -129,6 +129,15 @@ class OportunidadVinculoTest extends TestCase
         $row = OportunidadEncontrada::query()->where('codigo', '607603-40-COT26')->first();
         $this->assertTrue((bool) $row->vinculo_completo);
         $this->assertNotNull($row->porcentaje_vinculo);
+        $this->assertIsArray($row->vinculo_preview_json);
+        $this->assertArrayHasKey('lineas', $row->vinculo_preview_json);
+        $this->assertCount(2, $row->vinculo_preview_json['lineas']);
+
+        $cache = $this->app->make(OportunidadVinculoService::class)
+            ->previewCacheado('607603-40-COT26');
+        $this->assertNotNull($cache);
+        $this->assertTrue($cache['desde_cache']);
+        $this->assertCount(2, $cache['lineas']);
     }
 
     public function test_estado_busqueda_incluye_vinculo(): void

@@ -512,6 +512,7 @@
     let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
     const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
     const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
+    const previewImportarCompraAgil = @json($previewImportarCompraAgil ?? null);
     const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
 
     // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
@@ -2996,6 +2997,38 @@
         }
     }
 
+    function aplicarPreviewCacheado(codigo, preview) {
+        codigo = String(codigo || '').trim().toUpperCase();
+        if (!codigo || !preview || !Array.isArray(preview.lineas)) {
+            return false;
+        }
+
+        importModo = 'api';
+        importPdfFile = null;
+        importExcelFile = null;
+        importCodigoApi = codigo;
+        limpiarImportAlerta();
+        ocultarProgresoImportar();
+        ocultarProgresoConsultaPar();
+        ocultarSoloAlertaConsultaPar();
+
+        const lineas = preview.lineas;
+        renderImportPreview({
+            cabecera: preview.cabecera || {},
+            lineas,
+            resumen: preview.resumen || construirResumenPreview(lineas),
+            error_cabecera: preview.error_cabecera || null,
+            puede_importar: preview.puede_importar !== false,
+            desde_cache: true,
+        });
+        if (importarEstado) {
+            importarEstado.textContent = preview.error_cabecera
+                ? ''
+                : 'Análisis reutilizado (ya vinculado). Use Cargar para reanalizar.';
+        }
+        return true;
+    }
+
     document.getElementById('btn-ca-buscar-codigo')?.addEventListener('click', () => {
         analizarCodigoApi(document.getElementById('ca-api-codigo')?.value || '');
     });
@@ -3578,7 +3611,16 @@
         }
         bsModalImportar.show();
         if (codigoImportarCompraAgil) {
-            setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
+            const cache = previewImportarCompraAgil
+                && typeof previewImportarCompraAgil === 'object'
+                && Array.isArray(previewImportarCompraAgil.lineas)
+                ? previewImportarCompraAgil
+                : null;
+            if (cache) {
+                setTimeout(() => aplicarPreviewCacheado(codigoImportarCompraAgil, cache), 350);
+            } else {
+                setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
+            }
         } else {
             setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
         }
