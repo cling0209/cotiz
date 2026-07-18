@@ -364,6 +364,8 @@
             baseUrl: @json($mpBaseUrl ?? ''),
             path: @json($mpPath ?? '/v2/compra-agil'),
         };
+        // Orden de MERCADOPUBLICO_REGIONES (mismo que la búsqueda / plan de vinculación).
+        const regionesOrdenConfig = @json(array_values(array_map('intval', \App\Services\CompraAgilRegionScope::regionesIncluidas())));
         const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
         const btn = document.getElementById('btn-buscar-oportunidades');
@@ -1443,13 +1445,31 @@
             });
         }
 
+        function indiceRegionConfig(region) {
+            const codigo = Number(region) || 0;
+            if (!Array.isArray(regionesOrdenConfig) || regionesOrdenConfig.length === 0) {
+                return 999;
+            }
+            const pos = regionesOrdenConfig.indexOf(codigo);
+            return pos >= 0 ? pos : 999;
+        }
+
         function listaProgresoRegiones(vinculo) {
             const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object'
                 ? vinculo.progreso_por_region
                 : {};
             return Object.values(porRegion)
                 .filter((s) => s && Number(s.total) > 0)
-                .sort((a, b) => (Number(a.region) || 0) - (Number(b.region) || 0));
+                .sort((a, b) => {
+                    const ia = a.indice_region_config != null
+                        ? Number(a.indice_region_config)
+                        : indiceRegionConfig(a.region);
+                    const ib = b.indice_region_config != null
+                        ? Number(b.indice_region_config)
+                        : indiceRegionConfig(b.region);
+                    if (ia !== ib) return ia - ib;
+                    return (Number(a.region) || 0) - (Number(b.region) || 0);
+                });
         }
 
         function renderVinculoRegiones(vinculo) {

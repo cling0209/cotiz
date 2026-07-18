@@ -966,11 +966,13 @@ class OportunidadVinculoService
 
     /**
      * Avance del 2.º proceso agrupado por código de región Mercado Público.
+     * El orden de las claves sigue MERCADOPUBLICO_REGIONES (indice_region_config).
      *
      * @param  list<array<string, mixed>>  $pasos
      * @return array<string, array{
      *     region: int,
      *     region_nombre: string,
+     *     indice_region_config: int,
      *     total: int,
      *     hechos: int,
      *     porcentaje: int,
@@ -991,10 +993,15 @@ class OportunidadVinculoService
 
             $region = (int) ($paso['region'] ?? 0);
             $key = (string) $region;
+            $indice = array_key_exists('indice_region_config', $paso)
+                ? (int) $paso['indice_region_config']
+                : CompraAgilRegionScope::indiceEnConfig($region > 0 ? $region : null);
+
             if (! isset($byRegion[$key])) {
                 $byRegion[$key] = [
                     'region' => $region,
                     'region_nombre' => (string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''),
+                    'indice_region_config' => $indice,
                     'total' => 0,
                     'hechos' => 0,
                     'porcentaje' => 0,
@@ -1004,6 +1011,12 @@ class OportunidadVinculoService
                     'ok' => 0,
                     'failed' => 0,
                 ];
+            } else {
+                // Conservar el menor índice visto (prioridad de config).
+                $byRegion[$key]['indice_region_config'] = min(
+                    (int) $byRegion[$key]['indice_region_config'],
+                    $indice,
+                );
             }
 
             $byRegion[$key]['total']++;
@@ -1036,6 +1049,15 @@ class OportunidadVinculoService
             }
         }
         unset($stats);
+
+        uasort($byRegion, static function (array $a, array $b): int {
+            $cmp = ((int) ($a['indice_region_config'] ?? 999)) <=> ((int) ($b['indice_region_config'] ?? 999));
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            return ((int) ($a['region'] ?? 0)) <=> ((int) ($b['region'] ?? 0));
+        });
 
         return $byRegion;
     }
