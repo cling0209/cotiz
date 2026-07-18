@@ -207,14 +207,14 @@
                     role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="vin-detalle" class="small text-muted mb-2">Preparando vinculación con maestro…</div>
-            <div id="vin-regiones-wrap" class="d-none">
-                <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-link text-decoration-none px-0 mb-1"
-                    aria-expanded="true" aria-controls="vin-regiones-panel">
-                    Detalle por regi&oacute;n
-                    <span id="vin-regiones-contador" class="badge text-bg-light text-dark border ms-1">0</span>
-                    <i id="vin-regiones-chevron" class="bi bi-chevron-up ms-1"></i>
+            <div id="vin-regiones-wrap" class="mt-3 d-none">
+                <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-outline-secondary mb-2"
+                    aria-expanded="false" aria-controls="vin-regiones-panel">
+                    <i class="bi bi-list-check"></i>
+                    Detalle por regi&oacute;n <span id="vin-regiones-contador" class="badge text-bg-secondary ms-1">0</span>
+                    <i id="vin-regiones-chevron" class="bi bi-chevron-down ms-1"></i>
                 </button>
-                <div id="vin-regiones-panel" class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                <div id="vin-regiones-panel" class="table-responsive d-none" style="max-height: 320px; overflow-y: auto;">
                     <table class="table table-sm table-striped align-middle small mb-0">
                         <thead class="table-light" style="position: sticky; top: 0;">
                             <tr>
@@ -1470,7 +1470,14 @@
             }
 
             wrap.classList.remove('d-none');
-            if (contador) contador.textContent = String(regiones.length);
+            // El panel queda cerrado: el usuario lo abre con el botón (mismo diseño que la búsqueda).
+            let totalCotiz = 0;
+            let hechosCotiz = 0;
+            regiones.forEach((s) => {
+                totalCotiz += Number(s.total) || 0;
+                hechosCotiz += Number(s.hechos) || 0;
+            });
+            if (contador) contador.textContent = `${hechosCotiz}/${totalCotiz}`;
             tbody.innerHTML = '';
             regiones.forEach((stats) => {
                 const tr = document.createElement('tr');
@@ -1523,20 +1530,26 @@
             });
         }
 
-        (function initVinRegionesToggle() {
-            const toggle = document.getElementById('vin-regiones-toggle');
-            const panel = document.getElementById('vin-regiones-panel');
-            const chevron = document.getElementById('vin-regiones-chevron');
-            if (!toggle || !panel) return;
-            toggle.addEventListener('click', () => {
-                const abierto = panel.classList.toggle('d-none') === false;
-                toggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
-                if (chevron) {
-                    chevron.classList.toggle('bi-chevron-down', !abierto);
-                    chevron.classList.toggle('bi-chevron-up', abierto);
-                }
+        const vinRegionesToggle = document.getElementById('vin-regiones-toggle');
+        const vinRegionesPanel = document.getElementById('vin-regiones-panel');
+        const vinRegionesChevron = document.getElementById('vin-regiones-chevron');
+
+        function setVinRegionesPanelAbierto(abierto) {
+            if (!vinRegionesPanel) return;
+            vinRegionesPanel.classList.toggle('d-none', !abierto);
+            if (vinRegionesToggle) {
+                vinRegionesToggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+            }
+            if (vinRegionesChevron) {
+                vinRegionesChevron.classList.toggle('bi-chevron-down', !abierto);
+                vinRegionesChevron.classList.toggle('bi-chevron-up', abierto);
+            }
+        }
+        if (vinRegionesToggle && vinRegionesPanel) {
+            vinRegionesToggle.addEventListener('click', () => {
+                setVinRegionesPanelAbierto(vinRegionesPanel.classList.contains('d-none'));
             });
-        })();
+        }
 
         const relPasosChevron = document.getElementById('rel-pasos-chevron');
 
@@ -1563,6 +1576,7 @@
             if (ultimaCorridaId !== corrida.id) {
                 ultimaCorridaId = corrida.id;
                 intentosCambioDia = 0;
+                setPasosPanelAbierto(false);
             }
 
             estado.classList.remove('d-none');
@@ -1671,6 +1685,8 @@
             }
         }
 
+        let ultimaVinculoId = null;
+
         function aplicarEstadoVinculo(vinculo) {
             const card = document.getElementById('vinculo-estado');
             const vinInicio = document.getElementById('vin-inicio');
@@ -1686,9 +1702,15 @@
                 return;
             }
             if (!vinculo) {
+                ultimaVinculoId = null;
                 card.classList.add('d-none');
                 renderVinculoRegiones(null);
                 return;
+            }
+
+            if (ultimaVinculoId !== vinculo.id) {
+                ultimaVinculoId = vinculo.id;
+                setVinRegionesPanelAbierto(false);
             }
 
             card.classList.remove('d-none');
@@ -1813,6 +1835,7 @@
             iniciandoVinculo = true;
             if (btnIniciarVinculo) btnIniciarVinculo.disabled = true;
             if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = true;
+            setVinRegionesPanelAbierto(false);
             try {
                 const data = await postJson(urls.iniciarVinculo, {});
                 if (data && data.corrida) {
@@ -1883,6 +1906,7 @@
             resultados.classList.remove('d-none');
             relError.classList.add('d-none');
             limpiarDebugConsulta();
+            setPasosPanelAbierto(false);
             relFin.textContent = '—';
             relInicio.textContent = '…';
             setProgreso(0);
