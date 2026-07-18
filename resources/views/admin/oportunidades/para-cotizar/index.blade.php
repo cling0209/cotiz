@@ -38,6 +38,9 @@
                 <i class="bi bi-link-45deg"></i> Procesar vinculaciones
                 <span id="btn-iniciar-vinculo-badge" class="badge text-bg-light text-dark ms-1 d-none">0</span>
             </button>
+            <button type="button" id="btn-cancelar-vinculo" class="btn btn-outline-danger btn-sm d-none" data-no-loader title="Detiene la vinculaci&oacute;n para poder procesarla de nuevo">
+                <i class="bi bi-x-circle"></i> Cancelar vinculaciones
+            </button>
             @endif
         </div>
     </div>
@@ -350,6 +353,7 @@
             cancelar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar') : ''),
             reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
             iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
+            cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
@@ -369,6 +373,7 @@
         const btnCancelar = document.getElementById('btn-cancelar-oportunidades');
         const btnIniciarVinculo = document.getElementById('btn-iniciar-vinculo');
         const btnIniciarVinculoBadge = document.getElementById('btn-iniciar-vinculo-badge');
+        const btnCancelarVinculo = document.getElementById('btn-cancelar-vinculo');
         const btnIniciarVinculoAviso = document.getElementById('btn-iniciar-vinculo-aviso');
         const vinculoAviso = document.getElementById('vinculo-aviso');
         const vinculoAvisoTexto = document.getElementById('vinculo-aviso-texto');
@@ -1774,7 +1779,11 @@
             // Visible siempre que el 2.º proceso no esté corriendo (puede ir en paralelo a la búsqueda).
             if (btnIniciarVinculo) {
                 btnIniciarVinculo.classList.toggle('d-none', !!vinculoActivo);
-                btnIniciarVinculo.disabled = !!vinculoActivo || iniciandoVinculo;
+                btnIniciarVinculo.disabled = !!vinculoActivo || iniciandoVinculo || cancelandoVinculo;
+            }
+            if (btnCancelarVinculo) {
+                btnCancelarVinculo.classList.toggle('d-none', !vinculoActivo);
+                btnCancelarVinculo.disabled = !vinculoActivo || cancelandoVinculo;
             }
             if (btnIniciarVinculoBadge) {
                 if (!vinculoActivo && nPendientes > 0) {
@@ -1793,13 +1802,14 @@
                 vinculoAvisoTexto.textContent = String(aviso.mensaje || '');
             }
             if (btnIniciarVinculoAviso) {
-                btnIniciarVinculoAviso.disabled = iniciandoVinculo;
+                btnIniciarVinculoAviso.disabled = iniciandoVinculo || cancelandoVinculo;
             }
         }
 
         let iniciandoVinculo = false;
+        let cancelandoVinculo = false;
         async function iniciarVinculoManual() {
-            if (!urls.iniciarVinculo || iniciandoVinculo) return;
+            if (!urls.iniciarVinculo || iniciandoVinculo || cancelandoVinculo) return;
             iniciandoVinculo = true;
             if (btnIniciarVinculo) btnIniciarVinculo.disabled = true;
             if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = true;
@@ -1820,6 +1830,30 @@
                 if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = false;
             } finally {
                 iniciandoVinculo = false;
+            }
+        }
+
+        async function cancelarVinculoManual() {
+            if (!urls.cancelarVinculo || cancelandoVinculo) return;
+            cancelandoVinculo = true;
+            if (btnCancelarVinculo) btnCancelarVinculo.disabled = true;
+            try {
+                const data = await postJson(urls.cancelarVinculo, {});
+                if (data && data.corrida) {
+                    aplicarEstadoCorrida(data.corrida);
+                } else {
+                    consultarEstado();
+                }
+            } catch (e) {
+                const vinDetalle = document.getElementById('vin-detalle');
+                if (vinDetalle) {
+                    vinDetalle.textContent = e.message || String(e);
+                    vinDetalle.classList.remove('text-muted');
+                    vinDetalle.classList.add('text-danger');
+                }
+                if (btnCancelarVinculo) btnCancelarVinculo.disabled = false;
+            } finally {
+                cancelandoVinculo = false;
             }
         }
 
@@ -1904,6 +1938,7 @@
             btnCancelar?.addEventListener('click', cancelarBusqueda);
             btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);
             btnIniciarVinculoAviso?.addEventListener('click', iniciarVinculoManual);
+            btnCancelarVinculo?.addEventListener('click', cancelarVinculoManual);
         }
     })();
 </script>

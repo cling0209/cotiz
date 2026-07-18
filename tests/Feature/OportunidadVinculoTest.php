@@ -581,4 +581,60 @@ class OportunidadVinculoTest extends TestCase
         $this->assertSame('failed', $plan[1]['estado'] ?? null);
         $this->assertSame('pending', $plan[2]['estado'] ?? null);
     }
+
+    public function test_cancelar_vinculo_permite_reiniciar(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1000-1-COT26',
+            'nombre' => 'Pendiente',
+            'region' => 3,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 2,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                ['codigo' => 'A-OK-001', 'region' => 3, 'estado' => 'ok'],
+                ['codigo' => '1000-1-COT26', 'region' => 3, 'estado' => 'running', 'inicio' => now()->toIso8601String()],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculando…',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.cancelar-vinculo'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('corrida.vinculo.estado', 'cancelled');
+
+        $corrida->refresh();
+        $this->assertSame(OportunidadVinculoService::ESTADO_CANCELLED, $corrida->estado);
+        $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $this->assertSame('ok', $plan[0]['estado'] ?? null);
+        $this->assertSame('cancelled', $plan[1]['estado'] ?? null);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.iniciar-vinculo'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('corrida.vinculo.estado', 'running');
+
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class);
+    }
 }

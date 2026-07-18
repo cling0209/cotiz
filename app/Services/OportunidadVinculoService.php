@@ -30,6 +30,10 @@ class OportunidadVinculoService
 
     private const PASO_FAILED = 'failed';
 
+    private const PASO_CANCELLED = 'cancelled';
+
+    private const MENSAJE_CANCELADA = 'Vinculación cancelada por el usuario.';
+
     public function __construct(
         protected CompraAgilApiService $api,
         protected CompraAgilPayloadMapper $mapper,
@@ -599,6 +603,43 @@ class OportunidadVinculoService
                 ? 'Vinculación terminada con '.$fallidos.' fallo(s). Tiempo: '.$tiempo
                 : 'Vinculación terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
+    }
+
+    /**
+     * Cancela la corrida de vinculación en curso para poder iniciar otra.
+     * Los pasos ya ok/failed se conservan; pending/running quedan cancelled (siguen pendientes de vincular).
+     */
+    public function cancelar(?OportunidadVinculoCorrida $corrida = null): ?OportunidadVinculoCorrida
+    {
+        $corrida ??= $this->corridaEnCurso();
+        if ($corrida === null) {
+            return null;
+        }
+
+        $this->eliminarJobsVinculo($corrida->id);
+
+        $fin = now();
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $estadoPaso = (string) ($paso['estado'] ?? self::PASO_PENDING);
+            if ($estadoPaso === self::PASO_RUNNING || $estadoPaso === self::PASO_PENDING) {
+                $pasos[$i]['estado'] = self::PASO_CANCELLED;
+                $pasos[$i]['fin'] = $fin->toIso8601String();
+            }
+        }
+
+        $corrida->fill([
+            'estado' => self::ESTADO_CANCELLED,
+            'fin' => $fin,
+            'plan_json' => array_values($pasos),
+            'pasos_procesados' => $this->contarTerminados($pasos),
+            'mensaje' => self::MENSAJE_CANCELADA.' Tiempo: '.$this->formatearDuracion($corrida->inicio, $fin),
+        ])->save();
+
+        return $corrida->fresh() ?? $corrida;
     }
 
     /**

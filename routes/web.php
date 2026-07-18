@@ -139,6 +139,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.reanudar');
             Route::post('oportunidades/para-cotizar/iniciar-vinculo', [OportunidadParaCotizarController::class, 'iniciarVinculo'])
                 ->name('oportunidades.para-cotizar.iniciar-vinculo');
+            Route::post('oportunidades/para-cotizar/cancelar-vinculo', [OportunidadParaCotizarController::class, 'cancelarVinculo'])
+                ->name('oportunidades.para-cotizar.cancelar-vinculo');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
         });

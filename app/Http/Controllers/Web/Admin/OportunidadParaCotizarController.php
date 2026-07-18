@@ -152,6 +152,17 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
+    public function cancelarVinculo(): JsonResponse
+    {
+        $corrida = $this->vinculos->cancelar();
+
+        return response()->json([
+            'ok' => true,
+            'corrida' => $this->busqueda->estado(),
+            'vinculo' => $corrida !== null ? $this->vinculos->estado($corrida) : null,
+        ]);
+    }
+
     public function paso(Request $request): JsonResponse
     {
         $data = $request->validate([
