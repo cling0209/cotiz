@@ -802,7 +802,7 @@
                         : (tot > 0 ? Math.round((vinc / tot) * 100) : 0);
                     return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
                 })()
-                : '';
+                : `<div class="opc-meta mt-1 text-warning-emphasis">Vinculaci&oacute;n no procesada</div>`;
             const nombreHtml = nombre
                 ? `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>`
                 : '';
