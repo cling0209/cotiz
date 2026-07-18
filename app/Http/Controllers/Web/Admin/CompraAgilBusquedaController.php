@@ -113,6 +113,12 @@ class CompraAgilBusquedaController extends Controller
             return response()->json($this->adjuntarValidacionCabecera($nota, $resultado, (int) ($datos['desde'] ?? 0)));
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'error' => 'Error interno al analizar Compra Ágil: '.mb_substr($e->getMessage(), 0, 200),
+            ], 500);
         }
     }
 

@@ -2930,7 +2930,11 @@
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoConsultaPar();
-                    mostrarImportError(json.error || 'Error al analizar.');
+                    const detalle = extraerMensajeError(json, '');
+                    mostrarImportError(
+                        detalle
+                        || ('Error al analizar' + (res.status ? ' (HTTP ' + res.status + ')' : '') + '.')
+                    );
                     return;
                 }
                 if (json.cabecera) cabecera = json.cabecera;
