@@ -251,6 +251,16 @@
                         @endforeach
                     </select>
                 </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
+                    <input type="search" id="filtro-organismo" class="form-control form-control-sm"
+                        placeholder="Buscar organismo…" autocomplete="off">
+                </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
+                    <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
+                        placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
+                </div>
                 <div class="col-6 col-md-3 col-xl-2">
                     <label for="filtro-vinculo" class="form-label small mb-1">% v&iacute;nculo</label>
                     <select id="filtro-vinculo" class="form-select form-select-sm" title="Filtrar por porcentaje de vinculaci&oacute;n al maestro">
@@ -261,16 +271,6 @@
                         <option value="80">≥ 80%</option>
                         <option value="100">100%</option>
                     </select>
-                </div>
-                <div class="col-12 col-md-6 col-xl-3">
-                    <label for="filtro-organismo" class="form-label small mb-1">Organismo</label>
-                    <input type="search" id="filtro-organismo" class="form-control form-control-sm"
-                        placeholder="Buscar organismo…" autocomplete="off">
-                </div>
-                <div class="col-12 col-md-6 col-xl-3">
-                    <label for="filtro-palabra-clave" class="form-label small mb-1">Palabra clave</label>
-                    <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
-                        placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
                 </div>
                 <div class="col-12 col-md-6 col-xl-2 d-flex flex-wrap gap-2 align-items-end">
                     <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
