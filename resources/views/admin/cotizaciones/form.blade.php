@@ -512,6 +512,30 @@
     let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
     const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
     const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
+    const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
+
+    // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
+    (function marcarVisitaOportunidadLocal() {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase().trim();
+        if (!codigo || oportunidadesUserId <= 0) {
+            return;
+        }
+        const storageKey = 'cotiz.oportunidades.visitas.' + oportunidadesUserId;
+        const onceKey = 'cotiz.oportunidad_visita_once.' + oportunidadesUserId + '.' + codigo;
+        try {
+            const last = Number(sessionStorage.getItem(onceKey) || 0);
+            if (last && (Date.now() - last) < 20000) {
+                return;
+            }
+            sessionStorage.setItem(onceKey, String(Date.now()));
+            const mapa = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            mapa[codigo] = (Number(mapa[codigo]) || 0) + 1;
+            localStorage.setItem(storageKey, JSON.stringify(mapa));
+        } catch (e) {
+            // storage no disponible
+        }
+    })();
+
     const desdeAdjudicadas = @json($desdeAdjudicadas);
     const detalleColspan = @json($detalleColspan);
     const mensajeSinLineas = desdeAdjudicadas

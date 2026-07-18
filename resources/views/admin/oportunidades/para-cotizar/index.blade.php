@@ -574,13 +574,23 @@
 
     function incrementarVisitaLocal(codigo) {
         const codigoNorm = String(codigo || '').toUpperCase().trim();
-        if (!codigoNorm || !VISITAS_STORAGE_KEY) {
+        if (!codigoNorm || !VISITAS_STORAGE_KEY || !filtrosUserId) {
             return 0;
+        }
+        const onceKey = `cotiz.oportunidad_visita_once.${filtrosUserId}.${codigoNorm}`;
+        try {
+            sessionStorage.setItem(onceKey, String(Date.now()));
+        } catch (e) {
+            // sessionStorage no disponible
         }
         const mapa = leerVisitasLocales();
         const veces = (Number(mapa[codigoNorm]) || 0) + 1;
         mapa[codigoNorm] = veces;
         guardarVisitasLocales(mapa);
+        const item = porCodigo.get(codigoNorm);
+        if (item) {
+            item.visitas_usuario = Math.max(Number(item.visitas_usuario) || 0, veces);
+        }
         return veces;
     }
 
@@ -589,6 +599,20 @@
         const servidor = Number(item?.visitas_usuario) || 0;
         const local = Number(leerVisitasLocales()[codigo]) || 0;
         return Math.max(servidor, local);
+    }
+
+    function sincronizarVisitasLocalesEnMapa() {
+        const mapa = leerVisitasLocales();
+        Object.keys(mapa).forEach((codigo) => {
+            const item = porCodigo.get(codigo);
+            if (!item) {
+                return;
+            }
+            const local = Number(mapa[codigo]) || 0;
+            if (local > (Number(item.visitas_usuario) || 0)) {
+                item.visitas_usuario = local;
+            }
+        });
     }
 
     function csvEscape(valor) {
@@ -865,14 +889,14 @@
     }
 
     if (tbody) {
+        // capture: contar antes de que page-loader u otros handlers naveguen
         tbody.addEventListener('click', (e) => {
             const link = e.target.closest('a.btn-ir-cotizar');
             if (!link) {
                 return;
             }
-            // Contar en localStorage de inmediato (antes de navegar).
             incrementarVisitaLocal(link.getAttribute('data-codigo') || '');
-        });
+        }, true);
     }
 
     if (paginacionLista) {
@@ -1469,6 +1493,7 @@
     restaurarFiltros();
     if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
         cargarItems(guardadasIniciales);
+        sincronizarVisitasLocalesEnMapa();
         if (fechaBusquedaInicial && relFecha) {
             relFecha.textContent = `(${fechaBusquedaInicial})`;
         }
