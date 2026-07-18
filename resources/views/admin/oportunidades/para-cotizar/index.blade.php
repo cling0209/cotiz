@@ -34,7 +34,7 @@
             <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
                 <i class="bi bi-x-circle"></i> Cancelar
             </button>
-            <button type="button" id="btn-iniciar-vinculo" class="btn btn-outline-success btn-sm" data-no-loader title="Puede correr en paralelo con la b&uacute;squeda">
+            <button type="button" id="btn-iniciar-vinculo" class="btn btn-success btn-sm" data-no-loader title="Proceso aparte de la b&uacute;squeda; puede correr en paralelo">
                 <i class="bi bi-link-45deg"></i> Procesar vinculaciones
                 <span id="btn-iniciar-vinculo-badge" class="badge text-bg-light text-dark ms-1 d-none">0</span>
             </button>
@@ -125,8 +125,6 @@
                                 <th class="text-nowrap">D&iacute;a</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
-                                <th class="text-nowrap text-end">V&iacute;nculo</th>
-                                <th class="text-nowrap text-end">V&iacute;nculo %</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
                                 <th class="text-nowrap">Resultado</th>
@@ -205,7 +203,30 @@
                 <div id="vin-progreso-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
                     role="progressbar" style="width: 0%">0%</div>
             </div>
-            <div id="vin-detalle" class="small text-muted">Preparando vinculación con maestro…</div>
+            <div id="vin-detalle" class="small text-muted mb-2">Preparando vinculación con maestro…</div>
+            <div id="vin-regiones-wrap" class="d-none">
+                <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-link text-decoration-none px-0 mb-1"
+                    aria-expanded="true" aria-controls="vin-regiones-panel">
+                    Detalle por regi&oacute;n
+                    <span id="vin-regiones-contador" class="badge text-bg-light text-dark border ms-1">0</span>
+                    <i id="vin-regiones-chevron" class="bi bi-chevron-up ms-1"></i>
+                </button>
+                <div id="vin-regiones-panel" class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                    <table class="table table-sm table-striped align-middle small mb-0">
+                        <thead class="table-light" style="position: sticky; top: 0;">
+                            <tr>
+                                <th class="text-nowrap">Regi&oacute;n</th>
+                                <th class="text-nowrap text-end">Cotizaciones</th>
+                                <th class="text-nowrap text-end">Procesadas</th>
+                                <th class="text-nowrap text-end">Proceso %</th>
+                                <th class="text-nowrap text-end">Productos vinc.</th>
+                                <th class="text-nowrap text-end">Vinc. %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vin-regiones-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1348,51 +1369,21 @@
             return (anio && mes && dia) ? `${dia}-${mes}-${anio}` : String(fecha);
         }
 
-        let ultimosPasosResumen = [];
-        let ultimoVinculoEstado = null;
-
-        function enriquecerPasosConVinculoCliente(pasos, vinculo) {
-            const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object' ?
-                vinculo.progreso_por_region :
-                {};
-            return (pasos || []).map((paso) => {
-                const region = Number(paso.region) || 0;
-                const stats = porRegion[region] || porRegion[String(region)] || null;
-                if (!stats || !(Number(stats.total) > 0)) {
-                    return {
-                        ...paso,
-                        vinculo_porcentaje: null,
-                        vinculo_hechos: null,
-                        vinculo_total: null,
-                    };
-                }
-                return {
-                    ...paso,
-                    vinculo_hechos: Number(stats.hechos) || 0,
-                    vinculo_total: Number(stats.total) || 0,
-                    vinculo_porcentaje: Number(stats.porcentaje) || 0,
-                };
-            });
-        }
-
         function renderPasosCorrida(pasos) {
             if (!relPasos || !relPasosTbody) return;
             if (!Array.isArray(pasos) || pasos.length === 0) {
-                ultimosPasosResumen = [];
                 relPasos.classList.add('d-none');
                 return;
             }
 
-            ultimosPasosResumen = pasos;
-            const pasosVista = enriquecerPasosConVinculoCliente(pasos, ultimoVinculoEstado);
             relPasos.classList.remove('d-none');
-            const terminados = pasosVista.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
+            const terminados = pasos.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
             if (relPasosContador) {
-                relPasosContador.textContent = `${terminados}/${pasosVista.length}`;
+                relPasosContador.textContent = `${terminados}/${pasos.length}`;
             }
 
             relPasosTbody.innerHTML = '';
-            pasosVista.forEach((paso, idx) => {
+            pasos.forEach((paso, idx) => {
                 const tr = document.createElement('tr');
 
                 const tdNum = document.createElement('td');
@@ -1412,28 +1403,6 @@
                 tdFrase.textContent = (!frasePaso || frasePaso === '(todas)') ?
                     'todas las frases' :
                     frasePaso;
-
-                const tdVinculoCant = document.createElement('td');
-                tdVinculoCant.className = 'text-end text-nowrap tabular-nums';
-                const tdVinculoPct = document.createElement('td');
-                tdVinculoPct.className = 'text-end text-nowrap tabular-nums';
-                if (paso.vinculo_total != null && Number(paso.vinculo_total) > 0) {
-                    const pct = Number(paso.vinculo_porcentaje) || 0;
-                    const hechos = Number(paso.vinculo_hechos) || 0;
-                    const total = Number(paso.vinculo_total) || 0;
-                    tdVinculoCant.textContent = `${hechos}/${total}`;
-                    tdVinculoPct.textContent = `${pct}%`;
-                    const colorClass = pct >= 100
-                        ? 'text-success'
-                        : (hechos > 0 ? 'text-primary' : 'text-muted');
-                    tdVinculoCant.classList.add(colorClass);
-                    tdVinculoPct.classList.add(colorClass);
-                } else {
-                    tdVinculoCant.textContent = '—';
-                    tdVinculoCant.classList.add('text-muted');
-                    tdVinculoPct.textContent = '—';
-                    tdVinculoPct.classList.add('text-muted');
-                }
 
                 const tdEncontradas = document.createElement('td');
                 tdEncontradas.className = 'text-end tabular-nums';
@@ -1467,10 +1436,102 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdVinculoCant, tdVinculoPct, tdEncontradas, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }
+
+        function listaProgresoRegiones(vinculo) {
+            const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object'
+                ? vinculo.progreso_por_region
+                : {};
+            return Object.values(porRegion)
+                .filter((s) => s && Number(s.total) > 0)
+                .sort((a, b) => (Number(a.region) || 0) - (Number(b.region) || 0));
+        }
+
+        function renderVinculoRegiones(vinculo) {
+            const wrap = document.getElementById('vin-regiones-wrap');
+            const tbody = document.getElementById('vin-regiones-tbody');
+            const contador = document.getElementById('vin-regiones-contador');
+            if (!wrap || !tbody) return;
+
+            const regiones = listaProgresoRegiones(vinculo);
+            if (regiones.length === 0) {
+                wrap.classList.add('d-none');
+                tbody.innerHTML = '';
+                if (contador) contador.textContent = '0';
+                return;
+            }
+
+            wrap.classList.remove('d-none');
+            if (contador) contador.textContent = String(regiones.length);
+            tbody.innerHTML = '';
+            regiones.forEach((stats) => {
+                const tr = document.createElement('tr');
+                const total = Number(stats.total) || 0;
+                const hechos = Number(stats.hechos) || 0;
+                const pct = Number(stats.porcentaje) || 0;
+                const prodVinc = Number(stats.productos_vinculados) || 0;
+                const prodTotal = Number(stats.productos_total) || 0;
+                const pctVinc = Number(stats.porcentaje_vinculados) || 0;
+
+                const tdRegion = document.createElement('td');
+                tdRegion.className = 'text-nowrap';
+                tdRegion.textContent = stats.region_nombre || `Región ${stats.region || '—'}`;
+
+                const tdCotiz = document.createElement('td');
+                tdCotiz.className = 'text-end tabular-nums';
+                tdCotiz.textContent = String(total);
+
+                const tdProc = document.createElement('td');
+                tdProc.className = 'text-end tabular-nums';
+                tdProc.textContent = `${hechos}/${total}`;
+                tdProc.classList.add(pct >= 100 ? 'text-success' : (hechos > 0 ? 'text-primary' : 'text-muted'));
+
+                const tdPct = document.createElement('td');
+                tdPct.className = 'text-end tabular-nums';
+                tdPct.textContent = `${pct}%`;
+                tdPct.classList.add(pct >= 100 ? 'text-success' : (hechos > 0 ? 'text-primary' : 'text-muted'));
+
+                const tdProd = document.createElement('td');
+                tdProd.className = 'text-end tabular-nums';
+                if (prodTotal > 0) {
+                    tdProd.textContent = `${prodVinc}/${prodTotal}`;
+                } else {
+                    tdProd.textContent = hechos > 0 ? '0/0' : '—';
+                    if (hechos === 0) tdProd.classList.add('text-muted');
+                }
+
+                const tdPctVinc = document.createElement('td');
+                tdPctVinc.className = 'text-end tabular-nums';
+                if (prodTotal > 0) {
+                    tdPctVinc.textContent = `${pctVinc}%`;
+                    tdPctVinc.classList.add(pctVinc >= 50 ? 'text-success' : (pctVinc > 0 ? 'text-primary' : 'text-muted'));
+                } else {
+                    tdPctVinc.textContent = '—';
+                    tdPctVinc.classList.add('text-muted');
+                }
+
+                tr.append(tdRegion, tdCotiz, tdProc, tdPct, tdProd, tdPctVinc);
+                tbody.appendChild(tr);
+            });
+        }
+
+        (function initVinRegionesToggle() {
+            const toggle = document.getElementById('vin-regiones-toggle');
+            const panel = document.getElementById('vin-regiones-panel');
+            const chevron = document.getElementById('vin-regiones-chevron');
+            if (!toggle || !panel) return;
+            toggle.addEventListener('click', () => {
+                const abierto = panel.classList.toggle('d-none') === false;
+                toggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+                if (chevron) {
+                    chevron.classList.toggle('bi-chevron-down', !abierto);
+                    chevron.classList.toggle('bi-chevron-up', abierto);
+                }
+            });
+        })();
 
         const relPasosChevron = document.getElementById('rel-pasos-chevron');
 
@@ -1606,7 +1667,6 @@
         }
 
         function aplicarEstadoVinculo(vinculo) {
-            ultimoVinculoEstado = vinculo || null;
             const card = document.getElementById('vinculo-estado');
             const vinInicio = document.getElementById('vin-inicio');
             const vinFin = document.getElementById('vin-fin');
@@ -1622,9 +1682,7 @@
             }
             if (!vinculo) {
                 card.classList.add('d-none');
-                if (ultimosPasosResumen.length) {
-                    renderPasosCorrida(ultimosPasosResumen);
-                }
+                renderVinculoRegiones(null);
                 return;
             }
 
@@ -1691,9 +1749,7 @@
             if (vinDetalle) {
                 vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');
             }
-            if (ultimosPasosResumen.length) {
-                renderPasosCorrida(ultimosPasosResumen);
-            }
+            renderVinculoRegiones(vinculo);
         }
 
         function actualizarBotonProcesarVinculo(vinculo, aviso, pendientesRaw) {

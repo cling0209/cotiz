@@ -415,8 +415,7 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.hechos', 1)
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.total', 2)
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.porcentaje', 50)
-            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_porcentaje', 50)
-            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_hechos', 1)
-            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_total', 2);
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region', 3)
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region_nombre', 'Atacama');
     }
 }

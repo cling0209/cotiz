@@ -683,7 +683,18 @@ class OportunidadVinculoService
      * Avance del 2.º proceso agrupado por código de región Mercado Público.
      *
      * @param  list<array<string, mixed>>  $pasos
-     * @return array<string, array{total: int, hechos: int, porcentaje: int, region_nombre: string}>
+     * @return array<string, array{
+     *     region: int,
+     *     region_nombre: string,
+     *     total: int,
+     *     hechos: int,
+     *     porcentaje: int,
+     *     productos_vinculados: int,
+     *     productos_total: int,
+     *     porcentaje_vinculados: int,
+     *     ok: int,
+     *     failed: int
+     * }>
      */
     private function progresoPorRegion(array $pasos): array
     {
@@ -697,10 +708,16 @@ class OportunidadVinculoService
             $key = (string) $region;
             if (! isset($byRegion[$key])) {
                 $byRegion[$key] = [
+                    'region' => $region,
+                    'region_nombre' => (string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''),
                     'total' => 0,
                     'hechos' => 0,
                     'porcentaje' => 0,
-                    'region_nombre' => (string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''),
+                    'productos_vinculados' => 0,
+                    'productos_total' => 0,
+                    'porcentaje_vinculados' => 0,
+                    'ok' => 0,
+                    'failed' => 0,
                 ];
             }
 
@@ -708,6 +725,13 @@ class OportunidadVinculoService
             $estado = (string) ($paso['estado'] ?? self::PASO_PENDING);
             if (in_array($estado, [self::PASO_OK, self::PASO_FAILED], true)) {
                 $byRegion[$key]['hechos']++;
+            }
+            if ($estado === self::PASO_OK) {
+                $byRegion[$key]['ok']++;
+                $byRegion[$key]['productos_vinculados'] += max(0, (int) ($paso['vinculados'] ?? 0));
+                $byRegion[$key]['productos_total'] += max(0, (int) ($paso['total'] ?? 0));
+            } elseif ($estado === self::PASO_FAILED) {
+                $byRegion[$key]['failed']++;
             }
             $nombre = trim((string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''));
             if ($nombre !== '' && $byRegion[$key]['region_nombre'] === '') {
@@ -719,6 +743,12 @@ class OportunidadVinculoService
             $stats['porcentaje'] = $stats['total'] > 0
                 ? min(100, (int) round(($stats['hechos'] / $stats['total']) * 100))
                 : 0;
+            $stats['porcentaje_vinculados'] = $stats['productos_total'] > 0
+                ? min(100, (int) round(($stats['productos_vinculados'] / $stats['productos_total']) * 100))
+                : 0;
+            if ($stats['region_nombre'] === '') {
+                $stats['region_nombre'] = 'Región '.$stats['region'];
+            }
         }
         unset($stats);
 
