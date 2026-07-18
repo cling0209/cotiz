@@ -173,7 +173,7 @@
                             <td>{{ $nota->empresa }}</td>
                             <td class="text-end">${{ number_format($nota->total_calculado ?? 0, 0, ',', '.') }}</td>
                             <td>
-                                {{ $nota->encargado }}
+                                <strong>{{ $nota->encargado }}</strong>
                                 @if($esSegundoLlamado)
                                     @php
                                         $cierreFila = optional($segundoLlamadoPorNota->get($nota->nronota))->fecha_cierre_segundo_llamado;
