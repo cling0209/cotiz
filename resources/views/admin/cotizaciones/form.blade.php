@@ -2382,13 +2382,23 @@
 
         const cab = data?.cabecera || {};
         const partes = [];
-        if (cab.codigo_cotizacion) partes.push('Cotización: ' + cab.codigo_cotizacion);
-        if (cab.empresa) partes.push('Cliente: ' + cab.empresa);
-        if (cab.rutempresa) partes.push('RUT: ' + cab.rutempresa);
-        if (cab.nombre) partes.push('Nombre: ' + cab.nombre);
+        const codigoCab = String(cab.codigo_cotizacion || '').trim().toUpperCase();
+        if (codigoCab) {
+            partes.push(
+                'Cotización: ' + escHtml(codigoCab) +
+                ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline btn-copiar-codigo-cabecera"' +
+                ' data-codigo="' + escHtml(codigoCab) + '"' +
+                ' title="Copiar código ' + escHtml(codigoCab) + '"' +
+                ' aria-label="Copiar código">' +
+                '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
+            );
+        }
+        if (cab.empresa) partes.push('Cliente: ' + escHtml(cab.empresa));
+        if (cab.rutempresa) partes.push('RUT: ' + escHtml(cab.rutempresa));
+        if (cab.nombre) partes.push('Nombre: ' + escHtml(cab.nombre));
 
         if (partes.length && importarCabecera && importarCabeceraTexto) {
-            importarCabeceraTexto.textContent = partes.join(' · ');
+            importarCabeceraTexto.innerHTML = partes.join(' · ');
             importarCabecera.classList.remove('d-none');
         } else if (importarCabecera) {
             importarCabecera.classList.add('d-none');
@@ -3254,6 +3264,34 @@
         actualizarResumenLineas(resumenLineasInicial);
         bsModalImportar?.show();
         setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 200);
+    });
+
+    importarCabeceraTexto?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button.btn-copiar-codigo-cabecera');
+        if (!btn) {
+            return;
+        }
+        e.preventDefault();
+        const cod = String(btn.getAttribute('data-codigo') || '').trim().toUpperCase();
+        if (!cod) {
+            return;
+        }
+        const icon = btn.querySelector('i');
+        const prevClass = icon ? icon.className : '';
+        copiarTextoPortapapeles(cod).then(() => {
+            if (icon) {
+                icon.className = 'bi bi-clipboard-check text-success';
+            }
+            btn.title = '¡Copiado!';
+            window.setTimeout(() => {
+                if (icon) {
+                    icon.className = prevClass || 'bi bi-clipboard';
+                }
+                btn.title = 'Copiar código ' + cod;
+            }, 1500);
+        }).catch(() => {
+            btn.title = 'No se pudo copiar';
+        });
     });
 
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
