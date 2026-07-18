@@ -198,7 +198,7 @@ class CotizacionListadoController extends Controller
 
         if ($nronota === 0 && $cotizacion === '') {
             $fechahasta = $fechahasta ?: now()->toDateString();
-            $fechadesde = $fechadesde ?: now()->subMonth()->toDateString();
+            $fechadesde = $fechadesde ?: now()->subMonths(7)->toDateString();
         }
 
         $ordenCampo = $request->input('orden_campo', 'nronota');
