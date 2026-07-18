@@ -372,8 +372,55 @@ class OportunidadVinculoService
             'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
+            'progreso_por_region' => $this->progresoPorRegion($pasos),
             'mensaje' => $corrida->mensaje,
         ];
+    }
+
+    /**
+     * Avance del 2.º proceso agrupado por código de región Mercado Público.
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     * @return array<string, array{total: int, hechos: int, porcentaje: int, region_nombre: string}>
+     */
+    private function progresoPorRegion(array $pasos): array
+    {
+        $byRegion = [];
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+
+            $region = (int) ($paso['region'] ?? 0);
+            $key = (string) $region;
+            if (! isset($byRegion[$key])) {
+                $byRegion[$key] = [
+                    'total' => 0,
+                    'hechos' => 0,
+                    'porcentaje' => 0,
+                    'region_nombre' => (string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''),
+                ];
+            }
+
+            $byRegion[$key]['total']++;
+            $estado = (string) ($paso['estado'] ?? self::PASO_PENDING);
+            if (in_array($estado, [self::PASO_OK, self::PASO_FAILED], true)) {
+                $byRegion[$key]['hechos']++;
+            }
+            $nombre = trim((string) ($paso['region_nombre'] ?? $paso['nombre_region'] ?? ''));
+            if ($nombre !== '' && $byRegion[$key]['region_nombre'] === '') {
+                $byRegion[$key]['region_nombre'] = $nombre;
+            }
+        }
+
+        foreach ($byRegion as &$stats) {
+            $stats['porcentaje'] = $stats['total'] > 0
+                ? min(100, (int) round(($stats['hechos'] / $stats['total']) * 100))
+                : 0;
+        }
+        unset($stats);
+
+        return $byRegion;
     }
 
     /**

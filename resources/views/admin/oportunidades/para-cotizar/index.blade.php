@@ -121,6 +121,7 @@
                                 <th class="text-nowrap">D&iacute;a</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
+                                <th class="text-nowrap text-end">V&iacute;nculo %</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
                                 <th class="text-nowrap">Resultado</th>
@@ -1300,21 +1301,51 @@
         return (anio && mes && dia) ? `${dia}-${mes}-${anio}` : String(fecha);
     }
 
+    let ultimosPasosResumen = [];
+    let ultimoVinculoEstado = null;
+
+    function enriquecerPasosConVinculoCliente(pasos, vinculo) {
+        const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object'
+            ? vinculo.progreso_por_region
+            : {};
+        return (pasos || []).map((paso) => {
+            const region = Number(paso.region) || 0;
+            const stats = porRegion[region] || porRegion[String(region)] || null;
+            if (!stats || !(Number(stats.total) > 0)) {
+                return {
+                    ...paso,
+                    vinculo_porcentaje: null,
+                    vinculo_hechos: null,
+                    vinculo_total: null,
+                };
+            }
+            return {
+                ...paso,
+                vinculo_hechos: Number(stats.hechos) || 0,
+                vinculo_total: Number(stats.total) || 0,
+                vinculo_porcentaje: Number(stats.porcentaje) || 0,
+            };
+        });
+    }
+
     function renderPasosCorrida(pasos) {
         if (!relPasos || !relPasosTbody) return;
         if (!Array.isArray(pasos) || pasos.length === 0) {
+            ultimosPasosResumen = [];
             relPasos.classList.add('d-none');
             return;
         }
 
+        ultimosPasosResumen = pasos;
+        const pasosVista = enriquecerPasosConVinculoCliente(pasos, ultimoVinculoEstado);
         relPasos.classList.remove('d-none');
-        const terminados = pasos.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
+        const terminados = pasosVista.filter((p) => p.resultado && !['pendiente', 'en_curso'].includes(p.resultado)).length;
         if (relPasosContador) {
-            relPasosContador.textContent = `${terminados}/${pasos.length}`;
+            relPasosContador.textContent = `${terminados}/${pasosVista.length}`;
         }
 
         relPasosTbody.innerHTML = '';
-        pasos.forEach((paso, idx) => {
+        pasosVista.forEach((paso, idx) => {
             const tr = document.createElement('tr');
 
             const tdNum = document.createElement('td');
@@ -1334,6 +1365,26 @@
             tdFrase.textContent = (!frasePaso || frasePaso === '(todas)')
                 ? 'todas las frases'
                 : frasePaso;
+
+            const tdVinculo = document.createElement('td');
+            tdVinculo.className = 'text-end text-nowrap tabular-nums';
+            if (paso.vinculo_total != null && Number(paso.vinculo_total) > 0) {
+                const pct = Number(paso.vinculo_porcentaje) || 0;
+                const hechos = Number(paso.vinculo_hechos) || 0;
+                const total = Number(paso.vinculo_total) || 0;
+                tdVinculo.textContent = `${pct}%`;
+                tdVinculo.title = `${hechos}/${total}`;
+                if (pct >= 100) {
+                    tdVinculo.classList.add('text-success');
+                } else if (hechos > 0) {
+                    tdVinculo.classList.add('text-primary');
+                } else {
+                    tdVinculo.classList.add('text-muted');
+                }
+            } else {
+                tdVinculo.textContent = '—';
+                tdVinculo.classList.add('text-muted');
+            }
 
             const tdEncontradas = document.createElement('td');
             tdEncontradas.className = 'text-end tabular-nums';
@@ -1367,7 +1418,7 @@
                 tdResultado.appendChild(err);
             }
 
-            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdTiempo, tdResultado);
+            tr.append(tdNum, tdDia, tdRegion, tdFrase, tdVinculo, tdEncontradas, tdTiempo, tdResultado);
             relPasosTbody.appendChild(tr);
         });
     }
@@ -1500,6 +1551,7 @@
     }
 
     function aplicarEstadoVinculo(vinculo) {
+        ultimoVinculoEstado = vinculo || null;
         const card = document.getElementById('vinculo-estado');
         const vinInicio = document.getElementById('vin-inicio');
         const vinFin = document.getElementById('vin-fin');
@@ -1513,6 +1565,9 @@
         }
         if (!vinculo) {
             card.classList.add('d-none');
+            if (ultimosPasosResumen.length) {
+                renderPasosCorrida(ultimosPasosResumen);
+            }
             return;
         }
 
@@ -1550,6 +1605,9 @@
         }
         if (vinDetalle) {
             vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');
+        }
+        if (ultimosPasosResumen.length) {
+            renderPasosCorrida(ultimosPasosResumen);
         }
     }
 

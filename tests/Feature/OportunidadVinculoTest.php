@@ -148,7 +148,17 @@ class OportunidadVinculoTest extends TestCase
             'pasos_procesados' => 1,
             'pasos_fallidos' => 0,
             'oportunidades_encontradas' => 0,
-            'plan_json' => [],
+            'plan_json' => [
+                [
+                    'frase' => '(todas)',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'ok',
+                    'intentos' => 1,
+                    'encontradas' => 2,
+                    'duracion_segundos' => 5,
+                ],
+            ],
             'errores_json' => [],
             'mensaje' => 'Búsqueda terminada.',
         ]);
@@ -161,7 +171,20 @@ class OportunidadVinculoTest extends TestCase
             'total_pasos' => 2,
             'pasos_procesados' => 1,
             'pasos_fallidos' => 0,
-            'plan_json' => [],
+            'plan_json' => [
+                [
+                    'codigo' => 'A-AT-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'ok',
+                ],
+                [
+                    'codigo' => 'A-AT-002',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'pending',
+                ],
+            ],
             'errores_json' => [],
             'mensaje' => 'Vinculando…',
         ]);
@@ -170,6 +193,12 @@ class OportunidadVinculoTest extends TestCase
             ->getJson(route('admin.oportunidades.para-cotizar.estado'))
             ->assertOk()
             ->assertJsonPath('corrida.vinculo.estado', 'running')
-            ->assertJsonPath('corrida.vinculo.total_pasos', 2);
+            ->assertJsonPath('corrida.vinculo.total_pasos', 2)
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.hechos', 1)
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.total', 2)
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.3.porcentaje', 50)
+            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_porcentaje', 50)
+            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_hechos', 1)
+            ->assertJsonPath('corrida.pasos_resumen.0.vinculo_total', 2);
     }
 }

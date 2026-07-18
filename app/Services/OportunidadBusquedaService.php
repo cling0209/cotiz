@@ -649,7 +649,11 @@ class OportunidadBusquedaService
         $ultimoError = $errores !== [] ? $errores[array_key_last($errores)] : null;
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
         $duracionSegundos = $this->duracionSegundos($corrida->inicio, $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null));
-        $pasosResumen = $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda);
+        $vinculoEstado = $this->vinculos->estado();
+        $pasosResumen = $this->enriquecerPasosConVinculo(
+            $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda),
+            $vinculoEstado,
+        );
         $ultimaConsulta = null;
         foreach (array_reverse($pasosResumen) as $pasoResumen) {
             if (is_array($pasoResumen['consulta'] ?? null)) {
@@ -688,8 +692,39 @@ class OportunidadBusquedaService
             'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
-            'vinculo' => $this->vinculos->estado(),
+            'vinculo' => $vinculoEstado,
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @param  array<string, mixed>|null  $vinculo
+     * @return list<array<string, mixed>>
+     */
+    private function enriquecerPasosConVinculo(array $pasos, ?array $vinculo): array
+    {
+        $porRegion = is_array($vinculo['progreso_por_region'] ?? null)
+            ? $vinculo['progreso_por_region']
+            : [];
+
+        foreach ($pasos as &$paso) {
+            $region = (int) ($paso['region'] ?? 0);
+            $stats = $porRegion[(string) $region] ?? $porRegion[$region] ?? null;
+            if (! is_array($stats) || (int) ($stats['total'] ?? 0) <= 0) {
+                $paso['vinculo_porcentaje'] = null;
+                $paso['vinculo_hechos'] = null;
+                $paso['vinculo_total'] = null;
+
+                continue;
+            }
+
+            $paso['vinculo_hechos'] = (int) ($stats['hechos'] ?? 0);
+            $paso['vinculo_total'] = (int) ($stats['total'] ?? 0);
+            $paso['vinculo_porcentaje'] = (int) ($stats['porcentaje'] ?? 0);
+        }
+        unset($paso);
+
+        return $pasos;
     }
 
     private function etiquetaUsuarioCorrida(mixed $usuario): string
