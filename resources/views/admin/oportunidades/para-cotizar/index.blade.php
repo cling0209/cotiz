@@ -34,13 +34,6 @@
             <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
                 <i class="bi bi-x-circle"></i> Cancelar
             </button>
-            <button type="button" id="btn-iniciar-vinculo" class="btn btn-success btn-sm" data-no-loader title="Proceso aparte de la b&uacute;squeda; puede correr en paralelo">
-                <i class="bi bi-link-45deg"></i> Procesar vinculaciones
-                <span id="btn-iniciar-vinculo-badge" class="badge text-bg-light text-dark ms-1 d-none">0</span>
-            </button>
-            <button type="button" id="btn-cancelar-vinculo" class="btn btn-outline-danger btn-sm d-none" data-no-loader title="Detiene la vinculaci&oacute;n para poder procesarla de nuevo">
-                <i class="bi bi-x-circle"></i> Cancelar vinculaciones
-            </button>
             @endif
         </div>
     </div>
@@ -167,46 +160,50 @@
     </div>
 
     <div id="vinculo-aviso" class="alert alert-warning d-none mb-3" role="status">
-        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
-            <div id="vinculo-aviso-texto" class="small mb-0"></div>
-            <button type="button" id="btn-iniciar-vinculo-aviso" class="btn btn-success btn-sm" data-no-loader>
-                <i class="bi bi-link-45deg"></i> Procesar vinculaciones
-            </button>
-        </div>
+        <div id="vinculo-aviso-texto" class="small mb-0"></div>
     </div>
 
-    <div id="vinculo-estado" class="card shadow-sm mb-3 d-none">
+    <div id="vinculo-estado" class="card shadow-sm mb-3">
         <div class="card-body py-3">
-            <div class="d-flex flex-wrap gap-3 align-items-center small mb-2">
+            <div id="vinculo-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2">
                 <div class="fw-semibold text-nowrap">
                     <i class="bi bi-link-45deg"></i> Vinculaciones internas
                 </div>
-                <div class="text-nowrap">
+                <div class="text-nowrap vin-meta-extra d-none">
                     <i class="bi bi-clock"></i>
                     Inicio: <strong id="vin-inicio" class="tabular-nums">—</strong>
                 </div>
-                <div class="text-nowrap">
+                <div class="text-nowrap vin-meta-extra d-none">
                     <i class="bi bi-flag"></i>
                     Fin: <strong id="vin-fin" class="tabular-nums">—</strong>
                 </div>
-                <div class="text-nowrap">
+                <div class="text-nowrap vin-meta-extra d-none">
                     <i class="bi bi-hourglass-split"></i>
                     Tiempo: <strong id="vin-duracion" class="tabular-nums">—</strong>
                 </div>
-                <div class="text-nowrap">
+                <div class="text-nowrap vin-meta-extra d-none">
                     <i class="bi bi-activity"></i>
                     &Uacute;ltima: <strong id="vin-ultima" class="tabular-nums">—</strong>
                     <span id="vin-ultima-hace" class="text-muted ms-1"></span>
                 </div>
-                <div class="text-nowrap ms-auto">
+                <div class="text-nowrap ms-auto vin-meta-extra d-none">
                     <span id="vin-progreso-txt" class="badge text-bg-secondary">0/0</span>
                 </div>
             </div>
-            <div id="vin-progreso-wrap" class="progress mb-2" style="height: 0.75rem;">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <button type="button" id="btn-iniciar-vinculo" class="btn btn-success btn-sm" data-no-loader title="Proceso aparte de la b&uacute;squeda; puede correr en paralelo">
+                    <i class="bi bi-link-45deg"></i> Procesar vinculaciones
+                    <span id="btn-iniciar-vinculo-badge" class="badge text-bg-light text-dark ms-1 d-none">0</span>
+                </button>
+                <button type="button" id="btn-cancelar-vinculo" class="btn btn-outline-danger btn-sm d-none" data-no-loader title="Detiene la vinculaci&oacute;n para poder procesarla de nuevo">
+                    <i class="bi bi-x-circle"></i> Cancelar vinculaciones
+                </button>
+            </div>
+            <div id="vin-progreso-wrap" class="progress mb-2 d-none" style="height: 0.75rem;">
                 <div id="vin-progreso-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
                     role="progressbar" style="width: 0%">0%</div>
             </div>
-            <div id="vin-detalle" class="small text-muted mb-2">Preparando vinculación con maestro…</div>
+            <div id="vin-detalle" class="small text-muted mb-0">Pulse <strong>Procesar vinculaciones</strong> para vincular cotizaciones al maestro.</div>
             <div id="vin-regiones-wrap" class="mt-3 d-none">
                 <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-outline-secondary mb-2"
                     aria-expanded="false" aria-controls="vin-regiones-panel">
@@ -374,9 +371,9 @@
         const btnIniciarVinculo = document.getElementById('btn-iniciar-vinculo');
         const btnIniciarVinculoBadge = document.getElementById('btn-iniciar-vinculo-badge');
         const btnCancelarVinculo = document.getElementById('btn-cancelar-vinculo');
-        const btnIniciarVinculoAviso = document.getElementById('btn-iniciar-vinculo-aviso');
         const vinculoAviso = document.getElementById('vinculo-aviso');
         const vinculoAvisoTexto = document.getElementById('vinculo-aviso-texto');
+        const vinculoMeta = document.getElementById('vinculo-meta');
         const estado = document.getElementById('oportunidad-estado');
         const placeholder = document.getElementById('oportunidad-placeholder');
         const resultados = document.getElementById('oportunidad-resultados');
@@ -1703,7 +1700,13 @@
             }
             if (!vinculo) {
                 ultimaVinculoId = null;
-                card.classList.add('d-none');
+                document.querySelectorAll('.vin-meta-extra').forEach((el) => el.classList.add('d-none'));
+                if (vinWrap) vinWrap.classList.add('d-none');
+                if (vinDetalle) {
+                    vinDetalle.textContent = 'Pulse Procesar vinculaciones para vincular cotizaciones al maestro.';
+                    vinDetalle.classList.add('text-muted');
+                    vinDetalle.classList.remove('text-warning', 'text-danger');
+                }
                 renderVinculoRegiones(null);
                 return;
             }
@@ -1713,7 +1716,7 @@
                 setVinRegionesPanelAbierto(false);
             }
 
-            card.classList.remove('d-none');
+            document.querySelectorAll('.vin-meta-extra').forEach((el) => el.classList.remove('d-none'));
             const inicio = vinculo.inicio ? new Date(vinculo.inicio) : null;
             const fin = vinculo.fin ? new Date(vinculo.fin) : null;
             if (vinInicio) {
@@ -1770,8 +1773,10 @@
                 vinBar.textContent = `${progreso}%`;
                 vinBar.classList.toggle('progress-bar-animated', vinculo.estado === 'running');
             }
+            // Barra visible mientras corre o hay avance (queda arriba de los botones el título).
             if (vinWrap) {
-                vinWrap.classList.toggle('d-none', vinculo.estado !== 'running' && progreso >= 100);
+                const mostrarBarra = vinculo.estado === 'running' || progreso > 0 || total > 0;
+                vinWrap.classList.toggle('d-none', !mostrarBarra);
             }
             if (vinDetalle) {
                 vinDetalle.textContent = String(vinculo.mensaje || 'Vinculación con maestro…');
@@ -1798,7 +1803,6 @@
                 pendientes :
                 (aviso && Number(aviso.pendientes) > 0 ? Number(aviso.pendientes) : 0);
 
-            // Visible siempre que el 2.º proceso no esté corriendo (puede ir en paralelo a la búsqueda).
             if (btnIniciarVinculo) {
                 btnIniciarVinculo.classList.toggle('d-none', !!vinculoActivo);
                 btnIniciarVinculo.disabled = !!vinculoActivo || iniciandoVinculo || cancelandoVinculo;
@@ -1823,9 +1827,6 @@
             if (vinculoAvisoTexto && aviso) {
                 vinculoAvisoTexto.textContent = String(aviso.mensaje || '');
             }
-            if (btnIniciarVinculoAviso) {
-                btnIniciarVinculoAviso.disabled = iniciandoVinculo || cancelandoVinculo;
-            }
         }
 
         let iniciandoVinculo = false;
@@ -1834,7 +1835,6 @@
             if (!urls.iniciarVinculo || iniciandoVinculo || cancelandoVinculo) return;
             iniciandoVinculo = true;
             if (btnIniciarVinculo) btnIniciarVinculo.disabled = true;
-            if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = true;
             setVinRegionesPanelAbierto(false);
             try {
                 const data = await postJson(urls.iniciarVinculo, {});
@@ -1850,7 +1850,6 @@
                     btnIniciarVinculo.classList.remove('d-none');
                     btnIniciarVinculo.disabled = false;
                 }
-                if (btnIniciarVinculoAviso) btnIniciarVinculoAviso.disabled = false;
             } finally {
                 iniciandoVinculo = false;
             }
@@ -1961,7 +1960,6 @@
             btn?.addEventListener('click', buscar);
             btnCancelar?.addEventListener('click', cancelarBusqueda);
             btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);
-            btnIniciarVinculoAviso?.addEventListener('click', iniciarVinculoManual);
             btnCancelarVinculo?.addEventListener('click', cancelarVinculoManual);
         }
     })();
