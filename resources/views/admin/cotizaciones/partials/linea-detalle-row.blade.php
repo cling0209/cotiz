@@ -159,6 +159,6 @@
         </div>
     </td>
     @unless($desdeAdjudicadas ?? false)
-    <td class="text-center eliminar-cell" data-prod="{{ $linea->prod_item }}" data-orden="{{ $linea->orden }}"></td>
+    <td class="eliminar-cell" data-prod="{{ $linea->prod_item }}" data-orden="{{ $linea->orden }}"></td>
     @endunless
 </tr>
