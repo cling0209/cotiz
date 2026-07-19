@@ -96,8 +96,8 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 8%; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 8%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 118px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 118px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 96px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 96px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 48px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 72px; }
@@ -144,7 +144,7 @@
     text-align: left;
     vertical-align: top;
     overflow: hidden;
-    min-width: 110px;
+    min-width: 88px;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-cliente-col {
