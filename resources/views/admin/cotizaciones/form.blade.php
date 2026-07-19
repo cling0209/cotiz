@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-7" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-8" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -214,8 +214,8 @@
                         <th class="linea-id-agile-col">ID Agile</th>
                         <th class="linea-desc-agile-col">Descripci&oacute;n Agile (MP)</th>
                         <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
-                        <th class="linea-observacion-col">Obs.&nbsp;interna</th>
-                        <th class="linea-observacion-cliente-col">Obs.&nbsp;cliente</th>
+                        <th class="linea-observacion-col" title="Observaci&oacute;n interna (solo ejecutivo)">Obs.<br>interna</th>
+                        <th class="linea-observacion-cliente-col" title="Observaci&oacute;n cliente (sale en el PDF)">Obs.<br>cliente</th>
                         <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
                         <th class="linea-costo-col">Precio Costo</th>
                         <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
