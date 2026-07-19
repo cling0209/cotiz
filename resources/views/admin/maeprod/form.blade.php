@@ -94,6 +94,15 @@
                                 @error('prod_gramaje')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
+                                <label class="form-label">Peso (kg)</label>
+                                <input type="number" name="peso_kg" min="0" step="0.001"
+                                       class="form-control form-control-sm @error('peso_kg') is-invalid @enderror"
+                                       value="{{ old('peso_kg', $producto?->peso_kg) }}"
+                                       placeholder="Opcional">
+                                <div class="form-text">Para cotizar env&iacute;o DEX: peso unitario &times; cantidad.</div>
+                                @error('peso_kg')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-4">
                                 <label class="form-label">Archivo imagen</label>
                                 <input type="text" name="prod_imagen" id="prod_imagen" class="form-control form-control-sm"
                                        value="{{ old('prod_imagen', $producto?->prod_imagen) }}" maxlength="255"

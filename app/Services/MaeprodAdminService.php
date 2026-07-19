@@ -22,12 +22,15 @@ class MaeprodAdminService
         $query = Maeprod::query();
 
         if ($term) {
-            $like = '%'.mb_strtolower(trim($term)).'%';
-            $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(prod_nombre) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(prod_item) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(prod_item_softland, \'\')) LIKE ?', [$like]);
-            });
+            $tokens = preg_split('/\s+/u', mb_strtolower(trim($term)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            foreach ($tokens as $token) {
+                $like = '%'.$token.'%';
+                $query->where(function ($q) use ($like) {
+                    $q->whereRaw('LOWER(prod_nombre) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(prod_item) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(COALESCE(prod_item_softland, \'\')) LIKE ?', [$like]);
+                });
+            }
         }
 
         if ($familia) {
@@ -105,6 +108,7 @@ class MaeprodAdminService
             'prod_valor_costo' => (int) ($datos['prod_valor_costo'] ?? 0),
             'prod_stock_real' => isset($datos['prod_stock_real']) ? (int) $datos['prod_stock_real'] : null,
             'prod_gramaje' => trim((string) ($datos['prod_gramaje'] ?? '')) ?: null,
+            'peso_kg' => $this->nullablePesoKg($datos['peso_kg'] ?? null),
             'prod_familia' => trim((string) ($datos['prod_familia'] ?? '')) ?: null,
             'prod_item_softland' => trim((string) ($datos['prod_item_softland'] ?? '')) ?: null,
             'prod_valor_fecha' => now(),
@@ -118,6 +122,9 @@ class MaeprodAdminService
             'prod_nombre' => mb_strtoupper(trim((string) ($datos['prod_nombre'] ?? $producto->prod_nombre))),
             'prod_imagen' => trim((string) ($datos['prod_imagen'] ?? '')) ?: null,
             'prod_gramaje' => trim((string) ($datos['prod_gramaje'] ?? '')) ?: null,
+            'peso_kg' => array_key_exists('peso_kg', $datos)
+                ? $this->nullablePesoKg($datos['peso_kg'])
+                : $producto->peso_kg,
             'prod_familia' => trim((string) ($datos['prod_familia'] ?? '')) ?: null,
             'prod_item_softland' => trim((string) ($datos['prod_item_softland'] ?? '')) ?: null,
             'prod_stock_real' => isset($datos['prod_stock_real']) ? (int) $datos['prod_stock_real'] : $producto->prod_stock_real,
@@ -250,6 +257,7 @@ class MaeprodAdminService
             'prod_valor_costo' => ['nullable', 'integer', 'min:0'],
             'prod_stock_real' => ['nullable', 'integer', 'min:0'],
             'prod_gramaje' => $reglasGramaje,
+            'peso_kg' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'prod_familia' => $reglasFamilia,
         ];
 
@@ -262,5 +270,20 @@ class MaeprodAdminService
         }
 
         return $reglas;
+    }
+
+    private function nullablePesoKg(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $peso = round((float) $value, 3);
+
+        return $peso < 0 ? null : $peso;
     }
 }

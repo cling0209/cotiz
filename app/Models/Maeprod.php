@@ -18,7 +18,7 @@ class Maeprod extends Model
 
     protected $fillable = [
         'prod_item', 'prod_nombre', 'prod_imagen', 'prod_valor', 'prod_stock_real',
-        'prod_gramaje', 'prod_familia', 'prod_item_softland', 'prod_valor_fecha',
+        'prod_gramaje', 'peso_kg', 'prod_familia', 'prod_item_softland', 'prod_valor_fecha',
         'prod_item_softland_fecha', 'prod_valor_costo', 'prod_user_upd',
     ];
 
@@ -27,6 +27,7 @@ class Maeprod extends Model
         return [
             'prod_valor_fecha' => 'datetime',
             'prod_item_softland_fecha' => 'datetime',
+            'peso_kg' => 'decimal:3',
         ];
     }
 

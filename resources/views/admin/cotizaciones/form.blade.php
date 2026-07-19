@@ -553,7 +553,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-3">
-                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Puede editar el valor antes de sumarlo al precio unitario.</p>
+                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Si el producto tiene peso grabado, se propone peso unitario &times; cantidad y se calcula solo. Puede editar el valor antes de sumarlo al precio unitario.</p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label for="envio-dex-origen" class="form-label small mb-1">Origen</label>
@@ -3735,6 +3735,13 @@
 
         actualizarImagenLinea(tr, linea.image_url || '', tituloImagen);
 
+        const pesoUnit = parseFloat(String(linea.peso_kg ?? '').replace(',', '.'));
+        if (Number.isFinite(pesoUnit) && pesoUnit > 0) {
+            tr.dataset.pesoKg = String(Math.round(pesoUnit * 1000) / 1000);
+        } else {
+            delete tr.dataset.pesoKg;
+        }
+
         const descAgileTd = tr.querySelector('td .linea-desc-agile')?.closest('td')
             || tr.querySelector('.linea-id-agile')?.closest('tr')?.children[5];
         if (descAgileTd && linea.prod_descripcion_agile) {
@@ -3995,8 +4002,22 @@
             envioDexDestino.value = comunaCab;
         }
         filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
+
+        const tr = ventaInput?.closest('tr[data-linea]');
+        const pesoUnitario = parseFloat(String(tr?.dataset?.pesoKg || '').replace(',', '.'));
+        const cantidad = parseFloat(String(tr?.querySelector('.linea-cantidad')?.value || '1').replace(',', '.')) || 1;
+        const tienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
+        if (tienePesoProducto && envioDexPeso) {
+            const propuesto = Math.round(pesoUnitario * cantidad * 1000) / 1000;
+            envioDexPeso.value = String(propuesto);
+        }
+
         bsModalEnvioDex?.show();
-        setTimeout(() => envioDexPeso?.focus(), 250);
+        if (tienePesoProducto) {
+            await calcularEnvioDex();
+        } else {
+            setTimeout(() => envioDexPeso?.focus(), 250);
+        }
     }
 
     async function calcularEnvioDex() {

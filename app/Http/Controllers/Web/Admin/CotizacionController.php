@@ -1170,6 +1170,7 @@ class CotizacionController extends Controller
                 'prod_familia' => $p->prod_familia,
                 'prod_stock_real' => $p->prod_stock_real,
                 'prod_gramaje' => $p->prod_gramaje,
+                'peso_kg' => $p->peso_kg !== null ? (float) $p->peso_kg : null,
                 'image_url' => $p->imageUrl(),
             ]),
             'meta' => [

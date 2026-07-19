@@ -11,6 +11,7 @@
     data-linea="{{ $idx }}"
     data-prod="{{ $linea->prod_item }}"
     data-orden="{{ $linea->orden }}"
+    @if(($row['peso_kg'] ?? null) !== null && (float) $row['peso_kg'] > 0) data-peso-kg="{{ rtrim(rtrim(number_format((float) $row['peso_kg'], 3, '.', ''), '0'), '.') }}" @endif
     @if($row['prod_item_agile'] !== '') data-prod-item-agile="{{ $row['prod_item_agile'] }}" @endif
 >
     <td class="text-center linea-drag-cell">

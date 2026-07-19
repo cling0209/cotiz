@@ -129,6 +129,7 @@ class NotaDetalleService
             'prod_descripcion_agile' => $descripcionAgile,
             'prod_descripcion_maestro' => $descripcionMaestro,
             'observacion' => trim((string) ($linea->observacion ?? '')),
+            'peso_kg' => $producto?->peso_kg !== null ? (float) $producto->peso_kg : null,
             'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
             'prod_valor_fecha' => $fechaFmt,
             'prod_valor_fecha_antigua' => $fechaAntigua,
@@ -597,6 +598,9 @@ class NotaDetalleService
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
                 'image_url' => ($productoActualizado ?? $producto)->imageUrl(),
+                'peso_kg' => ($productoActualizado ?? $producto)->peso_kg !== null
+                    ? (float) ($productoActualizado ?? $producto)->peso_kg
+                    : null,
                 'subtotal' => $valor * (int) $linea->cantidad,
             ];
         });
