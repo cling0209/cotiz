@@ -33,6 +33,10 @@ class CotizacionEnvioDexController extends Controller
             'origen' => ['required', 'string', 'max:80'],
             'destino' => ['required', 'string', 'max:120'],
             'peso_kg' => ['required', 'numeric', 'min:0.001', 'max:100000'],
+        ], [
+            'peso_kg.required' => 'Debe poner peso.',
+            'peso_kg.numeric' => 'Debe poner peso.',
+            'peso_kg.min' => 'Debe poner peso.',
         ]);
 
         try {

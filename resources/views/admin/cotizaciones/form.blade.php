@@ -4001,12 +4001,20 @@
 
     async function calcularEnvioDex() {
         setEnvioDexError('');
+        const pesoRaw = String(envioDexPeso?.value ?? '').trim();
+        const peso = parseFloat(pesoRaw.replace(',', '.'));
+        if (pesoRaw === '' || !Number.isFinite(peso) || peso <= 0) {
+            if (envioDexInfo) envioDexInfo.textContent = '';
+            setEnvioDexError('Debe poner peso.');
+            envioDexPeso?.focus();
+            return;
+        }
         if (envioDexInfo) envioDexInfo.textContent = 'Calculando…';
         const body = new FormData();
         body.append('_token', csrf);
         body.append('origen', envioDexOrigen?.value || 'SANTIAGO');
         body.append('destino', envioDexDestino?.value || '');
-        body.append('peso_kg', envioDexPeso?.value || '');
+        body.append('peso_kg', String(peso));
         try {
             const res = await fetch(envioDexUrls.cotizar, {
                 method: 'POST',
@@ -4016,7 +4024,8 @@
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
                 if (envioDexInfo) envioDexInfo.textContent = '';
-                setEnvioDexError(json.error || 'No se pudo calcular el tramo.');
+                const pesoErr = json.errors?.peso_kg?.[0];
+                setEnvioDexError(pesoErr || json.error || json.message || 'No se pudo calcular el tramo.');
                 return;
             }
             if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
