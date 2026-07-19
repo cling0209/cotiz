@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-8" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-9" rel="stylesheet">
 @endpush
 
 @section('content')

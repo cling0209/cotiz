@@ -94,24 +94,24 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 88px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 72px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 11%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 11%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 8%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 8%; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 72px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 118px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 96px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 56px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 80px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 72px; }
 
-/* Sin Softland: más ancho a descripciones */
+/* Sin Softland: un poco más a descripciones */
 .cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-agile {
-    width: 13%;
+    width: 9.5%;
 }
 .cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-maestro {
-    width: 13%;
+    width: 9.5%;
 }
 
 .cotizacion-ingreso #tabla_detalle .linea-img-col,
@@ -196,7 +196,7 @@
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    max-width: 7.5rem;
+    max-width: 5.5rem;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .btn-envio-dex-linea {
