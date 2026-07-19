@@ -94,15 +94,6 @@
                                 @error('prod_gramaje')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Peso (kg)</label>
-                                <input type="number" name="peso_kg" min="0" step="0.001"
-                                       class="form-control form-control-sm @error('peso_kg') is-invalid @enderror"
-                                       value="{{ old('peso_kg', $producto?->peso_kg) }}"
-                                       placeholder="Opcional">
-                                <div class="form-text">Para cotizar env&iacute;o DEX: peso unitario &times; cantidad.</div>
-                                @error('peso_kg')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="col-md-4">
                                 <label class="form-label">Archivo imagen</label>
                                 <input type="text" name="prod_imagen" id="prod_imagen" class="form-control form-control-sm"
                                        value="{{ old('prod_imagen', $producto?->prod_imagen) }}" maxlength="255"
@@ -130,6 +121,15 @@
                                 <label class="form-label">Precio costo</label>
                                 <input type="number" name="prod_valor_costo" class="form-control form-control-sm"
                                        value="{{ old('prod_valor_costo', $producto?->prod_valor_costo ?? 0) }}" min="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Peso (kg)</label>
+                                <input type="number" name="peso_kg" id="peso_kg" min="0" step="0.001"
+                                       class="form-control form-control-sm @error('peso_kg') is-invalid @enderror"
+                                       value="{{ old('peso_kg', isset($producto) && $producto->peso_kg !== null ? $producto->peso_kg : '') }}"
+                                       placeholder="Opcional">
+                                <div class="form-text">Opcional. En cotizaci&oacute;n DEX: peso &times; cantidad.</div>
+                                @error('peso_kg')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Stock real</label>
