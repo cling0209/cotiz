@@ -10,6 +10,7 @@ use App\Http\Controllers\Web\Admin\CompraAgilBusquedaController;
 use App\Http\Controllers\Web\Admin\CorreosChileTarifaController;
 use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
+use App\Http\Controllers\Web\Admin\CotizacionEnvioDexController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
 use App\Http\Controllers\Web\Admin\CotizacionListadoController;
 use App\Http\Controllers\Web\Admin\MaeprodController;
@@ -78,6 +79,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/cabecera', [CotizacionController::class, 'guardarCabecera'])->name('cotizaciones.cabecera.store')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/factor', [CotizacionController::class, 'aplicarFactor'])->name('cotizaciones.factor')->whereNumber('nronota');
+        Route::get('cotizaciones/{nronota}/envio-dex/catalogo', [CotizacionEnvioDexController::class, 'catalogo'])->name('cotizaciones.envio-dex.catalogo')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/envio-dex/cotizar', [CotizacionEnvioDexController::class, 'cotizar'])->name('cotizaciones.envio-dex.cotizar')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/preview', [CotizacionController::class, 'importarCompraAgilPreview'])->name('cotizaciones.importar-compra-agil.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/coincidencias', [CotizacionController::class, 'coincidenciasCompraAgil'])->name('cotizaciones.importar-compra-agil.coincidencias')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/limpiar-agile', [CotizacionController::class, 'limpiarLineasAgileCompraAgil'])->name('cotizaciones.importar-compra-agil.limpiar-agile')->whereNumber('nronota');

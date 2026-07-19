@@ -118,7 +118,18 @@
         <input type="number" name="lineas[{{ $idx }}][prod_valor_costo]" class="nv-precio-costo-sololectura" value="{{ old('lineas.'.$idx.'.prod_valor_costo', $linea->prod_valor_costo) }}" readonly tabindex="-1" title="Precio costo (solo lectura)">
     </td>
     <td>
-        <input type="number" name="lineas[{{ $idx }}][prod_valor]" class="linea-prod-valor" min="0" value="{{ old('lineas.'.$idx.'.prod_valor', $linea->prod_valor) }}" title="Precio unitario">
+        <div class="d-flex align-items-center gap-1">
+            <input type="number" name="lineas[{{ $idx }}][prod_valor]" class="linea-prod-valor" min="0" value="{{ old('lineas.'.$idx.'.prod_valor', $linea->prod_valor) }}" title="Precio unitario">
+            <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm btn-envio-dex-linea px-1"
+                title="Calcular env&iacute;o DEX y sumar al precio unitario"
+                aria-label="Calcular env&iacute;o DEX"
+                data-no-loader
+            >
+                <i class="bi bi-truck" aria-hidden="true"></i>
+            </button>
+        </div>
     </td>
     <td>
         <input type="number" name="lineas[{{ $idx }}][cantidad]" class="linea-cantidad" min="1" value="{{ old('lineas.'.$idx.'.cantidad', $linea->cantidad) }}">

@@ -523,6 +523,45 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="modal-envio-dex" tabindex="-1" aria-labelledby="modal-envio-dex-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h2 class="modal-title fs-6" id="modal-envio-dex-label">Env&iacute;o DEX Correos Chile</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Puede editar el valor antes de sumarlo al precio unitario.</p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label for="envio-dex-origen" class="form-label small mb-1">Origen</label>
+                            <select id="envio-dex-origen" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="envio-dex-destino" class="form-label small mb-1">Destino</label>
+                            <input type="text" id="envio-dex-destino" class="form-control form-control-sm" list="envio-dex-destinos-list" placeholder="Comuna destino" autocomplete="off">
+                            <datalist id="envio-dex-destinos-list"></datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="envio-dex-peso" class="form-label small mb-1">Peso (kg)</label>
+                            <input type="number" id="envio-dex-peso" class="form-control form-control-sm" min="0.001" step="0.1" placeholder="Ej. 3.5">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="envio-dex-valor" class="form-label small mb-1">Valor tramo (CLP)</label>
+                            <input type="number" id="envio-dex-valor" class="form-control form-control-sm" min="0" step="1" placeholder="Se calcula o edite">
+                        </div>
+                    </div>
+                    <p id="envio-dex-info" class="small text-muted mb-0"></p>
+                    <p id="envio-dex-error" class="small text-danger mb-0 d-none"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-envio-dex-calcular" data-no-loader>Calcular</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-envio-dex-aplicar" data-no-loader>Sumar al unitario</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -710,6 +749,10 @@
     const factorInput = document.getElementById('factor_precio_venta');
     let factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
     let cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
+    let envioDexUrls = {
+        catalogo: @json(route('admin.cotizaciones.envio-dex.catalogo', $nota->nronota)),
+        cotizar: @json(route('admin.cotizaciones.envio-dex.cotizar', $nota->nronota)),
+    };
     let lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
     let encargadoActual = @json(trim((string) $nota->encargado));
     let consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
@@ -737,6 +780,11 @@
         if (typeof importarMpUrls === 'object' && importarMpUrls) {
             Object.keys(importarMpUrls).forEach((k) => {
                 importarMpUrls[k] = rewriteCotizUrl(importarMpUrls[k], prev, neu);
+            });
+        }
+        if (typeof envioDexUrls === 'object' && envioDexUrls) {
+            Object.keys(envioDexUrls).forEach((k) => {
+                envioDexUrls[k] = rewriteCotizUrl(envioDexUrls[k], prev, neu);
             });
         }
         cotizNronotaActual = n;
@@ -3817,6 +3865,169 @@
             setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
         }
     }
+
+    // --- Envío DEX (botón camión junto a precio unitario) ---
+    const modalEnvioDexEl = document.getElementById('modal-envio-dex');
+    const bsModalEnvioDex = modalEnvioDexEl && typeof bootstrap !== 'undefined'
+        ? bootstrap.Modal.getOrCreateInstance(modalEnvioDexEl)
+        : null;
+    const envioDexOrigen = document.getElementById('envio-dex-origen');
+    const envioDexDestino = document.getElementById('envio-dex-destino');
+    const envioDexDestinosList = document.getElementById('envio-dex-destinos-list');
+    const envioDexPeso = document.getElementById('envio-dex-peso');
+    const envioDexValor = document.getElementById('envio-dex-valor');
+    const envioDexInfo = document.getElementById('envio-dex-info');
+    const envioDexError = document.getElementById('envio-dex-error');
+    let envioDexCatalogo = null;
+    let envioDexTargetInput = null;
+
+    function setEnvioDexError(msg) {
+        if (!envioDexError) return;
+        if (msg) {
+            envioDexError.textContent = msg;
+            envioDexError.classList.remove('d-none');
+        } else {
+            envioDexError.textContent = '';
+            envioDexError.classList.add('d-none');
+        }
+    }
+
+    function filtrarDestinosPorOrigen(origen) {
+        if (!envioDexCatalogo || !envioDexDestinosList) return;
+        const origenKey = String(origen || '').trim().toUpperCase();
+        envioDexDestinosList.innerHTML = '';
+        (envioDexCatalogo.destinos || []).forEach((d) => {
+            if (origenKey && String(d.origen || '').trim().toUpperCase() !== origenKey) return;
+            const opt = document.createElement('option');
+            opt.value = d.destino;
+            envioDexDestinosList.appendChild(opt);
+        });
+    }
+
+    async function cargarCatalogoEnvioDex() {
+        if (envioDexCatalogo) return envioDexCatalogo;
+        const res = await fetch(envioDexUrls.catalogo, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(json.error || 'No se pudo cargar el catálogo DEX.');
+        }
+        envioDexCatalogo = json;
+        if (envioDexOrigen) {
+            envioDexOrigen.innerHTML = '';
+            const origenes = json.origenes || ['SANTIAGO'];
+            origenes.forEach((o) => {
+                const opt = document.createElement('option');
+                opt.value = o;
+                opt.textContent = o;
+                envioDexOrigen.appendChild(opt);
+            });
+            const def = json.origen_default || 'SANTIAGO';
+            const match = Array.from(envioDexOrigen.options).find(
+                (o) => String(o.value).toUpperCase() === String(def).toUpperCase()
+            );
+            envioDexOrigen.value = match ? match.value : (origenes[0] || def);
+        }
+        filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
+        return json;
+    }
+
+    async function abrirModalEnvioDex(ventaInput) {
+        envioDexTargetInput = ventaInput;
+        setEnvioDexError('');
+        if (envioDexInfo) envioDexInfo.textContent = '';
+        if (envioDexValor) envioDexValor.value = '';
+        if (envioDexPeso) envioDexPeso.value = '';
+        try {
+            await cargarCatalogoEnvioDex();
+        } catch (err) {
+            setEnvioDexError(err?.message || 'Error al cargar tarifas.');
+        }
+        const comunaCab = String(document.getElementById('comuna')?.value || '').trim();
+        if (envioDexDestino) {
+            envioDexDestino.value = comunaCab;
+        }
+        filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
+        bsModalEnvioDex?.show();
+        setTimeout(() => envioDexPeso?.focus(), 250);
+    }
+
+    async function calcularEnvioDex() {
+        setEnvioDexError('');
+        if (envioDexInfo) envioDexInfo.textContent = 'Calculando…';
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('origen', envioDexOrigen?.value || 'SANTIAGO');
+        body.append('destino', envioDexDestino?.value || '');
+        body.append('peso_kg', envioDexPeso?.value || '');
+        try {
+            const res = await fetch(envioDexUrls.cotizar, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (envioDexInfo) envioDexInfo.textContent = '';
+                setEnvioDexError(json.error || 'No se pudo calcular el tramo.');
+                return;
+            }
+            if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
+            const partes = [
+                'Tramo hasta ' + (json.tramo_kg || '?') + ' kg',
+                'Base $' + Number(json.precio_base || 0).toLocaleString('es-CL'),
+            ];
+            if (json.recargo_pct) {
+                partes.push('Recargo ' + json.recargo_pct + '%');
+            }
+            partes.push('Total $' + Number(json.precio || 0).toLocaleString('es-CL'));
+            if (envioDexInfo) envioDexInfo.textContent = partes.join(' · ');
+        } catch (err) {
+            if (envioDexInfo) envioDexInfo.textContent = '';
+            setEnvioDexError('Error de conexión al calcular.');
+        }
+    }
+
+    function aplicarEnvioDexAlUnitario() {
+        setEnvioDexError('');
+        const extra = parseInt(String(envioDexValor?.value || '').replace(/\D/g, ''), 10);
+        if (!Number.isFinite(extra) || extra < 0) {
+            setEnvioDexError('Indique un valor de tramo válido (use Calcular o edítelo).');
+            return;
+        }
+        if (!envioDexTargetInput) {
+            setEnvioDexError('No se encontró el precio unitario de la línea.');
+            return;
+        }
+        const actual = parseInt(String(envioDexTargetInput.value || '0'), 10) || 0;
+        envioDexTargetInput.value = String(actual + extra);
+        envioDexTargetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof recalcularMontoTotal === 'function') {
+            recalcularMontoTotal();
+        }
+        bsModalEnvioDex?.hide();
+    }
+
+    document.getElementById('tabla_detalle')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-envio-dex-linea');
+        if (!btn) return;
+        e.preventDefault();
+        const tr = btn.closest('tr[data-linea]');
+        const ventaInput = tr?.querySelector('.linea-prod-valor');
+        if (!ventaInput) return;
+        abrirModalEnvioDex(ventaInput);
+    });
+
+    envioDexOrigen?.addEventListener('change', () => {
+        filtrarDestinosPorOrigen(envioDexOrigen.value);
+    });
+    document.getElementById('btn-envio-dex-calcular')?.addEventListener('click', () => {
+        calcularEnvioDex();
+    });
+    document.getElementById('btn-envio-dex-aplicar')?.addEventListener('click', () => {
+        aplicarEnvioDexAlUnitario();
+    });
 })();
 </script>
 @endpush
