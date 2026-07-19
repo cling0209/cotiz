@@ -94,20 +94,23 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 5%; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 4.5%; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 4.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 9%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 10.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 24%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 4.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 7.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 3.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 6.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 4.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 12%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 15%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 12%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 5.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 6%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 8%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 4%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 5.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 7%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 5%; }
 
-/* Sin Softland: el 4.5% va a Observación */
-.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-observacion {
-    width: 28.5%;
+/* Sin Softland: el 4.5% se reparte a descripciones */
+.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-agile {
+    width: 14.5%;
+}
+.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-maestro {
+    width: 17.5%;
 }
 
 .cotizacion-ingreso #tabla_detalle .linea-img-col,
