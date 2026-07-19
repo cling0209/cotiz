@@ -103,12 +103,12 @@
 .cotizacion-ingreso #tabla_detalle th:nth-child(5),
 .cotizacion-ingreso #tabla_detalle td:nth-child(5) { width: 5.5%; min-width: 3.75rem; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(6),
-.cotizacion-ingreso #tabla_detalle td:nth-child(6) { width: 9%; min-width: 0; }
+.cotizacion-ingreso #tabla_detalle td:nth-child(6) { width: 8%; min-width: 0; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(7),
-.cotizacion-ingreso #tabla_detalle td:nth-child(7) { width: 6%; min-width: 0; text-align: center; }
+.cotizacion-ingreso #tabla_detalle td:nth-child(7) { width: 5%; min-width: 0; text-align: center; }
 .cotizacion-ingreso #tabla_detalle th.linea-desc-maestro-col,
 .cotizacion-ingreso #tabla_detalle td.linea-desc-maestro-cell {
-    width: 10%;
+    width: 9%;
     min-width: 0;
     text-align: left;
 }
@@ -119,19 +119,45 @@
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
 .cotizacion-ingreso #tabla_detalle td.linea-observacion-cell {
-    width: 12%;
-    min-width: 7.5rem;
+    width: 16%;
+    min-width: 9rem;
     text-align: left;
     vertical-align: top;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col,
 .cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
-    width: 9.75rem !important;
-    min-width: 9.75rem !important;
-    max-width: 10.25rem !important;
+    width: 9.5rem !important;
+    min-width: 9.5rem !important;
+    max-width: 9.5rem !important;
     text-align: left;
     white-space: nowrap;
     overflow: visible !important;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-cantidad-col,
+.cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell {
+    width: 3.75rem !important;
+    min-width: 3.75rem !important;
+    max-width: 4rem !important;
+    text-align: center;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell .linea-cantidad {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    text-align: center;
+    box-sizing: border-box;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-total-col,
+.cotizacion-ingreso #tabla_detalle td.linea-total-cell {
+    width: 4.75rem !important;
+    min-width: 4.75rem !important;
+    max-width: 5.25rem !important;
+    text-align: right;
+    white-space: nowrap;
+    padding-left: 2px !important;
+    padding-right: 4px !important;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap {
     display: flex;
@@ -173,12 +199,12 @@
 .cotizacion-ingreso #tabla_detalle td:nth-child(9) { width: 5.5%; min-width: 0; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(10):not(.linea-precio-unitario-col),
 .cotizacion-ingreso #tabla_detalle td:nth-child(10):not(.linea-precio-unitario-cell) { width: 5.5%; min-width: 0; text-align: center; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(11):not(.linea-precio-unitario-col),
-.cotizacion-ingreso #tabla_detalle td:nth-child(11):not(.linea-precio-unitario-cell) { width: 4.5%; min-width: 0; text-align: center; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(12),
-.cotizacion-ingreso #tabla_detalle td:nth-child(12) { width: 5%; min-width: 0; text-align: right; white-space: nowrap; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(13),
-.cotizacion-ingreso #tabla_detalle td:nth-child(13) { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(11):not(.linea-precio-unitario-col):not(.linea-cantidad-col),
+.cotizacion-ingreso #tabla_detalle td:nth-child(11):not(.linea-precio-unitario-cell):not(.linea-cantidad-cell) { width: 4.5%; min-width: 0; text-align: center; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(12):not(.linea-cantidad-col):not(.linea-total-col),
+.cotizacion-ingreso #tabla_detalle td:nth-child(12):not(.linea-cantidad-cell):not(.linea-total-cell) { width: 5%; min-width: 0; text-align: right; white-space: nowrap; }
+.cotizacion-ingreso #tabla_detalle th:nth-child(13):not(.linea-total-col):not(.linea-orden-col),
+.cotizacion-ingreso #tabla_detalle td:nth-child(13):not(.linea-total-cell):not(.linea-orden-cell) { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; text-align: center; }
 .cotizacion-ingreso #tabla_detalle th:nth-child(14),
 .cotizacion-ingreso #tabla_detalle td:nth-child(14) {
     width: 4.75rem;

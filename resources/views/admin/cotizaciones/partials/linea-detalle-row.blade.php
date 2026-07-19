@@ -131,10 +131,10 @@
             </button>
         </div>
     </td>
-    <td>
+    <td class="linea-cantidad-cell">
         <input type="number" name="lineas[{{ $idx }}][cantidad]" class="linea-cantidad" min="1" value="{{ old('lineas.'.$idx.'.cantidad', $linea->cantidad) }}">
     </td>
-    <td class="linea-total text-end">${{ number_format($row['total'], 0, ',', '.') }}</td>
+    <td class="linea-total linea-total-cell text-end">${{ number_format($row['total'], 0, ',', '.') }}</td>
     <td class="text-center linea-orden-cell">
         <div class="linea-orden-controls">
             <span class="linea-orden-num">{{ $linea->orden }}</span>
