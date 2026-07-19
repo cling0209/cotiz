@@ -261,17 +261,15 @@
                     <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
                         placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
                 </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label for="filtro-vinculo" class="form-label small mb-1">% v&iacute;nculo</label>
-                    <select id="filtro-vinculo" class="form-select form-select-sm" title="Filtrar por porcentaje de vinculaci&oacute;n al maestro">
-                        <option value="">Todas</option>
-                        <option value="sin">Sin vincular</option>
-                        <option value="con">Con v&iacute;nculo</option>
-                        <option value="50">≥ 50%</option>
-                        <option value="80">≥ 80%</option>
-                        <option value="90">≥ 90%</option>
-                        <option value="100">100%</option>
-                    </select>
+                <div class="col-6 col-md-4 col-xl-3">
+                    <label class="form-label small mb-1">% v&iacute;nculo</label>
+                    <div class="d-flex gap-1 align-items-center" title="Rango de vinculaci&oacute;n al maestro. Vac&iacute;o = todas.">
+                        <input type="number" id="filtro-vinculo-desde" class="form-control form-control-sm"
+                            min="0" max="100" step="1" placeholder="Desde" inputmode="numeric" autocomplete="off">
+                        <span class="small text-muted flex-shrink-0">a</span>
+                        <input type="number" id="filtro-vinculo-hasta" class="form-control form-control-sm"
+                            min="0" max="100" step="1" placeholder="Hasta" inputmode="numeric" autocomplete="off">
+                    </div>
                 </div>
                 <div class="col-12 col-md-6 col-xl-2 d-flex flex-wrap gap-2 align-items-end">
                     <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
@@ -458,7 +456,8 @@
         const filtroRegion = document.getElementById('filtro-region');
         const filtroOrganismo = document.getElementById('filtro-organismo');
         const filtroPalabraClave = document.getElementById('filtro-palabra-clave');
-        const filtroVinculo = document.getElementById('filtro-vinculo');
+        const filtroVinculoDesde = document.getElementById('filtro-vinculo-desde');
+        const filtroVinculoHasta = document.getElementById('filtro-vinculo-hasta');
         const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
         const btnDescargarCsv = document.getElementById('btn-descargar-csv');
         const paginacionNav = document.getElementById('oportunidad-paginacion');
@@ -640,33 +639,57 @@
             return tot > 0 ? Math.round((vinc / tot) * 100) : 0;
         }
 
-        function itemCoincideVinculo(item, criterio) {
-            const sel = String(criterio || '').trim();
-            if (sel === '') {
+        function parsePorcentajeFiltro(valor) {
+            const raw = String(valor ?? '').trim();
+            if (raw === '') {
+                return null;
+            }
+            const n = Number(raw);
+            if (!Number.isFinite(n)) {
+                return null;
+            }
+            return Math.max(0, Math.min(100, Math.round(n)));
+        }
+
+        function rangoVinculoFiltro() {
+            let desde = parsePorcentajeFiltro(filtroVinculoDesde ? filtroVinculoDesde.value : '');
+            let hasta = parsePorcentajeFiltro(filtroVinculoHasta ? filtroVinculoHasta.value : '');
+            if (desde == null && hasta == null) {
+                return null;
+            }
+            if (desde != null && hasta != null && desde > hasta) {
+                const tmp = desde;
+                desde = hasta;
+                hasta = tmp;
+            }
+            return { desde, hasta };
+        }
+
+        function itemCoincideVinculo(item, rango) {
+            if (!rango) {
                 return true;
             }
-            const procesado = itemVinculoProcesado(item);
-            if (sel === 'sin') {
-                return !procesado;
-            }
-            if (sel === 'con') {
-                return procesado;
-            }
-            const minimo = Number(sel);
-            if (!Number.isFinite(minimo)) {
-                return true;
-            }
-            if (!procesado) {
+            if (!itemVinculoProcesado(item)) {
                 return false;
             }
-            return porcentajeVinculoItem(item) >= minimo;
+            const pct = porcentajeVinculoItem(item);
+            if (pct == null || !Number.isFinite(pct)) {
+                return false;
+            }
+            if (rango.desde != null && pct < rango.desde) {
+                return false;
+            }
+            if (rango.hasta != null && pct > rango.hasta) {
+                return false;
+            }
+            return true;
         }
 
         function itemsFiltrados() {
             const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
             const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
             const palabraSel = filtroPalabraClaveAplicado;
-            const vinculoSel = filtroVinculo ? String(filtroVinculo.value || '').trim() : '';
+            const vinculoRango = rangoVinculoFiltro();
             let items = Array.from(porCodigo.values());
             if (regionSel !== '') {
                 const codigoRegion = Number(regionSel);
@@ -678,8 +701,8 @@
             if (palabraSel !== '') {
                 items = items.filter((item) => itemCoincidePalabraClave(item, palabraSel));
             }
-            if (vinculoSel !== '') {
-                items = items.filter((item) => itemCoincideVinculo(item, vinculoSel));
+            if (vinculoRango) {
+                items = items.filter((item) => itemCoincideVinculo(item, vinculoRango));
             }
             return items.sort(comparar);
         }
@@ -718,7 +741,8 @@
                     organismo: filtroOrganismo ? String(filtroOrganismo.value || '') : '',
                     palabra_clave: filtroPalabraClave ? String(filtroPalabraClave.value || '') : '',
                     palabra_clave_aplicada: filtroPalabraClaveAplicado,
-                    vinculo: filtroVinculo ? String(filtroVinculo.value || '') : '',
+                    vinculo_desde: filtroVinculoDesde ? String(filtroVinculoDesde.value || '') : '',
+                    vinculo_hasta: filtroVinculoHasta ? String(filtroVinculoHasta.value || '') : '',
                 }));
             } catch (e) {
                 // localStorage no disponible
@@ -739,8 +763,11 @@
             if (filtroPalabraClave && data.palabra_clave != null) {
                 filtroPalabraClave.value = String(data.palabra_clave || '');
             }
-            if (filtroVinculo && data.vinculo != null) {
-                filtroVinculo.value = String(data.vinculo || '');
+            if (filtroVinculoDesde && data.vinculo_desde != null) {
+                filtroVinculoDesde.value = String(data.vinculo_desde || '');
+            }
+            if (filtroVinculoHasta && data.vinculo_hasta != null) {
+                filtroVinculoHasta.value = String(data.vinculo_hasta || '');
             }
             filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null ?
                 String(data.palabra_clave_aplicada || '') :
@@ -1025,7 +1052,8 @@
 
             const filtroActivo = (filtroRegion && String(filtroRegion.value || '').trim() !== '') ||
                 (filtroOrganismo && String(filtroOrganismo.value || '').trim() !== '') ||
-                filtroPalabraClaveAplicado !== '';
+                filtroPalabraClaveAplicado !== '' ||
+                rangoVinculoFiltro() != null;
             const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
             const visibles = filtroActivo ?
                 `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.` :
@@ -1149,6 +1177,22 @@
                 }
             });
         }
+
+        [filtroVinculoDesde, filtroVinculoHasta].forEach((el) => {
+            if (!el) {
+                return;
+            }
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    aplicarFiltros();
+                }
+            });
+            el.addEventListener('change', () => {
+                guardarFiltros();
+                renderTabla(true);
+            });
+        });
 
         const modalVinculoEl = document.getElementById('modal-vinculo-productos');
         const modalVinculoLabel = document.getElementById('modal-vinculo-productos-label');
