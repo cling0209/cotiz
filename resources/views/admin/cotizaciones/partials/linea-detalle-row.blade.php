@@ -111,10 +111,10 @@
             placeholder="Observaci&oacute;n..."
         >{{ old('lineas.'.$idx.'.observacion', $row['observacion'] ?? '') }}</textarea>
     </td>
-    <td>
+    <td class="linea-fecha-cell">
         <span @class(['nv-fill', 'fecha-precio-antigua' => $row['prod_valor_fecha_antigua']])>{{ $row['prod_valor_fecha'] }}</span>
     </td>
-    <td>
+    <td class="linea-costo-cell">
         <input type="number" name="lineas[{{ $idx }}][prod_valor_costo]" class="nv-precio-costo-sololectura" value="{{ old('lineas.'.$idx.'.prod_valor_costo', $linea->prod_valor_costo) }}" readonly tabindex="-1" title="Precio costo (solo lectura)">
     </td>
     <td class="linea-precio-unitario-cell">

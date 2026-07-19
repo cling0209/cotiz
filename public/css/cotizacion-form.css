@@ -87,29 +87,42 @@
     margin-bottom: 0;
 }
 
-.cotizacion-ingreso #tabla_detalle th:nth-child(1),
-.cotizacion-ingreso #tabla_detalle td:nth-child(1) { width: 36px; min-width: 36px; max-width: 36px; padding: 0.2rem; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(2),
-.cotizacion-ingreso #tabla_detalle td:nth-child(2) { width: 64px; min-width: 64px; max-width: 64px; overflow: hidden; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(3),
-.cotizacion-ingreso #tabla_detalle td:nth-child(3) { width: 5.5%; min-width: 4.25rem; }
-.cotizacion-ingreso #tabla_detalle td:nth-child(3) .linea-codigo-interno { word-break: break-all; }
+/* Anchos vía colgroup (% que suman ~100%). Sin rem/max-width: el layout fixed
+   reparte el sobrante e ignora max-width, creando huecos entre columnas. */
+.cotizacion-ingreso #tabla_detalle col.col-linea-drag { width: 2%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-img { width: 4%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 4.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 4.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 9%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 10.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 24%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 4.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 7.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 3.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 6.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 4.5%; }
+
+/* Sin Softland: el 4.5% va a Observación */
+.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-observacion {
+    width: 28.5%;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-img-col,
+.cotizacion-ingreso #tabla_detalle .linea-imagen-cell {
+    overflow: hidden;
+}
+
+.cotizacion-ingreso #tabla_detalle .linea-codigo-interno { word-break: break-all; }
 .cotizacion-ingreso #tabla_detalle .btn-buscar-linea-agile {
     white-space: nowrap;
     flex-shrink: 0;
 }
-.cotizacion-ingreso #tabla_detalle th:nth-child(4),
-.cotizacion-ingreso #tabla_detalle td:nth-child(4) { width: 5.5%; min-width: 3.75rem; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(5),
-.cotizacion-ingreso #tabla_detalle td:nth-child(5) { width: 5.5%; min-width: 3.75rem; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(6),
-.cotizacion-ingreso #tabla_detalle td:nth-child(6) { width: 8%; min-width: 0; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(7),
-.cotizacion-ingreso #tabla_detalle td:nth-child(7) { width: 5%; min-width: 0; text-align: center; }
+
 .cotizacion-ingreso #tabla_detalle th.linea-desc-maestro-col,
 .cotizacion-ingreso #tabla_detalle td.linea-desc-maestro-cell {
-    width: 9%;
-    min-width: 0;
     text-align: left;
 }
 .cotizacion-ingreso #tabla_detalle .linea-prod-nombre-input {
@@ -119,45 +132,40 @@
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
 .cotizacion-ingreso #tabla_detalle td.linea-observacion-cell {
-    width: 16%;
-    min-width: 9rem;
     text-align: left;
     vertical-align: top;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col,
 .cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
-    width: 9.5rem !important;
-    min-width: 9.5rem !important;
-    max-width: 9.5rem !important;
     text-align: left;
     white-space: nowrap;
-    overflow: visible !important;
+    overflow: visible;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-cantidad-col,
 .cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell {
-    width: 3.75rem !important;
-    min-width: 3.75rem !important;
-    max-width: 4rem !important;
     text-align: center;
     padding-left: 2px !important;
     padding-right: 2px !important;
 }
 .cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell .linea-cantidad {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     text-align: center;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-total-col,
 .cotizacion-ingreso #tabla_detalle td.linea-total-cell {
-    width: 4.75rem !important;
-    min-width: 4.75rem !important;
-    max-width: 5.25rem !important;
     text-align: right;
     white-space: nowrap;
     padding-left: 2px !important;
     padding-right: 4px !important;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-fecha-col,
+.cotizacion-ingreso #tabla_detalle th.linea-costo-col,
+.cotizacion-ingreso #tabla_detalle td.linea-fecha-cell,
+.cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
+    text-align: center;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap {
     display: flex;
@@ -168,9 +176,9 @@
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .linea-prod-valor {
     flex: 1 1 auto;
-    width: 5.5rem !important;
-    min-width: 5.25rem !important;
-    max-width: 6.25rem !important;
+    width: 100%;
+    min-width: 0;
+    max-width: 6.25rem;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .btn-envio-dex-linea {
@@ -193,33 +201,9 @@
     box-sizing: border-box;
     font-size: 11px;
 }
-.cotizacion-ingreso #tabla_detalle th:nth-child(8),
-.cotizacion-ingreso #tabla_detalle td:nth-child(8) { width: 5.5%; min-width: 0; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(9),
-.cotizacion-ingreso #tabla_detalle td:nth-child(9) { width: 5.5%; min-width: 0; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(10):not(.linea-precio-unitario-col),
-.cotizacion-ingreso #tabla_detalle td:nth-child(10):not(.linea-precio-unitario-cell) { width: 5.5%; min-width: 0; text-align: center; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(11):not(.linea-precio-unitario-col):not(.linea-cantidad-col),
-.cotizacion-ingreso #tabla_detalle td:nth-child(11):not(.linea-precio-unitario-cell):not(.linea-cantidad-cell) { width: 4.5%; min-width: 0; text-align: center; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(12):not(.linea-cantidad-col):not(.linea-total-col),
-.cotizacion-ingreso #tabla_detalle td:nth-child(12):not(.linea-cantidad-cell):not(.linea-total-cell) { width: 5%; min-width: 0; text-align: right; white-space: nowrap; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(13):not(.linea-total-col):not(.linea-orden-col),
-.cotizacion-ingreso #tabla_detalle td:nth-child(13):not(.linea-total-cell):not(.linea-orden-cell) { width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem; text-align: center; }
-.cotizacion-ingreso #tabla_detalle th:nth-child(14),
-.cotizacion-ingreso #tabla_detalle td:nth-child(14) {
-    width: 4.75rem;
-    min-width: 4.75rem;
-    max-width: 4.75rem;
-    white-space: nowrap;
-    text-align: center;
-    overflow: visible;
-}
 
 .cotizacion-ingreso #tabla_detalle th.linea-eliminar-col,
 .cotizacion-ingreso #tabla_detalle td.eliminar-cell {
-    width: 4.5rem !important;
-    min-width: 4.5rem !important;
-    max-width: 5rem !important;
     text-align: left !important;
     white-space: nowrap;
     overflow: visible;
@@ -340,9 +324,6 @@
 
 .cotizacion-ingreso #tabla_detalle .linea-drag-col,
 .cotizacion-ingreso #tabla_detalle .linea-drag-cell {
-    width: 42px;
-    min-width: 42px;
-    max-width: 42px;
     padding: 0.25rem !important;
     vertical-align: middle;
 }

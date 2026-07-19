@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=envio-dex-unitario-5" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-6" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -180,25 +180,46 @@
         @endunless
 
         <div id="notaventa-tabla-detalle-wrap" data-max-orden="{{ $lineas->count() }}">
-            <table id="tabla_detalle" class="table table-sm">
+            <table id="tabla_detalle" class="table table-sm @if($mostrarSoftland) tabla-con-softland @endif">
+                <colgroup>
+                    <col class="col-linea-drag">
+                    <col class="col-linea-img">
+                    <col class="col-linea-codigo">
+                    @if($mostrarSoftland)
+                    <col class="col-linea-softland">
+                    @endif
+                    <col class="col-linea-id-agile">
+                    <col class="col-linea-desc-agile">
+                    <col class="col-linea-desc-maestro">
+                    <col class="col-linea-observacion">
+                    <col class="col-linea-fecha">
+                    <col class="col-linea-costo">
+                    <col class="col-linea-unitario">
+                    <col class="col-linea-cantidad">
+                    <col class="col-linea-total">
+                    <col class="col-linea-orden">
+                    @unless($desdeAdjudicadas)
+                    <col class="col-linea-eliminar">
+                    @endunless
+                </colgroup>
                 <thead>
                     <tr>
                         <th class="linea-drag-col" title="Arrastrar para reordenar"></th>
-                        <th>Imagen</th>
-                        <th>C&oacute;digo</th>
+                        <th class="linea-img-col">Imagen</th>
+                        <th class="linea-codigo-col">C&oacute;digo</th>
                         @if($mostrarSoftland)
-                        <th>Cod. Softland</th>
+                        <th class="linea-softland-col">Cod. Softland</th>
                         @endif
-                        <th>ID Agile</th>
-                        <th>Descripci&oacute;n Agile (MP)</th>
+                        <th class="linea-id-agile-col">ID Agile</th>
+                        <th class="linea-desc-agile-col">Descripci&oacute;n Agile (MP)</th>
                         <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
                         <th class="linea-observacion-col">Observaci&oacute;n</th>
-                        <th>Fecha<br>act.&nbsp;precio</th>
-                        <th>Precio Costo</th>
+                        <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
+                        <th class="linea-costo-col">Precio Costo</th>
                         <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
                         <th class="linea-cantidad-col">Cantidad</th>
                         <th class="linea-total-col">Total</th>
-                        <th>Orden</th>
+                        <th class="linea-orden-col">Orden</th>
                         @unless($desdeAdjudicadas)
                             <th class="linea-eliminar-col">Eliminar</th>
                         @endunless
