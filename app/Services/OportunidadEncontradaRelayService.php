@@ -532,6 +532,7 @@ class OportunidadEncontradaRelayService
                 'region' => isset($item['region']) ? (int) $item['region'] : null,
                 'nombre_region' => (string) ($item['nombre_region'] ?? ''),
                 'comuna' => (string) ($item['comuna'] ?? ''),
+                'direccion' => (string) ($item['direccion'] ?? $item['direccion_entrega'] ?? ''),
                 'monto_presupuesto_clp' => isset($item['monto_presupuesto_clp'])
                     ? (int) $item['monto_presupuesto_clp']
                     : null,
@@ -593,6 +594,7 @@ class OportunidadEncontradaRelayService
             'region' => $region,
             'nombre_region' => mb_substr(trim((string) ($item['nombre_region'] ?? '')), 0, 100) ?: null,
             'comuna' => mb_substr(trim((string) ($item['comuna'] ?? '')), 0, 120) ?: null,
+            'direccion' => mb_substr(trim((string) ($item['direccion'] ?? $item['direccion_entrega'] ?? '')), 0, 255) ?: null,
             'monto_presupuesto_clp' => isset($item['monto_presupuesto_clp'])
                 ? (int) $item['monto_presupuesto_clp']
                 : null,

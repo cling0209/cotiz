@@ -33,7 +33,7 @@ class NotaService
                 'notaorigen' => $notaOrigen ?? 0,
                 'sistema' => $sistema ?? config('app.name'),
                 'enviadoapi' => 0,
-                'diashabiles' => 2,
+                'diashabiles' => (int) config('cotiz.diashabiles_rm', 5),
                 'factor_precio_venta' => config('cotiz.factor_precio_venta'),
             ]);
 
@@ -64,7 +64,7 @@ class NotaService
             'notaorigen' => 0,
             'sistema' => config('app.name'),
             'enviadoapi' => 0,
-            'diashabiles' => 2,
+            'diashabiles' => (int) config('cotiz.diashabiles_rm', 5),
             'factor_precio_venta' => config('cotiz.factor_precio_venta'),
             'ocompra' => '',
         ]);
@@ -152,7 +152,7 @@ class NotaService
 
         $factor = $factorParsed ?? round((float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta')), 2);
 
-        $nota->update([
+        $payload = [
             'descripcion' => $datos['descripcion'] ?? $nota->descripcion,
             'empresa' => $datos['empresa'] ?? $nota->empresa,
             'encargado' => $datos['encargado'] ?? $nota->encargado,
@@ -160,11 +160,29 @@ class NotaService
             'contacto' => $datos['contacto'] ?? $nota->contacto,
             'contactocorreo' => $datos['contactocorreo'] ?? $nota->contactocorreo,
             'rutempresa' => $datos['rutempresa'] ?? $nota->rutempresa,
-            'diashabiles' => (int) ($datos['diashabiles'] ?? $nota->diashabiles ?? 2),
+            'diashabiles' => (int) ($datos['diashabiles'] ?? $nota->diashabiles ?? config('cotiz.diashabiles_rm', 5)),
             'ocompra' => $datos['ocompra'] ?? $nota->ocompra,
             'fechaentrega' => $datos['fechaentrega'] ?? $nota->fechaentrega,
             'factor_precio_venta' => $factor,
-        ]);
+        ];
+
+        if (array_key_exists('direccion_entrega', $datos)) {
+            $payload['direccion_entrega'] = mb_substr(trim((string) $datos['direccion_entrega']), 0, 255);
+        }
+        if (array_key_exists('region', $datos)) {
+            $region = $datos['region'];
+            $payload['region'] = ($region !== null && $region !== '' && is_numeric($region))
+                ? (int) $region
+                : null;
+        }
+        if (array_key_exists('nombre_region', $datos)) {
+            $payload['nombre_region'] = mb_substr(trim((string) $datos['nombre_region']), 0, 100) ?: null;
+        }
+        if (array_key_exists('comuna', $datos)) {
+            $payload['comuna'] = mb_substr(trim((string) $datos['comuna']), 0, 120) ?: null;
+        }
+
+        $nota->update($payload);
 
         return $nota->fresh();
     }

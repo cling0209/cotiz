@@ -413,6 +413,7 @@ class OportunidadVinculoService
         $vinculados = (int) ($resumen['vinculados'] ?? 0);
         $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
         $previewCache = $this->empaquetarPreviewCache($preview);
+        $cab = is_array($parseado['cabecera'] ?? null) ? $parseado['cabecera'] : [];
         $attrs = [
             'cantidad_productos' => $total > 0 ? $total : null,
             'productos_vinculados' => $vinculados,
@@ -421,6 +422,20 @@ class OportunidadVinculoService
             'vinculo_at' => now(),
             'vinculo_preview_json' => $previewCache,
         ];
+
+        if (isset($cab['region']) && is_numeric($cab['region']) && (int) $cab['region'] > 0) {
+            $attrs['region'] = (int) $cab['region'];
+            $nombreRegion = trim((string) ($cab['nombre_region'] ?? ''));
+            $attrs['nombre_region'] = $nombreRegion !== ''
+                ? mb_substr($nombreRegion, 0, 100)
+                : CompraAgilRegionScope::nombreRegion((int) $cab['region']);
+        }
+        if (trim((string) ($cab['comuna'] ?? '')) !== '') {
+            $attrs['comuna'] = mb_substr(trim((string) $cab['comuna']), 0, 120);
+        }
+        if (trim((string) ($cab['direccion_entrega'] ?? '')) !== '') {
+            $attrs['direccion'] = mb_substr(trim((string) $cab['direccion_entrega']), 0, 255);
+        }
 
         $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
         foreach ($rows as $row) {

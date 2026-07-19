@@ -11,6 +11,12 @@ return [
     'concepto_bodega' => env('COTIZ_CONCEPTO_BODEGA', '26'),
     'codigo_proveedor' => env('COTIZ_CODIGO_PROVEEDOR', '76185139'),
     'factor_precio_venta' => (float) env('COTIZ_FACTOR_PRECIO_VENTA', 1.22),
+    // Factor por región al importar Compra Ágil / Oportunidades (editable después en la nota).
+    'factor_precio_venta_rm' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_RM', 1.22),
+    'factor_precio_venta_otras' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_OTRAS', 1.30),
+    // Días hábiles sugeridos por región (editable en la nota).
+    'diashabiles_rm' => (int) env('COTIZ_DIASHABILES_RM', 5),
+    'diashabiles_otras' => (int) env('COTIZ_DIASHABILES_OTRAS', 10),
     // Umbral (meses) para marcar prod_valor_fecha en rojo (cotización y recepción Agile). Legacy: AGILERECEPCION_PROD_VALOR_FECHA_MESES.
     'prod_valor_fecha_meses' => (int) env('COTIZ_PROD_VALOR_FECHA_MESES', 3),
     'listado_por_pagina' => (int) env('COTIZ_LISTADO_POR_PAGINA', 20),

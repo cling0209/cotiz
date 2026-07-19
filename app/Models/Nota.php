@@ -24,6 +24,7 @@ class Nota extends Model
         'celular', 'contacto', 'contactocorreo', 'rutempresa', 'nota_softland',
         'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
         'estadofecha', 'estadousuario', 'ocompra', 'fechaentrega', 'factor_precio_venta',
+        'direccion_entrega', 'region', 'nombre_region', 'comuna',
     ];
 
     protected function casts(): array
@@ -35,6 +36,7 @@ class Nota extends Model
             'factor_precio_venta' => 'decimal:4',
             'enviadoapi' => 'integer',
             'diashabiles' => 'integer',
+            'region' => 'integer',
         ];
     }
 

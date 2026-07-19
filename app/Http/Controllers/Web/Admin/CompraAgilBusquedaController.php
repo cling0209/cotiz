@@ -98,7 +98,9 @@ class CompraAgilBusquedaController extends Controller
             if (CompraAgilRegionScope::debeExcluirItem($payload)) {
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
-            $parseado = $this->mapper->fromDetalle($payload);
+            $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
+                $this->mapper->fromDetalle($payload)
+            );
 
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->importService->previewLoteDesdeDatos(
@@ -142,7 +144,9 @@ class CompraAgilBusquedaController extends Controller
             if (CompraAgilRegionScope::debeExcluirItem($payload)) {
                 return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
             }
-            $parseado = $this->mapper->fromDetalle($payload);
+            $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
+                $this->mapper->fromDetalle($payload)
+            );
 
             [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
 

@@ -1220,6 +1220,10 @@ class CotizacionController extends Controller
             'ocompra' => ['nullable', 'string', 'max:20'],
             'fechaentrega' => ['nullable', 'date'],
             'factor_precio_venta' => ['nullable', 'numeric', 'min:0'],
+            'direccion_entrega' => ['nullable', 'string', 'max:255'],
+            'region' => ['nullable', 'integer', 'min:1', 'max:16'],
+            'nombre_region' => ['nullable', 'string', 'max:100'],
+            'comuna' => ['nullable', 'string', 'max:120'],
         ];
     }
 

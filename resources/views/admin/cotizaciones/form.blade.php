@@ -98,7 +98,7 @@
                     <th>Monto Total</th>
                     <td><input type="text" name="montototal" id="montototal" readonly value="${{ number_format($total, 0, ',', '.') }}"></td>
                     <th>D&iacute;as H&aacute;biles</th>
-                    <td><input type="number" name="diashabiles" id="diashabiles" min="0" maxlength="2" value="{{ old('diashabiles', $nota->diashabiles ?? 2) }}"></td>
+                    <td><input type="number" name="diashabiles" id="diashabiles" min="0" maxlength="2" value="{{ old('diashabiles', $nota->diashabiles ?? config('cotiz.diashabiles_rm', 5)) }}"></td>
                     <th>O.Compra</th>
                     <td><input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"></td>
                 </tr>
@@ -107,6 +107,19 @@
                     <td><input type="date" name="fechaentrega" id="fechaentrega" value="{{ old('fechaentrega', $nota->fechaentrega?->format('Y-m-d')) }}"></td>
                     <th>Descripci&oacute;n</th>
                     <td colspan="3"><input type="text" name="descripcion" id="descripcion" maxlength="500" value="{{ old('descripcion', $nota->descripcion) }}" required></td>
+                </tr>
+                <tr>
+                    <th>Direcci&oacute;n</th>
+                    <td colspan="5"><input type="text" name="direccion_entrega" id="direccion_entrega" maxlength="255" value="{{ old('direccion_entrega', $nota->direccion_entrega) }}" placeholder="Direcci&oacute;n de entrega (Mercado P&uacute;blico)"></td>
+                </tr>
+                <tr>
+                    <th>Regi&oacute;n</th>
+                    <td>
+                        <input type="hidden" name="region" id="region" value="{{ old('region', $nota->region) }}">
+                        <input type="text" name="nombre_region" id="nombre_region" maxlength="100" value="{{ old('nombre_region', $nota->nombre_region) }}" placeholder="Ej. Metropolitana">
+                    </td>
+                    <th>Comuna</th>
+                    <td colspan="3"><input type="text" name="comuna" id="comuna" maxlength="120" value="{{ old('comuna', $nota->comuna) }}" placeholder="Comuna de entrega"></td>
                 </tr>
             </table>
 
@@ -862,6 +875,10 @@
             diashabiles: val('diashabiles') !== '' ? parseInt(val('diashabiles'), 10) : null,
             ocompra: val('ocompra'),
             fechaentrega: val('fechaentrega') || null,
+            direccion_entrega: val('direccion_entrega'),
+            region: val('region') !== '' ? parseInt(val('region'), 10) : null,
+            nombre_region: val('nombre_region'),
+            comuna: val('comuna'),
         };
         if (factorInput && String(factorInput.value || '').trim() !== '') {
             payload.factor_precio_venta = factorInput.value;

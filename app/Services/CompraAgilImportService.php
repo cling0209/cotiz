@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AgileMaeprod;
 use App\Models\Nota;
+use App\Models\OportunidadEncontrada;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -151,12 +152,7 @@ class CompraAgilImportService
         ];
 
         if ($desde === 0) {
-            $resultado['cabecera'] = [
-                'codigo_cotizacion' => $parsed['codigo_cotizacion'],
-                'empresa' => $parsed['empresa'],
-                'rutempresa' => $parsed['rutempresa'],
-                'nombre' => $parsed['nombre'],
-            ];
+            $resultado['cabecera'] = $this->cabeceraDesdeParsed($parsed);
         }
 
         return $resultado;
@@ -300,14 +296,94 @@ class CompraAgilImportService
         }
 
         return [
-            'cabecera' => [
-                'codigo_cotizacion' => $parsed['codigo_cotizacion'],
-                'empresa' => $parsed['empresa'],
-                'rutempresa' => $parsed['rutempresa'],
-                'nombre' => $parsed['nombre'],
-            ],
+            'cabecera' => $this->cabeceraDesdeParsed($parsed),
             'lineas' => $lineas,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array{
+     *   codigo_cotizacion: string,
+     *   empresa: string,
+     *   rutempresa: string,
+     *   nombre: string,
+     *   region: ?int,
+     *   nombre_region: string,
+     *   comuna: string,
+     *   direccion_entrega: string
+     * }
+     */
+    private function cabeceraDesdeParsed(array $parsed): array
+    {
+        $region = isset($parsed['region']) && is_numeric($parsed['region'])
+            ? (int) $parsed['region']
+            : null;
+        if ($region !== null && $region <= 0) {
+            $region = null;
+        }
+
+        return [
+            'codigo_cotizacion' => (string) ($parsed['codigo_cotizacion'] ?? ''),
+            'empresa' => (string) ($parsed['empresa'] ?? ''),
+            'rutempresa' => (string) ($parsed['rutempresa'] ?? ''),
+            'nombre' => (string) ($parsed['nombre'] ?? ''),
+            'region' => $region,
+            'nombre_region' => (string) ($parsed['nombre_region'] ?? ''),
+            'comuna' => (string) ($parsed['comuna'] ?? ''),
+            'direccion_entrega' => (string) ($parsed['direccion_entrega'] ?? ''),
+        ];
+    }
+
+    /**
+     * Completa geo faltante desde oportunidad_encontradas (proceso Oportunidades).
+     *
+     * @param  array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: array<int, array<string, mixed>>
+     * }  $datos
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: array<int, array<string, mixed>>
+     * }
+     */
+    public function enriquecerCabeceraDesdeOportunidad(array $datos): array
+    {
+        $cabecera = is_array($datos['cabecera'] ?? null) ? $datos['cabecera'] : [];
+        $codigo = strtoupper(trim((string) ($cabecera['codigo_cotizacion'] ?? '')));
+        if ($codigo === '') {
+            return $datos;
+        }
+
+        $opp = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $opp) {
+            return $datos;
+        }
+
+        if (empty($cabecera['region']) && $opp->region) {
+            $cabecera['region'] = (int) $opp->region;
+        }
+        if (trim((string) ($cabecera['nombre_region'] ?? '')) === '' && trim((string) ($opp->nombre_region ?? '')) !== '') {
+            $cabecera['nombre_region'] = (string) $opp->nombre_region;
+        }
+        if (trim((string) ($cabecera['comuna'] ?? '')) === '' && trim((string) ($opp->comuna ?? '')) !== '') {
+            $cabecera['comuna'] = (string) $opp->comuna;
+        }
+        if (trim((string) ($cabecera['direccion_entrega'] ?? '')) === '' && trim((string) ($opp->direccion ?? '')) !== '') {
+            $cabecera['direccion_entrega'] = (string) $opp->direccion;
+        }
+        if (trim((string) ($cabecera['nombre_region'] ?? '')) === '' && ! empty($cabecera['region'])) {
+            $cabecera['nombre_region'] = CompraAgilRegionScope::nombreRegion((int) $cabecera['region']);
+        }
+
+        $datos['cabecera'] = $cabecera;
+
+        return $datos;
     }
 
     /**
@@ -333,26 +409,54 @@ class CompraAgilImportService
             $mensajes = [];
             $total = count($preview['lineas']);
 
-            if ($desde === 0 && $preview['cabecera']['codigo_cotizacion'] === '' && $preview['lineas'] === []) {
+            if ($desde === 0 && ($preview['cabecera']['codigo_cotizacion'] ?? '') === '' && $preview['lineas'] === []) {
                 throw new RuntimeException('No se detectó información de Compra Ágil para importar.');
             }
 
             $cabeceraActualizada = false;
 
             if ($desde === 0) {
+                $preview = $this->enriquecerCabeceraDesdeOportunidad($preview);
+                $cab = $preview['cabecera'];
                 $datosCabecera = [];
 
-                if ($preview['cabecera']['codigo_cotizacion'] !== '') {
-                    $datosCabecera['encargado'] = $preview['cabecera']['codigo_cotizacion'];
+                if (($cab['codigo_cotizacion'] ?? '') !== '') {
+                    $datosCabecera['encargado'] = $cab['codigo_cotizacion'];
                 }
-                if ($preview['cabecera']['empresa'] !== '') {
-                    $datosCabecera['empresa'] = $preview['cabecera']['empresa'];
+                if (($cab['empresa'] ?? '') !== '') {
+                    $datosCabecera['empresa'] = $cab['empresa'];
                 }
-                if ($preview['cabecera']['rutempresa'] !== '') {
-                    $datosCabecera['rutempresa'] = $preview['cabecera']['rutempresa'];
+                if (($cab['rutempresa'] ?? '') !== '') {
+                    $datosCabecera['rutempresa'] = $cab['rutempresa'];
                 }
-                if ($preview['cabecera']['nombre'] !== '') {
-                    $datosCabecera['descripcion'] = $preview['cabecera']['nombre'];
+                if (($cab['nombre'] ?? '') !== '') {
+                    $datosCabecera['descripcion'] = $cab['nombre'];
+                }
+
+                $region = isset($cab['region']) && is_numeric($cab['region']) ? (int) $cab['region'] : null;
+                if ($region !== null && $region > 0) {
+                    $datosCabecera['region'] = $region;
+                    $nombreRegion = trim((string) ($cab['nombre_region'] ?? ''));
+                    $datosCabecera['nombre_region'] = $nombreRegion !== ''
+                        ? $nombreRegion
+                        : CompraAgilRegionScope::nombreRegion($region);
+
+                    $factorRegion = CompraAgilRegionScope::factorPrecioVentaPorRegion($region);
+                    if ($factorRegion !== null) {
+                        $datosCabecera['factor_precio_venta'] = $factorRegion;
+                    }
+
+                    $dias = CompraAgilRegionScope::diasHabilesPorRegion($region);
+                    if ($dias !== null) {
+                        $datosCabecera['diashabiles'] = $dias;
+                    }
+                }
+
+                if (trim((string) ($cab['comuna'] ?? '')) !== '') {
+                    $datosCabecera['comuna'] = mb_substr(trim((string) $cab['comuna']), 0, 120);
+                }
+                if (trim((string) ($cab['direccion_entrega'] ?? '')) !== '') {
+                    $datosCabecera['direccion_entrega'] = mb_substr(trim((string) $cab['direccion_entrega']), 0, 255);
                 }
 
                 if ($datosCabecera !== []) {
@@ -409,6 +513,16 @@ class CompraAgilImportService
 
             if ($desde === 0 && $hasta >= $total && $agregadas === 0) {
                 throw new RuntimeException('No se detectaron productos para importar.');
+            }
+
+            if ($hasta >= $total) {
+                $notaFresh = $nota->fresh();
+                $factorRegion = CompraAgilRegionScope::factorPrecioVentaPorRegion(
+                    $notaFresh?->region !== null ? (int) $notaFresh->region : null
+                );
+                if ($factorRegion !== null) {
+                    $this->detalleService->aplicarFactorPrecioVenta($notaFresh, $factorRegion, $usuario);
+                }
             }
 
             return [

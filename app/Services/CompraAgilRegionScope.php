@@ -27,6 +27,8 @@ class CompraAgilRegionScope
         16 => 'Ñuble',
     ];
 
+    public const REGION_METROPOLITANA = 13;
+
     /** Regiones fuera del área de operación (siempre, aunque estén en config). */
     private const REGIONES_SIEMPRE_EXCLUIDAS = [
         12, // Magallanes
@@ -114,6 +116,35 @@ class CompraAgilRegionScope
     public static function nombreRegion(int $codigo): string
     {
         return self::NOMBRES_REGION[$codigo] ?? 'Región '.$codigo;
+    }
+
+    public static function esMetropolitana(?int $region): bool
+    {
+        return $region !== null && (int) $region === self::REGION_METROPOLITANA;
+    }
+
+    public static function factorPrecioVentaPorRegion(?int $region): ?float
+    {
+        if ($region === null || $region <= 0) {
+            return null;
+        }
+
+        $factor = self::esMetropolitana($region)
+            ? (float) config('cotiz.factor_precio_venta_rm', 1.22)
+            : (float) config('cotiz.factor_precio_venta_otras', 1.30);
+
+        return $factor > 0 ? round($factor, 2) : null;
+    }
+
+    public static function diasHabilesPorRegion(?int $region): ?int
+    {
+        if ($region === null || $region <= 0) {
+            return null;
+        }
+
+        return self::esMetropolitana($region)
+            ? max(0, (int) config('cotiz.diashabiles_rm', 5))
+            : max(0, (int) config('cotiz.diashabiles_otras', 10));
     }
 
     /**

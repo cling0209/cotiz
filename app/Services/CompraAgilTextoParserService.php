@@ -13,6 +13,10 @@ class CompraAgilTextoParserService
      *   empresa: string,
      *   rutempresa: string,
      *   nombre: string,
+     *   region: ?int,
+     *   nombre_region: string,
+     *   comuna: string,
+     *   direccion_entrega: string,
      *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
      * }
      */
@@ -31,12 +35,17 @@ class CompraAgilTextoParserService
         $empresa = $this->extraerEmpresa($lineas, $rut);
         $nombre = $this->extraerNombre($lineas);
         $productos = $this->extraerProductos($lineas);
+        $geo = $this->extraerGeo($texto, $lineas);
 
         return [
             'codigo_cotizacion' => $codigo,
             'empresa' => $empresa,
             'rutempresa' => $rut,
             'nombre' => $nombre,
+            'region' => $geo['region'],
+            'nombre_region' => $geo['nombre_region'],
+            'comuna' => $geo['comuna'],
+            'direccion_entrega' => $geo['direccion_entrega'],
             'lineas' => $productos,
         ];
     }
@@ -51,7 +60,17 @@ class CompraAgilTextoParserService
     }
 
     /**
-     * @return array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string, lineas: array}
+     * @return array{
+     *   codigo_cotizacion: string,
+     *   empresa: string,
+     *   rutempresa: string,
+     *   nombre: string,
+     *   region: ?int,
+     *   nombre_region: string,
+     *   comuna: string,
+     *   direccion_entrega: string,
+     *   lineas: array
+     * }
      */
     private function vacio(): array
     {
@@ -60,8 +79,97 @@ class CompraAgilTextoParserService
             'empresa' => '',
             'rutempresa' => '',
             'nombre' => '',
+            'region' => null,
+            'nombre_region' => '',
+            'comuna' => '',
+            'direccion_entrega' => '',
             'lineas' => [],
         ];
+    }
+
+    /**
+     * @param  string[]  $lineas
+     * @return array{region: ?int, nombre_region: string, comuna: string, direccion_entrega: string}
+     */
+    private function extraerGeo(string $texto, array $lineas): array
+    {
+        $direccion = $this->extraerCampoEtiquetado($lineas, [
+            'Dirección', 'Direccion', 'Lugar de entrega', 'Lugar de Entrega',
+        ]);
+        $comuna = $this->extraerCampoEtiquetado($lineas, ['Comuna']);
+        $nombreRegion = $this->extraerCampoEtiquetado($lineas, ['Región', 'Region']);
+
+        if ($nombreRegion === '' && preg_match('/Regi[oó]n\s+Metropolitana/iu', $texto)) {
+            $nombreRegion = 'Metropolitana';
+        }
+
+        $region = null;
+        if ($nombreRegion !== '') {
+            $region = $this->codigoRegionDesdeNombre($nombreRegion);
+        }
+
+        return [
+            'region' => $region,
+            'nombre_region' => mb_substr($nombreRegion, 0, 100),
+            'comuna' => mb_substr($comuna, 0, 120),
+            'direccion_entrega' => mb_substr($direccion, 0, 255),
+        ];
+    }
+
+    /**
+     * @param  string[]  $lineas
+     * @param  list<string>  $etiquetas
+     */
+    private function extraerCampoEtiquetado(array $lineas, array $etiquetas): string
+    {
+        foreach ($lineas as $i => $linea) {
+            if ($linea === '') {
+                continue;
+            }
+            foreach ($etiquetas as $etiqueta) {
+                $pat = '/^'.preg_quote($etiqueta, '/').'\s*[:\-]?\s*(.*)$/iu';
+                if (preg_match($pat, $linea, $m)) {
+                    $valor = trim((string) ($m[1] ?? ''));
+                    if ($valor !== '') {
+                        return $valor;
+                    }
+                    for ($j = $i + 1; $j < count($lineas); $j++) {
+                        $sig = trim($lineas[$j]);
+                        if ($sig === '' || $this->esLineaEtiquetaCabecera($sig)) {
+                            continue;
+                        }
+
+                        return $sig;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function codigoRegionDesdeNombre(string $nombre): ?int
+    {
+        $norm = mb_strtolower(trim($nombre), 'UTF-8');
+        $norm = strtr($norm, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n',
+        ]);
+
+        if (str_contains($norm, 'metropolitana')) {
+            return CompraAgilRegionScope::REGION_METROPOLITANA;
+        }
+
+        foreach (CompraAgilRegionScope::catalogoRegiones() as $codigo => $label) {
+            $labelNorm = mb_strtolower($label, 'UTF-8');
+            $labelNorm = strtr($labelNorm, [
+                'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n',
+            ]);
+            if ($labelNorm !== '' && (str_contains($norm, $labelNorm) || str_contains($labelNorm, $norm))) {
+                return (int) $codigo;
+            }
+        }
+
+        return null;
     }
 
     private function extraerCodigoCotizacion(string $texto): string
