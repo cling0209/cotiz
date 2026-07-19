@@ -7,6 +7,7 @@ use App\Http\Controllers\Web\Admin\AccountController;
 use App\Http\Controllers\Web\Admin\CompraAgilAnalisisController;
 use App\Http\Controllers\Web\Admin\CompraAgilResultadosController;
 use App\Http\Controllers\Web\Admin\CompraAgilBusquedaController;
+use App\Http\Controllers\Web\Admin\CorreosChileTarifaController;
 use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
@@ -200,6 +201,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('usuarios/{usuario}/editar', [UserController::class, 'edit'])->name('users.edit');
             Route::put('usuarios/{usuario}', [UserController::class, 'update'])->name('users.update');
             Route::delete('usuarios/{usuario}', [UserController::class, 'destroy'])->name('users.destroy');
+
+            Route::get('tarifas-correos-chile', [CorreosChileTarifaController::class, 'index'])->name('correos-chile.index');
+            Route::post('tarifas-correos-chile/importar', [CorreosChileTarifaController::class, 'import'])->name('correos-chile.import');
         });
     });
 });
