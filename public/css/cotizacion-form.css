@@ -99,7 +99,7 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 56px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 48px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 38px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
