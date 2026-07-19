@@ -80,8 +80,8 @@
 
 .cotizacion-ingreso #tabla_detalle {
     /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
-    width: 1386px;
-    min-width: 1386px;
+    width: 1354px;
+    min-width: 1354px;
     max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
@@ -90,8 +90,8 @@
 }
 
 .cotizacion-ingreso #tabla_detalle.tabla-con-softland {
-    width: 1496px;
-    min-width: 1496px;
+    width: 1464px;
+    min-width: 1464px;
 }
 
 /* Todos los anchos en px para que no se redistribuyan al estirar. */
