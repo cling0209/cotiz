@@ -367,6 +367,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
             'lineas.*.prod_descripcion_maestro' => ['nullable', 'string', 'max:500'],
             'lineas.*.observacion' => ['nullable', 'string'],
+            'lineas.*.observacion_cliente' => ['nullable', 'string'],
         ]));
 
         $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username);
@@ -1243,6 +1244,7 @@ class CotizacionController extends Controller
             'lineas.*.prod_item_softland' => ['nullable', 'string', 'max:20'],
             'lineas.*.prod_descripcion_maestro' => ['nullable', 'string', 'max:500'],
             'lineas.*.observacion' => ['nullable', 'string'],
+            'lineas.*.observacion_cliente' => ['nullable', 'string'],
         ];
     }
 
@@ -1342,6 +1344,9 @@ class CotizacionController extends Controller
             }
             if (array_key_exists('observacion', $item)) {
                 $linea['observacion'] = (string) $item['observacion'];
+            }
+            if (array_key_exists('observacion_cliente', $item)) {
+                $linea['observacion_cliente'] = (string) $item['observacion_cliente'];
             }
             $lineas[] = $linea;
         }

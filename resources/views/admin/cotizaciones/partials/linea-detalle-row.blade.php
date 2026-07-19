@@ -108,9 +108,18 @@
             name="lineas[{{ $idx }}][observacion]"
             class="form-control form-control-sm linea-observacion-input"
             rows="2"
-            title="Observaci&oacute;n libre del ejecutivo"
-            placeholder="Observaci&oacute;n..."
+            title="Observaci&oacute;n interna (solo ejecutivo)"
+            placeholder="Obs. interna..."
         >{{ old('lineas.'.$idx.'.observacion', $row['observacion'] ?? '') }}</textarea>
+    </td>
+    <td class="linea-observacion-cliente-cell">
+        <textarea
+            name="lineas[{{ $idx }}][observacion_cliente]"
+            class="form-control form-control-sm linea-observacion-input"
+            rows="2"
+            title="Observaci&oacute;n visible para el cliente (PDF)"
+            placeholder="Obs. cliente..."
+        >{{ old('lineas.'.$idx.'.observacion_cliente', $row['observacion_cliente'] ?? '') }}</textarea>
     </td>
     <td class="linea-fecha-cell">
         <span @class(['nv-fill', 'fecha-precio-antigua' => $row['prod_valor_fecha_antigua']])>{{ $row['prod_valor_fecha'] }}</span>

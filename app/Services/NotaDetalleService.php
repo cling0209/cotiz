@@ -129,6 +129,7 @@ class NotaDetalleService
             'prod_descripcion_agile' => $descripcionAgile,
             'prod_descripcion_maestro' => $descripcionMaestro,
             'observacion' => trim((string) ($linea->observacion ?? '')),
+            'observacion_cliente' => trim((string) ($linea->observacion_cliente ?? '')),
             'peso_kg' => $producto?->peso_kg !== null ? (float) $producto->peso_kg : null,
             'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
             'prod_valor_fecha' => $fechaFmt,
@@ -197,6 +198,11 @@ class NotaDetalleService
             if (array_key_exists('observacion', $datos)) {
                 $obs = trim((string) $datos['observacion']);
                 $lineaUpdates['observacion'] = $obs !== '' ? $obs : null;
+            }
+
+            if (array_key_exists('observacion_cliente', $datos)) {
+                $obsCliente = trim((string) $datos['observacion_cliente']);
+                $lineaUpdates['observacion_cliente'] = $obsCliente !== '' ? $obsCliente : null;
             }
 
             NotaDetalle::query()
@@ -540,6 +546,7 @@ class NotaDetalleService
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
                 'prod_descripcion_maestro' => $linea->prod_descripcion_maestro,
                 'observacion' => $linea->observacion,
+                'observacion_cliente' => $linea->observacion_cliente,
             ];
 
             if ($linea->prod_item !== $codigo) {

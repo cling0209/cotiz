@@ -90,27 +90,28 @@
 /* Anchos vía colgroup (% que suman ~100%). Sin rem/max-width: el layout fixed
    reparte el sobrante e ignora max-width, creando huecos entre columnas. */
 .cotizacion-ingreso #tabla_detalle col.col-linea-drag { width: 2%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-img { width: 4%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 4.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 4.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 12%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 15%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 12%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 5.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 6%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 8%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 4%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 5.5%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 7%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-img { width: 3.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 4.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 4%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 4%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 10%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 10%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 8%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 8%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 5.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 9.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 3.5%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 7%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 6%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 4.5%; }
 
-/* Sin Softland: el 4.5% se reparte a descripciones */
+/* Sin Softland: el 4% se reparte a descripciones y obs. */
 .cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-agile {
-    width: 14.5%;
+    width: 12%;
 }
 .cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-maestro {
-    width: 17.5%;
+    width: 12%;
 }
 
 .cotizacion-ingreso #tabla_detalle .linea-img-col,
@@ -127,6 +128,9 @@
 .cotizacion-ingreso #tabla_detalle th.linea-desc-maestro-col,
 .cotizacion-ingreso #tabla_detalle td.linea-desc-maestro-cell {
     text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+    white-space: normal;
 }
 .cotizacion-ingreso #tabla_detalle .linea-prod-nombre-input {
     width: 100%;
@@ -134,7 +138,9 @@
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
-.cotizacion-ingreso #tabla_detalle td.linea-observacion-cell {
+.cotizacion-ingreso #tabla_detalle td.linea-observacion-cell,
+.cotizacion-ingreso #tabla_detalle th.linea-observacion-cliente-col,
+.cotizacion-ingreso #tabla_detalle td.linea-observacion-cliente-cell {
     text-align: left;
     vertical-align: top;
 }
@@ -181,7 +187,7 @@
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    max-width: 6.25rem;
+    max-width: 7.5rem;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .btn-envio-dex-linea {

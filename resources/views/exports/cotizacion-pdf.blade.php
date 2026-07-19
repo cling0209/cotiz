@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <title>Cotización {{ $nota->nronota }}</title>
     <style>
+        @page { margin: 8mm; }
         * { box-sizing: border-box; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #111; margin: 0; padding: 12px 14px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #111; margin: 0; padding: 0; }
         .header { width: 100%; margin-bottom: 10px; }
         .header td { vertical-align: top; }
         .empresa { font-size: 8px; line-height: 1.35; }
@@ -17,10 +18,11 @@
         .cliente td, .cliente th { border: 1px solid #333; padding: 3px 5px; }
         .cliente th { text-align: left; width: 80px; background: #f5f5f5; }
         table.detalle { border-collapse: collapse; width: 100%; font-size: 7px; }
-        table.detalle th, table.detalle td { border: 1px solid #333; padding: 3px 4px; vertical-align: middle; }
+        table.detalle th, table.detalle td { border: 1px solid #333; padding: 2px 3px; vertical-align: top; }
         table.detalle th { background: #eee; text-align: center; }
-        .img-cell { width: 70px; height: 58px; text-align: center; }
-        .img-cell img { max-width: 66px; max-height: 54px; object-fit: contain; }
+        .img-cell { width: 56px; height: 48px; text-align: center; vertical-align: middle; }
+        .img-cell img { max-width: 52px; max-height: 44px; object-fit: contain; }
+        .obs-cliente { font-size: 7px; color: #333; margin-top: 2px; }
         .num { text-align: right; white-space: nowrap; }
         .totales { width: 100%; margin-top: 6px; font-size: 8px; }
         .totales td { padding: 2px 4px; }
@@ -84,12 +86,12 @@
         <thead>
             <tr>
                 <th style="width:24px">ITEM</th>
-                <th style="width:72px">IMAGEN REF.</th>
+                <th style="width:58px">IMAGEN REF.</th>
                 <th>DESCRIPCION</th>
                 <th style="width:36px">UNIDAD</th>
                 <th style="width:36px">CANT.</th>
-                <th style="width:56px">PRECIO UNIT. NETO</th>
-                <th style="width:56px">SUB TOTAL NETO</th>
+                <th style="width:52px">PRECIO UNIT. NETO</th>
+                <th style="width:52px">SUBTOTAL NETO</th>
             </tr>
         </thead>
         <tbody>
@@ -102,7 +104,12 @@
                             <img src="{{ $row['image_url'] }}" alt="">
                         @endif
                     </td>
-                    <td>{{ $row['prod_nombre'] }}</td>
+                    <td>
+                        {{ $row['prod_nombre'] }}
+                        @if(trim((string) ($linea->observacion_cliente ?? '')) !== '')
+                            <div class="obs-cliente">{{ $linea->observacion_cliente }}</div>
+                        @endif
+                    </td>
                     <td style="text-align:center">UNIDAD</td>
                     <td class="num">{{ $linea->cantidad }}</td>
                     <td class="num">${{ number_format($linea->prod_valor, 0, '', '.') }}</td>

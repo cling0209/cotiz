@@ -14,7 +14,7 @@
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
-    $detalleColspan = ($desdeAdjudicadas ? 14 : 15) - ($mostrarSoftland ? 0 : 1);
+    $detalleColspan = ($desdeAdjudicadas ? 15 : 16) - ($mostrarSoftland ? 0 : 1);
 @endphp
 
 <div class="cotizacion-ingreso">
@@ -192,6 +192,7 @@
                     <col class="col-linea-desc-agile">
                     <col class="col-linea-desc-maestro">
                     <col class="col-linea-observacion">
+                    <col class="col-linea-observacion-cliente">
                     <col class="col-linea-fecha">
                     <col class="col-linea-costo">
                     <col class="col-linea-unitario">
@@ -213,7 +214,8 @@
                         <th class="linea-id-agile-col">ID Agile</th>
                         <th class="linea-desc-agile-col">Descripci&oacute;n Agile (MP)</th>
                         <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
-                        <th class="linea-observacion-col">Observaci&oacute;n</th>
+                        <th class="linea-observacion-col">Obs.&nbsp;interna</th>
+                        <th class="linea-observacion-cliente-col">Obs.&nbsp;cliente</th>
                         <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
                         <th class="linea-costo-col">Precio Costo</th>
                         <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
@@ -970,13 +972,15 @@
             const valor = tr.querySelector('input[name*="[prod_valor]"]');
             const cantidad = tr.querySelector('input[name*="[cantidad]"]');
             const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
-            const observacion = tr.querySelector('textarea[name*="[observacion]"]');
+            const observacion = tr.querySelector('textarea[name$="[observacion]"]');
+            const observacionCliente = tr.querySelector('textarea[name$="[observacion_cliente]"]');
             if (softland) linea.prod_item_softland = softland.value;
             if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
             if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
             if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
             if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
             if (observacion) linea.observacion = observacion.value;
+            if (observacionCliente) linea.observacion_cliente = observacionCliente.value;
             lineas.push(linea);
         });
         return lineas;

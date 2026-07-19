@@ -34,6 +34,10 @@ class CotizacionExportController extends Controller
         return Pdf::loadView('exports.cotizacion-pdf', $datos)
             ->setPaper('letter', 'portrait')
             ->setOption('isRemoteEnabled', true)
+            ->setOption('margin-top', 8)
+            ->setOption('margin-right', 8)
+            ->setOption('margin-bottom', 8)
+            ->setOption('margin-left', 8)
             ->download('cotizacion_'.$nota->nronota.'.pdf');
     }
 
