@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-9" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-10" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -217,7 +217,7 @@
                         <th class="linea-observacion-col" title="Observaci&oacute;n interna (solo ejecutivo)">Obs.<br>interna</th>
                         <th class="linea-observacion-cliente-col" title="Observaci&oacute;n cliente (sale en el PDF)">Obs.<br>cliente</th>
                         <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
-                        <th class="linea-costo-col">Precio Costo</th>
+                        <th class="linea-costo-col">Precio<br>Costo</th>
                         <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
                         <th class="linea-cantidad-col">Cantidad</th>
                         <th class="linea-total-col">Total</th>

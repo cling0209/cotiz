@@ -99,10 +99,10 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 118px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 72px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 96px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 56px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 80px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 56px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 84px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 64px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 72px; }
 
@@ -185,18 +185,54 @@
 .cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
     text-align: center;
 }
+.cotizacion-ingreso #tabla_detalle th.linea-costo-col {
+    white-space: normal;
+    line-height: 1.15;
+    font-size: 10px;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-costo-cell .nv-precio-costo-sololectura {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col {
+    white-space: normal;
+    line-height: 1.15;
+    font-size: 10px;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-cantidad-col,
+.cotizacion-ingreso #tabla_detalle th.linea-total-col {
+    font-size: 10px;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.3rem;
+    gap: 0.15rem;
     width: 100%;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .linea-prod-valor {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    max-width: 5.5rem;
+    max-width: 4.25rem;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .btn-envio-dex-linea {
