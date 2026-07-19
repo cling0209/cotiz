@@ -79,40 +79,38 @@
 }
 
 .cotizacion-ingreso #tabla_detalle {
-    width: 100%;
-    /* Con Softland + 2 obs. no cabe en viewport: scroll horizontal en el wrap */
-    min-width: 1680px;
+    /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
+    width: 1162px;
+    min-width: 1162px;
+    max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
     font-size: 11px;
     margin-bottom: 0;
 }
 
-/* Anchos vía colgroup (px + %) para que obs. no se aplasten entre sí. */
+.cotizacion-ingreso #tabla_detalle.tabla-con-softland {
+    width: 1234px;
+    min-width: 1234px;
+}
+
+/* Todos los anchos en px para que no se redistribuyan al estirar. */
 .cotizacion-ingreso #tabla_detalle col.col-linea-drag { width: 28px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-img { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 88px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 72px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 8%; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 8%; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 140px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 140px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 96px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 96px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 48px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 36px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 74px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 72px; }
-
-/* Sin Softland: un poco más a descripciones */
-.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-agile {
-    width: 9.5%;
-}
-.cotizacion-ingreso #tabla_detalle:not(.tabla-con-softland) col.col-linea-desc-maestro {
-    width: 9.5%;
-}
 
 .cotizacion-ingreso #tabla_detalle .linea-img-col,
 .cotizacion-ingreso #tabla_detalle .linea-imagen-cell {
@@ -156,14 +154,30 @@
 .cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col,
 .cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
     text-align: left;
-    white-space: nowrap;
     overflow: hidden;
+    width: 74px;
+    max-width: 74px;
+    padding-left: 1px !important;
+    padding-right: 0 !important;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col {
+    white-space: normal;
+    line-height: 1.15;
+    font-size: 10px;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
+    white-space: nowrap;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-cantidad-col,
 .cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell {
     text-align: left;
+    width: 52px;
+    max-width: 52px;
     padding-left: 0 !important;
     padding-right: 0 !important;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-cantidad-col {
+    font-size: 10px;
 }
 .cotizacion-ingreso #tabla_detalle td.linea-cantidad-cell .linea-cantidad {
     width: 100%;
@@ -206,21 +220,9 @@
     padding-left: 2px;
     padding-right: 2px;
 }
-.cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col {
-    white-space: normal;
-    line-height: 1.15;
-    font-size: 10px;
-    padding-left: 1px !important;
-    padding-right: 0 !important;
-}
-.cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
-    padding-left: 1px !important;
-    padding-right: 0 !important;
-}
-.cotizacion-ingreso #tabla_detalle th.linea-cantidad-col,
 .cotizacion-ingreso #tabla_detalle th.linea-total-col {
     font-size: 10px;
-    padding-left: 0 !important;
+    padding-left: 2px !important;
     padding-right: 2px !important;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap {
