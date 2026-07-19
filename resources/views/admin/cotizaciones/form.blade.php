@@ -245,7 +245,7 @@
                         <i class="bi bi-clipboard" aria-hidden="true"></i>
                     </button>
                 @endif
-                <a href="{{ route('admin.cotizaciones.export.pdf', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar PDF</a>
+                <a href="{{ route('admin.cotizaciones.export.pdf', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm" id="btn-descargar-pdf">Descargar PDF</a>
                 @unless($desdeAdjudicadas)
                     <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
                 @endunless
@@ -1146,6 +1146,30 @@
     }
 
     let grabandoCotizacion = false;
+    let cotizSinGrabar = false;
+
+    function marcarCotizSinGrabar() {
+        cotizSinGrabar = true;
+    }
+
+    function limpiarCotizSinGrabar() {
+        cotizSinGrabar = false;
+    }
+
+    document.getElementById('form-cotizacion')?.addEventListener('input', marcarCotizSinGrabar);
+    document.getElementById('form-cotizacion')?.addEventListener('change', marcarCotizSinGrabar);
+
+    document.getElementById('btn-descargar-pdf')?.addEventListener('click', async function (e) {
+        if (!cotizSinGrabar) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        await dlgAlert(
+            'Debe grabar la cotización antes de descargar el PDF. Pulse Grabar y luego descargue nuevamente.',
+            { title: 'Cambios sin grabar', type: 'warning' }
+        );
+    });
 
     async function grabarCotizacionAjax() {
         if (grabandoCotizacion) return;
@@ -1192,6 +1216,7 @@
                 guardadasTotal += json.guardadas ?? lotes[i].length;
             }
 
+            limpiarCotizSinGrabar();
             setLoaderMensaje('');
             ocultarLoaderCotiz();
             try {
