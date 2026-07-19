@@ -285,7 +285,8 @@ class NotaConsultaRemotaService
         }
 
         try {
-            Http::timeout(10)->get($url);
+            // Timeout corto: solo dispara el cold start; el browser mantiene el wake largo.
+            Http::timeout(3)->withOptions(['http_errors' => false])->get($url);
         } catch (\Throwable $e) {
             Log::info('Wake sitio par (/up): sin respuesta aún', [
                 'url' => $url,

@@ -38,13 +38,13 @@ return [
             'COTIZ_API_CONSULTA_NRO_COTIZACION',
             env('COTIZ_AGILE_API_NOTA_CONS', '')
         ),
-        // Consulta duplicados en sitio par (Render free: wake /up + reintentos ≥ ~1 min)
+        // Consulta duplicados en sitio par (Render free: wake /up + reintentos ~2–3 min)
         'consulta_par_timeout' => (int) env('COTIZ_CONSULTA_PAR_TIMEOUT', 15),
-        'consulta_par_max_intentos' => max(1, (int) env('COTIZ_CONSULTA_PAR_MAX_INTENTOS', 15)),
+        'consulta_par_max_intentos' => max(1, (int) env('COTIZ_CONSULTA_PAR_MAX_INTENTOS', 30)),
         'consulta_par_espera_segundos' => max(1, (int) env('COTIZ_CONSULTA_PAR_ESPERA_SEGUNDOS', 5)),
         'consulta_par_mensaje_iniciando' => env(
             'COTIZ_CONSULTA_PAR_MENSAJE_INICIANDO',
-            'Levantando servicio, espere unos momentos.',
+            'Levantando servicio del otro sitio, espere unos momentos…',
         ),
     ],
 

@@ -756,8 +756,11 @@
 
     const consultaParConfig = {
         mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
-        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 15)),
+        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 30)),
         esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 5) * 1000),
+        // Ping directo desde el browser al /up (+ login oculto) del par (Render free cold start).
+        wakeUrl: @json(\App\Support\CotizInstanciaPar::urlDespertarSitioPar()),
+        wakeLoginUrl: @json(\App\Support\CotizInstanciaPar::urlLoginSitioPar()),
     };
     const lineasPorLote = 10;
     const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
@@ -971,6 +974,67 @@
         return 'Error al consultar el otro sitio. Reintente nuevamente.';
     }
 
+    /**
+     * Despierta el sitio par desde el navegador (más efectivo que el ping corto del servidor).
+     * No requiere login: /up + carga oculta de /admin/login mantienen el cold start de Render.
+     */
+    function despertarSitioParDesdeBrowser() {
+        const wakeUrl = String(consultaParConfig.wakeUrl || '').trim();
+        const loginUrl = String(consultaParConfig.wakeLoginUrl || '').trim();
+        if (!wakeUrl && !loginUrl) {
+            return;
+        }
+        const stamp = String(Date.now());
+
+        const ping = (url) => {
+            if (!url) {
+                return;
+            }
+            const withTs = url + (url.includes('?') ? '&' : '?') + '_wake=' + stamp;
+            try {
+                const img = new Image();
+                img.referrerPolicy = 'no-referrer';
+                img.src = withTs;
+            } catch (e) {
+                // ignore
+            }
+            try {
+                fetch(withTs, {
+                    mode: 'no-cors',
+                    cache: 'no-store',
+                    credentials: 'omit',
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (e) {
+                // ignore
+            }
+        };
+
+        ping(wakeUrl);
+
+        // Iframe oculto: deja la conexión abierta mientras Render levanta (login o /up).
+        const iframeUrl = loginUrl || wakeUrl;
+        if (iframeUrl) {
+            let iframe = document.getElementById('cotiz-wake-par-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'cotiz-wake-par-iframe';
+                iframe.setAttribute('aria-hidden', 'true');
+                iframe.tabIndex = -1;
+                iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;left:-9999px;';
+                document.body.appendChild(iframe);
+            }
+            iframe.src = iframeUrl + (iframeUrl.includes('?') ? '&' : '?') + '_wake=' + stamp;
+        }
+    }
+
+    function detenerWakeSitioParBrowser() {
+        const iframe = document.getElementById('cotiz-wake-par-iframe');
+        if (iframe) {
+            iframe.removeAttribute('src');
+        }
+    }
+
     async function validarEncargadoParConEspera(codigo, opciones = {}) {
         const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
         const max = consultaParConfig.maxIntentos;
@@ -978,6 +1042,8 @@
 
         // Barra visible desde el primer intento (Importar Compra Ágil / Guardar número)
         opciones.onProgress?.(1, max, mensajeIniciando);
+        // Ping inmediato al par (antes del primer round-trip al servidor).
+        despertarSitioParDesdeBrowser();
 
         for (let intento = 1; intento <= max; intento++) {
             if (intento > 1) {
@@ -986,23 +1052,31 @@
 
             const { res, json } = await fetchValidarEncargadoPar(codigo, token);
             if (res.ok && json.ok) {
+                detenerWakeSitioParBrowser();
                 opciones.onSuccess?.(json);
 
                 return json;
             }
 
             if (esRespuestaColdStartConsultaPar(res, json)) {
+                // Cada 2 intentos renovar ping/iframe (Render free puede tardar 1–3 min).
+                if (intento === 1 || intento % 2 === 0) {
+                    despertarSitioParDesdeBrowser();
+                }
                 opciones.onProgress?.(intento, max, mensajeIniciando);
                 if (intento >= max) {
+                    detenerWakeSitioParBrowser();
                     throw new Error(mensajeErrorSinConexionConsultaPar());
                 }
                 await sleepMs(consultaParConfig.esperaMs);
                 continue;
             }
 
+            detenerWakeSitioParBrowser();
             throw new Error(extraerMensajeError(json, 'No se puede usar este número de cotización.'));
         }
 
+        detenerWakeSitioParBrowser();
         throw new Error(mensajeErrorSinConexionConsultaPar());
     }
 

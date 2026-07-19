@@ -34,6 +34,8 @@ class CotizInstanciaParTest extends TestCase
             'https://cotiza.reicol.cl/api/v1/nota-consulta',
             CotizInstanciaPar::urlConsultaEncargado(),
         );
+        $this->assertSame('https://cotiza.reicol.cl/up', CotizInstanciaPar::urlDespertarSitioPar());
+        $this->assertSame('https://cotiza.reicol.cl/admin/login', CotizInstanciaPar::urlLoginSitioPar());
     }
 
     public function test_url_explicita_tiene_prioridad(): void

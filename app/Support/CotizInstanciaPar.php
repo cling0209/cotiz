@@ -94,6 +94,14 @@ class CotizInstanciaPar
         return $base ? rtrim($base, '/').'/up' : '';
     }
 
+    /** Login del par (carga oculta desde el browser para cold start Render free). */
+    public static function urlLoginSitioPar(): string
+    {
+        $base = self::basePar();
+
+        return $base ? rtrim($base, '/').'/admin/login' : '';
+    }
+
     /**
      * @return array{
      *     url_env: string|null,
