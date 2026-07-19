@@ -107,21 +107,46 @@
 .cotizacion-ingreso #tabla_detalle td:nth-child(7) { width: 8%; min-width: 5.75rem; text-align: center; }
 .cotizacion-ingreso #tabla_detalle th.linea-desc-maestro-col,
 .cotizacion-ingreso #tabla_detalle td.linea-desc-maestro-cell {
-    width: 20%;
-    min-width: 16rem;
+    width: 16%;
+    min-width: 12rem;
     text-align: left;
 }
 .cotizacion-ingreso #tabla_detalle .linea-prod-nombre-input {
     width: 100%;
-    min-width: 14rem;
+    min-width: 10rem;
     box-sizing: border-box;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
 .cotizacion-ingreso #tabla_detalle td.linea-observacion-cell {
-    width: 14%;
-    min-width: 10rem;
+    width: 12%;
+    min-width: 8rem;
     text-align: left;
     vertical-align: top;
+}
+.cotizacion-ingreso #tabla_detalle th.linea-precio-unitario-col,
+.cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
+    width: 8.5rem;
+    min-width: 8.5rem;
+    max-width: 9.5rem;
+    text-align: center;
+    white-space: nowrap;
+}
+.cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+.cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .linea-prod-valor {
+    flex: 1 1 auto;
+    width: 5.25rem;
+    min-width: 5.25rem;
+    max-width: 6.5rem;
+    box-sizing: border-box;
+}
+.cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .btn-envio-dex-linea {
+    flex: 0 0 auto;
+    line-height: 1;
 }
 .cotizacion-ingreso #tabla_detalle .linea-observacion-input {
     width: 100%;

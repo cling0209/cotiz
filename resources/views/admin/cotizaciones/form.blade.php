@@ -195,7 +195,7 @@
                         <th class="linea-observacion-col">Observaci&oacute;n</th>
                         <th>Fecha<br>act.&nbsp;precio</th>
                         <th>Precio Costo</th>
-                        <th>Precio Unitario</th>
+                        <th class="linea-precio-unitario-col">Precio Unitario</th>
                         <th>Cantidad</th>
                         <th>Total</th>
                         <th>Orden</th>

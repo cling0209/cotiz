@@ -117,8 +117,8 @@
     <td>
         <input type="number" name="lineas[{{ $idx }}][prod_valor_costo]" class="nv-precio-costo-sololectura" value="{{ old('lineas.'.$idx.'.prod_valor_costo', $linea->prod_valor_costo) }}" readonly tabindex="-1" title="Precio costo (solo lectura)">
     </td>
-    <td>
-        <div class="d-flex align-items-center gap-1">
+    <td class="linea-precio-unitario-cell">
+        <div class="linea-precio-unitario-wrap">
             <input type="number" name="lineas[{{ $idx }}][prod_valor]" class="linea-prod-valor" min="0" value="{{ old('lineas.'.$idx.'.prod_valor', $linea->prod_valor) }}" title="Precio unitario">
             <button
                 type="button"
