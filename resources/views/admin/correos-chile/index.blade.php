@@ -86,26 +86,23 @@
     </div>
 
     <div class="card shadow-sm">
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 align-middle">
+        <div class="table-responsive" style="overflow-x: auto;">
+            <table class="table table-sm table-hover mb-0 align-middle" style="min-width: max-content;">
                 <thead class="table-light">
                     <tr>
-                        <th>Origen</th>
-                        <th>Destino</th>
-                        <th>Recargo</th>
-                        @foreach(array_slice($tramos, 0, 6) as $tramo)
-                            <th class="text-end">{{ $tramo }} kg</th>
+                        <th class="text-nowrap">Origen</th>
+                        <th class="text-nowrap">Destino</th>
+                        <th class="text-nowrap">Recargo</th>
+                        @foreach($tramos as $tramo)
+                            <th class="text-end text-nowrap">{{ $tramo }} kg</th>
                         @endforeach
-                        @if(count($tramos) > 6)
-                            <th class="text-muted small">+{{ count($tramos) - 6 }} tramos</th>
-                        @endif
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($tarifas as $t)
                         <tr>
-                            <td>{{ $t->origen }}</td>
-                            <td>{{ $t->destino }}</td>
+                            <td class="text-nowrap">{{ $t->origen }}</td>
+                            <td class="text-nowrap">{{ $t->destino }}</td>
                             <td>
                                 @if($t->tieneRecargo())
                                     <span class="badge text-bg-warning">{{ $t->recargo_pct }}%</span>
@@ -113,19 +110,16 @@
                                     <span class="badge text-bg-secondary">NO</span>
                                 @endif
                             </td>
-                            @foreach(array_slice($tramos, 0, 6) as $tramo)
-                                <td class="text-end font-monospace small">
+                            @foreach($tramos as $tramo)
+                                <td class="text-end font-monospace small text-nowrap">
                                     @php $p = $t->tarifas[$tramo] ?? null; @endphp
                                     {{ $p !== null ? '$'.number_format((int) $p, 0, ',', '.') : '—' }}
                                 </td>
                             @endforeach
-                            @if(count($tramos) > 6)
-                                <td></td>
-                            @endif
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ 3 + min(count($tramos), 6) + (count($tramos) > 6 ? 1 : 0) }}" class="text-muted text-center py-4">
+                            <td colspan="{{ 3 + max(count($tramos), 1) }}" class="text-muted text-center py-4">
                                 No hay tarifas para mostrar.
                             </td>
                         </tr>
