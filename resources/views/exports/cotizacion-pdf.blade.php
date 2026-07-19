@@ -22,7 +22,7 @@
         table.detalle th { background: #eee; text-align: center; }
         .img-cell { width: 56px; height: 48px; text-align: center; vertical-align: middle; }
         .img-cell img { max-width: 52px; max-height: 44px; object-fit: contain; }
-        .obs-cliente { font-size: 7px; color: #333; margin-top: 2px; }
+        .obs-cell { width: 18%; font-size: 7px; text-align: left; word-wrap: break-word; }
         .num { text-align: right; white-space: nowrap; }
         .totales { width: 100%; margin-top: 6px; font-size: 8px; }
         .totales td { padding: 2px 4px; }
@@ -85,13 +85,14 @@
     <table class="detalle">
         <thead>
             <tr>
-                <th style="width:24px">ITEM</th>
-                <th style="width:58px">IMAGEN REF.</th>
+                <th style="width:22px">ITEM</th>
+                <th style="width:52px">IMAGEN REF.</th>
                 <th>DESCRIPCION</th>
-                <th style="width:36px">UNIDAD</th>
-                <th style="width:36px">CANT.</th>
-                <th style="width:52px">PRECIO UNIT. NETO</th>
-                <th style="width:52px">SUBTOTAL NETO</th>
+                <th class="obs-cell">OBSERVACION</th>
+                <th style="width:34px">UNIDAD</th>
+                <th style="width:32px">CANT.</th>
+                <th style="width:48px">PRECIO UNIT. NETO</th>
+                <th style="width:48px">SUBTOTAL NETO</th>
             </tr>
         </thead>
         <tbody>
@@ -104,12 +105,8 @@
                             <img src="{{ $row['image_url'] }}" alt="">
                         @endif
                     </td>
-                    <td>
-                        {{ $row['prod_nombre'] }}
-                        @if(trim((string) ($linea->observacion_cliente ?? '')) !== '')
-                            <div class="obs-cliente">{{ $linea->observacion_cliente }}</div>
-                        @endif
-                    </td>
+                    <td>{{ $row['prod_nombre'] }}</td>
+                    <td class="obs-cell">{{ trim((string) ($linea->observacion_cliente ?? '')) }}</td>
                     <td style="text-align:center">UNIDAD</td>
                     <td class="num">{{ $linea->cantidad }}</td>
                     <td class="num">${{ number_format($linea->prod_valor, 0, '', '.') }}</td>
