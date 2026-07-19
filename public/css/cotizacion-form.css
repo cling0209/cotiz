@@ -80,8 +80,8 @@
 
 .cotizacion-ingreso #tabla_detalle {
     /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
-    width: 1266px;
-    min-width: 1266px;
+    width: 1386px;
+    min-width: 1386px;
     max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
@@ -90,22 +90,22 @@
 }
 
 .cotizacion-ingreso #tabla_detalle.tabla-con-softland {
-    width: 1356px;
-    min-width: 1356px;
+    width: 1496px;
+    min-width: 1496px;
 }
 
 /* Todos los anchos en px para que no se redistribuyan al estirar. */
 .cotizacion-ingreso #tabla_detalle col.col-linea-drag { width: 28px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-img { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-codigo { width: 88px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 90px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-softland { width: 110px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-id-agile { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-desc-agile { width: 140px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-desc-maestro { width: 140px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 140px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 140px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 180px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 64px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 72px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 74px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
@@ -142,7 +142,7 @@
     text-align: left;
     vertical-align: top;
     overflow: hidden;
-    min-width: 130px;
+    min-width: 160px;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-col,
 .cotizacion-ingreso #tabla_detalle th.linea-observacion-cliente-col {
