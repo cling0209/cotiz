@@ -555,7 +555,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-3">
-                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Si el producto tiene peso grabado, se propone peso unitario &times; cantidad y se calcula solo. Puede editar el valor antes de sumarlo al precio unitario.</p>
+                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Si el producto tiene peso, se usa peso &times; cantidad. Si no, ingrese el peso unitario y se multiplicar&aacute; por la cantidad de la l&iacute;nea.</p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label for="envio-dex-origen" class="form-label small mb-1">Origen</label>
@@ -567,7 +567,7 @@
                             <datalist id="envio-dex-destinos-list"></datalist>
                         </div>
                         <div class="col-md-6">
-                            <label for="envio-dex-peso" class="form-label small mb-1">Peso (kg)</label>
+                            <label for="envio-dex-peso" id="envio-dex-peso-label" class="form-label small mb-1">Peso (kg)</label>
                             <input type="number" id="envio-dex-peso" class="form-control form-control-sm" min="0.001" step="0.1" placeholder="Ej. 3.5">
                         </div>
                         <div class="col-md-6">
@@ -576,8 +576,14 @@
                         </div>
                     </div>
                     <p id="envio-dex-peso-detalle" class="small mb-2"></p>
-                    <p id="envio-dex-info" class="small text-muted mb-0"></p>
-                    <p id="envio-dex-error" class="small text-danger mb-0 d-none"></p>
+                    <p id="envio-dex-info" class="small text-muted mb-2"></p>
+                    <p id="envio-dex-error" class="small text-danger mb-2 d-none"></p>
+                    <div id="envio-dex-resumen" class="border rounded px-2 py-2 small bg-light mb-0">
+                        <div>Valor unitario actual: <strong id="envio-dex-unitario-actual">—</strong></div>
+                        <div>+ Env&iacute;o DEX: <strong id="envio-dex-unitario-envio">—</strong></div>
+                        <div>= Nuevo unitario: <strong id="envio-dex-unitario-nuevo">—</strong></div>
+                        <div class="text-muted mt-1">Al pulsar &laquo;Sumar al unitario&raquo; se agregar&aacute; el env&iacute;o al precio unitario de la l&iacute;nea.</div>
+                    </div>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-envio-dex-calcular" data-no-loader>Calcular</button>
@@ -3933,12 +3939,18 @@
     const envioDexDestino = document.getElementById('envio-dex-destino');
     const envioDexDestinosList = document.getElementById('envio-dex-destinos-list');
     const envioDexPeso = document.getElementById('envio-dex-peso');
+    const envioDexPesoLabel = document.getElementById('envio-dex-peso-label');
     const envioDexValor = document.getElementById('envio-dex-valor');
     const envioDexPesoDetalle = document.getElementById('envio-dex-peso-detalle');
     const envioDexInfo = document.getElementById('envio-dex-info');
     const envioDexError = document.getElementById('envio-dex-error');
+    const envioDexUnitarioActual = document.getElementById('envio-dex-unitario-actual');
+    const envioDexUnitarioEnvio = document.getElementById('envio-dex-unitario-envio');
+    const envioDexUnitarioNuevo = document.getElementById('envio-dex-unitario-nuevo');
     let envioDexCatalogo = null;
     let envioDexTargetInput = null;
+    let envioDexCantidad = 1;
+    let envioDexTienePesoProducto = false;
 
     function fmtPesoKg(n) {
         const v = Math.round(Number(n) * 1000) / 1000;
@@ -3946,10 +3958,63 @@
         return String(v).replace('.', ',');
     }
 
+    function fmtClp(n) {
+        const v = parseInt(String(n), 10);
+        if (!Number.isFinite(v)) return '—';
+        return '$' + v.toLocaleString('es-CL');
+    }
+
     function setEnvioDexPesoDetalle(html, esMuted) {
         if (!envioDexPesoDetalle) return;
         envioDexPesoDetalle.innerHTML = html || '';
         envioDexPesoDetalle.className = 'small mb-2 ' + (esMuted ? 'text-muted' : 'text-body');
+    }
+
+    function actualizarResumenEnvioDex() {
+        const actual = parseInt(String(envioDexTargetInput?.value || '0'), 10) || 0;
+        const envioRaw = String(envioDexValor?.value || '').trim();
+        const envio = envioRaw === '' ? null : parseInt(envioRaw.replace(/\D/g, ''), 10);
+        if (envioDexUnitarioActual) envioDexUnitarioActual.textContent = fmtClp(actual);
+        if (envioDexUnitarioEnvio) {
+            envioDexUnitarioEnvio.textContent = (envio !== null && Number.isFinite(envio)) ? fmtClp(envio) : '—';
+        }
+        if (envioDexUnitarioNuevo) {
+            envioDexUnitarioNuevo.textContent = (envio !== null && Number.isFinite(envio))
+                ? fmtClp(actual + envio)
+                : '—';
+        }
+    }
+
+    function pesoTotalParaCotizar() {
+        const pesoRaw = String(envioDexPeso?.value ?? '').trim();
+        const peso = parseFloat(pesoRaw.replace(',', '.'));
+        if (pesoRaw === '' || !Number.isFinite(peso) || peso <= 0) {
+            return { ok: false, peso: null, pesoTotal: null };
+        }
+        if (envioDexTienePesoProducto) {
+            return { ok: true, peso: peso, pesoTotal: peso };
+        }
+        const total = Math.round(peso * envioDexCantidad * 1000) / 1000;
+        return { ok: true, peso: peso, pesoTotal: total };
+    }
+
+    function refrescarDetallePesoManual() {
+        if (envioDexTienePesoProducto) return;
+        const r = pesoTotalParaCotizar();
+        if (!r.ok) {
+            setEnvioDexPesoDetalle(
+                'Sin peso en el producto — ingrese el <strong>peso unitario (kg)</strong>; se multiplicar&aacute; por cantidad <strong>'
+                + envioDexCantidad + '</strong> al calcular.',
+                true
+            );
+            return;
+        }
+        setEnvioDexPesoDetalle(
+            'Peso unitario: <strong>' + fmtPesoKg(r.peso) + ' kg</strong>'
+            + ' &times; cantidad <strong>' + envioDexCantidad + '</strong>'
+            + ' = <strong>' + fmtPesoKg(r.pesoTotal) + ' kg</strong> para cotizar',
+            false
+        );
     }
 
     function setEnvioDexError(msg) {
@@ -4024,27 +4089,29 @@
 
         const tr = ventaInput?.closest('tr[data-linea]');
         const pesoUnitario = parseFloat(String(tr?.dataset?.pesoKg || '').replace(',', '.'));
-        const cantidad = parseInt(String(tr?.querySelector('.linea-cantidad')?.value || '1').replace(/\D/g, ''), 10) || 1;
-        const tienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
-        if (tienePesoProducto && envioDexPeso) {
-            const propuesto = Math.round(pesoUnitario * cantidad * 1000) / 1000;
+        envioDexCantidad = parseInt(String(tr?.querySelector('.linea-cantidad')?.value || '1').replace(/\D/g, ''), 10) || 1;
+        envioDexTienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
+        if (envioDexTienePesoProducto && envioDexPeso) {
+            if (envioDexPesoLabel) envioDexPesoLabel.textContent = 'Peso total (kg)';
+            envioDexPeso.placeholder = 'Ej. 11.5';
+            const propuesto = Math.round(pesoUnitario * envioDexCantidad * 1000) / 1000;
             envioDexPeso.value = String(propuesto);
             setEnvioDexPesoDetalle(
                 'Peso producto: <strong>' + fmtPesoKg(pesoUnitario) + ' kg</strong>'
-                + ' &times; cantidad <strong>' + cantidad + '</strong>'
+                + ' &times; cantidad <strong>' + envioDexCantidad + '</strong>'
                 + ' = <strong>' + fmtPesoKg(propuesto) + ' kg</strong>'
                 + ' <span class="text-muted">(editable arriba)</span>',
                 false
             );
         } else {
-            setEnvioDexPesoDetalle(
-                'Sin peso en el producto — ingrese el peso total (kg) para la cantidad <strong>' + cantidad + '</strong>.',
-                true
-            );
+            if (envioDexPesoLabel) envioDexPesoLabel.textContent = 'Peso unitario (kg)';
+            if (envioDexPeso) envioDexPeso.placeholder = 'Ej. 1.15';
+            refrescarDetallePesoManual();
         }
 
+        actualizarResumenEnvioDex();
         bsModalEnvioDex?.show();
-        if (tienePesoProducto) {
+        if (envioDexTienePesoProducto) {
             await calcularEnvioDex();
         } else {
             setTimeout(() => envioDexPeso?.focus(), 250);
@@ -4053,20 +4120,29 @@
 
     async function calcularEnvioDex() {
         setEnvioDexError('');
-        const pesoRaw = String(envioDexPeso?.value ?? '').trim();
-        const peso = parseFloat(pesoRaw.replace(',', '.'));
-        if (pesoRaw === '' || !Number.isFinite(peso) || peso <= 0) {
+        if (!envioDexTienePesoProducto) {
+            refrescarDetallePesoManual();
+        }
+        const r = pesoTotalParaCotizar();
+        if (!r.ok) {
             if (envioDexInfo) envioDexInfo.textContent = '';
-            setEnvioDexError('Debe poner peso.');
+            setEnvioDexError(envioDexTienePesoProducto
+                ? 'Debe poner peso.'
+                : 'Ingrese el peso unitario (kg); se multiplicará por la cantidad ' + envioDexCantidad + '.');
             envioDexPeso?.focus();
+            actualizarResumenEnvioDex();
             return;
         }
-        if (envioDexInfo) envioDexInfo.textContent = 'Calculando…';
+        if (envioDexInfo) {
+            envioDexInfo.textContent = envioDexTienePesoProducto
+                ? 'Calculando…'
+                : ('Cotizando con ' + fmtPesoKg(r.pesoTotal) + ' kg (' + fmtPesoKg(r.peso) + ' × ' + envioDexCantidad + ')…');
+        }
         const body = new FormData();
         body.append('_token', csrf);
         body.append('origen', envioDexOrigen?.value || 'SANTIAGO');
         body.append('destino', envioDexDestino?.value || '');
-        body.append('peso_kg', String(peso));
+        body.append('peso_kg', String(r.pesoTotal));
         try {
             const res = await fetch(envioDexUrls.cotizar, {
                 method: 'POST',
@@ -4078,21 +4154,25 @@
                 if (envioDexInfo) envioDexInfo.textContent = '';
                 const pesoErr = json.errors?.peso_kg?.[0];
                 setEnvioDexError(pesoErr || json.error || json.message || 'No se pudo calcular el tramo.');
+                actualizarResumenEnvioDex();
                 return;
             }
             if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
             const partes = [
+                'Peso cotizado ' + fmtPesoKg(r.pesoTotal) + ' kg',
                 'Tramo hasta ' + (json.tramo_kg || '?') + ' kg',
                 'Base $' + Number(json.precio_base || 0).toLocaleString('es-CL'),
             ];
             if (json.recargo_pct) {
                 partes.push('Recargo ' + json.recargo_pct + '%');
             }
-            partes.push('Total $' + Number(json.precio || 0).toLocaleString('es-CL'));
+            partes.push('Envío $' + Number(json.precio || 0).toLocaleString('es-CL'));
             if (envioDexInfo) envioDexInfo.textContent = partes.join(' · ');
+            actualizarResumenEnvioDex();
         } catch (err) {
             if (envioDexInfo) envioDexInfo.textContent = '';
             setEnvioDexError('Error de conexión al calcular.');
+            actualizarResumenEnvioDex();
         }
     }
 
@@ -4128,6 +4208,12 @@
 
     envioDexOrigen?.addEventListener('change', () => {
         filtrarDestinosPorOrigen(envioDexOrigen.value);
+    });
+    envioDexPeso?.addEventListener('input', () => {
+        refrescarDetallePesoManual();
+    });
+    envioDexValor?.addEventListener('input', () => {
+        actualizarResumenEnvioDex();
     });
     document.getElementById('btn-envio-dex-calcular')?.addEventListener('click', () => {
         calcularEnvioDex();
