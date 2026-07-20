@@ -625,4 +625,87 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_siguiente_corrida_reintenta_regiones_fallidas_antes_del_incremental(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13, 10],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-17',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-17 13:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'oficina',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'sistema',
+            'fecha_busqueda' => '2026-07-17',
+            'inicio' => Carbon::parse('2026-07-17 09:00:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-07-17 10:00:00', 'America/Santiago'),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 2,
+            'pasos_procesados' => 2,
+            'pasos_fallidos' => 1,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [
+                [
+                    'frase' => '(todas)',
+                    'region' => 13,
+                    'region_nombre' => 'Metropolitana',
+                    'estado' => 'ok',
+                    'intentos' => 1,
+                    'encontradas' => 1,
+                ],
+                [
+                    'frase' => '(todas)',
+                    'region' => 10,
+                    'region_nombre' => 'Los Lagos',
+                    'estado' => 'retry_failed',
+                    'intentos' => 2,
+                    'encontradas' => 0,
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada con 1 paso(s) fallido(s).',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '517-148-COT26',
+            'nombre' => 'Oficina',
+            'organismo' => 'SAG',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 100000,
+            'fecha_publicacion' => Carbon::parse('2026-07-17 09:30:00', 'America/Santiago'),
+            'fecha_cierre' => Carbon::parse('2026-07-20 11:00:00', 'America/Santiago'),
+            'palabras_coinciden' => ['oficina'],
+            'fecha_busqueda' => '2026-07-17',
+            'indice_region_config' => 0,
+        ]);
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('sistema');
+
+        $this->assertCount(2, $corrida->plan_json);
+        $this->assertSame(10, (int) ($corrida->plan_json[0]['region'] ?? 0));
+        $this->assertTrue((bool) ($corrida->plan_json[0]['reintento_fallo_previo'] ?? false));
+        $this->assertFalse((bool) ($corrida->plan_json[0]['incremental'] ?? false));
+        $this->assertArrayNotHasKey('cambio_desde', $corrida->plan_json[0]);
+
+        $this->assertSame(13, (int) ($corrida->plan_json[1]['region'] ?? 0));
+        $this->assertTrue((bool) ($corrida->plan_json[1]['incremental'] ?? false));
+        $this->assertNotEmpty($corrida->plan_json[1]['cambio_desde'] ?? null);
+        $this->assertStringContainsString('Reintento completo', (string) $corrida->mensaje);
+
+        Carbon::setTestNow();
+    }
 }

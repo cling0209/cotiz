@@ -104,13 +104,23 @@ class OportunidadBusquedaService
 
         $pasos = $this->enriquecerPlan($pasos);
         $cambioDesdeIso = $this->resolverCambioDesdeIncremental($dia);
+        $regionesReintento = $this->regionesFallidasDefinitivasUltimaCorrida($dia);
         if ($cambioDesdeIso !== null) {
-            $pasos = array_map(static function (array $paso) use ($cambioDesdeIso): array {
+            $pasos = array_map(static function (array $paso) use ($cambioDesdeIso, $regionesReintento): array {
+                $region = (int) ($paso['region'] ?? 0);
+                // Fallo definitivo previo: ventana completa del día (no desde última pub.).
+                if ($region > 0 && in_array($region, $regionesReintento, true)) {
+                    $paso['reintento_fallo_previo'] = true;
+
+                    return $paso;
+                }
+
                 $paso['cambio_desde'] = $cambioDesdeIso;
                 $paso['incremental'] = true;
 
                 return $paso;
             }, $pasos);
+            $pasos = $this->priorizarPasosReintentoFallidos($pasos);
         }
 
         $corrida = OportunidadBusquedaCorrida::query()->create([
@@ -124,10 +134,7 @@ class OportunidadBusquedaService
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($dia)),
             'plan_json' => $pasos,
             'errores_json' => [],
-            'mensaje' => $cambioDesdeIso !== null
-                ? 'Búsqueda incremental encolada para '.$this->formatearFechaMensaje($dia)
-                    .' desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.'
-                : 'Búsqueda encolada para '.$this->formatearFechaMensaje($dia).'.',
+            'mensaje' => $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento),
         ]);
 
         ProcessOportunidadBusquedaJob::dispatch($corrida->id);
@@ -160,6 +167,84 @@ class OportunidadBusquedaService
         } catch (\Throwable) {
             return $iso;
         }
+    }
+
+    /**
+     * Regiones con Falló (definitivo) en la última corrida completada del día.
+     *
+     * @return list<int>
+     */
+    private function regionesFallidasDefinitivasUltimaCorrida(string $dia): array
+    {
+        $ultima = OportunidadBusquedaCorrida::query()
+            ->whereDate('fecha_busqueda', $dia)
+            ->where('estado', self::ESTADO_COMPLETED)
+            ->latest('id')
+            ->first();
+
+        if ($ultima === null) {
+            return [];
+        }
+
+        $regiones = [];
+        foreach (is_array($ultima->plan_json) ? $ultima->plan_json : [] as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            if (($paso['estado'] ?? '') !== self::PASO_RETRY_FAILED) {
+                continue;
+            }
+            $region = (int) ($paso['region'] ?? 0);
+            if ($region > 0 && ! in_array($region, $regiones, true)) {
+                $regiones[] = $region;
+            }
+        }
+
+        return $regiones;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @return list<array<string, mixed>>
+     */
+    private function priorizarPasosReintentoFallidos(array $pasos): array
+    {
+        $reintento = [];
+        $resto = [];
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            if (! empty($paso['reintento_fallo_previo'])) {
+                $reintento[] = $paso;
+            } else {
+                $resto[] = $paso;
+            }
+        }
+
+        return array_values(array_merge($reintento, $resto));
+    }
+
+    /**
+     * @param  list<int>  $regionesReintento
+     */
+    private function mensajeInicioCorrida(string $dia, ?string $cambioDesdeIso, array $regionesReintento): string
+    {
+        $fecha = $this->formatearFechaMensaje($dia);
+        $nReintento = count($regionesReintento);
+
+        if ($cambioDesdeIso !== null) {
+            $msg = 'Búsqueda incremental encolada para '.$fecha
+                .' desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.';
+            if ($nReintento > 0) {
+                $msg .= ' Reintento completo de '.$nReintento
+                    .' región(es) fallida(s) en la corrida previa.';
+            }
+
+            return $msg;
+        }
+
+        return 'Búsqueda encolada para '.$fecha.'.';
     }
 
     public function procesar(OportunidadBusquedaCorrida $corrida): void
