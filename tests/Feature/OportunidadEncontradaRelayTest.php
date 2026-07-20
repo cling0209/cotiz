@@ -444,4 +444,91 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertStatus(409)
             ->assertJsonPath('resultado', 'ERROR');
     }
+
+    public function test_resumen_sync_par_separa_cotizaciones_y_vinculaciones(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '4000-1-COT26',
+                'nombre' => 'Solo cotiz',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['papel'],
+                'vinculo_completo' => false,
+            ],
+        ], 'peer down', OportunidadEncontradaRelayService::ACCION_GRABA);
+
+        $relay->encolarPendiente([
+            [
+                'codigo' => '4000-2-COT26',
+                'nombre' => 'Con vinculo',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['papel'],
+                'vinculo_completo' => true,
+                'productos_vinculados' => 2,
+                'porcentaje_vinculo' => 100,
+            ],
+        ], 'peer down', OportunidadEncontradaRelayService::ACCION_VINCULO);
+
+        $resumen = $relay->resumenSyncPar();
+
+        $this->assertTrue($resumen['habilitado']);
+        $this->assertSame(1, $resumen['cotizaciones']['pendientes']);
+        $this->assertSame(['4000-1-COT26'], $resumen['cotizaciones']['codigos']);
+        $this->assertSame(1, $resumen['vinculaciones']['pendientes']);
+        $this->assertSame(['4000-2-COT26'], $resumen['vinculaciones']['codigos']);
+    }
+
+    public function test_sincronizar_pendientes_por_tipo_solo_vinculaciones(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/up' => Http::response('ok', 200),
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'recibidos' => 1,
+            ], 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '5000-1-COT26',
+                'nombre' => 'Cotiz',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['x'],
+            ],
+        ], 'down', OportunidadEncontradaRelayService::ACCION_GRABA);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '5000-2-COT26',
+                'nombre' => 'Vinc',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['x'],
+                'vinculo_completo' => true,
+            ],
+        ], 'down', OportunidadEncontradaRelayService::ACCION_VINCULO);
+
+        $resultado = $relay->sincronizarPendientesPorTipo('vinculaciones', false);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertSame(1, $resultado['pendientes_ok']);
+        $this->assertSame(1, $resultado['sync_par']['cotizaciones']['pendientes']);
+        $this->assertSame(0, $resultado['sync_par']['vinculaciones']['pendientes']);
+    }
 }

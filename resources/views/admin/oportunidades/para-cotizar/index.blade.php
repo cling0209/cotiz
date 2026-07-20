@@ -230,6 +230,47 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-3" id="sync-par-paneles">
+        <div class="col-md-6">
+            <div id="sync-cotizaciones-estado" class="card shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
+                        <div class="fw-semibold text-nowrap">
+                            <i class="bi bi-cloud-upload"></i> Sync cotizaciones al par
+                        </div>
+                        <span id="sync-cot-badge" class="badge text-bg-secondary">0 pendientes</span>
+                        <span id="sync-cot-peer" class="text-muted ms-auto"></span>
+                    </div>
+                    <div id="sync-cot-detalle" class="small text-muted mb-2">Sin pendientes de sincronizaci&oacute;n.</div>
+                    <div id="sync-cot-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
+                    <button type="button" id="btn-sync-cotizaciones" class="btn btn-outline-primary btn-sm" data-no-loader
+                        title="Reintenta enviar cotizaciones pendientes al sitio par">
+                        <i class="bi bi-arrow-repeat"></i> Sincronizar cotizaciones
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div id="sync-vinculaciones-estado" class="card shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
+                        <div class="fw-semibold text-nowrap">
+                            <i class="bi bi-cloud-check"></i> Sync vinculaciones al par
+                        </div>
+                        <span id="sync-vin-badge" class="badge text-bg-secondary">0 pendientes</span>
+                        <span id="sync-vin-peer" class="text-muted ms-auto"></span>
+                    </div>
+                    <div id="sync-vin-detalle" class="small text-muted mb-2">Sin pendientes de sincronizaci&oacute;n.</div>
+                    <div id="sync-vin-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
+                    <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
+                        title="Reintenta enviar resultados de vinculaci&oacute;n pendientes al sitio par">
+                        <i class="bi bi-arrow-repeat"></i> Sincronizar vinculaciones
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="oportunidad-placeholder" class="card shadow-sm @if(! $puedeBuscar || $palabras === [] || count($guardadas) > 0) d-none @endif">
         <div class="card-body text-center text-muted py-5">
             Pulse <strong>Buscar cotizaciones</strong> para consultar Mercado P&uacute;blico
@@ -397,10 +438,12 @@
             reanudar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.reanudar') : ''),
             iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
             cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
+            syncPar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.sync-par') : ''),
             detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
+        const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
             `cotiz.oportunidades.filtros.${filtrosUserId}` :
@@ -1961,6 +2004,128 @@
             });
         }
 
+        let syncParEnCurso = false;
+
+        function formatearFechaSync(iso) {
+            if (!iso) return null;
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.toLocaleString('es-CL', { hour12: false });
+        }
+
+        function pintarPanelSync(prefijo, bloque, peer) {
+            const badge = document.getElementById(`sync-${prefijo}-badge`);
+            const detalle = document.getElementById(`sync-${prefijo}-detalle`);
+            const errorEl = document.getElementById(`sync-${prefijo}-error`);
+            const peerEl = document.getElementById(`sync-${prefijo}-peer`);
+            if (!bloque) return;
+
+            const pendientes = Number(bloque.pendientes) || 0;
+            const codigos = Array.isArray(bloque.codigos) ? bloque.codigos : [];
+            const ultimoOk = formatearFechaSync(bloque.ultimo_ok_at);
+            const ultimoCount = bloque.ultimo_ok_count != null ? Number(bloque.ultimo_ok_count) : null;
+            const ultimoError = String(bloque.ultimo_error || '').trim();
+
+            if (badge) {
+                badge.textContent = `${pendientes} pendiente${pendientes === 1 ? '' : 's'}`;
+                badge.className = 'badge ' + (pendientes > 0 ? 'text-bg-warning' : 'text-bg-success');
+            }
+            if (peerEl) {
+                peerEl.textContent = peer ? `→ ${peer}` : '';
+            }
+
+            const partes = [];
+            if (pendientes > 0) {
+                partes.push(`${pendientes} lote(s) en cola`);
+                if (codigos.length > 0) {
+                    const muestra = codigos.slice(0, 5).join(', ');
+                    partes.push(codigos.length > 5 ? `${muestra}…` : muestra);
+                }
+            } else {
+                partes.push('Cola vacía');
+            }
+            if (ultimoOk) {
+                partes.push(`Último OK: ${ultimoOk}` + (ultimoCount != null ? ` (${ultimoCount})` : ''));
+            }
+            if (detalle) {
+                detalle.textContent = partes.join(' · ');
+                detalle.classList.toggle('text-muted', pendientes === 0 && !ultimoError);
+            }
+            if (errorEl) {
+                if (ultimoError && pendientes > 0) {
+                    errorEl.textContent = ultimoError;
+                    errorEl.classList.remove('d-none');
+                } else {
+                    errorEl.textContent = '';
+                    errorEl.classList.add('d-none');
+                }
+            }
+        }
+
+        function aplicarSyncPar(syncPar) {
+            if (!puedeBuscar || !syncPar) return;
+            const peer = String(syncPar.peer || '').trim();
+            pintarPanelSync('cot', syncPar.cotizaciones || {}, peer);
+            pintarPanelSync('vin', syncPar.vinculaciones || {}, peer);
+
+            const paneles = document.getElementById('sync-par-paneles');
+            if (paneles) {
+                paneles.classList.toggle('opacity-50', syncPar.url_configurada === false);
+            }
+        }
+
+        async function sincronizarParManual(tipo) {
+            if (!urls.syncPar || syncParEnCurso) return;
+            syncParEnCurso = true;
+            const btnCot = document.getElementById('btn-sync-cotizaciones');
+            const btnVin = document.getElementById('btn-sync-vinculaciones');
+            if (btnCot) btnCot.disabled = true;
+            if (btnVin) btnVin.disabled = true;
+            try {
+                const res = await fetch(urls.syncPar, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ tipo }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data.sync_par) {
+                    aplicarSyncPar(data.sync_par);
+                }
+                if (data.corrida) {
+                    aplicarEstadoCorrida(data.corrida);
+                }
+                const detalleId = tipo === 'vinculaciones' ? 'sync-vin-detalle' : 'sync-cot-detalle';
+                const detalle = document.getElementById(detalleId);
+                if (detalle && (data.mensaje || data.error)) {
+                    detalle.textContent = data.mensaje || data.error;
+                }
+                if (!res.ok || data.ok === false) {
+                    const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
+                    const errorEl = document.getElementById(errorId);
+                    if (errorEl) {
+                        errorEl.textContent = data.error || data.mensaje || (`HTTP ${res.status}`);
+                        errorEl.classList.remove('d-none');
+                    }
+                }
+            } catch (e) {
+                const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
+                const errorEl = document.getElementById(errorId);
+                if (errorEl) {
+                    errorEl.textContent = e.message || String(e);
+                    errorEl.classList.remove('d-none');
+                }
+            } finally {
+                syncParEnCurso = false;
+                if (btnCot) btnCot.disabled = false;
+                if (btnVin) btnVin.disabled = false;
+            }
+        }
+
         function aplicarEstadoCorrida(corrida) {
             if (!corrida) return;
 
@@ -2002,6 +2167,9 @@
             sincronizarVisitasLocalesEnMapa();
             aplicarEstadoVinculo(corrida.vinculo || null);
             actualizarBotonProcesarVinculo(corrida.vinculo || null, corrida.vinculo_aviso || null, corrida.vinculo_pendientes);
+            if (corrida.sync_par) {
+                aplicarSyncPar(corrida.sync_par);
+            }
             const activo = corrida.estado === 'running';
             const cambiandoDia = corrida.estado === 'completed' &&
                 Boolean(corrida.fecha_siguiente_pendiente) &&
@@ -2277,6 +2445,9 @@
             try {
                 const data = await getJson(urls.estado);
                 aplicarEstadoCorrida(data.corrida);
+                if (data.sync_par) {
+                    aplicarSyncPar(data.sync_par);
+                }
             } catch (e) {
                 relDetalle.textContent = 'Conexión interrumpida; reintentando estado de la búsqueda…';
                 detenerPolling();
@@ -2350,10 +2521,13 @@
         }
 
         if (puedeBuscar) {
+            aplicarSyncPar(syncParInicial);
             btn?.addEventListener('click', buscar);
             btnCancelar?.addEventListener('click', cancelarBusqueda);
             btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);
             btnCancelarVinculo?.addEventListener('click', cancelarVinculoManual);
+            document.getElementById('btn-sync-cotizaciones')?.addEventListener('click', () => sincronizarParManual('cotizaciones'));
+            document.getElementById('btn-sync-vinculaciones')?.addEventListener('click', () => sincronizarParManual('vinculaciones'));
         }
     })();
 </script>

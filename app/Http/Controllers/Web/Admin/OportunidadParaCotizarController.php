@@ -18,6 +18,7 @@ class OportunidadParaCotizarController extends Controller
         protected OportunidadParaCotizarService $servicio,
         protected OportunidadBusquedaService $busqueda,
         protected OportunidadVinculoService $vinculos,
+        protected OportunidadEncontradaRelayService $encontradaRelay,
     ) {}
 
     public function index(Request $request): View
@@ -49,6 +50,7 @@ class OportunidadParaCotizarController extends Controller
             'vinculoPendientes' => $puedeBuscar ? $this->vinculos->contarPendientesSafe() : 0,
             'regionesFiltro' => $regionesFiltro,
             'filtrosUserId' => $userId,
+            'syncPar' => $puedeBuscar ? $this->encontradaRelay->resumenSyncPar() : null,
         ]);
     }
 
@@ -93,6 +95,36 @@ class OportunidadParaCotizarController extends Controller
     {
         return response()->json([
             'ok' => true,
+            'corrida' => $this->busqueda->estado(),
+            'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+        ]);
+    }
+
+    public function sincronizarPar(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'tipo' => ['nullable', 'string', 'in:cotizaciones,vinculaciones,all,graba,vinculo'],
+        ]);
+
+        try {
+            $resultado = $this->encontradaRelay->sincronizarPendientesPorTipo(
+                (string) ($data['tipo'] ?? 'all'),
+                true,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => $resultado['ok'],
+            'mensaje' => $resultado['mensaje'],
+            'pendientes_ok' => $resultado['pendientes_ok'],
+            'pendientes_fail' => $resultado['pendientes_fail'],
+            'sync_par' => $resultado['sync_par'],
             'corrida' => $this->busqueda->estado(),
         ]);
     }

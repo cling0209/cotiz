@@ -10,31 +10,45 @@ use App\Support\CotizInstanciaPar;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class OportunidadEncontradaRelayService
 {
+    public const ACCION_GRABA = 'graba';
+
+    public const ACCION_VINCULO = 'vinculo';
+
+    public const ACCION_TOMADA = 'tomada';
+
+    private const CACHE_ULTIMO_OK_PREFIX = 'oportunidad_sync_par.ultimo_ok.';
+
     /**
      * Replica oportunidades encontradas al sitio par (Romulo ↔ Reicol).
      * No lanza: encola si el par no responde.
      *
      * @param  list<array<string, mixed>>  $items
+     * @param  self::ACCION_GRABA|self::ACCION_VINCULO  $colaAccion  Tipo de sync en cola local (el POST al par sigue siendo graba).
      */
-    public function replicarItems(array $items): void
+    public function replicarItems(array $items, string $colaAccion = self::ACCION_GRABA): void
     {
         $items = $this->normalizarItems($items);
         if ($items === [] || $this->urlDestino() === '') {
             return;
         }
 
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+
         try {
-            $this->enviar($items, true);
+            $this->enviar($items, true, $colaAccion);
+            $this->registrarUltimoOk($colaAccion, count($items));
         } catch (\Throwable $e) {
             Log::warning('Sync oportunidad encontrada al par falló (queda pendiente)', [
                 'error' => $e->getMessage(),
                 'count' => count($items),
+                'cola_accion' => $colaAccion,
             ]);
         }
     }
@@ -69,7 +83,7 @@ class OportunidadEncontradaRelayService
         foreach ($pendientes as $pendiente) {
             $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
             try {
-                if ($pendiente->accion === 'tomada') {
+                if ($pendiente->accion === self::ACCION_TOMADA || $pendiente->accion === 'tomada') {
                     $this->enviarTomada(
                         (string) ($payload['codigo'] ?? ''),
                         (string) ($payload['usuario'] ?? ''),
@@ -77,7 +91,10 @@ class OportunidadEncontradaRelayService
                         false,
                     );
                 } else {
-                    $this->enviar($this->normalizarItems($payload), false);
+                    $items = $this->normalizarItems($payload);
+                    $colaAccion = $this->colaAccionDesdePendiente($pendiente);
+                    $this->enviar($items, false, $colaAccion);
+                    $this->registrarUltimoOk($colaAccion, count($items));
                 }
                 $pendiente->delete();
                 $pendientesOk++;
@@ -337,10 +354,128 @@ class OportunidadEncontradaRelayService
     }
 
     /**
+     * Resumen de sync al par (solo útil en sitio ANALISIS_ADMIN).
+     *
+     * @return array{
+     *   habilitado: bool,
+     *   peer: string,
+     *   url_configurada: bool,
+     *   cotizaciones: array<string, mixed>,
+     *   vinculaciones: array<string, mixed>
+     * }
+     */
+    public function resumenSyncPar(): array
+    {
+        $habilitado = (bool) config('cotiz.mercadopublico.analisis_admin_habilitado', false);
+        $destino = $this->urlDestino();
+        $peer = $destino !== '' ? $this->nombreInstanciaPar($destino) : CotizInstanciaPar::nombrePar();
+
+        return [
+            'habilitado' => $habilitado,
+            'peer' => $peer,
+            'url_configurada' => $destino !== '',
+            'cotizaciones' => $this->resumenColaSync(self::ACCION_GRABA),
+            'vinculaciones' => $this->resumenColaSync(self::ACCION_VINCULO),
+        ];
+    }
+
+    /**
+     * Reintenta solo pendientes de cotizaciones (graba) o de vinculaciones (vinculo).
+     *
+     * @param  self::ACCION_GRABA|self::ACCION_VINCULO|'all'  $tipo
+     * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, mensaje: string, sync_par: array<string, mixed>}
+     */
+    public function sincronizarPendientesPorTipo(string $tipo = 'all', bool $despertar = true): array
+    {
+        $tipo = strtolower(trim($tipo));
+        if (! in_array($tipo, ['all', self::ACCION_GRABA, 'cotizaciones', self::ACCION_VINCULO, 'vinculaciones'], true)) {
+            throw new RuntimeException('Tipo de sync inválido. Use cotizaciones, vinculaciones o all.');
+        }
+
+        if ($tipo === 'cotizaciones') {
+            $tipo = self::ACCION_GRABA;
+        } elseif ($tipo === 'vinculaciones') {
+            $tipo = self::ACCION_VINCULO;
+        }
+
+        if ($this->urlDestino() === '') {
+            return [
+                'ok' => false,
+                'pendientes_ok' => 0,
+                'pendientes_fail' => 0,
+                'mensaje' => 'Sin URL del sitio par configurada.',
+                'sync_par' => $this->resumenSyncPar(),
+            ];
+        }
+
+        if ($despertar) {
+            $this->despertarSitioPar();
+        }
+
+        $pendientesOk = 0;
+        $pendientesFail = 0;
+
+        $pendientes = OportunidadEncontradaSyncPendiente::query()
+            ->orderBy('id')
+            ->get()
+            ->filter(function (OportunidadEncontradaSyncPendiente $pendiente) use ($tipo) {
+                if ($tipo === 'all') {
+                    return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
+                        || $pendiente->accion === self::ACCION_TOMADA;
+                }
+
+                return $this->colaAccionDesdePendiente($pendiente) === $tipo;
+            });
+
+        foreach ($pendientes as $pendiente) {
+            $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            try {
+                if ($pendiente->accion === self::ACCION_TOMADA) {
+                    $this->enviarTomada(
+                        (string) ($payload['codigo'] ?? ''),
+                        (string) ($payload['usuario'] ?? ''),
+                        (string) ($payload['sistema'] ?? ''),
+                        false,
+                    );
+                } else {
+                    $items = $this->normalizarItems($payload);
+                    $colaAccion = $this->colaAccionDesdePendiente($pendiente);
+                    $this->enviar($items, false, $colaAccion);
+                    $this->registrarUltimoOk($colaAccion, count($items));
+                }
+                $pendiente->delete();
+                $pendientesOk++;
+            } catch (\Throwable $e) {
+                $pendiente->intentos = (int) $pendiente->intentos + 1;
+                $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
+                $pendiente->save();
+                $pendientesFail++;
+            }
+        }
+
+        $peer = $this->nombreInstanciaPar($this->urlDestino());
+        $ok = $pendientesFail === 0;
+        $etiqueta = $tipo === self::ACCION_VINCULO
+            ? 'vinculaciones'
+            : ($tipo === self::ACCION_GRABA ? 'cotizaciones' : 'sync');
+
+        return [
+            'ok' => $ok,
+            'pendientes_ok' => $pendientesOk,
+            'pendientes_fail' => $pendientesFail,
+            'mensaje' => $ok
+                ? 'Sincronización de '.$etiqueta.' con '.$peer.' OK (enviados: '.$pendientesOk.').'
+                : 'Sincronización de '.$etiqueta.' parcial con '.$peer.' (fallos: '.$pendientesFail.').',
+            'sync_par' => $this->resumenSyncPar(),
+        ];
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $items
      * @param  bool  $encolarSiFalla
+     * @param  self::ACCION_GRABA|self::ACCION_VINCULO  $colaAccion
      */
-    private function enviar(array $items, bool $encolarSiFalla): void
+    private function enviar(array $items, bool $encolarSiFalla, string $colaAccion = self::ACCION_GRABA): void
     {
         $destino = $this->urlDestino();
         if ($destino === '') {
@@ -359,9 +494,10 @@ class OportunidadEncontradaRelayService
         }
 
         $peer = $this->nombreInstanciaPar($destino);
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
 
         $payload = [
-            'accion' => 'graba',
+            'accion' => self::ACCION_GRABA,
             'replicacion' => true,
             'origen_sistema' => (string) config('cotiz.sistema', config('app.name')),
             'items' => $items,
@@ -375,7 +511,7 @@ class OportunidadEncontradaRelayService
         } catch (\Throwable $e) {
             $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
             if ($encolarSiFalla) {
-                $this->encolarPendiente($items, $mensaje);
+                $this->encolarPendiente($items, $mensaje, $colaAccion);
             }
             throw new RuntimeException($mensaje);
         }
@@ -383,7 +519,7 @@ class OportunidadEncontradaRelayService
         if (! $response->successful()) {
             $mensaje = $this->mensajeErrorHttp($response, $destino, $peer);
             if ($encolarSiFalla) {
-                $this->encolarPendiente($items, $mensaje);
+                $this->encolarPendiente($items, $mensaje, $colaAccion);
             }
             throw new RuntimeException($mensaje);
         }
@@ -395,7 +531,7 @@ class OportunidadEncontradaRelayService
                 ? $peer.': '.$detalle
                 : 'Respuesta inválida de '.$peer.'.';
             if ($encolarSiFalla) {
-                $this->encolarPendiente($items, $mensaje);
+                $this->encolarPendiente($items, $mensaje, $colaAccion);
             }
             throw new RuntimeException($mensaje);
         }
@@ -472,8 +608,9 @@ class OportunidadEncontradaRelayService
 
     /**
      * @param  list<array<string, mixed>>  $items
+     * @param  self::ACCION_GRABA|self::ACCION_VINCULO  $colaAccion
      */
-    public function encolarPendiente(array $items, ?string $error = null): void
+    public function encolarPendiente(array $items, ?string $error = null, string $colaAccion = self::ACCION_GRABA): void
     {
         $items = $this->normalizarItems($items);
         if ($items === []) {
@@ -481,7 +618,7 @@ class OportunidadEncontradaRelayService
         }
 
         OportunidadEncontradaSyncPendiente::query()->create([
-            'accion' => 'graba',
+            'accion' => $this->normalizarColaAccion($colaAccion),
             'payload' => $items,
             'intentos' => 0,
             'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
@@ -500,11 +637,114 @@ class OportunidadEncontradaRelayService
 
         $payload['codigo'] = $codigo;
         OportunidadEncontradaSyncPendiente::query()->create([
-            'accion' => 'tomada',
+            'accion' => self::ACCION_TOMADA,
             'payload' => $payload,
             'intentos' => 0,
             'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
         ]);
+    }
+
+    /**
+     * @return array{
+     *   pendientes: int,
+     *   codigos: list<string>,
+     *   ultimo_error: string|null,
+     *   ultimo_ok_at: string|null,
+     *   ultimo_ok_count: int|null
+     * }
+     */
+    private function resumenColaSync(string $colaAccion): array
+    {
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+        $pendientes = OportunidadEncontradaSyncPendiente::query()
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (OportunidadEncontradaSyncPendiente $p) => $this->colaAccionDesdePendiente($p) === $colaAccion)
+            ->values();
+
+        $codigos = [];
+        $ultimoError = null;
+        foreach ($pendientes as $pendiente) {
+            $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            foreach ($this->normalizarItems($payload) as $item) {
+                $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+                if ($codigo !== '' && ! in_array($codigo, $codigos, true)) {
+                    $codigos[] = $codigo;
+                }
+            }
+            $err = trim((string) ($pendiente->ultimo_error ?? ''));
+            if ($err !== '') {
+                $ultimoError = $err;
+            }
+        }
+
+        $ultimoOk = Cache::get(self::CACHE_ULTIMO_OK_PREFIX.$colaAccion);
+
+        return [
+            'pendientes' => $pendientes->count(),
+            'codigos' => array_slice($codigos, 0, 40),
+            'ultimo_error' => $ultimoError,
+            'ultimo_ok_at' => is_array($ultimoOk) ? ($ultimoOk['at'] ?? null) : null,
+            'ultimo_ok_count' => is_array($ultimoOk) && isset($ultimoOk['count'])
+                ? (int) $ultimoOk['count']
+                : null,
+        ];
+    }
+
+    private function colaAccionDesdePendiente(OportunidadEncontradaSyncPendiente $pendiente): string
+    {
+        $accion = strtolower(trim((string) ($pendiente->accion ?? '')));
+        if ($accion === self::ACCION_VINCULO) {
+            return self::ACCION_VINCULO;
+        }
+        if ($accion === self::ACCION_TOMADA || $accion === 'tomada') {
+            return self::ACCION_TOMADA;
+        }
+
+        // Compat: pendientes viejos con accion=graba pero payload ya vinculado.
+        $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+        $items = $this->normalizarItems($payload);
+        if ($items !== [] && $this->itemsSonVinculo($items)) {
+            return self::ACCION_VINCULO;
+        }
+
+        return self::ACCION_GRABA;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function itemsSonVinculo(array $items): bool
+    {
+        if ($items === []) {
+            return false;
+        }
+
+        foreach ($items as $item) {
+            if (! (bool) ($item['vinculo_completo'] ?? false)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizarColaAccion(string $colaAccion): string
+    {
+        $colaAccion = strtolower(trim($colaAccion));
+
+        return $colaAccion === self::ACCION_VINCULO
+            ? self::ACCION_VINCULO
+            : self::ACCION_GRABA;
+    }
+
+    private function registrarUltimoOk(string $colaAccion, int $count): void
+    {
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+        Cache::put(self::CACHE_ULTIMO_OK_PREFIX.$colaAccion, [
+            'at' => now()->toIso8601String(),
+            'count' => max(0, $count),
+        ], now()->addDays(7));
     }
 
     private function despertarSitioPar(): void

@@ -106,6 +106,8 @@ Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
 
 Las **palabras clave no se sincronizan** entre sitios. Lo que se replica al par son las **oportunidades encontradas** (y el resultado de vinculación). Si el par está dormido, quedan pendientes y se reintentan: al **boot**, cada **30 min** (`oportunidad:sync-encontradas-par`) y al **terminar** búsqueda/vinculación (wake `/up` + espera `COTIZ_OPORTUNIDAD_SYNC_WAKE_ESPERA_SEG` + cola pendiente).
 
+En el sitio con `MERCADOPUBLICO_ANALISIS_ADMIN=true` (Rómulo), la pantalla **Oportunidades** muestra dos paneles: **Sync cotizaciones al par** y **Sync vinculaciones al par**, con pendientes, último error y botón para reintentar cada cola por separado.
+
 Al **tomar** un código CA (`*-COT*`), se reserva de forma atómica en este sitio y en el par (`accion=tomada`) **antes** de grabar la nota. Si el par no responde o ya está tomado, se bloquea (no se permite duplicar entre ejecutivos/sitios).
 | `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | **Obligatorias** — mismas credenciales en Romulo y Reicol |
 | `COTIZ_API_CONSULTA_NRO_COTIZACION` | URL consulta duplicados (opcional) | Si vacío y `APP_URL` es `cotiza.reicol.cl` o `cotiza.romulo.cl`, se usa el par automáticamente |

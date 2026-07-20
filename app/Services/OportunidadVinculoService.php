@@ -449,7 +449,7 @@ class OportunidadVinculoService
                 $row->toResumen() + [
                     'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
                 ],
-            ]);
+            ], OportunidadEncontradaRelayService::ACCION_VINCULO);
         }
 
         return [
@@ -666,7 +666,7 @@ class OportunidadVinculoService
                 $row->toResumen() + [
                     'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
                 ],
-            ]);
+            ], OportunidadEncontradaRelayService::ACCION_VINCULO);
         }
     }
 
