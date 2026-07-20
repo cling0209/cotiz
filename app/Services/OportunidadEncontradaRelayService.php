@@ -224,7 +224,17 @@ class OportunidadEncontradaRelayService
                         $attrs['vinculo_completo'],
                         $attrs['productos_vinculados'],
                         $attrs['porcentaje_vinculo'],
+                        $attrs['vinculo_preview_json'],
+                        $attrs['vinculo_at'],
                     );
+                }
+                // Si llega estado de vínculo sin preview, conservar el detalle local.
+                if (
+                    array_key_exists('vinculo_preview_json', $attrs)
+                    && $attrs['vinculo_preview_json'] === null
+                    && is_array($existente->vinculo_preview_json)
+                ) {
+                    unset($attrs['vinculo_preview_json']);
                 }
                 $existente->fill($attrs);
                 $existente->save();
@@ -567,12 +577,13 @@ class OportunidadEncontradaRelayService
         };
 
         foreach ($rows as $row) {
-            $chunk[] = $row->toResumen() + [
+            $chunk[] = $row->toResumenConPreviewVinculo() + [
                 'fecha_busqueda' => $row->fecha_busqueda instanceof Carbon
                     ? $row->fecha_busqueda->toDateString()
                     : (string) $row->fecha_busqueda,
             ];
-            if (count($chunk) >= 25) {
+            // Preview de productos puede ser pesado: lotes chicos.
+            if (count($chunk) >= 5) {
                 $flush();
             }
         }
@@ -992,6 +1003,10 @@ class OportunidadEncontradaRelayService
                 'porcentaje_vinculo' => isset($item['porcentaje_vinculo'])
                     ? (int) $item['porcentaje_vinculo']
                     : null,
+                'vinculo_preview_json' => is_array($item['vinculo_preview_json'] ?? null)
+                    ? $item['vinculo_preview_json']
+                    : null,
+                'vinculo_at' => $item['vinculo_at'] ?? null,
                 'fecha_busqueda' => $dia,
                 'indice_region_config' => (int) ($item['indice_region_config'] ?? 999),
             ];
@@ -1060,6 +1075,15 @@ class OportunidadEncontradaRelayService
             $attrs['porcentaje_vinculo'] = isset($item['porcentaje_vinculo'])
                 ? (int) $item['porcentaje_vinculo']
                 : null;
+        }
+
+        if (array_key_exists('vinculo_preview_json', $item)) {
+            $preview = $item['vinculo_preview_json'];
+            $attrs['vinculo_preview_json'] = is_array($preview) ? $preview : null;
+        }
+
+        if (array_key_exists('vinculo_at', $item)) {
+            $attrs['vinculo_at'] = $this->parseFechaNullable($item['vinculo_at'] ?? null);
         }
 
         return $attrs;

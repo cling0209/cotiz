@@ -531,4 +531,47 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertSame(1, $resultado['sync_par']['cotizaciones']['pendientes']);
         $this->assertSame(0, $resultado['sync_par']['vinculaciones']['pendientes']);
     }
+
+    public function test_api_recibe_vinculo_preview_json(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.sistema' => 'Reicol',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        $preview = [
+            'cabecera' => ['codigo_cotizacion' => '6000-1-COT26'],
+            'lineas' => [
+                ['id_agile' => '1', 'descripcion' => 'Producto test', 'cantidad' => 2],
+            ],
+            'resumen' => ['total' => 1, 'vinculados' => 0, 'pendientes' => 1],
+        ];
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'graba',
+                'replicacion' => true,
+                'items' => [[
+                    'codigo' => '6000-1-COT26',
+                    'nombre' => 'Con preview',
+                    'fecha_busqueda' => '2026-07-16',
+                    'palabras_coinciden' => ['oficina'],
+                    'vinculo_completo' => true,
+                    'productos_vinculados' => 0,
+                    'porcentaje_vinculo' => 0,
+                    'cantidad_productos' => 1,
+                    'vinculo_preview_json' => $preview,
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK');
+
+        $row = \App\Models\OportunidadEncontrada::query()->where('codigo', '6000-1-COT26')->first();
+        $this->assertNotNull($row);
+        $this->assertTrue((bool) $row->vinculo_completo);
+        $this->assertIsArray($row->vinculo_preview_json);
+        $this->assertSame('Producto test', $row->vinculo_preview_json['lineas'][0]['descripcion'] ?? null);
+    }
 }

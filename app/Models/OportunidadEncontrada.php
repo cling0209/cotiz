@@ -91,4 +91,19 @@ class OportunidadEncontrada extends Model
             'guardada' => true,
         ];
     }
+
+    /**
+     * Resumen + detalle de productos para replicar vinculación al sitio par.
+     *
+     * @return array<string, mixed>
+     */
+    public function toResumenConPreviewVinculo(): array
+    {
+        $preview = $this->vinculo_preview_json;
+
+        return $this->toResumen() + [
+            'vinculo_preview_json' => is_array($preview) ? $preview : null,
+            'vinculo_at' => $this->vinculo_at?->toIso8601String(),
+        ];
+    }
 }

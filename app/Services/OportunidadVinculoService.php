@@ -446,7 +446,7 @@ class OportunidadVinculoService
             $row->fill($fill)->save();
 
             $this->encontradaRelay->replicarItems([
-                $row->toResumen() + [
+                $row->toResumenConPreviewVinculo() + [
                     'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
                 ],
             ], OportunidadEncontradaRelayService::ACCION_VINCULO);
@@ -663,7 +663,7 @@ class OportunidadVinculoService
             }
 
             $this->encontradaRelay->replicarItems([
-                $row->toResumen() + [
+                $row->toResumenConPreviewVinculo() + [
                     'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
                 ],
             ], OportunidadEncontradaRelayService::ACCION_VINCULO);
