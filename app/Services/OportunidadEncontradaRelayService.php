@@ -214,6 +214,18 @@ class OportunidadEncontradaRelayService
                 if (($attrs['cantidad_productos'] ?? null) === null && $existente->cantidad_productos !== null) {
                     unset($attrs['cantidad_productos']);
                 }
+                // No pisar una vinculación ya procesada con un sync de cotización sin vínculo.
+                if (
+                    array_key_exists('vinculo_completo', $attrs)
+                    && ! (bool) $attrs['vinculo_completo']
+                    && (bool) $existente->vinculo_completo
+                ) {
+                    unset(
+                        $attrs['vinculo_completo'],
+                        $attrs['productos_vinculados'],
+                        $attrs['porcentaje_vinculo'],
+                    );
+                }
                 $existente->fill($attrs);
                 $existente->save();
             } else {
@@ -375,7 +387,9 @@ class OportunidadEncontradaRelayService
             'peer' => $peer,
             'url_configurada' => $destino !== '',
             'cotizaciones' => $this->resumenColaSync(self::ACCION_GRABA),
-            'vinculaciones' => $this->resumenColaSync(self::ACCION_VINCULO),
+            'vinculaciones' => $this->resumenColaSync(self::ACCION_VINCULO) + [
+                'locales_procesadas' => $this->contarVinculosLocalesProcesados(),
+            ],
         ];
     }
 
@@ -459,15 +473,127 @@ class OportunidadEncontradaRelayService
             ? 'vinculaciones'
             : ($tipo === self::ACCION_GRABA ? 'cotizaciones' : 'sync');
 
+        $reenviados = 0;
+        $reenvioFail = 0;
+        if ($ok && ($tipo === self::ACCION_VINCULO || $tipo === 'all')) {
+            $reenvio = $this->reenviarVinculosLocalesAlPar(despertar: false);
+            $reenviados = (int) ($reenvio['enviados'] ?? 0);
+            $reenvioFail = (int) ($reenvio['fallidos'] ?? 0);
+            if ($reenvioFail > 0) {
+                $ok = false;
+            }
+        }
+
+        $partes = [];
+        if ($pendientesOk > 0 || $pendientesFail > 0) {
+            $partes[] = 'cola: '.$pendientesOk.' ok'
+                .($pendientesFail > 0 ? ', '.$pendientesFail.' fallos' : '');
+        } else {
+            $partes[] = 'cola vacía';
+        }
+        if ($tipo === self::ACCION_VINCULO || $tipo === 'all') {
+            if ($reenviados > 0) {
+                $partes[] = 'reenviadas '.$reenviados.' vinculaciones locales';
+            } elseif ($pendientesOk === 0) {
+                $locales = $this->contarVinculosLocalesProcesados();
+                $partes[] = $locales > 0
+                    ? 'no se pudo reenviar ('.$locales.' locales procesadas)'
+                    : 'no hay vinculaciones locales procesadas para reenviar';
+            }
+        }
+        if ($reenvioFail > 0) {
+            $partes[] = $reenvioFail.' fallos al reenviar';
+        }
+
         return [
             'ok' => $ok,
-            'pendientes_ok' => $pendientesOk,
-            'pendientes_fail' => $pendientesFail,
-            'mensaje' => $ok
-                ? 'Sincronización de '.$etiqueta.' con '.$peer.' OK (enviados: '.$pendientesOk.').'
-                : 'Sincronización de '.$etiqueta.' parcial con '.$peer.' (fallos: '.$pendientesFail.').',
+            'pendientes_ok' => $pendientesOk + $reenviados,
+            'pendientes_fail' => $pendientesFail + $reenvioFail,
+            'mensaje' => ($ok ? 'Sync '.$etiqueta.' con '.$peer.' OK' : 'Sync '.$etiqueta.' con '.$peer.' parcial')
+                .' ('.implode('; ', $partes).').',
             'sync_par' => $this->resumenSyncPar(),
         ];
+    }
+
+    /**
+     * Reenvía al par las oportunidades locales ya vinculadas (aunque la cola esté vacía).
+     *
+     * @return array{enviados: int, fallidos: int, locales: int}
+     */
+    public function reenviarVinculosLocalesAlPar(bool $despertar = true): array
+    {
+        if ($this->urlDestino() === '') {
+            return ['enviados' => 0, 'fallidos' => 0, 'locales' => 0];
+        }
+
+        if ($despertar) {
+            $this->despertarSitioPar();
+        }
+
+        $rows = OportunidadEncontrada::query()
+            ->whereRaw('vinculo_completo IS TRUE')
+            ->where(function ($q) {
+                $q->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>=', now());
+            })
+            ->orderByDesc('fecha_busqueda')
+            ->orderBy('id')
+            ->limit(400)
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return ['enviados' => 0, 'fallidos' => 0, 'locales' => 0];
+        }
+
+        $enviados = 0;
+        $fallidos = 0;
+        $chunk = [];
+        $flush = function () use (&$chunk, &$enviados, &$fallidos): void {
+            if ($chunk === []) {
+                return;
+            }
+            try {
+                $this->enviar($chunk, true, self::ACCION_VINCULO);
+                $this->registrarUltimoOk(self::ACCION_VINCULO, count($chunk));
+                $enviados += count($chunk);
+            } catch (\Throwable $e) {
+                Log::warning('Reenvío de vinculaciones locales al par falló', [
+                    'count' => count($chunk),
+                    'error' => $e->getMessage(),
+                ]);
+                $fallidos += count($chunk);
+            }
+            $chunk = [];
+        };
+
+        foreach ($rows as $row) {
+            $chunk[] = $row->toResumen() + [
+                'fecha_busqueda' => $row->fecha_busqueda instanceof Carbon
+                    ? $row->fecha_busqueda->toDateString()
+                    : (string) $row->fecha_busqueda,
+            ];
+            if (count($chunk) >= 25) {
+                $flush();
+            }
+        }
+        $flush();
+
+        return [
+            'enviados' => $enviados,
+            'fallidos' => $fallidos,
+            'locales' => $rows->count(),
+        ];
+    }
+
+    public function contarVinculosLocalesProcesados(): int
+    {
+        return (int) OportunidadEncontrada::query()
+            ->whereRaw('vinculo_completo IS TRUE')
+            ->where(function ($q) {
+                $q->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>=', now());
+            })
+            ->count();
     }
 
     /**

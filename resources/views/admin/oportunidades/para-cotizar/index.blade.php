@@ -289,7 +289,7 @@
                     <div id="sync-vin-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
-                            title="Reintenta enviar resultados de vinculaci&oacute;n pendientes al sitio par">
+                            title="Reintenta cola pendiente y reenvía al par las vinculaciones ya procesadas en este sitio">
                             <i class="bi bi-arrow-repeat"></i> Sincronizar vinculaciones
                         </button>
                         <button type="button" id="sync-vin-detalle-toggle" class="btn btn-sm btn-outline-secondary"
@@ -2121,6 +2121,14 @@
                 partesResumen.push(`${pendientes} lote(s) en cola`);
             } else {
                 partesResumen.push('Cola vacía');
+            }
+            if (prefijo === 'vin') {
+                const locales = Number(bloque.locales_procesadas) || 0;
+                if (locales > 0) {
+                    partesResumen.push(`${locales} locales procesadas`);
+                } else {
+                    partesResumen.push('0 locales procesadas (hay que vincular aquí primero)');
+                }
             }
             if (ultimoOk) {
                 partesResumen.push(`Último OK: ${ultimoOk}` + (ultimoCount != null ? ` (${ultimoCount})` : ''));
