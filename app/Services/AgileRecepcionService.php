@@ -220,7 +220,7 @@ class AgileRecepcionService
             throw new RuntimeException('Factor inválido.');
         }
 
-        return DB::transaction(function () use ($nota, $factor, $usuarioUpd) {
+        return DB::transaction(function () use ($nota, $factor) {
             $nota->update(['factor_precio_venta' => $factor]);
 
             $lineas = NotaDetalle::query()
@@ -241,25 +241,6 @@ class AgileRecepcionService
                     ->where('orden', $linea->orden)
                     ->where('prod_item_agile', $linea->prod_item_agile)
                     ->update(['prod_valor' => $nuevoValor]);
-
-                $codigoInterno = trim((string) $linea->prod_item);
-                if ($codigoInterno === '' || $codigoInterno === '0') {
-                    $codigoInterno = $this->agileMaeprodService->codigoInternoParaLinea(
-                        (string) $linea->prod_item_agile,
-                        (string) ($linea->prod_descripcion_agile ?? ''),
-                    ) ?? '';
-                }
-
-                if ($codigoInterno !== '' && $codigoInterno !== '0') {
-                    $producto = Maeprod::query()->find($codigoInterno);
-                    if ($producto) {
-                        $producto->update([
-                            'prod_valor' => $nuevoValor,
-                            'prod_valor_fecha' => now(),
-                            'prod_user_upd' => $usuarioUpd,
-                        ]);
-                    }
-                }
 
                 $actualizadas[] = [
                     'orden' => (int) $linea->orden,
@@ -336,14 +317,6 @@ class AgileRecepcionService
             ->firstOrFail();
 
         $this->detalleService->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
-
-        if ($codigoInterno !== '' && $codigoInterno !== '0' && $producto) {
-            $producto->update([
-                'prod_valor' => $prodValorDet,
-                'prod_valor_fecha' => now(),
-                'prod_user_upd' => $usuarioUpd,
-            ]);
-        }
 
         return $actualizada->fresh(['producto']);
     }

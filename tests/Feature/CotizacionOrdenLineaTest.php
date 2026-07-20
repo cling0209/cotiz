@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
@@ -224,6 +225,44 @@ class CotizacionOrdenLineaTest extends TestCase
             ->assertJsonPath('factor_precio_venta_fmt', '1,50');
 
         $this->assertEquals(1.50, (float) $nota->fresh()->factor_precio_venta);
+    }
+
+    public function test_aplicar_factor_no_modifica_precio_venta_del_maestro(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'PROD001',
+            'prod_nombre' => 'Producto test',
+            'prod_valor' => 1220,
+            'prod_valor_costo' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $nota = $this->crearNota();
+        $this->crearLinea($nota, [
+            'prod_item' => 'PROD001',
+            'orden' => 1,
+            'prod_valor_costo' => 1000,
+            'prod_valor' => 1220,
+        ]);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.factor', $nota->nronota),
+            ['factor_precio_venta' => '1,30'],
+        )
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD001',
+            'prod_valor' => 1300,
+        ]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'PROD001',
+            'prod_valor' => 1220,
+            'prod_valor_costo' => 1000,
+        ]);
     }
 
     private function crearNota(array $attrs = []): Nota

@@ -156,27 +156,14 @@ class NotaDetalleService
             $cantidad = (int) ($datos['cantidad'] ?? $linea->cantidad);
             $costo = (int) ($datos['prod_valor_costo'] ?? $linea->prod_valor_costo);
 
-            if ($producto) {
-                $updates = [];
-                if ($producto->prod_valor !== $prodValor) {
-                    $updates['prod_valor'] = $prodValor;
-                    $updates['prod_valor_fecha'] = now();
-                    $updates['prod_user_upd'] = $usuarioUpd;
-                }
-                if ((int) ($producto->prod_valor_costo ?? 0) !== $costo) {
-                    $updates['prod_valor_costo'] = $costo;
-                    $updates['prod_valor_fecha'] = now();
-                    $updates['prod_user_upd'] = $usuarioUpd;
-                }
-                if (array_key_exists('prod_item_softland', $datos)) {
-                    $softland = trim((string) $datos['prod_item_softland']);
-                    if ($softland !== (string) ($producto->prod_item_softland ?? '')) {
-                        $updates['prod_item_softland'] = $softland;
-                        $updates['prod_item_softland_fecha'] = now();
-                    }
-                }
-                if ($updates !== []) {
-                    $producto->update($updates);
+            // Precios solo en la nota; el maestro se edita en Productos / import.
+            if ($producto && array_key_exists('prod_item_softland', $datos)) {
+                $softland = trim((string) $datos['prod_item_softland']);
+                if ($softland !== (string) ($producto->prod_item_softland ?? '')) {
+                    $producto->update([
+                        'prod_item_softland' => $softland,
+                        'prod_item_softland_fecha' => now(),
+                    ]);
                 }
             }
 
@@ -377,26 +364,9 @@ class NotaDetalleService
         ?string $prodItemAgile = null,
         ?string $prodDescripcionAgile = null,
     ): NotaDetalle {
-        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
+        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $prodItemAgile, $prodDescripcionAgile) {
             $producto = Maeprod::query()->find(trim($prodItem));
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
-
-            if ($producto) {
-                $updates = [];
-                if ($producto->prod_valor !== $prodValor) {
-                    $updates['prod_valor'] = $prodValor;
-                    $updates['prod_valor_fecha'] = now();
-                    $updates['prod_user_upd'] = $usuarioUpd;
-                }
-                if ((int) ($producto->prod_valor_costo ?? 0) !== (int) $costo) {
-                    $updates['prod_valor_costo'] = $costo;
-                    $updates['prod_valor_fecha'] = now();
-                    $updates['prod_user_upd'] = $usuarioUpd;
-                }
-                if ($updates !== []) {
-                    $producto->update($updates);
-                }
-            }
 
             $orden = ((int) NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
@@ -533,7 +503,7 @@ class NotaDetalleService
         $factor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta', 1.22));
         $valor = $prodValor ?? ($costo > 0 ? (int) round($costo * $factor) : (int) ($producto->prod_valor ?? 0));
 
-        return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor, $usuarioUpd) {
+        return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor) {
             $payload = [
                 'nronota' => $nota->nronota,
                 'prod_item' => $codigo,
@@ -575,39 +545,22 @@ class NotaDetalleService
                 ->firstOrFail();
 
             // Aprendizaje se confirma al grabar o al generar PDF (no al seleccionar).
+            // Precios de la nota no se vuelcan a maeprod.
 
-            $updates = [];
-            if ((int) ($producto->prod_valor ?? 0) !== $valor) {
-                $updates['prod_valor'] = $valor;
-                $updates['prod_valor_fecha'] = now();
-                $updates['prod_user_upd'] = $usuarioUpd;
-            }
-            if ((int) ($producto->prod_valor_costo ?? 0) !== $costo) {
-                $updates['prod_valor_costo'] = $costo;
-                $updates['prod_valor_fecha'] = now();
-                $updates['prod_user_upd'] = $usuarioUpd;
-            }
-            if ($updates !== []) {
-                $producto->update($updates);
-            }
-
-            $productoActualizado = $producto->fresh();
-            [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua($productoActualizado?->prod_valor_fecha);
+            [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua($producto->prod_valor_fecha);
 
             return [
                 'prod_item' => $codigo,
-                'prod_item_softland' => (string) ($productoActualizado?->prod_item_softland ?? $producto->prod_item_softland ?? ''),
-                'prod_nombre' => (string) ($productoActualizado?->prod_nombre ?? $producto->prod_nombre),
+                'prod_item_softland' => (string) ($producto->prod_item_softland ?? ''),
+                'prod_nombre' => (string) $producto->prod_nombre,
                 'prod_valor' => $valor,
                 'prod_valor_costo' => $costo,
                 'prod_valor_fecha_fmt' => $fechaFmt,
                 'prod_valor_fecha_antigua' => $fechaAntigua,
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
-                'image_url' => ($productoActualizado ?? $producto)->imageUrl(),
-                'peso_kg' => ($productoActualizado ?? $producto)->peso_kg !== null
-                    ? (float) ($productoActualizado ?? $producto)->peso_kg
-                    : null,
+                'image_url' => $producto->imageUrl(),
+                'peso_kg' => $producto->peso_kg !== null ? (float) $producto->peso_kg : null,
                 'subtotal' => $valor * (int) $linea->cantidad,
             ];
         });
