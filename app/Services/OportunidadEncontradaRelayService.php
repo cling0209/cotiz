@@ -226,7 +226,7 @@ class OportunidadEncontradaRelayService
                         $attrs['porcentaje_vinculo'],
                         $attrs['vinculo_preview_json'],
                         $attrs['vinculo_at'],
-                        $attrs['vinculo_error'] ?? null,
+                        $attrs['vinculo_error'],
                     );
                 }
                 // Si llega estado de vínculo sin preview, conservar el detalle local.
