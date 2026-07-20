@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Services\CompraAgilRegionScope;
 use App\Services\OportunidadBusquedaService;
+use App\Services\OportunidadEncontradaRelayService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Http\JsonResponse;
