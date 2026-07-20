@@ -717,9 +717,24 @@
         }
 
         function itemVinculoProcesado(item) {
-            return item.vinculo_completo === true
+            const completo = item.vinculo_completo === true
                 || item.vinculo_completo === 1
                 || item.vinculo_completo === '1';
+            if (!completo) {
+                return false;
+            }
+            // Cerrado sin preview = MP no respondió; no es un 0% real.
+            if (item.tiene_vinculo_preview === false) {
+                return false;
+            }
+            if (item.tiene_vinculo_preview === true) {
+                return true;
+            }
+            const preview = item.vinculo_preview_json;
+            if (preview == null || preview === '') {
+                return false;
+            }
+            return true;
         }
 
         function porcentajeVinculoItem(item) {

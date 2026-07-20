@@ -85,6 +85,9 @@ class OportunidadEncontrada extends Model
             'palabras_coinciden' => array_values($this->palabras_coinciden ?? []),
             'cantidad_productos' => $this->cantidad_productos,
             'vinculo_completo' => (bool) $this->vinculo_completo,
+            'tiene_vinculo_preview' => is_array($this->vinculo_preview_json)
+                && isset($this->vinculo_preview_json['lineas'])
+                && is_array($this->vinculo_preview_json['lineas']),
             'productos_vinculados' => $this->productos_vinculados,
             'porcentaje_vinculo' => $this->porcentaje_vinculo,
             'indice_region_config' => (int) $this->indice_region_config,

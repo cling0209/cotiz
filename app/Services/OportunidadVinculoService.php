@@ -280,8 +280,14 @@ class OportunidadVinculoService
         $rows = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', '>=', $desde)
             ->whereDate('fecha_busqueda', '<=', $hasta)
-            // PostgreSQL: boolean no acepta = 0; IS NOT TRUE cubre false y null.
-            ->whereRaw('vinculo_completo IS NOT TRUE')
+            // Pendientes reales, o “0% falso” (cerrado sin preview: MP no respondió).
+            ->where(function ($query) {
+                $query->whereRaw('vinculo_completo IS NOT TRUE')
+                    ->orWhere(function ($q) {
+                        $q->whereRaw('vinculo_completo IS TRUE')
+                            ->whereNull('vinculo_preview_json');
+                    });
+            })
             ->where(function ($query) {
                 $query->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>', now());
@@ -293,7 +299,7 @@ class OportunidadVinculoService
             ->orderBy('indice_region_config')
             ->orderBy('fecha_busqueda')
             ->orderBy('codigo')
-            ->get(['codigo', 'region', 'nombre_region', 'indice_region_config']);
+            ->get(['codigo', 'region', 'nombre_region', 'indice_region_config', 'fecha_busqueda']);
 
         $pasos = [];
         $vistos = [];
@@ -359,7 +365,8 @@ class OportunidadVinculoService
                 'message' => $e->getMessage(),
             ]);
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            $this->marcarEncontradaSinVinculo((string) ($paso['codigo'] ?? ''), $fechaPaso);
+            // Solo cierra el vínculo si aún se pudo leer MP; si MP no respondió, deja pendiente.
+            $this->intentarCerrarTrasFallo((string) ($paso['codigo'] ?? ''), $fechaPaso);
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_FAILED;
             $pasos[$indice]['fin'] = now()->toIso8601String();
@@ -711,53 +718,67 @@ class OportunidadVinculoService
         ];
     }
 
-    private function marcarEncontradaSinVinculo(string $codigo, mixed $fechaBusqueda): void
+    /**
+     * Tras un fallo de vinculación: si MP responde, guarda preview (puede ser 0% real)
+     * y marca procesado. Si MP no responde, no marca 0% ni vinculo_completo: queda pendiente.
+     */
+    private function intentarCerrarTrasFallo(string $codigo, mixed $fechaBusqueda): void
     {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
             return;
         }
 
-        // Intentar conservar líneas MP (aunque sin match) para el modal Productos.
-        $previewCache = null;
-        $cantidadProductos = null;
+        if (! $this->oportunidades->apiConfigurada()) {
+            Log::warning('OportunidadVinculo: fallo sin cerrar (API MP no configurada); queda pendiente', [
+                'codigo' => $codigo,
+            ]);
+
+            return;
+        }
+
         try {
-            if ($this->oportunidades->apiConfigurada()) {
-                $payload = $this->api->detalle($codigo);
-                $parseado = $this->mapper->fromDetalle($payload);
-                $preview = $this->importService->previewDesdeDatos($parseado);
-                $previewCache = $this->empaquetarPreviewCache($preview);
-                $resumen = is_array($previewCache['resumen'] ?? null) ? $previewCache['resumen'] : [];
-                $total = (int) ($resumen['total'] ?? count($previewCache['lineas'] ?? []));
-                $cantidadProductos = $total > 0 ? $total : null;
-            }
+            $payload = $this->api->detalle($codigo);
+            $parseado = $this->mapper->fromDetalle($payload);
+            $preview = $this->importService->previewDesdeDatos($parseado);
         } catch (Throwable $e) {
-            Log::warning('OportunidadVinculo: no se pudo armar preview MP al marcar sin vínculo', [
+            // No inventar 0%: el próximo proceso de vinculación la reintentará.
+            Log::warning('OportunidadVinculo: MP no respondió tras fallo; se deja pendiente de vincular', [
                 'codigo' => $codigo,
                 'message' => $e->getMessage(),
             ]);
+
+            return;
         }
+
+        $previewCache = $this->empaquetarPreviewCache($preview);
+        $resumen = is_array($previewCache['resumen'] ?? null) ? $previewCache['resumen'] : [];
+        $total = (int) ($resumen['total'] ?? count($previewCache['lineas'] ?? []));
+        $vinculados = (int) ($resumen['vinculados'] ?? 0);
+        $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
+        $cab = is_array($parseado['cabecera'] ?? null) ? $parseado['cabecera'] : [];
 
         $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
         foreach ($rows as $row) {
             try {
                 $fill = [
-                    'productos_vinculados' => 0,
-                    'porcentaje_vinculo' => 0,
+                    'cantidad_productos' => $total > 0 ? $total : ($row->cantidad_productos ?? null),
+                    'productos_vinculados' => $vinculados,
+                    'porcentaje_vinculo' => $porcentaje,
                     'vinculo_completo' => true,
                     'vinculo_at' => now(),
+                    'vinculo_preview_json' => $previewCache,
                 ];
-                if ($previewCache !== null) {
-                    $fill['vinculo_preview_json'] = $previewCache;
-                } elseif (! is_array($row->vinculo_preview_json)) {
-                    $fill['vinculo_preview_json'] = null;
-                }
-                if ($cantidadProductos !== null) {
-                    $fill['cantidad_productos'] = $cantidadProductos;
+                if (isset($cab['region']) && is_numeric($cab['region']) && (int) $cab['region'] > 0) {
+                    $fill['region'] = (int) $cab['region'];
+                    $nombreRegion = trim((string) ($cab['nombre_region'] ?? ''));
+                    $fill['nombre_region'] = $nombreRegion !== ''
+                        ? mb_substr($nombreRegion, 0, 100)
+                        : CompraAgilRegionScope::nombreRegion((int) $cab['region']);
                 }
                 $row->fill($fill)->save();
             } catch (Throwable $e) {
-                Log::warning('OportunidadVinculo: no se pudo marcar encontrada sin vínculo', [
+                Log::warning('OportunidadVinculo: no se pudo guardar preview tras fallo', [
                     'codigo' => $codigo,
                     'id' => $row->id,
                     'message' => $e->getMessage(),
@@ -1027,7 +1048,7 @@ class OportunidadVinculoService
 
             $codigo = (string) ($paso['codigo'] ?? '');
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            $this->marcarEncontradaSinVinculo($codigo, $fechaPaso);
+            $this->intentarCerrarTrasFallo($codigo, $fechaPaso);
 
             $pasos[$i]['estado'] = self::PASO_FAILED;
             $pasos[$i]['fin'] = now()->toIso8601String();

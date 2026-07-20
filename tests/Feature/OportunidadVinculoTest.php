@@ -382,6 +382,34 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonCount(2, 'lineas');
     }
 
+    public function test_plan_incluye_cerradas_sin_preview_por_fallo_mp(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAKE-0PCT-001',
+            'nombre' => 'Sin preview por fallo MP',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'productos_vinculados' => 0,
+            'porcentaje_vinculo' => 0,
+            'cantidad_productos' => 2,
+            'vinculo_preview_json' => null,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $corrida = $this->app->make(OportunidadVinculoService::class)
+            ->iniciarTrasBusqueda('2026-07-16', 'admin');
+
+        $this->assertNotNull($corrida);
+        $plan = $corrida->plan_json;
+        $this->assertCount(1, $plan);
+        $this->assertSame('FAKE-0PCT-001', $plan[0]['codigo']);
+    }
+
     public function test_vincular_codigo_actualiza_fila_de_dia_anterior(): void
     {
         Http::fake([
