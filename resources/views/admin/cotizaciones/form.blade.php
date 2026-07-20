@@ -575,6 +575,7 @@
                             <input type="number" id="envio-dex-valor" class="form-control form-control-sm" min="0" step="1" placeholder="Se calcula o edite">
                         </div>
                     </div>
+                    <p id="envio-dex-peso-detalle" class="small mb-2"></p>
                     <p id="envio-dex-info" class="small text-muted mb-0"></p>
                     <p id="envio-dex-error" class="small text-danger mb-0 d-none"></p>
                 </div>
@@ -3933,10 +3934,23 @@
     const envioDexDestinosList = document.getElementById('envio-dex-destinos-list');
     const envioDexPeso = document.getElementById('envio-dex-peso');
     const envioDexValor = document.getElementById('envio-dex-valor');
+    const envioDexPesoDetalle = document.getElementById('envio-dex-peso-detalle');
     const envioDexInfo = document.getElementById('envio-dex-info');
     const envioDexError = document.getElementById('envio-dex-error');
     let envioDexCatalogo = null;
     let envioDexTargetInput = null;
+
+    function fmtPesoKg(n) {
+        const v = Math.round(Number(n) * 1000) / 1000;
+        if (!Number.isFinite(v)) return '—';
+        return String(v).replace('.', ',');
+    }
+
+    function setEnvioDexPesoDetalle(html, esMuted) {
+        if (!envioDexPesoDetalle) return;
+        envioDexPesoDetalle.innerHTML = html || '';
+        envioDexPesoDetalle.className = 'small mb-2 ' + (esMuted ? 'text-muted' : 'text-body');
+    }
 
     function setEnvioDexError(msg) {
         if (!envioDexError) return;
@@ -3993,6 +4007,7 @@
     async function abrirModalEnvioDex(ventaInput) {
         envioDexTargetInput = ventaInput;
         setEnvioDexError('');
+        setEnvioDexPesoDetalle('', true);
         if (envioDexInfo) envioDexInfo.textContent = '';
         if (envioDexValor) envioDexValor.value = '';
         if (envioDexPeso) envioDexPeso.value = '';
@@ -4009,11 +4024,23 @@
 
         const tr = ventaInput?.closest('tr[data-linea]');
         const pesoUnitario = parseFloat(String(tr?.dataset?.pesoKg || '').replace(',', '.'));
-        const cantidad = parseFloat(String(tr?.querySelector('.linea-cantidad')?.value || '1').replace(',', '.')) || 1;
+        const cantidad = parseInt(String(tr?.querySelector('.linea-cantidad')?.value || '1').replace(/\D/g, ''), 10) || 1;
         const tienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
         if (tienePesoProducto && envioDexPeso) {
             const propuesto = Math.round(pesoUnitario * cantidad * 1000) / 1000;
             envioDexPeso.value = String(propuesto);
+            setEnvioDexPesoDetalle(
+                'Peso producto: <strong>' + fmtPesoKg(pesoUnitario) + ' kg</strong>'
+                + ' &times; cantidad <strong>' + cantidad + '</strong>'
+                + ' = <strong>' + fmtPesoKg(propuesto) + ' kg</strong>'
+                + ' <span class="text-muted">(editable arriba)</span>',
+                false
+            );
+        } else {
+            setEnvioDexPesoDetalle(
+                'Sin peso en el producto — ingrese el peso total (kg) para la cantidad <strong>' + cantidad + '</strong>.',
+                true
+            );
         }
 
         bsModalEnvioDex?.show();
