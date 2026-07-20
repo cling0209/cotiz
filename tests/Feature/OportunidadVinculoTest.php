@@ -410,6 +410,36 @@ class OportunidadVinculoTest extends TestCase
         $this->assertSame('FAKE-0PCT-001', $plan[0]['codigo']);
     }
 
+    public function test_asegurar_vinculo_codigo_marca_fallida_si_mp_falla(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response('timeout', 504),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAIL-MP-001',
+            'nombre' => 'Falla MP',
+            'region' => 3,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $resultado = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarVinculoCodigo('FAIL-MP-001');
+
+        $this->assertFalse($resultado['ok']);
+        $this->assertNotEmpty($resultado['error']);
+        $this->assertDatabaseHas('oportunidad_encontradas', [
+            'codigo' => 'FAIL-MP-001',
+            'vinculo_completo' => false,
+        ]);
+        $row = OportunidadEncontrada::query()->where('codigo', 'FAIL-MP-001')->first();
+        $this->assertSame('fallida', $row->estadoVinculoUi());
+        $this->assertNotEmpty($row->vinculo_error);
+    }
+
     public function test_vincular_codigo_actualiza_fila_de_dia_anterior(): void
     {
         Http::fake([

@@ -365,8 +365,12 @@ class OportunidadVinculoService
                 'message' => $e->getMessage(),
             ]);
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            // Solo cierra el vínculo si aún se pudo leer MP; si MP no respondió, deja pendiente.
-            $this->intentarCerrarTrasFallo((string) ($paso['codigo'] ?? ''), $fechaPaso);
+            // Solo cierra el vínculo si aún se pudo leer MP; si MP no respondió, deja fallida+mensaje.
+            $this->intentarCerrarTrasFallo(
+                (string) ($paso['codigo'] ?? ''),
+                $fechaPaso,
+                $e->getMessage(),
+            );
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_FAILED;
             $pasos[$indice]['fin'] = now()->toIso8601String();
@@ -428,6 +432,7 @@ class OportunidadVinculoService
             'vinculo_completo' => true,
             'vinculo_at' => now(),
             'vinculo_preview_json' => $previewCache,
+            'vinculo_error' => null,
         ];
 
         if (isset($cab['region']) && is_numeric($cab['region']) && (int) $cab['region'] > 0) {
@@ -719,10 +724,174 @@ class OportunidadVinculoService
     }
 
     /**
-     * Tras un fallo de vinculación: si MP responde, guarda preview (puede ser 0% real)
-     * y marca procesado. Si MP no responde, no marca 0% ni vinculo_completo: queda pendiente.
+     * True si aún no hay preview de vinculación usable (pendiente o fallida).
      */
-    private function intentarCerrarTrasFallo(string $codigo, mixed $fechaBusqueda): void
+    public function necesitaVincularCodigo(string $codigo): bool
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return false;
+        }
+
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($row === null) {
+            return true;
+        }
+
+        return $row->estadoVinculoUi() !== 'procesada';
+    }
+
+    /**
+     * Vincula on-demand una cotización (Productos / Ir a cotizar).
+     *
+     * @return array{
+     *   ok: bool,
+     *   ya_estaba: bool,
+     *   total: int,
+     *   vinculados: int,
+     *   porcentaje: int,
+     *   item: array<string, mixed>|null,
+     *   error: ?string
+     * }
+     */
+    public function asegurarVinculoCodigo(string $codigo): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return [
+                'ok' => false,
+                'ya_estaba' => false,
+                'total' => 0,
+                'vinculados' => 0,
+                'porcentaje' => 0,
+                'item' => null,
+                'error' => 'Código vacío.',
+            ];
+        }
+
+        if (! $this->necesitaVincularCodigo($codigo)) {
+            $row = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->orderByDesc('fecha_busqueda')
+                ->orderByDesc('id')
+                ->first();
+
+            return [
+                'ok' => true,
+                'ya_estaba' => true,
+                'total' => (int) ($row?->cantidad_productos ?? 0),
+                'vinculados' => (int) ($row?->productos_vinculados ?? 0),
+                'porcentaje' => (int) ($row?->porcentaje_vinculo ?? 0),
+                'item' => $row?->toResumen(),
+                'error' => null,
+            ];
+        }
+
+        if (! $this->oportunidades->apiConfigurada()) {
+            $msg = 'API Mercado Público no configurada (falta ticket).';
+            $this->marcarFalloVinculo($codigo, null, $msg);
+
+            return [
+                'ok' => false,
+                'ya_estaba' => false,
+                'total' => 0,
+                'vinculados' => 0,
+                'porcentaje' => 0,
+                'item' => $this->resumenCodigo($codigo),
+                'error' => $msg,
+            ];
+        }
+
+        try {
+            $resultado = $this->vincularCodigo($codigo);
+            $row = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->orderByDesc('fecha_busqueda')
+                ->orderByDesc('id')
+                ->first();
+
+            return [
+                'ok' => true,
+                'ya_estaba' => false,
+                'total' => $resultado['total'],
+                'vinculados' => $resultado['vinculados'],
+                'porcentaje' => $resultado['porcentaje'],
+                'item' => $row?->toResumen(),
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            $this->marcarFalloVinculo($codigo, null, $e->getMessage());
+
+            return [
+                'ok' => false,
+                'ya_estaba' => false,
+                'total' => 0,
+                'vinculados' => 0,
+                'porcentaje' => 0,
+                'item' => $this->resumenCodigo($codigo),
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resumenCodigo(string $codigo): ?array
+    {
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        return $row?->toResumen();
+    }
+
+    private function marcarFalloVinculo(string $codigo, mixed $fechaBusqueda, string $mensaje): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        $mensaje = mb_substr(trim($mensaje), 0, 500);
+        if ($codigo === '' || $mensaje === '') {
+            return;
+        }
+
+        $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
+        foreach ($rows as $row) {
+            try {
+                $row->fill([
+                    'vinculo_completo' => false,
+                    'vinculo_error' => $mensaje,
+                    'vinculo_at' => now(),
+                ])->save();
+            } catch (Throwable $e) {
+                Log::warning('OportunidadVinculo: no se pudo marcar fallo de vínculo', [
+                    'codigo' => $codigo,
+                    'id' => $row->id,
+                    'message' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            $this->encontradaRelay->replicarItems([
+                $row->toResumenConPreviewVinculo() + [
+                    'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($row->fecha_busqueda),
+                ],
+            ], OportunidadEncontradaRelayService::ACCION_VINCULO);
+        }
+    }
+
+    /**
+     * Tras un fallo de vinculación: si MP responde, guarda preview (puede ser 0% real)
+     * y marca procesado. Si MP no responde, marca fallida con mensaje (no 0%).
+     */
+    private function intentarCerrarTrasFallo(string $codigo, mixed $fechaBusqueda, string $mensajeError = ''): void
     {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
@@ -730,9 +899,11 @@ class OportunidadVinculoService
         }
 
         if (! $this->oportunidades->apiConfigurada()) {
-            Log::warning('OportunidadVinculo: fallo sin cerrar (API MP no configurada); queda pendiente', [
-                'codigo' => $codigo,
-            ]);
+            $this->marcarFalloVinculo(
+                $codigo,
+                $fechaBusqueda,
+                $mensajeError !== '' ? $mensajeError : 'API Mercado Público no configurada (falta ticket).',
+            );
 
             return;
         }
@@ -742,11 +913,12 @@ class OportunidadVinculoService
             $parseado = $this->mapper->fromDetalle($payload);
             $preview = $this->importService->previewDesdeDatos($parseado);
         } catch (Throwable $e) {
-            // No inventar 0%: el próximo proceso de vinculación la reintentará.
-            Log::warning('OportunidadVinculo: MP no respondió tras fallo; se deja pendiente de vincular', [
+            $msg = $mensajeError !== '' ? $mensajeError : $e->getMessage();
+            Log::warning('OportunidadVinculo: MP no respondió tras fallo; se marca fallida', [
                 'codigo' => $codigo,
-                'message' => $e->getMessage(),
+                'message' => $msg,
             ]);
+            $this->marcarFalloVinculo($codigo, $fechaBusqueda, $msg);
 
             return;
         }
@@ -768,6 +940,7 @@ class OportunidadVinculoService
                     'vinculo_completo' => true,
                     'vinculo_at' => now(),
                     'vinculo_preview_json' => $previewCache,
+                    'vinculo_error' => null,
                 ];
                 if (isset($cab['region']) && is_numeric($cab['region']) && (int) $cab['region'] > 0) {
                     $fill['region'] = (int) $cab['region'];
@@ -1048,7 +1221,11 @@ class OportunidadVinculoService
 
             $codigo = (string) ($paso['codigo'] ?? '');
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            $this->intentarCerrarTrasFallo($codigo, $fechaPaso);
+            $this->intentarCerrarTrasFallo(
+                $codigo,
+                $fechaPaso,
+                'Paso colgado (sin avance); se marcó fallido para continuar.',
+            );
 
             $pasos[$i]['estado'] = self::PASO_FAILED;
             $pasos[$i]['fin'] = now()->toIso8601String();

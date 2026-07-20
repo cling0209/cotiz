@@ -431,7 +431,7 @@
                     <p id="modal-vinculo-resumen" class="small text-muted mb-2"></p>
                     <div id="modal-vinculo-loading" class="text-center text-muted py-4 d-none">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
-                        <span class="ms-2">Cargando productos…</span>
+                        <span id="modal-vinculo-loading-text" class="ms-2">Cargando productos…</span>
                     </div>
                     <div id="modal-vinculo-error" class="alert alert-warning py-2 small d-none mb-0"></div>
                     <div id="modal-vinculo-tabla-wrap" class="table-responsive d-none">
@@ -492,6 +492,7 @@
             cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
             syncPar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.sync-par') : ''),
             detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
+            vincularCodigo: @json(route('admin.oportunidades.para-cotizar.vincular-codigo')),
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
@@ -717,13 +718,21 @@
         }
 
         function itemVinculoProcesado(item) {
+            if (!item) {
+                return false;
+            }
+            if (item.vinculo_estado === 'procesada') {
+                return true;
+            }
+            if (item.vinculo_estado === 'fallida' || item.vinculo_estado === 'pendiente') {
+                return false;
+            }
             const completo = item.vinculo_completo === true
                 || item.vinculo_completo === 1
                 || item.vinculo_completo === '1';
             if (!completo) {
                 return false;
             }
-            // Cerrado sin preview = MP no respondió; no es un 0% real.
             if (item.tiene_vinculo_preview === false) {
                 return false;
             }
@@ -735,6 +744,28 @@
                 return false;
             }
             return true;
+        }
+
+        function itemNecesitaVincular(item) {
+            return !itemVinculoProcesado(item);
+        }
+
+        function htmlEstadoVinculoListado(item) {
+            const estado = String(item?.vinculo_estado || '').trim();
+            if (itemVinculoProcesado(item)) {
+                const vinc = Number(item.productos_vinculados) || 0;
+                const tot = Number(item.cantidad_productos) || 0;
+                const pct = porcentajeVinculoItem(item) ?? 0;
+                return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
+            }
+            if (estado === 'fallida' || (item?.vinculo_error && String(item.vinculo_error).trim() !== '')) {
+                const msg = String(item.vinculo_error || 'Error al vincular').trim();
+                return `<div class="mt-1">
+                    <span class="badge text-bg-danger">Vinculación fallida</span>
+                    <div class="opc-meta text-danger mt-1" title="${escapeHtml(msg)}">${escapeHtml(msg)}</div>
+                </div>`;
+            }
+            return '<div class="mt-1"><span class="badge text-bg-warning">Vinculación pendiente</span></div>';
         }
 
         function porcentajeVinculoItem(item) {
@@ -1104,15 +1135,7 @@
                 const productosBajoCodigo = tieneCantidad && !Number.isNaN(cantidadNum) ?
                     `<div class="opc-meta mt-1">Productos: <strong class="tabular-nums">${escapeHtml(String(cantidadNum))}</strong></div>` :
                     '';
-                const vinculoProcesado = itemVinculoProcesado(item);
-                const vinculoHtml = vinculoProcesado
-                    ? (() => {
-                        const vinc = Number(item.productos_vinculados) || 0;
-                        const tot = Number(item.cantidad_productos) || 0;
-                        const pct = porcentajeVinculoItem(item) ?? 0;
-                        return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
-                    })()
-                    : '<div class="mt-1"><span class="badge text-bg-warning">Vinculación no procesada</span></div>';
+                const vinculoHtml = htmlEstadoVinculoListado(item);
                 const nombreHtml = nombre ?
                     `<div class="opc-linea-2 opc-meta" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</div>` :
                     '';
@@ -1308,12 +1331,82 @@
         const modalVinculoLabel = document.getElementById('modal-vinculo-productos-label');
         const modalVinculoResumen = document.getElementById('modal-vinculo-resumen');
         const modalVinculoLoading = document.getElementById('modal-vinculo-loading');
+        const modalVinculoLoadingText = document.getElementById('modal-vinculo-loading-text');
         const modalVinculoError = document.getElementById('modal-vinculo-error');
         const modalVinculoTablaWrap = document.getElementById('modal-vinculo-tabla-wrap');
         const modalVinculoTbody = document.getElementById('modal-vinculo-tbody');
         const bsModalVinculo = modalVinculoEl && typeof bootstrap !== 'undefined'
             ? bootstrap.Modal.getOrCreateInstance(modalVinculoEl)
             : null;
+
+        function setModalVinculoLoading(texto) {
+            if (modalVinculoLoadingText) {
+                modalVinculoLoadingText.textContent = texto || 'Cargando productos…';
+            }
+            if (modalVinculoLoading) {
+                modalVinculoLoading.classList.remove('d-none');
+            }
+        }
+
+        function aplicarItemVinculoLocal(item) {
+            if (!item || !item.codigo) {
+                return;
+            }
+            const cod = String(item.codigo).toUpperCase();
+            const prev = porCodigo.get(cod) || {};
+            porCodigo.set(cod, { ...prev, ...item, codigo: cod });
+            renderTabla(false);
+        }
+
+        /**
+         * Si falta vinculación, avisa y vincula on-demand antes de continuar.
+         * @returns {Promise<{ok: boolean, error?: string}>}
+         */
+        async function asegurarVinculoAntes(codigo, { onAviso } = {}) {
+            const cod = String(codigo || '').trim().toUpperCase();
+            if (!cod) {
+                return { ok: false, error: 'Código vacío.' };
+            }
+            const item = porCodigo.get(cod);
+            if (!itemNecesitaVincular(item)) {
+                return { ok: true };
+            }
+            if (typeof onAviso === 'function') {
+                onAviso('Se va a vincular antes de mostrar…');
+            }
+            if (!urls.vincularCodigo) {
+                return { ok: false, error: 'No hay endpoint de vinculación disponible.' };
+            }
+            try {
+                const res = await fetch(urls.vincularCodigo, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ codigo: cod }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data?.item) {
+                    aplicarItemVinculoLocal(data.item);
+                }
+                if (!res.ok || !data?.ok) {
+                    return {
+                        ok: false,
+                        error: data?.error || `HTTP ${res.status}`,
+                    };
+                }
+                return { ok: true };
+            } catch (err) {
+                return {
+                    ok: false,
+                    error: err?.message || 'Vinculación fallida.',
+                };
+            }
+        }
 
         function badgeEstadoVinculo(estado, esSugerencia) {
             const e = String(estado || '').toLowerCase();
@@ -1349,10 +1442,25 @@
             if (modalVinculoTbody) {
                 modalVinculoTbody.innerHTML = '';
             }
-            if (modalVinculoLoading) {
-                modalVinculoLoading.classList.remove('d-none');
-            }
+            setModalVinculoLoading('Se va a vincular antes de mostrar…');
             bsModalVinculo.show();
+
+            const prev = await asegurarVinculoAntes(cod, {
+                onAviso: (msg) => setModalVinculoLoading(msg),
+            });
+            if (!prev.ok) {
+                if (modalVinculoLoading) {
+                    modalVinculoLoading.classList.add('d-none');
+                }
+                if (modalVinculoError) {
+                    modalVinculoError.className = 'alert alert-danger py-2 small mb-0';
+                    modalVinculoError.textContent = 'Vinculación fallida: ' + (prev.error || 'Error desconocido');
+                    modalVinculoError.classList.remove('d-none');
+                }
+                return;
+            }
+
+            setModalVinculoLoading('Cargando productos…');
 
             try {
                 const urlDetalle = String(urls.detalleVinculoBase || '').replace('__CODIGO__', encodeURIComponent(cod));
@@ -1369,6 +1477,7 @@
                 }
                 if (!res.ok || !data.ok) {
                     if (modalVinculoError) {
+                        modalVinculoError.className = 'alert alert-warning py-2 small mb-0';
                         modalVinculoError.textContent = data.error ||
                             'No se pudo obtener el detalle de productos de Mercado Público.';
                         modalVinculoError.classList.remove('d-none');
@@ -1417,6 +1526,7 @@
                     modalVinculoLoading.classList.add('d-none');
                 }
                 if (modalVinculoError) {
+                    modalVinculoError.className = 'alert alert-warning py-2 small mb-0';
                     modalVinculoError.textContent = 'No se pudo cargar el detalle de productos.';
                     modalVinculoError.classList.remove('d-none');
                 }
@@ -1465,13 +1575,43 @@
         }
 
         if (tbody) {
-            // capture: contar antes de que page-loader u otros handlers naveguen
-            tbody.addEventListener('click', (e) => {
+            // Ir a cotizar: si falta vínculo, vincular antes de navegar.
+            tbody.addEventListener('click', async (e) => {
                 const link = e.target.closest('a.btn-ir-cotizar');
                 if (!link) {
                     return;
                 }
-                incrementarVisitaLocal(link.getAttribute('data-codigo') || '');
+                const cod = String(link.getAttribute('data-codigo') || '').trim().toUpperCase();
+                incrementarVisitaLocal(cod);
+                registrarVisitaServidor(cod);
+                if (!itemNecesitaVincular(porCodigo.get(cod))) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                const href = link.getAttribute('href') || '';
+                const labelPrev = link.innerHTML;
+                link.classList.add('disabled');
+                link.setAttribute('aria-disabled', 'true');
+                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…';
+                const prev = await asegurarVinculoAntes(cod);
+                if (!prev.ok) {
+                    link.classList.remove('disabled');
+                    link.removeAttribute('aria-disabled');
+                    link.innerHTML = labelPrev;
+                    if (bsModalVinculo && modalVinculoLabel && modalVinculoError) {
+                        modalVinculoLabel.textContent = `Vinculación — ${cod}`;
+                        if (modalVinculoResumen) modalVinculoResumen.textContent = '';
+                        if (modalVinculoTablaWrap) modalVinculoTablaWrap.classList.add('d-none');
+                        if (modalVinculoLoading) modalVinculoLoading.classList.add('d-none');
+                        modalVinculoError.className = 'alert alert-danger py-2 small mb-0';
+                        modalVinculoError.textContent = 'Vinculación fallida: ' + (prev.error || 'Error desconocido');
+                        modalVinculoError.classList.remove('d-none');
+                        bsModalVinculo.show();
+                    }
+                    return;
+                }
+                window.location.href = href;
             }, true);
 
             tbody.addEventListener('click', (e) => {

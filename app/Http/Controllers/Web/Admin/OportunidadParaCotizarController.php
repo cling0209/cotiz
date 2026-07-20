@@ -226,6 +226,31 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
+    public function vincularCodigo(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        $resultado = $this->vinculos->asegurarVinculoCodigo($data['codigo']);
+        if (! $resultado['ok']) {
+            return response()->json([
+                'ok' => false,
+                'error' => $resultado['error'] ?? 'No se pudo vincular la cotización.',
+                'item' => $resultado['item'],
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'ya_estaba' => $resultado['ya_estaba'],
+            'total' => $resultado['total'],
+            'vinculados' => $resultado['vinculados'],
+            'porcentaje' => $resultado['porcentaje'],
+            'item' => $resultado['item'],
+        ]);
+    }
+
     public function paso(Request $request): JsonResponse
     {
         $data = $request->validate([

@@ -32,6 +32,7 @@ class OportunidadEncontrada extends Model
         'porcentaje_vinculo',
         'vinculo_at',
         'vinculo_preview_json',
+        'vinculo_error',
         'fecha_busqueda',
         'indice_region_config',
         'found_by',
@@ -85,14 +86,37 @@ class OportunidadEncontrada extends Model
             'palabras_coinciden' => array_values($this->palabras_coinciden ?? []),
             'cantidad_productos' => $this->cantidad_productos,
             'vinculo_completo' => (bool) $this->vinculo_completo,
-            'tiene_vinculo_preview' => is_array($this->vinculo_preview_json)
-                && isset($this->vinculo_preview_json['lineas'])
-                && is_array($this->vinculo_preview_json['lineas']),
+            'tiene_vinculo_preview' => $this->tieneVinculoPreview(),
+            'vinculo_error' => ($err = trim((string) ($this->vinculo_error ?? ''))) !== '' ? $err : null,
+            'vinculo_estado' => $this->estadoVinculoUi(),
             'productos_vinculados' => $this->productos_vinculados,
             'porcentaje_vinculo' => $this->porcentaje_vinculo,
             'indice_region_config' => (int) $this->indice_region_config,
             'guardada' => true,
         ];
+    }
+
+    public function tieneVinculoPreview(): bool
+    {
+        return is_array($this->vinculo_preview_json)
+            && isset($this->vinculo_preview_json['lineas'])
+            && is_array($this->vinculo_preview_json['lineas']);
+    }
+
+    /**
+     * Estado visible en listado: procesada | fallida | pendiente.
+     */
+    public function estadoVinculoUi(): string
+    {
+        if ((bool) $this->vinculo_completo && $this->tieneVinculoPreview()) {
+            return 'procesada';
+        }
+
+        if (trim((string) ($this->vinculo_error ?? '')) !== '') {
+            return 'fallida';
+        }
+
+        return 'pendiente';
     }
 
     /**
@@ -107,6 +131,7 @@ class OportunidadEncontrada extends Model
         return $this->toResumen() + [
             'vinculo_preview_json' => is_array($preview) ? $preview : null,
             'vinculo_at' => $this->vinculo_at?->toIso8601String(),
+            'vinculo_error' => ($err = trim((string) ($this->vinculo_error ?? ''))) !== '' ? $err : null,
         ];
     }
 }

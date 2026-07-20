@@ -133,6 +133,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('oportunidades/para-cotizar/vinculo/{codigo}', [OportunidadParaCotizarController::class, 'detalleVinculo'])
                 ->name('oportunidades.para-cotizar.detalle-vinculo')
                 ->where('codigo', '[^/]+');
+            Route::post('oportunidades/para-cotizar/vincular-codigo', [OportunidadParaCotizarController::class, 'vincularCodigo'])
+                ->name('oportunidades.para-cotizar.vincular-codigo');
         });
 
         Route::middleware('oportunidades-admin')->group(function () {

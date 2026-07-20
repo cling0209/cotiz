@@ -226,6 +226,7 @@ class OportunidadEncontradaRelayService
                         $attrs['porcentaje_vinculo'],
                         $attrs['vinculo_preview_json'],
                         $attrs['vinculo_at'],
+                        $attrs['vinculo_error'] ?? null,
                     );
                 }
                 // Si llega estado de vínculo sin preview, conservar el detalle local.
@@ -1007,6 +1008,9 @@ class OportunidadEncontradaRelayService
                     ? $item['vinculo_preview_json']
                     : null,
                 'vinculo_at' => $item['vinculo_at'] ?? null,
+                'vinculo_error' => ($err = trim((string) ($item['vinculo_error'] ?? ''))) !== ''
+                    ? mb_substr($err, 0, 500)
+                    : null,
                 'fecha_busqueda' => $dia,
                 'indice_region_config' => (int) ($item['indice_region_config'] ?? 999),
             ];
@@ -1084,6 +1088,11 @@ class OportunidadEncontradaRelayService
 
         if (array_key_exists('vinculo_at', $item)) {
             $attrs['vinculo_at'] = $this->parseFechaNullable($item['vinculo_at'] ?? null);
+        }
+
+        if (array_key_exists('vinculo_error', $item)) {
+            $err = trim((string) ($item['vinculo_error'] ?? ''));
+            $attrs['vinculo_error'] = $err !== '' ? mb_substr($err, 0, 500) : null;
         }
 
         return $attrs;
