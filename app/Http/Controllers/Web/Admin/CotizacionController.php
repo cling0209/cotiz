@@ -556,8 +556,9 @@ class CotizacionController extends Controller
         $datos = $request->validate([
             'prod_item' => ['required', 'string', 'max:50'],
             'cantidad' => ['required', 'integer', 'min:1'],
-            'prod_valor' => ['required', 'integer', 'min:0'],
+            'prod_valor' => ['nullable', 'integer', 'min:0'],
             'prod_valor_costo' => ['nullable', 'integer', 'min:0'],
+            'factor_precio_venta' => ['nullable', 'string'],
         ]);
 
         $producto = Maeprod::query()->find($datos['prod_item']);
@@ -569,12 +570,39 @@ class CotizacionController extends Controller
             return back()->with('error', 'Producto no encontrado.');
         }
 
+        $costo = array_key_exists('prod_valor_costo', $datos) && $datos['prod_valor_costo'] !== null
+            ? (int) $datos['prod_valor_costo']
+            : (int) ($producto->prod_valor_costo ?? 0);
+
+        $factorOverride = null;
+        if (array_key_exists('factor_precio_venta', $datos) && trim((string) $datos['factor_precio_venta']) !== '') {
+            $factorOverride = $this->notaService->parseFactorPrecioVenta($datos['factor_precio_venta']);
+            if ($factorOverride === null) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'error' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                    ], 422);
+                }
+
+                return back()->withErrors([
+                    'factor_precio_venta' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                ]);
+            }
+        }
+
+        $prodValor = $this->detalleService->precioVentaSegunFactor(
+            $nota,
+            $costo,
+            (int) ($producto->prod_valor ?? 0),
+            $factorOverride,
+        );
+
         $detalle = $this->detalleService->agregarLinea(
             $nota,
             $datos['prod_item'],
             (int) $datos['cantidad'],
-            (int) $datos['prod_valor'],
-            isset($datos['prod_valor_costo']) ? (int) $datos['prod_valor_costo'] : null,
+            $prodValor,
+            $costo,
             $request->user()->username,
         );
 
@@ -1127,7 +1155,18 @@ class CotizacionController extends Controller
             'prod_item_agile' => ['required', 'string', 'max:50'],
             'prod_item' => ['required', 'string', 'max:50'],
             'prod_valor' => ['nullable', 'integer', 'min:0'],
+            'factor_precio_venta' => ['nullable', 'string'],
         ]);
+
+        $factorOverride = null;
+        if (array_key_exists('factor_precio_venta', $datos) && trim((string) $datos['factor_precio_venta']) !== '') {
+            $factorOverride = $this->notaService->parseFactorPrecioVenta($datos['factor_precio_venta']);
+            if ($factorOverride === null) {
+                return response()->json([
+                    'error' => 'El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).',
+                ], 422);
+            }
+        }
 
         try {
             $resultado = $this->detalleService->vincularLineaAgile(
@@ -1136,7 +1175,8 @@ class CotizacionController extends Controller
                 $datos['prod_item_agile'],
                 $datos['prod_item'],
                 $request->user()->username,
-                isset($datos['prod_valor']) ? (int) $datos['prod_valor'] : null,
+                null,
+                $factorOverride,
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['error' => $e->getMessage()], 422);

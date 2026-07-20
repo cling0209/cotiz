@@ -265,6 +265,50 @@ class CotizacionOrdenLineaTest extends TestCase
         ]);
     }
 
+    public function test_agregar_producto_calcula_precio_venta_segun_factor(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'PROD130',
+            'prod_nombre' => 'Producto 130',
+            'prod_valor' => 1220,
+            'prod_valor_costo' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $nota = $this->crearNota([
+            'nronota' => 201,
+            'nota_softland' => 20001,
+            'encargado' => 'COT-ORDEN-002',
+            'factor_precio_venta' => 1.30,
+        ]);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.lineas.store', $nota->nronota),
+            [
+                'prod_item' => 'PROD130',
+                'cantidad' => 2,
+                'prod_valor' => 1220,
+                'prod_valor_costo' => 1000,
+                'factor_precio_venta' => '1,30',
+            ],
+        )
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD130',
+            'prod_valor' => 1300,
+            'prod_valor_costo' => 1000,
+            'cantidad' => 2,
+        ]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'PROD130',
+            'prod_valor' => 1220,
+        ]);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

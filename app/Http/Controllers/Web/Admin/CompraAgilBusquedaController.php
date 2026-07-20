@@ -132,6 +132,10 @@ class CompraAgilBusquedaController extends Controller
             'codigo' => ['required', 'string', 'max:40'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
+            'cabecera_json' => ['nullable', 'string', 'max:20000'],
+            'lineas_json' => ['nullable', 'string', 'max:2000000'],
+            'cabecera' => ['nullable', 'array'],
+            'lineas' => ['nullable', 'array'],
         ]);
 
         try {
@@ -140,30 +144,53 @@ class CompraAgilBusquedaController extends Controller
                 return response()->json(['error' => $error], 422);
             }
 
-            $payload = $this->api->detalle($codigo);
-            if (CompraAgilRegionScope::debeExcluirItem($payload)) {
-                return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
-            }
-            $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
-                $this->mapper->fromDetalle($payload)
-            );
+            $lineasPreview = $this->lineasPreviewDesdeRequest($request);
 
-            [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
-
-            if (isset($datos['desde'], $datos['hasta'])) {
-                $resultado = $this->importService->aplicarLoteDesdeDatos(
+            if ($lineasPreview !== null) {
+                // Preview ya vinculado en Oportunidades: no reconsultar Mercado Público.
+                [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
+                $cabecera = $this->cabeceraPreviewDesdeRequest($request, $datos);
+                if (trim((string) ($cabecera['codigo_cotizacion'] ?? '')) === '') {
+                    $cabecera['codigo_cotizacion'] = $codigo;
+                }
+                $desde = (int) ($datos['desde'] ?? 0);
+                $hasta = (int) ($datos['hasta'] ?? count($lineasPreview));
+                $resultado = $this->importService->aplicarLoteDesdePreview(
                     $nota,
-                    $parseado,
+                    [
+                        'cabecera' => $cabecera,
+                        'lineas' => $lineasPreview,
+                    ],
                     $request->user()->username,
-                    (int) $datos['desde'],
-                    (int) $datos['hasta'],
+                    $desde,
+                    $hasta,
                 );
             } else {
-                $resultado = $this->importService->aplicarDesdeDatos(
-                    $nota,
-                    $parseado,
-                    $request->user()->username,
+                $payload = $this->api->detalle($codigo);
+                if (CompraAgilRegionScope::debeExcluirItem($payload)) {
+                    return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
+                }
+                $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
+                    $this->mapper->fromDetalle($payload)
                 );
+
+                [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
+
+                if (isset($datos['desde'], $datos['hasta'])) {
+                    $resultado = $this->importService->aplicarLoteDesdeDatos(
+                        $nota,
+                        $parseado,
+                        $request->user()->username,
+                        (int) $datos['desde'],
+                        (int) $datos['hasta'],
+                    );
+                } else {
+                    $resultado = $this->importService->aplicarDesdeDatos(
+                        $nota,
+                        $parseado,
+                        $request->user()->username,
+                    );
+                }
             }
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
@@ -326,5 +353,60 @@ class CompraAgilBusquedaController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Preview enviado al confirmar (desde Oportunidades), sin reconsultar MP.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function lineasPreviewDesdeRequest(Request $request): ?array
+    {
+        if ($request->has('lineas') && is_array($request->input('lineas'))) {
+            $decoded = $request->input('lineas');
+        } else {
+            $json = $request->string('lineas_json')->trim()->toString();
+            if ($json === '') {
+                return null;
+            }
+            $decoded = json_decode($json, true);
+        }
+
+        if (! is_array($decoded) || $decoded === []) {
+            return null;
+        }
+
+        $lineas = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            if (trim((string) ($item['descripcion'] ?? '')) === '') {
+                continue;
+            }
+            $lineas[] = $item;
+        }
+
+        return $lineas === [] ? null : $lineas;
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function cabeceraPreviewDesdeRequest(Request $request, array $datos): array
+    {
+        $cabecera = is_array($datos['cabecera'] ?? null) ? $datos['cabecera'] : [];
+        if ($cabecera === []) {
+            $json = $request->string('cabecera_json')->trim()->toString();
+            if ($json !== '') {
+                $decoded = json_decode($json, true);
+                if (is_array($decoded)) {
+                    $cabecera = $decoded;
+                }
+            }
+        }
+
+        return $cabecera;
     }
 }

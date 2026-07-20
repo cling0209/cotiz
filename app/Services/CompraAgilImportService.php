@@ -121,6 +121,92 @@ class CompraAgilImportService
     }
 
     /**
+     * Importa desde un preview ya analizado (p. ej. vínculo de Oportunidades), sin reconsultar MP.
+     *
+     * @param  array{
+     *   cabecera?: array<string, mixed>,
+     *   lineas: array<int, array<string, mixed>>
+     * }  $datos
+     * @return array<string, mixed>
+     */
+    public function aplicarLoteDesdePreview(Nota $nota, array $datos, string $usuario, int $desde, int $hasta): array
+    {
+        return $this->aplicarLoteDesdeDatos(
+            $nota,
+            $this->normalizarDatosPreview($datos),
+            $usuario,
+            $desde,
+            $hasta,
+        );
+    }
+
+    /**
+     * @param  array{
+     *   cabecera?: array<string, mixed>,
+     *   lineas: array<int, array<string, mixed>>
+     * }  $datos
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: array<int, array<string, mixed>>
+     * }
+     */
+    public function normalizarDatosPreview(array $datos): array
+    {
+        $cabeceraIn = is_array($datos['cabecera'] ?? null) ? $datos['cabecera'] : [];
+        $lineas = [];
+
+        foreach ($datos['lineas'] ?? [] as $fila) {
+            if (! is_array($fila)) {
+                continue;
+            }
+            $descripcion = trim((string) ($fila['descripcion'] ?? ''));
+            if ($descripcion === '') {
+                continue;
+            }
+
+            $linea = [
+                'id_agile' => mb_substr(trim((string) ($fila['id_agile'] ?? '')), 0, 50),
+                'descripcion' => mb_substr($descripcion, 0, 500),
+                'cantidad' => max(1, (int) ($fila['cantidad'] ?? 1)),
+                'categoria' => trim((string) ($fila['categoria'] ?? '')),
+            ];
+
+            if (isset($fila['estado'])) {
+                $linea['estado'] = (string) $fila['estado'];
+            }
+            if (array_key_exists('es_sugerencia', $fila)) {
+                $linea['es_sugerencia'] = (bool) $fila['es_sugerencia'];
+            }
+            if (isset($fila['producto']) && is_array($fila['producto'])) {
+                $linea['producto'] = $fila['producto'];
+            }
+
+            $lineas[] = $linea;
+        }
+
+        $region = isset($cabeceraIn['region']) && is_numeric($cabeceraIn['region'])
+            ? (int) $cabeceraIn['region']
+            : null;
+        if ($region !== null && $region <= 0) {
+            $region = null;
+        }
+
+        return [
+            'cabecera' => [
+                'codigo_cotizacion' => trim((string) ($cabeceraIn['codigo_cotizacion'] ?? '')),
+                'empresa' => trim((string) ($cabeceraIn['empresa'] ?? '')),
+                'rutempresa' => trim((string) ($cabeceraIn['rutempresa'] ?? '')),
+                'nombre' => trim((string) ($cabeceraIn['nombre'] ?? '')),
+                'region' => $region,
+                'nombre_region' => trim((string) ($cabeceraIn['nombre_region'] ?? '')),
+                'comuna' => trim((string) ($cabeceraIn['comuna'] ?? '')),
+                'direccion_entrega' => trim((string) ($cabeceraIn['direccion_entrega'] ?? '')),
+            ],
+            'lineas' => $lineas,
+        ];
+    }
+
+    /**
      * Analiza un rango de líneas con sugerencias por similitud (0-based, hasta exclusivo).
      *
      * @return array{

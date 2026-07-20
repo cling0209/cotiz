@@ -873,6 +873,24 @@
         return f.toFixed(2).replace('.', ',');
     }
 
+    function factorActualCotiz() {
+        const parsed = factorInput ? parseFactorChile(factorInput.value) : null;
+        if (parsed !== null) return parsed;
+        const mostrado = document.getElementById('factor_precio_venta_mostrado')?.textContent;
+        const fromMostrado = parseFactorChile(mostrado);
+        if (fromMostrado !== null) return fromMostrado;
+        return 1.22;
+    }
+
+    function precioVentaSegunFactorJs(costo, fallbackCatalogo) {
+        const c = parseInt(costo, 10) || 0;
+        const factor = factorActualCotiz();
+        if (c > 0 && factor > 0) {
+            return Math.round(c * factor);
+        }
+        return parseInt(fallbackCatalogo, 10) || 0;
+    }
+
     factorInput?.addEventListener('input', function () {
         let out = '';
         let sepUsed = false;
@@ -1822,8 +1840,12 @@
         }
 
         const cantidad = document.getElementById('modal-cantidad')?.value || '1';
-        const prodValor = p.prod_valor ?? 0;
         const prodValorCosto = p.prod_valor_costo ?? '';
+        const costoNum = prodValorCosto !== '' && prodValorCosto != null
+            ? parseInt(prodValorCosto, 10) || 0
+            : 0;
+        const prodValor = precioVentaSegunFactorJs(costoNum, p.prod_valor ?? 0);
+        const factorEnvio = factorInput?.value || formatFactorChile(factorActualCotiz());
 
         if (!inBatch) {
             agregandoLinea = true;
@@ -1834,7 +1856,8 @@
             body.append('_token', csrf);
             body.append('prod_item', p.prod_item);
             body.append('cantidad', cantidad);
-            body.append('prod_valor', prodValor);
+            body.append('prod_valor', String(prodValor));
+            body.append('factor_precio_venta', factorEnvio);
             if (prodValorCosto !== '' && prodValorCosto != null) {
                 body.append('prod_valor_costo', prodValorCosto);
             }
@@ -2129,7 +2152,7 @@
                 '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
                 '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
                 '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
-                '<td class="align-middle text-end fw-semibold">' + fmtPrecio(p.prod_valor) + '</td>';
+                '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
 
             const chk = tr.querySelector('.cotiz-buscar-check');
             chk?.addEventListener('change', () => togglearProductoMarcado(p.prod_item, chk.checked));
@@ -3293,7 +3316,7 @@
         if (importarEstado) {
             importarEstado.textContent = preview.error_cabecera
                 ? ''
-                : 'Análisis reutilizado (ya vinculado). Use Cargar para reanalizar.';
+                : 'Análisis desde Oportunidades (sin consultar Mercado Público).';
         }
         return true;
     }
@@ -3371,15 +3394,38 @@
 
         try {
             if (usarApi) {
+                const desdeVinculo = !!importPreviewData?.desde_cache;
+                const lineasPreview = desdeVinculo
+                    ? (importPreviewData.lineas || []).map((l) => ({
+                        id_agile: l.id_agile,
+                        descripcion: l.descripcion,
+                        cantidad: l.cantidad,
+                        categoria: l.categoria || '',
+                        estado: l.estado || '',
+                        es_sugerencia: !!l.es_sugerencia,
+                        producto: l.producto || null,
+                    }))
+                    : null;
+                const cabeceraPreview = desdeVinculo ? (importPreviewData.cabecera || {}) : null;
                 const lote = tamanoLoteImportar(total);
                 for (let desde = 0; desde < total; desde += lote) {
                     const hasta = Math.min(desde + lote, total);
-                    actualizarProgresoImportar(desde, total);
+                    actualizarProgresoImportar(
+                        desde,
+                        total,
+                        desdeVinculo ? 'Importando desde Oportunidades…' : null,
+                    );
                     const body = new FormData();
                     body.append('_token', csrf);
                     body.append('codigo', importCodigoApi);
                     body.append('desde', String(desde));
                     body.append('hasta', String(hasta));
+                    if (desdeVinculo && lineasPreview) {
+                        body.append('lineas_json', JSON.stringify(lineasPreview));
+                        if (desde === 0 && cabeceraPreview) {
+                            body.append('cabecera_json', JSON.stringify(cabeceraPreview));
+                        }
+                    }
                     const res = await fetch(importarMpUrls.apiImportar, {
                         method: 'POST',
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -3660,7 +3706,7 @@
                         + '<td>' + escHtml(p.prod_nombre) + '</td>'
                         + '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>'
                         + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
-                        + '<td>' + formatMoneyCotiz(p.prod_valor) + '</td>'
+                        + '<td>' + formatMoneyCotiz(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>'
                         + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
                         + '</tr>';
                 });
@@ -3827,7 +3873,7 @@
                     orden: ordenEnvio,
                     prod_item_agile: agileId,
                     prod_item: codigo,
-                    prod_valor: venta,
+                    factor_precio_venta: factorInput?.value || formatFactorChile(factorActualCotiz()),
                 }),
             });
             const json = await res.json().catch(() => ({}));

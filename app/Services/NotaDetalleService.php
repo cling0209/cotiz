@@ -306,6 +306,22 @@ class NotaDetalleService
     }
 
     /**
+     * Precio de venta de la nota: costo × factor (sin tocar maeprod).
+     */
+    public function precioVentaSegunFactor(Nota $nota, int $costo, ?int $fallbackCatalogo = null, ?float $factorOverride = null): int
+    {
+        $factor = $factorOverride !== null
+            ? round($factorOverride, 2)
+            : round((float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta', 1.22)), 2);
+
+        if ($costo > 0 && $factor > 0) {
+            return (int) round($costo * $factor);
+        }
+
+        return (int) ($fallbackCatalogo ?? 0);
+    }
+
+    /**
      * @return array{ok: int, total: int, factor: float, lineas: array<int, array{orden: int, prod_item: string, prod_valor: int, prod_valor_costo: int, subtotal: int}>}
      */
     public function aplicarFactorPrecioVenta(Nota $nota, float $factor, ?string $usuarioUpd = null): array
@@ -325,7 +341,9 @@ class NotaDetalleService
             foreach ($lineas as $linea) {
                 $costo = (int) ($linea->prod_valor_costo ?? 0);
                 $valorActual = (int) $linea->prod_valor;
-                $nuevoValor = $costo > 0 ? (int) round($costo * $factor) : $valorActual;
+                $nuevoValor = $costo > 0
+                    ? $this->precioVentaSegunFactor($nota, $costo, $valorActual, $factor)
+                    : $valorActual;
 
                 $this->actualizarLinea($nota, $linea->prod_item, (int) $linea->orden, [
                     'prod_valor' => $nuevoValor,
@@ -476,6 +494,7 @@ class NotaDetalleService
         string $prodItemInterno,
         ?string $usuarioUpd = null,
         ?int $prodValor = null,
+        ?float $factorOverride = null,
     ): array {
         $agileId = trim($prodItemAgile);
         $codigo = trim($prodItemInterno);
@@ -500,8 +519,12 @@ class NotaDetalleService
             $costo = (int) ($producto->prod_valor ?? 0);
         }
 
-        $factor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta', 1.22));
-        $valor = $prodValor ?? ($costo > 0 ? (int) round($costo * $factor) : (int) ($producto->prod_valor ?? 0));
+        $valor = $prodValor ?? $this->precioVentaSegunFactor(
+            $nota,
+            $costo,
+            (int) ($producto->prod_valor ?? 0),
+            $factorOverride,
+        );
 
         return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor) {
             $payload = [
