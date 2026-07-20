@@ -107,6 +107,52 @@ class OportunidadEncontradaRelayService
     }
 
     /**
+     * Tras terminar búsqueda o vinculación: si hay pendientes, despierta el par,
+     * espera el cold start y reenvía (encontradas + resultados de vinculación).
+     *
+     * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, mensaje: string}
+     */
+    public function sincronizarPendientesTrasProceso(string $origen = ''): array
+    {
+        if ($this->urlDestino() === '') {
+            return [
+                'ok' => true,
+                'pendientes_ok' => 0,
+                'pendientes_fail' => 0,
+                'mensaje' => 'Sin URL del sitio par; sync omitido.',
+            ];
+        }
+
+        if (! OportunidadEncontradaSyncPendiente::query()->exists()) {
+            return [
+                'ok' => true,
+                'pendientes_ok' => 0,
+                'pendientes_fail' => 0,
+                'mensaje' => 'Sin pendientes de sync al par.',
+            ];
+        }
+
+        $etiqueta = trim($origen) !== '' ? trim($origen) : 'proceso';
+        Log::info('Sync oportunidades al par tras '.$etiqueta.': despertando sitio par…');
+
+        $this->despertarSitioPar();
+
+        $espera = max(0, (int) config('cotiz.api_oportunidad_encontrada.sync_wake_espera_seg', 25));
+        if ($espera > 0) {
+            sleep($espera);
+        }
+
+        $resultado = $this->sincronizarPendientes(despertar: false);
+        Log::info('Sync oportunidades al par tras '.$etiqueta, [
+            'ok' => $resultado['ok'],
+            'pendientes_ok' => $resultado['pendientes_ok'],
+            'pendientes_fail' => $resultado['pendientes_fail'],
+        ]);
+
+        return $resultado;
+    }
+
+    /**
      * Aplica recepción remota. Idempotente. No vuelve a relay.
      *
      * @param  list<array<string, mixed>>  $items

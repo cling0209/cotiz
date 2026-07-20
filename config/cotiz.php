@@ -34,6 +34,8 @@ return [
     'api_oportunidad_encontrada' => [
         // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../oportunidad-encontrada).
         'url' => env('COTIZ_API_OPORTUNIDAD_ENCONTRADA_URL', ''),
+        // Tras búsqueda/vinculación: espera tras wake /up antes de reenviar pendientes (Render free cold start).
+        'sync_wake_espera_seg' => max(0, min(120, (int) env('COTIZ_OPORTUNIDAD_SYNC_WAKE_ESPERA_SEG', 25))),
     ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),

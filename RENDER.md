@@ -104,7 +104,7 @@ Equivalente a `config.php` del legacy **allproducts**. Ver `config/cotiz.php`.
 | `COTIZ_API_OPORTUNIDAD_ENCONTRADA_URL` | URL del par para replicar oportunidades encontradas (opcional) | Si vacío, se deriva de `COTIZ_API_USUARIO_URL` (`.../oportunidad-encontrada`) |
 | `MERCADOPUBLICO_ANALISIS_ADMIN` | Habilita búsqueda de oportunidades + palabras clave (solo sitio buscador) | `true` en Romulo; `false` en Reicol |
 
-Las **palabras clave no se sincronizan** entre sitios. Lo que se replica al par son las **oportunidades encontradas**. Si el par está dormido, quedan pendientes y se reintentan al **boot** (`oportunidad:sync-encontradas-par`: wake `/up` + cola pendiente).
+Las **palabras clave no se sincronizan** entre sitios. Lo que se replica al par son las **oportunidades encontradas** (y el resultado de vinculación). Si el par está dormido, quedan pendientes y se reintentan: al **boot**, cada **30 min** (`oportunidad:sync-encontradas-par`) y al **terminar** búsqueda/vinculación (wake `/up` + espera `COTIZ_OPORTUNIDAD_SYNC_WAKE_ESPERA_SEG` + cola pendiente).
 
 Al **tomar** un código CA (`*-COT*`), se reserva de forma atómica en este sitio y en el par (`accion=tomada`) **antes** de grabar la nota. Si el par no responde o ya está tomado, se bloquea (no se permite duplicar entre ejecutivos/sitios).
 | `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | **Obligatorias** — mismas credenciales en Romulo y Reicol |
@@ -181,6 +181,7 @@ La búsqueda de **Oportunidades** usa los mismos horarios y parámetros HTTP de 
 
 - Schedule: `php artisan oportunidad:buscar` en las horas de `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS`.
 - Catch-up/retoma al boot (`php artisan oportunidad:buscar --catch-up`) y al login admin.
+- Sync al par: al boot, cada 30 min y al terminar búsqueda/vinculación (`oportunidad:sync-encontradas-par` / wake + pendientes).
 - Solo se ejecuta donde `MERCADOPUBLICO_ANALISIS_ADMIN=true`.
 - La corrida queda persistida y continúa desde el siguiente paso si Render reinicia.
 - Si el día **en curso** ya tiene corrida completa, el siguiente horario (o Buscar) hace una corrida **incremental** desde la última `fecha_publicacion` conocida (`cambio_desde`), para no perder cotizaciones publicadas más tarde.

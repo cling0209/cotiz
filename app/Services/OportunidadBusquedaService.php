@@ -37,6 +37,7 @@ class OportunidadBusquedaService
     public function __construct(
         protected OportunidadParaCotizarService $oportunidades,
         protected OportunidadVinculoService $vinculos,
+        protected OportunidadEncontradaRelayService $encontradaRelay,
     ) {}
 
     public function habilitada(): bool
@@ -1139,6 +1140,16 @@ class OportunidadBusquedaService
                 ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región. Tiempo: '.$tiempo
                 : 'Búsqueda terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
+
+        // Si el par dormía durante la búsqueda, reintenta sync (wake + pendientes) antes de vincular.
+        try {
+            $this->encontradaRelay->sincronizarPendientesTrasProceso('búsqueda');
+        } catch (\Throwable $e) {
+            Log::warning('Sync oportunidades al par tras búsqueda falló', [
+                'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         // Primero el 2.º proceso (vinculación), luego catch-up del día siguiente si corresponde.
         try {

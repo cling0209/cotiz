@@ -8,6 +8,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+$tz = config('app.timezone', 'America/Santiago');
+
+// Reintento periódico si el par estaba dormido al sincronizar encontradas/vinculaciones.
+Schedule::command('oportunidad:sync-encontradas-par')
+    ->everyThirtyMinutes()
+    ->timezone($tz)
+    ->withoutOverlapping(10);
+
 if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
     $horas = collect(explode(',', (string) config('cotiz.mercadopublico.resultados_schedule_hours', '10,19')))
         ->map(fn ($h) => (int) trim((string) $h))
@@ -19,12 +27,12 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
     if ($horas->isNotEmpty()) {
         Schedule::command('compra-agil:consultar-resultados')
             ->cron('0 '.$horas->implode(',').' * * *')
-            ->timezone(config('app.timezone', 'America/Santiago'))
+            ->timezone($tz)
             ->withoutOverlapping(120);
 
         Schedule::command('oportunidad:buscar')
             ->cron('0 '.$horas->implode(',').' * * *')
-            ->timezone(config('app.timezone', 'America/Santiago'))
+            ->timezone($tz)
             ->withoutOverlapping(120);
     }
 }

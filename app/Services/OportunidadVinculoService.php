@@ -691,6 +691,16 @@ class OportunidadVinculoService
                 ? 'Vinculación terminada con '.$fallidos.' fallo(s). Tiempo: '.$tiempo
                 : 'Vinculación terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
+
+        // Despierta el par y reenvía vinculaciones que fallaron al sync en vivo.
+        try {
+            $this->encontradaRelay->sincronizarPendientesTrasProceso('vinculación');
+        } catch (Throwable $e) {
+            Log::warning('Sync oportunidades al par tras vinculación falló', [
+                'corrida_id' => $corrida->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

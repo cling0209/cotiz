@@ -171,6 +171,51 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertDatabaseCount('oportunidad_encontrada_sync_pendientes', 0);
     }
 
+    public function test_sync_tras_proceso_despierta_y_vacia_pendientes(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/up' => Http::response('ok', 200),
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'recibidos' => 1,
+            ], 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '3333-1-COT26',
+                'nombre' => 'Tras proceso',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['oficina'],
+                'vinculo_completo' => true,
+                'productos_vinculados' => 0,
+                'porcentaje_vinculo' => 0,
+            ],
+        ], 'peer down');
+
+        $resultado = $relay->sincronizarPendientesTrasProceso('vinculación');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertSame(1, $resultado['pendientes_ok']);
+        $this->assertDatabaseCount('oportunidad_encontrada_sync_pendientes', 0);
+
+        Http::assertSent(fn ($request) => str_ends_with(rtrim($request->url(), '/'), '/up'));
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'oportunidad-encontrada')
+                && ($request['items'][0]['codigo'] ?? null) === '3333-1-COT26'
+                && ($request['items'][0]['vinculo_completo'] ?? null) === true;
+        });
+    }
+
     public function test_sitio_sin_analisis_ve_listado_sin_palabras(): void
     {
         config([
