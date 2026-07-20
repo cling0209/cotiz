@@ -585,6 +585,82 @@ class OportunidadVinculoService
     }
 
     /**
+     * Detalle de productos para el modal: cache de vinculación o, si falta, consulta viva a MP.
+     * Así se listan los productos de Mercado Público aunque aún no haya match interno (0% vinculado).
+     *
+     * @return array{
+     *   cabecera: array<string, mixed>,
+     *   lineas: list<array<string, mixed>>,
+     *   resumen: array<string, mixed>,
+     *   desde_cache: bool,
+     *   puede_importar: bool,
+     *   error_cabecera: null,
+     *   codigo: string,
+     *   porcentaje_vinculo: int|null,
+     *   productos_vinculados: int|null,
+     *   cantidad_productos: int|null
+     * }|null
+     */
+    public function previewParaDetalle(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        $guardado = $this->previewGuardado($codigo);
+        if ($guardado !== null) {
+            return $guardado;
+        }
+
+        if (! $this->oportunidades->apiConfigurada()) {
+            return null;
+        }
+
+        try {
+            $payload = $this->api->detalle($codigo);
+            $parseado = $this->mapper->fromDetalle($payload);
+            $preview = $this->importService->previewDesdeDatos($parseado);
+        } catch (Throwable $e) {
+            Log::warning('OportunidadVinculo: no se pudo obtener detalle MP para modal', [
+                'codigo' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $base = $this->armarRespuestaPreview($this->empaquetarPreviewCache($preview), false);
+        if ($base === null) {
+            return null;
+        }
+
+        $resumen = is_array($base['resumen'] ?? null) ? $base['resumen'] : [];
+        $total = (int) ($resumen['total'] ?? count($base['lineas']));
+        $vinculados = (int) ($resumen['vinculados'] ?? 0);
+        $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
+
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        return $base + [
+            'codigo' => $codigo,
+            'porcentaje_vinculo' => $row?->porcentaje_vinculo !== null
+                ? (int) $row->porcentaje_vinculo
+                : $porcentaje,
+            'productos_vinculados' => $row?->productos_vinculados !== null
+                ? (int) $row->productos_vinculados
+                : $vinculados,
+            'cantidad_productos' => $row?->cantidad_productos !== null
+                ? (int) $row->cantidad_productos
+                : ($total > 0 ? $total : null),
+        ];
+    }
+
+    /**
      * @param  mixed  $previewRaw
      * @return array{
      *   cabecera: array<string, mixed>,
@@ -642,16 +718,44 @@ class OportunidadVinculoService
             return;
         }
 
+        // Intentar conservar líneas MP (aunque sin match) para el modal Productos.
+        $previewCache = null;
+        $cantidadProductos = null;
+        try {
+            if ($this->oportunidades->apiConfigurada()) {
+                $payload = $this->api->detalle($codigo);
+                $parseado = $this->mapper->fromDetalle($payload);
+                $preview = $this->importService->previewDesdeDatos($parseado);
+                $previewCache = $this->empaquetarPreviewCache($preview);
+                $resumen = is_array($previewCache['resumen'] ?? null) ? $previewCache['resumen'] : [];
+                $total = (int) ($resumen['total'] ?? count($previewCache['lineas'] ?? []));
+                $cantidadProductos = $total > 0 ? $total : null;
+            }
+        } catch (Throwable $e) {
+            Log::warning('OportunidadVinculo: no se pudo armar preview MP al marcar sin vínculo', [
+                'codigo' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
         $rows = $this->encontrarFilasParaCodigo($codigo, $fechaBusqueda);
         foreach ($rows as $row) {
             try {
-                $row->fill([
+                $fill = [
                     'productos_vinculados' => 0,
                     'porcentaje_vinculo' => 0,
                     'vinculo_completo' => true,
                     'vinculo_at' => now(),
-                    'vinculo_preview_json' => null,
-                ])->save();
+                ];
+                if ($previewCache !== null) {
+                    $fill['vinculo_preview_json'] = $previewCache;
+                } elseif (! is_array($row->vinculo_preview_json)) {
+                    $fill['vinculo_preview_json'] = null;
+                }
+                if ($cantidadProductos !== null) {
+                    $fill['cantidad_productos'] = $cantidadProductos;
+                }
+                $row->fill($fill)->save();
             } catch (Throwable $e) {
                 Log::warning('OportunidadVinculo: no se pudo marcar encontrada sin vínculo', [
                     'codigo' => $codigo,

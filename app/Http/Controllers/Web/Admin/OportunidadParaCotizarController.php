@@ -206,11 +206,11 @@ class OportunidadParaCotizarController extends Controller
             ], 422);
         }
 
-        $preview = $this->vinculos->previewGuardado($codigo);
+        $preview = $this->vinculos->previewParaDetalle($codigo);
         if ($preview === null) {
             return response()->json([
                 'ok' => false,
-                'error' => 'Sin detalle de vinculación para esta cotización. Procese las vinculaciones primero.',
+                'error' => 'No se pudo obtener el detalle de productos de Mercado Público para esta cotización.',
                 'codigo' => $codigo,
             ], 404);
         }

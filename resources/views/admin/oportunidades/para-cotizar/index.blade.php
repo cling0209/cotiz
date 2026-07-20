@@ -1355,7 +1355,7 @@
                 if (!res.ok || !data.ok) {
                     if (modalVinculoError) {
                         modalVinculoError.textContent = data.error ||
-                            'Sin detalle de vinculación. Procese las vinculaciones primero.';
+                            'No se pudo obtener el detalle de productos de Mercado Público.';
                         modalVinculoError.classList.remove('d-none');
                     }
                     return;

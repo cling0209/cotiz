@@ -322,6 +322,66 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonCount(2, 'lineas');
     }
 
+    public function test_detalle_vinculo_muestra_productos_mp_sin_preview_cache(): void
+    {
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '873233-66-COT26',
+                    'nombre' => 'ADQUISICIÓN DE SILLAS DE ESCRITORIO',
+                    'institucion' => [
+                        'organismo_comprador' => 'POLICLINICO',
+                        'region' => 3,
+                    ],
+                    'productos_solicitados' => [
+                        [
+                            'codigo_producto' => '111',
+                            'nombre' => 'Silla escritorio',
+                            'descripcion' => 'Silla escritorio ergonómica',
+                            'cantidad' => 10,
+                        ],
+                        [
+                            'codigo_producto' => '222',
+                            'nombre' => 'Silla visita',
+                            'descripcion' => 'Silla visita',
+                            'cantidad' => 5,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '873233-66-COT26',
+            'nombre' => 'Sillas',
+            'region' => 3,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'cantidad_productos' => 2,
+            'productos_vinculados' => 0,
+            'porcentaje_vinculo' => 0,
+            'vinculo_preview_json' => null,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.detalle-vinculo', [
+                'codigo' => '873233-66-COT26',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('codigo', '873233-66-COT26')
+            ->assertJsonPath('cantidad_productos', 2)
+            ->assertJsonCount(2, 'lineas');
+    }
+
     public function test_vincular_codigo_actualiza_fila_de_dia_anterior(): void
     {
         Http::fake([
