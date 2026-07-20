@@ -650,7 +650,16 @@ class OportunidadEncontradaRelayService
      *   codigos: list<string>,
      *   ultimo_error: string|null,
      *   ultimo_ok_at: string|null,
-     *   ultimo_ok_count: int|null
+     *   ultimo_ok_count: int|null,
+     *   lotes: list<array{
+     *     id: int,
+     *     intentos: int,
+     *     ultimo_error: string|null,
+     *     created_at: string|null,
+     *     updated_at: string|null,
+     *     codigos: list<string>,
+     *     items: int
+     *   }>
      * }
      */
     private function resumenColaSync(string $colaAccion): array
@@ -664,18 +673,36 @@ class OportunidadEncontradaRelayService
 
         $codigos = [];
         $ultimoError = null;
+        $lotes = [];
         foreach ($pendientes as $pendiente) {
             $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
-            foreach ($this->normalizarItems($payload) as $item) {
+            $items = $this->normalizarItems($payload);
+            $codigosLote = [];
+            foreach ($items as $item) {
                 $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-                if ($codigo !== '' && ! in_array($codigo, $codigos, true)) {
+                if ($codigo === '') {
+                    continue;
+                }
+                if (! in_array($codigo, $codigos, true)) {
                     $codigos[] = $codigo;
+                }
+                if (! in_array($codigo, $codigosLote, true)) {
+                    $codigosLote[] = $codigo;
                 }
             }
             $err = trim((string) ($pendiente->ultimo_error ?? ''));
             if ($err !== '') {
                 $ultimoError = $err;
             }
+            $lotes[] = [
+                'id' => (int) $pendiente->id,
+                'intentos' => (int) $pendiente->intentos,
+                'ultimo_error' => $err !== '' ? $err : null,
+                'created_at' => $pendiente->created_at?->toIso8601String(),
+                'updated_at' => $pendiente->updated_at?->toIso8601String(),
+                'codigos' => $codigosLote,
+                'items' => count($items),
+            ];
         }
 
         $ultimoOk = Cache::get(self::CACHE_ULTIMO_OK_PREFIX.$colaAccion);
@@ -688,6 +715,7 @@ class OportunidadEncontradaRelayService
             'ultimo_ok_count' => is_array($ultimoOk) && isset($ultimoOk['count'])
                 ? (int) $ultimoOk['count']
                 : null,
+            'lotes' => $lotes,
         ];
     }
 

@@ -241,12 +241,38 @@
                         <span id="sync-cot-badge" class="badge text-bg-secondary">0 pendientes</span>
                         <span id="sync-cot-peer" class="text-muted ms-auto"></span>
                     </div>
-                    <div id="sync-cot-detalle" class="small text-muted mb-2">Sin pendientes de sincronizaci&oacute;n.</div>
-                    <div id="sync-cot-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
-                    <button type="button" id="btn-sync-cotizaciones" class="btn btn-outline-primary btn-sm" data-no-loader
-                        title="Reintenta enviar cotizaciones pendientes al sitio par">
-                        <i class="bi bi-arrow-repeat"></i> Sincronizar cotizaciones
-                    </button>
+                    <div id="sync-cot-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <button type="button" id="btn-sync-cotizaciones" class="btn btn-outline-primary btn-sm" data-no-loader
+                            title="Reintenta enviar cotizaciones pendientes al sitio par">
+                            <i class="bi bi-arrow-repeat"></i> Sincronizar cotizaciones
+                        </button>
+                        <button type="button" id="sync-cot-detalle-toggle" class="btn btn-sm btn-outline-secondary"
+                            aria-expanded="false" aria-controls="sync-cot-detalle-panel" data-no-loader>
+                            <i class="bi bi-list-ul"></i>
+                            Detalle <span id="sync-cot-detalle-contador" class="badge text-bg-secondary ms-1">0</span>
+                            <i id="sync-cot-detalle-chevron" class="bi bi-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <div id="sync-cot-detalle-panel" class="d-none">
+                        <div id="sync-cot-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
+                        <div id="sync-cot-detalle" class="small text-muted mb-2">Sin detalle.</div>
+                        <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                            <table class="table table-sm table-striped align-middle small mb-0">
+                                <thead class="table-light" style="position: sticky; top: 0;">
+                                    <tr>
+                                        <th class="text-nowrap">#</th>
+                                        <th class="text-nowrap">C&oacute;digos</th>
+                                        <th class="text-nowrap text-end">Items</th>
+                                        <th class="text-nowrap text-end">Intentos</th>
+                                        <th class="text-nowrap">Error</th>
+                                        <th class="text-nowrap">Actualizado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sync-cot-lotes-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -260,12 +286,38 @@
                         <span id="sync-vin-badge" class="badge text-bg-secondary">0 pendientes</span>
                         <span id="sync-vin-peer" class="text-muted ms-auto"></span>
                     </div>
-                    <div id="sync-vin-detalle" class="small text-muted mb-2">Sin pendientes de sincronizaci&oacute;n.</div>
-                    <div id="sync-vin-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
-                    <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
-                        title="Reintenta enviar resultados de vinculaci&oacute;n pendientes al sitio par">
-                        <i class="bi bi-arrow-repeat"></i> Sincronizar vinculaciones
-                    </button>
+                    <div id="sync-vin-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
+                            title="Reintenta enviar resultados de vinculaci&oacute;n pendientes al sitio par">
+                            <i class="bi bi-arrow-repeat"></i> Sincronizar vinculaciones
+                        </button>
+                        <button type="button" id="sync-vin-detalle-toggle" class="btn btn-sm btn-outline-secondary"
+                            aria-expanded="false" aria-controls="sync-vin-detalle-panel" data-no-loader>
+                            <i class="bi bi-list-ul"></i>
+                            Detalle <span id="sync-vin-detalle-contador" class="badge text-bg-secondary ms-1">0</span>
+                            <i id="sync-vin-detalle-chevron" class="bi bi-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <div id="sync-vin-detalle-panel" class="d-none">
+                        <div id="sync-vin-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
+                        <div id="sync-vin-detalle" class="small text-muted mb-2">Sin detalle.</div>
+                        <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                            <table class="table table-sm table-striped align-middle small mb-0">
+                                <thead class="table-light" style="position: sticky; top: 0;">
+                                    <tr>
+                                        <th class="text-nowrap">#</th>
+                                        <th class="text-nowrap">C&oacute;digos</th>
+                                        <th class="text-nowrap text-end">Items</th>
+                                        <th class="text-nowrap text-end">Intentos</th>
+                                        <th class="text-nowrap">Error</th>
+                                        <th class="text-nowrap">Actualizado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sync-vin-lotes-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2013,15 +2065,42 @@
             return d.toLocaleString('es-CL', { hour12: false });
         }
 
+        function setSyncDetalleAbierto(prefijo, abierto) {
+            const panel = document.getElementById(`sync-${prefijo}-detalle-panel`);
+            const toggle = document.getElementById(`sync-${prefijo}-detalle-toggle`);
+            const chevron = document.getElementById(`sync-${prefijo}-detalle-chevron`);
+            if (!panel) return;
+            panel.classList.toggle('d-none', !abierto);
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+            }
+            if (chevron) {
+                chevron.classList.toggle('bi-chevron-down', !abierto);
+                chevron.classList.toggle('bi-chevron-up', abierto);
+            }
+        }
+
+        function escapeHtmlSync(valor) {
+            return String(valor ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
         function pintarPanelSync(prefijo, bloque, peer) {
             const badge = document.getElementById(`sync-${prefijo}-badge`);
+            const resumen = document.getElementById(`sync-${prefijo}-resumen`);
             const detalle = document.getElementById(`sync-${prefijo}-detalle`);
             const errorEl = document.getElementById(`sync-${prefijo}-error`);
             const peerEl = document.getElementById(`sync-${prefijo}-peer`);
+            const contador = document.getElementById(`sync-${prefijo}-detalle-contador`);
+            const tbody = document.getElementById(`sync-${prefijo}-lotes-tbody`);
             if (!bloque) return;
 
             const pendientes = Number(bloque.pendientes) || 0;
             const codigos = Array.isArray(bloque.codigos) ? bloque.codigos : [];
+            const lotes = Array.isArray(bloque.lotes) ? bloque.lotes : [];
             const ultimoOk = formatearFechaSync(bloque.ultimo_ok_at);
             const ultimoCount = bloque.ultimo_ok_count != null ? Number(bloque.ultimo_ok_count) : null;
             const ultimoError = String(bloque.ultimo_error || '').trim();
@@ -2033,24 +2112,39 @@
             if (peerEl) {
                 peerEl.textContent = peer ? `→ ${peer}` : '';
             }
+            if (contador) {
+                contador.textContent = String(lotes.length);
+            }
 
-            const partes = [];
+            const partesResumen = [];
             if (pendientes > 0) {
-                partes.push(`${pendientes} lote(s) en cola`);
-                if (codigos.length > 0) {
-                    const muestra = codigos.slice(0, 5).join(', ');
-                    partes.push(codigos.length > 5 ? `${muestra}…` : muestra);
-                }
+                partesResumen.push(`${pendientes} lote(s) en cola`);
             } else {
-                partes.push('Cola vacía');
+                partesResumen.push('Cola vacía');
             }
             if (ultimoOk) {
-                partes.push(`Último OK: ${ultimoOk}` + (ultimoCount != null ? ` (${ultimoCount})` : ''));
+                partesResumen.push(`Último OK: ${ultimoOk}` + (ultimoCount != null ? ` (${ultimoCount})` : ''));
+            }
+            if (resumen) {
+                resumen.textContent = partesResumen.join(' · ');
+                resumen.classList.toggle('text-muted', pendientes === 0 && !ultimoError);
+            }
+
+            const partesDetalle = [];
+            if (codigos.length > 0) {
+                partesDetalle.push(`Códigos: ${codigos.join(', ')}`);
+            } else if (pendientes === 0) {
+                partesDetalle.push('Sin lotes pendientes en cola.');
+            } else {
+                partesDetalle.push('Lotes sin códigos parseables.');
+            }
+            if (ultimoOk) {
+                partesDetalle.push(`Último OK: ${ultimoOk}` + (ultimoCount != null ? ` (${ultimoCount} ítem(s))` : ''));
             }
             if (detalle) {
-                detalle.textContent = partes.join(' · ');
-                detalle.classList.toggle('text-muted', pendientes === 0 && !ultimoError);
+                detalle.textContent = partesDetalle.join(' · ');
             }
+
             if (errorEl) {
                 if (ultimoError && pendientes > 0) {
                     errorEl.textContent = ultimoError;
@@ -2058,6 +2152,29 @@
                 } else {
                     errorEl.textContent = '';
                     errorEl.classList.add('d-none');
+                }
+            }
+
+            if (tbody) {
+                if (lotes.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Sin lotes en cola.</td></tr>';
+                } else {
+                    tbody.innerHTML = lotes.map((lote, idx) => {
+                        const cods = Array.isArray(lote.codigos) ? lote.codigos : [];
+                        const codTxt = cods.length > 0
+                            ? escapeHtmlSync(cods.slice(0, 8).join(', ') + (cods.length > 8 ? '…' : ''))
+                            : '—';
+                        const errTxt = String(lote.ultimo_error || '').trim();
+                        const actualizado = formatearFechaSync(lote.updated_at || lote.created_at) || '—';
+                        return `<tr>
+                            <td class="tabular-nums text-muted">${idx + 1}</td>
+                            <td class="small">${codTxt}</td>
+                            <td class="text-end tabular-nums">${Number(lote.items) || 0}</td>
+                            <td class="text-end tabular-nums">${Number(lote.intentos) || 0}</td>
+                            <td class="small ${errTxt ? 'text-danger' : 'text-muted'}">${errTxt ? escapeHtmlSync(errTxt) : '—'}</td>
+                            <td class="text-nowrap small tabular-nums">${escapeHtmlSync(actualizado)}</td>
+                        </tr>`;
+                    }).join('');
                 }
             }
         }
@@ -2099,10 +2216,10 @@
                 if (data.corrida) {
                     aplicarEstadoCorrida(data.corrida);
                 }
-                const detalleId = tipo === 'vinculaciones' ? 'sync-vin-detalle' : 'sync-cot-detalle';
-                const detalle = document.getElementById(detalleId);
-                if (detalle && (data.mensaje || data.error)) {
-                    detalle.textContent = data.mensaje || data.error;
+                const resumenId = tipo === 'vinculaciones' ? 'sync-vin-resumen' : 'sync-cot-resumen';
+                const resumen = document.getElementById(resumenId);
+                if (resumen && (data.mensaje || data.error)) {
+                    resumen.textContent = data.mensaje || data.error;
                 }
                 if (!res.ok || data.ok === false) {
                     const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
@@ -2111,6 +2228,7 @@
                         errorEl.textContent = data.error || data.mensaje || (`HTTP ${res.status}`);
                         errorEl.classList.remove('d-none');
                     }
+                    setSyncDetalleAbierto(tipo === 'vinculaciones' ? 'vin' : 'cot', true);
                 }
             } catch (e) {
                 const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
@@ -2119,6 +2237,7 @@
                     errorEl.textContent = e.message || String(e);
                     errorEl.classList.remove('d-none');
                 }
+                setSyncDetalleAbierto(tipo === 'vinculaciones' ? 'vin' : 'cot', true);
             } finally {
                 syncParEnCurso = false;
                 if (btnCot) btnCot.disabled = false;
@@ -2528,6 +2647,16 @@
             btnCancelarVinculo?.addEventListener('click', cancelarVinculoManual);
             document.getElementById('btn-sync-cotizaciones')?.addEventListener('click', () => sincronizarParManual('cotizaciones'));
             document.getElementById('btn-sync-vinculaciones')?.addEventListener('click', () => sincronizarParManual('vinculaciones'));
+            document.getElementById('sync-cot-detalle-toggle')?.addEventListener('click', () => {
+                const panel = document.getElementById('sync-cot-detalle-panel');
+                setSyncDetalleAbierto('cot', !!panel?.classList.contains('d-none'));
+            });
+            document.getElementById('sync-vin-detalle-toggle')?.addEventListener('click', () => {
+                const panel = document.getElementById('sync-vin-detalle-panel');
+                setSyncDetalleAbierto('vin', !!panel?.classList.contains('d-none'));
+            });
+            setSyncDetalleAbierto('cot', false);
+            setSyncDetalleAbierto('vin', false);
         }
     })();
 </script>
