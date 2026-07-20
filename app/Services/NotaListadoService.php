@@ -66,7 +66,7 @@ class NotaListadoService
         }
     }
 
-    /** Columna y filtro de estado MP: solo admin/superadmin y viewers (p. ej. pame). */
+    /** Columna y filtro de estado MP: superadmin y ejecutivos (mismo acceso que Oportunidades). */
     public function puedeVerEstadoMp(User $user): bool
     {
         return $user->canVerOportunidades();

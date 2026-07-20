@@ -83,44 +83,11 @@ class User extends Authenticatable
 
     /**
      * Ver listado de oportunidades (incluye las sincronizadas desde el sitio con análisis).
-     * Superadministradores y viewers extra (p. ej. ejecutivo Pame G).
+     * Superadministradores y ejecutivos (solo listado / Ir a cotizar; buscar requiere canAccessOportunidades).
      */
     public function canVerOportunidades(): bool
     {
-        if ($this->isSuperAdmin()) {
-            return true;
-        }
-
-        return $this->estaEnViewersOportunidades();
-    }
-
-    /**
-     * Usuarios listados en MERCADOPUBLICO_OPORTUNIDADES_VIEWERS (p. ej. pame),
-     * o Pame G reconocida por nombre + apellido que empieza con G.
-     */
-    private function estaEnViewersOportunidades(): bool
-    {
-        $username = mb_strtolower(trim((string) $this->username));
-        $viewers = config('cotiz.mercadopublico.oportunidades_viewers', []);
-        if (is_array($viewers)) {
-            foreach ($viewers as $allowed) {
-                $allowed = mb_strtolower(trim((string) $allowed));
-                if ($allowed !== '' && $allowed === $username) {
-                    return true;
-                }
-            }
-        }
-
-        if (! $this->isEjecutivo()) {
-            return false;
-        }
-
-        $nombre = mb_strtolower(trim((string) $this->nombre));
-        $apellido = mb_strtolower(trim((string) $this->apellidop));
-
-        return in_array($nombre, ['pame', 'pamela'], true)
-            && $apellido !== ''
-            && str_starts_with($apellido, 'g');
+        return $this->isSuperAdmin() || $this->isEjecutivo();
     }
 
     public function canAccessCompraAgilResultados(): bool

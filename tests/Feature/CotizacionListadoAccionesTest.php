@@ -406,38 +406,11 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertDontSee('307-AJENA', false);
     }
 
-    public function test_ejecutivo_no_ve_columna_ni_filtro_estado_mp(): void
+    public function test_ejecutivo_ve_columna_y_filtro_estado_mp(): void
     {
-        $this->crearNota([
-            'nronota' => 302,
-            'usuario' => 'ejecutivo',
-            'fecha' => now()->toDateString(),
-        ]);
-
-        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index', [
-            'fechadesde' => now()->subDay()->toDateString(),
-            'fechahasta' => now()->toDateString(),
-        ]));
-
-        $response->assertOk();
-        $response->assertDontSee('filtro-estado-mp', false);
-        $response->assertDontSee('>Estado MP<', false);
-    }
-
-    public function test_pame_ve_filtro_estado_mp_y_puede_filtrar(): void
-    {
-        config(['cotiz.mercadopublico.oportunidades_viewers' => ['pame']]);
-
-        $pame = User::factory()->create([
-            'username' => 'pame',
-            'nombre' => 'Pame',
-            'apellidop' => 'G',
-            'perfil' => User::PERFIL_EJECUTIVO,
-        ]);
-
         $cerrada = $this->crearNota([
             'nronota' => 303,
-            'usuario' => 'pame',
+            'usuario' => 'ejecutivo',
             'fecha' => now()->toDateString(),
             'encargado' => '303-CERRADA',
         ]);
@@ -451,7 +424,7 @@ class CotizacionListadoAccionesTest extends TestCase
 
         $pendiente = $this->crearNota([
             'nronota' => 304,
-            'usuario' => 'pame',
+            'usuario' => 'ejecutivo',
             'fecha' => now()->toDateString(),
             'encargado' => '304-PEND',
         ]);
@@ -463,7 +436,7 @@ class CotizacionListadoAccionesTest extends TestCase
             'ultimo_consultado_en' => now(),
         ]);
 
-        $response = $this->actingAs($pame)->get(route('admin.cotizaciones.index', [
+        $response = $this->actingAs($this->ejecutivo)->get(route('admin.cotizaciones.index', [
             'fechadesde' => now()->subDay()->toDateString(),
             'fechahasta' => now()->toDateString(),
             'estado_mp' => 'cerrada',
@@ -471,6 +444,7 @@ class CotizacionListadoAccionesTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Estado MP', false);
+        $response->assertSee('filtro-estado-mp', false);
         $response->assertSee('303-CERRADA', false);
         $response->assertDontSee('304-PEND', false);
     }
