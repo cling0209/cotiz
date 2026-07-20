@@ -80,8 +80,8 @@
 
 .cotizacion-ingreso #tabla_detalle {
     /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
-    width: 1354px;
-    min-width: 1354px;
+    width: 1370px;
+    min-width: 1370px;
     max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
@@ -90,8 +90,8 @@
 }
 
 .cotizacion-ingreso #tabla_detalle.tabla-con-softland {
-    width: 1464px;
-    min-width: 1464px;
+    width: 1480px;
+    min-width: 1480px;
 }
 
 /* Todos los anchos en px para que no se redistribuyan al estirar. */
@@ -110,7 +110,7 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 72px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-eliminar { width: 88px; }
 
 .cotizacion-ingreso #tabla_detalle .linea-img-col,
 .cotizacion-ingreso #tabla_detalle .linea-imagen-cell {

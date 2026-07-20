@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-19" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-20" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -223,7 +223,7 @@
                         <th class="linea-total-col">Total</th>
                         <th class="linea-orden-col">Orden</th>
                         @unless($desdeAdjudicadas)
-                            <th class="linea-eliminar-col">Eliminar</th>
+                            <th class="linea-eliminar-col">Acci&oacute;n</th>
                         @endunless
                     </tr>
                 </thead>
