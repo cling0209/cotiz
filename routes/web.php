@@ -144,6 +144,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.estado');
             Route::post('oportunidades/para-cotizar/sync-par', [OportunidadParaCotizarController::class, 'sincronizarPar'])
                 ->name('oportunidades.para-cotizar.sync-par');
+            Route::post('oportunidades/para-cotizar/sync-par-inicio', [OportunidadParaCotizarController::class, 'sincronizarParInicio'])
+                ->name('oportunidades.para-cotizar.sync-par-inicio');
+            Route::post('oportunidades/para-cotizar/sync-par-lote', [OportunidadParaCotizarController::class, 'sincronizarParLote'])
+                ->name('oportunidades.para-cotizar.sync-par-lote');
             Route::post('oportunidades/para-cotizar/cancelar', [OportunidadParaCotizarController::class, 'cancelar'])
                 ->name('oportunidades.para-cotizar.cancelar');
             Route::post('oportunidades/para-cotizar/reanudar', [OportunidadParaCotizarController::class, 'reanudar'])

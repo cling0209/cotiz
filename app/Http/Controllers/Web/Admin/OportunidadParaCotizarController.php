@@ -130,6 +130,105 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
+    /**
+     * Inicia la sincronización por lotes: despierta al par, procesa la cola pendiente
+     * y devuelve el total de vinculaciones locales a reenviar (para que el frontend
+     * itere lote por lote mostrando qué cotización va procesando).
+     */
+    public function sincronizarParInicio(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'tipo' => ['required', 'string', 'in:cotizaciones,vinculaciones'],
+        ]);
+
+        $tipo = (string) $data['tipo'];
+        $colaAccion = $tipo === 'vinculaciones' ? 'vinculo' : 'graba';
+
+        try {
+            $this->encontradaRelay->iniciarProcesoAcumulado($colaAccion);
+            $cola = $this->encontradaRelay->procesarColaPendiente($tipo, true);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+            ], 422);
+        }
+
+        if (! empty($cola['error'])) {
+            return response()->json([
+                'ok' => false,
+                'error' => (string) $cola['error'],
+                'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+            ], 422);
+        }
+
+        $total = $tipo === 'vinculaciones'
+            ? $this->encontradaRelay->contarVinculosLocalesProcesados()
+            : 0;
+        $done = $total === 0;
+
+        $this->encontradaRelay->registrarLoteProcesado(
+            $colaAccion,
+            (int) ($cola['procesados'] ?? 0),
+            (int) ($cola['fallos'] ?? 0),
+            is_array($cola['codigos'] ?? null) ? $cola['codigos'] : [],
+            $done,
+        );
+
+        return response()->json([
+            'ok' => true,
+            'tipo' => $tipo,
+            'cola' => $cola,
+            'total' => $total,
+            'batch_size' => (int) config('cotiz.api_oportunidad_encontrada.sync_batch_size', 5),
+            'done' => $done,
+            'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+        ]);
+    }
+
+    /**
+     * Procesa un lote (offset/limit) de reenvío de vinculaciones locales al par
+     * y devuelve los códigos del lote para mostrar el avance en el frontend.
+     */
+    public function sincronizarParLote(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'tipo' => ['required', 'string', 'in:vinculaciones'],
+            'offset' => ['required', 'integer', 'min:0'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $colaAccion = 'vinculo';
+        $limit = (int) ($data['limit'] ?? config('cotiz.api_oportunidad_encontrada.sync_batch_size', 5));
+
+        try {
+            $lote = $this->encontradaRelay->reenviarLocalesLote((int) $data['offset'], $limit);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+            ], 422);
+        }
+
+        $cerrar = ! (bool) $lote['hay_mas'];
+        $this->encontradaRelay->registrarLoteProcesado(
+            $colaAccion,
+            (int) $lote['enviados'],
+            (int) $lote['fallidos'],
+            is_array($lote['codigos'] ?? null) ? $lote['codigos'] : [],
+            $cerrar,
+        );
+
+        return response()->json([
+            'ok' => true,
+            'tipo' => 'vinculaciones',
+            'lote' => $lote,
+            'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+        ]);
+    }
+
     public function cancelar(): JsonResponse
     {
         $corrida = $this->busqueda->cancelar();

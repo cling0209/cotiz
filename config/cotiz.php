@@ -41,6 +41,8 @@ return [
         'sync_wake_poll_intervalo_seg' => max(1, min(30, (int) env('COTIZ_OPORTUNIDAD_SYNC_WAKE_POLL_INTERVALO_SEG', 3))),
         // Pausa entre lotes al reenviar al par (evita 429 rate limit).
         'sync_pausa_lote_ms' => max(0, min(10000, (int) env('COTIZ_OPORTUNIDAD_SYNC_PAUSA_LOTE_MS', 1000))),
+        // Tamaño de lote para la sincronización por lotes con progreso visible en el frontend.
+        'sync_batch_size' => max(1, min(50, (int) env('COTIZ_OPORTUNIDAD_SYNC_BATCH_SIZE', 5))),
         // Reintentos por lote ante 429 (rate limit), con backoff.
         'sync_reintentos_429' => max(0, min(10, (int) env('COTIZ_OPORTUNIDAD_SYNC_REINTENTOS_429', 3))),
         'sync_backoff_429_seg' => max(1, min(60, (int) env('COTIZ_OPORTUNIDAD_SYNC_BACKOFF_429_SEG', 3))),

@@ -518,6 +518,8 @@
             iniciarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar-vinculo') : ''),
             cancelarVinculo: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.cancelar-vinculo') : ''),
             syncPar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.sync-par') : ''),
+            syncParInicio: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.sync-par-inicio') : ''),
+            syncParLote: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.sync-par-lote') : ''),
             detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
             vincularCodigo: @json(route('admin.oportunidades.para-cotizar.vincular-codigo')),
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
@@ -2439,21 +2441,36 @@
                     const cuando = formatearFechaSync(up.at) || '—';
                     const procesados = Number(up.procesados) || 0;
                     const fallos = Number(up.fallos) || 0;
+                    const enProgreso = up.en_progreso === true;
                     const okProc = up.ok === true && fallos === 0;
                     const cods = Array.isArray(up.codigos) ? up.codigos : [];
                     const codsTxt = cods.length > 0
                         ? escapeHtmlSync(cods.slice(0, 8).join(', ') + (cods.length > 8 ? '…' : ''))
                         : '';
                     const errTxt = String(up.ultimo_error || '').trim();
-                    const badgeClase = okProc ? 'text-bg-success' : (procesados > 0 ? 'text-bg-warning' : 'text-bg-danger');
-                    const badgeTxt = okProc
-                        ? 'OK'
-                        : (procesados > 0 ? 'Parcial' : 'Con errores');
+                    let badgeClase;
+                    let badgeTxt;
+                    if (enProgreso) {
+                        badgeClase = 'text-bg-info';
+                        badgeTxt = 'Procesando…';
+                    } else if (okProc) {
+                        badgeClase = 'text-bg-success';
+                        badgeTxt = 'OK';
+                    } else if (procesados > 0) {
+                        badgeClase = 'text-bg-warning';
+                        badgeTxt = 'Parcial';
+                    } else {
+                        badgeClase = 'text-bg-danger';
+                        badgeTxt = 'Con errores';
+                    }
+                    const spinner = enProgreso
+                        ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> '
+                        : '';
                     let html = `<div class="d-flex flex-wrap gap-1 align-items-center">
-                        <span class="fw-semibold">Último proceso:</span>
+                        ${spinner}<span class="fw-semibold">Último proceso:</span>
                         <span class="badge ${badgeClase}">${escapeHtmlSync(badgeTxt)}</span>
                         <span class="text-muted tabular-nums">${escapeHtmlSync(cuando)}</span>
-                        <span class="text-muted">· ${procesados} procesado(s)${fallos > 0 ? ` · ${fallos} con error` : ''}</span>
+                        <span class="text-muted">· ${procesados} ${enProgreso ? 'enviado(s)' : 'procesado(s)'}${fallos > 0 ? ` · ${fallos} con error` : ''}</span>
                     </div>`;
                     if (codsTxt) {
                         html += `<div class="opc-meta text-muted mt-1">Códigos: ${codsTxt}</div>`;
@@ -2527,8 +2544,25 @@
             }
         }
 
+        async function postJsonSync(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            return { res, data };
+        }
+
         async function sincronizarParManual(tipo) {
-            if (!urls.syncPar || syncParEnCurso) return;
+            if (syncParEnCurso) return;
+            const usarLotes = Boolean(urls.syncParInicio && urls.syncParLote);
+            if (!usarLotes && !urls.syncPar) return;
             syncParEnCurso = true;
             const btnCot = document.getElementById('btn-sync-cotizaciones');
             const btnVin = document.getElementById('btn-sync-vinculaciones');
@@ -2536,64 +2570,101 @@
             if (btnVin) btnVin.disabled = true;
 
             const esVinc = tipo === 'vinculaciones';
+            const prefijo = esVinc ? 'vin' : 'cot';
             const btnActivo = esVinc ? btnVin : btnCot;
             const htmlOriginalBtn = btnActivo ? btnActivo.innerHTML : '';
-            if (btnActivo) {
-                btnActivo.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Procesando…';
-            }
-            const resumenId = esVinc ? 'sync-vin-resumen' : 'sync-cot-resumen';
-            const resumenEl = document.getElementById(resumenId);
+            const resumenEl = document.getElementById(`sync-${prefijo}-resumen`);
             const htmlOriginalResumen = resumenEl ? resumenEl.innerHTML : '';
-            if (resumenEl) {
-                resumenEl.classList.remove('text-muted');
-                resumenEl.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
-                    'Despertando al par y enviando… esto puede tardar unos segundos.';
-            }
-            try {
-                const res = await fetch(urls.syncPar, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': csrf,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({ tipo }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (data.sync_par) {
-                    aplicarSyncPar(data.sync_par);
+            const errorEl = document.getElementById(`sync-${prefijo}-error`);
+            const spinner = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>';
+
+            const setBtn = (txt) => {
+                if (btnActivo) {
+                    btnActivo.innerHTML = spinner + escapeHtmlSync(txt);
                 }
-                if (data.corrida) {
-                    aplicarEstadoCorrida(data.corrida);
-                }
-                const resumenId = tipo === 'vinculaciones' ? 'sync-vin-resumen' : 'sync-cot-resumen';
-                const resumen = document.getElementById(resumenId);
-                if (resumen && (data.mensaje || data.error)) {
-                    resumen.textContent = data.mensaje || data.error;
-                }
-                if (!res.ok || data.ok === false) {
-                    const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
-                    const errorEl = document.getElementById(errorId);
-                    if (errorEl) {
-                        errorEl.textContent = data.error || data.mensaje || (`HTTP ${res.status}`);
-                        errorEl.classList.remove('d-none');
-                    }
-                    setSyncDetalleAbierto(tipo === 'vinculaciones' ? 'vin' : 'cot', true);
-                }
-            } catch (e) {
+            };
+            const setResumen = (html) => {
                 if (resumenEl) {
-                    resumenEl.innerHTML = htmlOriginalResumen;
+                    resumenEl.classList.remove('text-muted');
+                    resumenEl.innerHTML = html;
                 }
-                const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
-                const errorEl = document.getElementById(errorId);
+            };
+            const mostrarError = (msg) => {
                 if (errorEl) {
-                    errorEl.textContent = e.message || String(e);
+                    errorEl.textContent = msg;
                     errorEl.classList.remove('d-none');
                 }
-                setSyncDetalleAbierto(tipo === 'vinculaciones' ? 'vin' : 'cot', true);
+                setSyncDetalleAbierto(prefijo, true);
+            };
+
+            setBtn('Procesando…');
+            setResumen(spinner + 'Despertando al par…');
+
+            let lastSyncPar = null;
+            try {
+                if (!usarLotes) {
+                    const { res, data } = await postJsonSync(urls.syncPar, { tipo });
+                    if (data.sync_par) aplicarSyncPar(data.sync_par);
+                    if (data.corrida) aplicarEstadoCorrida(data.corrida);
+                    if (resumenEl && (data.mensaje || data.error)) resumenEl.textContent = data.mensaje || data.error;
+                    if (!res.ok || data.ok === false) {
+                        mostrarError(data.error || data.mensaje || (`HTTP ${res.status}`));
+                    }
+                    return;
+                }
+
+                // 1) Inicio: despierta al par y procesa la cola pendiente.
+                const inicio = await postJsonSync(urls.syncParInicio, { tipo });
+                if (inicio.data.sync_par) {
+                    lastSyncPar = inicio.data.sync_par;
+                    aplicarSyncPar(lastSyncPar);
+                }
+                if (!inicio.res.ok || inicio.data.ok === false) {
+                    mostrarError(inicio.data.error || (`HTTP ${inicio.res.status}`));
+                    return;
+                }
+
+                const total = Number(inicio.data.total) || 0;
+                const batch = Math.max(1, Number(inicio.data.batch_size) || 5);
+                const colaCods = inicio.data.cola && Array.isArray(inicio.data.cola.codigos)
+                    ? inicio.data.cola.codigos
+                    : [];
+                if (colaCods.length > 0) {
+                    setResumen(spinner + 'Cola procesada: ' + escapeHtmlSync(colaCods.slice(0, 6).join(', ')) + (colaCods.length > 6 ? '…' : ''));
+                }
+
+                // 2) Reenvío por lotes de vinculaciones locales, mostrando qué códigos van.
+                if (esVinc && total > 0) {
+                    let offset = 0;
+                    while (offset < total) {
+                        const hasta = Math.min(offset + batch, total);
+                        setBtn('Enviando ' + (offset + 1) + '–' + hasta + '/' + total);
+                        setResumen(spinner + 'Enviando ' + hasta + '/' + total + ' vinculaciones…');
+                        const { res, data } = await postJsonSync(urls.syncParLote, { tipo, offset, limit: batch });
+                        if (data.sync_par) {
+                            lastSyncPar = data.sync_par;
+                            aplicarSyncPar(lastSyncPar);
+                        }
+                        if (!res.ok || data.ok === false) {
+                            mostrarError(data.error || (`HTTP ${res.status}`));
+                            break;
+                        }
+                        const lote = data.lote || {};
+                        const cods = Array.isArray(lote.codigos) ? lote.codigos : [];
+                        setResumen(spinner + 'Enviado ' + hasta + '/' + total +
+                            (cods.length ? (' · ' + escapeHtmlSync(cods.slice(0, 6).join(', ')) + (cods.length > 6 ? '…' : '')) : ''));
+                        offset = (Number(lote.offset) || offset) + (Number(lote.limit) || batch);
+                        if (!lote.hay_mas) break;
+                    }
+                }
+
+                // Repintado final: deja el resumen con el estado real (Último OK / proceso).
+                if (lastSyncPar) {
+                    aplicarSyncPar(lastSyncPar);
+                }
+            } catch (e) {
+                if (resumenEl) resumenEl.innerHTML = htmlOriginalResumen;
+                mostrarError(e.message || String(e));
             } finally {
                 syncParEnCurso = false;
                 if (btnCot) btnCot.disabled = false;

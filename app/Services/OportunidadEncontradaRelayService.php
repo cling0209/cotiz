@@ -27,6 +27,8 @@ class OportunidadEncontradaRelayService
 
     private const CACHE_ULTIMO_PROCESO_PREFIX = 'oportunidad_sync_par.ultimo_proceso.';
 
+    private const CACHE_PROC_ACC_PREFIX = 'oportunidad_sync_par.proc_acc.';
+
     /**
      * Replica oportunidades encontradas al sitio par (Romulo ↔ Reicol).
      * No lanza: encola si el par no responde.
@@ -1039,7 +1041,7 @@ class OportunidadEncontradaRelayService
     }
 
     /**
-     * @param  array{ok?: bool, procesados?: int, fallos?: int, codigos?: list<string>, ultimo_error?: string|null, mensaje?: string|null}  $datos
+     * @param  array{ok?: bool, procesados?: int, fallos?: int, codigos?: list<string>, ultimo_error?: string|null, mensaje?: string|null, en_progreso?: bool}  $datos
      */
     private function registrarUltimoProceso(string $colaAccion, array $datos): void
     {
@@ -1048,7 +1050,7 @@ class OportunidadEncontradaRelayService
         $codigos = array_slice(array_values(array_unique(array_filter(array_map(
             static fn ($c) => strtoupper(trim((string) $c)),
             $codigos,
-        )))), 0, 40);
+        )))), 0, 60);
         $error = isset($datos['ultimo_error']) ? trim((string) $datos['ultimo_error']) : '';
         $mensaje = isset($datos['mensaje']) ? trim((string) $datos['mensaje']) : '';
 
@@ -1060,7 +1062,223 @@ class OportunidadEncontradaRelayService
             'codigos' => $codigos,
             'ultimo_error' => $error !== '' ? mb_substr($error, 0, 500) : null,
             'mensaje' => $mensaje !== '' ? mb_substr($mensaje, 0, 500) : null,
+            'en_progreso' => (bool) ($datos['en_progreso'] ?? false),
         ], now()->addDays(30));
+    }
+
+    private function resetProcesoAcumulado(string $colaAccion): void
+    {
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+        Cache::put(self::CACHE_PROC_ACC_PREFIX.$colaAccion, [
+            'procesados' => 0,
+            'fallos' => 0,
+            'codigos' => [],
+        ], now()->addHour());
+    }
+
+    /**
+     * Suma un lote al acumulador en curso y actualiza "último proceso" (en_progreso salvo cierre).
+     *
+     * @param  list<string>  $codigos
+     */
+    private function acumularProcesoLote(string $colaAccion, int $procesados, int $fallos, array $codigos, bool $cerrar): void
+    {
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+        $acc = Cache::get(self::CACHE_PROC_ACC_PREFIX.$colaAccion, [
+            'procesados' => 0,
+            'fallos' => 0,
+            'codigos' => [],
+        ]);
+        $acc['procesados'] = (int) ($acc['procesados'] ?? 0) + max(0, $procesados);
+        $acc['fallos'] = (int) ($acc['fallos'] ?? 0) + max(0, $fallos);
+        $listaCodigos = is_array($acc['codigos'] ?? null) ? $acc['codigos'] : [];
+        foreach ($codigos as $c) {
+            $c = strtoupper(trim((string) $c));
+            if ($c !== '' && ! in_array($c, $listaCodigos, true)) {
+                $listaCodigos[] = $c;
+            }
+        }
+        $acc['codigos'] = array_slice($listaCodigos, 0, 60);
+        Cache::put(self::CACHE_PROC_ACC_PREFIX.$colaAccion, $acc, now()->addHour());
+
+        $totalProc = (int) $acc['procesados'];
+        $totalFail = (int) $acc['fallos'];
+        $mensaje = $cerrar
+            ? $totalProc.' procesado(s)'.($totalFail > 0 ? ', '.$totalFail.' con error' : ' sin errores')
+            : 'Procesando… '.$totalProc.' enviado(s)'.($totalFail > 0 ? ', '.$totalFail.' con error' : '');
+
+        $this->registrarUltimoProceso($colaAccion, [
+            'ok' => $totalFail === 0,
+            'procesados' => $totalProc,
+            'fallos' => $totalFail,
+            'codigos' => $acc['codigos'],
+            'ultimo_error' => null,
+            'mensaje' => $mensaje,
+            'en_progreso' => ! $cerrar,
+        ]);
+    }
+
+    /**
+     * Procesa solo la cola pendiente del tipo indicado (sin reenvío de locales).
+     * Pensado para orquestación por lotes desde el frontend con progreso visible.
+     *
+     * @return array{ok: bool, procesados: int, fallos: int, codigos: list<string>, error?: string}
+     */
+    public function procesarColaPendiente(string $tipo = 'all', bool $despertar = true): array
+    {
+        $tipo = strtolower(trim($tipo));
+        if ($tipo === 'cotizaciones') {
+            $tipo = self::ACCION_GRABA;
+        } elseif ($tipo === 'vinculaciones') {
+            $tipo = self::ACCION_VINCULO;
+        }
+        if (! in_array($tipo, ['all', self::ACCION_GRABA, self::ACCION_VINCULO], true)) {
+            throw new RuntimeException('Tipo de sync inválido. Use cotizaciones, vinculaciones o all.');
+        }
+
+        if ($this->urlDestino() === '') {
+            return ['ok' => false, 'procesados' => 0, 'fallos' => 0, 'codigos' => [], 'error' => 'Sin URL del sitio par configurada.'];
+        }
+
+        if ($despertar) {
+            $this->esperarSitioParDespierto();
+        }
+
+        $pendientes = OportunidadEncontradaSyncPendiente::query()
+            ->orderBy('id')
+            ->get()
+            ->filter(function (OportunidadEncontradaSyncPendiente $pendiente) use ($tipo) {
+                if ($tipo === 'all') {
+                    return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
+                        || $pendiente->accion === self::ACCION_TOMADA;
+                }
+
+                return $this->colaAccionDesdePendiente($pendiente) === $tipo;
+            });
+
+        $ok = 0;
+        $fail = 0;
+        $codigos = [];
+        foreach ($pendientes as $pendiente) {
+            $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            $cods = $this->codigosDePayload($payload);
+            try {
+                if ($pendiente->accion === self::ACCION_TOMADA) {
+                    $this->enviarTomada(
+                        (string) ($payload['codigo'] ?? ''),
+                        (string) ($payload['usuario'] ?? ''),
+                        (string) ($payload['sistema'] ?? ''),
+                        false,
+                    );
+                } else {
+                    $items = $this->normalizarItems($payload);
+                    $colaAccion = $this->colaAccionDesdePendiente($pendiente);
+                    $this->enviar($items, false, $colaAccion);
+                    $this->registrarUltimoOk($colaAccion, count($items));
+                }
+                $pendiente->delete();
+                $ok++;
+                foreach ($cods as $c) {
+                    if (! in_array($c, $codigos, true)) {
+                        $codigos[] = $c;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $pendiente->intentos = (int) $pendiente->intentos + 1;
+                $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
+                $pendiente->save();
+                $fail++;
+            }
+        }
+
+        return ['ok' => $fail === 0, 'procesados' => $ok, 'fallos' => $fail, 'codigos' => $codigos];
+    }
+
+    /**
+     * Reenvía al par un lote (offset/limit) de vinculaciones locales ya procesadas.
+     * Devuelve los códigos del lote para mostrar progreso en el frontend.
+     *
+     * @return array{total: int, offset: int, limit: int, enviados: int, fallidos: int, codigos: list<string>, hay_mas: bool}
+     */
+    public function reenviarLocalesLote(int $offset, int $limit): array
+    {
+        $offset = max(0, $offset);
+        $limit = max(1, min(50, $limit));
+
+        if ($this->urlDestino() === '') {
+            return ['total' => 0, 'offset' => $offset, 'limit' => $limit, 'enviados' => 0, 'fallidos' => 0, 'codigos' => [], 'hay_mas' => false];
+        }
+
+        $total = $this->contarVinculosLocalesProcesados();
+        if ($offset >= $total) {
+            return ['total' => $total, 'offset' => $offset, 'limit' => $limit, 'enviados' => 0, 'fallidos' => 0, 'codigos' => [], 'hay_mas' => false];
+        }
+
+        $rows = OportunidadEncontrada::query()
+            ->whereRaw('vinculo_completo IS TRUE')
+            ->where(function ($q) {
+                $q->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>=', now());
+            })
+            ->orderByDesc('fecha_busqueda')
+            ->orderBy('id')
+            ->offset($offset)
+            ->limit($limit)
+            ->get();
+
+        $chunk = [];
+        $codigos = [];
+        foreach ($rows as $row) {
+            $chunk[] = $row->toResumenConPreviewVinculo() + [
+                'fecha_busqueda' => $row->fecha_busqueda instanceof Carbon
+                    ? $row->fecha_busqueda->toDateString()
+                    : (string) $row->fecha_busqueda,
+            ];
+            $c = strtoupper(trim((string) $row->codigo));
+            if ($c !== '' && ! in_array($c, $codigos, true)) {
+                $codigos[] = $c;
+            }
+        }
+
+        $enviados = 0;
+        $fallidos = 0;
+        if ($chunk !== []) {
+            try {
+                $this->enviar($chunk, true, self::ACCION_VINCULO);
+                $this->registrarUltimoOk(self::ACCION_VINCULO, count($chunk));
+                $enviados = count($chunk);
+            } catch (\Throwable $e) {
+                Log::warning('Reenvío de lote de vinculaciones locales al par falló', [
+                    'offset' => $offset,
+                    'limit' => $limit,
+                    'error' => $e->getMessage(),
+                ]);
+                $fallidos = count($chunk);
+            }
+        }
+
+        return [
+            'total' => $total,
+            'offset' => $offset,
+            'limit' => $limit,
+            'enviados' => $enviados,
+            'fallidos' => $fallidos,
+            'codigos' => $codigos,
+            'hay_mas' => ($offset + $limit) < $total,
+        ];
+    }
+
+    public function iniciarProcesoAcumulado(string $colaAccion): void
+    {
+        $this->resetProcesoAcumulado($colaAccion);
+    }
+
+    /**
+     * @param  list<string>  $codigos
+     */
+    public function registrarLoteProcesado(string $colaAccion, int $procesados, int $fallos, array $codigos, bool $cerrar): void
+    {
+        $this->acumularProcesoLote($colaAccion, $procesados, $fallos, $codigos, $cerrar);
     }
 
     /**
