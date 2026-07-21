@@ -29,6 +29,8 @@ class OportunidadEncontradaRelayService
 
     private const CACHE_PROC_ACC_PREFIX = 'oportunidad_sync_par.proc_acc.';
 
+    private const CACHE_COLA_PLAN_PREFIX = 'oportunidad_sync_par.cola_plan.';
+
     /**
      * Replica oportunidades encontradas al sitio par (Romulo ↔ Reicol).
      * No lanza: encola si el par no responde.
@@ -1124,17 +1126,70 @@ class OportunidadEncontradaRelayService
      *
      * @return array{ok: bool, procesados: int, fallos: int, codigos: list<string>, error?: string}
      */
-    public function procesarColaPendiente(string $tipo = 'all', bool $despertar = true): array
+    private function normalizarTipoCola(string $tipo): string
     {
         $tipo = strtolower(trim($tipo));
         if ($tipo === 'cotizaciones') {
-            $tipo = self::ACCION_GRABA;
-        } elseif ($tipo === 'vinculaciones') {
-            $tipo = self::ACCION_VINCULO;
+            return self::ACCION_GRABA;
+        }
+        if ($tipo === 'vinculaciones') {
+            return self::ACCION_VINCULO;
         }
         if (! in_array($tipo, ['all', self::ACCION_GRABA, self::ACCION_VINCULO], true)) {
             throw new RuntimeException('Tipo de sync inválido. Use cotizaciones, vinculaciones o all.');
         }
+
+        return $tipo;
+    }
+
+    private function pendienteEsDelTipo(OportunidadEncontradaSyncPendiente $pendiente, string $tipo): bool
+    {
+        if ($tipo === 'all') {
+            return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
+                || $pendiente->accion === self::ACCION_TOMADA;
+        }
+
+        return $this->colaAccionDesdePendiente($pendiente) === $tipo;
+    }
+
+    /**
+     * Procesa un pendiente de la cola (envía al par). Éxito → borra; error → suma intento.
+     *
+     * @return array{ok: bool, codigos: list<string>}
+     */
+    private function procesarUnPendiente(OportunidadEncontradaSyncPendiente $pendiente): array
+    {
+        $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+        $codigos = $this->codigosDePayload($payload);
+        try {
+            if ($pendiente->accion === self::ACCION_TOMADA) {
+                $this->enviarTomada(
+                    (string) ($payload['codigo'] ?? ''),
+                    (string) ($payload['usuario'] ?? ''),
+                    (string) ($payload['sistema'] ?? ''),
+                    false,
+                );
+            } else {
+                $items = $this->normalizarItems($payload);
+                $colaAccion = $this->colaAccionDesdePendiente($pendiente);
+                $this->enviar($items, false, $colaAccion);
+                $this->registrarUltimoOk($colaAccion, count($items));
+            }
+            $pendiente->delete();
+
+            return ['ok' => true, 'codigos' => $codigos];
+        } catch (\Throwable $e) {
+            $pendiente->intentos = (int) $pendiente->intentos + 1;
+            $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
+            $pendiente->save();
+
+            return ['ok' => false, 'codigos' => $codigos];
+        }
+    }
+
+    public function procesarColaPendiente(string $tipo = 'all', bool $despertar = true): array
+    {
+        $tipo = $this->normalizarTipoCola($tipo);
 
         if ($this->urlDestino() === '') {
             return ['ok' => false, 'procesados' => 0, 'fallos' => 0, 'codigos' => [], 'error' => 'Sin URL del sitio par configurada.'];
@@ -1147,51 +1202,119 @@ class OportunidadEncontradaRelayService
         $pendientes = OportunidadEncontradaSyncPendiente::query()
             ->orderBy('id')
             ->get()
-            ->filter(function (OportunidadEncontradaSyncPendiente $pendiente) use ($tipo) {
-                if ($tipo === 'all') {
-                    return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
-                        || $pendiente->accion === self::ACCION_TOMADA;
-                }
-
-                return $this->colaAccionDesdePendiente($pendiente) === $tipo;
-            });
+            ->filter(fn (OportunidadEncontradaSyncPendiente $p) => $this->pendienteEsDelTipo($p, $tipo));
 
         $ok = 0;
         $fail = 0;
         $codigos = [];
         foreach ($pendientes as $pendiente) {
-            $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
-            $cods = $this->codigosDePayload($payload);
-            try {
-                if ($pendiente->accion === self::ACCION_TOMADA) {
-                    $this->enviarTomada(
-                        (string) ($payload['codigo'] ?? ''),
-                        (string) ($payload['usuario'] ?? ''),
-                        (string) ($payload['sistema'] ?? ''),
-                        false,
-                    );
-                } else {
-                    $items = $this->normalizarItems($payload);
-                    $colaAccion = $this->colaAccionDesdePendiente($pendiente);
-                    $this->enviar($items, false, $colaAccion);
-                    $this->registrarUltimoOk($colaAccion, count($items));
-                }
-                $pendiente->delete();
+            $res = $this->procesarUnPendiente($pendiente);
+            if ($res['ok']) {
                 $ok++;
-                foreach ($cods as $c) {
+                foreach ($res['codigos'] as $c) {
                     if (! in_array($c, $codigos, true)) {
                         $codigos[] = $c;
                     }
                 }
-            } catch (\Throwable $e) {
-                $pendiente->intentos = (int) $pendiente->intentos + 1;
-                $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
-                $pendiente->save();
+            } else {
                 $fail++;
             }
         }
 
         return ['ok' => $fail === 0, 'procesados' => $ok, 'fallos' => $fail, 'codigos' => $codigos];
+    }
+
+    /**
+     * Prepara la sync por lotes: despierta el par, planifica la cola pendiente del tipo
+     * y devuelve los totales a procesar (cola + reenvío de locales para vinculaciones).
+     *
+     * @return array{cola_total: int, reenvio_total: int, error?: string}
+     */
+    public function prepararSyncPorLotes(string $tipo): array
+    {
+        $colaTipo = $this->normalizarTipoCola($tipo);
+
+        if ($this->urlDestino() === '') {
+            return ['cola_total' => 0, 'reenvio_total' => 0, 'error' => 'Sin URL del sitio par configurada.'];
+        }
+
+        $this->esperarSitioParDespierto();
+
+        $colaTotal = $this->iniciarColaPlan($colaTipo);
+        $reenvioTotal = $colaTipo === self::ACCION_VINCULO
+            ? $this->contarVinculosLocalesProcesados()
+            : 0;
+
+        return ['cola_total' => $colaTotal, 'reenvio_total' => $reenvioTotal];
+    }
+
+    /**
+     * Guarda en caché el plan (IDs ordenados) de pendientes del tipo para procesarlos por lotes.
+     */
+    public function iniciarColaPlan(string $tipo): int
+    {
+        $tipo = $this->normalizarTipoCola($tipo);
+        $ids = OportunidadEncontradaSyncPendiente::query()
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (OportunidadEncontradaSyncPendiente $p) => $this->pendienteEsDelTipo($p, $tipo))
+            ->map(fn (OportunidadEncontradaSyncPendiente $p) => (int) $p->id)
+            ->values()
+            ->all();
+
+        Cache::put(self::CACHE_COLA_PLAN_PREFIX.$tipo, $ids, now()->addHour());
+
+        return count($ids);
+    }
+
+    /**
+     * Procesa un lote (offset/limit sobre el plan) de la cola pendiente del tipo.
+     *
+     * @return array{total: int, offset: int, limit: int, procesados: int, fallos: int, codigos: list<string>, hay_mas: bool}
+     */
+    public function procesarColaLote(string $tipo, int $offset, int $limit): array
+    {
+        $tipo = $this->normalizarTipoCola($tipo);
+        $offset = max(0, $offset);
+        $limit = max(1, min(50, $limit));
+
+        $ids = Cache::get(self::CACHE_COLA_PLAN_PREFIX.$tipo, []);
+        $ids = is_array($ids) ? array_values($ids) : [];
+        $total = count($ids);
+        $slice = array_slice($ids, $offset, $limit);
+
+        $ok = 0;
+        $fail = 0;
+        $codigos = [];
+        if ($slice !== []) {
+            $pendientes = OportunidadEncontradaSyncPendiente::query()
+                ->whereIn('id', $slice)
+                ->orderBy('id')
+                ->get();
+            foreach ($pendientes as $pendiente) {
+                $res = $this->procesarUnPendiente($pendiente);
+                if ($res['ok']) {
+                    $ok++;
+                    foreach ($res['codigos'] as $c) {
+                        if (! in_array($c, $codigos, true)) {
+                            $codigos[] = $c;
+                        }
+                    }
+                } else {
+                    $fail++;
+                }
+            }
+        }
+
+        return [
+            'total' => $total,
+            'offset' => $offset,
+            'limit' => $limit,
+            'procesados' => $ok,
+            'fallos' => $fail,
+            'codigos' => $codigos,
+            'hay_mas' => ($offset + $limit) < $total,
+        ];
     }
 
     /**

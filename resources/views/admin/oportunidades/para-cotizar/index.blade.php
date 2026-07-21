@@ -2613,7 +2613,7 @@
                     return;
                 }
 
-                // 1) Inicio: despierta al par y procesa la cola pendiente.
+                // 1) Inicio: despierta al par y planifica la cola + reenvío pendiente.
                 const inicio = await postJsonSync(urls.syncParInicio, { tipo });
                 if (inicio.data.sync_par) {
                     lastSyncPar = inicio.data.sync_par;
@@ -2624,38 +2624,47 @@
                     return;
                 }
 
-                const total = Number(inicio.data.total) || 0;
                 const batch = Math.max(1, Number(inicio.data.batch_size) || 5);
-                const colaCods = inicio.data.cola && Array.isArray(inicio.data.cola.codigos)
-                    ? inicio.data.cola.codigos
-                    : [];
-                if (colaCods.length > 0) {
-                    setResumen(spinner + 'Cola procesada: ' + escapeHtmlSync(colaCods.slice(0, 6).join(', ')) + (colaCods.length > 6 ? '…' : ''));
-                }
+                const colaTotal = Number(inicio.data.cola_total) || 0;
+                const reenvioTotal = Number(inicio.data.reenvio_total) || 0;
+                const etiqueta = esVinc ? 'vinculaciones' : 'cotizaciones';
 
-                // 2) Reenvío por lotes de vinculaciones locales, mostrando qué códigos van.
-                if (esVinc && total > 0) {
+                // Procesa una fase por lotes mostrando qué códigos van.
+                const procesarFase = async (fase, total, verbo) => {
                     let offset = 0;
                     while (offset < total) {
                         const hasta = Math.min(offset + batch, total);
-                        setBtn('Enviando ' + (offset + 1) + '–' + hasta + '/' + total);
-                        setResumen(spinner + 'Enviando ' + hasta + '/' + total + ' vinculaciones…');
-                        const { res, data } = await postJsonSync(urls.syncParLote, { tipo, offset, limit: batch });
+                        setBtn(verbo + ' ' + (offset + 1) + '–' + hasta + '/' + total);
+                        setResumen(spinner + verbo + ' ' + hasta + '/' + total + ' ' + etiqueta + '…');
+                        const { res, data } = await postJsonSync(urls.syncParLote, { tipo, fase, offset, limit: batch });
                         if (data.sync_par) {
                             lastSyncPar = data.sync_par;
                             aplicarSyncPar(lastSyncPar);
                         }
                         if (!res.ok || data.ok === false) {
                             mostrarError(data.error || (`HTTP ${res.status}`));
-                            break;
+                            return false;
                         }
                         const lote = data.lote || {};
                         const cods = Array.isArray(lote.codigos) ? lote.codigos : [];
-                        setResumen(spinner + 'Enviado ' + hasta + '/' + total +
+                        setResumen(spinner + verbo + ' ' + hasta + '/' + total +
                             (cods.length ? (' · ' + escapeHtmlSync(cods.slice(0, 6).join(', ')) + (cods.length > 6 ? '…' : '')) : ''));
                         offset = (Number(lote.offset) || offset) + (Number(lote.limit) || batch);
                         if (!lote.hay_mas) break;
                     }
+                    return true;
+                };
+
+                // 2) Fase cola: procesa la cola pendiente del tipo (ambos tipos).
+                if (colaTotal > 0) {
+                    const ok = await procesarFase('cola', colaTotal, 'Procesando');
+                    if (!ok) return;
+                }
+
+                // 3) Fase reenvío: solo vinculaciones locales ya procesadas.
+                if (esVinc && reenvioTotal > 0) {
+                    const ok = await procesarFase('reenvio', reenvioTotal, 'Enviando');
+                    if (!ok) return;
                 }
 
                 // Repintado final: deja el resumen con el estado real (Último OK / proceso).
