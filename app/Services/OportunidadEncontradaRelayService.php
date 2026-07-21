@@ -443,7 +443,7 @@ class OportunidadEncontradaRelayService
         }
 
         if ($despertar) {
-            $this->despertarSitioPar();
+            $this->esperarSitioParDespierto();
         }
 
         $pendientesOk = 0;
@@ -559,7 +559,7 @@ class OportunidadEncontradaRelayService
         }
 
         if ($despertar) {
-            $this->despertarSitioPar();
+            $this->esperarSitioParDespierto();
         }
 
         $rows = OportunidadEncontrada::query()
@@ -580,10 +580,17 @@ class OportunidadEncontradaRelayService
         $enviados = 0;
         $fallidos = 0;
         $chunk = [];
-        $flush = function () use (&$chunk, &$enviados, &$fallidos): void {
+        $pausaMs = (int) config('cotiz.api_oportunidad_encontrada.sync_pausa_lote_ms', 1000);
+        $primerLote = true;
+        $flush = function () use (&$chunk, &$enviados, &$fallidos, &$primerLote, $pausaMs): void {
             if ($chunk === []) {
                 return;
             }
+            // Pausa entre lotes (no antes del primero) para no gatillar rate limit (429) del par.
+            if (! $primerLote && $pausaMs > 0) {
+                usleep($pausaMs * 1000);
+            }
+            $primerLote = false;
             try {
                 $this->enviar($chunk, true, self::ACCION_VINCULO);
                 $this->registrarUltimoOk(self::ACCION_VINCULO, count($chunk));
@@ -662,17 +669,40 @@ class OportunidadEncontradaRelayService
             'items' => $items,
         ];
 
-        try {
-            $response = Http::timeout(45)
-                ->asJson()
-                ->withBasicAuth($userAuth, $passwordAuth)
-                ->post($destino, $payload);
-        } catch (\Throwable $e) {
-            $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
-            if ($encolarSiFalla) {
-                $this->encolarPendiente($items, $mensaje, $colaAccion);
+        $maxReintentos429 = (int) config('cotiz.api_oportunidad_encontrada.sync_reintentos_429', 3);
+        $intento429 = 0;
+        $response = null;
+        while (true) {
+            try {
+                $response = Http::timeout(45)
+                    ->asJson()
+                    ->withBasicAuth($userAuth, $passwordAuth)
+                    ->post($destino, $payload);
+            } catch (\Throwable $e) {
+                $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
+                if ($encolarSiFalla) {
+                    $this->encolarPendiente($items, $mensaje, $colaAccion);
+                }
+                throw new RuntimeException($mensaje);
             }
-            throw new RuntimeException($mensaje);
+
+            // 429 (rate limit): esperar (respetando Retry-After) y reintentar el mismo lote.
+            if ($response->status() === 429 && $intento429 < $maxReintentos429) {
+                $espera = $this->esperaBackoff429($response, $intento429);
+                Log::info('Sync oportunidades: '.$peer.' respondió 429, reintentando lote', [
+                    'intento' => $intento429 + 1,
+                    'espera_seg' => $espera,
+                    'count' => count($items),
+                ]);
+                if ($espera > 0) {
+                    sleep($espera);
+                }
+                $intento429++;
+
+                continue;
+            }
+
+            break;
         }
 
         if (! $response->successful()) {
@@ -1071,6 +1101,75 @@ class OportunidadEncontradaRelayService
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Despierta el sitio par y espera (polling a /up) hasta que responda 200
+     * antes de enviar. Evita mandar datos mientras el par está en cold start.
+     *
+     * @return bool  true si el par respondió sano dentro del tiempo máximo.
+     */
+    private function esperarSitioParDespierto(): bool
+    {
+        $url = CotizInstanciaPar::urlDespertarSitioPar();
+        if ($url === '') {
+            return true;
+        }
+
+        $maxSeg = (int) config('cotiz.api_oportunidad_encontrada.sync_wake_poll_max_seg', 40);
+        $intervalo = max(1, (int) config('cotiz.api_oportunidad_encontrada.sync_wake_poll_intervalo_seg', 3));
+
+        $inicio = time();
+        $intentos = 0;
+        while (true) {
+            try {
+                $resp = Http::timeout(8)->get($url);
+                if ($resp->successful()) {
+                    if ($intentos > 0) {
+                        Log::info('Sync oportunidades: sitio par despierto', [
+                            'url' => $url,
+                            'intentos' => $intentos + 1,
+                        ]);
+                    }
+
+                    return true;
+                }
+            } catch (\Throwable $e) {
+                Log::info('Wake sitio par (/up): sin respuesta aún', [
+                    'url' => $url,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            $intentos++;
+            if (($maxSeg <= 0) || (((time() - $inicio) + $intervalo) > $maxSeg)) {
+                Log::warning('Sync oportunidades: sitio par no despertó a tiempo, se intentará enviar igual', [
+                    'url' => $url,
+                    'max_seg' => $maxSeg,
+                    'intentos' => $intentos,
+                ]);
+
+                return false;
+            }
+
+            sleep($intervalo);
+        }
+    }
+
+    /**
+     * Segundos a esperar tras un 429: respeta Retry-After si viene; si no,
+     * backoff exponencial acotado a partir de sync_backoff_429_seg.
+     */
+    private function esperaBackoff429(Response $response, int $intento): int
+    {
+        $retryAfter = trim((string) $response->header('Retry-After'));
+        if ($retryAfter !== '' && is_numeric($retryAfter)) {
+            return max(1, min(60, (int) $retryAfter));
+        }
+
+        $base = max(1, (int) config('cotiz.api_oportunidad_encontrada.sync_backoff_429_seg', 3));
+
+        return min(60, $base * (2 ** max(0, $intento)));
     }
 
     public function urlDestino(): string

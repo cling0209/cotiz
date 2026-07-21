@@ -36,6 +36,14 @@ return [
         'url' => env('COTIZ_API_OPORTUNIDAD_ENCONTRADA_URL', ''),
         // Tras búsqueda/vinculación: espera tras wake /up antes de reenviar pendientes (Render free cold start).
         'sync_wake_espera_seg' => max(0, min(120, (int) env('COTIZ_OPORTUNIDAD_SYNC_WAKE_ESPERA_SEG', 25))),
+        // Despertar y esperar activo: poll a /up hasta que responda 200 antes de enviar.
+        'sync_wake_poll_max_seg' => max(0, min(120, (int) env('COTIZ_OPORTUNIDAD_SYNC_WAKE_POLL_MAX_SEG', 40))),
+        'sync_wake_poll_intervalo_seg' => max(1, min(30, (int) env('COTIZ_OPORTUNIDAD_SYNC_WAKE_POLL_INTERVALO_SEG', 3))),
+        // Pausa entre lotes al reenviar al par (evita 429 rate limit).
+        'sync_pausa_lote_ms' => max(0, min(10000, (int) env('COTIZ_OPORTUNIDAD_SYNC_PAUSA_LOTE_MS', 1000))),
+        // Reintentos por lote ante 429 (rate limit), con backoff.
+        'sync_reintentos_429' => max(0, min(10, (int) env('COTIZ_OPORTUNIDAD_SYNC_REINTENTOS_429', 3))),
+        'sync_backoff_429_seg' => max(1, min(60, (int) env('COTIZ_OPORTUNIDAD_SYNC_BACKOFF_429_SEG', 3))),
     ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),
