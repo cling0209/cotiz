@@ -354,6 +354,11 @@
                     <input type="search" id="filtro-palabra-clave" class="form-control form-control-sm"
                         placeholder="Ej. papel, l&aacute;piz, c&oacute;digo…" autocomplete="off">
                 </div>
+                <div class="col-12 col-md-6 col-xl-2">
+                    <label for="filtro-codigo" class="form-label small mb-1">C&oacute;digo cotizaci&oacute;n</label>
+                    <input type="search" id="filtro-codigo" class="form-control form-control-sm"
+                        placeholder="Ej. 1234-56-COT25" autocomplete="off">
+                </div>
                 <div class="col-6 col-md-4 col-xl-3">
                     <label class="form-label small mb-1">% v&iacute;nculo</label>
                     <div class="d-flex gap-1 align-items-center" title="Rango de vinculaci&oacute;n al maestro. Vac&iacute;o = todas.">
@@ -362,6 +367,26 @@
                         <span class="small text-muted flex-shrink-0">a</span>
                         <input type="number" id="filtro-vinculo-hasta" class="form-control form-control-sm"
                             min="0" max="100" step="1" placeholder="Hasta" inputmode="numeric" autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label class="form-label small mb-1">Fecha publicaci&oacute;n</label>
+                    <div class="d-flex gap-1 align-items-center" title="Rango de fecha de publicaci&oacute;n. Vac&iacute;o = todas.">
+                        <input type="date" id="filtro-pub-desde" class="form-control form-control-sm"
+                            autocomplete="off" aria-label="Publicaci&oacute;n desde">
+                        <span class="small text-muted flex-shrink-0">a</span>
+                        <input type="date" id="filtro-pub-hasta" class="form-control form-control-sm"
+                            autocomplete="off" aria-label="Publicaci&oacute;n hasta">
+                    </div>
+                </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                    <label class="form-label small mb-1">Fecha cierre</label>
+                    <div class="d-flex gap-1 align-items-center" title="Rango de fecha de cierre. Vac&iacute;o = todas.">
+                        <input type="date" id="filtro-cierre-desde" class="form-control form-control-sm"
+                            autocomplete="off" aria-label="Cierre desde">
+                        <span class="small text-muted flex-shrink-0">a</span>
+                        <input type="date" id="filtro-cierre-hasta" class="form-control form-control-sm"
+                            autocomplete="off" aria-label="Cierre hasta">
                     </div>
                 </div>
                 <div class="col-12 col-md-6 col-xl-2 d-flex flex-wrap gap-2 align-items-end">
@@ -554,6 +579,11 @@
         const filtroPalabraClave = document.getElementById('filtro-palabra-clave');
         const filtroVinculoDesde = document.getElementById('filtro-vinculo-desde');
         const filtroVinculoHasta = document.getElementById('filtro-vinculo-hasta');
+        const filtroCodigo = document.getElementById('filtro-codigo');
+        const filtroPubDesde = document.getElementById('filtro-pub-desde');
+        const filtroPubHasta = document.getElementById('filtro-pub-hasta');
+        const filtroCierreDesde = document.getElementById('filtro-cierre-desde');
+        const filtroCierreHasta = document.getElementById('filtro-cierre-hasta');
         const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
         const btnDescargarCsv = document.getElementById('btn-descargar-csv');
         const paginacionNav = document.getElementById('oportunidad-paginacion');
@@ -826,11 +856,63 @@
             return true;
         }
 
+        function itemCoincideCodigo(item, criterio) {
+            if (criterio === '') {
+                return true;
+            }
+            return normalizarTexto(item.codigo).includes(criterio);
+        }
+
+        function fechaItemMs(valor) {
+            const raw = String(valor || '').trim();
+            if (raw === '') {
+                return null;
+            }
+            const d = new Date(raw);
+            return Number.isNaN(d.getTime()) ? null : d.getTime();
+        }
+
+        function rangoFechaFiltro(inputDesde, inputHasta) {
+            let rawDesde = inputDesde ? String(inputDesde.value || '').trim() : '';
+            let rawHasta = inputHasta ? String(inputHasta.value || '').trim() : '';
+            if (rawDesde === '' && rawHasta === '') {
+                return null;
+            }
+            if (rawDesde !== '' && rawHasta !== '' && rawDesde > rawHasta) {
+                const tmp = rawDesde;
+                rawDesde = rawHasta;
+                rawHasta = tmp;
+            }
+            const desde = rawDesde !== '' ? new Date(`${rawDesde}T00:00:00`).getTime() : null;
+            const hasta = rawHasta !== '' ? new Date(`${rawHasta}T23:59:59.999`).getTime() : null;
+            return { desde, hasta };
+        }
+
+        function itemCoincideFecha(valor, rango) {
+            if (!rango) {
+                return true;
+            }
+            const ms = fechaItemMs(valor);
+            if (ms == null) {
+                return false;
+            }
+            if (rango.desde != null && ms < rango.desde) {
+                return false;
+            }
+            if (rango.hasta != null && ms > rango.hasta) {
+                return false;
+            }
+            return true;
+        }
+
         function itemsFiltrados() {
             const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
             const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
             const palabraSel = filtroPalabraClaveAplicado;
+            const codigoSel = filtroCodigo ? normalizarTexto(filtroCodigo.value) : '';
             const vinculoRango = rangoVinculoFiltro();
+            const pubRango = rangoFechaFiltro(filtroPubDesde, filtroPubHasta);
+            const cierreRango = rangoFechaFiltro(filtroCierreDesde, filtroCierreHasta);
             let items = Array.from(porCodigo.values());
             if (regionSel !== '') {
                 const codigoRegion = Number(regionSel);
@@ -842,8 +924,17 @@
             if (palabraSel !== '') {
                 items = items.filter((item) => itemCoincidePalabraClave(item, palabraSel));
             }
+            if (codigoSel !== '') {
+                items = items.filter((item) => itemCoincideCodigo(item, codigoSel));
+            }
             if (vinculoRango) {
                 items = items.filter((item) => itemCoincideVinculo(item, vinculoRango));
+            }
+            if (pubRango) {
+                items = items.filter((item) => itemCoincideFecha(item.fecha_publicacion, pubRango));
+            }
+            if (cierreRango) {
+                items = items.filter((item) => itemCoincideFecha(item.fecha_cierre, cierreRango));
             }
             return items.sort(comparar);
         }
@@ -884,6 +975,11 @@
                     palabra_clave_aplicada: filtroPalabraClaveAplicado,
                     vinculo_desde: filtroVinculoDesde ? String(filtroVinculoDesde.value || '') : '',
                     vinculo_hasta: filtroVinculoHasta ? String(filtroVinculoHasta.value || '') : '',
+                    codigo: filtroCodigo ? String(filtroCodigo.value || '') : '',
+                    pub_desde: filtroPubDesde ? String(filtroPubDesde.value || '') : '',
+                    pub_hasta: filtroPubHasta ? String(filtroPubHasta.value || '') : '',
+                    cierre_desde: filtroCierreDesde ? String(filtroCierreDesde.value || '') : '',
+                    cierre_hasta: filtroCierreHasta ? String(filtroCierreHasta.value || '') : '',
                 }));
             } catch (e) {
                 // localStorage no disponible
@@ -909,6 +1005,21 @@
             }
             if (filtroVinculoHasta && data.vinculo_hasta != null) {
                 filtroVinculoHasta.value = String(data.vinculo_hasta || '');
+            }
+            if (filtroCodigo && data.codigo != null) {
+                filtroCodigo.value = String(data.codigo || '');
+            }
+            if (filtroPubDesde && data.pub_desde != null) {
+                filtroPubDesde.value = String(data.pub_desde || '');
+            }
+            if (filtroPubHasta && data.pub_hasta != null) {
+                filtroPubHasta.value = String(data.pub_hasta || '');
+            }
+            if (filtroCierreDesde && data.cierre_desde != null) {
+                filtroCierreDesde.value = String(data.cierre_desde || '');
+            }
+            if (filtroCierreHasta && data.cierre_hasta != null) {
+                filtroCierreHasta.value = String(data.cierre_hasta || '');
             }
             filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null ?
                 String(data.palabra_clave_aplicada || '') :
@@ -1186,7 +1297,10 @@
             const filtroActivo = (filtroRegion && String(filtroRegion.value || '').trim() !== '') ||
                 (filtroOrganismo && String(filtroOrganismo.value || '').trim() !== '') ||
                 filtroPalabraClaveAplicado !== '' ||
-                rangoVinculoFiltro() != null;
+                (filtroCodigo && String(filtroCodigo.value || '').trim() !== '') ||
+                rangoVinculoFiltro() != null ||
+                rangoFechaFiltro(filtroPubDesde, filtroPubHasta) != null ||
+                rangoFechaFiltro(filtroCierreDesde, filtroCierreHasta) != null;
             const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
             const visibles = filtroActivo ?
                 `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.` :
@@ -1311,7 +1425,7 @@
             });
         }
 
-        [filtroVinculoDesde, filtroVinculoHasta].forEach((el) => {
+        [filtroVinculoDesde, filtroVinculoHasta, filtroPubDesde, filtroPubHasta, filtroCierreDesde, filtroCierreHasta].forEach((el) => {
             if (!el) {
                 return;
             }
@@ -1326,6 +1440,24 @@
                 renderTabla(true);
             });
         });
+
+        if (filtroCodigo) {
+            let filtroCodigoTimer = null;
+            filtroCodigo.addEventListener('input', () => {
+                if (filtroCodigoTimer) clearTimeout(filtroCodigoTimer);
+                filtroCodigoTimer = setTimeout(() => {
+                    guardarFiltros();
+                    renderTabla(true);
+                }, 200);
+            });
+            filtroCodigo.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filtroCodigoTimer) clearTimeout(filtroCodigoTimer);
+                    aplicarFiltros();
+                }
+            });
+        }
 
         const modalVinculoEl = document.getElementById('modal-vinculo-productos');
         const modalVinculoLabel = document.getElementById('modal-vinculo-productos-label');
