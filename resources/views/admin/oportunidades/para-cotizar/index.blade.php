@@ -2534,6 +2534,23 @@
             const btnVin = document.getElementById('btn-sync-vinculaciones');
             if (btnCot) btnCot.disabled = true;
             if (btnVin) btnVin.disabled = true;
+
+            const esVinc = tipo === 'vinculaciones';
+            const btnActivo = esVinc ? btnVin : btnCot;
+            const htmlOriginalBtn = btnActivo ? btnActivo.innerHTML : '';
+            if (btnActivo) {
+                btnActivo.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Procesando…';
+            }
+            const resumenId = esVinc ? 'sync-vin-resumen' : 'sync-cot-resumen';
+            const resumenEl = document.getElementById(resumenId);
+            const htmlOriginalResumen = resumenEl ? resumenEl.innerHTML : '';
+            if (resumenEl) {
+                resumenEl.classList.remove('text-muted');
+                resumenEl.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
+                    'Despertando al par y enviando… esto puede tardar unos segundos.';
+            }
             try {
                 const res = await fetch(urls.syncPar, {
                     method: 'POST',
@@ -2567,6 +2584,9 @@
                     setSyncDetalleAbierto(tipo === 'vinculaciones' ? 'vin' : 'cot', true);
                 }
             } catch (e) {
+                if (resumenEl) {
+                    resumenEl.innerHTML = htmlOriginalResumen;
+                }
                 const errorId = tipo === 'vinculaciones' ? 'sync-vin-error' : 'sync-cot-error';
                 const errorEl = document.getElementById(errorId);
                 if (errorEl) {
@@ -2578,6 +2598,7 @@
                 syncParEnCurso = false;
                 if (btnCot) btnCot.disabled = false;
                 if (btnVin) btnVin.disabled = false;
+                if (btnActivo) btnActivo.innerHTML = htmlOriginalBtn;
             }
         }
 
