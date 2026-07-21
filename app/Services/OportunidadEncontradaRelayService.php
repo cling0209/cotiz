@@ -25,6 +25,8 @@ class OportunidadEncontradaRelayService
 
     private const CACHE_ULTIMO_OK_PREFIX = 'oportunidad_sync_par.ultimo_ok.';
 
+    private const CACHE_ULTIMO_PROCESO_PREFIX = 'oportunidad_sync_par.ultimo_proceso.';
+
     /**
      * Replica oportunidades encontradas al sitio par (Romulo ↔ Reicol).
      * No lanza: encola si el par no responde.
@@ -75,6 +77,7 @@ class OportunidadEncontradaRelayService
 
         $pendientesOk = 0;
         $pendientesFail = 0;
+        $stats = $this->nuevoAcumuladoProcesoPorCola();
 
         $pendientes = OportunidadEncontradaSyncPendiente::query()
             ->orderBy('id')
@@ -82,6 +85,8 @@ class OportunidadEncontradaRelayService
 
         foreach ($pendientes as $pendiente) {
             $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            $colaPend = $this->colaAccionDesdePendiente($pendiente);
+            $codigosPend = $this->codigosDePayload($payload);
             try {
                 if ($pendiente->accion === self::ACCION_TOMADA || $pendiente->accion === 'tomada') {
                     $this->enviarTomada(
@@ -98,11 +103,13 @@ class OportunidadEncontradaRelayService
                 }
                 $pendiente->delete();
                 $pendientesOk++;
+                $this->acumularProcesoOk($stats, $colaPend, $codigosPend);
             } catch (\Throwable $e) {
                 $pendientesFail++;
                 $pendiente->intentos = (int) $pendiente->intentos + 1;
                 $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
                 $pendiente->save();
+                $this->acumularProcesoFail($stats, $colaPend, $e->getMessage());
                 Log::warning('Sync oportunidad encontrada pendiente falló', [
                     'id' => $pendiente->id,
                     'error' => $e->getMessage(),
@@ -112,6 +119,8 @@ class OportunidadEncontradaRelayService
 
         $ok = $pendientesFail === 0;
         $peer = $this->nombreInstanciaPar($this->urlDestino());
+
+        $this->registrarUltimoProcesoDesdeStats($stats, [self::ACCION_GRABA, self::ACCION_VINCULO]);
 
         return [
             'ok' => $ok,
@@ -439,6 +448,7 @@ class OportunidadEncontradaRelayService
 
         $pendientesOk = 0;
         $pendientesFail = 0;
+        $stats = $this->nuevoAcumuladoProcesoPorCola();
 
         $pendientes = OportunidadEncontradaSyncPendiente::query()
             ->orderBy('id')
@@ -454,6 +464,8 @@ class OportunidadEncontradaRelayService
 
         foreach ($pendientes as $pendiente) {
             $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            $colaPend = $this->colaAccionDesdePendiente($pendiente);
+            $codigosPend = $this->codigosDePayload($payload);
             try {
                 if ($pendiente->accion === self::ACCION_TOMADA) {
                     $this->enviarTomada(
@@ -470,11 +482,13 @@ class OportunidadEncontradaRelayService
                 }
                 $pendiente->delete();
                 $pendientesOk++;
+                $this->acumularProcesoOk($stats, $colaPend, $codigosPend);
             } catch (\Throwable $e) {
                 $pendiente->intentos = (int) $pendiente->intentos + 1;
                 $pendiente->ultimo_error = mb_substr($e->getMessage(), 0, 1000);
                 $pendiente->save();
                 $pendientesFail++;
+                $this->acumularProcesoFail($stats, $colaPend, $e->getMessage());
             }
         }
 
@@ -493,6 +507,8 @@ class OportunidadEncontradaRelayService
             if ($reenvioFail > 0) {
                 $ok = false;
             }
+            $stats[self::ACCION_VINCULO]['ok'] += $reenviados;
+            $stats[self::ACCION_VINCULO]['fail'] += $reenvioFail;
         }
 
         $partes = [];
@@ -515,6 +531,11 @@ class OportunidadEncontradaRelayService
         if ($reenvioFail > 0) {
             $partes[] = $reenvioFail.' fallos al reenviar';
         }
+
+        $colasARegistrar = $tipo === 'all'
+            ? [self::ACCION_GRABA, self::ACCION_VINCULO]
+            : [$tipo];
+        $this->registrarUltimoProcesoDesdeStats($stats, $colasARegistrar);
 
         return [
             'ok' => $ok,
@@ -789,6 +810,7 @@ class OportunidadEncontradaRelayService
      *   ultimo_error: string|null,
      *   ultimo_ok_at: string|null,
      *   ultimo_ok_count: int|null,
+     *   ultimo_proceso: array{at: string, ok: bool, procesados: int, fallos: int, codigos: list<string>, ultimo_error: string|null, mensaje: string|null}|null,
      *   lotes: list<array{
      *     id: int,
      *     intentos: int,
@@ -844,6 +866,7 @@ class OportunidadEncontradaRelayService
         }
 
         $ultimoOk = Cache::get(self::CACHE_ULTIMO_OK_PREFIX.$colaAccion);
+        $ultimoProceso = Cache::get(self::CACHE_ULTIMO_PROCESO_PREFIX.$colaAccion);
 
         return [
             'pendientes' => $pendientes->count(),
@@ -853,6 +876,7 @@ class OportunidadEncontradaRelayService
             'ultimo_ok_count' => is_array($ultimoOk) && isset($ultimoOk['count'])
                 ? (int) $ultimoOk['count']
                 : null,
+            'ultimo_proceso' => is_array($ultimoProceso) ? $ultimoProceso : null,
             'lotes' => $lotes,
         ];
     }
@@ -911,6 +935,125 @@ class OportunidadEncontradaRelayService
             'at' => now()->toIso8601String(),
             'count' => max(0, $count),
         ], now()->addDays(7));
+    }
+
+    /**
+     * @return array<string, array{ok: int, fail: int, codigos: list<string>, error: string|null}>
+     */
+    private function nuevoAcumuladoProcesoPorCola(): array
+    {
+        return [
+            self::ACCION_GRABA => ['ok' => 0, 'fail' => 0, 'codigos' => [], 'error' => null],
+            self::ACCION_VINCULO => ['ok' => 0, 'fail' => 0, 'codigos' => [], 'error' => null],
+        ];
+    }
+
+    /**
+     * @param  array<string, array{ok: int, fail: int, codigos: list<string>, error: string|null}>  $stats
+     * @param  list<string>  $codigos
+     */
+    private function acumularProcesoOk(array &$stats, string $colaAccion, array $codigos): void
+    {
+        if (! isset($stats[$colaAccion])) {
+            return;
+        }
+        $stats[$colaAccion]['ok']++;
+        foreach ($codigos as $codigo) {
+            if (! in_array($codigo, $stats[$colaAccion]['codigos'], true)) {
+                $stats[$colaAccion]['codigos'][] = $codigo;
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, array{ok: int, fail: int, codigos: list<string>, error: string|null}>  $stats
+     */
+    private function acumularProcesoFail(array &$stats, string $colaAccion, string $error): void
+    {
+        if (! isset($stats[$colaAccion])) {
+            return;
+        }
+        $stats[$colaAccion]['fail']++;
+        $err = trim($error);
+        if ($err !== '') {
+            $stats[$colaAccion]['error'] = mb_substr($err, 0, 500);
+        }
+    }
+
+    /**
+     * @param  array<string, array{ok: int, fail: int, codigos: list<string>, error: string|null}>  $stats
+     * @param  list<string>  $colas
+     */
+    private function registrarUltimoProcesoDesdeStats(array $stats, array $colas): void
+    {
+        foreach ($colas as $cola) {
+            $cola = $this->normalizarColaAccion($cola);
+            if (! isset($stats[$cola])) {
+                continue;
+            }
+            $s = $stats[$cola];
+            $procesados = (int) ($s['ok'] ?? 0);
+            $fallos = (int) ($s['fail'] ?? 0);
+            $ok = $fallos === 0;
+            $mensaje = $procesados.' procesado(s)'
+                .($fallos > 0 ? ', '.$fallos.' con error' : ' sin errores');
+            $this->registrarUltimoProceso($cola, [
+                'ok' => $ok,
+                'procesados' => $procesados,
+                'fallos' => $fallos,
+                'codigos' => is_array($s['codigos'] ?? null) ? $s['codigos'] : [],
+                'ultimo_error' => $s['error'] ?? null,
+                'mensaje' => $mensaje,
+            ]);
+        }
+    }
+
+    /**
+     * @param  array{ok?: bool, procesados?: int, fallos?: int, codigos?: list<string>, ultimo_error?: string|null, mensaje?: string|null}  $datos
+     */
+    private function registrarUltimoProceso(string $colaAccion, array $datos): void
+    {
+        $colaAccion = $this->normalizarColaAccion($colaAccion);
+        $codigos = is_array($datos['codigos'] ?? null) ? $datos['codigos'] : [];
+        $codigos = array_slice(array_values(array_unique(array_filter(array_map(
+            static fn ($c) => strtoupper(trim((string) $c)),
+            $codigos,
+        )))), 0, 40);
+        $error = isset($datos['ultimo_error']) ? trim((string) $datos['ultimo_error']) : '';
+        $mensaje = isset($datos['mensaje']) ? trim((string) $datos['mensaje']) : '';
+
+        Cache::put(self::CACHE_ULTIMO_PROCESO_PREFIX.$colaAccion, [
+            'at' => now()->toIso8601String(),
+            'ok' => (bool) ($datos['ok'] ?? false),
+            'procesados' => max(0, (int) ($datos['procesados'] ?? 0)),
+            'fallos' => max(0, (int) ($datos['fallos'] ?? 0)),
+            'codigos' => $codigos,
+            'ultimo_error' => $error !== '' ? mb_substr($error, 0, 500) : null,
+            'mensaje' => $mensaje !== '' ? mb_substr($mensaje, 0, 500) : null,
+        ], now()->addDays(30));
+    }
+
+    /**
+     * Extrae los códigos (cotización) de un payload de pendiente.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return list<string>
+     */
+    private function codigosDePayload(array $payload): array
+    {
+        $codigos = [];
+        foreach ($this->normalizarItems($payload) as $item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo !== '' && ! in_array($codigo, $codigos, true)) {
+                $codigos[] = $codigo;
+            }
+        }
+        $directo = strtoupper(trim((string) ($payload['codigo'] ?? '')));
+        if ($directo !== '' && ! in_array($directo, $codigos, true)) {
+            $codigos[] = $directo;
+        }
+
+        return $codigos;
     }
 
     private function despertarSitioPar(): void

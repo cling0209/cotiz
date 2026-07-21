@@ -242,6 +242,7 @@
                         <span id="sync-cot-peer" class="text-muted ms-auto"></span>
                     </div>
                     <div id="sync-cot-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
+                    <div id="sync-cot-ultimo-proceso" class="small mb-2 d-none"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <button type="button" id="btn-sync-cotizaciones" class="btn btn-outline-primary btn-sm" data-no-loader
                             title="Reintenta enviar cotizaciones pendientes al sitio par">
@@ -287,6 +288,7 @@
                         <span id="sync-vin-peer" class="text-muted ms-auto"></span>
                     </div>
                     <div id="sync-vin-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
+                    <div id="sync-vin-ultimo-proceso" class="small mb-2 d-none"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
                             title="Reintenta cola pendiente y reenvía al par las vinculaciones ya procesadas en este sitio">
@@ -2383,6 +2385,7 @@
             const peerEl = document.getElementById(`sync-${prefijo}-peer`);
             const contador = document.getElementById(`sync-${prefijo}-detalle-contador`);
             const tbody = document.getElementById(`sync-${prefijo}-lotes-tbody`);
+            const ultimoProcesoEl = document.getElementById(`sync-${prefijo}-ultimo-proceso`);
             if (!bloque) return;
 
             const pendientes = Number(bloque.pendientes) || 0;
@@ -2423,6 +2426,44 @@
             if (resumen) {
                 resumen.textContent = partesResumen.join(' · ');
                 resumen.classList.toggle('text-muted', pendientes === 0 && !ultimoError);
+            }
+
+            if (ultimoProcesoEl) {
+                const up = bloque.ultimo_proceso && typeof bloque.ultimo_proceso === 'object'
+                    ? bloque.ultimo_proceso
+                    : null;
+                if (!up || !up.at) {
+                    ultimoProcesoEl.innerHTML = '';
+                    ultimoProcesoEl.classList.add('d-none');
+                } else {
+                    const cuando = formatearFechaSync(up.at) || '—';
+                    const procesados = Number(up.procesados) || 0;
+                    const fallos = Number(up.fallos) || 0;
+                    const okProc = up.ok === true && fallos === 0;
+                    const cods = Array.isArray(up.codigos) ? up.codigos : [];
+                    const codsTxt = cods.length > 0
+                        ? escapeHtmlSync(cods.slice(0, 8).join(', ') + (cods.length > 8 ? '…' : ''))
+                        : '';
+                    const errTxt = String(up.ultimo_error || '').trim();
+                    const badgeClase = okProc ? 'text-bg-success' : (procesados > 0 ? 'text-bg-warning' : 'text-bg-danger');
+                    const badgeTxt = okProc
+                        ? 'OK'
+                        : (procesados > 0 ? 'Parcial' : 'Con errores');
+                    let html = `<div class="d-flex flex-wrap gap-1 align-items-center">
+                        <span class="fw-semibold">Último proceso:</span>
+                        <span class="badge ${badgeClase}">${escapeHtmlSync(badgeTxt)}</span>
+                        <span class="text-muted tabular-nums">${escapeHtmlSync(cuando)}</span>
+                        <span class="text-muted">· ${procesados} procesado(s)${fallos > 0 ? ` · ${fallos} con error` : ''}</span>
+                    </div>`;
+                    if (codsTxt) {
+                        html += `<div class="opc-meta text-muted mt-1">Códigos: ${codsTxt}</div>`;
+                    }
+                    if (errTxt) {
+                        html += `<div class="opc-meta text-danger mt-1" title="${escapeHtmlSync(errTxt)}">${escapeHtmlSync(errTxt)}</div>`;
+                    }
+                    ultimoProcesoEl.innerHTML = html;
+                    ultimoProcesoEl.classList.remove('d-none');
+                }
             }
 
             const partesDetalle = [];
