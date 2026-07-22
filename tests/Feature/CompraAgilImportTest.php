@@ -734,6 +734,69 @@ TXT;
         );
     }
 
+    public function test_guardar_permite_editar_descripcion_maestro_en_linea_vinculada(): void
+    {
+        $nota = $this->crearNota();
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'ASEO001',
+            'prod_valor' => 4500,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 3200,
+            'prod_item_agile' => '31237835',
+            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS. CADA UNO',
+            'prod_descripcion_maestro' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+        ]);
+
+        $this->actingAs($this->admin)->post(
+            route('admin.cotizaciones.update', $nota->nronota),
+            [
+                'accion' => 'grabar',
+                'descripcion' => $nota->descripcion,
+                'encargado' => $nota->encargado,
+                'empresa' => $nota->empresa,
+                'celular' => '',
+                'contacto' => '',
+                'contactocorreo' => '',
+                'rutempresa' => '',
+                'diashabiles' => 2,
+                'ocompra' => '',
+                'lineas' => [
+                    [
+                        'prod_item' => 'ASEO001',
+                        'orden' => 1,
+                        'cantidad' => 1,
+                        'prod_valor' => 4500,
+                        'prod_valor_costo' => 3200,
+                        'prod_descripcion_maestro' => 'DESCRIPCION MAESTRO EDITADA VINCULADA',
+                    ],
+                ],
+            ],
+        )->assertRedirect();
+
+        $linea = NotaDetalle::query()
+            ->where('nronota', $nota->nronota)
+            ->where('orden', 1)
+            ->first();
+
+        $this->assertSame('ASEO001', $linea->prod_item);
+        $this->assertSame(
+            'LIMPIADOR DE PISOS CON AROMAS 5 LTS. CADA UNO',
+            $linea->prod_descripcion_agile,
+        );
+        $this->assertSame(
+            'DESCRIPCION MAESTRO EDITADA VINCULADA',
+            $linea->prod_descripcion_maestro,
+        );
+        $this->assertSame(
+            'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+            Maeprod::query()->where('prod_item', 'ASEO001')->value('prod_nombre'),
+        );
+    }
+
     public function test_grabar_lineas_sincroniza_vinculo_agilemaeprod(): void
     {
         $nota = $this->crearNota();

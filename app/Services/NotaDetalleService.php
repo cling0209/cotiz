@@ -173,10 +173,7 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
             ];
 
-            if (
-                array_key_exists('prod_descripcion_maestro', $datos)
-                && self::lineaPendienteVinculo($linea)
-            ) {
+            if (array_key_exists('prod_descripcion_maestro', $datos)) {
                 $lineaUpdates['prod_descripcion_maestro'] = AgileDescripcion::paraDetalle(
                     (string) $datos['prod_descripcion_maestro'],
                 );

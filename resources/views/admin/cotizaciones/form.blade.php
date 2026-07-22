@@ -3778,13 +3778,8 @@
         const nombreCell = tr.querySelector('.linea-prod-nombre');
         const nombreTexto = linea.prod_nombre || codigoMostrar;
         if (nombreInput) {
-            const span = document.createElement('span');
-            span.className = 'nv-fill linea-prod-nombre';
-            span.textContent = nombreTexto;
-            nombreInput.replaceWith(span);
-            if (nombreCell && nombreCell !== nombreInput) {
-                nombreCell.remove();
-            }
+            nombreInput.value = nombreTexto;
+            if (nombreCell) nombreCell.textContent = nombreTexto;
         } else if (nombreCell) {
             nombreCell.textContent = nombreTexto;
             nombreCell.classList.remove('text-warning-emphasis');
