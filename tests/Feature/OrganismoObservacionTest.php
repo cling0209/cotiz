@@ -93,6 +93,68 @@ class OrganismoObservacionTest extends TestCase
         $this->assertSame(1, OrganismoObservacion::query()->where('nombre', 'Ejercito de Chile')->count());
     }
 
+    public function test_reset_descarta_empresa_igual_a_codigo_ca_y_usa_organismo_mp(): void
+    {
+        static $n = 9100;
+        $n++;
+        $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);
+        Nota::query()->create([
+            'nronota' => $n,
+            'usuario' => $user->username,
+            'empresa' => '4201-366-COT26',
+            'rutempresa' => '69073900',
+            'descripcion' => 'Test',
+            'fecha' => now()->toDateString(),
+            'encargado' => '4201-366-COT26',
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $n,
+            'codigo_proceso' => '4201-366-COT26',
+            'organismo' => 'Municipalidad Fidedigna',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        // Finalizado pero no_encontrada: no debe entrar.
+        $n++;
+        Nota::query()->create([
+            'nronota' => $n,
+            'usuario' => $user->username,
+            'empresa' => 'Basura',
+            'rutempresa' => '11111111-1',
+            'descripcion' => 'Test',
+            'fecha' => now()->toDateString(),
+            'encargado' => '999-1-COT26',
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $n,
+            'codigo_proceso' => '999-1-COT26',
+            'organismo' => '',
+            'resultado_propio' => 'no_encontrada',
+            'finalizado' => true,
+        ]);
+
+        /** @var OrganismoObservacionService $svc */
+        $svc = app(OrganismoObservacionService::class);
+        $stats = $svc->resetDesdeCerradas();
+
+        $this->assertSame(1, $stats['creados']);
+        $this->assertDatabaseHas('organismo_observaciones', [
+            'rut_organismo' => '69073900',
+            'nombre' => 'Municipalidad Fidedigna',
+        ]);
+        $this->assertDatabaseMissing('organismo_observaciones', [
+            'rut_organismo' => '11111111-1',
+        ]);
+        $this->assertDatabaseMissing('organismo_observaciones', [
+            'nombre' => '4201-366-COT26',
+        ]);
+    }
+
     public function test_fusiona_duplicados_rut_con_y_sin_dv_en_listado(): void
     {
         OrganismoObservacion::query()->create([

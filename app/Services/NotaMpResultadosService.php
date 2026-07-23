@@ -1852,11 +1852,15 @@ class NotaMpResultadosService
             );
 
             if ($finalizado) {
+                $rutMp = isset($institucion['rut'])
+                    ? $this->parser->normalizarRut((string) $institucion['rut'])
+                    : '';
                 $this->organismoObservacion->registrarDesdeCerrada(
-                    (string) ($nota->rutempresa ?? ''),
-                    trim((string) ($nota->empresa ?? '')) !== ''
-                        ? (string) $nota->empresa
-                        : (string) ($institucion['organismo_comprador'] ?? ''),
+                    $rutMp !== '' ? $rutMp : (string) ($nota->rutempresa ?? ''),
+                    null,
+                    (string) ($institucion['organismo_comprador'] ?? ''),
+                    (string) ($nota->empresa ?? ''),
+                    (string) ($nota->encargado ?? ''),
                 );
             }
 

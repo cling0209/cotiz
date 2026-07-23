@@ -55,7 +55,8 @@ class OrganismoObservacionService
                     $existente->rut_organismo = $rut;
                     $cambios = true;
                 }
-                if ($nombre !== '' && trim((string) ($existente->nombre ?? '')) === '') {
+                $nombreActual = trim((string) ($existente->nombre ?? ''));
+                if ($nombre !== '' && ($nombreActual === '' || $this->nombreEsMejor($nombre, $nombreActual))) {
                     $existente->nombre = mb_substr($nombre, 0, 200);
                     $cambios = true;
                 }
@@ -84,9 +85,18 @@ class OrganismoObservacionService
 
     /**
      * Alta/actualización al cerrar una CA (fuente fidedigna).
+     *
+     * @param  string|null  $nombreMp  organismo_comprador de la API MP (preferido)
+     * @param  string|null  $nombreNota  notas.empresa (fallback si no parece código CA)
+     * @param  string|null  $encargado  código CA para descartar homónimos en empresa
      */
-    public function registrarDesdeCerrada(?string $rut, ?string $nombre): ?OrganismoObservacion
-    {
+    public function registrarDesdeCerrada(
+        ?string $rut,
+        ?string $nombre = null,
+        ?string $nombreMp = null,
+        ?string $nombreNota = null,
+        ?string $encargado = null,
+    ): ?OrganismoObservacion {
         $rutNorm = $this->parser->normalizarRut((string) $rut);
         if ($rutNorm === '') {
             return null;
@@ -97,20 +107,39 @@ class OrganismoObservacionService
             return null;
         }
 
-        $nombre = trim((string) $nombre);
+        // Compat: llamadas antiguas pasan solo $nombre; las nuevas usan MP + nota.
+        if ($nombreMp !== null || $nombreNota !== null) {
+            $nombre = $this->nombreOrganismoFidedigno(
+                (string) $nombreMp,
+                (string) ($nombreNota ?? $nombre),
+                (string) $encargado,
+            );
+        } else {
+            $nombre = trim((string) $nombre);
+            if ($this->nombrePareceCodigoCa($nombre)) {
+                $nombre = '';
+            }
+        }
+
+        if ($nombre === '') {
+            return null;
+        }
+
         $existente = $this->buscarPorCuerpoRut($cuerpo);
 
         if ($existente === null) {
             return OrganismoObservacion::query()->create([
                 'rut_organismo' => $rutNorm,
-                'nombre' => $nombre !== '' ? mb_substr($nombre, 0, 200) : null,
+                'nombre' => mb_substr($nombre, 0, 200),
             ]);
         }
 
         if ($this->rutEsMejor($rutNorm, (string) $existente->rut_organismo)) {
             $existente->rut_organismo = $rutNorm;
         }
-        if ($nombre !== '') {
+        if ($this->nombreEsMejor($nombre, trim((string) ($existente->nombre ?? '')))) {
+            $existente->nombre = mb_substr($nombre, 0, 200);
+        } elseif (trim((string) ($existente->nombre ?? '')) === '') {
             $existente->nombre = mb_substr($nombre, 0, 200);
         }
         if ($existente->isDirty()) {
@@ -260,15 +289,18 @@ class OrganismoObservacionService
      */
     private function organismosDesdeCerradas(): array
     {
+        // Solo resultados MP reales (no "no_encontrada" u otros finalizados sin institución).
         $filas = DB::table('nota_mp_seguimientos as s')
             ->join('notas as n', 'n.nronota', '=', 's.nronota')
             ->whereRaw('s.finalizado IS TRUE')
+            ->whereIn('s.resultado_propio', ['cerrada', 'desierta', 'cancelada'])
             ->whereNotNull('n.rutempresa')
             ->whereRaw("trim(n.rutempresa) <> ''")
             ->orderByDesc('s.nronota')
             ->select([
                 'n.rutempresa',
                 'n.empresa',
+                'n.encargado',
                 's.organismo',
             ])
             ->get();
@@ -286,9 +318,14 @@ class OrganismoObservacionService
                 continue;
             }
 
-            $nombre = trim((string) ($fila->empresa ?? ''));
+            // Preferir organismo de MP (fidedigno); notas.empresa a veces trae el código CA.
+            $nombre = $this->nombreOrganismoFidedigno(
+                (string) ($fila->organismo ?? ''),
+                (string) ($fila->empresa ?? ''),
+                (string) ($fila->encargado ?? ''),
+            );
             if ($nombre === '') {
-                $nombre = trim((string) ($fila->organismo ?? ''));
+                continue;
             }
 
             if (! isset($porCuerpo[$cuerpo])) {
@@ -305,13 +342,76 @@ class OrganismoObservacionService
             if ($this->rutEsMejor($rut, $actual['rut'])) {
                 $actual['rut'] = $rut;
             }
-            if ($nombre !== '' && $actual['nombre'] === '') {
+            if ($this->nombreEsMejor($nombre, $actual['nombre'])) {
                 $actual['nombre'] = $nombre;
             }
             $porCuerpo[$cuerpo] = $actual;
         }
 
         return array_values($porCuerpo);
+    }
+
+    /**
+     * Nombre usable para el mantenedor: MP primero; descarta códigos CA (ej. 4201-366-COT26).
+     */
+    public function nombreOrganismoFidedigno(string $organismoMp, string $empresaNota, string $encargado = ''): string
+    {
+        $candidatos = [
+            trim($organismoMp),
+            trim($empresaNota),
+        ];
+
+        $encargadoNorm = strtoupper(trim($encargado));
+
+        foreach ($candidatos as $candidato) {
+            if ($candidato === '') {
+                continue;
+            }
+            if ($encargadoNorm !== '' && strtoupper($candidato) === $encargadoNorm) {
+                continue;
+            }
+            if ($this->nombrePareceCodigoCa($candidato)) {
+                continue;
+            }
+
+            return mb_substr($candidato, 0, 200);
+        }
+
+        return '';
+    }
+
+    /** Códigos Compra Ágil / encargado colados como "empresa". */
+    public function nombrePareceCodigoCa(string $nombre): bool
+    {
+        $n = strtoupper(trim($nombre));
+        if ($n === '') {
+            return false;
+        }
+
+        if (preg_match('/^\d{1,6}-\d{1,6}-COT\d*$/i', $n) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^[A-Z0-9]{2,12}-\d{1,6}-COT/i', $n) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function nombreEsMejor(string $candidato, string $actual): bool
+    {
+        if ($candidato === '') {
+            return false;
+        }
+        if ($actual === '') {
+            return true;
+        }
+        if ($this->nombrePareceCodigoCa($actual) && ! $this->nombrePareceCodigoCa($candidato)) {
+            return true;
+        }
+
+        return false;
     }
 
     private function buscarPorCuerpoRut(string $cuerpo): ?OrganismoObservacion
