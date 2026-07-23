@@ -12,23 +12,25 @@ class CorreosChileDexQuoteServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_resolver_tramo_elige_tope_que_cubre_el_peso(): void
+    public function test_resolver_tramo_elige_mayor_tramo_que_no_supera_el_peso(): void
     {
         $svc = new CorreosChileDexQuoteService;
-        $tarifas = ['5.9' => 3830, '10' => 720, '20' => 530];
+        $tarifas = ['5.9' => 3830, '10' => 720, '20' => 530, '50' => 540, '100' => 490];
 
-        [$key, $tarifa, $esPorKg] = $svc->resolverTramo($tarifas, 3.5);
+        [$key, $precio] = $svc->resolverTramo($tarifas, 3.5);
         $this->assertSame('5.9', $key);
-        $this->assertSame(3830, $tarifa);
-        $this->assertFalse($esPorKg);
+        $this->assertSame(3830, $precio);
 
-        [$key2, $tarifa2, $esPorKg2] = $svc->resolverTramo($tarifas, 8);
-        $this->assertSame('10', $key2);
-        $this->assertSame(720, $tarifa2);
-        $this->assertTrue($esPorKg2);
+        [$key2, $precio2] = $svc->resolverTramo($tarifas, 8);
+        $this->assertSame('5.9', $key2);
+        $this->assertSame(3830, $precio2);
+
+        [$key3, $precio3] = $svc->resolverTramo($tarifas, 54);
+        $this->assertSame('50', $key3);
+        $this->assertSame(540, $precio3);
     }
 
-    public function test_cotizar_tramo_minimo_es_precio_fijo(): void
+    public function test_cotizar_usa_valor_fijo_de_la_celda(): void
     {
         CorreosChileDexTarifa::query()->create([
             'origen' => 'SANTIAGO',
@@ -45,40 +47,16 @@ class CorreosChileDexQuoteServiceTest extends TestCase
             'imported_at' => now(),
         ]);
 
-        $resultado = app(CorreosChileDexQuoteService::class)->cotizar('Santiago', 'Puerto Montt', 2.3);
+        $bajo = app(CorreosChileDexQuoteService::class)->cotizar('Santiago', 'Puerto Montt', 2.3);
+        $this->assertSame('5.9', $bajo['tramo_kg']);
+        $this->assertSame(4680, $bajo['precio_base']);
+        $this->assertSame(4680, $bajo['precio']);
 
-        $this->assertSame('5.9', $resultado['tramo_kg']);
-        $this->assertFalse($resultado['es_por_kg']);
-        $this->assertSame(4680, $resultado['tarifa_tramo']);
-        $this->assertSame(4680, $resultado['precio_base']);
-        $this->assertSame(4680, $resultado['precio']);
-    }
-
-    public function test_cotizar_tramo_superior_multiplica_peso_por_tarifa_kg(): void
-    {
-        CorreosChileDexTarifa::query()->create([
-            'origen' => 'SANTIAGO',
-            'destino' => 'PUERTO MONTT',
-            'destino_key' => CorreosChileDexTarifa::normalizeDestinoKey('PUERTO MONTT'),
-            'recargo_pct' => null,
-            'tarifas' => [
-                '5.9' => 4680,
-                '10' => 900,
-                '20' => 730,
-                '50' => 540,
-                '100' => 490,
-            ],
-            'imported_at' => now(),
-        ]);
-
-        // 54 kg → tramo 100 ($/kg 490) → 54 × 490 = 26.460
-        $resultado = app(CorreosChileDexQuoteService::class)->cotizar('Santiago', 'Puerto Montt', 54);
-
-        $this->assertSame('100', $resultado['tramo_kg']);
-        $this->assertTrue($resultado['es_por_kg']);
-        $this->assertSame(490, $resultado['tarifa_tramo']);
-        $this->assertSame(26460, $resultado['precio_base']);
-        $this->assertSame(26460, $resultado['precio']);
+        // > 50 kg → columna 50 = $540 (se suma al unitario)
+        $alto = app(CorreosChileDexQuoteService::class)->cotizar('Santiago', 'Puerto Montt', 54);
+        $this->assertSame('50', $alto['tramo_kg']);
+        $this->assertSame(540, $alto['precio_base']);
+        $this->assertSame(540, $alto['precio']);
     }
 
     public function test_cotizar_aplica_recargo(): void

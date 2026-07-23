@@ -31,7 +31,7 @@
                             @enderror
                             <div class="form-text">
                                 Debe incluir columnas ORIGEN, DESTINO, recargo y tramos de peso (5,9 &hellip; 10000).
-                                El tramo <strong>5,9</strong> es precio fijo del env&iacute;o; desde <strong>10 kg</strong> los valores son <strong>$/kg</strong>.
+                                Cada celda es el valor del tramo a sumar al unitario seg&uacute;n el peso cotizado (peso producto &times; cantidad).
                                 Al importar se <strong>reemplazan</strong> todas las tarifas anteriores.
                             </div>
                         </div>
@@ -95,22 +95,7 @@
                         <th class="text-nowrap">Destino</th>
                         <th class="text-nowrap">Recargo</th>
                         @foreach($tramos as $tramo)
-                            @php
-                                $tramoNum = (float) str_replace(',', '.', (string) $tramo);
-                                $esPrimerTramo = !isset($tramoMinKg);
-                                if ($esPrimerTramo) {
-                                    $tramoMinKg = $tramoNum;
-                                }
-                                $esPorKgHeader = $tramoNum > ($tramoMinKg ?? 0) + 0.0001;
-                            @endphp
-                            <th class="text-end text-nowrap">
-                                {{ $tramo }} kg
-                                @if($esPorKgHeader)
-                                    <span class="d-block small fw-normal text-muted">$/kg</span>
-                                @else
-                                    <span class="d-block small fw-normal text-muted">fijo</span>
-                                @endif
-                            </th>
+                            <th class="text-end text-nowrap">{{ $tramo }} kg</th>
                         @endforeach
                     </tr>
                 </thead>
