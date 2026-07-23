@@ -585,10 +585,7 @@ class NotaMpResultadosService
 
     public function contarNotasPendientesConsulta(): int
     {
-        return $this->queryNotasCandidatasConsulta()
-            ->get()
-            ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
-            ->count();
+        return $this->notasPendientesConsulta()->count();
     }
 
     /**
@@ -596,11 +593,40 @@ class NotaMpResultadosService
      */
     public function notasPendientesConsulta(?int $limite = null): Collection
     {
-        $filtered = $this->queryNotasCandidatasConsulta()
+        $rows = $this->queryNotasCandidatasConsulta()
             ->orderBy('notas.fecha')
             ->orderBy('notas.nronota')
-            ->get()
+            ->get();
+
+        $nronotas = $rows->pluck('nronota')->map(fn ($n) => (int) $n)->all();
+        $reintentosTrasFallo = $this->nronotasConUltimoDetalleFallido($nronotas);
+        $momento = $this->cutoffUltimoCambioCorrida();
+        $filtrarHorario = (bool) config('cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio', true);
+
+        $filtered = $rows
             ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
+            ->filter(function (Nota $nota) use ($filtrarHorario, $momento, $reintentosTrasFallo) {
+                if (! $filtrarHorario) {
+                    return true;
+                }
+
+                $nronota = (int) $nota->nronota;
+                if (isset($reintentosTrasFallo[$nronota])) {
+                    // Falló en corrida anterior → entra en la siguiente, sin esperar de nuevo el slot.
+                    return true;
+                }
+
+                $cambioRaw = $nota->getAttribute('mp_fecha_ultimo_cambio');
+                if ($cambioRaw === null || $cambioRaw === '') {
+                    return true;
+                }
+
+                $cambio = $cambioRaw instanceof Carbon
+                    ? $cambioRaw
+                    : Carbon::parse((string) $cambioRaw, (string) config('app.timezone', 'America/Santiago'));
+
+                return $this->ultimoCambioListoParaConsulta($cambio, $momento);
+            })
             ->values();
 
         if ($limite !== null && $limite > 0) {
@@ -616,9 +642,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Corte de «último cambio» para la corrida actual.
-     * Si la hora actual es un horario de schedule (p. ej. 10 o 19), usa hoy a esa hora en punto;
-     * si no (Consultar ahora / catch-up intermedio), usa el instante actual.
+     * Momento efectivo de la corrida: si estamos en hora de schedule (10/19), ese horario en punto;
+     * si no (Consultar ahora), el instante actual.
      */
     public function cutoffUltimoCambioCorrida(?Carbon $ahora = null): Carbon
     {
@@ -633,20 +658,86 @@ class NotaMpResultadosService
     }
 
     /**
+     * Primer horario de proceso (10/19/…) igual o posterior al último cambio MP.
+     * Ej. cambio 17:05 → hoy 19:00; cambio 09:00 → hoy 10:00; cambio 20:00 → mañana 10:00.
+     */
+    public function primerHorarioProcesoDesde(Carbon $cambio): Carbon
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $cambio = $cambio->copy()->timezone($tz);
+        $horas = $this->horasScheduleResultados();
+        if ($horas === []) {
+            return $cambio->copy();
+        }
+
+        for ($dias = 0; $dias <= 3; $dias++) {
+            $dia = $cambio->copy()->startOfDay()->addDays($dias);
+            foreach ($horas as $hora) {
+                $slot = $dia->copy()->setTime((int) $hora, 0, 0);
+                if ($slot->greaterThanOrEqualTo($cambio)) {
+                    return $slot;
+                }
+            }
+        }
+
+        return $cambio->copy()->addDay()->startOfDay()->setTime((int) $horas[0], 0, 0);
+    }
+
+    /**
+     * true si ya llegó el horario de proceso para ese último cambio (slot ≥ cambio ≤ momento corrida).
+     */
+    public function ultimoCambioListoParaConsulta(Carbon $cambio, ?Carbon $momentoCorrida = null): bool
+    {
+        $momento = $momentoCorrida?->copy() ?? $this->cutoffUltimoCambioCorrida();
+
+        return $this->primerHorarioProcesoDesde($cambio)->lessThanOrEqualTo($momento);
+    }
+
+    /**
+     * @param  list<int>  $nronotas
+     * @return array<int, true> nronota => true
+     */
+    public function nronotasConUltimoDetalleFallido(array $nronotas): array
+    {
+        if ($nronotas === []) {
+            return [];
+        }
+
+        $ids = NotaMpCorridaDetalle::query()
+            ->from('nota_mp_corrida_detalle as d')
+            ->whereIn('d.nronota', $nronotas)
+            ->whereRaw('d.exito IS FALSE')
+            ->whereRaw(
+                'd.id = (SELECT MAX(d2.id) FROM nota_mp_corrida_detalle d2 WHERE d2.nronota = d.nronota)',
+            )
+            ->pluck('d.nronota')
+            ->map(fn ($n) => (int) $n)
+            ->all();
+
+        return array_fill_keys($ids, true);
+    }
+
+    /**
      * Notas candidatas a consulta masiva MP:
      * - sin seguimiento aún, o
      * - pendientes de seguimiento (resultado_propio = pendiente), o
      * - no finalizadas (finalizado = false).
-     * Opcionalmente omite las ya consultadas hoy (SKIP_MISMO_DIA).
-     * Opcionalmente omite las con fecha_ultimo_cambio posterior al corte del slot
-     * (salvo nunca consultadas / fallidas sin ultimo_consultado_en).
+     * Opcionalmente omite las ya consultadas hoy con éxito (SKIP_MISMO_DIA),
+     * salvo si el último detalle de corrida fue fallo (reintento en corrida siguiente).
+     * El filtro por horario de último cambio se aplica en notasPendientesConsulta().
      *
      * @return \Illuminate\Database\Eloquent\Builder<Nota>
      */
     private function queryNotasCandidatasConsulta(): \Illuminate\Database\Eloquent\Builder
     {
         $query = Nota::query()
-            ->select(['notas.nronota', 'notas.encargado', 'notas.fecha', 'notas.empresa'])
+            ->select([
+                'notas.nronota',
+                'notas.encargado',
+                'notas.fecha',
+                'notas.empresa',
+                'seg.fecha_ultimo_cambio as mp_fecha_ultimo_cambio',
+            ])
             ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
             ->where(function ($q) {
@@ -664,20 +755,16 @@ class NotaMpResultadosService
 
             $query->where(function ($q) use ($inicioDia) {
                 $q->whereNull('seg.ultimo_consultado_en')
-                    ->orWhere('seg.ultimo_consultado_en', '<', $inicioDia);
-            });
-        }
-
-        if (config('cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio', true)) {
-            $cutoff = $this->cutoffUltimoCambioCorrida();
-
-            // Fallidas / nunca consultadas entran siempre; el resto solo si el último cambio
-            // conocido es anterior o igual al corte del horario (p. ej. cambio 14:05 → slot 19:00).
-            $query->where(function ($q) use ($cutoff) {
-                $q->whereNull('seg.nronota')
-                    ->orWhereNull('seg.ultimo_consultado_en')
-                    ->orWhereNull('seg.fecha_ultimo_cambio')
-                    ->orWhere('seg.fecha_ultimo_cambio', '<=', $cutoff);
+                    ->orWhere('seg.ultimo_consultado_en', '<', $inicioDia)
+                    ->orWhereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('nota_mp_corrida_detalle as d')
+                            ->whereColumn('d.nronota', 'notas.nronota')
+                            ->whereRaw('d.exito IS FALSE')
+                            ->whereRaw(
+                                'd.id = (SELECT MAX(d2.id) FROM nota_mp_corrida_detalle d2 WHERE d2.nronota = notas.nronota)',
+                            );
+                    });
             });
         }
 
@@ -911,7 +998,7 @@ class NotaMpResultadosService
             throw new RuntimeException(
                 'No hay cotizaciones pendientes de consultar a MP '
                 .'(sin pendientes de seguimiento, ya finalizadas, ya consultadas hoy '
-                .'o con último cambio posterior a este horario).',
+                .'o con último cambio aún no elegible para este horario de proceso).',
             );
         }
 

@@ -159,8 +159,8 @@ return [
             env('MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA', true),
             FILTER_VALIDATE_BOOL,
         ),
-        // En masiva, diferir notas cuyo fecha_ultimo_cambio es posterior al corte del slot
-        // (hora de schedule o "ahora"). Nunca consultadas / sin ultimo_consultado_en sí entran.
+        // En masiva: primer horario de proceso ≥ fecha_ultimo_cambio (ej. 17:05 → slot 19).
+        // Fallos (último detalle exito=false) entran en la corrida siguiente sin re-esperar el slot.
         'resultados_filtrar_por_ultimo_cambio' => filter_var(
             env('MERCADOPUBLICO_RESULTADOS_FILTRAR_ULTIMO_CAMBIO', true),
             FILTER_VALIDATE_BOOL,

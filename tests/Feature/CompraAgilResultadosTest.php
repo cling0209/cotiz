@@ -1221,6 +1221,10 @@ class CompraAgilResultadosTest extends TestCase
         $service = $this->app->make(NotaMpResultadosService::class);
         $cutoff = $service->cutoffUltimoCambioCorrida();
         $this->assertTrue($cutoff->equalTo(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago')));
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 14:05:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-22 19:00:00', 'America/Santiago')),
+        );
 
         $pendientes = $service->notasPendientesConsulta();
         $this->assertSame(1, $pendientes->count());
@@ -1269,6 +1273,48 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_consultar_ahora_antes_del_slot_omite_cambio_17_05(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+            'cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-22 17:30:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 13609,
+            'descripcion' => 'Cambio 17:05 — solo desde las 19',
+            'fecha' => '2026-07-10',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '673721-4-COT26',
+            'nota_softland' => 1360900,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 13609,
+            'codigo_proceso' => '673721-4-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 17:05:00', 'America/Santiago'),
+            'ultimo_consultado_en' => Carbon::parse('2026-07-21 19:00:00', 'America/Santiago'),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 17:05:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-22 19:00:00', 'America/Santiago')),
+        );
+        $this->assertSame(0, $service->notasPendientesConsulta()->count());
+
+        Carbon::setTestNow();
+    }
+
     public function test_pendientes_incluye_fallida_aunque_ultimo_cambio_posterior_al_slot(): void
     {
         config([
@@ -1282,7 +1328,7 @@ class CompraAgilResultadosTest extends TestCase
 
         Nota::query()->create([
             'nronota' => 13900,
-            'descripcion' => 'Fallida sin ultimo_consultado_en',
+            'descripcion' => 'Fallida — reintento en corrida siguiente',
             'fecha' => '2026-07-21',
             'usuario' => 'admin',
             'empresa' => 'C',
@@ -1298,7 +1344,25 @@ class CompraAgilResultadosTest extends TestCase
             'resultado_propio' => 'pendiente',
             'finalizado' => false,
             'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 14:05:00', 'America/Santiago'),
-            'ultimo_consultado_en' => null,
+            'ultimo_consultado_en' => Carbon::parse('2026-07-21 19:00:00', 'America/Santiago'),
+        ]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => Carbon::parse('2026-07-21 19:05:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-07-21 19:10:00', 'America/Santiago'),
+            'estado' => 'error',
+            'total_notas' => 1,
+            'pendientes_json' => [],
+            'notas_procesadas' => 1,
+            'notas_con_cambio' => 0,
+        ]);
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 13900,
+            'codigo_proceso' => '13900-1-COT26',
+            'exito' => false,
+            'mensaje' => 'HTTP 504 Gateway Timeout',
         ]);
 
         $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
@@ -1307,6 +1371,33 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame(13900, $pendientes->first()['nronota']);
 
         Carbon::setTestNow();
+    }
+
+    public function test_primer_horario_proceso_desde_mapea_slots(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 17:05:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-22 19:00:00', 'America/Santiago')),
+        );
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 09:00:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago')),
+        );
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 20:00:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-23 10:00:00', 'America/Santiago')),
+        );
+        $this->assertTrue(
+            $service->primerHorarioProcesoDesde(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago'))
+                ->equalTo(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago')),
+        );
     }
 
     public function test_limpiar_en_curso_si_detalle_ya_existe(): void
