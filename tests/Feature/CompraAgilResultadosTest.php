@@ -1167,6 +1167,148 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_omite_ultimo_cambio_posterior_al_slot_manana(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+            'cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 13884,
+            'descripcion' => 'Cambio 14:05 — diferir a las 19',
+            'fecha' => '2026-07-21',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '1173430-112-COT26',
+            'nota_softland' => 1388400,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        Nota::query()->create([
+            'nronota' => 13890,
+            'descripcion' => 'Cambio 09:00 — entra a las 10',
+            'fecha' => '2026-07-21',
+            'usuario' => 'admin',
+            'empresa' => 'B',
+            'encargado' => '2771-405-COT26',
+            'nota_softland' => 1389000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 13884,
+            'codigo_proceso' => '1173430-112-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 14:05:00', 'America/Santiago'),
+            'ultimo_consultado_en' => Carbon::parse('2026-07-21 19:00:00', 'America/Santiago'),
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 13890,
+            'codigo_proceso' => '2771-405-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 09:00:00', 'America/Santiago'),
+            'ultimo_consultado_en' => Carbon::parse('2026-07-21 19:00:00', 'America/Santiago'),
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $cutoff = $service->cutoffUltimoCambioCorrida();
+        $this->assertTrue($cutoff->equalTo(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago')));
+
+        $pendientes = $service->notasPendientesConsulta();
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(13890, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_ultimo_cambio_en_slot_tarde(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+            'cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-22 19:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 13884,
+            'descripcion' => 'Cambio 14:05 — entra a las 19',
+            'fecha' => '2026-07-21',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '1173430-112-COT26',
+            'nota_softland' => 1388400,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 13884,
+            'codigo_proceso' => '1173430-112-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 14:05:00', 'America/Santiago'),
+            'ultimo_consultado_en' => Carbon::parse('2026-07-21 19:00:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(13884, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_fallida_aunque_ultimo_cambio_posterior_al_slot(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+            'cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-22 10:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 13900,
+            'descripcion' => 'Fallida sin ultimo_consultado_en',
+            'fecha' => '2026-07-21',
+            'usuario' => 'admin',
+            'empresa' => 'C',
+            'encargado' => '13900-1-COT26',
+            'nota_softland' => 1390000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 13900,
+            'codigo_proceso' => '13900-1-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-22 14:05:00', 'America/Santiago'),
+            'ultimo_consultado_en' => null,
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(13900, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_limpiar_en_curso_si_detalle_ya_existe(): void
     {
         $corrida = NotaMpCorrida::query()->create([

@@ -169,13 +169,14 @@ El último resultado (encolado u omitido, con hora y origen) se guarda en cache 
 
 Así, si Render dormía a las 09:00 y un usuario inicia sesión a las 10:05, la corrida se encola al loguearse.
 
-Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). El botón individual «Consultar MP» sigue pudiendo forzar.
+Por defecto **no reconsulta** en la corrida masiva una cotización ya consultada el mismo día (`MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA=true`). Además, si el `fecha_ultimo_cambio` conocido es **posterior** al corte del horario (p. ej. cambio 14:05 y corrida de las 10), se **difiere** al siguiente slot (`MERCADOPUBLICO_RESULTADOS_FILTRAR_ULTIMO_CAMBIO=true`). Las nunca consultadas o fallidas (sin `ultimo_consultado_en`) sí entran. El botón individual «Consultar MP» sigue pudiendo forzar.
 
 | Variable | Default | Uso |
 |----------|---------|-----|
 | `MERCADOPUBLICO_RESULTADOS_SCHEDULE` | `true` | Activa la corrida automática + catch-up al boot |
 | `MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS` | `10,19` | Horas locales (`APP_TIMEZONE`, Chile) |
 | `MERCADOPUBLICO_RESULTADOS_SKIP_MISMO_DIA` | `true` | Omite en masiva las ya consultadas hoy |
+| `MERCADOPUBLICO_RESULTADOS_FILTRAR_ULTIMO_CAMBIO` | `true` | Omite en masiva si último cambio &gt; corte del slot |
 | `RUN_SCHEDULER` | `true` | Loop del scheduler en el entrypoint |
 
 Equivalente a «Consultar ahora»: `php artisan compra-agil:consultar-resultados`.

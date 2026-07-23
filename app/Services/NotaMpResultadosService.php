@@ -615,11 +615,30 @@ class NotaMpResultadosService
     }
 
     /**
+     * Corte de «último cambio» para la corrida actual.
+     * Si la hora actual es un horario de schedule (p. ej. 10 o 19), usa hoy a esa hora en punto;
+     * si no (Consultar ahora / catch-up intermedio), usa el instante actual.
+     */
+    public function cutoffUltimoCambioCorrida(?Carbon $ahora = null): Carbon
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $ahora = ($ahora ?? now())->copy()->timezone($tz);
+        $hora = (int) $ahora->hour;
+        if (in_array($hora, $this->horasScheduleResultados(), true)) {
+            return $ahora->copy()->startOfDay()->setTime($hora, 0, 0);
+        }
+
+        return $ahora->copy();
+    }
+
+    /**
      * Notas candidatas a consulta masiva MP:
      * - sin seguimiento aún, o
      * - pendientes de seguimiento (resultado_propio = pendiente), o
      * - no finalizadas (finalizado = false).
      * Opcionalmente omite las ya consultadas hoy (SKIP_MISMO_DIA).
+     * Opcionalmente omite las con fecha_ultimo_cambio posterior al corte del slot
+     * (salvo nunca consultadas / fallidas sin ultimo_consultado_en).
      *
      * @return \Illuminate\Database\Eloquent\Builder<Nota>
      */
@@ -645,6 +664,19 @@ class NotaMpResultadosService
             $query->where(function ($q) use ($inicioDia) {
                 $q->whereNull('seg.ultimo_consultado_en')
                     ->orWhere('seg.ultimo_consultado_en', '<', $inicioDia);
+            });
+        }
+
+        if (config('cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio', true)) {
+            $cutoff = $this->cutoffUltimoCambioCorrida();
+
+            // Fallidas / nunca consultadas entran siempre; el resto solo si el último cambio
+            // conocido es anterior o igual al corte del horario (p. ej. cambio 14:05 → slot 19:00).
+            $query->where(function ($q) use ($cutoff) {
+                $q->whereNull('seg.nronota')
+                    ->orWhereNull('seg.ultimo_consultado_en')
+                    ->orWhereNull('seg.fecha_ultimo_cambio')
+                    ->orWhere('seg.fecha_ultimo_cambio', '<=', $cutoff);
             });
         }
 
@@ -877,7 +909,8 @@ class NotaMpResultadosService
         if ($pendientes->isEmpty()) {
             throw new RuntimeException(
                 'No hay cotizaciones pendientes de consultar a MP '
-                .'(sin pendientes de seguimiento, ya finalizadas o ya consultadas hoy).',
+                .'(sin pendientes de seguimiento, ya finalizadas, ya consultadas hoy '
+                .'o con último cambio posterior a este horario).',
             );
         }
 
