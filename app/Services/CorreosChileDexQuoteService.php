@@ -48,11 +48,16 @@ class CorreosChileDexQuoteService
     }
 
     /**
+     * Primer tramo (típicamente 5,9 kg): precio fijo del envío.
+     * Tramos superiores: valor del Excel es $/kg → envío = peso × tarifa.
+     *
      * @return array{
      *   origen: string,
      *   destino: string,
      *   peso_kg: float,
      *   tramo_kg: string,
+     *   tarifa_tramo: int,
+     *   es_por_kg: bool,
      *   precio_base: int,
      *   recargo_pct: ?int,
      *   precio: int,
@@ -76,7 +81,10 @@ class CorreosChileDexQuoteService
             throw new RuntimeException('La tarifa del destino no tiene tramos de peso.');
         }
 
-        [$tramoKey, $precioBase] = $this->resolverTramo($tarifas, $pesoKg);
+        [$tramoKey, $tarifaTramo, $esPorKg] = $this->resolverTramo($tarifas, $pesoKg);
+        $precioBase = $esPorKg
+            ? (int) round($pesoKg * $tarifaTramo)
+            : $tarifaTramo;
         $recargo = $row->recargo_pct !== null && (int) $row->recargo_pct > 0
             ? (int) $row->recargo_pct
             : null;
@@ -90,6 +98,8 @@ class CorreosChileDexQuoteService
             'destino' => (string) $row->destino,
             'peso_kg' => $pesoKg,
             'tramo_kg' => $tramoKey,
+            'tarifa_tramo' => $tarifaTramo,
+            'es_por_kg' => $esPorKg,
             'precio_base' => $precioBase,
             'recargo_pct' => $recargo,
             'precio' => $precio,
@@ -130,9 +140,10 @@ class CorreosChileDexQuoteService
 
     /**
      * Elige el primer tramo cuyo tope (kg) cubre el peso; si supera todos, el último.
+     * El tramo mínimo es precio fijo; el resto es $/kg (tarifa DEX B2B Correos Chile).
      *
      * @param  array<string, mixed>  $tarifas
-     * @return array{0: string, 1: int}
+     * @return array{0: string, 1: int, 2: bool} [tramoKey, tarifaTramo, esPorKg]
      */
     public function resolverTramo(array $tarifas, float $pesoKg): array
     {
@@ -153,15 +164,19 @@ class CorreosChileDexQuoteService
         }
 
         usort($ordenados, fn (array $a, array $b) => $a['kg'] <=> $b['kg']);
+        $tramoMinKg = $ordenados[0]['kg'];
 
         foreach ($ordenados as $tramo) {
             if ($pesoKg <= $tramo['kg'] + 0.0001) {
-                return [$tramo['key'], $tramo['precio']];
+                $esPorKg = $tramo['kg'] > $tramoMinKg + 0.0001;
+
+                return [$tramo['key'], $tramo['precio'], $esPorKg];
             }
         }
 
         $ultimo = $ordenados[array_key_last($ordenados)];
+        $esPorKg = $ultimo['kg'] > $tramoMinKg + 0.0001;
 
-        return [$ultimo['key'], $ultimo['precio']];
+        return [$ultimo['key'], $ultimo['precio'], $esPorKg];
     }
 }

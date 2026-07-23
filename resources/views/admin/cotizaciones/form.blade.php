@@ -579,7 +579,10 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-3">
-                    <p class="small text-muted mb-3">Calcule el tramo por origen, destino y peso. Si el producto tiene peso, se usa peso &times; cantidad. Si no, ingrese el peso unitario y se multiplicar&aacute; por la cantidad de la l&iacute;nea.</p>
+                    <p class="small text-muted mb-3">
+                        Calcule el tramo por origen, destino y peso. Si el producto tiene peso, se usa peso &times; cantidad. Si no, ingrese el peso unitario y se multiplicar&aacute; por la cantidad de la l&iacute;nea.
+                        El tramo hasta 5,9&nbsp;kg es precio fijo; desde 10&nbsp;kg la tarifa del mantenedor es <strong>$/kg</strong> (&times;&nbsp;peso).
+                    </p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
                             <label for="envio-dex-origen" class="form-label small mb-1">Origen</label>
@@ -4112,8 +4115,22 @@
     }
 
     function refrescarDetallePesoManual() {
-        if (envioDexTienePesoProducto) return;
         const r = pesoTotalParaCotizar();
+        if (envioDexTienePesoProducto) {
+            if (!r.ok) {
+                setEnvioDexPesoDetalle(
+                    'El producto tiene peso — indique el <strong>peso total (kg)</strong> a cotizar (sugerido: peso &times; cantidad).',
+                    true
+                );
+                return;
+            }
+            setEnvioDexPesoDetalle(
+                'Peso cotizado: <strong>' + fmtPesoKg(r.pesoTotal) + ' kg</strong>'
+                + ' <span class="text-muted">(editable arriba; sugerido = peso producto &times; cantidad)</span>',
+                false
+            );
+            return;
+        }
         if (!r.ok) {
             setEnvioDexPesoDetalle(
                 'Sin peso en el producto — ingrese el <strong>peso unitario (kg)</strong>; se multiplicar&aacute; por cantidad <strong>'
@@ -4271,11 +4288,21 @@
                 return;
             }
             if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
+            const esPorKg = !!json.es_por_kg;
+            const tarifaTramo = Number(json.tarifa_tramo ?? json.precio_base ?? 0);
             const partes = [
                 'Peso cotizado ' + fmtPesoKg(r.pesoTotal) + ' kg',
                 'Tramo hasta ' + (json.tramo_kg || '?') + ' kg',
-                'Base $' + Number(json.precio_base || 0).toLocaleString('es-CL'),
             ];
+            if (esPorKg) {
+                partes.push(
+                    '$' + tarifaTramo.toLocaleString('es-CL') + '/kg'
+                    + ' × ' + fmtPesoKg(r.pesoTotal) + ' kg'
+                    + ' = $' + Number(json.precio_base || 0).toLocaleString('es-CL')
+                );
+            } else {
+                partes.push('Precio fijo $' + Number(json.precio_base || 0).toLocaleString('es-CL'));
+            }
             if (json.recargo_pct) {
                 partes.push('Recargo ' + json.recargo_pct + '%');
             }
