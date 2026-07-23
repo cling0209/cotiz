@@ -36,3 +36,9 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
             ->withoutOverlapping(120);
     }
 }
+
+// Perfiles automáticos de organismos: solo en sitio con MERCADOPUBLICO_ANALISIS_ADMIN=true (el comando no-op si está off).
+Schedule::command('organismo:analizar-perfiles')
+    ->weeklyOn(0, '6:00')
+    ->timezone($tz)
+    ->withoutOverlapping(120);

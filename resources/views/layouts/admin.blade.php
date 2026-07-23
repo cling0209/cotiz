@@ -55,7 +55,7 @@
                     </a>
                 @endif
                 <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.correos-chile.*') ? 'active' : '' }}"
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-gear"></i> Mantenedores
                     </a>
@@ -76,6 +76,12 @@
                             <a class="dropdown-item {{ request()->routeIs('admin.correos-chile.*') ? 'active' : '' }}"
                                href="{{ route('admin.correos-chile.index') }}">
                                 <i class="bi bi-truck"></i> Tarifa CChile
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ request()->routeIs('admin.organismos-observaciones.*') ? 'active' : '' }}"
+                               href="{{ route('admin.organismos-observaciones.index') }}">
+                                <i class="bi bi-building"></i> Organismos observaciones
                             </a>
                         </li>
                         @if(auth()->user()->canAccessPalabrasClave())

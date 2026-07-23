@@ -12,6 +12,7 @@ use App\Services\MaterialesExcelImportService;
 use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
+use App\Services\OrganismoObservacionService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
 use RuntimeException;
@@ -33,6 +34,7 @@ class CotizacionController extends Controller
         protected MaterialesExcelImportService $materialesExcelImport,
         protected OportunidadParaCotizarService $oportunidadParaCotizar,
         protected OportunidadVinculoService $oportunidadVinculo,
+        protected OrganismoObservacionService $organismoObservacion,
     ) {}
 
     public function create(Request $request): View|RedirectResponse
@@ -153,6 +155,7 @@ class CotizacionController extends Controller
             'previewImportarCompraAgil' => $previewImportarCompraAgil,
             'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
+            'observacionesOrganismo' => $this->organismoObservacion->observacionesParaRut($nota->rutempresa),
         ]);
     }
 

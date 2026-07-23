@@ -130,6 +130,30 @@
             @endif
         </fieldset>
 
+        @php
+            $obsAdmin = $observacionesOrganismo['admin'] ?? null;
+            $obsAuto = $observacionesOrganismo['automatica'] ?? null;
+        @endphp
+        @if($obsAdmin || $obsAuto)
+            <div class="alert alert-info py-2 small mb-2" role="status" id="cotiz-observacion-organismo">
+                <div class="fw-semibold mb-1">
+                    <i class="bi bi-building"></i> Observaciones del organismo
+                </div>
+                @if($obsAuto)
+                    <div class="mb-1">
+                        <span class="badge text-bg-secondary">Automático</span>
+                        <span style="white-space: pre-wrap;">{{ $obsAuto }}</span>
+                    </div>
+                @endif
+                @if($obsAdmin)
+                    <div>
+                        <span class="badge text-bg-primary">Admin</span>
+                        <span style="white-space: pre-wrap;">{{ $obsAdmin }}</span>
+                    </div>
+                @endif
+            </div>
+        @endif
+
         @if($desdeAdjudicadas)
             <p class="small text-muted mb-2" id="cotiz-resumen-lineas-actual">
                 {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n

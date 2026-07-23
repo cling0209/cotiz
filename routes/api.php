@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\NotaConsultaApiController;
 use App\Http\Controllers\Api\V1\NotaEnvioApiController;
 use App\Http\Controllers\Api\V1\OportunidadEncontradaApiController;
 use App\Http\Controllers\Api\V1\OportunidadPalabraClaveApiController;
+use App\Http\Controllers\Api\V1\OrganismoObservacionApiController;
 use App\Http\Controllers\Api\V1\UserApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +33,9 @@ Route::prefix('v1')->group(function () {
 
     Route::post('/oportunidad-encontrada', [OportunidadEncontradaApiController::class, 'store'])
         ->middleware('nota.basic');
+
+    Route::post('/organismo-observacion', [OrganismoObservacionApiController::class, 'store'])
+        ->middleware('nota.basic');
 });
 
 // Alias legacy
@@ -54,4 +58,7 @@ Route::post('/palabra-clave', [OportunidadPalabraClaveApiController::class, 'sto
     ->middleware('nota.basic');
 
 Route::post('/oportunidad-encontrada', [OportunidadEncontradaApiController::class, 'store'])
+    ->middleware('nota.basic');
+
+Route::post('/organismo-observacion', [OrganismoObservacionApiController::class, 'store'])
     ->middleware('nota.basic');

@@ -16,6 +16,7 @@ use App\Http\Controllers\Web\Admin\CotizacionListadoController;
 use App\Http\Controllers\Web\Admin\MaeprodController;
 use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
 use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
+use App\Http\Controllers\Web\Admin\OrganismoObservacionController;
 use App\Http\Controllers\Web\Admin\PasswordResetController;
 use App\Http\Controllers\Web\Admin\UserController;
 use Illuminate\Support\Facades\Route;
@@ -215,6 +216,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             Route::get('tarifas-correos-chile', [CorreosChileTarifaController::class, 'index'])->name('correos-chile.index');
             Route::post('tarifas-correos-chile/importar', [CorreosChileTarifaController::class, 'import'])->name('correos-chile.import');
+
+            Route::get('organismos-observaciones', [OrganismoObservacionController::class, 'index'])
+                ->name('organismos-observaciones.index');
+            Route::post('organismos-observaciones/analizar', [OrganismoObservacionController::class, 'analizar'])
+                ->name('organismos-observaciones.analizar');
+            Route::get('organismos-observaciones/{organismo}/editar', [OrganismoObservacionController::class, 'edit'])
+                ->name('organismos-observaciones.edit');
+            Route::put('organismos-observaciones/{organismo}', [OrganismoObservacionController::class, 'update'])
+                ->name('organismos-observaciones.update');
         });
     });
 });

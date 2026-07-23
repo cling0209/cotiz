@@ -26,6 +26,10 @@ return [
     'api_usuario' => [
         'url' => env('COTIZ_API_USUARIO_URL', ''),
     ],
+    'api_organismo_observacion' => [
+        // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../organismo-observacion).
+        'url' => env('COTIZ_API_ORGANISMO_OBSERVACION_URL', ''),
+    ],
     'api_palabra_clave' => [
         // Legacy: ya no se sincronizan palabras clave al par.
         // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../palabra-clave).
