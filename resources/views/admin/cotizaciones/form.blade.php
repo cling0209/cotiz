@@ -600,7 +600,7 @@
                         </div>
                         <div class="col-md-6">
                             <label for="envio-dex-valor" class="form-label small mb-1">Valor tramo (CLP)</label>
-                            <input type="number" id="envio-dex-valor" class="form-control form-control-sm" min="0" step="1" placeholder="Se calcula o edite">
+                            <input type="number" id="envio-dex-valor" class="form-control form-control-sm bg-light" min="0" step="1" placeholder="Se calcula solo" readonly tabindex="-1" title="Calculado seg&uacute;n origen, destino y peso">
                         </div>
                     </div>
                     <p id="envio-dex-peso-detalle" class="small mb-2"></p>
@@ -4290,7 +4290,7 @@
         setEnvioDexError('');
         const extra = parseInt(String(envioDexValor?.value || '').replace(/\D/g, ''), 10);
         if (!Number.isFinite(extra) || extra < 0) {
-            setEnvioDexError('Indique un valor de tramo válido (use Calcular o edítelo).');
+            setEnvioDexError('No hay valor de tramo. Elija destino (o pulse Calcular) para obtenerlo.');
             return;
         }
         if (!envioDexTargetInput) {
@@ -4351,9 +4351,6 @@
         if (String(envioDexDestino?.value || '').trim() !== '') {
             programarAutocalcularEnvioDex(400);
         }
-    });
-    envioDexValor?.addEventListener('input', () => {
-        actualizarResumenEnvioDex();
     });
     document.getElementById('btn-envio-dex-calcular')?.addEventListener('click', () => {
         calcularEnvioDex();
