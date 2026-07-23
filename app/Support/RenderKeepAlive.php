@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Log;
 /**
  * Evita que Render free haga spin-down mientras hay jobs de cola en curso.
  * Solo cuenta tráfico HTTP entrante; el worker llama a APP_URL/up con throttle.
+ * Refuerzo: el browser (admin) hace Image+fetch+iframe a /up vía public/js/render-keepalive.js
+ * mientras hay proceso largo (mismo patrón que wake al sitio par / Reicol).
  */
 final class RenderKeepAlive
 {

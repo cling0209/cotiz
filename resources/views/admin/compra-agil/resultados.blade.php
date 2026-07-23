@@ -522,6 +522,9 @@
             clearInterval(pollTimer);
             pollTimer = null;
         }
+        if (window.CotizRenderKeepAlive) {
+            window.CotizRenderKeepAlive.stop();
+        }
     }
 
     async function pollEstado() {
@@ -552,6 +555,9 @@
         detenerPolling();
         monitoreando = true;
         cardProgreso.classList.remove('d-none');
+        if (window.CotizRenderKeepAlive) {
+            window.CotizRenderKeepAlive.start();
+        }
         pollEstado();
         pollTimer = setInterval(pollEstado, 2500);
     }

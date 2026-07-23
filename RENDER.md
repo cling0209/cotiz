@@ -67,8 +67,9 @@ Plantilla: **`.env.render.example`**.
 | `SESSION_SECURE_COOKIE` | `true` |
 | `QUEUE_CONNECTION` | `database` |
 | `RUN_QUEUE_WORKER` | `true` (arranca `queue:work` en el mismo Web Service) |
-| `RENDER_KEEPALIVE` | `true` en free: los jobs hacen GET a `APP_URL/up` cada ~10 min para no dormir |
-| `RENDER_KEEPALIVE_MINUTES` | `10` (debe ser &lt; 15, idle de Render free) |
+| `RENDER_KEEPALIVE` | `true` en free: keep-alive servidor + browser (Image/fetch/iframe a `/up` mientras hay proceso en admin) |
+| `RENDER_KEEPALIVE_MINUTES` | `10` (debe ser &lt; 15, idle de Render free; ping del worker) |
+| `RENDER_KEEPALIVE_BROWSER_INTERVAL_MS` | `60000` (renueva ping/iframe desde el browser; opcional) |
 | `RUN_MIGRATIONS` | `true` |
 | `RUN_SEED` | `true` una vez, luego `false` |
 

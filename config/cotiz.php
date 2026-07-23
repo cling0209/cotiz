@@ -85,12 +85,16 @@ return [
         'background' => filter_var(env('MAEPROD_IMPORT_BACKGROUND', true), FILTER_VALIDATE_BOOL),
     ],
 
-    // Render free: ping a APP_URL/up mientras hay jobs (evita spin-down a los 15 min).
+    // Render free: evita spin-down (idle ~15 min) mientras hay jobs.
     // Solo activo con RENDER_KEEPALIVE=true (ver .env.render.example).
+    // - Servidor: worker hace GET APP_URL/up (refuerzo; poco fiable solo).
+    // - Browser: pantallas con proceso largo hacen Image+fetch+iframe a /up (patrón wake Reicol).
     'render_keepalive' => [
         'enabled' => filter_var(env('RENDER_KEEPALIVE', false), FILTER_VALIDATE_BOOL),
         // Debe ser < 15 (idle de Render free). Default 10.
         'minutes' => max(5, min(14, (int) env('RENDER_KEEPALIVE_MINUTES', 10))),
+        // Intervalo del keep-alive desde el browser (ms) mientras hay proceso en curso.
+        'browser_interval_ms' => max(15000, min(120000, (int) env('RENDER_KEEPALIVE_BROWSER_INTERVAL_MS', 60000))),
     ],
 
     'agile' => [

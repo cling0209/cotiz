@@ -171,6 +171,17 @@
 <script src="{{ asset('js/page-loader.js') }}?v=levanta-servicio" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>
+@if(config('cotiz.render_keepalive.enabled'))
+<script>
+window.CotizRenderKeepAliveConfig = {
+    enabled: true,
+    upUrl: @json(url('/up')),
+    loginUrl: @json(url('/admin/login')),
+    intervalMs: {{ max(15000, min(120000, (int) config('cotiz.render_keepalive.browser_interval_ms', 60000))) }},
+};
+</script>
+<script src="{{ asset('js/render-keepalive.js') }}?v=1"></script>
+@endif
 @stack('scripts')
 </body>
 </html>

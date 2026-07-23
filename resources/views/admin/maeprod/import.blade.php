@@ -874,6 +874,11 @@ async function pollBackgroundImport(uploadId, progress, plan) {
     let transientFailures = 0;
     const maxTransientFailures = 30;
 
+    if (window.CotizRenderKeepAlive) {
+        window.CotizRenderKeepAlive.start();
+    }
+
+    try {
     while (true) {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -941,6 +946,11 @@ async function pollBackgroundImport(uploadId, progress, plan) {
 
         if (payload.phase === 'failed') {
             throw new Error(payload.error || payload.detail || 'La importación en segundo plano falló.');
+        }
+    }
+    } finally {
+        if (window.CotizRenderKeepAlive) {
+            window.CotizRenderKeepAlive.stop();
         }
     }
 }

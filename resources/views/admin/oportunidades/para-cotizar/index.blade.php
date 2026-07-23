@@ -2105,6 +2105,17 @@
             }
         }
 
+        function setRenderKeepAliveProceso(activo) {
+            if (!window.CotizRenderKeepAlive) {
+                return;
+            }
+            if (activo) {
+                window.CotizRenderKeepAlive.start();
+            } else {
+                window.CotizRenderKeepAlive.stop();
+            }
+        }
+
         function mostrarAvisoPaso(msg) {
             relError.textContent = msg || '';
             relError.classList.remove('d-none', 'alert-danger');
@@ -2784,6 +2795,7 @@
             }
 
             if (activo || cambiandoDia || vinculoActivo) {
+                setRenderKeepAliveProceso(true);
                 detenerPolling();
                 if (cambiandoDia) {
                     intentosCambioDia++;
@@ -2791,6 +2803,7 @@
                 }
                 pollTimer = setTimeout(consultarEstado, 2000);
             } else {
+                setRenderKeepAliveProceso(false);
                 detenerPolling();
                 if (tickTimer) {
                     clearInterval(tickTimer);
