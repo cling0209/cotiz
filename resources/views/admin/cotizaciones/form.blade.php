@@ -581,7 +581,8 @@
                 <div class="modal-body py-3">
                     <p class="small text-muted mb-3">
                         Se toma el <strong>peso del producto</strong> (oculto en la ficha) &times; la cantidad de la l&iacute;nea para elegir el tramo.
-                        Si el producto no tiene peso, ingr&eacute;selo aqu&iacute; y se multiplicar&aacute; por la cantidad. El valor de la celda del tramo se suma al unitario.
+                        Si hay peso y destino, el valor se calcula al instante al elegir destino u origen.
+                        Si el producto no tiene peso, ingr&eacute;selo aqu&iacute;. El valor del tramo se suma al unitario.
                     </p>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
@@ -4315,11 +4316,41 @@
         abrirModalEnvioDex(ventaInput);
     });
 
+    let envioDexAutoTimer = null;
+    function puedeAutocalcularEnvioDex() {
+        const destinoOk = String(envioDexDestino?.value || '').trim() !== '';
+        const pesoOk = pesoTotalParaCotizar().ok;
+        return destinoOk && pesoOk;
+    }
+    function programarAutocalcularEnvioDex(delayMs) {
+        if (envioDexAutoTimer) clearTimeout(envioDexAutoTimer);
+        envioDexAutoTimer = setTimeout(() => {
+            envioDexAutoTimer = null;
+            if (!puedeAutocalcularEnvioDex()) return;
+            calcularEnvioDex();
+        }, delayMs ?? 350);
+    }
+
     envioDexOrigen?.addEventListener('change', () => {
         filtrarDestinosPorOrigen(envioDexOrigen.value);
+        if (puedeAutocalcularEnvioDex()) {
+            programarAutocalcularEnvioDex(0);
+        }
+    });
+    envioDexDestino?.addEventListener('change', () => {
+        if (puedeAutocalcularEnvioDex()) {
+            programarAutocalcularEnvioDex(0);
+        }
+    });
+    envioDexDestino?.addEventListener('input', () => {
+        // Al elegir de la lista o terminar de escribir destino
+        programarAutocalcularEnvioDex(400);
     });
     envioDexPeso?.addEventListener('input', () => {
         refrescarDetallePesoManual();
+        if (String(envioDexDestino?.value || '').trim() !== '') {
+            programarAutocalcularEnvioDex(400);
+        }
     });
     envioDexValor?.addEventListener('input', () => {
         actualizarResumenEnvioDex();
