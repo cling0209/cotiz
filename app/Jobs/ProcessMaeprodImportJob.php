@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Services\MaeprodImportJobService;
 use App\Services\MaeprodImportLockService;
 use App\Services\MaeprodImportProgressService;
+use App\Support\RenderKeepAlive;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -35,6 +36,8 @@ class ProcessMaeprodImportJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(MaeprodImportJobService $importJob): void
     {
+        RenderKeepAlive::pingIfDue();
+
         $importJob->runBackgroundImport(
             $this->uploadId,
             $this->userId,

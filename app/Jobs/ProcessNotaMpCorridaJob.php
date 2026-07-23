@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\NotaMpCorrida;
 use App\Services\NotaMpResultadosService;
+use App\Support\RenderKeepAlive;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -35,6 +36,8 @@ class ProcessNotaMpCorridaJob implements ShouldQueue
 
     public function handle(NotaMpResultadosService $resultados): void
     {
+        RenderKeepAlive::pingIfDue();
+
         $corrida = NotaMpCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== 'running') {
             return;

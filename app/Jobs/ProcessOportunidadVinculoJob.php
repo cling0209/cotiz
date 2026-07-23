@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\OportunidadVinculoCorrida;
 use App\Services\OportunidadVinculoService;
+use App\Support\RenderKeepAlive;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -43,6 +44,8 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
 
     public function handle(OportunidadVinculoService $vinculos): void
     {
+        RenderKeepAlive::pingIfDue();
+
         $corrida = OportunidadVinculoCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== OportunidadVinculoService::ESTADO_RUNNING) {
             return;

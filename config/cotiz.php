@@ -85,6 +85,14 @@ return [
         'background' => filter_var(env('MAEPROD_IMPORT_BACKGROUND', true), FILTER_VALIDATE_BOOL),
     ],
 
+    // Render free: ping a APP_URL/up mientras hay jobs (evita spin-down a los 15 min).
+    // Solo activo con RENDER_KEEPALIVE=true (ver .env.render.example).
+    'render_keepalive' => [
+        'enabled' => filter_var(env('RENDER_KEEPALIVE', false), FILTER_VALIDATE_BOOL),
+        // Debe ser < 15 (idle de Render free). Default 10.
+        'minutes' => max(5, min(14, (int) env('RENDER_KEEPALIVE_MINUTES', 10))),
+    ],
+
     'agile' => [
         'user' => env('COTIZ_AGILE_USER', 'AGI2025'),
         'password' => env('COTIZ_AGILE_PASSWORD', 'Rsdfh_jghagi'),

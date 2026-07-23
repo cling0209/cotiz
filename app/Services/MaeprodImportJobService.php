@@ -6,6 +6,7 @@ use App\Jobs\ProcessMaeprodImportJob;
 use App\Models\MaeprodImportRun;
 use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
+use App\Support\RenderKeepAlive;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -454,12 +455,13 @@ class MaeprodImportJobService
                     $progress->updateFromPrepare($uploadId, $this->buildPrepareFinishedResponse($uploadId));
                 } else {
                     do {
-                        $lock->touch($uploadId);
-                        $prepare = $mode === 'custom'
-                            ? $this->continuePrepareCustom($uploadId, $userId, $columnMapping ?? [])
-                            : $this->continuePrepareTemplate($uploadId, $userId);
-                        $progress->updateFromPrepare($uploadId, $prepare);
-                    } while ($prepare['prepare_finished'] !== true);
+                $lock->touch($uploadId);
+                RenderKeepAlive::pingIfDue();
+                $prepare = $mode === 'custom'
+                    ? $this->continuePrepareCustom($uploadId, $userId, $columnMapping ?? [])
+                    : $this->continuePrepareTemplate($uploadId, $userId);
+                $progress->updateFromPrepare($uploadId, $prepare);
+            } while ($prepare['prepare_finished'] !== true);
                 }
             }
 
@@ -480,6 +482,7 @@ class MaeprodImportJobService
 
             do {
                 $lock->touch($uploadId);
+                RenderKeepAlive::pingIfDue();
                 $batchInfo = $this->resolveNextBatchInfo($uploadId);
                 $progress->beginBatch(
                     $uploadId,

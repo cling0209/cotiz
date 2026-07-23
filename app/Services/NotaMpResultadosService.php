@@ -10,6 +10,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Support\RenderKeepAlive;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -1450,6 +1451,7 @@ class NotaMpResultadosService
         $staggerMs = max(0, (int) config('cotiz.mercadopublico.resultados_stagger_ms', 2000));
 
         $onLaunch = function (string $codigo) use (&$corrida, $porCodigo, &$startedAtByCodigo): void {
+            RenderKeepAlive::pingIfDue();
             $item = $porCodigo[$codigo] ?? null;
             if ($item === null) {
                 return;

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\OportunidadBusquedaCorrida;
 use App\Services\OportunidadBusquedaService;
+use App\Support\RenderKeepAlive;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -43,6 +44,8 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
 
     public function handle(OportunidadBusquedaService $busqueda): void
     {
+        RenderKeepAlive::pingIfDue();
+
         $corrida = OportunidadBusquedaCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== OportunidadBusquedaService::ESTADO_RUNNING) {
             return;
