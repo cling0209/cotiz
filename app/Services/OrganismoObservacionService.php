@@ -302,14 +302,48 @@ class OrganismoObservacionService
                 'n.empresa',
                 'n.encargado',
                 's.organismo',
+                's.codigo_proceso',
             ])
             ->get();
+
+        $codigos = [];
+        foreach ($filas as $fila) {
+            $codigo = strtoupper(trim((string) (
+                filled(trim((string) ($fila->codigo_proceso ?? '')))
+                    ? $fila->codigo_proceso
+                    : ($fila->encargado ?? '')
+            )));
+            if ($codigo !== '') {
+                $codigos[$codigo] = true;
+            }
+        }
+
+        /** @var array<string, object{organismo: ?string, rut_organismo: ?string}> $cachePorCodigo */
+        $cachePorCodigo = [];
+        if ($codigos !== []) {
+            foreach (DB::table('compra_agil_procesos')
+                ->whereIn('codigo', array_keys($codigos))
+                ->get(['codigo', 'organismo', 'rut_organismo']) as $proc) {
+                $cachePorCodigo[strtoupper(trim((string) $proc->codigo))] = $proc;
+            }
+        }
 
         /** @var array<string, array{rut: string, nombre: string, cuerpo: string}> $porCuerpo */
         $porCuerpo = [];
 
         foreach ($filas as $fila) {
-            $rut = $this->parser->normalizarRut((string) ($fila->rutempresa ?? ''));
+            $codigo = strtoupper(trim((string) (
+                filled(trim((string) ($fila->codigo_proceso ?? '')))
+                    ? $fila->codigo_proceso
+                    : ($fila->encargado ?? '')
+            )));
+            $cache = $cachePorCodigo[$codigo] ?? null;
+
+            $rutNota = $this->parser->normalizarRut((string) ($fila->rutempresa ?? ''));
+            $rutCache = $this->parser->normalizarRut((string) ($cache->rut_organismo ?? ''));
+            $rut = $rutCache !== '' && ($rutNota === '' || $this->rutEsMejor($rutCache, $rutNota))
+                ? $rutCache
+                : $rutNota;
             if ($rut === '') {
                 continue;
             }
@@ -318,11 +352,12 @@ class OrganismoObservacionService
                 continue;
             }
 
-            // Preferir organismo de MP (fidedigno); notas.empresa a veces trae el código CA.
+            // Preferir organismo MP (seguimiento → cache CA); notas.empresa a veces trae el código CA.
             $nombre = $this->nombreOrganismoFidedigno(
                 (string) ($fila->organismo ?? ''),
                 (string) ($fila->empresa ?? ''),
-                (string) ($fila->encargado ?? ''),
+                (string) ($fila->encargado ?? $fila->codigo_proceso ?? ''),
+                (string) ($cache->organismo ?? ''),
             );
             if ($nombre === '') {
                 continue;
@@ -354,10 +389,15 @@ class OrganismoObservacionService
     /**
      * Nombre usable para el mantenedor: MP primero; descarta códigos CA (ej. 4201-366-COT26).
      */
-    public function nombreOrganismoFidedigno(string $organismoMp, string $empresaNota, string $encargado = ''): string
-    {
+    public function nombreOrganismoFidedigno(
+        string $organismoMp,
+        string $empresaNota,
+        string $encargado = '',
+        string $organismoCache = '',
+    ): string {
         $candidatos = [
             trim($organismoMp),
+            trim($organismoCache),
             trim($empresaNota),
         ];
 

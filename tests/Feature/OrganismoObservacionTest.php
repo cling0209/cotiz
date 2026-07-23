@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\OrganismoObservacionService;
 use App\Services\OrganismoPerfilAutomaticoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -149,6 +150,48 @@ class OrganismoObservacionTest extends TestCase
         ]);
         $this->assertDatabaseMissing('organismo_observaciones', [
             'rut_organismo' => '11111111-1',
+        ]);
+        $this->assertDatabaseMissing('organismo_observaciones', [
+            'nombre' => '4201-366-COT26',
+        ]);
+    }
+
+    public function test_reset_usa_organismo_del_cache_si_seguimiento_vacio(): void
+    {
+        $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);
+        Nota::query()->create([
+            'nronota' => 9201,
+            'usuario' => $user->username,
+            'empresa' => '4201-366-COT26',
+            'rutempresa' => '69073900',
+            'descripcion' => 'Test',
+            'fecha' => now()->toDateString(),
+            'encargado' => '4201-366-COT26',
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 9201,
+            'codigo_proceso' => '4201-366-COT26',
+            'organismo' => '',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+        DB::table('compra_agil_procesos')->insert([
+            'codigo' => '4201-366-COT26',
+            'organismo' => 'Hospital Desde Cache',
+            'rut_organismo' => '69073900-1',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        /** @var OrganismoObservacionService $svc */
+        $svc = app(OrganismoObservacionService::class);
+        $svc->resetDesdeCerradas();
+
+        $this->assertDatabaseHas('organismo_observaciones', [
+            'rut_organismo' => '69073900-1',
+            'nombre' => 'Hospital Desde Cache',
         ]);
         $this->assertDatabaseMissing('organismo_observaciones', [
             'nombre' => '4201-366-COT26',
