@@ -32,6 +32,68 @@ class OrganismoObservacionRelayService
     }
 
     /**
+     * Pide al par vaciar organismo_observaciones (antes de un push completo).
+     */
+    public function purgarPar(): string
+    {
+        $destino = $this->urlPar();
+        if ($destino === '') {
+            throw new RuntimeException(
+                'COTIZ_API_USUARIO_URL no está configurada; no se puede sincronizar organismos con el sitio par.'
+            );
+        }
+
+        $userAuth = (string) config('cotiz.api_nota.user', '');
+        $passwordAuth = (string) config('cotiz.api_nota.password', '');
+        if ($userAuth === '' || $passwordAuth === '') {
+            throw new RuntimeException(
+                'Faltan COTIZ_API_NOTA_USER o COTIZ_API_NOTA_PASSWORD para sincronizar con el par.'
+            );
+        }
+
+        $peer = CotizInstanciaPar::nombrePar();
+        $payload = [
+            'accion' => 'limpia',
+            'replicacion' => true,
+            'origen_sistema' => (string) config('cotiz.sistema', config('app.name')),
+        ];
+
+        try {
+            $response = Http::timeout(30)
+                ->asJson()
+                ->withBasicAuth($userAuth, $passwordAuth)
+                ->post($destino, $payload);
+        } catch (\Throwable $e) {
+            throw new RuntimeException(
+                'No se pudo conectar con '.$peer.': '.$e->getMessage()
+            );
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException($this->mensajeErrorHttp($response, $peer));
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
+            $mensaje = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
+
+            throw new RuntimeException(
+                $mensaje !== '' ? $peer.': '.$mensaje : 'Respuesta inválida de '.$peer.'.'
+            );
+        }
+
+        return 'Tabla limpiada en '.$peer.'.';
+    }
+
+    public function limpiaLocal(): int
+    {
+        $n = OrganismoObservacion::query()->count();
+        OrganismoObservacion::query()->delete();
+
+        return $n;
+    }
+
+    /**
      * Empuja todos los registros con datos hacia el par (admin y/o automático).
      *
      * @return array{ok: int, fail: int}

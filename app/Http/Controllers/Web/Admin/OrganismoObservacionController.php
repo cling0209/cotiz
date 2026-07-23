@@ -114,4 +114,36 @@ class OrganismoObservacionController extends Controller
                 ->with('error', $e->getMessage());
         }
     }
+
+    public function resetDesdeCerradas(Request $request): RedirectResponse
+    {
+        $stats = $this->service->resetDesdeCerradas();
+        $mensaje = "Reinicio desde cerradas: borrados {$stats['borrados']}, creados {$stats['creados']}.";
+
+        if ($this->perfilAutomatico->analisisHabilitado()) {
+            $p = $this->perfilAutomatico->recalcularTodos();
+            $mensaje .= " Perfiles: {$p['con_perfil']} con datos, {$p['sin_historial']} sin historial.";
+        }
+
+        try {
+            $this->relay->purgarPar();
+            $sync = $this->relay->empujarTodos();
+            $mensaje .= " Sync al par: {$sync['ok']} OK";
+            if ($sync['fail'] > 0) {
+                $mensaje .= ", {$sync['fail']} fallos";
+            }
+            $mensaje .= '.';
+
+            return redirect()
+                ->route('admin.organismos-observaciones.index')
+                ->with('success', $mensaje);
+        } catch (Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.organismos-observaciones.index')
+                ->with('success', $mensaje)
+                ->with('error', $e->getMessage());
+        }
+    }
 }

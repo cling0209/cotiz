@@ -33,6 +33,7 @@ class NotaMpResultadosService
         protected CompraAgilApiService $api,
         protected CompraAgilGanadorResolver $ganador,
         protected CompraAgilTextoParserService $parser,
+        protected OrganismoObservacionService $organismoObservacion,
     ) {}
 
     public function ultimaCorrida(): ?NotaMpCorrida
@@ -1849,6 +1850,15 @@ class NotaMpResultadosService
                 ['nronota' => $nronota],
                 $datosSeguimiento,
             );
+
+            if ($finalizado) {
+                $this->organismoObservacion->registrarDesdeCerrada(
+                    (string) ($nota->rutempresa ?? ''),
+                    trim((string) ($nota->empresa ?? '')) !== ''
+                        ? (string) $nota->empresa
+                        : (string) ($institucion['organismo_comprador'] ?? ''),
+                );
+            }
 
             $this->persistirOfertas($nronota, $payload, $deadline);
 

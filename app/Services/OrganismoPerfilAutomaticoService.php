@@ -58,7 +58,7 @@ class OrganismoPerfilAutomaticoService
             return ['organismos' => 0, 'con_perfil' => 0, 'sin_historial' => 0];
         }
 
-        $this->organismos->sincronizarDesdeFuentes();
+        $this->organismos->sincronizarDesdeCerradas();
 
         $textosPorProceso = $this->textosAdjudicadosPorRut();
         $ahora = now();

@@ -221,6 +221,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('organismos-observaciones.index');
             Route::post('organismos-observaciones/analizar', [OrganismoObservacionController::class, 'analizar'])
                 ->name('organismos-observaciones.analizar');
+            Route::post('organismos-observaciones/reset-cerradas', [OrganismoObservacionController::class, 'resetDesdeCerradas'])
+                ->name('organismos-observaciones.reset-cerradas');
             Route::get('organismos-observaciones/{organismo}/editar', [OrganismoObservacionController::class, 'edit'])
                 ->name('organismos-observaciones.edit');
             Route::put('organismos-observaciones/{organismo}', [OrganismoObservacionController::class, 'update'])

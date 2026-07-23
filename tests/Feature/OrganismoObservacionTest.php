@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\OportunidadEncontrada;
+use App\Models\Nota;
+use App\Models\NotaMpSeguimiento;
 use App\Models\OrganismoObservacion;
 use App\Models\User;
+use App\Services\OrganismoObservacionService;
 use App\Services\OrganismoPerfilAutomaticoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -34,43 +36,61 @@ class OrganismoObservacionTest extends TestCase
         ]);
     }
 
-    public function test_listado_incorpora_organismos_desde_oportunidades(): void
+    private function crearCerrada(string $rut, string $empresa, string $organismo = ''): void
     {
-        OportunidadEncontrada::query()->create([
-            'codigo' => 'CA-TEST-1',
-            'nombre' => 'Compra prueba',
-            'organismo' => 'Hospital Demo',
-            'rut_organismo' => '76123456-K',
-            'fecha_busqueda' => now()->toDateString(),
-            'indice_region_config' => 0,
+        static $n = 9000;
+        $n++;
+        $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);
+        Nota::query()->create([
+            'nronota' => $n,
+            'usuario' => $user->username,
+            'empresa' => $empresa,
+            'rutempresa' => $rut,
+            'descripcion' => 'Test',
+            'fecha' => now()->toDateString(),
+            'encargado' => $n.'-1-COT26',
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
         ]);
 
-        // RUT solo dígitos: PHP castea a int si se usa como key de array; no debe romper PG.
-        OportunidadEncontrada::query()->create([
-            'codigo' => 'CA-TEST-2',
-            'nombre' => 'Compra numerica',
-            'organismo' => 'Municipalidad Digitos',
-            'rut_organismo' => '61602245',
-            'fecha_busqueda' => now()->toDateString(),
-            'indice_region_config' => 0,
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $n,
+            'codigo_proceso' => 'CA-'.$n,
+            'organismo' => $organismo !== '' ? $organismo : $empresa,
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+    }
+
+    public function test_reset_carga_solo_desde_cerradas_y_unifica_rut(): void
+    {
+        $this->crearCerrada('65077010', 'Ejercito de Chile');
+        $this->crearCerrada('65077010-2', 'Ejercito de Chile');
+        $this->crearCerrada('76123456-K', 'Hospital Demo');
+
+        OrganismoObservacion::query()->create([
+            'rut_organismo' => '99999999-9',
+            'nombre' => 'No deberia quedar',
         ]);
 
-        $this->actingAs($this->superadmin())
-            ->get(route('admin.organismos-observaciones.index'))
-            ->assertOk()
-            ->assertSee('Hospital Demo')
-            ->assertSee('76123456-K')
-            ->assertSee('Municipalidad Digitos')
-            ->assertSee('61602245');
+        /** @var OrganismoObservacionService $svc */
+        $svc = app(OrganismoObservacionService::class);
+        $stats = $svc->resetDesdeCerradas();
 
+        $this->assertSame(1, $stats['borrados']);
+        $this->assertSame(2, $stats['creados']);
+        $this->assertDatabaseMissing('organismo_observaciones', [
+            'rut_organismo' => '99999999-9',
+        ]);
+        $this->assertDatabaseHas('organismo_observaciones', [
+            'rut_organismo' => '65077010-2',
+            'nombre' => 'Ejercito de Chile',
+        ]);
         $this->assertDatabaseHas('organismo_observaciones', [
             'rut_organismo' => '76123456-K',
             'nombre' => 'Hospital Demo',
         ]);
-        $this->assertDatabaseHas('organismo_observaciones', [
-            'rut_organismo' => '61602245',
-            'nombre' => 'Municipalidad Digitos',
-        ]);
+        $this->assertSame(1, OrganismoObservacion::query()->where('nombre', 'Ejercito de Chile')->count());
     }
 
     public function test_admin_guarda_y_sincroniza_observacion_al_par(): void
@@ -110,27 +130,38 @@ class OrganismoObservacionTest extends TestCase
         });
     }
 
-    public function test_api_recibe_graba_desde_par(): void
+    public function test_api_limpia_y_graba_desde_par(): void
     {
-        $response = $this->withBasicAuth('api_user', 'api_pass')
+        OrganismoObservacion::query()->create([
+            'rut_organismo' => '11111111-1',
+            'nombre' => 'Viejo',
+        ]);
+
+        $this->withBasicAuth('api_user', 'api_pass')
+            ->postJson('/api/v1/organismo-observacion', [
+                'accion' => 'limpia',
+                'replicacion' => true,
+            ])
+            ->assertOk()
+            ->assertJson(['resultado' => 'OK']);
+
+        $this->assertSame(0, OrganismoObservacion::query()->count());
+
+        $this->withBasicAuth('api_user', 'api_pass')
             ->postJson('/api/v1/organismo-observacion', [
                 'accion' => 'graba',
                 'replicacion' => true,
                 'rut_organismo' => '76111222-3',
                 'nombre' => 'Organismo Par',
                 'observacion' => 'Tip admin remoto',
-                'observacion_automatica' => 'Según 5 CA: suele adjudicar marca reconocida (Brother).',
-                'observacion_automatica_casos' => 5,
-                'campos' => ['admin', 'auto'],
-            ]);
-
-        $response->assertOk()->assertJson(['resultado' => 'OK']);
+                'campos' => ['admin'],
+            ])
+            ->assertOk()
+            ->assertJson(['resultado' => 'OK']);
 
         $this->assertDatabaseHas('organismo_observaciones', [
             'rut_organismo' => '76111222-3',
             'nombre' => 'Organismo Par',
-            'observacion' => 'Tip admin remoto',
-            'observacion_automatica_casos' => 5,
         ]);
     }
 

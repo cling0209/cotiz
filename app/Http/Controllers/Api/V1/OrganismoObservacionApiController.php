@@ -29,6 +29,7 @@ class OrganismoObservacionApiController extends Controller
         try {
             return match ((string) $accion) {
                 'graba' => $this->graba($payload),
+                'limpia' => $this->limpia(),
                 default => $this->error('Accion no existe: '.$accion),
             };
         } catch (RuntimeException $e) {
@@ -48,6 +49,17 @@ class OrganismoObservacionApiController extends Controller
             'mensaje' => $resultado['created'] ? 'Organismo creado' : 'Organismo actualizado',
             'rut_organismo' => $resultado['rut_organismo'],
             'created' => $resultado['created'],
+        ]);
+    }
+
+    private function limpia(): JsonResponse
+    {
+        $borrados = $this->relay->limpiaLocal();
+
+        return response()->json([
+            'resultado' => 'OK',
+            'mensaje' => 'Organismos observaciones eliminados',
+            'borrados' => $borrados,
         ]);
     }
 

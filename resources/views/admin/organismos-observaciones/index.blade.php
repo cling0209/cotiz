@@ -8,20 +8,30 @@
         <div>
             <h1 class="h3 mb-1">Organismos observaciones</h1>
             <p class="text-muted mb-0 small">
-                Sugerencia del administrador (editable, se sincroniza Romulo &harr; Reicol)
-                y perfil autom&aacute;tico (marca/calidad, calculado semanalmente solo donde
-                <code>MERCADOPUBLICO_ANALISIS_ADMIN=true</code>).
+                Solo organismos de <strong>cotizaciones MP cerradas</strong> (RUT + nombre fidedignos).
+                Sugerencia del administrador (sincroniza Romulo &harr; Reicol) y perfil autom&aacute;tico
+                (calculado semanalmente donde <code>MERCADOPUBLICO_ANALISIS_ADMIN=true</code>).
+                Los nuevos se agregan al cerrar una CA.
             </p>
         </div>
-        @if($puedeAnalizar)
-            <form method="post" action="{{ route('admin.organismos-observaciones.analizar') }}"
-                  data-confirm="¿Recalcular ahora todos los perfiles automáticos y sincronizar al par?">
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ route('admin.organismos-observaciones.reset-cerradas') }}"
+                  data-confirm="¿Borrar todo y recrear solo desde cerradas? Se sincronizará al sitio par.">
                 @csrf
-                <button type="submit" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-arrow-repeat"></i> Recalcular perfiles
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset desde cerradas
                 </button>
             </form>
-        @endif
+            @if($puedeAnalizar)
+                <form method="post" action="{{ route('admin.organismos-observaciones.analizar') }}"
+                      data-confirm="¿Recalcular ahora todos los perfiles automáticos y sincronizar al par?">
+                    @csrf
+                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-arrow-repeat"></i> Recalcular perfiles
+                    </button>
+                </form>
+            @endif
+        </div>
     </div>
 
     <div class="card shadow-sm mb-3">
