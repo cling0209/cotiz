@@ -122,6 +122,8 @@ class OrganismoObservacionService
 
     public function listar(?string $buscar = null, int $porPagina = 20): LengthAwarePaginator
     {
+        $this->fusionarDuplicadosPorCuerpoRut();
+
         $term = trim((string) $buscar);
 
         return OrganismoObservacion::query()
@@ -142,6 +144,74 @@ class OrganismoObservacionService
             ->orderBy('rut_organismo')
             ->paginate($porPagina)
             ->withQueryString();
+    }
+
+    /**
+     * Une filas ya guardadas con el mismo cuerpo de RUT (ej. 65077010 y 65077010-2).
+     */
+    public function fusionarDuplicadosPorCuerpoRut(): int
+    {
+        $grupos = [];
+        foreach (OrganismoObservacion::query()->orderBy('id')->get() as $org) {
+            $cuerpo = $this->cuerpoSinDv((string) $org->rut_organismo);
+            if ($cuerpo === '') {
+                continue;
+            }
+            $grupos[$cuerpo][] = $org;
+        }
+
+        $eliminados = 0;
+        foreach ($grupos as $filas) {
+            if (count($filas) < 2) {
+                continue;
+            }
+
+            usort($filas, function (OrganismoObservacion $a, OrganismoObservacion $b) {
+                if ($this->rutEsMejor((string) $a->rut_organismo, (string) $b->rut_organismo)) {
+                    return -1;
+                }
+                if ($this->rutEsMejor((string) $b->rut_organismo, (string) $a->rut_organismo)) {
+                    return 1;
+                }
+
+                return $a->id <=> $b->id;
+            });
+
+            /** @var OrganismoObservacion $keeper */
+            $keeper = $filas[0];
+            for ($i = 1; $i < count($filas); $i++) {
+                $dup = $filas[$i];
+                if ($this->rutEsMejor((string) $dup->rut_organismo, (string) $keeper->rut_organismo)) {
+                    $keeper->rut_organismo = $dup->rut_organismo;
+                }
+                if (trim((string) ($keeper->nombre ?? '')) === '' && trim((string) ($dup->nombre ?? '')) !== '') {
+                    $keeper->nombre = $dup->nombre;
+                }
+                if (! $keeper->tieneObservacion() && $dup->tieneObservacion()) {
+                    $keeper->observacion = $dup->observacion;
+                    $keeper->updated_by = $dup->updated_by;
+                }
+                if (! $keeper->tieneObservacionAutomatica() && $dup->tieneObservacionAutomatica()) {
+                    $keeper->observacion_automatica = $dup->observacion_automatica;
+                    $keeper->observacion_automatica_casos = $dup->observacion_automatica_casos;
+                    $keeper->observacion_automatica_en = $dup->observacion_automatica_en;
+                } elseif (
+                    $dup->tieneObservacionAutomatica()
+                    && (int) ($dup->observacion_automatica_casos ?? 0) > (int) ($keeper->observacion_automatica_casos ?? 0)
+                ) {
+                    $keeper->observacion_automatica = $dup->observacion_automatica;
+                    $keeper->observacion_automatica_casos = $dup->observacion_automatica_casos;
+                    $keeper->observacion_automatica_en = $dup->observacion_automatica_en;
+                }
+                $dup->delete();
+                $eliminados++;
+            }
+            if ($keeper->isDirty()) {
+                $keeper->save();
+            }
+        }
+
+        return $eliminados;
     }
 
     public function actualizar(

@@ -88,7 +88,7 @@
                             <td class="text-end text-nowrap">
                                 <a href="{{ route('admin.organismos-observaciones.edit', $org) }}"
                                    class="btn btn-outline-primary btn-sm py-0">
-                                    {{ $org->tieneObservacion() ? 'Editar' : 'Agregar' }}
+                                    <i class="bi bi-pencil"></i> Modificar
                                 </a>
                             </td>
                         </tr>

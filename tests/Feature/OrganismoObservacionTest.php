@@ -93,6 +93,30 @@ class OrganismoObservacionTest extends TestCase
         $this->assertSame(1, OrganismoObservacion::query()->where('nombre', 'Ejercito de Chile')->count());
     }
 
+    public function test_fusiona_duplicados_rut_con_y_sin_dv_en_listado(): void
+    {
+        OrganismoObservacion::query()->create([
+            'rut_organismo' => '65077010',
+            'nombre' => 'Ejercito de Chile',
+            'observacion' => 'Tip admin',
+        ]);
+        OrganismoObservacion::query()->create([
+            'rut_organismo' => '65077010-2',
+            'nombre' => 'Ejercito de Chile',
+        ]);
+
+        $this->actingAs($this->superadmin())
+            ->get(route('admin.organismos-observaciones.index'))
+            ->assertOk()
+            ->assertSee('Modificar')
+            ->assertDontSee('>Agregar<', false);
+
+        $this->assertSame(1, OrganismoObservacion::query()->count());
+        $org = OrganismoObservacion::query()->first();
+        $this->assertSame('65077010-2', $org->rut_organismo);
+        $this->assertSame('Tip admin', $org->observacion);
+    }
+
     public function test_admin_guarda_y_sincroniza_observacion_al_par(): void
     {
         Http::fake([
