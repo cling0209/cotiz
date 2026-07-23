@@ -51,16 +51,26 @@ run_as_www 'php artisan l5-swagger:generate 2>/dev/null || true'
 
 fix_storage_permissions
 
-if [ "$RUN_QUEUE_WORKER" = "true" ]; then
+# true / 1 / yes (Render a veces guarda con espacios).
+QUEUE_WORKER_FLAG=$(printf '%s' "${RUN_QUEUE_WORKER:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+if [ "$QUEUE_WORKER_FLAG" = "true" ] || [ "$QUEUE_WORKER_FLAG" = "1" ] || [ "$QUEUE_WORKER_FLAG" = "yes" ]; then
   echo "Iniciando queue worker (database) con auto-restart..." >&2
+  echo "QUEUE_CONNECTION=${QUEUE_CONNECTION:-} RUN_QUEUE_WORKER=${RUN_QUEUE_WORKER:-}" >&2
+  # set +e dentro del subshell: si queue:work sale con error, NO matar el loop
+  # (set -e del script padre se hereda y antes dejaba la cola sin worker).
   (
+    set +e
     while true; do
-      run_as_www 'php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 2>&1'
-      echo "[$(date)] Queue worker terminó (exit $?). Reiniciando en 5s..." >&2
+      echo "[$(date)] queue:work database arrancando..." >&2
+      run_as_www 'php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 -v'
+      code=$?
+      echo "[$(date)] Queue worker terminó (exit ${code}). Reiniciando en 5s..." >&2
       sleep 5
     done
   ) &
   echo "Queue worker loop PID: $!" >&2
+else
+  echo "RUN_QUEUE_WORKER no activo (valor='${RUN_QUEUE_WORKER:-}'). Jobs en cola no se procesarán." >&2
 fi
 
 # Catch-up de consultas MP y sync de oportunidades con el sitio par.

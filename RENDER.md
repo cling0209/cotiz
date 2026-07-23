@@ -66,8 +66,11 @@ Plantilla: **`.env.render.example`**.
 | `SESSION_DRIVER` | `database` |
 | `SESSION_SECURE_COOKIE` | `true` |
 | `QUEUE_CONNECTION` | `database` |
+| `RUN_QUEUE_WORKER` | `true` (arranca `queue:work` en el mismo Web Service) |
 | `RUN_MIGRATIONS` | `true` |
 | `RUN_SEED` | `true` una vez, luego `false` |
+
+**Colas + Neon:** `DB_HOST` / `DATABASE_URL` deben ser el endpoint **directo** (sin `-pooler`). Con pooler, el worker no reserva jobs y la UI queda en “esperando worker” aunque `RUN_QUEUE_WORKER=true`.
 
 ### Correo (Resend — producción)
 
