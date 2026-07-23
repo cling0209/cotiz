@@ -263,6 +263,18 @@
     font-size: 11px;
 }
 
+/* Tooltip de texto completo (desc. maestro / observaciones): misma tipografía que la celda */
+.tooltip.tooltip-texto-campo .tooltip-inner {
+    max-width: min(420px, 90vw);
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+    font-family: inherit;
+    line-height: 1.35;
+    padding: 0.4rem 0.55rem;
+}
+
 .cotizacion-ingreso #tabla_detalle th.linea-eliminar-col,
 .cotizacion-ingreso #tabla_detalle td.eliminar-cell {
     text-align: left !important;

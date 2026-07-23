@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=ancho-cols-20" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=tooltip-texto-1" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -1440,11 +1440,57 @@
         if (e.target.matches('.linea-prod-valor, .linea-cantidad')) {
             recalcularMontoTotal();
         }
+        if (e.target.matches('.js-tooltip-valor')) {
+            syncCampoTooltipValor(e.target);
+        }
     });
+
+    function campoTextoTruncado(el) {
+        if (!el) return false;
+        if (el.tagName === 'TEXTAREA') {
+            return el.scrollHeight > el.clientHeight + 1;
+        }
+        return el.scrollWidth > el.clientWidth + 1;
+    }
+
+    function syncCampoTooltipValor(el) {
+        if (!el || typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+        const texto = String(el.value || '').trim();
+        const mostrar = texto !== '' && campoTextoTruncado(el);
+        let tip = bootstrap.Tooltip.getInstance(el);
+        if (!mostrar) {
+            if (tip) tip.dispose();
+            el.removeAttribute('data-bs-original-title');
+            el.setAttribute('title', '');
+            return;
+        }
+        el.setAttribute('title', texto);
+        if (!tip) {
+            tip = new bootstrap.Tooltip(el, {
+                customClass: 'tooltip-texto-campo',
+                container: 'body',
+                trigger: 'hover focus',
+                placement: 'top',
+                // Evita que el title nativo del navegador compita con Bootstrap
+                animation: true,
+            });
+        } else {
+            tip.setContent({ '.tooltip-inner': texto });
+        }
+    }
+
+    function wireTooltipsValorLinea(root) {
+        const scope = root || document;
+        scope.querySelectorAll('.js-tooltip-valor').forEach((el) => {
+            // Medir truncado tras layout
+            requestAnimationFrame(() => syncCampoTooltipValor(el));
+        });
+    }
 
     document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
         if (!desdeAdjudicadas) wireEliminarLinea(tr);
     });
+    wireTooltipsValorLinea(document.getElementById('tabla_detalle'));
 
     function quitarLineaDetalle(tr, delForm) {
         tr?.remove();
@@ -1546,6 +1592,7 @@
         }
 
         if (!desdeAdjudicadas) wireEliminarLinea(tr);
+        wireTooltipsValorLinea(tr);
 
         const tituloImagen = (json.prod_item || tr.dataset.prod || '')
             + (json.prod_nombre ? ' — ' + json.prod_nombre : '');
@@ -3780,6 +3827,7 @@
         if (nombreInput) {
             nombreInput.value = nombreTexto;
             if (nombreCell) nombreCell.textContent = nombreTexto;
+            requestAnimationFrame(() => syncCampoTooltipValor(nombreInput));
         } else if (nombreCell) {
             nombreCell.textContent = nombreTexto;
             nombreCell.classList.remove('text-warning-emphasis');

@@ -93,34 +93,49 @@
             $descMaestroValor = $row['prod_descripcion_maestro'] !== ''
                 ? $row['prod_descripcion_maestro']
                 : $row['prod_nombre'];
+            $descMaestroInput = old('lineas.'.$idx.'.prod_descripcion_maestro', $descMaestroValor);
+            $obsInternaInput = old('lineas.'.$idx.'.observacion', $row['observacion'] ?? '');
+            $obsClienteInput = old('lineas.'.$idx.'.observacion_cliente', $row['observacion_cliente'] ?? '');
         @endphp
         <input
             type="text"
             name="lineas[{{ $idx }}][prod_descripcion_maestro]"
-            class="form-control form-control-sm linea-prod-nombre-input"
+            class="form-control form-control-sm linea-prod-nombre-input js-tooltip-valor"
             maxlength="500"
-            value="{{ old('lineas.'.$idx.'.prod_descripcion_maestro', $descMaestroValor) }}"
-            title="Descripci&oacute;n maestro (editable; no modifica la descripci&oacute;n Agile ni el aprendizaje)"
+            value="{{ $descMaestroInput }}"
+            title="{{ $descMaestroInput }}"
+            data-bs-toggle="tooltip"
+            data-bs-custom-class="tooltip-texto-campo"
+            data-bs-placement="top"
+            aria-label="Descripci&oacute;n maestro (editable; no modifica la descripci&oacute;n Agile ni el aprendizaje)"
         >
         <span class="d-none linea-prod-nombre">{{ $descMaestroValor }}</span>
     </td>
     <td class="linea-observacion-cell">
         <textarea
             name="lineas[{{ $idx }}][observacion]"
-            class="form-control form-control-sm linea-observacion-input"
+            class="form-control form-control-sm linea-observacion-input js-tooltip-valor"
             rows="2"
-            title="Observaci&oacute;n interna (solo ejecutivo)"
+            title="{{ $obsInternaInput }}"
+            data-bs-toggle="tooltip"
+            data-bs-custom-class="tooltip-texto-campo"
+            data-bs-placement="top"
+            aria-label="Observaci&oacute;n interna (solo ejecutivo)"
             placeholder="Obs. interna..."
-        >{{ old('lineas.'.$idx.'.observacion', $row['observacion'] ?? '') }}</textarea>
+        >{{ $obsInternaInput }}</textarea>
     </td>
     <td class="linea-observacion-cliente-cell">
         <textarea
             name="lineas[{{ $idx }}][observacion_cliente]"
-            class="form-control form-control-sm linea-observacion-input"
+            class="form-control form-control-sm linea-observacion-input js-tooltip-valor"
             rows="2"
-            title="Observaci&oacute;n visible para el cliente (PDF)"
+            title="{{ $obsClienteInput }}"
+            data-bs-toggle="tooltip"
+            data-bs-custom-class="tooltip-texto-campo"
+            data-bs-placement="top"
+            aria-label="Observaci&oacute;n visible para el cliente (PDF)"
             placeholder="Obs. cliente..."
-        >{{ old('lineas.'.$idx.'.observacion_cliente', $row['observacion_cliente'] ?? '') }}</textarea>
+        >{{ $obsClienteInput }}</textarea>
     </td>
     <td class="linea-fecha-cell">
         <span @class(['nv-fill', 'fecha-precio-antigua' => $row['prod_valor_fecha_antigua']])>{{ $row['prod_valor_fecha'] }}</span>
