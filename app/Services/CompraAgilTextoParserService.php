@@ -60,6 +60,56 @@ class CompraAgilTextoParserService
     }
 
     /**
+     * Si el RUT viene sin guión/DV (típico en notas.rutempresa), calcula el dígito verificador.
+     * Si ya trae DV inválido, lo corrige. Si el cuerpo no es usable, deja el normalizado.
+     */
+    public function completarRutConDv(string $rut): string
+    {
+        $rut = $this->normalizarRut($rut);
+        if ($rut === '') {
+            return '';
+        }
+
+        if (str_contains($rut, '-')) {
+            [$body, $dv] = explode('-', $rut, 2);
+            $cuerpo = preg_replace('/[^0-9]/', '', $body) ?? '';
+            if (strlen($cuerpo) < 7 || strlen($cuerpo) > 8) {
+                return $rut;
+            }
+
+            return $cuerpo.'-'.$this->calcularDvRut($cuerpo);
+        }
+
+        $cuerpo = preg_replace('/[^0-9]/', '', $rut) ?? '';
+        if (strlen($cuerpo) < 7 || strlen($cuerpo) > 8) {
+            return $rut;
+        }
+
+        return $cuerpo.'-'.$this->calcularDvRut($cuerpo);
+    }
+
+    /** Módulo 11 chileno (0–9 / K). */
+    public function calcularDvRut(string $cuerpoNumerico): string
+    {
+        $cuerpo = preg_replace('/[^0-9]/', '', $cuerpoNumerico) ?? '';
+        $suma = 0;
+        $multiplo = 2;
+        for ($i = strlen($cuerpo) - 1; $i >= 0; $i--) {
+            $suma += ((int) $cuerpo[$i]) * $multiplo;
+            $multiplo = $multiplo === 7 ? 2 : $multiplo + 1;
+        }
+        $dv = 11 - ($suma % 11);
+        if ($dv === 11) {
+            return '0';
+        }
+        if ($dv === 10) {
+            return 'K';
+        }
+
+        return (string) $dv;
+    }
+
+    /**
      * @return array{
      *   codigo_cotizacion: string,
      *   empresa: string,

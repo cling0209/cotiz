@@ -67,7 +67,7 @@ class OrganismoObservacionTest extends TestCase
     {
         $this->crearCerrada('65077010', 'Ejercito de Chile');
         $this->crearCerrada('65077010-2', 'Ejercito de Chile');
-        $this->crearCerrada('76123456-K', 'Hospital Demo');
+        $this->crearCerrada('76123456-0', 'Hospital Demo');
 
         OrganismoObservacion::query()->create([
             'rut_organismo' => '99999999-9',
@@ -88,7 +88,7 @@ class OrganismoObservacionTest extends TestCase
             'nombre' => 'Ejercito de Chile',
         ]);
         $this->assertDatabaseHas('organismo_observaciones', [
-            'rut_organismo' => '76123456-K',
+            'rut_organismo' => '76123456-0',
             'nombre' => 'Hospital Demo',
         ]);
         $this->assertSame(1, OrganismoObservacion::query()->where('nombre', 'Ejercito de Chile')->count());
@@ -145,7 +145,7 @@ class OrganismoObservacionTest extends TestCase
 
         $this->assertSame(1, $stats['creados']);
         $this->assertDatabaseHas('organismo_observaciones', [
-            'rut_organismo' => '69073900',
+            'rut_organismo' => '69073900-3',
             'nombre' => 'Municipalidad Fidedigna',
         ]);
         $this->assertDatabaseMissing('organismo_observaciones', [
@@ -190,7 +190,7 @@ class OrganismoObservacionTest extends TestCase
         $svc->resetDesdeCerradas();
 
         $this->assertDatabaseHas('organismo_observaciones', [
-            'rut_organismo' => '69073900-1',
+            'rut_organismo' => '69073900-3',
             'nombre' => 'Hospital Desde Cache',
         ]);
         $this->assertDatabaseMissing('organismo_observaciones', [

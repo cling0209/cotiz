@@ -97,7 +97,7 @@ class OrganismoObservacionService
         ?string $nombreNota = null,
         ?string $encargado = null,
     ): ?OrganismoObservacion {
-        $rutNorm = $this->parser->normalizarRut((string) $rut);
+        $rutNorm = $this->parser->completarRutConDv((string) $rut);
         if ($rutNorm === '') {
             return null;
         }
@@ -259,7 +259,7 @@ class OrganismoObservacionService
 
     public function buscarPorRut(?string $rut): ?OrganismoObservacion
     {
-        $rutNorm = $this->parser->normalizarRut((string) $rut);
+        $rutNorm = $this->parser->completarRutConDv((string) $rut);
         if ($rutNorm === '') {
             return null;
         }
@@ -339,14 +339,15 @@ class OrganismoObservacionService
             )));
             $cache = $cachePorCodigo[$codigo] ?? null;
 
-            $rutNota = $this->parser->normalizarRut((string) ($fila->rutempresa ?? ''));
-            $rutCache = $this->parser->normalizarRut((string) ($cache->rut_organismo ?? ''));
+            $rutNota = $this->parser->completarRutConDv((string) ($fila->rutempresa ?? ''));
+            $rutCache = $this->parser->completarRutConDv((string) ($cache->rut_organismo ?? ''));
             $rut = $rutCache !== '' && ($rutNota === '' || $this->rutEsMejor($rutCache, $rutNota))
                 ? $rutCache
                 : $rutNota;
             if ($rut === '') {
                 continue;
             }
+            $rut = $this->parser->completarRutConDv($rut);
             $cuerpo = $this->cuerpoSinDv($rut);
             if ($cuerpo === '') {
                 continue;

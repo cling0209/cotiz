@@ -98,4 +98,13 @@ TXT;
         $this->assertSame('', $result['codigo_cotizacion']);
         $this->assertSame([], $result['lineas']);
     }
+
+    public function test_completa_digito_verificador_si_falta(): void
+    {
+        $this->assertSame('69061100-7', $this->parser->completarRutConDv('69061100'));
+        $this->assertSame('69061100-7', $this->parser->completarRutConDv('69061100-7'));
+        $this->assertSame('65077010-2', $this->parser->completarRutConDv('65077010'));
+        $this->assertSame('69073900-3', $this->parser->completarRutConDv('69073900-1'));
+        $this->assertSame('7', $this->parser->calcularDvRut('69061100'));
+    }
 }
