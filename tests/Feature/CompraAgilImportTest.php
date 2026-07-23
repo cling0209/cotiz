@@ -207,14 +207,15 @@ TXT;
 
         NotaDetalle::query()->create([
             'nronota' => $nota->nronota,
-            'prod_item' => '31237835',
+            'prod_item' => 'NOK-1',
             'prod_valor' => 0,
             'cantidad' => 5,
             'fechahora' => now(),
             'orden' => 1,
             'prod_valor_costo' => 0,
             'prod_item_agile' => '31237835',
-            'prod_descripcion_agile' => 'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+            'prod_descripcion_agile' => 'BOTELLA TINTA NEGRA CANON Gi-16 136 ML',
+            'prod_descripcion_maestro' => 'BOTELLA TINTA NEGRA CANON Gi-16 136 ML',
         ]);
 
         $response = $this->actingAs($this->admin)->postJson(
@@ -222,24 +223,35 @@ TXT;
             [
                 'orden' => 1,
                 'prod_item_agile' => '31237835',
-                'prod_item' => 'ASEO001',
+                'prod_item' => 'ASEO002',
             ],
         );
 
         $response->assertOk();
-        $response->assertJsonPath('linea.prod_item', 'ASEO001');
+        $response->assertJsonPath('linea.prod_item', 'ASEO002');
+        $response->assertJsonPath('linea.prod_nombre', 'LIMPIADOR PISO FLOTANTE 1 LITRO');
+        $response->assertJsonPath('linea.prod_descripcion_maestro', 'LIMPIADOR PISO FLOTANTE 1 LITRO');
+        $response->assertJsonPath(
+            'linea.prod_descripcion_agile',
+            'BOTELLA TINTA NEGRA CANON Gi-16 136 ML',
+        );
 
         $linea = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
             ->where('orden', 1)
-            ->where('prod_item', 'ASEO001')
+            ->where('prod_item', 'ASEO002')
             ->first();
 
         $this->assertNotNull($linea);
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($linea));
+        $this->assertSame('LIMPIADOR PISO FLOTANTE 1 LITRO', $linea->prod_descripcion_maestro);
+        $this->assertSame(
+            'BOTELLA TINTA NEGRA CANON Gi-16 136 ML',
+            $linea->prod_descripcion_agile,
+        );
 
         $hash = app(\App\Services\AgileVinculoAprendizajeService::class)
-            ->hashDescripcion('LIMPIADOR DE PISOS CON AROMAS 5 LTS');
+            ->hashDescripcion('BOTELLA TINTA NEGRA CANON Gi-16 136 ML');
         $this->assertNull(
             AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->value('prod_item'),
             'Seleccionar no debe confirmar aprendizaje; solo al grabar o PDF',

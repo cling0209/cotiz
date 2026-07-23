@@ -524,6 +524,11 @@ class NotaDetalleService
         );
 
         return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor) {
+            $nombreMaestro = trim((string) $producto->prod_nombre);
+            $descripcionMaestro = $nombreMaestro !== ''
+                ? $nombreMaestro
+                : trim((string) ($linea->prod_descripcion_maestro ?? ''));
+
             $payload = [
                 'nronota' => $nota->nronota,
                 'prod_item' => $codigo,
@@ -534,7 +539,7 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
                 'prod_item_agile' => $linea->prod_item_agile,
                 'prod_descripcion_agile' => $linea->prod_descripcion_agile,
-                'prod_descripcion_maestro' => $linea->prod_descripcion_maestro,
+                'prod_descripcion_maestro' => $descripcionMaestro !== '' ? $descripcionMaestro : null,
                 'observacion' => $linea->observacion,
                 'observacion_cliente' => $linea->observacion_cliente,
             ];
@@ -555,6 +560,7 @@ class NotaDetalleService
                     ->update([
                         'prod_valor' => $valor,
                         'prod_valor_costo' => $costo,
+                        'prod_descripcion_maestro' => $payload['prod_descripcion_maestro'],
                     ]);
             }
 
@@ -573,6 +579,7 @@ class NotaDetalleService
                 'prod_item' => $codigo,
                 'prod_item_softland' => (string) ($producto->prod_item_softland ?? ''),
                 'prod_nombre' => (string) $producto->prod_nombre,
+                'prod_descripcion_maestro' => $actualizada->prod_descripcion_maestro,
                 'prod_valor' => $valor,
                 'prod_valor_costo' => $costo,
                 'prod_valor_fecha_fmt' => $fechaFmt,
