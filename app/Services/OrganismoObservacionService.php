@@ -21,20 +21,31 @@ class OrganismoObservacionService
     public function sincronizarDesdeFuentes(): int
     {
         $porRut = $this->organismosDesdeFuentes();
-        if ($porRut->isEmpty()) {
+        if ($porRut === []) {
             return 0;
         }
 
-        $existentes = OrganismoObservacion::query()
-            ->whereIn('rut_organismo', $porRut->keys()->all())
-            ->pluck('id', 'rut_organismo');
+        $ruts = [];
+        foreach (array_keys($porRut) as $key) {
+            $ruts[] = $this->rutDesdeClaveMapa((string) $key);
+        }
+        $existentes = [];
+        foreach (array_chunk($ruts, 500) as $chunk) {
+            $filas = OrganismoObservacion::query()
+                ->whereIn('rut_organismo', $chunk)
+                ->pluck('id', 'rut_organismo');
+            foreach ($filas as $rutExistente => $id) {
+                $existentes[(string) $rutExistente] = true;
+            }
+        }
 
         $ahora = now();
         $inserts = [];
         $nombresActualizar = [];
 
-        foreach ($porRut as $rut => $nombre) {
-            if ($existentes->has($rut)) {
+        foreach ($porRut as $key => $nombre) {
+            $rut = $this->rutDesdeClaveMapa((string) $key);
+            if (isset($existentes[$rut])) {
                 if ($nombre !== '') {
                     $nombresActualizar[$rut] = $nombre;
                 }
@@ -53,6 +64,7 @@ class OrganismoObservacionService
                 'created_at' => $ahora,
                 'updated_at' => $ahora,
             ];
+            $existentes[$rut] = true;
         }
 
         $creados = 0;
@@ -65,7 +77,7 @@ class OrganismoObservacionService
 
         foreach ($nombresActualizar as $rut => $nombre) {
             OrganismoObservacion::query()
-                ->where('rut_organismo', $rut)
+                ->where('rut_organismo', (string) $rut)
                 ->where(function ($q) {
                     $q->whereNull('nombre')->orWhere('nombre', '');
                 })
@@ -182,11 +194,12 @@ class OrganismoObservacionService
     }
 
     /**
-     * @return Collection<string, string> rut normalizado => nombre
+     * @return array<string, string> rut normalizado => nombre
      */
-    private function organismosDesdeFuentes(): Collection
+    private function organismosDesdeFuentes(): array
     {
-        $map = collect();
+        /** @var array<string, string> $map */
+        $map = [];
 
         $this->agregarFuente(
             $map,
@@ -226,10 +239,10 @@ class OrganismoObservacionService
     }
 
     /**
-     * @param  Collection<string, string>  $map
+     * @param  array<string, string>  $map
      * @param  Collection<int, array{0: string, 1: string}>  $filas
      */
-    private function agregarFuente(Collection $map, Collection $filas): void
+    private function agregarFuente(array &$map, Collection $filas): void
     {
         foreach ($filas as $fila) {
             $rut = $this->parser->normalizarRut($fila[0]);
@@ -238,16 +251,29 @@ class OrganismoObservacionService
             }
 
             $nombre = trim($fila[1]);
-            if (! $map->has($rut)) {
-                $map->put($rut, $nombre);
+            // Prefijo evita que PHP casteé RUT solo-dígitos a int (rompe whereIn en PG).
+            $key = $this->claveMapaRut($rut);
+            if (! array_key_exists($key, $map)) {
+                $map[$key] = $nombre;
 
                 continue;
             }
 
-            if ($nombre !== '' && trim((string) $map->get($rut)) === '') {
-                $map->put($rut, $nombre);
+            if ($nombre !== '' && trim($map[$key]) === '') {
+                $map[$key] = $nombre;
             }
         }
+    }
+
+    /** Clave interna estable; el RUT real se recupera con rutDesdeClaveMapa(). */
+    private function claveMapaRut(string $rut): string
+    {
+        return 'rut:'.$rut;
+    }
+
+    private function rutDesdeClaveMapa(string $key): string
+    {
+        return str_starts_with($key, 'rut:') ? substr($key, 4) : $key;
     }
 
     private function claveRut(string $rutNormalizado): string

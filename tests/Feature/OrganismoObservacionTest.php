@@ -45,15 +45,31 @@ class OrganismoObservacionTest extends TestCase
             'indice_region_config' => 0,
         ]);
 
+        // RUT solo dígitos: PHP castea a int si se usa como key de array; no debe romper PG.
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'CA-TEST-2',
+            'nombre' => 'Compra numerica',
+            'organismo' => 'Municipalidad Digitos',
+            'rut_organismo' => '61602245',
+            'fecha_busqueda' => now()->toDateString(),
+            'indice_region_config' => 0,
+        ]);
+
         $this->actingAs($this->superadmin())
             ->get(route('admin.organismos-observaciones.index'))
             ->assertOk()
             ->assertSee('Hospital Demo')
-            ->assertSee('76123456-K');
+            ->assertSee('76123456-K')
+            ->assertSee('Municipalidad Digitos')
+            ->assertSee('61602245');
 
         $this->assertDatabaseHas('organismo_observaciones', [
             'rut_organismo' => '76123456-K',
             'nombre' => 'Hospital Demo',
+        ]);
+        $this->assertDatabaseHas('organismo_observaciones', [
+            'rut_organismo' => '61602245',
+            'nombre' => 'Municipalidad Digitos',
         ]);
     }
 

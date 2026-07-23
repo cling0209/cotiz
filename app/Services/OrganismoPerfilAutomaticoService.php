@@ -76,7 +76,7 @@ class OrganismoPerfilAutomaticoService
             foreach ($chunk as $org) {
                 $total++;
                 $rut = (string) $org->rut_organismo;
-                $textos = $textosPorProceso->get($rut, collect());
+                $textos = $textosPorProceso->get('rut:'.$rut, collect());
                 $perfil = $this->armarPerfil($textos);
 
                 $org->observacion_automatica = $perfil['texto'];
@@ -190,8 +190,8 @@ class OrganismoPerfilAutomaticoService
      */
     private function textosAdjudicadosPorRut(): Collection
     {
-        /** @var Collection<string, Collection<int, string>> $map */
-        $map = collect();
+        /** @var array<string, list<string>> $map */
+        $map = [];
 
         $desdeCache = CompraAgilProceso::query()
             ->whereNotNull('rut_organismo')
@@ -215,10 +215,9 @@ class OrganismoPerfilAutomaticoService
             if ($texto === '') {
                 continue;
             }
-            if (! $map->has($rut)) {
-                $map->put($rut, collect());
-            }
-            $map->get($rut)->push($texto);
+            $key = 'rut:'.$rut;
+            $map[$key] ??= [];
+            $map[$key][] = $texto;
         }
 
         $desdeNotas = DB::table('nota_mp_seguimientos as s')
@@ -252,13 +251,17 @@ class OrganismoPerfilAutomaticoService
             if ($texto === '') {
                 continue;
             }
-            if (! $map->has($rut)) {
-                $map->put($rut, collect());
-            }
-            $map->get($rut)->push($texto);
+            $key = 'rut:'.$rut;
+            $map[$key] ??= [];
+            $map[$key][] = $texto;
         }
 
-        return $map;
+        $out = collect();
+        foreach ($map as $key => $textos) {
+            $out->put((string) $key, collect($textos));
+        }
+
+        return $out;
     }
 
     private function contienePalabra(string $haystackLower, string $needleLower): bool
