@@ -24,6 +24,12 @@
     @endif
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.pendientes') }}" class="card shadow-sm mb-3" data-no-loader>
+        @if(!empty($filtros['sort']))
+            <input type="hidden" name="sort" value="{{ $filtros['sort'] }}">
+        @endif
+        @if(!empty($filtros['dir']))
+            <input type="hidden" name="dir" value="{{ $filtros['dir'] }}">
+        @endif
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
                 <div class="col-auto">
@@ -80,8 +86,8 @@
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-search"></i> Filtrar
                     </button>
-                    @if(collect($filtros)->filter()->isNotEmpty())
-                        <a href="{{ route('admin.compra-agil.resultados.pendientes') }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
+                    @if(collect($filtros)->except(['sort', 'dir'])->filter()->isNotEmpty())
+                        <a href="{{ route('admin.compra-agil.resultados.pendientes', request()->only(['sort', 'dir'])) }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
                             <i class="bi bi-x-lg"></i> Limpiar
                         </a>
                     @endif
@@ -103,20 +109,20 @@
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-warning">
                     <tr>
-                        <th>Nota</th>
-                        <th>Código CA</th>
-                        <th>Publicación</th>
-                        <th>Último cambio</th>
-                        <th>Cierre 1er llamado</th>
-                        <th>Cierre 2do llamado</th>
-                        <th>Estado convocatoria</th>
-                        <th>Ejecutivo</th>
-                        <th>Organismo</th>
-                        <th>Estado MP</th>
-                        <th>Seguimiento</th>
-                        <th>Prov. seleccionado</th>
-                        <th class="text-end">Monto</th>
-                        <th>Consultado</th>
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'nronota', 'label' => 'Nota', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'codigo_proceso', 'label' => 'Código CA', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_publicacion', 'label' => 'Publicación', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_ultimo_cambio', 'label' => 'Último cambio', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_cierre_primer_llamado', 'label' => 'Cierre 1er llamado', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_cierre_segundo_llamado', 'label' => 'Cierre 2do llamado', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'convocatoria', 'label' => 'Estado convocatoria', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'ejecutivo', 'label' => 'Ejecutivo', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'organismo', 'label' => 'Organismo', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'estado_mp', 'label' => 'Estado MP', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'proveedor', 'label' => 'Prov. seleccionado', 'route' => 'admin.compra-agil.resultados.pendientes'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'monto', 'label' => 'Monto', 'route' => 'admin.compra-agil.resultados.pendientes', 'align' => 'text-end'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'consultado', 'label' => 'Consultado', 'route' => 'admin.compra-agil.resultados.pendientes'])
                         <th></th>
                     </tr>
                 </thead>

@@ -1806,6 +1806,90 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame(1, substr_count($html, 'Comparar'));
     }
 
+    public function test_pendientes_ordena_por_columna_sort(): void
+    {
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 930,
+            'descripcion' => 'Pendiente A',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '930-1-COT26',
+            'nota_softland' => 93000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 930,
+            'codigo_proceso' => '930-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Zeta Organismo',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'fecha_ultimo_cambio' => '2026-05-10 11:00:00',
+            'monto_total_ganador' => 1000,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 931,
+            'descripcion' => 'Pendiente B',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '931-1-COT26',
+            'nota_softland' => 93100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 931,
+            'codigo_proceso' => '931-1-COT26',
+            'estado_mp_codigo' => 'publicada',
+            'estado_mp_glosa' => 'Publicada',
+            'organismo' => 'Alpha Organismo',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_publicacion' => '2026-05-01 10:00:00',
+            'fecha_ultimo_cambio' => '2026-05-11 11:00:00',
+            'monto_total_ganador' => 5000,
+            'ultimo_consultado_en' => now(),
+        ]);
+
+        $asc = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.pendientes', [
+                'sort' => 'organismo',
+                'dir' => 'asc',
+            ]))
+            ->assertOk()
+            ->assertSee('sort=organismo', false)
+            ->getContent();
+
+        $posAlpha = strpos($asc, 'Alpha Organismo');
+        $posZeta = strpos($asc, 'Zeta Organismo');
+        $this->assertNotFalse($posAlpha);
+        $this->assertNotFalse($posZeta);
+        $this->assertLessThan($posZeta, $posAlpha);
+
+        $desc = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.pendientes', [
+                'sort' => 'monto',
+                'dir' => 'desc',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $pos5000 = strpos($desc, '5.000');
+        $pos1000 = strpos($desc, '1.000');
+        $this->assertNotFalse($pos5000);
+        $this->assertNotFalse($pos1000);
+        $this->assertLessThan($pos1000, $pos5000);
+    }
+
     public function test_segundo_llamado_listado_y_boton_en_index(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);

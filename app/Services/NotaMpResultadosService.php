@@ -2000,7 +2000,7 @@ class NotaMpResultadosService
      */
     public function listadoCerradas(int $limite = 50): Collection
     {
-        $items = $this->aplicarOrdenCerradas($this->buildCerradasQuery([]))
+        $items = $this->aplicarOrdenListado($this->buildCerradasQuery([]))
             ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->limit($limite)
             ->get();
@@ -2021,13 +2021,55 @@ class NotaMpResultadosService
 
     /**
      * @param  \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>  $query
+     * @param  array<string, mixed>  $filtros
      * @return \Illuminate\Database\Eloquent\Builder<NotaMpSeguimiento>
      */
-    private function aplicarOrdenCerradas(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
-    {
+    private function aplicarOrdenListado(
+        \Illuminate\Database\Eloquent\Builder $query,
+        array $filtros = [],
+    ): \Illuminate\Database\Eloquent\Builder {
+        $map = [
+            'nronota' => 'nota_mp_seguimientos.nronota',
+            'codigo_proceso' => 'nota_mp_seguimientos.codigo_proceso',
+            'fecha_publicacion' => 'nota_mp_seguimientos.fecha_publicacion',
+            'fecha_ultimo_cambio' => 'nota_mp_seguimientos.fecha_ultimo_cambio',
+            'fecha_cierre_primer_llamado' => 'nota_mp_seguimientos.fecha_cierre_primer_llamado',
+            'fecha_cierre_segundo_llamado' => 'nota_mp_seguimientos.fecha_cierre_segundo_llamado',
+            'convocatoria' => 'nota_mp_seguimientos.convocatoria_descripcion',
+            'organismo' => 'nota_mp_seguimientos.organismo',
+            'estado_mp' => 'nota_mp_seguimientos.estado_mp_glosa',
+            'seguimiento' => 'nota_mp_seguimientos.resultado_propio',
+            'proveedor' => 'nota_mp_seguimientos.razon_social_ganador',
+            'monto' => 'nota_mp_seguimientos.monto_total_ganador',
+            'consultado' => 'nota_mp_seguimientos.ultimo_consultado_en',
+        ];
+
+        $sort = (string) ($filtros['sort'] ?? 'fecha_ultimo_cambio');
+        $dir = strtolower((string) ($filtros['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+        $dirSql = $dir === 'asc' ? 'ASC' : 'DESC';
+
+        if ($sort === 'ejecutivo') {
+            return $query
+                ->orderByRaw(
+                    '(SELECT COALESCE(
+                        NULLIF(trim(concat_ws(\' \', u.nombre, u.apellidop, u.apellidom)), \'\'),
+                        n.usuario,
+                        \'\'
+                    )
+                    FROM notas n
+                    LEFT JOIN users u ON u.username = n.usuario
+                    WHERE n.nronota = nota_mp_seguimientos.nronota
+                    LIMIT 1) '.$dirSql
+                )
+                ->orderByDesc('nota_mp_seguimientos.nronota');
+        }
+
+        $col = $map[$sort] ?? 'nota_mp_seguimientos.fecha_ultimo_cambio';
+
         return $query
-            ->orderByRaw('fecha_ultimo_cambio IS NULL')
-            ->orderByDesc('fecha_ultimo_cambio');
+            ->orderByRaw("{$col} IS NULL")
+            ->orderByRaw("{$col} {$dirSql}")
+            ->orderByDesc('nota_mp_seguimientos.nronota');
     }
 
     /**
@@ -2228,7 +2270,7 @@ class NotaMpResultadosService
 
     public function listadoPendientesPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $paginator = $this->aplicarOrdenCerradas($this->buildPendientesSeguimientoQuery($filtros))
+        $paginator = $this->aplicarOrdenListado($this->buildPendientesSeguimientoQuery($filtros), $filtros)
             ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->paginate($porPagina)
             ->withQueryString();
@@ -2243,7 +2285,7 @@ class NotaMpResultadosService
      */
     public function listadoPendientesExportar(array $filtros = [], int $limite = 10000): Collection
     {
-        $items = $this->aplicarOrdenCerradas($this->buildPendientesSeguimientoQuery($filtros))
+        $items = $this->aplicarOrdenListado($this->buildPendientesSeguimientoQuery($filtros), $filtros)
             ->with(['nota.usuarioRel'])
             ->limit($limite)
             ->get();
@@ -2549,7 +2591,7 @@ class NotaMpResultadosService
 
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $paginator = $this->aplicarOrdenCerradas($this->buildCerradasQuery($filtros))
+        $paginator = $this->aplicarOrdenListado($this->buildCerradasQuery($filtros), $filtros)
             ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->paginate($porPagina)
             ->withQueryString();
@@ -2564,7 +2606,7 @@ class NotaMpResultadosService
      */
     public function listadoCerradasExportar(array $filtros = [], int $limite = 10000): Collection
     {
-        $items = $this->aplicarOrdenCerradas($this->buildCerradasQuery($filtros))
+        $items = $this->aplicarOrdenListado($this->buildCerradasQuery($filtros), $filtros)
             ->with(['nota.usuarioRel'])
             ->limit($limite)
             ->get();
