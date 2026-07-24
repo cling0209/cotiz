@@ -193,47 +193,41 @@
                             Cada frase solo puede estar en un producto.
                         </p>
 
-                        <form method="post" action="{{ route('admin.productos.frases.store', $producto->prod_item) }}" class="mb-3">
+                        <form id="maeprod-frase-form"
+                              method="post"
+                              action="{{ route('admin.productos.frases.store', $producto->prod_item) }}"
+                              class="mb-3"
+                              data-no-loader>
                             @csrf
-                            @foreach($listadoQuery as $key => $value)
-                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                            @endforeach
                             <label class="form-label small mb-1" for="frase">Nueva frase</label>
                             <div class="input-group input-group-sm">
                                 <input type="text" name="frase" id="frase"
-                                       class="form-control @error('frase') is-invalid @enderror"
+                                       class="form-control"
                                        maxlength="200" required
                                        placeholder="Ej: lapiz azul"
-                                       value="{{ old('frase') }}">
-                                <button type="submit" class="btn btn-primary">Agregar</button>
+                                       autocomplete="off">
+                                <button type="submit" id="maeprod-frase-submit" class="btn btn-primary">Agregar</button>
                             </div>
-                            @error('frase')
-                                <div class="invalid-feedback d-block">{{ $message }}</div>
-                            @enderror
+                            <div id="maeprod-frase-error" class="invalid-feedback d-none"></div>
                         </form>
 
-                        @if($producto->frases->isEmpty())
-                            <p class="small text-muted mb-0">Sin frases a&uacute;n.</p>
-                        @else
-                            <ul class="list-group list-group-flush">
-                                @foreach($producto->frases as $fraseItem)
-                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
-                                        <span class="small">{{ $fraseItem->frase }}</span>
-                                        <form method="post"
-                                              action="{{ route('admin.productos.frases.destroy', ['prod_item' => $producto->prod_item, 'frase' => $fraseItem->id]) }}"
-                                              onsubmit="return confirm('¿Eliminar esta frase?');">
-                                            @csrf
-                                            @foreach($listadoQuery as $key => $value)
-                                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                                            @endforeach
-                                            <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Eliminar">
-                                                &times;
-                                            </button>
-                                        </form>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @endif
+                        <p id="maeprod-frases-empty" class="small text-muted mb-0 @if($producto->frases->isNotEmpty()) d-none @endif">
+                            Sin frases a&uacute;n.
+                        </p>
+                        <ul id="maeprod-frases-list" class="list-group list-group-flush @if($producto->frases->isEmpty()) d-none @endif">
+                            @foreach($producto->frases as $fraseItem)
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2"
+                                    data-frase-id="{{ $fraseItem->id }}">
+                                    <span class="small">{{ $fraseItem->frase }}</span>
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm py-0 px-2 maeprod-frase-delete"
+                                            title="Eliminar"
+                                            data-url="{{ route('admin.productos.frases.destroy', ['prod_item' => $producto->prod_item, 'frase' => $fraseItem->id]) }}">
+                                        &times;
+                                    </button>
+                                </li>
+                            @endforeach
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -249,13 +243,14 @@
     var codigoInput = document.getElementById('prod_item');
     var imagenInput = document.getElementById('imagen');
     var nombreInput = document.getElementById('prod_imagen');
-    if (!nombreInput) return;
 
     var autoNombre = true;
 
-    nombreInput.addEventListener('input', function () {
-        autoNombre = nombreInput.value.trim() === '';
-    });
+    if (nombreInput) {
+        nombreInput.addEventListener('input', function () {
+            autoNombre = nombreInput.value.trim() === '';
+        });
+    }
 
     function codigoProducto() {
         if (codigoInput) {
@@ -275,7 +270,7 @@
     }
 
     function actualizarNombreImagen() {
-        if (!autoNombre) return;
+        if (!nombreInput || !autoNombre) return;
         var codigo = codigoProducto();
         if (!codigo) return;
         var file = imagenInput && imagenInput.files && imagenInput.files[0] ? imagenInput.files[0] : null;
@@ -297,6 +292,185 @@
             }
         });
     }
+
+    var fraseForm = document.getElementById('maeprod-frase-form');
+    if (!fraseForm) return;
+
+    var fraseInput = document.getElementById('frase');
+    var fraseSubmit = document.getElementById('maeprod-frase-submit');
+    var fraseError = document.getElementById('maeprod-frase-error');
+    var frasesList = document.getElementById('maeprod-frases-list');
+    var frasesEmpty = document.getElementById('maeprod-frases-empty');
+    var csrfToken = fraseForm.querySelector('input[name="_token"]')?.value
+        || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || '';
+
+    function csrfHeaders() {
+        return {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken,
+        };
+    }
+
+    function showFraseError(msg) {
+        if (!fraseError) return;
+        fraseError.textContent = msg || '';
+        fraseError.classList.toggle('d-none', !msg);
+        fraseError.classList.toggle('d-block', !!msg);
+        if (fraseInput) {
+            fraseInput.classList.toggle('is-invalid', !!msg);
+        }
+    }
+
+    function syncFrasesEmptyState() {
+        var hasItems = frasesList && frasesList.querySelectorAll('[data-frase-id]').length > 0;
+        if (frasesList) {
+            frasesList.classList.toggle('d-none', !hasItems);
+        }
+        if (frasesEmpty) {
+            frasesEmpty.classList.toggle('d-none', hasItems);
+        }
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function appendFraseItem(frase) {
+        if (!frasesList || !frase) return;
+        var li = document.createElement('li');
+        li.className = 'list-group-item px-0 d-flex justify-content-between align-items-center gap-2';
+        li.setAttribute('data-frase-id', String(frase.id));
+        li.innerHTML =
+            '<span class="small">' + escapeHtml(frase.frase) + '</span>' +
+            '<button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 maeprod-frase-delete" title="Eliminar" data-url="' +
+            escapeHtml(frase.destroy_url) + '">&times;</button>';
+        frasesList.appendChild(li);
+        syncFrasesEmptyState();
+    }
+
+    function removeFraseItem(id) {
+        if (!frasesList) return;
+        var li = frasesList.querySelector('[data-frase-id="' + id + '"]');
+        if (li) {
+            li.remove();
+        }
+        syncFrasesEmptyState();
+    }
+
+    async function parseJsonResponse(res) {
+        try {
+            return await res.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    fraseForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        showFraseError('');
+
+        var valor = (fraseInput && fraseInput.value ? fraseInput.value : '').trim();
+        if (valor.length < 2) {
+            showFraseError('La frase debe tener al menos 2 caracteres.');
+            return;
+        }
+
+        if (fraseSubmit) {
+            fraseSubmit.disabled = true;
+            fraseSubmit.textContent = 'Agregando…';
+        }
+        if (fraseInput) {
+            fraseInput.disabled = true;
+        }
+
+        try {
+            var body = new FormData(fraseForm);
+            var res = await fetch(fraseForm.action, {
+                method: 'POST',
+                headers: csrfHeaders(),
+                body: body,
+                credentials: 'same-origin',
+            });
+            var data = await parseJsonResponse(res);
+
+            if (data && data.producto_eliminado && data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+
+            if (!res.ok) {
+                var msg = (data && (data.message || (data.errors && data.errors.frase && data.errors.frase[0]))) ||
+                    'No se pudo agregar la frase.';
+                showFraseError(msg);
+                return;
+            }
+
+            if (data && data.frase) {
+                appendFraseItem(data.frase);
+            }
+            if (fraseInput) {
+                fraseInput.value = '';
+                fraseInput.focus();
+            }
+        } catch (e) {
+            showFraseError('Error de red al agregar la frase.');
+        } finally {
+            if (fraseSubmit) {
+                fraseSubmit.disabled = false;
+                fraseSubmit.textContent = 'Agregar';
+            }
+            if (fraseInput) {
+                fraseInput.disabled = false;
+            }
+        }
+    });
+
+    document.addEventListener('click', async function (event) {
+        var btn = event.target.closest('.maeprod-frase-delete');
+        if (!btn || !frasesList || !frasesList.contains(btn)) return;
+
+        var url = btn.getAttribute('data-url');
+        if (!url) return;
+        if (!window.confirm('¿Eliminar esta frase?')) return;
+
+        var li = btn.closest('[data-frase-id]');
+        var fraseId = li ? li.getAttribute('data-frase-id') : null;
+        btn.disabled = true;
+
+        try {
+            var res = await fetch(url, {
+                method: 'POST',
+                headers: Object.assign({
+                    'Content-Type': 'application/json',
+                }, csrfHeaders()),
+                body: JSON.stringify({}),
+                credentials: 'same-origin',
+            });
+            var data = await parseJsonResponse(res);
+
+            if (data && data.producto_eliminado && data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+
+            if (!res.ok) {
+                window.alert((data && data.message) || 'No se pudo eliminar la frase.');
+                btn.disabled = false;
+                return;
+            }
+
+            if (fraseId) {
+                removeFraseItem(fraseId);
+            }
+        } catch (e) {
+            window.alert('Error de red al eliminar la frase.');
+            btn.disabled = false;
+        }
+    });
 })();
 </script>
 @endpush

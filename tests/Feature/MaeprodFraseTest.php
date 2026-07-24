@@ -72,6 +72,53 @@ class MaeprodFraseTest extends TestCase
         $this->assertDatabaseMissing('maeprod_frases', ['id' => $frase->id]);
     }
 
+    public function test_ajax_agregar_y_eliminar_frase(): void
+    {
+        $headers = [
+            'Accept' => 'application/json',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ];
+
+        $create = $this->actingAs($this->superadmin)
+            ->postJson(route('admin.productos.frases.store', 'DEMO003'), [
+                'frase' => 'adhesivo barra',
+            ], $headers)
+            ->assertOk()
+            ->assertJsonPath('frase.frase', 'adhesivo barra');
+
+        $fraseId = (int) $create->json('frase.id');
+        $this->assertGreaterThan(0, $fraseId);
+
+        $this->actingAs($this->superadmin)
+            ->postJson(route('admin.productos.frases.destroy', [
+                'prod_item' => 'DEMO003',
+                'frase' => $fraseId,
+            ]), [], $headers)
+            ->assertOk()
+            ->assertJsonPath('id', $fraseId);
+
+        $this->assertDatabaseMissing('maeprod_frases', ['id' => $fraseId]);
+    }
+
+    public function test_ajax_frase_duplicada_devuelve_error(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'lapiz azul',
+            'frase_norm' => 'LAPIZ AZUL',
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->postJson(route('admin.productos.frases.store', 'OTRO01'), [
+                'frase' => 'lapiz azul',
+            ], [
+                'Accept' => 'application/json',
+                'X-Requested-With' => 'XMLHttpRequest',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('frase');
+    }
+
     public function test_frase_no_puede_repetirse_en_otro_producto(): void
     {
         MaeprodFrase::query()->create([

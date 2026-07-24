@@ -184,9 +184,24 @@ class MaeprodController extends Controller
             ->with('success', 'Producto actualizado.');
     }
 
-    public function storeFrase(Request $request, string $prod_item): RedirectResponse
+    public function storeFrase(Request $request, string $prod_item): RedirectResponse|JsonResponse
     {
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $listadoQuery = $this->listadoQuery($request);
+        $producto = Maeprod::query()->find($prod_item);
+
+        if (! $producto) {
+            if ($this->wantsFraseJson($request)) {
+                return response()->json([
+                    'message' => 'El producto ya no existe o fue eliminado.',
+                    'producto_eliminado' => true,
+                    'redirect' => route('admin.productos.index', $listadoQuery),
+                ], 404);
+            }
+
+            return redirect()
+                ->route('admin.productos.index', $listadoQuery)
+                ->with('info', 'El producto ya no existe o fue eliminado.');
+        }
 
         $request->validate([
             'frase' => ['required', 'string', 'min:2', 'max:200'],
@@ -195,22 +210,44 @@ class MaeprodController extends Controller
             'frase.min' => 'La frase debe tener al menos 2 caracteres.',
         ]);
 
-        $this->maeprodService->agregarFrase($producto, (string) $request->input('frase'));
+        $frase = $this->maeprodService->agregarFrase($producto, (string) $request->input('frase'));
+
+        if ($this->wantsFraseJson($request)) {
+            return response()->json([
+                'message' => 'Frase agregada para vincular en Agile.',
+                'frase' => [
+                    'id' => $frase->id,
+                    'frase' => $frase->frase,
+                    'destroy_url' => route('admin.productos.frases.destroy', [
+                        'prod_item' => $producto->prod_item,
+                        'frase' => $frase->id,
+                    ]),
+                ],
+            ]);
+        }
 
         return redirect()
             ->route('admin.productos.edit', array_merge(
                 ['prod_item' => $producto->prod_item],
-                $this->listadoQuery($request),
+                $listadoQuery,
             ))
             ->with('success', 'Frase agregada para vincular en Agile.');
     }
 
-    public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse
+    public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse|JsonResponse
     {
         $listadoQuery = $this->listadoQuery($request);
         $producto = Maeprod::query()->find($prod_item);
 
         if (! $producto) {
+            if ($this->wantsFraseJson($request)) {
+                return response()->json([
+                    'message' => 'El producto ya no existe o fue eliminado.',
+                    'producto_eliminado' => true,
+                    'redirect' => route('admin.productos.index', $listadoQuery),
+                ], 404);
+            }
+
             return redirect()
                 ->route('admin.productos.index', $listadoQuery)
                 ->with('info', 'El producto ya no existe o fue eliminado.');
@@ -222,6 +259,13 @@ class MaeprodController extends Controller
             ->first();
 
         if (! $fraseModel) {
+            if ($this->wantsFraseJson($request)) {
+                return response()->json([
+                    'message' => 'La frase ya estaba eliminada.',
+                    'ya_eliminada' => true,
+                ]);
+            }
+
             return redirect()
                 ->route('admin.productos.edit', array_merge(
                     ['prod_item' => $producto->prod_item],
@@ -231,6 +275,13 @@ class MaeprodController extends Controller
         }
 
         $this->maeprodService->eliminarFrase($producto, $fraseModel);
+
+        if ($this->wantsFraseJson($request)) {
+            return response()->json([
+                'message' => 'Frase eliminada.',
+                'id' => $frase,
+            ]);
+        }
 
         return redirect()
             ->route('admin.productos.edit', array_merge(
@@ -698,5 +749,10 @@ class MaeprodController extends Controller
         }
 
         return $query;
+    }
+
+    private function wantsFraseJson(Request $request): bool
+    {
+        return $request->expectsJson() || $request->ajax();
     }
 }
