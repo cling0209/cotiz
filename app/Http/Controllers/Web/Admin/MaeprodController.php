@@ -199,10 +199,15 @@ class MaeprodController extends Controller
             ->with('success', 'Frase agregada para vincular en Agile.');
     }
 
-    public function destroyFrase(Request $request, string $prod_item, MaeprodFrase $frase): RedirectResponse
+    public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse
     {
         $producto = Maeprod::query()->findOrFail($prod_item);
-        $this->maeprodService->eliminarFrase($producto, $frase);
+        $fraseModel = MaeprodFrase::query()
+            ->where('prod_item', $producto->prod_item)
+            ->whereKey($frase)
+            ->firstOrFail();
+
+        $this->maeprodService->eliminarFrase($producto, $fraseModel);
 
         return redirect()
             ->route('admin.productos.edit', array_merge(

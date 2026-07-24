@@ -220,10 +220,9 @@
                                     <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
                                         <span class="small">{{ $fraseItem->frase }}</span>
                                         <form method="post"
-                                              action="{{ route('admin.productos.frases.destroy', [$producto->prod_item, $fraseItem]) }}"
+                                              action="{{ route('admin.productos.frases.destroy', ['prod_item' => $producto->prod_item, 'frase' => $fraseItem->id]) }}"
                                               onsubmit="return confirm('¿Eliminar esta frase?');">
                                             @csrf
-                                            @method('DELETE')
                                             @foreach($listadoQuery as $key => $value)
                                                 <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                                             @endforeach

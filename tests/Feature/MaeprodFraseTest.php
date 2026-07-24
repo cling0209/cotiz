@@ -63,7 +63,10 @@ class MaeprodFraseTest extends TestCase
         $frase = MaeprodFrase::query()->firstOrFail();
 
         $this->actingAs($this->superadmin)
-            ->delete(route('admin.productos.frases.destroy', ['DEMO003', $frase]))
+            ->post(route('admin.productos.frases.destroy', [
+                'prod_item' => 'DEMO003',
+                'frase' => $frase->id,
+            ]))
             ->assertRedirect(route('admin.productos.edit', 'DEMO003'));
 
         $this->assertDatabaseMissing('maeprod_frases', ['id' => $frase->id]);
