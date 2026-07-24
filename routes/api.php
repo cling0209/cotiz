@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AgileController;
+use App\Http\Controllers\Api\V1\MaeprodFraseApiController;
 use App\Http\Controllers\Api\V1\NotaApiController;
 use App\Http\Controllers\Api\V1\NotaConsultaApiController;
 use App\Http\Controllers\Api\V1\NotaEnvioApiController;
@@ -36,6 +37,9 @@ Route::prefix('v1')->group(function () {
 
     Route::post('/organismo-observacion', [OrganismoObservacionApiController::class, 'store'])
         ->middleware('nota.basic');
+
+    Route::post('/maeprod-frase', [MaeprodFraseApiController::class, 'store'])
+        ->middleware('nota.basic');
 });
 
 // Alias legacy
@@ -62,3 +66,7 @@ Route::post('/oportunidad-encontrada', [OportunidadEncontradaApiController::clas
 
 Route::post('/organismo-observacion', [OrganismoObservacionApiController::class, 'store'])
     ->middleware('nota.basic');
+
+Route::post('/maeprod-frase', [MaeprodFraseApiController::class, 'store'])
+    ->middleware('nota.basic');
+

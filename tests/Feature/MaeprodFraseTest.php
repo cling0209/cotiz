@@ -8,6 +8,7 @@ use App\Models\User;
 use Database\Seeders\FamprodSeeder;
 use Database\Seeders\GramajeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class MaeprodFraseTest extends TestCase
@@ -181,5 +182,140 @@ class MaeprodFraseTest extends TestCase
             ->get(route('admin.productos.edit', 'NOEXISTE'))
             ->assertRedirect(route('admin.productos.index'))
             ->assertSessionHas('info', 'El producto ya no existe o fue eliminado.');
+    }
+
+    public function test_agregar_frase_sincroniza_al_par(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://peer.test/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'https://peer.test/api/v1/maeprod-frase' => Http::response([
+                'resultado' => 'OK',
+                'created' => true,
+            ], 200),
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.productos.frases.store', 'DEMO003'), [
+                'frase' => 'toner brother',
+            ])
+            ->assertRedirect(route('admin.productos.edit', 'DEMO003'))
+            ->assertSessionHas('success');
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/maeprod-frase')
+                && ($request['accion'] ?? null) === 'graba'
+                && ($request['prod_item'] ?? null) === 'DEMO003'
+                && ($request['frase_norm'] ?? null) === 'TONER BROTHER'
+                && ($request['replicacion'] ?? null) === true;
+        });
+    }
+
+    public function test_eliminar_frase_sincroniza_al_par(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://peer.test/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'https://peer.test/api/v1/maeprod-frase' => Http::response([
+                'resultado' => 'OK',
+                'deleted' => true,
+            ], 200),
+        ]);
+
+        $frase = MaeprodFrase::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'toner brother',
+            'frase_norm' => 'TONER BROTHER',
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.productos.frases.destroy', [
+                'prod_item' => 'DEMO003',
+                'frase' => $frase->id,
+            ]))
+            ->assertRedirect(route('admin.productos.edit', 'DEMO003'));
+
+        Http::assertSent(function ($request) {
+            return str_ends_with($request->url(), '/maeprod-frase')
+                && ($request['accion'] ?? null) === 'elimina'
+                && ($request['frase_norm'] ?? null) === 'TONER BROTHER';
+        });
+    }
+
+    public function test_api_graba_y_elimina_frase_desde_par(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        $this->withBasicAuth('api_user', 'api_pass')
+            ->postJson('/api/v1/maeprod-frase', [
+                'accion' => 'graba',
+                'replicacion' => true,
+                'prod_item' => 'DEMO003',
+                'frase' => 'papel bond a4',
+                'frase_norm' => 'PAPEL BOND A4',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'resultado' => 'OK',
+                'created' => true,
+            ]);
+
+        $this->assertDatabaseHas('maeprod_frases', [
+            'prod_item' => 'DEMO003',
+            'frase_norm' => 'PAPEL BOND A4',
+        ]);
+
+        $this->withBasicAuth('api_user', 'api_pass')
+            ->postJson('/api/v1/maeprod-frase', [
+                'accion' => 'elimina',
+                'replicacion' => true,
+                'prod_item' => 'DEMO003',
+                'frase_norm' => 'PAPEL BOND A4',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'resultado' => 'OK',
+                'deleted' => true,
+            ]);
+
+        $this->assertDatabaseMissing('maeprod_frases', [
+            'frase_norm' => 'PAPEL BOND A4',
+        ]);
+    }
+
+    public function test_api_graba_omite_si_producto_no_existe(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        $this->withBasicAuth('api_user', 'api_pass')
+            ->postJson('/api/v1/maeprod-frase', [
+                'accion' => 'graba',
+                'prod_item' => 'NOEXISTE',
+                'frase' => 'algo raro',
+                'frase_norm' => 'ALGO RARO',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'resultado' => 'OK',
+                'skipped' => true,
+            ]);
+
+        $this->assertSame(0, MaeprodFrase::query()->where('frase_norm', 'ALGO RARO')->count());
     }
 }

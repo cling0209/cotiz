@@ -8,6 +8,7 @@ use App\Models\MaeprodFrase;
 use App\Models\MaeprodImportRun;
 use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
+use App\Services\MaeprodFraseRelayService;
 use App\Services\MaeprodImportJobService;
 use App\Services\MaeprodImportLockService;
 use App\Services\MaeprodImportProgressService;
@@ -20,12 +21,14 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class MaeprodController extends Controller
 {
     public function __construct(
         protected MaeprodAdminService $maeprodService,
         protected MaeprodImportService $importService,
+        protected MaeprodFraseRelayService $fraseRelay,
     ) {}
 
     public function index(Request $request): View
@@ -212,9 +215,22 @@ class MaeprodController extends Controller
 
         $frase = $this->maeprodService->agregarFrase($producto, (string) $request->input('frase'));
 
+        $mensaje = 'Frase agregada para vincular en Agile.';
+        $syncError = null;
+        try {
+            $remoto = $this->fraseRelay->replicarAgregar($frase);
+            if ($remoto !== '') {
+                $mensaje .= ' '.$remoto;
+            }
+        } catch (Throwable $e) {
+            $this->fraseRelay->logFalloSync('agregar', $e);
+            $syncError = $e->getMessage();
+        }
+
         if ($this->wantsFraseJson($request)) {
             return response()->json([
-                'message' => 'Frase agregada para vincular en Agile.',
+                'message' => $mensaje,
+                'sync_error' => $syncError,
                 'frase' => [
                     'id' => $frase->id,
                     'frase' => $frase->frase,
@@ -226,12 +242,18 @@ class MaeprodController extends Controller
             ]);
         }
 
-        return redirect()
+        $redirect = redirect()
             ->route('admin.productos.edit', array_merge(
                 ['prod_item' => $producto->prod_item],
                 $listadoQuery,
             ))
-            ->with('success', 'Frase agregada para vincular en Agile.');
+            ->with('success', $mensaje);
+
+        if ($syncError !== null) {
+            $redirect->with('error', $syncError);
+        }
+
+        return $redirect;
     }
 
     public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse|JsonResponse
@@ -274,21 +296,46 @@ class MaeprodController extends Controller
                 ->with('info', 'La frase ya estaba eliminada.');
         }
 
+        $snapshot = [
+            'prod_item' => $fraseModel->prod_item,
+            'frase' => $fraseModel->frase,
+            'frase_norm' => $fraseModel->frase_norm,
+        ];
+
         $this->maeprodService->eliminarFrase($producto, $fraseModel);
+
+        $mensaje = 'Frase eliminada.';
+        $syncError = null;
+        try {
+            $remoto = $this->fraseRelay->replicarEliminar($snapshot);
+            if ($remoto !== '') {
+                $mensaje .= ' '.$remoto;
+            }
+        } catch (Throwable $e) {
+            $this->fraseRelay->logFalloSync('eliminar', $e);
+            $syncError = $e->getMessage();
+        }
 
         if ($this->wantsFraseJson($request)) {
             return response()->json([
-                'message' => 'Frase eliminada.',
+                'message' => $mensaje,
+                'sync_error' => $syncError,
                 'id' => $frase,
             ]);
         }
 
-        return redirect()
+        $redirect = redirect()
             ->route('admin.productos.edit', array_merge(
                 ['prod_item' => $producto->prod_item],
                 $listadoQuery,
             ))
-            ->with('success', 'Frase eliminada.');
+            ->with('success', $mensaje);
+
+        if ($syncError !== null) {
+            $redirect->with('error', $syncError);
+        }
+
+        return $redirect;
     }
 
     public function destroy(Request $request, string $prod_item): RedirectResponse

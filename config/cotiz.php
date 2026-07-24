@@ -30,6 +30,10 @@ return [
         // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../organismo-observacion).
         'url' => env('COTIZ_API_ORGANISMO_OBSERVACION_URL', ''),
     ],
+    'api_maeprod_frase' => [
+        // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../maeprod-frase).
+        'url' => env('COTIZ_API_MAEPROD_FRASE_URL', ''),
+    ],
     'api_palabra_clave' => [
         // Legacy: ya no se sincronizan palabras clave al par.
         // Si vacío, se deriva de COTIZ_API_USUARIO_URL (.../usuario → .../palabra-clave).

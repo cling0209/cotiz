@@ -191,6 +191,7 @@
                             <em>adhesivo en barra 21 ml</em>.
                             Preferir frases de <strong>2 o m&aacute;s palabras</strong> para evitar falsos positivos.
                             Cada frase solo puede estar en un producto.
+                            Al agregar o eliminar se sincroniza con el sitio par (Romulo ↔ Reicol) si la API está configurada.
                         </p>
 
                         <form id="maeprod-frase-form"
@@ -416,6 +417,11 @@
             if (fraseInput) {
                 fraseInput.value = '';
                 fraseInput.focus();
+            }
+            if (data && data.sync_error) {
+                showFraseError(data.sync_error);
+            } else {
+                showFraseError('');
             }
         } catch (e) {
             showFraseError('Error de red al agregar la frase.');
