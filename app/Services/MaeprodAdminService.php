@@ -40,6 +40,7 @@ class MaeprodAdminService
         }
 
         return $query
+            ->with(['frases' => fn ($q) => $q->orderBy('frase')])
             ->orderBy('prod_familia')
             ->orderBy('prod_nombre')
             ->paginate($perPage)

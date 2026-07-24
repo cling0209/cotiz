@@ -454,3 +454,15 @@
     background: #f8fafc;
     border-top: 1px solid #e2e8f0;
 }
+
+/* Listado maeprod: descripción y frases a 2 líneas */
+.maeprod-list-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.35;
+    max-height: calc(1.35em * 2);
+    word-break: break-word;
+    cursor: default;
+}

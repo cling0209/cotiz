@@ -61,7 +61,8 @@
                     <tr>
                         <th style="width:52px"></th>
                         <th>C&oacute;digo</th>
-                        <th>Descripci&oacute;n</th>
+                        <th style="min-width:12rem">Descripci&oacute;n</th>
+                        <th style="min-width:10rem; max-width:14rem">Frases</th>
                         <th class="text-end">Stock</th>
                         <th class="text-end">Precio</th>
                         <th class="text-end">Costo</th>
@@ -72,7 +73,11 @@
                 </thead>
                 <tbody>
                     @forelse($productos as $producto)
-                        @php $imageUrl = $producto->buildExternalImageUrl(); @endphp
+                        @php
+                            $imageUrl = $producto->buildExternalImageUrl();
+                            $frasesLista = $producto->frases->pluck('frase')->filter()->values();
+                            $frasesCompletas = $frasesLista->implode(' · ');
+                        @endphp
                         <tr>
                             <td class="p-1">
                                 @if($imageUrl)
@@ -88,7 +93,24 @@
                                 @endif
                             </td>
                             <td><code>{{ $producto->prod_item }}</code></td>
-                            <td>{{ $producto->prod_nombre }}</td>
+                            <td>
+                                <div class="maeprod-list-clamp-2"
+                                     title="{{ $producto->prod_nombre }}">
+                                    {{ $producto->prod_nombre }}
+                                </div>
+                            </td>
+                            <td class="small" style="max-width:14rem">
+                                @if($frasesLista->isEmpty())
+                                    <span class="text-muted">—</span>
+                                @else
+                                    <div class="maeprod-list-clamp-2 text-muted"
+                                         title="{{ $frasesCompletas }}"
+                                         data-bs-toggle="tooltip"
+                                         data-bs-placement="top">
+                                        {{ $frasesCompletas }}
+                                    </div>
+                                @endif
+                            </td>
                             <td class="text-end text-muted small tabular-nums">{{ $producto->prod_stock_real !== null ? number_format((int) $producto->prod_stock_real, 0, ',', '.') : '—' }}</td>
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
@@ -112,7 +134,7 @@
                             @endif
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $mostrarAcciones ? 7 : 6 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
+                        <tr><td colspan="{{ $mostrarAcciones ? 8 : 7 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -141,6 +163,10 @@
 @push('scripts')
 <script>
 (function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        bootstrap.Tooltip.getOrCreateInstance(el, { container: 'body' });
+    });
+
     var modalEl = document.getElementById('modal-imagen-producto');
     var modalImg = document.getElementById('modal-imagen-producto-img');
     var modalTitle = document.getElementById('modal-imagen-producto-titulo');
