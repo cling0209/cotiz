@@ -6,6 +6,7 @@
 @php
     $esNuevo = ! $producto;
     $puedeEditarSoftland = $puedeEditarSoftland ?? auth()->user()?->isSuperAdmin();
+    $listadoQuery = $listadoQuery ?? [];
     $action = $esNuevo
         ? route('admin.productos.store')
         : route('admin.productos.update', $producto->prod_item);
@@ -15,7 +16,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h4 mb-0">{{ $esNuevo ? 'Nuevo producto' : 'Editar producto' }}</h1>
         @if(auth()->user()->isSuperAdmin() || auth()->user()->isEjecutivo())
-            <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+            <a href="{{ route('admin.productos.index', $listadoQuery) }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
         @else
             <a href="{{ route('admin.cotizaciones.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Cotizaciones</a>
         @endif
@@ -28,6 +29,9 @@
                     <form method="post" action="{{ $action }}" enctype="multipart/form-data">
                         @csrf
                         @if(! $esNuevo) @method('PUT') @endif
+                        @foreach($listadoQuery as $key => $value)
+                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                        @endforeach
 
                         <div class="row g-3">
                             <div class="col-md-4">
@@ -187,6 +191,9 @@
 
                         <form method="post" action="{{ route('admin.productos.frases.store', $producto->prod_item) }}" class="mb-3">
                             @csrf
+                            @foreach($listadoQuery as $key => $value)
+                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                            @endforeach
                             <label class="form-label small mb-1" for="frase">Nueva frase</label>
                             <div class="input-group input-group-sm">
                                 <input type="text" name="frase" id="frase"
@@ -213,6 +220,9 @@
                                               onsubmit="return confirm('¿Eliminar esta frase?');">
                                             @csrf
                                             @method('DELETE')
+                                            @foreach($listadoQuery as $key => $value)
+                                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                            @endforeach
                                             <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Eliminar">
                                                 &times;
                                             </button>

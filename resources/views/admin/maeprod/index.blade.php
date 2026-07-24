@@ -7,6 +7,7 @@
     $puedeModificar = $puedeModificar ?? auth()->user()?->isSuperAdmin();
     $puedeEditarImagen = $puedeEditarImagen ?? ($puedeModificar || auth()->user()?->isEjecutivo());
     $mostrarAcciones = $puedeModificar || $puedeEditarImagen;
+    $listadoQuery = $listadoQuery ?? [];
 @endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -20,7 +21,7 @@
                     <i class="bi bi-upload"></i> Carga masiva
                 </a>
             @endif
-            <a href="{{ route('admin.productos.create') }}" class="btn btn-primary btn-sm">
+            <a href="{{ route('admin.productos.create', $listadoQuery) }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg"></i> Nuevo producto
             </a>
         </div>
@@ -94,15 +95,18 @@
                             @if($mostrarAcciones)
                             <td class="text-end text-nowrap">
                                 @if($puedeModificar)
-                                    <a href="{{ route('admin.productos.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
+                                    <a href="{{ route('admin.productos.edit', array_merge(['prod_item' => $producto->prod_item], $listadoQuery)) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
                                     <form method="post" action="{{ route('admin.productos.destroy', $producto->prod_item) }}" class="d-inline"
                                           data-confirm="¿Eliminar el producto {{ $producto->prod_item }}? Las cotizaciones existentes conservan sus líneas.">
                                         @csrf
                                         @method('DELETE')
+                                        @foreach($listadoQuery as $key => $value)
+                                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                        @endforeach
                                         <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
                                     </form>
                                 @else
-                                    <a href="{{ route('admin.productos.imagen.edit', $producto->prod_item) }}" class="btn btn-outline-primary btn-sm py-0">Imagen</a>
+                                    <a href="{{ route('admin.productos.imagen.edit', array_merge(['prod_item' => $producto->prod_item], $listadoQuery)) }}" class="btn btn-outline-primary btn-sm py-0">Imagen</a>
                                 @endif
                             </td>
                             @endif

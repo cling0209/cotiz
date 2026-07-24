@@ -49,6 +49,7 @@ class MaeprodController extends Controller
                 'q' => $request->string('q')->toString(),
                 'familia' => $request->string('familia')->toString(),
             ],
+            'listadoQuery' => $this->listadoQuery($request),
             'puedeModificar' => $request->user()->isSuperAdmin(),
             'puedeEditarImagen' => $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
         ]);
@@ -68,6 +69,7 @@ class MaeprodController extends Controller
             'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
             'puedeEditarSoftland' => $request->user()->isSuperAdmin(),
+            'listadoQuery' => $this->listadoQuery($request),
         ]);
     }
 
@@ -109,9 +111,12 @@ class MaeprodController extends Controller
 
         $producto = Maeprod::query()->findOrFail($prod_item);
 
+        $listadoQuery = $this->listadoQuery($request);
+
         return view('admin.maeprod.imagen', [
             'producto' => $producto,
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
+            'listadoQuery' => $listadoQuery,
         ]);
     }
 
@@ -135,11 +140,14 @@ class MaeprodController extends Controller
         );
 
         return redirect()
-            ->route('admin.productos.imagen.edit', $producto->prod_item)
+            ->route('admin.productos.imagen.edit', array_merge(
+                ['prod_item' => $producto->prod_item],
+                $this->listadoQuery($request),
+            ))
             ->with('success', 'Imagen actualizada.');
     }
 
-    public function edit(string $prod_item): View
+    public function edit(Request $request, string $prod_item): View
     {
         $producto = Maeprod::query()->with('frases')->findOrFail($prod_item);
 
@@ -149,6 +157,7 @@ class MaeprodController extends Controller
             'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
             'puedeEditarSoftland' => true,
+            'listadoQuery' => $this->listadoQuery($request),
         ]);
     }
 
@@ -162,7 +171,10 @@ class MaeprodController extends Controller
         $this->maeprodService->actualizar($producto, $datos, $request->user()->username);
 
         return redirect()
-            ->route('admin.productos.edit', $producto->prod_item)
+            ->route('admin.productos.edit', array_merge(
+                ['prod_item' => $producto->prod_item],
+                $this->listadoQuery($request),
+            ))
             ->with('success', 'Producto actualizado.');
     }
 
@@ -180,27 +192,33 @@ class MaeprodController extends Controller
         $this->maeprodService->agregarFrase($producto, (string) $request->input('frase'));
 
         return redirect()
-            ->route('admin.productos.edit', $producto->prod_item)
+            ->route('admin.productos.edit', array_merge(
+                ['prod_item' => $producto->prod_item],
+                $this->listadoQuery($request),
+            ))
             ->with('success', 'Frase agregada para vincular en Agile.');
     }
 
-    public function destroyFrase(string $prod_item, MaeprodFrase $frase): RedirectResponse
+    public function destroyFrase(Request $request, string $prod_item, MaeprodFrase $frase): RedirectResponse
     {
         $producto = Maeprod::query()->findOrFail($prod_item);
         $this->maeprodService->eliminarFrase($producto, $frase);
 
         return redirect()
-            ->route('admin.productos.edit', $producto->prod_item)
+            ->route('admin.productos.edit', array_merge(
+                ['prod_item' => $producto->prod_item],
+                $this->listadoQuery($request),
+            ))
             ->with('success', 'Frase eliminada.');
     }
 
-    public function destroy(string $prod_item): RedirectResponse
+    public function destroy(Request $request, string $prod_item): RedirectResponse
     {
         $producto = Maeprod::query()->findOrFail($prod_item);
         $producto->delete();
 
         return redirect()
-            ->route('admin.productos.index')
+            ->route('admin.productos.index', $this->listadoQuery($request))
             ->with('success', 'Producto eliminado del catálogo.');
     }
 
@@ -625,5 +643,32 @@ class MaeprodController extends Controller
             UPLOAD_ERR_NO_FILE => 'No se recibió ningún archivo en el fragmento.',
             default => 'Fragmento inválido: '.($chunk?->getErrorMessage() ?: 'error desconocido'),
         };
+    }
+
+    /**
+     * Query string del listado (filtros + página) para no perderlos al ir/volver del detalle.
+     *
+     * @return array{q?: string, familia?: string, page?: int}
+     */
+    private function listadoQuery(Request $request): array
+    {
+        $query = [];
+
+        $q = $request->string('q')->trim()->toString();
+        if ($q !== '') {
+            $query['q'] = $q;
+        }
+
+        $familia = $request->string('familia')->trim()->toString();
+        if ($familia !== '') {
+            $query['familia'] = $familia;
+        }
+
+        $page = $request->integer('page');
+        if ($page > 1) {
+            $query['page'] = $page;
+        }
+
+        return $query;
     }
 }

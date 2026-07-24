@@ -3,13 +3,14 @@
 @section('title', 'Imagen del producto')
 
 @section('content')
+@php $listadoQuery = $listadoQuery ?? []; @endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
             <h1 class="h4 mb-0">Actualizar imagen</h1>
             <p class="text-muted small mb-0">Solo puede modificar la imagen del producto.</p>
         </div>
-        <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
+        <a href="{{ route('admin.productos.index', $listadoQuery) }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
     </div>
 
     @if(session('success'))
@@ -36,6 +37,9 @@
                     <form method="post" action="{{ route('admin.productos.imagen.update', $producto->prod_item) }}" enctype="multipart/form-data">
                         @csrf
                         @method('PUT')
+                        @foreach($listadoQuery as $key => $value)
+                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                        @endforeach
 
                         <div class="row g-3">
                             <div class="col-md-6">
