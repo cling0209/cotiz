@@ -466,3 +466,14 @@
     word-break: break-word;
     cursor: default;
 }
+
+.maeprod-frase-sep {
+    display: inline-block;
+    color: #2563eb;
+    font-weight: 800;
+    font-size: 1.15em;
+    line-height: 1;
+    margin: 0 0.4em;
+    vertical-align: -0.05em;
+    opacity: 1;
+}

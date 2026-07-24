@@ -107,7 +107,9 @@
                                          title="{{ $frasesCompletas }}"
                                          data-bs-toggle="tooltip"
                                          data-bs-placement="top">
-                                        {{ $frasesCompletas }}
+                                        @foreach($frasesLista as $i => $fraseTexto)
+                                            @if($i > 0)<span class="maeprod-frase-sep" aria-hidden="true">•</span>@endif{{ $fraseTexto }}
+                                        @endforeach
                                     </div>
                                 @endif
                             </td>
