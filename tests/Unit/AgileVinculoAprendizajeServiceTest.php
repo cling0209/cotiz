@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
 use App\Services\AgileVinculoAprendizajeService;
 use App\Services\CompraAgilPayloadMapper;
 use App\Services\CompraAgilTextoParserService;
@@ -167,5 +168,57 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
             $resultado['producto'] === null
             || ($resultado['producto']['prod_item'] ?? null) !== '56841S'
         );
+    }
+
+    public function test_frase_maestro_vincula_por_contiene(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'lapiz azul',
+            'frase_norm' => 'LAPIZ AZUL',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('LAPIZ AZUL ESCOLAR FABER 12 UN');
+
+        $this->assertSame('vinculado', $resultado['estado']);
+        $this->assertFalse($resultado['es_sugerencia']);
+        $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $resultado['origen']);
+    }
+
+    public function test_frase_maestro_gana_sobre_aprendizaje(): void
+    {
+        $desc = 'GREDAS ESCOLARES DE 1 KILO';
+        $this->service->guardarAprendizaje($desc, 'PAPEL001', '14111509');
+
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'gredas escolares',
+            'frase_norm' => 'GREDAS ESCOLARES',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion($desc);
+
+        $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $resultado['origen']);
+    }
+
+    public function test_frase_mas_larga_gana_entre_varias(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'PAPEL001',
+            'frase' => 'lapiz',
+            'frase_norm' => 'LAPIZ',
+        ]);
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'lapiz azul',
+            'frase_norm' => 'LAPIZ AZUL',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('LAPIZ AZUL FABER');
+
+        $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $resultado['origen']);
     }
 }

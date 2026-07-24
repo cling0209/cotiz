@@ -169,10 +169,58 @@
         </div>
         @if($producto)
             <div class="col-lg-4">
-                <div class="card shadow-sm">
+                <div class="card shadow-sm mb-3">
                     <div class="card-header py-2 small fw-semibold">Vista previa</div>
                     <div class="card-body text-center">
                         <x-product-image :maeprod="$producto" variant="admin-preview" />
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-header py-2 small fw-semibold">Frases para vincular (Agile)</div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-3">
+                            Si la descripci&oacute;n de Compra &Aacute;gil <strong>contiene</strong> alguna de estas frases,
+                            se usa este producto (prioridad sobre el aprendizaje autom&aacute;tico).
+                            Cada frase solo puede estar en un producto.
+                        </p>
+
+                        <form method="post" action="{{ route('admin.productos.frases.store', $producto->prod_item) }}" class="mb-3">
+                            @csrf
+                            <label class="form-label small mb-1" for="frase">Nueva frase</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" name="frase" id="frase"
+                                       class="form-control @error('frase') is-invalid @enderror"
+                                       maxlength="200" required
+                                       placeholder="Ej: lapiz azul"
+                                       value="{{ old('frase') }}">
+                                <button type="submit" class="btn btn-primary">Agregar</button>
+                            </div>
+                            @error('frase')
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
+                        </form>
+
+                        @if($producto->frases->isEmpty())
+                            <p class="small text-muted mb-0">Sin frases a&uacute;n.</p>
+                        @else
+                            <ul class="list-group list-group-flush">
+                                @foreach($producto->frases as $fraseItem)
+                                    <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
+                                        <span class="small">{{ $fraseItem->frase }}</span>
+                                        <form method="post"
+                                              action="{{ route('admin.productos.frases.destroy', [$producto->prod_item, $fraseItem]) }}"
+                                              onsubmit="return confirm('¿Eliminar esta frase?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Eliminar">
+                                                &times;
+                                            </button>
+                                        </form>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
                     </div>
                 </div>
             </div>

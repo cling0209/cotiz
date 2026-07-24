@@ -205,6 +205,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             Route::get('productos/{prod_item}', [MaeprodController::class, 'edit'])->name('productos.edit')->where('prod_item', '[^/]+');
             Route::put('productos/{prod_item}', [MaeprodController::class, 'update'])->name('productos.update')->where('prod_item', '[^/]+');
+            Route::post('productos/{prod_item}/frases', [MaeprodController::class, 'storeFrase'])->name('productos.frases.store')->where('prod_item', '[^/]+');
+            Route::delete('productos/{prod_item}/frases/{frase}', [MaeprodController::class, 'destroyFrase'])->name('productos.frases.destroy')->where('prod_item', '[^/]+')->whereNumber('frase');
             Route::delete('productos/{prod_item}', [MaeprodController::class, 'destroy'])->name('productos.destroy')->where('prod_item', '[^/]+');
 
             Route::get('usuarios', [UserController::class, 'index'])->name('users.index');

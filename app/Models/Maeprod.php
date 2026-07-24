@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Maeprod extends Model
 {
@@ -29,6 +30,12 @@ class Maeprod extends Model
             'prod_item_softland_fecha' => 'datetime',
             'peso_kg' => 'decimal:3',
         ];
+    }
+
+    public function frases(): HasMany
+    {
+        return $this->hasMany(MaeprodFrase::class, 'prod_item', 'prod_item')
+            ->orderBy('frase');
     }
 
     public function imageUrl(): string

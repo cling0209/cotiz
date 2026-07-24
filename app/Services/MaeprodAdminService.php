@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Famprod;
 use App\Models\Gramaje;
 use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
@@ -15,6 +16,7 @@ class MaeprodAdminService
 {
     public function __construct(
         protected ProductImageStorageService $imageStorage,
+        protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
     ) {}
 
     public function listado(?string $term, ?string $familia, int $perPage = 20): LengthAwarePaginator
@@ -270,6 +272,50 @@ class MaeprodAdminService
         }
 
         return $reglas;
+    }
+
+    public function agregarFrase(Maeprod $producto, string $frase): MaeprodFrase
+    {
+        $fraseDisplay = $this->normalizarFraseDisplay($frase);
+        $fraseNorm = $this->busquedaSimilitud->normalizarTexto($fraseDisplay);
+
+        if (mb_strlen($fraseDisplay) < 2) {
+            throw ValidationException::withMessages([
+                'frase' => 'La frase debe tener al menos 2 caracteres.',
+            ]);
+        }
+
+        if ($fraseNorm === '') {
+            throw ValidationException::withMessages([
+                'frase' => 'La frase no es válida para vincular.',
+            ]);
+        }
+
+        if (MaeprodFrase::query()->where('frase_norm', $fraseNorm)->exists()) {
+            throw ValidationException::withMessages([
+                'frase' => 'Esa frase ya está asignada a otro producto (o a este).',
+            ]);
+        }
+
+        return MaeprodFrase::query()->create([
+            'prod_item' => $producto->prod_item,
+            'frase' => mb_substr($fraseDisplay, 0, 200),
+            'frase_norm' => mb_substr($fraseNorm, 0, 200),
+        ]);
+    }
+
+    public function eliminarFrase(Maeprod $producto, MaeprodFrase $frase): void
+    {
+        if ($frase->prod_item !== $producto->prod_item) {
+            abort(404);
+        }
+
+        $frase->delete();
+    }
+
+    private function normalizarFraseDisplay(string $frase): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', $frase) ?? $frase);
     }
 
     private function nullablePesoKg(mixed $value): ?float

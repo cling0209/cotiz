@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
 use App\Support\AgileDescripcion;
 
 /**
@@ -140,6 +141,14 @@ class AgileVinculoAprendizajeService
      */
     private function resolverVinculoAprendido(string $descripcion): array
     {
+        $porFrase = $this->resolverPorFraseMaestro($descripcion);
+        if ($porFrase !== null) {
+            return [
+                'producto' => $porFrase,
+                'origen' => 'frase_maeprod',
+            ];
+        }
+
         $hash = $this->hashDescripcion($descripcion);
         if ($hash !== '') {
             $exacto = AgileMaeprod::query()
@@ -172,6 +181,46 @@ class AgileVinculoAprendizajeService
     }
 
     /**
+     * Match por “contiene”: la frase del maestro está dentro de la descripción Agile.
+     * Si varias coinciden, gana la frase más larga (más específica).
+     *
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function resolverPorFraseMaestro(string $descripcion): ?array
+    {
+        $descNorm = $this->descripcionNormalizada($descripcion);
+        if ($descNorm === '') {
+            return null;
+        }
+
+        $candidatas = MaeprodFrase::query()
+            ->where('frase_norm', '!=', '')
+            ->orderByRaw('LENGTH(frase_norm) DESC')
+            ->orderBy('id')
+            ->get(['prod_item', 'frase_norm']);
+
+        if ($candidatas->isEmpty()) {
+            return null;
+        }
+
+        foreach ($candidatas as $frase) {
+            $norm = (string) $frase->frase_norm;
+            if ($norm === '') {
+                continue;
+            }
+
+            if (str_contains($descNorm, $norm)) {
+                $mae = Maeprod::query()->find($frase->prod_item);
+                if ($mae) {
+                    return $this->maeprodArray($mae);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
     private function buscarSimilitudEnAprendizaje(string $descripcion): ?array
@@ -197,8 +246,9 @@ class AgileVinculoAprendizajeService
             ->where('prod_item', '!=', '0');
 
         $query->where(function ($q) use ($tokens) {
+            $like = $q->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
             foreach (array_slice($tokens, 0, 6) as $token) {
-                $q->orWhere('prod_descripcion_agile', 'ilike', '%'.$token.'%');
+                $q->orWhere('prod_descripcion_agile', $like, '%'.$token.'%');
             }
         });
 

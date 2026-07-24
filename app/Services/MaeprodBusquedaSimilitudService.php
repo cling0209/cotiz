@@ -620,16 +620,17 @@ class MaeprodBusquedaSimilitudService
      */
     private function construirExpresionPuntajeSql(string $phrase, array $tokens): ?array
     {
+        $like = $this->likeOperator();
         $scoreParts = [];
         $whereParts = [];
         $scoreBindings = [];
         $whereBindings = [];
 
         if ($phrase !== '') {
-            $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 200 ELSE 0 END)';
+            $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 200 ELSE 0 END)';
             $scoreBindings[] = '%'.$phrase.'%';
             $scoreBindings[] = '%'.$phrase.'%';
-            $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+            $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
             $whereBindings[] = '%'.$phrase.'%';
             $whereBindings[] = '%'.$phrase.'%';
         }
@@ -644,13 +645,13 @@ class MaeprodBusquedaSimilitudService
             if ($prevTok !== '' && ! preg_match('/^\d+$/', $prevTok) && ! preg_match('/^\d+$/', $tok)) {
                 $bigram = $prevTok.' '.$tok;
                 $ordered = '%'.$prevTok.'%'.$tok.'%';
-                $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 75 '
-                    .'WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN 55 ELSE 0 END)';
+                $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 75 '
+                    .'WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 55 ELSE 0 END)';
                 $scoreBindings[] = '%'.$bigram.'%';
                 $scoreBindings[] = '%'.$bigram.'%';
                 $scoreBindings[] = $ordered;
                 $scoreBindings[] = $ordered;
-                $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ? OR prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+                $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ? OR prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
                 $whereBindings[] = '%'.$bigram.'%';
                 $whereBindings[] = '%'.$bigram.'%';
                 $whereBindings[] = $ordered;
@@ -659,23 +660,23 @@ class MaeprodBusquedaSimilitudService
 
             if (preg_match('/^\d+$/', $tok)) {
                 $tokLen = strlen($tok);
-                if ($tokLen <= 2) {
+                if ($tokLen <= 2 && $this->isPostgres()) {
                     $regex = '\\m'.preg_quote($tok, '/').'\\M';
                     $scoreParts[] = '(CASE WHEN prod_nombre ~* ? THEN 30 ELSE 0 END)';
                     $scoreBindings[] = $regex;
                 } else {
-                    $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? THEN 30 ELSE 0 END)';
+                    $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? THEN 30 ELSE 0 END)';
                     $scoreBindings[] = '%'.$tok.'%';
-                    $whereParts[] = 'prod_nombre ILIKE ?';
+                    $whereParts[] = 'prod_nombre '.$like.' ?';
                     $whereBindings[] = '%'.$tok.'%';
                 }
             } else {
                 foreach ($this->tokenVariantes($tok) as $variante) {
                     $w = 42 + min(27, max(0, mb_strlen($variante, 'UTF-8') - 5) * 3);
-                    $scoreParts[] = '(CASE WHEN prod_nombre ILIKE ? OR prod_item ILIKE ? THEN '.$w.' ELSE 0 END)';
+                    $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN '.$w.' ELSE 0 END)';
                     $scoreBindings[] = '%'.$variante.'%';
                     $scoreBindings[] = '%'.$variante.'%';
-                    $whereParts[] = '(prod_nombre ILIKE ? OR prod_item ILIKE ?)';
+                    $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
                     $whereBindings[] = '%'.$variante.'%';
                     $whereBindings[] = '%'.$variante.'%';
                 }
@@ -711,19 +712,30 @@ class MaeprodBusquedaSimilitudService
             $query->where('prod_familia', trim($familia));
         }
 
-        $query->where(function ($q) use ($patron, $tokens) {
+        $like = $this->likeOperator();
+        $query->where(function ($q) use ($patron, $tokens, $like) {
             if ($patron !== '') {
-                $q->orWhere('prod_nombre', 'ilike', '%'.$patron.'%');
+                $q->orWhere('prod_nombre', $like, '%'.$patron.'%');
             }
             foreach ($tokens as $token) {
                 foreach ($this->tokenVariantes($token) as $variante) {
-                    $q->orWhere('prod_nombre', 'ilike', '%'.$variante.'%')
-                        ->orWhere('prod_item', 'ilike', '%'.$variante.'%');
+                    $q->orWhere('prod_nombre', $like, '%'.$variante.'%')
+                        ->orWhere('prod_item', $like, '%'.$variante.'%');
                 }
             }
         });
 
         return $query->limit($candidatosMax)->get();
+    }
+
+    private function likeOperator(): string
+    {
+        return $this->isPostgres() ? 'ilike' : 'like';
+    }
+
+    private function isPostgres(): bool
+    {
+        return DB::connection()->getDriverName() === 'pgsql';
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
 use App\Models\MaeprodImportRun;
 use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
@@ -140,7 +141,7 @@ class MaeprodController extends Controller
 
     public function edit(string $prod_item): View
     {
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $producto = Maeprod::query()->with('frases')->findOrFail($prod_item);
 
         return view('admin.maeprod.form', [
             'producto' => $producto,
@@ -163,6 +164,34 @@ class MaeprodController extends Controller
         return redirect()
             ->route('admin.productos.edit', $producto->prod_item)
             ->with('success', 'Producto actualizado.');
+    }
+
+    public function storeFrase(Request $request, string $prod_item): RedirectResponse
+    {
+        $producto = Maeprod::query()->findOrFail($prod_item);
+
+        $request->validate([
+            'frase' => ['required', 'string', 'min:2', 'max:200'],
+        ], [
+            'frase.required' => 'Indique la frase.',
+            'frase.min' => 'La frase debe tener al menos 2 caracteres.',
+        ]);
+
+        $this->maeprodService->agregarFrase($producto, (string) $request->input('frase'));
+
+        return redirect()
+            ->route('admin.productos.edit', $producto->prod_item)
+            ->with('success', 'Frase agregada para vincular en Agile.');
+    }
+
+    public function destroyFrase(string $prod_item, MaeprodFrase $frase): RedirectResponse
+    {
+        $producto = Maeprod::query()->findOrFail($prod_item);
+        $this->maeprodService->eliminarFrase($producto, $frase);
+
+        return redirect()
+            ->route('admin.productos.edit', $producto->prod_item)
+            ->with('success', 'Frase eliminada.');
     }
 
     public function destroy(string $prod_item): RedirectResponse
