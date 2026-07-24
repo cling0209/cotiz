@@ -181,6 +181,16 @@ class AgileVinculoAprendizajeService
     }
 
     /**
+     * Match público por frases del mantenedor (mismo criterio que importación).
+     *
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    public function resolverProductoPorFrase(string $descripcion): ?array
+    {
+        return $this->resolverPorFraseMaestro(trim($descripcion));
+    }
+
+    /**
      * Match por palabras: todas las de la frase deben aparecer en la descripción
      * (pueden ir en otro orden o con texto en medio).
      * Si varias coinciden, gana la frase más larga (más específica).

@@ -374,6 +374,7 @@ class OportunidadParaCotizarController extends Controller
             'total' => $resultado['total'],
             'vinculados' => $resultado['vinculados'],
             'porcentaje' => $resultado['porcentaje'],
+            'cambios_frase' => $resultado['cambios_frase'] ?? 0,
             'item' => $resultado['item'],
         ]);
     }

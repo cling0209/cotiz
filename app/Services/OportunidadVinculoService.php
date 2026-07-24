@@ -40,6 +40,7 @@ class OportunidadVinculoService
         protected CompraAgilImportService $importService,
         protected OportunidadParaCotizarService $oportunidades,
         protected OportunidadEncontradaRelayService $encontradaRelay,
+        protected AgileVinculoAprendizajeService $vinculoAprendizaje,
     ) {}
 
     public function corridaEnCurso(): ?OportunidadVinculoCorrida
@@ -747,7 +748,146 @@ class OportunidadVinculoService
     }
 
     /**
+     * Reaplica frases del mantenedor sobre un preview ya procesado:
+     * - líneas sin vínculo → vincula si hay frase
+     * - líneas ya vinculadas → reasigna si la frase apunta a otro producto
+     *
+     * @return array{
+     *   total: int,
+     *   vinculados: int,
+     *   porcentaje: int,
+     *   cambios: int,
+     *   item: array<string, mixed>|null
+     * }
+     */
+    public function refrescarVinculosPorFrases(string $codigo): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->whereNotNull('vinculo_preview_json')
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($row === null) {
+            return [
+                'total' => 0,
+                'vinculados' => 0,
+                'porcentaje' => 0,
+                'cambios' => 0,
+                'item' => null,
+            ];
+        }
+
+        $preview = $row->vinculo_preview_json;
+        if (! is_array($preview)) {
+            return [
+                'total' => (int) ($row->cantidad_productos ?? 0),
+                'vinculados' => (int) ($row->productos_vinculados ?? 0),
+                'porcentaje' => (int) ($row->porcentaje_vinculo ?? 0),
+                'cambios' => 0,
+                'item' => $row->toResumen(),
+            ];
+        }
+
+        $lineas = is_array($preview['lineas'] ?? null) ? array_values($preview['lineas']) : [];
+        $cambios = 0;
+
+        foreach ($lineas as $i => $linea) {
+            if (! is_array($linea)) {
+                continue;
+            }
+
+            $descripcion = trim((string) ($linea['descripcion'] ?? ''));
+            if ($descripcion === '') {
+                continue;
+            }
+
+            $porFrase = $this->vinculoAprendizaje->resolverProductoPorFrase($descripcion);
+            if ($porFrase === null) {
+                continue;
+            }
+
+            $productoActual = is_array($linea['producto'] ?? null) ? $linea['producto'] : null;
+            $prodItemActual = trim((string) ($productoActual['prod_item'] ?? ''));
+            $estado = strtolower(trim((string) ($linea['estado'] ?? '')));
+            $esSugerencia = ! empty($linea['es_sugerencia']);
+            $origen = (string) ($linea['origen'] ?? '');
+
+            $sinVinculoFirme = $estado !== 'vinculado' || $esSugerencia || $prodItemActual === '';
+            $reasignar = ! $sinVinculoFirme && $prodItemActual !== $porFrase['prod_item'];
+            $soloMarcarOrigen = ! $sinVinculoFirme
+                && $prodItemActual === $porFrase['prod_item']
+                && $origen !== 'frase_maeprod';
+
+            if (! $sinVinculoFirme && ! $reasignar && ! $soloMarcarOrigen) {
+                continue;
+            }
+
+            $lineas[$i] = array_merge($linea, [
+                'producto' => $porFrase,
+                'estado' => 'vinculado',
+                'es_sugerencia' => false,
+                'origen' => 'frase_maeprod',
+            ]);
+            $cambios++;
+        }
+
+        $resumen = $this->importService->resumenDesdeLineasPreview($lineas);
+        $total = (int) ($resumen['total'] ?? count($lineas));
+        $vinculados = (int) ($resumen['vinculados'] ?? 0);
+        $porcentaje = $total > 0 ? (int) round(($vinculados / $total) * 100) : 0;
+
+        if ($cambios === 0) {
+            return [
+                'total' => $total > 0 ? $total : (int) ($row->cantidad_productos ?? 0),
+                'vinculados' => $vinculados > 0 || $total > 0
+                    ? $vinculados
+                    : (int) ($row->productos_vinculados ?? 0),
+                'porcentaje' => $total > 0 ? $porcentaje : (int) ($row->porcentaje_vinculo ?? 0),
+                'cambios' => 0,
+                'item' => $row->toResumen(),
+            ];
+        }
+
+        $preview['lineas'] = $lineas;
+        $preview['resumen'] = $resumen;
+        $previewCache = $this->empaquetarPreviewCache($preview);
+
+        $attrs = [
+            'cantidad_productos' => $total > 0 ? $total : $row->cantidad_productos,
+            'productos_vinculados' => $vinculados,
+            'porcentaje_vinculo' => $porcentaje,
+            'vinculo_completo' => true,
+            'vinculo_at' => now(),
+            'vinculo_preview_json' => $previewCache,
+            'vinculo_error' => null,
+        ];
+
+        foreach ($this->encontrarFilasParaCodigo($codigo, $row->fecha_busqueda) as $fila) {
+            $fila->fill($attrs)->save();
+            $this->encontradaRelay->replicarItems([
+                $fila->fresh()->toResumenConPreviewVinculo() + [
+                    'fecha_busqueda' => $this->oportunidades->normalizarFechaBusqueda($fila->fecha_busqueda),
+                ],
+            ], OportunidadEncontradaRelayService::ACCION_VINCULO);
+        }
+
+        $row->refresh();
+
+        return [
+            'total' => $total,
+            'vinculados' => $vinculados,
+            'porcentaje' => $porcentaje,
+            'cambios' => $cambios,
+            'item' => $row->toResumen(),
+        ];
+    }
+
+    /**
      * Vincula on-demand una cotización (Productos / Ir a cotizar).
+     * Si ya estaba procesada, reevalúa frases del mantenedor (sin vínculo + reasignación).
      *
      * @return array{
      *   ok: bool,
@@ -755,6 +895,7 @@ class OportunidadVinculoService
      *   total: int,
      *   vinculados: int,
      *   porcentaje: int,
+     *   cambios_frase: int,
      *   item: array<string, mixed>|null,
      *   error: ?string
      * }
@@ -769,25 +910,23 @@ class OportunidadVinculoService
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,
+                'cambios_frase' => 0,
                 'item' => null,
                 'error' => 'Código vacío.',
             ];
         }
 
         if (! $this->necesitaVincularCodigo($codigo)) {
-            $row = OportunidadEncontrada::query()
-                ->where('codigo', $codigo)
-                ->orderByDesc('fecha_busqueda')
-                ->orderByDesc('id')
-                ->first();
+            $refresco = $this->refrescarVinculosPorFrases($codigo);
 
             return [
                 'ok' => true,
                 'ya_estaba' => true,
-                'total' => (int) ($row?->cantidad_productos ?? 0),
-                'vinculados' => (int) ($row?->productos_vinculados ?? 0),
-                'porcentaje' => (int) ($row?->porcentaje_vinculo ?? 0),
-                'item' => $row?->toResumen(),
+                'total' => $refresco['total'],
+                'vinculados' => $refresco['vinculados'],
+                'porcentaje' => $refresco['porcentaje'],
+                'cambios_frase' => $refresco['cambios'],
+                'item' => $refresco['item'],
                 'error' => null,
             ];
         }
@@ -802,6 +941,7 @@ class OportunidadVinculoService
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,
+                'cambios_frase' => 0,
                 'item' => $this->resumenCodigo($codigo),
                 'error' => $msg,
             ];
@@ -821,6 +961,7 @@ class OportunidadVinculoService
                 'total' => $resultado['total'],
                 'vinculados' => $resultado['vinculados'],
                 'porcentaje' => $resultado['porcentaje'],
+                'cambios_frase' => 0,
                 'item' => $row?->toResumen(),
                 'error' => null,
             ];
@@ -833,6 +974,7 @@ class OportunidadVinculoService
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,
+                'cambios_frase' => 0,
                 'item' => $this->resumenCodigo($codigo),
                 'error' => $e->getMessage(),
             ];

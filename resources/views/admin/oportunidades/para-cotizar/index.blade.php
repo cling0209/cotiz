@@ -1495,7 +1495,7 @@
         }
 
         /**
-         * Si falta vinculación, avisa y vincula on-demand antes de continuar.
+         * Asegura vinculación (o refresca frases del mantenedor si ya estaba procesada).
          * @returns {Promise<{ok: boolean, error?: string}>}
          */
         async function asegurarVinculoAntes(codigo, { onAviso } = {}) {
@@ -1504,11 +1504,11 @@
                 return { ok: false, error: 'Código vacío.' };
             }
             const item = porCodigo.get(cod);
-            if (!itemNecesitaVincular(item)) {
-                return { ok: true };
-            }
+            const necesita = itemNecesitaVincular(item);
             if (typeof onAviso === 'function') {
-                onAviso('Se va a vincular antes de mostrar…');
+                onAviso(necesita
+                    ? 'Se va a vincular antes de mostrar…'
+                    : 'Actualizando vinculaciones por frases…');
             }
             if (!urls.vincularCodigo) {
                 return { ok: false, error: 'No hay endpoint de vinculación disponible.' };
@@ -1578,7 +1578,11 @@
             if (modalVinculoTbody) {
                 modalVinculoTbody.innerHTML = '';
             }
-            setModalVinculoLoading('Se va a vincular antes de mostrar…');
+            setModalVinculoLoading(
+                itemNecesitaVincular(porCodigo.get(cod))
+                    ? 'Se va a vincular antes de mostrar…'
+                    : 'Actualizando vinculaciones por frases…'
+            );
             bsModalVinculo.show();
 
             const prev = await asegurarVinculoAntes(cod, {
@@ -1711,7 +1715,7 @@
         }
 
         if (tbody) {
-            // Ir a cotizar: si falta vínculo, vincular antes de navegar.
+            // Ir a cotizar: vincular o refrescar frases antes de navegar.
             tbody.addEventListener('click', async (e) => {
                 const link = e.target.closest('a.btn-ir-cotizar');
                 if (!link) {
@@ -1720,16 +1724,16 @@
                 const cod = String(link.getAttribute('data-codigo') || '').trim().toUpperCase();
                 incrementarVisitaLocal(cod);
                 registrarVisitaServidor(cod);
-                if (!itemNecesitaVincular(porCodigo.get(cod))) {
-                    return;
-                }
                 e.preventDefault();
                 e.stopPropagation();
                 const href = link.getAttribute('href') || '';
                 const labelPrev = link.innerHTML;
                 link.classList.add('disabled');
                 link.setAttribute('aria-disabled', 'true');
-                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…';
+                const necesita = itemNecesitaVincular(porCodigo.get(cod));
+                link.innerHTML = necesita
+                    ? '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…'
+                    : '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando…';
                 const prev = await asegurarVinculoAntes(cod);
                 if (!prev.ok) {
                     link.classList.remove('disabled');

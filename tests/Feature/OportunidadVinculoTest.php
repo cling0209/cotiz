@@ -3,10 +3,14 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessOportunidadVinculoJob;
+use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
 use App\Models\User;
 use App\Services\OportunidadVinculoService;
+use Database\Seeders\FamprodSeeder;
+use Database\Seeders\GramajeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -776,5 +780,105 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonPath('corrida.vinculo.estado', 'running');
 
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_asegurar_vinculo_ya_procesado_aplica_frases_sin_vinculo_y_reasigna(): void
+    {
+        $this->seed(GramajeSeeder::class);
+        $this->seed(FamprodSeeder::class);
+
+        Maeprod::query()->create([
+            'prod_item' => 'MAT001',
+            'prod_nombre' => 'MATERIAL EDUCATIVO',
+            'prod_valor' => 1000,
+            'prod_familia' => 'LIBR',
+            'prod_gramaje' => 'unidad',
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'OLD999',
+            'prod_nombre' => 'PRODUCTO VIEJO',
+            'prod_valor' => 500,
+            'prod_familia' => 'LIBR',
+            'prod_gramaje' => 'unidad',
+        ]);
+
+        MaeprodFrase::query()->create([
+            'prod_item' => 'MAT001',
+            'frase' => 'material educativo',
+            'frase_norm' => 'MATERIAL EDUCATIVO',
+        ]);
+        MaeprodFrase::query()->create([
+            'prod_item' => 'MAT001',
+            'frase' => 'suplemento estimulacion',
+            'frase_norm' => 'SUPLEMENTO ESTIMULACION',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '273-611-COT26',
+            'nombre' => 'Material educativo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 1,
+            'vinculo_completo' => true,
+            'cantidad_productos' => 2,
+            'productos_vinculados' => 1,
+            'porcentaje_vinculo' => 50,
+            'vinculo_at' => now(),
+            'fecha_cierre' => now()->addDays(3),
+            'vinculo_preview_json' => [
+                'cabecera' => ['codigo_cotizacion' => '273-611-COT26'],
+                'lineas' => [
+                    [
+                        'id_agile' => '1',
+                        'descripcion' => 'SUPLEMENTO DE ESTIMULACION PARA NINOS',
+                        'cantidad' => 1,
+                        'categoria' => '',
+                        'producto' => null,
+                        'estado' => 'pendiente',
+                        'es_sugerencia' => false,
+                        'origen' => null,
+                    ],
+                    [
+                        'id_agile' => '2',
+                        'descripcion' => 'KIT MATERIAL EDUCATIVO BASICO',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                        'producto' => [
+                            'prod_item' => 'OLD999',
+                            'prod_nombre' => 'PRODUCTO VIEJO',
+                            'prod_valor' => 500,
+                            'prod_valor_costo' => 500,
+                        ],
+                        'estado' => 'vinculado',
+                        'es_sugerencia' => false,
+                        'origen' => 'aprendido_exacto',
+                    ],
+                ],
+                'resumen' => [
+                    'total' => 2,
+                    'vinculados' => 1,
+                    'pendientes' => 1,
+                    'con_sugerencia' => 0,
+                ],
+            ],
+        ]);
+
+        $resultado = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarVinculoCodigo('273-611-COT26');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertTrue($resultado['ya_estaba']);
+        $this->assertSame(2, $resultado['cambios_frase']);
+        $this->assertSame(2, $resultado['vinculados']);
+        $this->assertSame(100, $resultado['porcentaje']);
+
+        $row = OportunidadEncontrada::query()->where('codigo', '273-611-COT26')->firstOrFail();
+        $this->assertSame(2, (int) $row->productos_vinculados);
+        $lineas = $row->vinculo_preview_json['lineas'];
+        $this->assertSame('MAT001', $lineas[0]['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $lineas[0]['origen']);
+        $this->assertSame('MAT001', $lineas[1]['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $lineas[1]['origen']);
     }
 }
