@@ -383,12 +383,13 @@
             fraseSubmit.disabled = true;
             fraseSubmit.textContent = 'Agregando…';
         }
+
+        var body = new FormData(fraseForm);
         if (fraseInput) {
-            fraseInput.disabled = true;
+            fraseInput.readOnly = true;
         }
 
         try {
-            var body = new FormData(fraseForm);
             var res = await fetch(fraseForm.action, {
                 method: 'POST',
                 headers: csrfHeaders(),
@@ -424,7 +425,7 @@
                 fraseSubmit.textContent = 'Agregar';
             }
             if (fraseInput) {
-                fraseInput.disabled = false;
+                fraseInput.readOnly = false;
             }
         }
     });
