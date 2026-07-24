@@ -105,4 +105,34 @@ class MaeprodFraseTest extends TestCase
             ->assertSee('Frases para vincular')
             ->assertSee('lapiz azul');
     }
+
+    public function test_eliminar_frase_sin_producto_redirige_al_listado(): void
+    {
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.productos.frases.destroy', [
+                'prod_item' => 'NOEXISTE',
+                'frase' => 999,
+            ]))
+            ->assertRedirect(route('admin.productos.index'))
+            ->assertSessionHas('info', 'El producto ya no existe o fue eliminado.');
+    }
+
+    public function test_eliminar_frase_inexistente_refresca_edicion(): void
+    {
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.productos.frases.destroy', [
+                'prod_item' => 'DEMO003',
+                'frase' => 99999,
+            ]))
+            ->assertRedirect(route('admin.productos.edit', 'DEMO003'))
+            ->assertSessionHas('info', 'La frase ya estaba eliminada.');
+    }
+
+    public function test_editar_producto_inexistente_redirige_al_listado(): void
+    {
+        $this->actingAs($this->superadmin)
+            ->get(route('admin.productos.edit', 'NOEXISTE'))
+            ->assertRedirect(route('admin.productos.index'))
+            ->assertSessionHas('info', 'El producto ya no existe o fue eliminado.');
+    }
 }

@@ -147,9 +147,15 @@ class MaeprodController extends Controller
             ->with('success', 'Imagen actualizada.');
     }
 
-    public function edit(Request $request, string $prod_item): View
+    public function edit(Request $request, string $prod_item): View|RedirectResponse
     {
-        $producto = Maeprod::query()->with('frases')->findOrFail($prod_item);
+        $producto = Maeprod::query()->with('frases')->find($prod_item);
+
+        if (! $producto) {
+            return redirect()
+                ->route('admin.productos.index', $this->listadoQuery($request))
+                ->with('info', 'El producto ya no existe o fue eliminado.');
+        }
 
         return view('admin.maeprod.form', [
             'producto' => $producto,
@@ -201,18 +207,35 @@ class MaeprodController extends Controller
 
     public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse
     {
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $listadoQuery = $this->listadoQuery($request);
+        $producto = Maeprod::query()->find($prod_item);
+
+        if (! $producto) {
+            return redirect()
+                ->route('admin.productos.index', $listadoQuery)
+                ->with('info', 'El producto ya no existe o fue eliminado.');
+        }
+
         $fraseModel = MaeprodFrase::query()
             ->where('prod_item', $producto->prod_item)
             ->whereKey($frase)
-            ->firstOrFail();
+            ->first();
+
+        if (! $fraseModel) {
+            return redirect()
+                ->route('admin.productos.edit', array_merge(
+                    ['prod_item' => $producto->prod_item],
+                    $listadoQuery,
+                ))
+                ->with('info', 'La frase ya estaba eliminada.');
+        }
 
         $this->maeprodService->eliminarFrase($producto, $fraseModel);
 
         return redirect()
             ->route('admin.productos.edit', array_merge(
                 ['prod_item' => $producto->prod_item],
-                $this->listadoQuery($request),
+                $listadoQuery,
             ))
             ->with('success', 'Frase eliminada.');
     }
