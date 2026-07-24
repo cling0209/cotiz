@@ -181,7 +181,8 @@ class AgileVinculoAprendizajeService
     }
 
     /**
-     * Match por “contiene”: la frase del maestro está dentro de la descripción Agile.
+     * Match por palabras: todas las de la frase deben aparecer en la descripción
+     * (pueden ir en otro orden o con texto en medio).
      * Si varias coinciden, gana la frase más larga (más específica).
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
@@ -192,6 +193,12 @@ class AgileVinculoAprendizajeService
         if ($descNorm === '') {
             return null;
         }
+
+        $palabrasDesc = preg_split('/\s+/u', $descNorm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($palabrasDesc === []) {
+            return null;
+        }
+        $setDesc = array_fill_keys($palabrasDesc, true);
 
         $candidatas = MaeprodFrase::query()
             ->where('frase_norm', '!=', '')
@@ -205,19 +212,36 @@ class AgileVinculoAprendizajeService
 
         foreach ($candidatas as $frase) {
             $norm = (string) $frase->frase_norm;
-            if ($norm === '') {
+            if ($norm === '' || ! $this->frasePalabrasEnDescripcion($norm, $setDesc)) {
                 continue;
             }
 
-            if (str_contains($descNorm, $norm)) {
-                $mae = Maeprod::query()->find($frase->prod_item);
-                if ($mae) {
-                    return $this->maeprodArray($mae);
-                }
+            $mae = Maeprod::query()->find($frase->prod_item);
+            if ($mae) {
+                return $this->maeprodArray($mae);
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, true>  $setDesc
+     */
+    private function frasePalabrasEnDescripcion(string $fraseNorm, array $setDesc): bool
+    {
+        $palabras = preg_split('/\s+/u', $fraseNorm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($palabras === []) {
+            return false;
+        }
+
+        foreach ($palabras as $palabra) {
+            if (! isset($setDesc[$palabra])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

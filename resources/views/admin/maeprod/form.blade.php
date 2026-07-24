@@ -184,8 +184,12 @@
                     <div class="card-header py-2 small fw-semibold">Frases para vincular (Agile)</div>
                     <div class="card-body">
                         <p class="small text-muted mb-3">
-                            Si la descripci&oacute;n de Compra &Aacute;gil <strong>contiene</strong> alguna de estas frases,
-                            se usa este producto (prioridad sobre el aprendizaje autom&aacute;tico).
+                            Si la descripci&oacute;n de Compra &Aacute;gil incluye <strong>todas las palabras</strong> de la frase
+                            (en cualquier orden y aunque haya texto en medio), se usa este producto
+                            (prioridad sobre el aprendizaje autom&aacute;tico).
+                            Ejemplo: frase <em>adhesivo barra</em> vincula
+                            <em>adhesivo en barra 21 ml</em>.
+                            Preferir frases de <strong>2 o m&aacute;s palabras</strong> para evitar falsos positivos.
                             Cada frase solo puede estar en un producto.
                         </p>
 

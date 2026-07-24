@@ -170,7 +170,7 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         );
     }
 
-    public function test_frase_maestro_vincula_por_contiene(): void
+    public function test_frase_maestro_vincula_por_palabras(): void
     {
         MaeprodFrase::query()->create([
             'prod_item' => 'ARTE001',
@@ -184,6 +184,38 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         $this->assertFalse($resultado['es_sugerencia']);
         $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
         $this->assertSame('frase_maeprod', $resultado['origen']);
+    }
+
+    public function test_frase_maestro_match_con_palabras_en_medio(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('ADHESIVO EN BARRA 21 ML');
+
+        $this->assertSame('vinculado', $resultado['estado']);
+        $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $resultado['origen']);
+    }
+
+    public function test_frase_maestro_no_match_si_falta_palabra(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('ADHESIVO EN TUBO 21 ML');
+
+        $this->assertNotSame('frase_maeprod', $resultado['origen']);
+        $this->assertTrue(
+            ($resultado['producto']['prod_item'] ?? null) !== 'ARTE001'
+            || ($resultado['origen'] ?? null) !== 'frase_maeprod'
+        );
     }
 
     public function test_frase_maestro_gana_sobre_aprendizaje(): void
