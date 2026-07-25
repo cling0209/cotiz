@@ -778,6 +778,15 @@ class CotizacionController extends Controller
                 );
                 if ($errorCabecera !== null) {
                     $puedeImportar = false;
+                } else {
+                    try {
+                        $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil(
+                            (string) $resultado['cabecera']['codigo_cotizacion'],
+                        );
+                    } catch (RuntimeException $e) {
+                        $errorCabecera = $e->getMessage();
+                        $puedeImportar = false;
+                    }
                 }
             }
 
@@ -799,6 +808,15 @@ class CotizacionController extends Controller
             );
             if ($errorCabecera !== null) {
                 $puedeImportar = false;
+            } else {
+                try {
+                    $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil(
+                        (string) $preview['cabecera']['codigo_cotizacion'],
+                    );
+                } catch (RuntimeException $e) {
+                    $errorCabecera = $e->getMessage();
+                    $puedeImportar = false;
+                }
             }
         }
 
@@ -870,6 +888,14 @@ class CotizacionController extends Controller
                 true,
             )) {
                 return response()->json(['error' => $error], 422);
+            }
+
+            try {
+                $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil(
+                    (string) $parseado['cabecera']['codigo_cotizacion'],
+                );
+            } catch (RuntimeException $e) {
+                return response()->json(['error' => $e->getMessage()], 422);
             }
         }
 

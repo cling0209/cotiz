@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\NotaDetalleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CotizacionCargaArchivoTest extends TestCase
@@ -21,6 +22,10 @@ class CotizacionCargaArchivoTest extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware();
+        config([
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.mercadopublico.ticket' => '',
+        ]);
 
         $this->user = User::factory()->create([
             'username' => 'ejecutivo1',
@@ -130,6 +135,26 @@ class CotizacionCargaArchivoTest extends TestCase
 
         $response->assertRedirect(route('admin.cotizaciones.carga-archivo.index'));
         $response->assertSessionHas('error');
+    }
+
+    public function test_previsualizar_rechaza_compra_agil_inexistente_en_mp(): void
+    {
+        config(['cotiz.mercadopublico.ticket' => 'ticket-test']);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/9999-1-COT26' => Http::response([], 404),
+        ]);
+
+        $csv = $this->csvEjemplo('9999-1-COT26', 'CODIGO');
+        $archivo = UploadedFile::fake()->createWithContent('carga.csv', $csv);
+
+        $response = $this->actingAs($this->user)->post(
+            route('admin.cotizaciones.carga-archivo.previsualizar'),
+            ['archivo' => $archivo],
+        );
+
+        $response->assertRedirect(route('admin.cotizaciones.carga-archivo.index'));
+        $response->assertSessionHas('error', fn ($msg) => str_contains((string) $msg, 'no existe en Mercado Público'));
     }
 
     private function csvEjemplo(string $orden, string $codigoProducto): string

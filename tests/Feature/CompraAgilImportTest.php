@@ -29,6 +29,8 @@ class CompraAgilImportTest extends TestCase
             'app.url' => 'http://localhost',
             'cotiz.sistema' => 'Cotiz',
             'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            // Evitar llamadas reales a MP: el ticket de .env de Docker suele estar configurado.
+            'cotiz.mercadopublico.ticket' => '',
         ]);
 
         $this->admin = User::factory()->create([
@@ -530,7 +532,7 @@ TXT;
         )
             ->assertOk()
             ->assertJsonPath('puede_importar', false)
-            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '2686-279-COT26'));
+            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '1161-172-COT26'));
     }
 
     public function test_importar_texto_rechaza_duplicado_en_par(): void
@@ -557,7 +559,44 @@ TXT;
             ['texto' => $this->textoMp],
         )
             ->assertStatus(422)
-            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '2686-279-COT26'));
+            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+    }
+
+    public function test_preview_texto_rechaza_si_no_existe_en_mp(): void
+    {
+        config(['cotiz.mercadopublico.ticket' => 'ticket-test']);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1161-172-COT26' => Http::response([], 404),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => 'COT-NUEVA-MP']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )
+            ->assertOk()
+            ->assertJsonPath('puede_importar', false)
+            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains((string) $msg, 'no existe en Mercado Público'));
+    }
+
+    public function test_importar_texto_rechaza_si_no_existe_en_mp(): void
+    {
+        config(['cotiz.mercadopublico.ticket' => 'ticket-test']);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1161-172-COT26' => Http::response([], 404),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => 'COT-NUEVA-MP2']);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
+            ['texto' => $this->textoMp],
+        )
+            ->assertStatus(422)
+            ->assertJsonPath('error', fn ($msg) => str_contains((string) $msg, 'no existe en Mercado Público'));
     }
 
     public function test_limpiar_elimina_todas_las_lineas_agile_al_reanalizar(): void

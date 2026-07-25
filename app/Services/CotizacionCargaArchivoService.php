@@ -16,6 +16,7 @@ class CotizacionCargaArchivoService
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
         protected NotaConsultaRemotaService $consultaRemotaService,
+        protected CompraAgilOportunidadService $compraAgilOportunidad,
     ) {}
 
     public function validarArchivo(UploadedFile $archivo): void
@@ -156,6 +157,8 @@ class CotizacionCargaArchivoService
         if ($errorRemoto !== '') {
             throw new RuntimeException($errorRemoto);
         }
+
+        $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($encargado);
 
         return null;
     }

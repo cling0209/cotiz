@@ -16,6 +16,7 @@ class CompraAgilImportService
         protected NotaDetalleService $detalleService,
         protected AgileMaeprodService $agileMaeprodService,
         protected AgileVinculoAprendizajeService $vinculoAprendizaje,
+        protected CompraAgilOportunidadService $oportunidad,
     ) {}
 
     /**
@@ -551,6 +552,7 @@ class CompraAgilImportService
                         if ($error !== null) {
                             throw new RuntimeException($error);
                         }
+                        $this->oportunidad->assertExisteEnMpSiCompraAgil($datosCabecera['encargado']);
                     }
                     $this->notaService->modificarCabecera($nota, $datosCabecera);
                     $cabeceraActualizada = true;
