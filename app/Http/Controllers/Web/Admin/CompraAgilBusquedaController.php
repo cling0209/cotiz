@@ -143,9 +143,9 @@ class CompraAgilBusquedaController extends Controller
             $lineasPreview = $this->lineasPreviewDesdeRequest($request);
 
             if ($lineasPreview !== null) {
-                // Preview de Oportunidades: si el código ya está en base local no reconsulta MP;
-                // si no está, valida existencia en Mercado Público antes de cargar.
-                $this->oportunidad->asegurarCodigoExisteEnMp($codigo);
+                // Tras vincular (preview en Oportunidades): siempre validar existencia en MP
+                // aunque el código ya esté en base local; no cargar si MP ya no lo tiene.
+                $this->oportunidad->detalleParaCarga($codigo);
 
                 [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
                 $cabecera = $this->cabeceraPreviewDesdeRequest($request, $datos);
