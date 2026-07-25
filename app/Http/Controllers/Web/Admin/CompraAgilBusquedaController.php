@@ -9,7 +9,6 @@ use App\Services\CompraAgilApiService;
 use App\Services\CompraAgilImportService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CompraAgilPayloadMapper;
-use App\Services\CompraAgilRegionScope;
 use App\Services\NotaConsultaRemotaService;
 use App\Services\NotaService;
 use Illuminate\Http\JsonResponse;
@@ -94,10 +93,7 @@ class CompraAgilBusquedaController extends Controller
                 return response()->json(['error' => $error], 422);
             }
 
-            $payload = $this->api->detalle($codigo);
-            if (CompraAgilRegionScope::debeExcluirItem($payload)) {
-                return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
-            }
+            $payload = $this->oportunidad->detalleParaCarga($codigo);
             $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
                 $this->mapper->fromDetalle($payload)
             );
@@ -147,7 +143,10 @@ class CompraAgilBusquedaController extends Controller
             $lineasPreview = $this->lineasPreviewDesdeRequest($request);
 
             if ($lineasPreview !== null) {
-                // Preview ya vinculado en Oportunidades: no reconsultar Mercado Público.
+                // Preview de Oportunidades: si el código ya está en base local no reconsulta MP;
+                // si no está, valida existencia en Mercado Público antes de cargar.
+                $this->oportunidad->asegurarCodigoExisteEnMp($codigo);
+
                 [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
                 $cabecera = $this->cabeceraPreviewDesdeRequest($request, $datos);
                 if (trim((string) ($cabecera['codigo_cotizacion'] ?? '')) === '') {
@@ -166,10 +165,7 @@ class CompraAgilBusquedaController extends Controller
                     $hasta,
                 );
             } else {
-                $payload = $this->api->detalle($codigo);
-                if (CompraAgilRegionScope::debeExcluirItem($payload)) {
-                    return response()->json(['error' => CompraAgilRegionScope::mensajeZonaExcluida()], 422);
-                }
+                $payload = $this->oportunidad->detalleParaCarga($codigo);
                 $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
                     $this->mapper->fromDetalle($payload)
                 );

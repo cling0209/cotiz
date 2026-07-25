@@ -1778,7 +1778,7 @@ class NotaMpResultadosService
         try {
             $payload = $payloadPrecargado ?? $this->api->detalle($codigo, false, $deadline);
         } catch (RuntimeException $e) {
-            if (str_contains($e->getMessage(), 'No existe Compra Ágil')) {
+            if (CompraAgilApiService::esNoExisteEnMp($e->getMessage())) {
                 $resultado = $this->marcarNoExisteEnMp($nronota, $codigo, $corrida, $usuario, $nota, $anterior);
                 $msTotal = (int) round((microtime(true) - $inicio) * 1000);
 

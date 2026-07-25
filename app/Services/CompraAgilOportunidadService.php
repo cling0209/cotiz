@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\CompraAgilProceso;
 use App\Models\Nota;
+use App\Models\OportunidadEncontrada;
+use RuntimeException;
 
 class CompraAgilOportunidadService
 {
@@ -12,6 +14,85 @@ class CompraAgilOportunidadService
         protected CompraAgilPayloadMapper $mapper,
         protected MaeprodBusquedaSimilitudService $busqueda,
     ) {}
+
+    /**
+     * Valida existencia para cargar: primero base local; si no está, consulta MP.
+     * Si MP no tiene el código, lanza el mensaje de carga bloqueada.
+     *
+     * @return array{origen: 'local'|'mp', codigo: string, payload: array<string, mixed>|null}
+     */
+    public function asegurarCodigoExisteEnMp(string $codigo): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            throw new RuntimeException('Indique el número de cotización Compra Ágil.');
+        }
+
+        if ($this->existeEnBaseLocal($codigo)) {
+            return [
+                'origen' => 'local',
+                'codigo' => $codigo,
+                'payload' => null,
+            ];
+        }
+
+        try {
+            $payload = $this->api->detalle($codigo);
+        } catch (RuntimeException $e) {
+            if (CompraAgilApiService::esNoExisteEnMp($e->getMessage())) {
+                throw new RuntimeException(CompraAgilApiService::mensajeNoExisteEnMp($codigo), 0, $e);
+            }
+
+            throw $e;
+        }
+
+        return [
+            'origen' => 'mp',
+            'codigo' => $codigo,
+            'payload' => $payload,
+        ];
+    }
+
+    /**
+     * Detalle MP para preview/importación. Normaliza el mensaje si el código no existe.
+     *
+     * @return array<string, mixed>
+     */
+    public function detalleParaCarga(string $codigo): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            throw new RuntimeException('Indique el número de cotización Compra Ágil.');
+        }
+
+        try {
+            $payload = $this->api->detalle($codigo);
+        } catch (RuntimeException $e) {
+            if (CompraAgilApiService::esNoExisteEnMp($e->getMessage())) {
+                throw new RuntimeException(CompraAgilApiService::mensajeNoExisteEnMp($codigo), 0, $e);
+            }
+
+            throw $e;
+        }
+
+        if (CompraAgilRegionScope::debeExcluirItem($payload)) {
+            throw new RuntimeException(CompraAgilRegionScope::mensajeZonaExcluida());
+        }
+
+        return $payload;
+    }
+
+    public function existeEnBaseLocal(string $codigo): bool
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return false;
+        }
+
+        return OportunidadEncontrada::query()->where('codigo', $codigo)->exists()
+            || CompraAgilProceso::query()->whereKey($codigo)->exists()
+            || Nota::query()->whereRaw('upper(trim(encargado)) = ?', [$codigo])->exists();
+    }
 
     /**
      * @return array{items: array<int, array<string, mixed>>, paginacion: array<string, mixed>}
@@ -86,10 +167,7 @@ class CompraAgilOportunidadService
      */
     public function detalleResumen(string $codigo): array
     {
-        $payload = $this->api->detalle($codigo);
-        if (CompraAgilRegionScope::debeExcluirItem($payload)) {
-            throw new \RuntimeException(CompraAgilRegionScope::mensajeZonaExcluida());
-        }
+        $payload = $this->detalleParaCarga($codigo);
 
         $item = $this->mapper->resumenListadoItem(array_merge($payload, [
             'montos' => [

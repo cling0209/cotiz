@@ -479,7 +479,7 @@ class CompraAgilResultadosTest extends TestCase
             ->assertStatus(422);
     }
 
-    public function test_corrida_marca_error_si_todas_las_consultas_fallan(): void
+    public function test_corrida_marca_error_si_codigo_no_existe_en_mp(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
         Nota::query()->create([
@@ -516,7 +516,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertDatabaseHas('nota_mp_corrida_detalle', [
             'nronota' => 502,
             'exito' => false,
-            'mensaje' => 'No existe Compra Ágil con el código indicado.',
+            'mensaje' => 'La cotización «3300-66-COT26» no existe en Mercado Público. No se puede cargar. (sin reintento)',
         ]);
     }
 

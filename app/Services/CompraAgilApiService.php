@@ -229,6 +229,10 @@ class CompraAgilApiService
 
             if ($resultado instanceof RuntimeException) {
                 $msg = $resultado->getMessage();
+                if (self::esNoExisteEnMp($msg) || self::esCodigoRutaInvalidoMp($msg)) {
+                    $resultado = new RuntimeException(self::mensajeNoExisteEnMp($codigo), 0, $resultado);
+                    $msg = $resultado->getMessage();
+                }
                 if (
                     ! self::esErrorDefinitivoMp($msg)
                     && ! $this->esErrorDeadlineNota($msg)
@@ -343,7 +347,35 @@ class CompraAgilApiService
      */
     private function requestDetalle(string $codigo, ?float $deadlineMicrotime = null): array
     {
-        return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo), [], $deadlineMicrotime);
+        try {
+            return $this->request('GET', '/v2/compra-agil/'.rawurlencode($codigo), [], $deadlineMicrotime);
+        } catch (RuntimeException $e) {
+            if (self::esNoExisteEnMp($e->getMessage()) || self::esCodigoRutaInvalidoMp($e->getMessage())) {
+                throw new RuntimeException(self::mensajeNoExisteEnMp($codigo), 0, $e);
+            }
+
+            throw $e;
+        }
+    }
+
+    public static function mensajeNoExisteEnMp(string $codigo): string
+    {
+        $codigo = strtoupper(trim($codigo));
+
+        return sprintf(
+            'La cotización «%s» no existe en Mercado Público. No se puede cargar.',
+            $codigo !== '' ? $codigo : '—',
+        );
+    }
+
+    public static function esNoExisteEnMp(string $mensaje): bool
+    {
+        $texto = mb_strtolower($mensaje);
+
+        return str_contains($texto, 'no existe compra ágil')
+            || str_contains($texto, 'no existe compra agil')
+            || str_contains($texto, 'no existe en mercado público')
+            || str_contains($texto, 'no existe en mercado publico');
     }
 
     /**
@@ -392,7 +424,11 @@ class CompraAgilApiService
             try {
                 $out[$codigo] = $this->interpretarRespuestaHttp($response);
             } catch (RuntimeException $e) {
-                $out[$codigo] = $e;
+                if (self::esNoExisteEnMp($e->getMessage()) || self::esCodigoRutaInvalidoMp($e->getMessage())) {
+                    $out[$codigo] = new RuntimeException(self::mensajeNoExisteEnMp($codigo), 0, $e);
+                } else {
+                    $out[$codigo] = $e;
+                }
             }
         }
 
@@ -680,7 +716,7 @@ class CompraAgilApiService
      */
     public static function esErrorDefinitivoMp(string $mensaje): bool
     {
-        return self::esCodigoRutaInvalidoMp($mensaje);
+        return self::esNoExisteEnMp($mensaje) || self::esCodigoRutaInvalidoMp($mensaje);
     }
 
     public static function esCodigoRutaInvalidoMp(string $mensaje): bool
