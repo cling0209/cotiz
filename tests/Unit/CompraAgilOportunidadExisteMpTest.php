@@ -42,4 +42,13 @@ class CompraAgilOportunidadExisteMpTest extends TestCase
             ],
         ];
     }
+
+    public function test_es_codigo_compra_agil(): void
+    {
+        $svc = app(\App\Services\CompraAgilOportunidadService::class);
+
+        $this->assertTrue($svc->esCodigoCompraAgil('273-611-COT26'));
+        $this->assertFalse($svc->esCodigoCompraAgil('COT-IMPORT-001'));
+        $this->assertFalse($svc->esCodigoCompraAgil(''));
+    }
 }

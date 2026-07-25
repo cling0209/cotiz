@@ -94,6 +94,30 @@ class CompraAgilOportunidadService
             || Nota::query()->whereRaw('upper(trim(encargado)) = ?', [$codigo])->exists();
     }
 
+    public function esCodigoCompraAgil(string $codigo): bool
+    {
+        $codigo = strtoupper(trim($codigo));
+
+        return $codigo !== '' && (bool) preg_match('/^\d+-\d+-COT\d+$/', $codigo);
+    }
+
+    /**
+     * Al grabar: si el número es Compra Ágil, exige que exista en Mercado Público.
+     */
+    public function assertExisteEnMpSiCompraAgil(string $codigo): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '' || ! $this->esCodigoCompraAgil($codigo)) {
+            return;
+        }
+
+        if (! $this->api->isConfigured()) {
+            return;
+        }
+
+        $this->detalleParaCarga($codigo);
+    }
+
     /**
      * @return array{items: array<int, array<string, mixed>>, paginacion: array<string, mixed>}
      */

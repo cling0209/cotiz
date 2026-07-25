@@ -192,5 +192,6 @@ return [
     'quantity' => 'cantidad',
     'description' => 'descripción',
     'descripcion' => 'descripción',
+    'encargado' => 'cotización',
   ],
 ];

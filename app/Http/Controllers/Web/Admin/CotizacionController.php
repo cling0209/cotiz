@@ -8,6 +8,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\CompraAgilImportService;
+use App\Services\CompraAgilOportunidadService;
 use App\Services\MaterialesExcelImportService;
 use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
@@ -30,6 +31,7 @@ class CotizacionController extends Controller
         protected NotaService $notaService,
         protected NotaDetalleService $detalleService,
         protected CompraAgilImportService $compraAgilImport,
+        protected CompraAgilOportunidadService $compraAgilOportunidad,
         protected MaterialesPdfImportService $materialesPdfImport,
         protected MaterialesExcelImportService $materialesExcelImport,
         protected OportunidadParaCotizarService $oportunidadParaCotizar,
@@ -378,6 +380,12 @@ class CotizacionController extends Controller
             return back()->withInput()->withErrors(['encargado' => $error]);
         }
 
+        try {
+            $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
+        } catch (RuntimeException $e) {
+            return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
+        }
+
         [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
 
         if (! $nota) {
@@ -443,6 +451,15 @@ class CotizacionController extends Controller
             return response()->json([
                 'error' => $error,
                 'errors' => ['encargado' => [$error]],
+            ], 422);
+        }
+
+        try {
+            $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errors' => ['encargado' => [$e->getMessage()]],
             ], 422);
         }
 

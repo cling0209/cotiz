@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CotizacionCreateReuseEmptyTest extends TestCase
@@ -60,6 +61,24 @@ class CotizacionCreateReuseEmptyTest extends TestCase
 
     public function test_grabar_cabecera_en_borrador_crea_nronota(): void
     {
+        config([
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_oportunidad_encontrada.url' => '',
+            'cotiz.api_usuario.url' => '',
+        ]);
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1161-999-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '1161-999-COT26',
+                    'nombre' => 'Demo',
+                    'institucion' => ['organismo_comprador' => 'Municipalidad Demo', 'rut' => ''],
+                    'productos_solicitados' => [],
+                ],
+            ], 200),
+        ]);
+
         $antes = Nota::query()->where('usuario', $this->ejecutivo->username)->count();
 
         $response = $this->actingAs($this->ejecutivo)->postJson(
@@ -83,6 +102,38 @@ class CotizacionCreateReuseEmptyTest extends TestCase
             '1161-999-COT26',
             Nota::query()->find($nronota)?->encargado,
         );
+    }
+
+    public function test_grabar_cabecera_bloquea_si_codigo_no_existe_en_mp(): void
+    {
+        config([
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => '',
+            'cotiz.api_oportunidad_encontrada.url' => '',
+            'cotiz.api_usuario.url' => '',
+        ]);
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1161-404-COT26' => Http::response([], 404),
+        ]);
+
+        $antes = Nota::query()->where('usuario', $this->ejecutivo->username)->count();
+
+        $this->actingAs($this->ejecutivo)->postJson(
+            route('admin.cotizaciones.cabecera.store', 0),
+            [
+                'descripcion' => 'Cotización fantasma',
+                'encargado' => '1161-404-COT26',
+                'empresa' => 'Municipalidad Demo',
+                'diashabiles' => 2,
+            ],
+        )
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'error',
+                'La cotización «1161-404-COT26» no existe en Mercado Público. No se puede cargar.',
+            );
+
+        $this->assertSame($antes, Nota::query()->where('usuario', $this->ejecutivo->username)->count());
     }
 
     private function crearNota(int $nronota, string $encargado): Nota
