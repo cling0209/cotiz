@@ -102,20 +102,29 @@ class CompraAgilOportunidadService
     }
 
     /**
-     * Al grabar: si el número es Compra Ágil, exige que exista en Mercado Público.
+     * Al grabar: exige que el código exista en Oportunidades (local) o en MP.
+     * Si no existe en ninguno, lanza RuntimeException.
      */
     public function assertExisteEnMpSiCompraAgil(string $codigo): void
     {
         $codigo = strtoupper(trim($codigo));
-        if ($codigo === '' || ! $this->esCodigoCompraAgil($codigo)) {
+        if ($codigo === '') {
             return;
         }
 
-        if (! $this->api->isConfigured()) {
+        if ($this->existeEnBaseLocal($codigo)) {
             return;
         }
 
-        $this->detalleParaCarga($codigo);
+        if ($this->esCodigoCompraAgil($codigo) && $this->api->isConfigured()) {
+            $this->detalleParaCarga($codigo);
+
+            return;
+        }
+
+        throw new RuntimeException(
+            sprintf('La cotización «%s» no existe en Oportunidades. No se puede grabar.', $codigo),
+        );
     }
 
     /**
