@@ -16,11 +16,13 @@ use Throwable;
 
 class AuthController extends Controller
 {
-    public function showLogin(): View|RedirectResponse
+    public function showLogin(Request $request): View|RedirectResponse
     {
         if (Auth::check()) {
             return redirect()->route('admin.cotizaciones.index');
         }
+
+        $this->recordarRetorno($request);
 
         return view('admin.auth.login');
     }
@@ -66,6 +68,29 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('admin.login')->with('success', 'Sesión cerrada.');
+    }
+
+    /**
+     * Guarda como destino post-login la pantalla donde venció la sesión (?volver=).
+     * Solo rutas internas del panel, para no habilitar redirecciones abiertas.
+     */
+    private function recordarRetorno(Request $request): void
+    {
+        $volver = trim((string) $request->query('volver', ''));
+
+        if ($volver === '' || ! str_starts_with($volver, '/admin/')) {
+            return;
+        }
+
+        if (str_contains($volver, '\\') || str_starts_with($volver, '/admin//')) {
+            return;
+        }
+
+        if (str_starts_with($volver, '/admin/login') || str_starts_with($volver, '/admin/logout')) {
+            return;
+        }
+
+        $request->session()->put('url.intended', url($volver));
     }
 
     /**

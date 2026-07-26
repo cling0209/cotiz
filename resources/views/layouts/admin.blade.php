@@ -174,6 +174,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ asset('js/admin-dialog.js') }}?v=3"></script>
+<script>
+window.CotizSesionConfig = {
+    loginUrl: @json(route('admin.login')),
+};
+</script>
+<script src="{{ asset('js/session-expired.js') }}?v=1"></script>
 <script src="{{ asset('js/page-loader.js') }}?v=levanta-servicio" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>
