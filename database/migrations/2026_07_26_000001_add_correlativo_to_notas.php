@@ -17,33 +17,18 @@ return new class extends Migration
             });
         }
 
-        // Los códigos MP repetidos del histórico se numeran por orden de creación
-        // para que el índice único pueda crearse sin perder ninguna cotización.
-        DB::statement(<<<'SQL'
-            with numeradas as (
-                select nronota,
-                       row_number() over (
-                           partition by upper(btrim(encargado))
-                           order by nronota
-                       ) as rn
-                  from notas
-                 where btrim(coalesce(encargado, '')) <> ''
-            )
-            update notas n
-               set correlativo = numeradas.rn
-              from numeradas
-             where numeradas.nronota = n.nronota
-               and numeradas.rn > 1
-        SQL);
+        $this->numerarHistorico();
 
         // Parcial: toda cotización nace con encargado vacío y conviven varias así.
         DB::statement(sprintf(
             <<<'SQL'
                 create unique index if not exists %s
-                    on notas (upper(btrim(encargado)), correlativo)
-                 where btrim(coalesce(encargado, '')) <> ''
+                    on notas (upper(%s(encargado)), correlativo)
+                 where %s(coalesce(encargado, '')) <> ''
             SQL,
             self::INDICE,
+            $this->funcionTrim(),
+            $this->funcionTrim(),
         ));
     }
 
@@ -56,5 +41,45 @@ return new class extends Migration
                 $table->dropColumn('correlativo');
             });
         }
+    }
+
+    /**
+     * Los códigos MP repetidos del histórico se numeran por orden de creación para
+     * que el índice único pueda crearse sin perder ninguna cotización.
+     *
+     * Va en PHP y no en SQL porque `update ... from` y `btrim` son de PostgreSQL,
+     * y las pruebas corren sobre SQLite.
+     */
+    private function numerarHistorico(): void
+    {
+        $vistos = [];
+
+        DB::table('notas')
+            ->select('nronota', 'encargado')
+            ->orderBy('nronota')
+            ->chunk(1000, function ($notas) use (&$vistos) {
+                foreach ($notas as $nota) {
+                    $codigo = strtoupper(trim((string) $nota->encargado));
+                    if ($codigo === '') {
+                        continue;
+                    }
+
+                    $correlativo = ($vistos[$codigo] ?? 0) + 1;
+                    $vistos[$codigo] = $correlativo;
+
+                    if ($correlativo === 1) {
+                        continue;
+                    }
+
+                    DB::table('notas')
+                        ->where('nronota', $nota->nronota)
+                        ->update(['correlativo' => $correlativo]);
+                }
+            });
+    }
+
+    private function funcionTrim(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql' ? 'btrim' : 'trim';
     }
 };
