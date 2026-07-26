@@ -25,6 +25,7 @@ class NotaService
                 'fecha' => now()->toDateString(),
                 'usuario' => $usuario,
                 'encargado' => '',
+                'correlativo' => 1,
                 'empresa' => '',
                 'celular' => '',
                 'contacto' => '',
@@ -55,6 +56,7 @@ class NotaService
             'fecha' => now()->toDateString(),
             'usuario' => $usuario,
             'encargado' => '',
+            'correlativo' => 1,
             'empresa' => '',
             'celular' => '',
             'contacto' => '',
@@ -76,6 +78,70 @@ class NotaService
     public function esBorrador(Nota $nota): bool
     {
         return ! $nota->exists || (int) $nota->nronota === 0;
+    }
+
+    /**
+     * Copia cabecera y productos en una nota nueva que conserva el código de
+     * Mercado Público y avanza el correlativo, para ofertar otra vez al mismo proceso.
+     *
+     * La copia nace sin estado (no aceptada), sin enviar a la API y como nota local.
+     */
+    public function duplicar(Nota $origen, string $usuario): Nota
+    {
+        return DB::transaction(function () use ($origen, $usuario) {
+            $nronota = $this->siguienteNronota();
+
+            $copia = Nota::create([
+                'nronota' => $nronota,
+                'correlativo' => $this->siguienteCorrelativo((string) $origen->encargado),
+                'descripcion' => $origen->descripcion,
+                'fecha' => now()->toDateString(),
+                'usuario' => $usuario,
+                'encargado' => $origen->encargado,
+                'empresa' => $origen->empresa,
+                'celular' => $origen->celular,
+                'contacto' => $origen->contacto,
+                'contactocorreo' => $origen->contactocorreo,
+                'rutempresa' => $origen->rutempresa,
+                'nota_softland' => $this->siguienteNotaSoftland(),
+                'notaorigen' => 0,
+                'sistema' => $origen->sistema ?? config('app.name'),
+                'enviadoapi' => 0,
+                'diashabiles' => $origen->diashabiles ?? (int) config('cotiz.diashabiles_rm', 5),
+                'ocompra' => $origen->ocompra,
+                'fechaentrega' => $origen->fechaentrega,
+                'factor_precio_venta' => $origen->factor_precio_venta,
+                'direccion_entrega' => $origen->direccion_entrega,
+                'region' => $origen->region,
+                'nombre_region' => $origen->nombre_region,
+                'comuna' => $origen->comuna,
+            ]);
+
+            // replicate() copia los atributos ya normalizados, sin volver a pasar
+            // las descripciones Agile por sus mutadores.
+            foreach ($origen->detalle()->get() as $linea) {
+                $lineaCopia = $linea->replicate();
+                $lineaCopia->nronota = $nronota;
+                $lineaCopia->fechahora = now();
+                $lineaCopia->save();
+            }
+
+            return $copia;
+        });
+    }
+
+    public function siguienteCorrelativo(string $encargado): int
+    {
+        $numero = trim($encargado);
+        if ($numero === '') {
+            return 1;
+        }
+
+        $maximo = (int) Nota::query()
+            ->whereRaw('lower(trim(encargado)) = lower(?)', [$numero])
+            ->max('correlativo');
+
+        return max(1, $maximo) + 1;
     }
 
     /**
@@ -193,6 +259,12 @@ class NotaService
 
         if ($numero === '') {
             return 'Debe ingresar el número de cotización antes de continuar.';
+        }
+
+        // La nota ya tiene este código: sus copias con otro correlativo son válidas.
+        // Solo se bloquea tomar un código que pertenece a otro proceso.
+        if (strcasecmp(trim((string) $nota->encargado), $numero) === 0) {
+            return null;
         }
 
         $existente = Nota::query()

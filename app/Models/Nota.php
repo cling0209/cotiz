@@ -20,7 +20,7 @@ class Nota extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'nronota', 'descripcion', 'fecha', 'usuario', 'empresa', 'encargado',
+        'nronota', 'descripcion', 'fecha', 'usuario', 'empresa', 'encargado', 'correlativo',
         'celular', 'contacto', 'contactocorreo', 'rutempresa', 'nota_softland',
         'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
         'estadofecha', 'estadousuario', 'ocompra', 'fechaentrega', 'factor_precio_venta',
@@ -37,6 +37,7 @@ class Nota extends Model
             'enviadoapi' => 'integer',
             'diashabiles' => 'integer',
             'region' => 'integer',
+            'correlativo' => 'integer',
         ];
     }
 
@@ -68,5 +69,13 @@ class Nota extends Model
     public function fueRecibidaPorApi(): bool
     {
         return (int) $this->notaorigen > 0;
+    }
+
+    /**
+     * Copia de otra cotización del mismo proceso de Mercado Público.
+     */
+    public function esCopiaDeCotizacion(): bool
+    {
+        return (int) ($this->correlativo ?? 1) > 1;
     }
 }

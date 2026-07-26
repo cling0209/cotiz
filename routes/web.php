@@ -61,6 +61,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/no-aceptar', [CotizacionListadoController::class, 'noAceptar'])->name('cotizaciones.no-aceptar')->whereNumber('nronota');
         Route::get('cotizaciones/{nronota}/asignar', [CotizacionListadoController::class, 'asignarForm'])->name('cotizaciones.asignar')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/asignar', [CotizacionListadoController::class, 'asignar'])->name('cotizaciones.asignar.store')->whereNumber('nronota');
+        Route::post('cotizaciones/{nronota}/duplicar', [CotizacionListadoController::class, 'duplicar'])->name('cotizaciones.duplicar')->whereNumber('nronota');
         Route::get('cotizaciones/export/sin-codigo-softland', [CotizacionListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.export.sin-codigo-softland');
         Route::get('cotizaciones/export/aceptadas', [CotizacionListadoController::class, 'exportAceptadas'])->name('cotizaciones.export.aceptadas');
         Route::match(['get', 'post'], 'cotizaciones/nueva', [CotizacionController::class, 'create'])->name('cotizaciones.create');

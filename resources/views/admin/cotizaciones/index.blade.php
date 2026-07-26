@@ -179,6 +179,11 @@
                             <td class="text-end">${{ number_format($nota->total_calculado ?? 0, 0, ',', '.') }}</td>
                             <td>
                                 <strong>{{ $nota->encargado }}</strong>
+                                @if($nota->esCopiaDeCotizacion())
+                                    <span class="badge text-bg-secondary ms-1" title="Copia {{ $nota->correlativo }} del mismo c&oacute;digo de Mercado P&uacute;blico">
+                                        Copia {{ $nota->correlativo }}
+                                    </span>
+                                @endif
                                 @if($esSegundoLlamado)
                                     @php
                                         $cierreFila = optional($segundoLlamadoPorNota->get($nota->nronota))->fecha_cierre_segundo_llamado;
@@ -206,6 +211,15 @@
                             <td class="text-end">
                                 <div class="d-flex flex-wrap gap-1 justify-content-end">
                                     <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
+
+                                    @if(trim((string) $nota->encargado) !== '')
+                                        <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline"
+                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }}? Se creará una nota nueva con el mismo código {{ $nota->encargado }} y el correlativo siguiente.">
+                                            @csrf
+                                            @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">Duplicar</button>
+                                        </form>
+                                    @endif
 
                                     @if((int) $nota->enviadoapi === 0 && ! $nota->fueRecibidaPorApi())
                                         <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"

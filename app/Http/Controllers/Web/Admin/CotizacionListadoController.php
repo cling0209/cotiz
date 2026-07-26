@@ -98,6 +98,32 @@ class CotizacionListadoController extends Controller
         return $this->volverListado($request)->with('success', 'Cotización marcada como no aceptada.');
     }
 
+    public function duplicar(Request $request, int $nronota): RedirectResponse
+    {
+        $nota = Nota::query()->findOrFail($nronota);
+
+        if (! $this->listadoService->puedeVer($request->user(), $nota)) {
+            abort(403);
+        }
+
+        if (trim((string) $nota->encargado) === '') {
+            return $this->volverListado($request)
+                ->with('error', 'Solo se pueden duplicar cotizaciones que ya tienen número de cotización.');
+        }
+
+        $copia = $this->notaService->duplicar($nota, $request->user()->username);
+
+        return redirect()
+            ->route('admin.cotizaciones.edit', $copia->nronota)
+            ->with('success', sprintf(
+                'Cotización #%d duplicada en la #%d con el mismo código «%s» (copia %d).',
+                $nota->nronota,
+                $copia->nronota,
+                trim((string) $copia->encargado),
+                $copia->correlativo,
+            ));
+    }
+
     public function asignarForm(Request $request, int $nronota): View|RedirectResponse
     {
         $nota = $this->notaGestionable($request, $nronota);

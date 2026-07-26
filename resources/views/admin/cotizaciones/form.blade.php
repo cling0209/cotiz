@@ -26,6 +26,11 @@
                 Nueva cotizaci&oacute;n
             @else
                 Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
+                @if($nota->esCopiaDeCotizacion())
+                    <span class="badge text-bg-secondary align-middle" title="Copia {{ $nota->correlativo }} del mismo c&oacute;digo de Mercado P&uacute;blico">
+                        Copia {{ $nota->correlativo }}
+                    </span>
+                @endif
             @endif
         </h1>
         @if($desdeAdjudicadas)
