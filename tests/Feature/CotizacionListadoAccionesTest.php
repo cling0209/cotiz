@@ -103,7 +103,7 @@ class CotizacionListadoAccionesTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_enviar_relay_usa_usuario_logueado_no_credencial_api(): void
+    public function test_enviar_relay_usa_usuario_dueno_no_quien_envia_ni_credencial_api(): void
     {
         config([
             'cotiz.api_nota.url' => 'https://destino.test/api/v1/nota',
@@ -146,7 +146,7 @@ class CotizacionListadoAccionesTest extends TestCase
 
             return $request->url() === 'https://destino.test/api/v1/nota'
                 && ($data['accion'] ?? '') === 'graba_resumen'
-                && ($data['usuario'] ?? '') === 'admin';
+                && ($data['usuario'] ?? '') === 'ejecutivo';
         });
     }
 

@@ -29,7 +29,9 @@ class NotaEnvioRelayService
             throw new RuntimeException('La cotización no tiene líneas de detalle.');
         }
 
-        $usuarioRelay = trim((string) ($usuarioEnvio ?: $nota->usuario));
+        // El dueño manda: si un admin envía la cotización de un ejecutivo, en el otro
+        // sitio debe quedar a nombre del ejecutivo, no de quien apretó el botón.
+        $usuarioRelay = trim((string) ($nota->usuario ?: $usuarioEnvio));
         if ($usuarioRelay === '') {
             throw new RuntimeException('La cotización no tiene usuario asignado.');
         }

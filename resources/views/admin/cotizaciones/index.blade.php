@@ -214,7 +214,7 @@
 
                                     @if(trim((string) $nota->encargado) !== '')
                                         <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline"
-                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }}? Se creará una nota nueva con el mismo código {{ $nota->encargado }} y el correlativo siguiente.">
+                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }} («{{ trim((string) $nota->encargado) }}»)? Se crea una cotización nueva con el mismo código y el correlativo siguiente, copiando la cabecera y todos los productos, para presentar otra oferta al mismo proceso. Después podés cambiarle precios y cantidades.">
                                             @csrf
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Duplicar</button>
@@ -223,7 +223,7 @@
 
                                     @if((int) $nota->enviadoapi === 0 && ! $nota->fueRecibidaPorApi())
                                         <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"
-                                              data-confirm="¿Enviar cotización #{{ $nota->nronota }} a la API?">
+                                              data-confirm="¿Enviar la cotización #{{ $nota->nronota }}{{ trim((string) $nota->encargado) !== '' ? ' («'.trim((string) $nota->encargado).'»)' : '' }} al otro sitio (Romulo ↔ Reicol)? Allá queda registrada a nombre de {{ trim((string) $nota->usuario) !== '' ? $nota->usuario : 'su ejecutivo' }}. Solo se puede enviar una vez.">
                                             @csrf
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Enviar</button>
