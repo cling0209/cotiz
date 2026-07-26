@@ -145,6 +145,58 @@ class NotaService
     }
 
     /**
+     * Otra cotización del mismo código de Mercado Público con idéntico detalle
+     * (mismos productos, cantidades y precios). Ofertar dos veces lo mismo al
+     * proceso no aporta nada, así que sirve para bloquear el PDF.
+     */
+    public function cotizacionGemela(Nota $nota): ?Nota
+    {
+        $codigo = trim((string) $nota->encargado);
+        if ($codigo === '') {
+            return null;
+        }
+
+        $firma = $this->firmaDetalle($nota);
+        if ($firma === '') {
+            return null;
+        }
+
+        $hermanas = Nota::query()
+            ->where('nronota', '!=', $nota->nronota)
+            ->whereRaw('lower(trim(encargado)) = lower(?)', [$codigo])
+            ->orderBy('nronota')
+            ->get();
+
+        foreach ($hermanas as $hermana) {
+            if ($this->firmaDetalle($hermana) === $firma) {
+                return $hermana;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Huella del detalle, independiente del orden de las líneas.
+     */
+    private function firmaDetalle(Nota $nota): string
+    {
+        $lineas = $nota->detalle()
+            ->get(['prod_item', 'cantidad', 'prod_valor'])
+            ->map(fn ($linea) => sprintf(
+                '%s|%s|%s',
+                strtoupper(trim((string) $linea->prod_item)),
+                (float) $linea->cantidad,
+                (float) $linea->prod_valor,
+            ))
+            ->sort()
+            ->values()
+            ->implode(';');
+
+        return $lineas;
+    }
+
+    /**
      * Tras validar en borrador (nronota 0), reutiliza la verificación par en la nota real.
      */
     public function adoptarVerificacionParDesdeBorrador(int $nronotaNuevo): void

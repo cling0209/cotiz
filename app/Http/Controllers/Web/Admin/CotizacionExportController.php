@@ -8,6 +8,7 @@ use App\Models\Nota;
 use App\Models\User;
 use App\Services\CotizacionExportService;
 use App\Services\NotaDetalleService;
+use App\Services\NotaService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -17,11 +18,29 @@ class CotizacionExportController extends Controller
     public function __construct(
         protected CotizacionExportService $exportService,
         protected NotaDetalleService $detalleService,
+        protected NotaService $notaService,
     ) {}
 
     public function pdf(Request $request, int $nronota)
     {
         $nota = $this->notaAutorizada($request, $nronota);
+
+        $gemela = $this->notaService->cotizacionGemela($nota);
+        if ($gemela !== null) {
+            return response(
+                sprintf(
+                    'La cotización #%d tiene los mismos productos, cantidades y precios que la #%d, '
+                    ."que ya usa el mismo código «%s».\n\n"
+                    .'Cambie algún precio o cantidad antes de generar el PDF: subir dos ofertas '
+                    .'idénticas al mismo proceso no aporta nada.',
+                    $nota->nronota,
+                    $gemela->nronota,
+                    trim((string) $nota->encargado),
+                ),
+                422,
+                ['Content-Type' => 'text/plain; charset=UTF-8'],
+            );
+        }
 
         $this->detalleService->confirmarAprendizajeDeNota(
             $nota,
