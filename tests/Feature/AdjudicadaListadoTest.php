@@ -45,8 +45,8 @@ class AdjudicadaListadoTest extends TestCase
 
     public function test_filtra_por_fecha_entrega(): void
     {
-        $this->crearNota(['nronota' => 201, 'estado' => 'aceptada', 'fechaentrega' => '2026-06-10', 'empresa' => 'Empresa Filtro 201']);
-        $this->crearNota(['nronota' => 202, 'estado' => 'aceptada', 'fechaentrega' => '2026-06-20', 'empresa' => 'Empresa Filtro 202']);
+        $this->crearNota(['nronota' => 201, 'estado' => 'aceptada', 'fechaentrega' => '2026-06-10', 'empresa' => 'Empresa Filtro 201', 'encargado' => 'COT-201']);
+        $this->crearNota(['nronota' => 202, 'estado' => 'aceptada', 'fechaentrega' => '2026-06-20', 'empresa' => 'Empresa Filtro 202', 'encargado' => 'COT-202']);
 
         $this->actingAs($this->admin)
             ->get(route('admin.cotizaciones.adjudicadas.index', [
