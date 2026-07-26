@@ -99,7 +99,7 @@
         if (res.status === 401) {
             const destino = destinoLogin();
             avisar(
-                'Tu sesión venció. Vas a volver al login; al entrar de nuevo te dejamos en esta misma pantalla.',
+                'Su sesión venció. Lo llevamos al inicio de sesión; al ingresar de nuevo volverá a esta misma pantalla.',
                 function () {
                     global.location.href = destino;
                 },
