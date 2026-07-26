@@ -111,6 +111,19 @@ class CotizacionListadoController extends Controller
                 ->with('error', 'Solo se pueden duplicar cotizaciones que ya tienen número de cotización.');
         }
 
+        $par = $this->notaService->parIdenticoDelCodigo((string) $nota->encargado);
+        if ($par !== null) {
+            [$original, $sinCambios] = $par;
+
+            return $this->volverListado($request)->with('error', sprintf(
+                'La cotización #%d no tiene cambios respecto de la #%d: mismos productos, cantidades y precios. '
+                .'Modifíquela antes de crear otra copia del código «%s».',
+                $sinCambios->nronota,
+                $original->nronota,
+                trim((string) $nota->encargado),
+            ));
+        }
+
         $copia = $this->notaService->duplicar($nota, $request->user()->username);
 
         return redirect()

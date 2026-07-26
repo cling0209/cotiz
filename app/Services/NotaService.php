@@ -177,6 +177,42 @@ class NotaService
     }
 
     /**
+     * Primer par de cotizaciones del mismo código MP con detalle idéntico.
+     * Si existe, no tiene sentido crear otra copia hasta diferenciarlas.
+     *
+     * @return array{0: Nota, 1: Nota}|null  [la original, la que quedó sin cambios]
+     */
+    public function parIdenticoDelCodigo(string $encargado): ?array
+    {
+        $codigo = trim($encargado);
+        if ($codigo === '') {
+            return null;
+        }
+
+        $notas = Nota::query()
+            ->whereRaw('lower(trim(encargado)) = lower(?)', [$codigo])
+            ->orderBy('nronota')
+            ->get();
+
+        $porFirma = [];
+
+        foreach ($notas as $nota) {
+            $firma = $this->firmaDetalle($nota);
+            if ($firma === '') {
+                continue;
+            }
+
+            if (isset($porFirma[$firma])) {
+                return [$porFirma[$firma], $nota];
+            }
+
+            $porFirma[$firma] = $nota;
+        }
+
+        return null;
+    }
+
+    /**
      * Huella del detalle, independiente del orden de las líneas.
      */
     private function firmaDetalle(Nota $nota): string
