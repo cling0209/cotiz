@@ -118,7 +118,7 @@
                 <tbody>
                     @forelse($cerradas as $seg)
                         <tr class="{{ !empty($seg->es_ganador_propio) ? 'table-success' : '' }}">
-                            <td>{{ $seg->nronota }}</td>
+                            <td class="text-nowrap">{{ $seg->nronota }}@include('admin.compra-agil.partials.badge-copia', ['nota' => $seg->nota])</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>

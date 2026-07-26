@@ -111,6 +111,7 @@ class CompraAgilResultadosController extends Controller
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Nota',
+                'Copia',
                 'Código CA',
                 'Publicación',
                 'Último cambio',
@@ -133,6 +134,7 @@ class CompraAgilResultadosController extends Controller
             foreach ($todas as $seg) {
                 fputcsv($out, [
                     $seg->nronota,
+                    $seg->nota?->correlativo ?? 1,
                     $seg->codigo_proceso,
                     $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
                     $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
@@ -170,6 +172,7 @@ class CompraAgilResultadosController extends Controller
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Nota',
+                'Copia',
                 'Código CA',
                 'Publicación',
                 'Último cambio',
@@ -191,6 +194,7 @@ class CompraAgilResultadosController extends Controller
             foreach ($pendientes as $seg) {
                 fputcsv($out, [
                     $seg->nronota,
+                    $seg->nota?->correlativo ?? 1,
                     $seg->codigo_proceso,
                     $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
                     $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
@@ -227,6 +231,7 @@ class CompraAgilResultadosController extends Controller
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Nota',
+                'Copia',
                 'Código CA',
                 'Publicación',
                 'Último cambio',
@@ -248,6 +253,7 @@ class CompraAgilResultadosController extends Controller
             foreach ($items as $seg) {
                 fputcsv($out, [
                     $seg->nronota,
+                    $seg->nota?->correlativo ?? 1,
                     $seg->codigo_proceso,
                     $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
                     $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',
@@ -309,6 +315,7 @@ class CompraAgilResultadosController extends Controller
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Nota',
+                'Copia',
                 'Código CA',
                 'Publicación',
                 'Último cambio',
@@ -331,6 +338,7 @@ class CompraAgilResultadosController extends Controller
             foreach ($cerradas as $seg) {
                 fputcsv($out, [
                     $seg->nronota,
+                    $seg->nota?->correlativo ?? 1,
                     $seg->codigo_proceso,
                     $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '',
                     $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '',

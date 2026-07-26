@@ -130,7 +130,7 @@
                     @forelse($pendientes as $seg)
                         <tr class="pendiente-data-row {{ !empty($seg->es_ganador_propio) ? 'table-success' : '' }}"
                             data-nronota="{{ $seg->nronota }}">
-                            <td>{{ $seg->nronota }}</td>
+                            <td class="text-nowrap">{{ $seg->nronota }}@include('admin.compra-agil.partials.badge-copia', ['nota' => $seg->nota])</td>
                             <td class="font-monospace small">{{ $seg->codigo_proceso }}</td>
                             <td class="small text-muted">{{ $seg->fecha_publicacion?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small text-muted">{{ $seg->fecha_ultimo_cambio?->format('d/m/Y H:i') ?? '—' }}</td>
