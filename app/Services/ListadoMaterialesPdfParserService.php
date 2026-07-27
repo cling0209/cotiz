@@ -249,6 +249,7 @@ class ListadoMaterialesPdfParserService
 
         $resultado = [];
         $indiceActual = null;
+        $cantidadPendiente = null;
 
         foreach ($lineas as $lineaCruda) {
             if ($this->esEncabezadoListado($lineaCruda)) {
@@ -262,19 +263,43 @@ class ListadoMaterialesPdfParserService
             foreach ($this->expandirLineasCantidadOcr($lineaCruda) as $linea) {
                 $normalizada = $this->normalizarCantidadInicialOcr($linea);
 
+                // OCR a veces deja la cantidad sola ("3") y el nombre en la línea siguiente.
+                if (preg_match('/^\d{1,6}$/u', $normalizada) === 1) {
+                    $cantidadPendiente = max(1, (int) $normalizada);
+
+                    continue;
+                }
+
                 if (preg_match('/^(\d{1,6})(?:\s+|(?=c\s*\/\s*[ua]))(.+)$/iu', $normalizada, $coincidencia) === 1) {
                     $resultado[] = [
                         'cantidad' => max(1, (int) $coincidencia[1]),
                         'descripcion' => $this->limpiarInicioDescripcion($coincidencia[2]),
                     ];
                     $indiceActual = count($resultado) - 1;
+                    $cantidadPendiente = null;
+
+                    continue;
+                }
+
+                $descripcion = $this->limpiarInicioDescripcion($normalizada);
+                if ($descripcion === '') {
+                    continue;
+                }
+
+                if ($cantidadPendiente !== null) {
+                    $resultado[] = [
+                        'cantidad' => $cantidadPendiente,
+                        'descripcion' => $descripcion,
+                    ];
+                    $indiceActual = count($resultado) - 1;
+                    $cantidadPendiente = null;
 
                     continue;
                 }
 
                 if ($indiceActual !== null) {
                     $resultado[$indiceActual]['descripcion'] = trim(
-                        $resultado[$indiceActual]['descripcion'].' '.$this->limpiarInicioDescripcion($linea),
+                        $resultado[$indiceActual]['descripcion'].' '.$descripcion,
                     );
                 }
             }
@@ -285,7 +310,7 @@ class ListadoMaterialesPdfParserService
 
     /**
      * El OCR de tablas a veces pega varias filas en una sola línea
-     * ("…40g B0 Cajas de…" / "…jumbo i B0 Lápices…"). Separa esas filas.
+     * ("…40g B0 Cajas de…" / "…3em 3 Termolaminadoras"). Separa esas filas.
      *
      * @return list<string>
      */
@@ -303,6 +328,13 @@ class ListadoMaterialesPdfParserService
             "\n$1",
             $linea,
         ) ?? $linea;
+
+        // Tras una medida (3cm/3em) el OCR pega la cantidad de la fila siguiente.
+        $expandida = preg_replace(
+            '/(\d\s*(?:cm|em|mm)\b)\s+(\d{1,4})\s+(?=[A-ZÁÉÍÓÚÑ¡])/iu',
+            "$1\n$2 ",
+            $expandida,
+        ) ?? $expandida;
 
         return array_values(array_filter(
             array_map(static fn (string $parte) => trim($parte), explode("\n", $expandida)),

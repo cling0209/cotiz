@@ -160,6 +160,20 @@ TXT;
         $this->assertTrue(
             count(array_filter($descripciones, static fn (string $d) => str_contains($d, 'lápices de colores jumbo') || str_contains($d, 'lapices de colores jumbo'))) >= 1,
         );
+
+        $argollas = array_values(array_filter(
+            $lineas,
+            static fn (array $l): bool => str_contains(mb_strtolower($l['descripcion']), 'argollas'),
+        ));
+        $termo = array_values(array_filter(
+            $lineas,
+            static fn (array $l): bool => str_contains(mb_strtolower($l['descripcion']), 'termolaminadoras'),
+        ));
+        $this->assertCount(1, $argollas);
+        $this->assertSame(100, $argollas[0]['cantidad']);
+        $this->assertStringNotContainsStringIgnoringCase('Termolaminadoras', $argollas[0]['descripcion']);
+        $this->assertCount(1, $termo);
+        $this->assertSame(3, $termo[0]['cantidad']);
     }
 
     public function test_ocr_corrige_cantidad_b0_y_separa_filas_fusionadas(): void
@@ -190,6 +204,41 @@ TXT;
 
         $this->assertSame(20, $lineas[4]['cantidad']);
         $this->assertStringContainsString('Cartulina española', $lineas[4]['descripcion']);
+    }
+
+    public function test_ocr_separa_cantidad_sola_y_nombre_en_siguiente_linea(): void
+    {
+        $texto = <<<'TXT'
+1 kilo Algodón bolsa
+100 Argollas de madera 3em
+3
+Termolaminadoras
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(1, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Algodón', $lineas[0]['descripcion']);
+        $this->assertSame(100, $lineas[1]['cantidad']);
+        $this->assertSame('Argollas de madera 3em', $lineas[1]['descripcion']);
+        $this->assertSame(3, $lineas[2]['cantidad']);
+        $this->assertSame('Termolaminadoras', $lineas[2]['descripcion']);
+    }
+
+    public function test_ocr_separa_cantidad_pegada_tras_medida_cm(): void
+    {
+        $texto = <<<'TXT'
+100 Argollas de madera 3em 3 Termolaminadoras
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(100, $lineas[0]['cantidad']);
+        $this->assertSame('Argollas de madera 3em', $lineas[0]['descripcion']);
+        $this->assertSame(3, $lineas[1]['cantidad']);
+        $this->assertSame('Termolaminadoras', $lineas[1]['descripcion']);
     }
 
     public function test_fixture_detalle_sg(): void

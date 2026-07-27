@@ -145,8 +145,8 @@ class MaterialesPdfImportService
         $path = $file->getRealPath() ?: $file->getPathname();
         $cacheKey = null;
         if (is_string($path) && is_readable($path)) {
-            // v3: invalida cachés de OCR con PSM 6 / parser sin corrección B0→80.
-            $cacheKey = 'cotiz.pdf_import.v3.'.hash_file('sha1', $path);
+            // v4: invalida cachés que pegaban "3" + "Termolaminadoras" a la fila anterior.
+            $cacheKey = 'cotiz.pdf_import.v5.'.hash_file('sha1', $path);
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['cabecera'], $cached['lineas'])) {
                 return $cached;
