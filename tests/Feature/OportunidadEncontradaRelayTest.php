@@ -574,4 +574,137 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertIsArray($row->vinculo_preview_json);
         $this->assertSame('Producto test', $row->vinculo_preview_json['lineas'][0]['descripcion'] ?? null);
     }
+
+    public function test_eliminar_replica_al_sitio_par(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '7000-1-COT26',
+            'nombre' => 'Para borrar',
+            'organismo' => 'Municipalidad',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 50000,
+            'palabras_coinciden' => ['papel'],
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'codigo' => '7000-1-COT26',
+                'eliminados' => 1,
+            ], 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $resultado = $relay->eliminarYReplicar('7000-1-COT26');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertTrue($resultado['existia']);
+        $this->assertTrue($resultado['replicado']);
+        $this->assertFalse($resultado['pendiente_sync']);
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '7000-1-COT26',
+        ]);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://cotiza.reicol.cl/api/v1/oportunidad-encontrada'
+                && ($request['accion'] ?? null) === 'eliminar'
+                && ($request['codigo'] ?? null) === '7000-1-COT26';
+        });
+    }
+
+    public function test_si_par_falla_eliminar_queda_pendiente(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '7000-2-COT26',
+            'nombre' => 'Para borrar con fallo',
+            'organismo' => 'Municipalidad',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 50000,
+            'palabras_coinciden' => ['papel'],
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'ERROR',
+                'mensaje' => 'par caído',
+            ], 503),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $resultado = $relay->eliminarYReplicar('7000-2-COT26');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertFalse($resultado['replicado']);
+        $this->assertTrue($resultado['pendiente_sync']);
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '7000-2-COT26',
+        ]);
+        $this->assertDatabaseHas('oportunidad_encontrada_sync_pendientes', [
+            'accion' => OportunidadEncontradaRelayService::ACCION_ELIMINAR,
+        ]);
+    }
+
+    public function test_api_recibe_eliminacion_idempotente(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '7000-3-COT26',
+            'nombre' => 'Remota',
+            'organismo' => 'Municipalidad',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 50000,
+            'palabras_coinciden' => ['papel'],
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+        ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'eliminar',
+                'codigo' => '7000-3-COT26',
+                'origen_sistema' => 'Reicol',
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('eliminados', 1);
+
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '7000-3-COT26',
+        ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'eliminar',
+                'codigo' => '7000-3-COT26',
+                'origen_sistema' => 'Reicol',
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('eliminados', 0);
+    }
 }

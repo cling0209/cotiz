@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadEncontradaSyncPendiente;
 use App\Models\OportunidadTomada;
+use App\Models\OportunidadVisita;
 use App\Support\CotizInstanciaPar;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\Response;
@@ -22,6 +23,8 @@ class OportunidadEncontradaRelayService
     public const ACCION_VINCULO = 'vinculo';
 
     public const ACCION_TOMADA = 'tomada';
+
+    public const ACCION_ELIMINAR = 'eliminar';
 
     private const CACHE_ULTIMO_OK_PREFIX = 'oportunidad_sync_par.ultimo_ok.';
 
@@ -97,6 +100,11 @@ class OportunidadEncontradaRelayService
                         (string) ($payload['codigo'] ?? ''),
                         (string) ($payload['usuario'] ?? ''),
                         (string) ($payload['sistema'] ?? ''),
+                        false,
+                    );
+                } elseif ($pendiente->accion === self::ACCION_ELIMINAR || $pendiente->accion === 'eliminar') {
+                    $this->enviarEliminar(
+                        (string) ($payload['codigo'] ?? ''),
                         false,
                     );
                 } else {
@@ -390,6 +398,73 @@ class OportunidadEncontradaRelayService
     }
 
     /**
+     * Borra la oportunidad local y replica la eliminación al sitio par.
+     * Si el par no responde, encola pendiente (accion=eliminar).
+     *
+     * @return array{ok: bool, codigo: string, existia: bool, replicado: bool, pendiente_sync: bool}
+     */
+    public function eliminarYReplicar(string $codigo): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            throw new RuntimeException('codigo inválido');
+        }
+
+        $existia = OportunidadEncontrada::query()->where('codigo', $codigo)->exists();
+        $this->borrarLocalPorCodigo($codigo);
+        $this->purgarPendientesGrabaVinculoDeCodigo($codigo);
+
+        $replicado = false;
+        $pendienteSync = false;
+
+        if ($this->urlDestino() === '') {
+            return [
+                'ok' => true,
+                'codigo' => $codigo,
+                'existia' => $existia,
+                'replicado' => false,
+                'pendiente_sync' => false,
+            ];
+        }
+
+        try {
+            $this->enviarEliminar($codigo, true);
+            $replicado = true;
+        } catch (\Throwable $e) {
+            $pendienteSync = true;
+            Log::warning('Sync eliminación oportunidad al par falló (queda pendiente)', [
+                'codigo' => $codigo,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'ok' => true,
+            'codigo' => $codigo,
+            'existia' => $existia,
+            'replicado' => $replicado,
+            'pendiente_sync' => $pendienteSync,
+        ];
+    }
+
+    /**
+     * Eliminación remota idempotente (API del par).
+     *
+     * @return array{ok: bool, codigo: string, eliminados: int}
+     */
+    public function recibirEliminacion(string $codigo): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            throw new RuntimeException('codigo inválido');
+        }
+
+        $eliminados = $this->borrarLocalPorCodigo($codigo);
+
+        return ['ok' => true, 'codigo' => $codigo, 'eliminados' => $eliminados];
+    }
+
+    /**
      * Resumen de sync al par (solo útil en sitio ANALISIS_ADMIN).
      *
      * @return array{
@@ -460,7 +535,8 @@ class OportunidadEncontradaRelayService
             ->filter(function (OportunidadEncontradaSyncPendiente $pendiente) use ($tipo) {
                 if ($tipo === 'all') {
                     return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
-                        || $pendiente->accion === self::ACCION_TOMADA;
+                        || $pendiente->accion === self::ACCION_TOMADA
+                        || $pendiente->accion === self::ACCION_ELIMINAR;
                 }
 
                 return $this->colaAccionDesdePendiente($pendiente) === $tipo;
@@ -476,6 +552,11 @@ class OportunidadEncontradaRelayService
                         (string) ($payload['codigo'] ?? ''),
                         (string) ($payload['usuario'] ?? ''),
                         (string) ($payload['sistema'] ?? ''),
+                        false,
+                    );
+                } elseif ($pendiente->accion === self::ACCION_ELIMINAR) {
+                    $this->enviarEliminar(
+                        (string) ($payload['codigo'] ?? ''),
                         false,
                     );
                 } else {
@@ -799,6 +880,70 @@ class OportunidadEncontradaRelayService
         }
     }
 
+    private function enviarEliminar(string $codigo, bool $encolarSiFalla): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        $destino = $this->urlDestino();
+        if ($codigo === '' || $destino === '') {
+            return;
+        }
+
+        $userAuth = (string) config('cotiz.api_nota.user', '');
+        $passwordAuth = (string) config('cotiz.api_nota.password', '');
+        if ($userAuth === '' || $passwordAuth === '') {
+            throw new RuntimeException(
+                'Faltan COTIZ_API_NOTA_USER o COTIZ_API_NOTA_PASSWORD (Basic Auth compartida con la otra instancia).'
+            );
+        }
+
+        $payload = [
+            'accion' => self::ACCION_ELIMINAR,
+            'replicacion' => true,
+            'origen_sistema' => (string) config('cotiz.sistema', config('app.name')),
+            'codigo' => $codigo,
+        ];
+
+        try {
+            $response = Http::timeout(30)
+                ->asJson()
+                ->withBasicAuth($userAuth, $passwordAuth)
+                ->post($destino, $payload);
+        } catch (\Throwable $e) {
+            $mensaje = 'No se pudo eliminar en el sitio par ('.$codigo.'): '.$e->getMessage();
+            if ($encolarSiFalla) {
+                $this->encolarEliminar($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        if (! $response->successful()) {
+            $data = $response->json();
+            $detalle = is_array($data) ? trim((string) ($data['mensaje'] ?? '')) : '';
+            $mensaje = $detalle !== ''
+                ? $detalle
+                : $this->mensajeErrorHttp(
+                    $response,
+                    $destino,
+                    $this->nombreInstanciaPar($destino),
+                );
+            if ($encolarSiFalla) {
+                $this->encolarEliminar($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
+            $mensaje = is_array($data)
+                ? trim((string) ($data['mensaje'] ?? 'Respuesta inválida del sitio par.'))
+                : 'Respuesta inválida del sitio par.';
+            if ($encolarSiFalla) {
+                $this->encolarEliminar($payload, $mensaje);
+            }
+            throw new RuntimeException($mensaje);
+        }
+    }
+
     /**
      * @param  list<array<string, mixed>>  $items
      * @param  self::ACCION_GRABA|self::ACCION_VINCULO  $colaAccion
@@ -835,6 +980,84 @@ class OportunidadEncontradaRelayService
             'intentos' => 0,
             'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function encolarEliminar(array $payload, ?string $error = null): void
+    {
+        $codigo = $this->normalizarCodigo((string) ($payload['codigo'] ?? ''));
+        if ($codigo === '') {
+            return;
+        }
+
+        $payload['codigo'] = $codigo;
+        OportunidadEncontradaSyncPendiente::query()->create([
+            'accion' => self::ACCION_ELIMINAR,
+            'payload' => $payload,
+            'intentos' => 0,
+            'ultimo_error' => $error !== null ? mb_substr($error, 0, 1000) : null,
+        ]);
+    }
+
+    /**
+     * @return int Filas de oportunidad_encontradas borradas
+     */
+    private function borrarLocalPorCodigo(string $codigo): int
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return 0;
+        }
+
+        OportunidadVisita::query()->where('codigo', $codigo)->delete();
+
+        return (int) OportunidadEncontrada::query()->where('codigo', $codigo)->delete();
+    }
+
+    /**
+     * Quita el código de pendientes graba/vinculo para que un reintento no lo recree en el par.
+     */
+    private function purgarPendientesGrabaVinculoDeCodigo(string $codigo): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return;
+        }
+
+        $pendientes = OportunidadEncontradaSyncPendiente::query()
+            ->orderBy('id')
+            ->get();
+
+        foreach ($pendientes as $pendiente) {
+            $accion = strtolower(trim((string) ($pendiente->accion ?? '')));
+            if ($accion === self::ACCION_TOMADA || $accion === self::ACCION_ELIMINAR) {
+                continue;
+            }
+
+            $payload = is_array($pendiente->payload) ? $pendiente->payload : [];
+            $items = $this->normalizarItems($payload);
+            if ($items === []) {
+                continue;
+            }
+
+            $filtrados = array_values(array_filter(
+                $items,
+                fn (array $item) => strtoupper(trim((string) ($item['codigo'] ?? ''))) !== $codigo,
+            ));
+
+            if (count($filtrados) === count($items)) {
+                continue;
+            }
+
+            if ($filtrados === []) {
+                $pendiente->delete();
+            } else {
+                $pendiente->payload = $filtrados;
+                $pendiente->save();
+            }
+        }
     }
 
     /**
@@ -923,6 +1146,9 @@ class OportunidadEncontradaRelayService
         }
         if ($accion === self::ACCION_TOMADA || $accion === 'tomada') {
             return self::ACCION_TOMADA;
+        }
+        if ($accion === self::ACCION_ELIMINAR || $accion === 'eliminar') {
+            return self::ACCION_ELIMINAR;
         }
 
         // Compat: pendientes viejos con accion=graba pero payload ya vinculado.
@@ -1146,7 +1372,8 @@ class OportunidadEncontradaRelayService
     {
         if ($tipo === 'all') {
             return in_array($this->colaAccionDesdePendiente($pendiente), [self::ACCION_GRABA, self::ACCION_VINCULO], true)
-                || $pendiente->accion === self::ACCION_TOMADA;
+                || $pendiente->accion === self::ACCION_TOMADA
+                || $pendiente->accion === self::ACCION_ELIMINAR;
         }
 
         return $this->colaAccionDesdePendiente($pendiente) === $tipo;
@@ -1167,6 +1394,11 @@ class OportunidadEncontradaRelayService
                     (string) ($payload['codigo'] ?? ''),
                     (string) ($payload['usuario'] ?? ''),
                     (string) ($payload['sistema'] ?? ''),
+                    false,
+                );
+            } elseif ($pendiente->accion === self::ACCION_ELIMINAR) {
+                $this->enviarEliminar(
+                    (string) ($payload['codigo'] ?? ''),
                     false,
                 );
             } else {

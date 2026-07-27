@@ -510,6 +510,7 @@
 <script>
     (function() {
         const puedeBuscar = @json((bool) $puedeBuscar);
+        const puedeEliminar = @json((bool) ($puedeEliminar ?? false));
         const urls = {
             iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
             estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
@@ -523,6 +524,7 @@
             detalleVinculoBase: @json(url()->route('admin.oportunidades.para-cotizar.detalle-vinculo', ['codigo' => '__CODIGO__'])),
             vincularCodigo: @json(route('admin.oportunidades.para-cotizar.vincular-codigo')),
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
+            eliminar: @json(($puedeEliminar ?? false) ? route('admin.oportunidades.para-cotizar.destroy') : ''),
             cotizarBase: @json(route('admin.cotizaciones.create')),
         };
         const syncParInicial = @json($syncPar ?? null);
@@ -1113,6 +1115,82 @@
             });
         }
 
+        async function confirmarEliminar(codigo) {
+            const msg = `¿Eliminar la oportunidad «${codigo}»?\nSe borrará también en el sitio par.`;
+            if (window.AdminDialog?.confirm) {
+                return AdminDialog.confirm(msg, {
+                    title: 'Eliminar oportunidad',
+                    type: 'danger',
+                    okText: 'Eliminar',
+                });
+            }
+            return window.confirm(msg);
+        }
+
+        async function eliminarOportunidad(codigo, btn) {
+            const codigoNorm = String(codigo || '').toUpperCase().trim();
+            if (!puedeEliminar || !urls.eliminar || !csrf || !codigoNorm) {
+                return;
+            }
+            const ok = await confirmarEliminar(codigoNorm);
+            if (!ok) {
+                return;
+            }
+
+            const labelPrev = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Eliminando…';
+            }
+
+            try {
+                const res = await fetch(urls.eliminar, {
+                    method: 'DELETE',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ codigo: codigoNorm }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.ok) {
+                    const err = (data && data.error) ? data.error : 'No se pudo eliminar.';
+                    if (window.AdminDialog?.alert) {
+                        await AdminDialog.alert(err, { title: 'Eliminar oportunidad', type: 'danger' });
+                    } else {
+                        window.alert(err);
+                    }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = labelPrev;
+                    }
+                    return;
+                }
+                porCodigo.delete(codigoNorm);
+                renderTabla(false);
+                if (data.pendiente_sync && window.AdminDialog?.alert) {
+                    await AdminDialog.alert(
+                        data.mensaje || 'Eliminada localmente; sync al par pendiente.',
+                        { title: 'Eliminar oportunidad', type: 'warning' },
+                    );
+                }
+            } catch (e) {
+                const err = e && e.message ? e.message : 'Error de red al eliminar.';
+                if (window.AdminDialog?.alert) {
+                    await AdminDialog.alert(err, { title: 'Eliminar oportunidad', type: 'danger' });
+                } else {
+                    window.alert(err);
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = labelPrev;
+                }
+            }
+        }
+
         function visitasDeItem(item) {
             const codigo = String(item?.codigo || '').toUpperCase().trim();
             const servidor = Number(item?.visitas_usuario) || 0;
@@ -1274,8 +1352,13 @@
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
                    </a>`
                     : '';
-                const accionHtml = (btnProductos || btnCotizar)
-                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}</div>`
+                const btnEliminar = (puedeEliminar && codigo && urls.eliminar)
+                    ? `<button type="button" class="btn btn-outline-danger btn-sm text-nowrap btn-eliminar-oportunidad" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Eliminar oportunidad (también en el sitio par)">
+                        <i class="bi bi-trash"></i> Eliminar
+                    </button>`
+                    : '';
+                const accionHtml = (btnProductos || btnCotizar || btnEliminar)
+                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
@@ -1763,6 +1846,15 @@
                     renderTabla(false);
                     registrarVisitaServidor(codVinculo);
                     abrirDetalleVinculo(codVinculo);
+                    return;
+                }
+                const btnEliminar = e.target.closest('button.btn-eliminar-oportunidad');
+                if (btnEliminar) {
+                    e.preventDefault();
+                    const codElim = String(btnEliminar.getAttribute('data-codigo') || '').trim().toUpperCase();
+                    if (codElim) {
+                        eliminarOportunidad(codElim, btnEliminar);
+                    }
                     return;
                 }
                 const btnCopiar = e.target.closest('button.btn-copiar-codigo');

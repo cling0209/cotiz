@@ -41,6 +41,7 @@ class OportunidadParaCotizarController extends Controller
             'guardadas' => $guardadas,
             'puedeBuscar' => $puedeBuscar,
             'puedePalabras' => $puedePalabras,
+            'puedeEliminar' => (bool) $request->user()?->isSuperAdmin(),
             'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
                 ? (string) $corridaEstado['fecha_busqueda']
                 : $this->servicio->fechaBusquedaHoy(),
@@ -52,6 +53,39 @@ class OportunidadParaCotizarController extends Controller
             'regionesFiltro' => $regionesFiltro,
             'filtrosUserId' => $userId,
             'syncPar' => $puedeBuscar ? $this->encontradaRelay->resumenSyncPar() : null,
+        ]);
+    }
+
+    public function destroy(Request $request): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
+        }
+
+        $data = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        try {
+            $resultado = $this->encontradaRelay->eliminarYReplicar($data['codigo']);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'codigo' => $resultado['codigo'],
+            'existia' => $resultado['existia'],
+            'replicado' => $resultado['replicado'],
+            'pendiente_sync' => $resultado['pendiente_sync'],
+            'mensaje' => $resultado['pendiente_sync']
+                ? 'Oportunidad eliminada. La sincronización al sitio par quedó pendiente.'
+                : ($resultado['replicado']
+                    ? 'Oportunidad eliminada y sincronizada al sitio par.'
+                    : 'Oportunidad eliminada.'),
         ]);
     }
 

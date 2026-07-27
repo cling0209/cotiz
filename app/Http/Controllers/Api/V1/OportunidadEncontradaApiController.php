@@ -47,6 +47,25 @@ class OportunidadEncontradaApiController extends Controller
             }
         }
 
+        if ($accion === 'eliminar') {
+            try {
+                $resultado = $this->relay->recibirEliminacion(
+                    (string) ($payload['codigo'] ?? ''),
+                );
+
+                return response()->json([
+                    'resultado' => 'OK',
+                    'mensaje' => ($resultado['eliminados'] ?? 0) > 0
+                        ? 'Oportunidad eliminada'
+                        : 'Oportunidad no existía (idempotente)',
+                    'codigo' => $resultado['codigo'],
+                    'eliminados' => $resultado['eliminados'] ?? 0,
+                ]);
+            } catch (RuntimeException $e) {
+                return $this->error($e->getMessage());
+            }
+        }
+
         if ($accion !== 'graba') {
             return $this->error('Accion no existe: '.$accion);
         }

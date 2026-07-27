@@ -132,6 +132,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.index');
             Route::post('oportunidades/para-cotizar/visita', [OportunidadParaCotizarController::class, 'registrarVisita'])
                 ->name('oportunidades.para-cotizar.visita');
+            Route::delete('oportunidades/para-cotizar', [OportunidadParaCotizarController::class, 'destroy'])
+                ->name('oportunidades.para-cotizar.destroy');
             Route::get('oportunidades/para-cotizar/vinculo/{codigo}', [OportunidadParaCotizarController::class, 'detalleVinculo'])
                 ->name('oportunidades.para-cotizar.detalle-vinculo')
                 ->where('codigo', '[^/]+');
