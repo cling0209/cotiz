@@ -80,8 +80,8 @@
 
 .cotizacion-ingreso #tabla_detalle {
     /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
-    width: 1370px;
-    min-width: 1370px;
+    width: 1378px;
+    min-width: 1378px;
     max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
@@ -90,8 +90,8 @@
 }
 
 .cotizacion-ingreso #tabla_detalle.tabla-con-softland {
-    width: 1480px;
-    min-width: 1480px;
+    width: 1488px;
+    min-width: 1488px;
 }
 
 /* Todos los anchos en px para que no se redistribuyan al estirar. */
@@ -106,7 +106,7 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 50px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 96px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 104px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
@@ -155,8 +155,8 @@
 .cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
     text-align: left;
     overflow: hidden;
-    width: 96px;
-    max-width: 96px;
+    width: 104px;
+    max-width: 104px;
     padding-left: 1px !important;
     padding-right: 0 !important;
 }
@@ -196,29 +196,38 @@
     padding-right: 4px !important;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-fecha-col,
+.cotizacion-ingreso #tabla_detalle td.linea-fecha-cell {
+    text-align: center;
+}
 .cotizacion-ingreso #tabla_detalle th.linea-costo-col,
-.cotizacion-ingreso #tabla_detalle td.linea-fecha-cell,
 .cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
     text-align: center;
+    width: 50px;
+    max-width: 50px;
+    overflow: hidden;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-costo-col {
     white-space: normal;
     line-height: 1.15;
     font-size: 10px;
-    padding-left: 2px !important;
-    padding-right: 2px !important;
-}
-.cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
-    padding-left: 2px !important;
-    padding-right: 2px !important;
 }
 .cotizacion-ingreso #tabla_detalle td.linea-costo-cell .nv-precio-costo-sololectura {
+    display: block;
     width: 100%;
-    min-width: 0;
+    min-width: 0 !important;
     max-width: 100%;
     box-sizing: border-box;
-    padding-left: 2px;
-    padding-right: 2px;
+    padding-left: 1px;
+    padding-right: 1px;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.cotizacion-ingreso #tabla_detalle td.linea-costo-cell .nv-precio-costo-sololectura::-webkit-outer-spin-button,
+.cotizacion-ingreso #tabla_detalle td.linea-costo-cell .nv-precio-costo-sololectura::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 .cotizacion-ingreso #tabla_detalle th.linea-total-col {
     font-size: 10px;
@@ -230,14 +239,14 @@
     align-items: center;
     justify-content: flex-start;
     gap: 0.1rem;
-    width: auto;
+    width: 100%;
     max-width: 100%;
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .linea-prod-valor {
-    flex: 0 1 auto;
-    width: 4.25rem;
+    flex: 1 1 auto;
+    width: auto;
     min-width: 0;
-    max-width: 4.25rem;
+    max-width: none;
     box-sizing: border-box;
     padding-left: 1px;
     padding-right: 1px;
