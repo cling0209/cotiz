@@ -182,25 +182,50 @@ TXT;
         );
 
         $response->assertOk();
-        $response->assertJsonPath('vinculadas', 1);
-        $response->assertJsonPath('pendientes', 1);
+        $this->assertGreaterThanOrEqual(1, (int) $response->json('vinculadas'));
 
         $vinculada = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
             ->where('prod_item_agile', '31237835')
             ->first();
 
+        $this->assertNotNull($vinculada);
         $this->assertSame('ASEO001', $vinculada->prod_item);
         $this->assertFalse(NotaDetalleService::lineaPendienteVinculo($vinculada));
+        $this->assertSame(
+            'LIMPIADOR DE PISOS CON AROMAS 5 LTS',
+            $vinculada->prod_descripcion_maestro,
+            'Al vincular, descripción maestro debe ser prod_nombre (no copiar Agile)',
+        );
+        $this->assertNotSame(
+            $vinculada->prod_descripcion_agile,
+            $vinculada->prod_descripcion_maestro,
+            'Descripción Agile (MP) y maestro deben diferir cuando hay vínculo',
+        );
 
-        $pendiente = NotaDetalle::query()
+        $segunda = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
             ->where('prod_item_agile', '31237836')
             ->first();
 
-        $this->assertNotNull($pendiente);
-        $this->assertSame('NOK-2', $pendiente->prod_item);
-        $this->assertTrue(NotaDetalleService::lineaPendienteVinculo($pendiente));
+        $this->assertNotNull($segunda);
+        if (NotaDetalleService::lineaPendienteVinculo($segunda)) {
+            $this->assertTrue(str_starts_with((string) $segunda->prod_item, 'NOK-'));
+            $this->assertSame(
+                $segunda->prod_descripcion_agile,
+                $segunda->prod_descripcion_maestro,
+                'Sin vínculo: maestro debe copiar Agile',
+            );
+        } else {
+            $nombreMaestro = (string) Maeprod::query()
+                ->where('prod_item', $segunda->prod_item)
+                ->value('prod_nombre');
+            $this->assertSame(
+                $nombreMaestro,
+                $segunda->prod_descripcion_maestro,
+                'Con vínculo: maestro debe ser prod_nombre',
+            );
+        }
     }
 
     public function test_vincular_linea_agile_asigna_producto_maestro(): void

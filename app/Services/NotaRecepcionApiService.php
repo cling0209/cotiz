@@ -126,6 +126,13 @@ class NotaRecepcionApiService
             }
 
             $descAgile = trim((string) ($payload['prod_descripcion_agile'] ?? '')) ?: null;
+            $nombreMaestro = trim((string) ($payload['prod_nombre'] ?? ''));
+            if ($nombreMaestro === '') {
+                $nombreMaestro = trim((string) (
+                    Maeprod::query()->where('prod_item', $prodItem)->value('prod_nombre') ?? ''
+                ));
+            }
+            $descMaestro = $nombreMaestro !== '' ? $nombreMaestro : $descAgile;
 
             $linea = NotaDetalle::query()->updateOrCreate(
                 [
@@ -140,7 +147,7 @@ class NotaRecepcionApiService
                     'prod_valor_costo' => (int) ($payload['prod_valor_costo'] ?? 0),
                     'prod_item_agile' => trim((string) ($payload['prod_item_agile'] ?? '')) ?: null,
                     'prod_descripcion_agile' => $descAgile,
-                    'prod_descripcion_maestro' => $descAgile,
+                    'prod_descripcion_maestro' => $descMaestro,
                 ],
             );
 

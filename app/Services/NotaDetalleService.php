@@ -114,7 +114,8 @@ class NotaDetalleService
 
         $descripcionMaestro = trim((string) ($linea->prod_descripcion_maestro ?? ''));
         if ($descripcionMaestro === '') {
-            $descripcionMaestro = $descripcionAgile;
+            $nombreProducto = trim((string) ($producto?->prod_nombre ?? ''));
+            $descripcionMaestro = $nombreProducto !== '' ? $nombreProducto : $descripcionAgile;
         }
 
         return [
@@ -462,6 +463,11 @@ class NotaDetalleService
 
             $agileId = trim((string) $prodItemAgile);
             $agileDesc = trim((string) $prodDescripcionAgile);
+            // Vinculado: descripción maestro = nombre maeprod. Sin nombre (o sin vínculo): copiar Agile.
+            $nombreMaestro = trim((string) ($producto?->prod_nombre ?? ''));
+            $descripcionMaestro = $nombreMaestro !== ''
+                ? $nombreMaestro
+                : ($agileDesc !== '' ? $agileDesc : null);
 
             return NotaDetalle::create([
                 'nronota' => $nota->nronota,
@@ -473,7 +479,7 @@ class NotaDetalleService
                 'prod_valor_costo' => $costo,
                 'prod_item_agile' => $agileId !== '' ? $agileId : null,
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
-                'prod_descripcion_maestro' => $agileDesc !== '' ? $agileDesc : null,
+                'prod_descripcion_maestro' => $descripcionMaestro,
             ]);
         });
     }
