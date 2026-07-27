@@ -80,8 +80,8 @@
 
 .cotizacion-ingreso #tabla_detalle {
     /* Ancho = suma exacta de columnas (no 100%): evita hueco tras el camión. */
-    width: 1378px;
-    min-width: 1378px;
+    width: 1390px;
+    min-width: 1390px;
     max-width: none;
     table-layout: fixed;
     border-collapse: collapse;
@@ -90,8 +90,8 @@
 }
 
 .cotizacion-ingreso #tabla_detalle.tabla-con-softland {
-    width: 1488px;
-    min-width: 1488px;
+    width: 1500px;
+    min-width: 1500px;
 }
 
 /* Todos los anchos en px para que no se redistribuyan al estirar. */
@@ -105,7 +105,7 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 50px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 62px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 104px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
@@ -202,9 +202,9 @@
 .cotizacion-ingreso #tabla_detalle th.linea-costo-col,
 .cotizacion-ingreso #tabla_detalle td.linea-costo-cell {
     text-align: center;
-    width: 50px;
-    max-width: 50px;
-    overflow: hidden;
+    width: 62px;
+    max-width: 62px;
+    overflow: visible;
     padding-left: 1px !important;
     padding-right: 1px !important;
 }
@@ -219,8 +219,8 @@
     min-width: 0 !important;
     max-width: 100%;
     box-sizing: border-box;
-    padding-left: 1px;
-    padding-right: 1px;
+    padding: 2px 3px;
+    font-variant-numeric: tabular-nums;
     -moz-appearance: textfield;
     appearance: textfield;
 }
