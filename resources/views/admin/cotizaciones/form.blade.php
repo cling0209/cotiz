@@ -1015,31 +1015,52 @@
         return payload;
     }
 
-    function collectLineasFromTable() {
+    function collectLineaDesdeFila(tr) {
+        const prodItem = String(tr.dataset.prod || tr.querySelector('input[name*="[prod_item]"]')?.value || '').trim();
+        const ordenRaw = tr.dataset.orden || tr.querySelector('input[name*="[orden]"]')?.value;
+        const orden = parseInt(String(ordenRaw || ''), 10);
+        if (!prodItem || Number.isNaN(orden)) return null;
+
+        const linea = { prod_item: prodItem, orden: orden };
+        const softland = tr.querySelector('input[name*="[prod_item_softland]"]');
+        const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
+        const valor = tr.querySelector('input[name*="[prod_valor]"]');
+        const cantidad = tr.querySelector('input[name*="[cantidad]"]');
+        const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
+        const observacion = tr.querySelector('textarea[name$="[observacion]"]');
+        const observacionCliente = tr.querySelector('textarea[name$="[observacion_cliente]"]');
+        if (softland) linea.prod_item_softland = softland.value;
+        if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
+        if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
+        if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
+        if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
+        if (observacion) linea.observacion = observacion.value;
+        if (observacionCliente) linea.observacion_cliente = observacionCliente.value;
+        return linea;
+    }
+
+    function esCampoOrdenLinea(el) {
+        return !!(el && (el.classList?.contains('linea-orden-destino') || el.closest?.('.linea-orden-controls')));
+    }
+
+    function marcarLineaDirty(tr) {
+        if (!tr || !tr.matches('tr[data-linea]')) return;
+        tr.dataset.dirty = '1';
+    }
+
+    function limpiarLineaDirty(tr) {
+        if (!tr || !tr.matches('tr[data-linea]')) return;
+        delete tr.dataset.dirty;
+    }
+
+    function collectLineasFromTable(opciones) {
+        const soloDirty = !!(opciones && opciones.soloDirty);
         syncLineasHiddenDesdeDataset();
         const lineas = [];
         document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
-            const prodItem = String(tr.dataset.prod || tr.querySelector('input[name*="[prod_item]"]')?.value || '').trim();
-            const ordenRaw = tr.dataset.orden || tr.querySelector('input[name*="[orden]"]')?.value;
-            const orden = parseInt(String(ordenRaw || ''), 10);
-            if (!prodItem || Number.isNaN(orden)) return;
-
-            const linea = { prod_item: prodItem, orden: orden };
-            const softland = tr.querySelector('input[name*="[prod_item_softland]"]');
-            const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
-            const valor = tr.querySelector('input[name*="[prod_valor]"]');
-            const cantidad = tr.querySelector('input[name*="[cantidad]"]');
-            const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
-            const observacion = tr.querySelector('textarea[name$="[observacion]"]');
-            const observacionCliente = tr.querySelector('textarea[name$="[observacion_cliente]"]');
-            if (softland) linea.prod_item_softland = softland.value;
-            if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
-            if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
-            if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
-            if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
-            if (observacion) linea.observacion = observacion.value;
-            if (observacionCliente) linea.observacion_cliente = observacionCliente.value;
-            lineas.push(linea);
+            if (soloDirty && tr.dataset.dirty !== '1') return;
+            const linea = collectLineaDesdeFila(tr);
+            if (linea) lineas.push(linea);
         });
         return lineas;
     }
@@ -1242,6 +1263,17 @@
     document.getElementById('form-cotizacion')?.addEventListener('input', marcarCotizSinGrabar);
     document.getElementById('form-cotizacion')?.addEventListener('change', marcarCotizSinGrabar);
 
+    document.getElementById('tabla_detalle')?.addEventListener('input', function (e) {
+        if (esCampoOrdenLinea(e.target)) return;
+        const tr = e.target.closest('tr[data-linea]');
+        if (tr) marcarLineaDirty(tr);
+    });
+    document.getElementById('tabla_detalle')?.addEventListener('change', function (e) {
+        if (esCampoOrdenLinea(e.target)) return;
+        const tr = e.target.closest('tr[data-linea]');
+        if (tr) marcarLineaDirty(tr);
+    });
+
     document.getElementById('btn-descargar-pdf')?.addEventListener('click', async function (e) {
         if (!cotizSinGrabar) {
             return;
@@ -1282,22 +1314,30 @@
             }
             sincronizarNronotaDesdeJson(jsonCab);
 
-            const lineas = collectLineasFromTable();
+            const lineas = collectLineasFromTable({ soloDirty: true });
             const lotes = chunkArray(lineas, lineasPorLote);
             let guardadasTotal = 0;
+            let omitidasTotal = 0;
+
+            if (lotes.length === 0) {
+                setLoaderMensaje('Sin cambios en el detalle…');
+            }
 
             for (let i = 0; i < lotes.length; i++) {
                 setLoaderMensaje('Guardando detalle ' + (i + 1) + ' de ' + lotes.length + '…');
                 const { res, json } = await postJson(lineasLoteUrl, { lineas: lotes[i] });
                 if (!res.ok) {
                     const parcial = guardadasTotal > 0
-                        ? ' Se guardaron ' + guardadasTotal + ' de ' + lineas.length + ' líneas.'
+                        ? ' Se guardaron ' + guardadasTotal + ' de ' + lineas.length + ' líneas modificadas.'
                         : '';
                     throw new Error(extraerMensajeError(json, 'No se pudo guardar el detalle.') + parcial);
                 }
                 sincronizarNronotaDesdeJson(json);
                 guardadasTotal += json.guardadas ?? lotes[i].length;
+                omitidasTotal += json.omitidas ?? 0;
             }
+
+            document.querySelectorAll('#tabla_detalle tbody tr[data-linea][data-dirty="1"]').forEach(limpiarLineaDirty);
 
             limpiarCotizSinGrabar();
             setLoaderMensaje('');
@@ -1305,7 +1345,15 @@
             try {
                 sessionStorage.setItem('page-loader-pending', '1');
             } catch (e) {}
-            dlgAlert(jsonCab.mensaje || 'Cotización guardada.', { title: 'Guardado', type: 'success' });
+            let mensajeOk = jsonCab.mensaje || 'Cotización guardada.';
+            if (lineas.length > 0) {
+                mensajeOk += ' Detalle: ' + guardadasTotal + ' línea' + (guardadasTotal === 1 ? '' : 's') + ' actualizada' + (guardadasTotal === 1 ? '' : 's');
+                if (omitidasTotal > 0) {
+                    mensajeOk += ', ' + omitidasTotal + ' sin cambios';
+                }
+                mensajeOk += '.';
+            }
+            dlgAlert(mensajeOk, { title: 'Guardado', type: 'success' });
             if (jsonCab.edit_url && jsonCab.recien_creada) {
                 window.location.href = jsonCab.edit_url;
             } else {
@@ -1413,6 +1461,8 @@
 
                 const totalTd = tr.querySelector('.linea-total');
                 if (totalTd) totalTd.textContent = fmt(linea.subtotal ?? (ventaNueva * (parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1)));
+
+                limpiarLineaDirty(tr);
 
                 if (ventaNueva !== ventaAnterior) preciosCambiados++;
             });
@@ -1626,6 +1676,7 @@
 
         if (!desdeAdjudicadas) wireEliminarLinea(tr);
         wireTooltipsValorLinea(tr);
+        limpiarLineaDirty(tr);
 
         const tituloImagen = (json.prod_item || tr.dataset.prod || '')
             + (json.prod_nombre ? ' — ' + json.prod_nombre : '');
@@ -3914,6 +3965,7 @@
 
         recalcularMontoTotal();
         marcarLineasRepetidas();
+        limpiarLineaDirty(tr);
 
         return true;
     }

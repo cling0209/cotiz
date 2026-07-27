@@ -513,14 +513,20 @@ class CotizacionController extends Controller
         }
 
         try {
-            $this->detalleService->guardarLineas($nota->fresh(), $lineas, $request->user()->username);
+            $resultado = $this->detalleService->guardarLineas(
+                $nota->fresh(),
+                $lineas,
+                $request->user()->username,
+            );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
         return response()->json(array_merge([
             'ok' => true,
-            'guardadas' => count($lineas),
+            'guardadas' => $resultado['actualizadas'],
+            'omitidas' => $resultado['omitidas'],
+            'recibidas' => $resultado['recibidas'],
         ], $this->metaNotaJson($nota, $recienCreada)));
     }
 

@@ -139,14 +139,17 @@ class NotaDetalleService
         ];
     }
 
+    /**
+     * @return bool true si hubo cambio persistido en detalle y/o Softland
+     */
     public function actualizarLinea(
         Nota $nota,
         string $prodItem,
         int $orden,
         array $datos,
         ?string $usuarioUpd = null,
-    ): void {
-        DB::transaction(function () use ($nota, $prodItem, $orden, $datos, $usuarioUpd) {
+    ): bool {
+        return (bool) DB::transaction(function () use ($nota, $prodItem, $orden, $datos, $usuarioUpd) {
             $linea = $this->resolverLineaParaGuardar($nota, $prodItem, $orden);
             $prodItem = $linea->prod_item;
             $orden = (int) $linea->orden;
@@ -156,6 +159,7 @@ class NotaDetalleService
             $cantidad = (int) ($datos['cantidad'] ?? $linea->cantidad);
             $costo = (int) ($datos['prod_valor_costo'] ?? $linea->prod_valor_costo);
 
+            $softlandCambio = false;
             // Precios solo en la nota; el maestro se edita en Productos / import.
             if ($producto && array_key_exists('prod_item_softland', $datos)) {
                 $softland = trim((string) $datos['prod_item_softland']);
@@ -164,6 +168,7 @@ class NotaDetalleService
                         'prod_item_softland' => $softland,
                         'prod_item_softland_fecha' => now(),
                     ]);
+                    $softlandCambio = true;
                 }
             }
 
@@ -189,6 +194,10 @@ class NotaDetalleService
                 $lineaUpdates['observacion_cliente'] = $obsCliente !== '' ? $obsCliente : null;
             }
 
+            if (! $this->lineaTieneCambios($linea, $lineaUpdates)) {
+                return $softlandCambio;
+            }
+
             NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->where('prod_item', $prodItem)
@@ -204,7 +213,52 @@ class NotaDetalleService
             if ($actualizada) {
                 $this->sincronizarVinculoAgileMaeprod($actualizada, $usuarioUpd, VinculoOrigen::MANUAL);
             }
+
+            return true;
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $updates
+     */
+    private function lineaTieneCambios(NotaDetalle $linea, array $updates): bool
+    {
+        foreach ($updates as $campo => $nuevo) {
+            $actual = $linea->{$campo};
+
+            if (in_array($campo, ['prod_valor', 'cantidad', 'prod_valor_costo'], true)) {
+                if ((int) $actual !== (int) $nuevo) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if ($campo === 'prod_descripcion_maestro') {
+                $actualNorm = AgileDescripcion::paraDetalle((string) ($actual ?? ''));
+                if ($actualNorm !== $nuevo) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (in_array($campo, ['observacion', 'observacion_cliente'], true)) {
+                $actualNorm = trim((string) ($actual ?? ''));
+                $actualNorm = $actualNorm !== '' ? $actualNorm : null;
+                if ($actualNorm !== $nuevo) {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if ($actual !== $nuevo) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -286,20 +340,39 @@ class NotaDetalleService
         return $confirmadas;
     }
 
-    public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): void
+    /**
+     * @param  array<int, array<string, mixed>>  $lineas
+     * @return array{actualizadas: int, omitidas: int, recibidas: int}
+     */
+    public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): array
     {
+        $actualizadas = 0;
+        $omitidas = 0;
+        $recibidas = 0;
+
         foreach ($lineas as $data) {
             if (empty($data['prod_item']) || ! isset($data['orden'])) {
                 continue;
             }
-            $this->actualizarLinea(
+            $recibidas++;
+            if ($this->actualizarLinea(
                 $nota,
                 (string) $data['prod_item'],
                 (int) $data['orden'],
                 $data,
                 $usuarioUpd,
-            );
+            )) {
+                $actualizadas++;
+            } else {
+                $omitidas++;
+            }
         }
+
+        return [
+            'actualizadas' => $actualizadas,
+            'omitidas' => $omitidas,
+            'recibidas' => $recibidas,
+        ];
     }
 
     /**
