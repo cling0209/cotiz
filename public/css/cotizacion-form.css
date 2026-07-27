@@ -105,8 +105,8 @@
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-observacion-cliente { width: 180px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-fecha { width: 64px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 58px; }
-.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 88px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-costo { width: 50px; }
+.cotizacion-ingreso #tabla_detalle col.col-linea-unitario { width: 96px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-cantidad { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-total { width: 52px; }
 .cotizacion-ingreso #tabla_detalle col.col-linea-orden { width: 88px; }
@@ -155,8 +155,8 @@
 .cotizacion-ingreso #tabla_detalle td.linea-precio-unitario-cell {
     text-align: left;
     overflow: hidden;
-    width: 88px;
-    max-width: 88px;
+    width: 96px;
+    max-width: 96px;
     padding-left: 1px !important;
     padding-right: 0 !important;
 }
@@ -235,9 +235,9 @@
 }
 .cotizacion-ingreso #tabla_detalle .linea-precio-unitario-wrap .linea-prod-valor {
     flex: 0 1 auto;
-    width: 3.75rem;
+    width: 4.25rem;
     min-width: 0;
-    max-width: 3.75rem;
+    max-width: 4.25rem;
     box-sizing: border-box;
     padding-left: 1px;
     padding-right: 1px;
