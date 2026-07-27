@@ -124,17 +124,26 @@ class CotizacionListadoController extends Controller
             ));
         }
 
-        $copia = $this->notaService->duplicar($nota, $request->user()->username);
+        $copia = $this->notaService->duplicar($nota);
+
+        $mensaje = sprintf(
+            'Cotización #%d duplicada en la #%d con el mismo código «%s» (copia %d).',
+            $nota->nronota,
+            $copia->nronota,
+            trim((string) $copia->encargado),
+            $copia->correlativo,
+        );
+
+        $dueno = trim((string) $copia->usuario);
+        if ($dueno !== '' && strcasecmp($dueno, (string) $request->user()->username) !== 0) {
+            $copia->loadMissing('usuarioRel');
+            $nombreDueno = $copia->usuarioRel?->fullName() ?: $dueno;
+            $mensaje .= sprintf(' Quedó asignada a %s (%s).', $nombreDueno, $dueno);
+        }
 
         return redirect()
             ->route('admin.cotizaciones.edit', $copia->nronota)
-            ->with('success', sprintf(
-                'Cotización #%d duplicada en la #%d con el mismo código «%s» (copia %d).',
-                $nota->nronota,
-                $copia->nronota,
-                trim((string) $copia->encargado),
-                $copia->correlativo,
-            ));
+            ->with('success', $mensaje);
     }
 
     public function asignarForm(Request $request, int $nronota): View|RedirectResponse

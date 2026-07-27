@@ -86,17 +86,18 @@ class NotaService
      *
      * La copia nace sin estado (no aceptada), sin enviar a la API y como nota local.
      */
-    public function duplicar(Nota $origen, string $usuario): Nota
+    public function duplicar(Nota $origen): Nota
     {
-        return DB::transaction(function () use ($origen, $usuario) {
+        return DB::transaction(function () use ($origen) {
             $nronota = $this->siguienteNronota();
 
+            // La copia queda con el mismo ejecutivo dueño, aunque la cree un superadmin.
             $copia = Nota::create([
                 'nronota' => $nronota,
                 'correlativo' => $this->siguienteCorrelativo((string) $origen->encargado),
                 'descripcion' => $origen->descripcion,
                 'fecha' => now()->toDateString(),
-                'usuario' => $usuario,
+                'usuario' => $origen->usuario,
                 'encargado' => $origen->encargado,
                 'empresa' => $origen->empresa,
                 'celular' => $origen->celular,

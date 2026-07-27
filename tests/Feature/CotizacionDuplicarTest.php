@@ -89,6 +89,28 @@ class CotizacionDuplicarTest extends TestCase
         $this->assertSame(0, (int) $copia->notaorigen);
     }
 
+    public function test_superadmin_duplica_dejando_la_copia_al_dueño(): void
+    {
+        $ejecutivo = User::factory()->create([
+            'username' => 'ejecutivo',
+            'nombre' => 'Juan',
+            'apellidop' => 'Pérez',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $nota = $this->crearNota(['usuario' => $ejecutivo->username]);
+
+        $response = $this->actingAs($this->admin)
+            ->post(route('admin.cotizaciones.duplicar', $nota->nronota));
+
+        $copia = $this->copiaDe($nota);
+
+        $response->assertRedirect(route('admin.cotizaciones.edit', $copia->nronota));
+        $response->assertSessionHas('success');
+        $this->assertSame('ejecutivo', $copia->usuario);
+        $this->assertStringContainsString('Quedó asignada a Juan Pérez (ejecutivo).', session('success'));
+    }
+
     public function test_no_duplica_cotizacion_sin_numero(): void
     {
         $nota = $this->crearNota(['encargado' => '']);

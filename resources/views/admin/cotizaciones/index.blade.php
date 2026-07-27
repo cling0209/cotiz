@@ -214,7 +214,7 @@
 
                                     @if(trim((string) $nota->encargado) !== '')
                                         <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline"
-                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }} («{{ trim((string) $nota->encargado) }}»)? Se crea una cotización nueva con el mismo código y el correlativo siguiente, copiando la cabecera y todos los productos, para presentar otra oferta al mismo proceso. Después puede cambiar precios y cantidades.">
+                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }} («{{ trim((string) $nota->encargado) }}»)? Se crea una cotización nueva con el mismo código y el correlativo siguiente, copiando la cabecera y todos los productos, para presentar otra oferta al mismo proceso. La copia queda asignada a {{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}. Después puede cambiar precios y cantidades.">
                                             @csrf
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Duplicar</button>
