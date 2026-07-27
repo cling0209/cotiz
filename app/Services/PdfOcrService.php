@@ -8,15 +8,19 @@ use Symfony\Component\Process\Process;
 /**
  * OCR de PDFs escaneados vía pdftoppm + tesseract (Docker Alpine / Windows local).
  *
- * Optimizado para CPU limitada (Render free/starter): pocos DPI, JPEG gris,
- * un solo idioma y pocas páginas.
+ * Los listados de materiales son tablas escaneadas: se renderiza en PNG gris a
+ * DPI medio y se usa --psm 4 (columna de texto de altura variable), que respeta
+ * el salto de fila. Con --psm 6 tesseract funde varias filas en una y se pierde
+ * la columna de cantidad. Ajustable por config para entornos con poca CPU.
  */
 class PdfOcrService
 {
-    private const MAX_PAGES = 3;
+    private const MAX_PAGES = 15;
 
-    /** Compromiso calidad/velocidad para CPU limitada (Render). */
-    private const DPI = 150;
+    private const DPI = 300;
+
+    /** 4 = una columna de texto de tamaño variable; conserva una fila por línea. */
+    private const PSM = 4;
 
     private const TIMEOUT_PDFTOPPM = 90;
 
@@ -58,28 +62,26 @@ class PdfOcrService
             $prefijo = $dir.DIRECTORY_SEPARATOR.'page';
             $this->ejecutar([
                 $pdftoppm,
-                '-jpeg',
+                '-png',
                 '-gray',
                 '-r',
-                (string) self::DPI,
+                (string) $this->ajuste('dpi', self::DPI),
                 '-f',
                 '1',
                 '-l',
-                (string) self::MAX_PAGES,
+                (string) $this->ajuste('max_pages', self::MAX_PAGES),
                 $pdfPath,
                 $prefijo,
             ], self::TIMEOUT_PDFTOPPM);
 
-            $imagenes = glob($prefijo.'-*.jpg') ?: [];
-            if ($imagenes === []) {
-                $imagenes = glob($prefijo.'-*.jpeg') ?: [];
-            }
+            $imagenes = glob($prefijo.'-*.png') ?: [];
             sort($imagenes, SORT_NATURAL);
             if ($imagenes === []) {
                 throw new RuntimeException('No se pudieron renderizar páginas del PDF para OCR.');
             }
 
             $idioma = $this->idiomaRapido($tesseract);
+            $psm = (string) $this->resolverPsm();
             $textos = [];
             foreach ($imagenes as $imagen) {
                 $salida = $imagen.'.ocr';
@@ -92,7 +94,7 @@ class PdfOcrService
                     '--oem',
                     '1',
                     '--psm',
-                    '6',
+                    $psm,
                 ], self::TIMEOUT_TESSERACT, [
                     'OMP_THREAD_LIMIT' => '1',
                 ]);
@@ -115,6 +117,34 @@ class PdfOcrService
         } finally {
             $this->limpiarDirectorio($dir);
         }
+    }
+
+    /**
+     * Lee config/cotiz.php sin depender del contenedor (se instancia con `new` en tests).
+     */
+    private function ajuste(string $clave, int $default): int
+    {
+        try {
+            $valor = config('cotiz.ocr.'.$clave);
+        } catch (\Throwable) {
+            return $default;
+        }
+
+        return is_numeric($valor) ? (int) $valor : $default;
+    }
+
+    /**
+     * PSM 6 (bloque uniforme) fusiona filas de tablas escaneadas y deja ~20 ítems
+     * de un listado de 90+. Forzamos PSM 4 (columna de texto de altura variable).
+     */
+    private function resolverPsm(): int
+    {
+        $psm = $this->ajuste('psm', self::PSM);
+        if (in_array($psm, [6, 7], true)) {
+            return self::PSM;
+        }
+
+        return max(0, min(13, $psm));
     }
 
     /**

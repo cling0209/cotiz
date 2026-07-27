@@ -93,6 +93,14 @@ return [
         'background' => filter_var(env('MAEPROD_IMPORT_BACKGROUND', true), FILTER_VALIDATE_BOOL),
     ],
 
+    // OCR de PDF escaneado (pdftoppm + tesseract). Bajar dpi/max_pages si el
+    // servidor tiene poca CPU; psm 4 es el que conserva una fila por línea.
+    'ocr' => [
+        'dpi' => max(100, min(600, (int) env('COTIZ_OCR_DPI', 300))),
+        'max_pages' => max(1, min(50, (int) env('COTIZ_OCR_MAX_PAGES', 15))),
+        'psm' => max(0, min(13, (int) env('COTIZ_OCR_PSM', 4))),
+    ],
+
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.
     // Solo activo con RENDER_KEEPALIVE=true (ver .env.render.example).
     // - Servidor: worker hace GET APP_URL/up (refuerzo; poco fiable solo).
@@ -118,7 +126,7 @@ return [
     'mercadopublico' => [
         'base_url' => env('MERCADOPUBLICO_BASE_URL', 'https://api2.mercadopublico.cl'),
         'ticket' => env('MERCADOPUBLICO_TICKET', ''),
-            'regiones' => array_values(array_filter(array_map(
+        'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(
                 'MERCADOPUBLICO_REGIONES',

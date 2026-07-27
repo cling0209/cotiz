@@ -250,33 +250,84 @@ class ListadoMaterialesPdfParserService
         $resultado = [];
         $indiceActual = null;
 
-        foreach ($lineas as $linea) {
-            if ($this->esEncabezadoListado($linea)) {
+        foreach ($lineas as $lineaCruda) {
+            if ($this->esEncabezadoListado($lineaCruda)) {
                 continue;
             }
 
-            if ($this->esRuidoListado($linea)) {
+            if ($this->esRuidoListado($lineaCruda)) {
                 continue;
             }
 
-            if (preg_match('/^(\d{1,6})\s+(.+)$/u', $linea, $coincidencia) === 1) {
-                $resultado[] = [
-                    'cantidad' => max(1, (int) $coincidencia[1]),
-                    'descripcion' => trim($coincidencia[2]),
-                ];
-                $indiceActual = count($resultado) - 1;
+            foreach ($this->expandirLineasCantidadOcr($lineaCruda) as $linea) {
+                $normalizada = $this->normalizarCantidadInicialOcr($linea);
 
-                continue;
-            }
+                if (preg_match('/^(\d{1,6})(?:\s+|(?=c\s*\/\s*[ua]))(.+)$/iu', $normalizada, $coincidencia) === 1) {
+                    $resultado[] = [
+                        'cantidad' => max(1, (int) $coincidencia[1]),
+                        'descripcion' => $this->limpiarInicioDescripcion($coincidencia[2]),
+                    ];
+                    $indiceActual = count($resultado) - 1;
 
-            if ($indiceActual !== null) {
-                $resultado[$indiceActual]['descripcion'] = trim(
-                    $resultado[$indiceActual]['descripcion'].' '.$linea,
-                );
+                    continue;
+                }
+
+                if ($indiceActual !== null) {
+                    $resultado[$indiceActual]['descripcion'] = trim(
+                        $resultado[$indiceActual]['descripcion'].' '.$this->limpiarInicioDescripcion($linea),
+                    );
+                }
             }
         }
 
         return $resultado;
+    }
+
+    /**
+     * El OCR de tablas a veces pega varias filas en una sola línea
+     * ("…40g B0 Cajas de…" / "…jumbo i B0 Lápices…"). Separa esas filas.
+     *
+     * @return list<string>
+     */
+    private function expandirLineasCantidadOcr(string $linea): array
+    {
+        $linea = trim($linea);
+        if ($linea === '') {
+            return [];
+        }
+
+        // Solo tokens OCR típicos de "80" (B0/BO/8O), no dígitos puros:
+        // partir en "100 Láminas" rompería descripciones válidas.
+        $expandida = preg_replace(
+            '/(?<=\S)(?:\s+[|\[\]iIl1]*)?\s*\b([B8][O0]|BO)\b(?=\s+[A-ZÁÉÍÓÚÑ¡])/u',
+            "\n$1",
+            $linea,
+        ) ?? $linea;
+
+        return array_values(array_filter(
+            array_map(static fn (string $parte) => trim($parte), explode("\n", $expandida)),
+            static fn (string $parte) => $parte !== '',
+        ));
+    }
+
+    /**
+     * Corrige cantidad inicial mal leída por OCR en listados escaneados.
+     * Ej.: "| B0 Cajas…" → "80 Cajas…", "P0cm ¡Cartulina…" → "20 c/u ¡Cartulina…".
+     */
+    private function normalizarCantidadInicialOcr(string $linea): string
+    {
+        $linea = $this->quitarBordeTablaOcr($linea);
+
+        if (preg_match('/^([B8][O0]|BO)\b(.*)$/u', $linea, $m) === 1) {
+            return '80'.($m[2] ?? '');
+        }
+
+        // "P0cm" / "POcu" / "P0 c/u" suelen ser "20 c/u" (2→P).
+        if (preg_match('/^P[O0](?:\s*c\s*[\/m]\s*u?|\s*cm\b)(.*)$/iu', $linea, $m) === 1) {
+            return '20 c/u'.($m[1] ?? '');
+        }
+
+        return $linea;
     }
 
     /**
@@ -925,6 +976,27 @@ class ListadoMaterialesPdfParserService
         ]);
 
         return preg_replace('/\s+/u', ' ', $texto) ?? $texto;
+    }
+
+    /**
+     * En tablas escaneadas el OCR antepone los bordes de celda a la cantidad
+     * ("| 20 …", ". 20 …"). Solo se recorta si detrás queda un número.
+     */
+    private function quitarBordeTablaOcr(string $linea): string
+    {
+        if (preg_match('/^[|\[\]({_`\'"‘’·•.,:;\s]+(\d.*)$/u', $linea, $m) === 1) {
+            return trim($m[1]);
+        }
+
+        return $linea;
+    }
+
+    private function limpiarInicioDescripcion(string $descripcion): string
+    {
+        $limpia = preg_replace('/^\s*c\s*\/\s*[ua](?:no)?\b/iu', '', $descripcion) ?? $descripcion;
+        $limpia = preg_replace('/^[|\[\]({_`\'"‘’—–\s]+/u', '', $limpia) ?? $limpia;
+
+        return trim($limpia);
     }
 
     private function esEncabezadoListado(string $linea): bool

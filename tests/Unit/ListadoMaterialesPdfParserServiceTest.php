@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\ListadoMaterialesPdfParserService;
+use App\Services\PdfOcrService;
+use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\TestCase;
 
 class ListadoMaterialesPdfParserServiceTest extends TestCase
@@ -132,6 +134,64 @@ TXT;
         $this->assertStringContainsString('ACUARELAS', $lineas[0]['descripcion']);
     }
 
+    public function test_fixture_listado_escaneado_conserva_todas_las_filas(): void
+    {
+        $texto = $this->cargarFixture('listado_escaneado_araucarias_ocr.txt');
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertSame('listado_cantidad', $this->parser->detectarFormato($texto));
+        $this->assertGreaterThanOrEqual(90, count($lineas));
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Cajas de L', $lineas[0]['descripcion']);
+
+        // El OCR antepone bordes de celda ("20 -_ [Cajas…"); no deben quedar en la descripción.
+        foreach ($lineas as $linea) {
+            $this->assertDoesNotMatchRegularExpression('/^[|\[(_]/u', $linea['descripcion']);
+        }
+
+        // "B0"/"BO" mal leídos como 80 deben generar filas propias, no pegarse al ítem anterior.
+        $descripciones = array_map(
+            static fn (array $l): string => mb_strtolower($l['descripcion']),
+            $lineas,
+        );
+        $this->assertTrue(
+            count(array_filter($descripciones, static fn (string $d) => str_contains($d, 'marcadores jumbo'))) >= 1,
+        );
+        $this->assertTrue(
+            count(array_filter($descripciones, static fn (string $d) => str_contains($d, 'lápices de colores jumbo') || str_contains($d, 'lapices de colores jumbo'))) >= 1,
+        );
+    }
+
+    public function test_ocr_corrige_cantidad_b0_y_separa_filas_fusionadas(): void
+    {
+        $texto = <<<'TXT'
+Cantidad NOMBRE DEL PRODUCTO
+20 Pegamentos en barra Pritt 40g B0 Cajas de Lápices marcadores jumbo
+i B0 Lápices de colores jumbo
+: BO Saca puntas doble
+P0cm Cartulina española por pliego
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(5, count($lineas));
+        $this->assertSame(20, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Pegamentos', $lineas[0]['descripcion']);
+        $this->assertStringNotContainsString('marcadores', $lineas[0]['descripcion']);
+
+        $this->assertSame(80, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('marcadores jumbo', $lineas[1]['descripcion']);
+
+        $this->assertSame(80, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('colores jumbo', $lineas[2]['descripcion']);
+
+        $this->assertSame(80, $lineas[3]['cantidad']);
+        $this->assertStringContainsString('Saca puntas', $lineas[3]['descripcion']);
+
+        $this->assertSame(20, $lineas[4]['cantidad']);
+        $this->assertStringContainsString('Cartulina española', $lineas[4]['descripcion']);
+    }
+
     public function test_fixture_detalle_sg(): void
     {
         $texto = $this->cargarFixture('detalle_sg.txt');
@@ -218,7 +278,7 @@ TXT;
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.'minuta_oficina.docx';
         $this->assertFileExists($path);
 
-        $uploaded = new \Illuminate\Http\UploadedFile(
+        $uploaded = new UploadedFile(
             $path,
             'minuta_oficina.docx',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -249,7 +309,7 @@ TXT;
 
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
-        $ocr = new \App\Services\PdfOcrService;
+        $ocr = new PdfOcrService;
         if (! $ocr->estaDisponible()) {
             $this->markTestSkipped('tesseract/pdftoppm no disponibles.');
         }
@@ -259,7 +319,7 @@ TXT;
             $this->markTestSkipped('PDF EETT de muestra no disponible.');
         }
 
-        $uploaded = new \Illuminate\Http\UploadedFile($pdf, 'EETT (3).pdf', 'application/pdf', null, true);
+        $uploaded = new UploadedFile($pdf, 'EETT (3).pdf', 'application/pdf', null, true);
         $parser = new ListadoMaterialesPdfParserService($ocr);
         $lineas = $parser->parseUploadedFile($uploaded);
 
