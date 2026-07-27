@@ -111,6 +111,30 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->assertSee('graba', false);
     }
 
+    public function test_para_cotizar_muestra_frases_en_orden_alfabetico(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.index'))
+            ->assertOk()
+            ->assertSeeInOrder(['aseo', 'papel'], false);
+    }
+
     public function test_puede_mover_prioridad_con_flechas(): void
     {
         $user = User::factory()->create([
@@ -272,17 +296,68 @@ class OportunidadPalabrasClaveTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_index_muestra_mensaje_orden_lista(): void
+    public function test_index_muestra_orden_alfabetico_por_defecto(): void
     {
         $user = User::factory()->create([
             'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
-        $this->actingAs($user)
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+
+        $html = $this->actingAs($user)
             ->get(route('admin.oportunidades.palabras-clave.index'))
             ->assertOk()
-            ->assertSee('Orden de la lista', false)
-            ->assertSee('todas', false);
+            ->assertSee('orden alfab', false)
+            ->assertSee('todas', false)
+            ->getContent();
+
+        $posAseo = strpos($html, '>aseo<');
+        $posPapel = strpos($html, '>papel<');
+        $this->assertNotFalse($posAseo);
+        $this->assertNotFalse($posPapel);
+        $this->assertLessThan($posPapel, $posAseo);
+    }
+
+    public function test_index_permite_ordenar_por_columna(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 2,
+            'created_by' => $user->id,
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('admin.oportunidades.palabras-clave.index', [
+                'orden_campo' => 'frase',
+                'orden_dir' => 'DESC',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $posAseo = strpos($html, '>aseo<');
+        $posPapel = strpos($html, '>papel<');
+        $this->assertNotFalse($posAseo);
+        $this->assertNotFalse($posPapel);
+        $this->assertLessThan($posAseo, $posPapel);
     }
 }

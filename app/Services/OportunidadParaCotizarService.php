@@ -39,7 +39,7 @@ class OportunidadParaCotizarService
     public function palabrasClave(): array
     {
         return OportunidadPalabraClave::query()
-            ->orderBy('orden')
+            ->orderByRaw('LOWER(frase) ASC')
             ->orderBy('id')
             ->pluck('frase')
             ->map(fn ($f) => trim((string) $f))

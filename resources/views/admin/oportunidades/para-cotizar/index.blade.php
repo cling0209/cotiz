@@ -740,6 +740,17 @@
                 .trim();
         }
 
+        /** Frases de coincidencia en orden alfabético (es). */
+        function frasesOrdenadas(lista) {
+            if (!Array.isArray(lista)) {
+                return [];
+            }
+            return lista
+                .map((f) => String(f || '').trim())
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+        }
+
         function itemCoincidePalabraClave(item, criterio) {
             if (criterio === '') {
                 return true;
@@ -1238,9 +1249,7 @@
                 'Presupuesto CLP',
             ];
             const rows = items.map((item) => {
-                const frases = Array.isArray(item.palabras_coinciden) ?
-                    item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean).join(' | ') :
-                    '';
+                const frases = frasesOrdenadas(item.palabras_coinciden).join(' | ');
                 const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
                 const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : '';
                 return [
@@ -1317,9 +1326,7 @@
                 const nombre = String(item.nombre || '').trim();
                 const organismo = String(item.organismo || '').trim() || '—';
                 const regionNombre = String(item.nombre_region || '').trim() || '—';
-                const frases = Array.isArray(item.palabras_coinciden) ?
-                    item.palabras_coinciden.map((f) => String(f || '').trim()).filter(Boolean) :
-                    [];
+                const frases = frasesOrdenadas(item.palabras_coinciden);
                 const tieneCantidad = item.cantidad_productos != null && item.cantidad_productos !== '';
                 const cantidadNum = tieneCantidad ? Number(item.cantidad_productos) : null;
                 const fraseBajoCodigo = frases.length ?

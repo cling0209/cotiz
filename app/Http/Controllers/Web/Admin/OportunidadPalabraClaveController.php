@@ -13,15 +13,46 @@ use Illuminate\View\View;
 
 class OportunidadPalabraClaveController extends Controller
 {
-    public function index(): View
-    {
-        $palabras = OportunidadPalabraClave::query()
-            ->with('creador')
-            ->orderBy('orden')
-            ->orderBy('id')
-            ->get();
+    private const ORDEN_CAMPOS = ['frase', 'creador', 'fecha'];
 
-        return view('admin.oportunidades.palabras-clave.index', compact('palabras'));
+    public function index(Request $request): View
+    {
+        $ordenCampo = (string) $request->input('orden_campo', 'frase');
+        if (! in_array($ordenCampo, self::ORDEN_CAMPOS, true)) {
+            $ordenCampo = 'frase';
+        }
+
+        $ordenDir = strtoupper((string) $request->input('orden_dir', 'ASC'));
+        if (! in_array($ordenDir, ['ASC', 'DESC'], true)) {
+            $ordenDir = 'ASC';
+        }
+
+        $query = OportunidadPalabraClave::query()->with('creador');
+
+        if ($ordenCampo === 'creador') {
+            $query
+                ->leftJoin('users', 'users.id', '=', 'oportunidad_palabras_clave.created_by')
+                ->select('oportunidad_palabras_clave.*')
+                ->orderByRaw('LOWER(COALESCE(users.username, \'\')) '.$ordenDir)
+                ->orderBy('oportunidad_palabras_clave.id');
+        } elseif ($ordenCampo === 'fecha') {
+            $query
+                ->orderBy('created_at', $ordenDir)
+                ->orderBy('id');
+        } else {
+            $query
+                ->orderByRaw('LOWER(frase) '.$ordenDir)
+                ->orderBy('id');
+        }
+
+        $palabras = $query->get();
+
+        $filtros = [
+            'orden_campo' => $ordenCampo,
+            'orden_dir' => $ordenDir,
+        ];
+
+        return view('admin.oportunidades.palabras-clave.index', compact('palabras', 'filtros'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -53,7 +84,7 @@ class OportunidadPalabraClaveController extends Controller
 
         return redirect()
             ->route('admin.oportunidades.palabras-clave.index')
-            ->with('success', 'Palabra clave agregada (al final de la prioridad).');
+            ->with('success', 'Palabra clave agregada.');
     }
 
     public function destroy(OportunidadPalabraClave $palabra): RedirectResponse
