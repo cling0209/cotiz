@@ -2481,14 +2481,16 @@ class CompraAgilResultadosTest extends TestCase
         NotaMpSeguimiento::query()->create([
             'nronota' => 901,
             'codigo_proceso' => '901-1-COT26',
-            'fecha_publicacion' => '2026-03-10 10:00:00',
+            'fecha_publicacion' => '2026-02-01 10:00:00',
+            'fecha_cierre' => '2026-03-15 18:00:00',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
         NotaMpSeguimiento::query()->create([
             'nronota' => 902,
             'codigo_proceso' => '902-1-COT26',
-            'fecha_publicacion' => '2026-03-20 10:00:00',
+            'fecha_publicacion' => '2026-02-10 10:00:00',
+            'fecha_cierre' => '2026-03-20 18:00:00',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
@@ -2540,12 +2542,15 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk()
             ->assertSee('Reportes', false)
             ->assertSee('Productos ganados Reicol / Romulo', false)
-            ->assertSee('Generar CSV', false);
+            ->assertSee('Generar CSV', false)
+            ->assertSee('Filtrar por', false)
+            ->assertSee('Cierre', false);
 
         $encolar = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
                 'fecha_desde' => '2026-03-01',
                 'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
                 'ganador' => 'reicol',
             ])
             ->assertOk()

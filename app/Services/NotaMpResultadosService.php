@@ -2385,17 +2385,29 @@ class NotaMpResultadosService
             $query->whereRaw('1 = 0');
         }
 
+        $columnaFecha = $this->columnaFechaProductosGanados($filtros);
+
         if (! empty($filtros['fecha_desde'])) {
-            $query->where('s.fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
+            $query->where($columnaFecha, '>=', $filtros['fecha_desde'].' 00:00:00');
         }
 
         if (! empty($filtros['fecha_hasta'])) {
-            $query->where('s.fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
+            $query->where($columnaFecha, '<=', $filtros['fecha_hasta'].' 23:59:59');
         }
 
         return $query
             ->orderByDesc('monto_venta_acumulado')
             ->orderBy('nota_mp_oferta_lineas.codigo_producto');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     */
+    private function columnaFechaProductosGanados(array $filtros): string
+    {
+        $tipo = strtolower(trim((string) ($filtros['tipo_fecha'] ?? 'cierre')));
+
+        return $tipo === 'publicacion' ? 's.fecha_publicacion' : 's.fecha_cierre';
     }
 
     /**

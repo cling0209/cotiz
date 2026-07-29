@@ -254,7 +254,12 @@ class CompraAgilReporteExportService
         }
 
         if (empty($filtros['fecha_desde']) || empty($filtros['fecha_hasta'])) {
-            throw new RuntimeException('Indique publicación desde y hasta.');
+            throw new RuntimeException('Indique fecha desde y hasta.');
+        }
+
+        $tipoFecha = strtolower(trim((string) ($filtros['tipo_fecha'] ?? 'cierre')));
+        if (! in_array($tipoFecha, ['publicacion', 'cierre'], true)) {
+            throw new RuntimeException('Tipo de fecha inválido.');
         }
     }
 

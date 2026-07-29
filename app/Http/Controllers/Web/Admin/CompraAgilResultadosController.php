@@ -439,9 +439,12 @@ class CompraAgilResultadosController extends Controller
 
     public function productosGanadosGenerar(Request $request): JsonResponse
     {
-        $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador']);
+        $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador', 'tipo_fecha']);
         if (! $request->has('ganador')) {
             $filtros['ganador'] = 'ambos';
+        }
+        if (! $request->filled('tipo_fecha')) {
+            $filtros['tipo_fecha'] = 'cierre';
         }
 
         try {

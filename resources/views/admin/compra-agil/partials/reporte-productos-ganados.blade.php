@@ -8,15 +8,24 @@
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
             Productos adjudicados agrupados por código, con cantidad y monto de venta acumulados.
-            Filtre por fecha de publicación del proceso y por ganador.
+            Filtre por fecha de publicación o de cierre del proceso y por ganador.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
+            <div class="col-12 col-md-auto">
+                <span class="form-label small mb-1 d-block">Filtrar por</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de fecha">
+                    <input type="radio" class="btn-check" name="tipo_fecha" id="pg-tipo-cierre" value="cierre" checked>
+                    <label class="btn btn-outline-secondary" for="pg-tipo-cierre">Cierre</label>
+                    <input type="radio" class="btn-check" name="tipo_fecha" id="pg-tipo-publicacion" value="publicacion">
+                    <label class="btn btn-outline-secondary" for="pg-tipo-publicacion">Publicación</label>
+                </div>
+            </div>
             <div class="col-auto">
-                <label for="pg-fecha-desde" class="form-label small mb-0">Publicación desde</label>
+                <label for="pg-fecha-desde" class="form-label small mb-0" id="pg-label-desde">Cierre desde</label>
                 <input type="date" class="form-control form-control-sm" id="pg-fecha-desde" name="fecha_desde" required>
             </div>
             <div class="col-auto">
-                <label for="pg-fecha-hasta" class="form-label small mb-0">Publicación hasta</label>
+                <label for="pg-fecha-hasta" class="form-label small mb-0" id="pg-label-hasta">Cierre hasta</label>
                 <input type="date" class="form-control form-control-sm" id="pg-fecha-hasta" name="fecha_hasta" required>
             </div>
             <div class="col-auto">
@@ -69,6 +78,24 @@
 
     const form = document.getElementById('form-reporte-productos-ganados');
     const btnGenerar = document.getElementById('btn-reporte-pg-generar');
+    const labelDesde = document.getElementById('pg-label-desde');
+    const labelHasta = document.getElementById('pg-label-hasta');
+
+    function tipoFechaSeleccionado() {
+        return form?.querySelector('input[name="tipo_fecha"]:checked')?.value || 'cierre';
+    }
+
+    function actualizarEtiquetasFecha() {
+        const esCierre = tipoFechaSeleccionado() === 'cierre';
+        const prefijo = esCierre ? 'Cierre' : 'Publicación';
+        if (labelDesde) labelDesde.textContent = prefijo + ' desde';
+        if (labelHasta) labelHasta.textContent = prefijo + ' hasta';
+    }
+
+    form?.querySelectorAll('input[name="tipo_fecha"]').forEach(function (radio) {
+        radio.addEventListener('change', actualizarEtiquetasFecha);
+    });
+    actualizarEtiquetasFecha();
     const wrapProgreso = document.getElementById('reporte-pg-progreso-wrap');
     const bar = document.getElementById('reporte-pg-progreso-bar');
     const texto = document.getElementById('reporte-pg-progreso-texto');
@@ -166,6 +193,7 @@
         const body = {
             fecha_desde: form.fecha_desde.value,
             fecha_hasta: form.fecha_hasta.value,
+            tipo_fecha: tipoFechaSeleccionado(),
             ganador: form.ganador.value,
         };
 
