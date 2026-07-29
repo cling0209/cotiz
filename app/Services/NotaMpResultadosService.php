@@ -2351,7 +2351,7 @@ class NotaMpResultadosService
         return $this->buildProductosGanadosQuery($filtros)
             ->limit(10000)
             ->get()
-            ->map(fn ($row) => $this->enriquecerFilaProductoGanado($row));
+            ->map(fn ($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
     }
 
     /**
@@ -2360,40 +2360,25 @@ class NotaMpResultadosService
      */
     private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
-        $rutsFiltrados = $this->rutsGanadorFiltro($filtros['ganador'] ?? 'ambos');
-
         $query = NotaMpOfertaLinea::query()
             ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
+            ->join('notas as n', 'n.nronota', '=', 'o.nronota')
             ->whereRaw('o.proveedor_seleccionado IS TRUE')
+            ->where('s.resultado_propio', 'cerrada')
             ->select([
                 'nota_mp_oferta_lineas.codigo_producto',
                 'o.rut_proveedor',
+                DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('MAX(nota_mp_oferta_lineas.nombre_producto) as nombre_producto'),
                 DB::raw('SUM(nota_mp_oferta_lineas.cantidad) as cantidad_acumulada'),
                 DB::raw('SUM(nota_mp_oferta_lineas.monto_total) as monto_venta_acumulado'),
             ])
             ->groupBy('nota_mp_oferta_lineas.codigo_producto', 'o.rut_proveedor');
 
-        if ($rutsFiltrados !== []) {
-            $query->where(function ($q) use ($rutsFiltrados): void {
-                foreach ($rutsFiltrados as $rut) {
-                    $q->orWhere('o.rut_proveedor', $rut);
-                }
-            });
-        } else {
-            $query->whereRaw('1 = 0');
-        }
-
-        $columnaFecha = $this->columnaFechaProductosGanados($filtros);
-
-        if (! empty($filtros['fecha_desde'])) {
-            $query->where($columnaFecha, '>=', $filtros['fecha_desde'].' 00:00:00');
-        }
-
-        if (! empty($filtros['fecha_hasta'])) {
-            $query->where($columnaFecha, '<=', $filtros['fecha_hasta'].' 23:59:59');
-        }
+        $this->aplicarFiltroCodigoCaEnNotas($query, 'n.encargado');
+        $this->aplicarFiltroProveedorGrupoReporte($query, $filtros['ganador'] ?? 'ambos');
+        $this->aplicarFiltroFechaProductosGanados($query, $filtros);
 
         return $query
             ->orderByDesc('monto_venta_acumulado')
@@ -2401,28 +2386,82 @@ class NotaMpResultadosService
     }
 
     /**
-     * @param  array<string, mixed>  $filtros
+     * @param  \Illuminate\Database\Eloquent\Builder<NotaMpOfertaLinea>  $query
      */
-    private function columnaFechaProductosGanados(array $filtros): string
-    {
-        $tipo = strtolower(trim((string) ($filtros['tipo_fecha'] ?? 'cierre')));
+    private function aplicarFiltroProveedorGrupoReporte(
+        \Illuminate\Database\Eloquent\Builder $query,
+        string $ganador,
+    ): void {
+        $ganador = strtolower(trim($ganador));
+        $patrones = match ($ganador) {
+            'reicol' => ['reicol'],
+            'romulo', 'rómulo' => ['romulo', 'rómulo'],
+            default => ['reicol', 'romulo', 'rómulo'],
+        };
 
-        return $tipo === 'publicacion' ? 's.fecha_publicacion' : 's.fecha_cierre';
+        $query->where(function ($q) use ($patrones): void {
+            foreach ($patrones as $patron) {
+                $q->orWhereRaw('lower(o.razon_social) like ?', ['%'.mb_strtolower($patron).'%']);
+            }
+        });
     }
 
     /**
-     * @return list<string>
+     * @param  \Illuminate\Database\Eloquent\Builder<NotaMpOfertaLinea>  $query
+     * @param  array<string, mixed>  $filtros
      */
-    private function rutsGanadorFiltro(string $ganador): array
-    {
-        $ruts = $this->rutsEmpresasGrupo();
-        $ganador = strtolower(trim($ganador));
+    private function aplicarFiltroFechaProductosGanados(
+        \Illuminate\Database\Eloquent\Builder $query,
+        array $filtros,
+    ): void {
+        $tipo = strtolower(trim((string) ($filtros['tipo_fecha'] ?? 'cierre')));
+        $desde = ! empty($filtros['fecha_desde']) ? $filtros['fecha_desde'].' 00:00:00' : null;
+        $hasta = ! empty($filtros['fecha_hasta']) ? $filtros['fecha_hasta'].' 23:59:59' : null;
 
-        return match ($ganador) {
-            'reicol' => array_values(array_filter([$ruts['reicol']])),
-            'romulo', 'rómulo' => array_values(array_filter([$ruts['romulo']])),
-            default => array_values(array_filter([$ruts['reicol'], $ruts['romulo']])),
-        };
+        if ($tipo === 'publicacion') {
+            if ($desde !== null) {
+                $query->where('s.fecha_publicacion', '>=', $desde);
+            }
+            if ($hasta !== null) {
+                $query->where('s.fecha_publicacion', '<=', $hasta);
+            }
+
+            return;
+        }
+
+        $exprCierre = 'COALESCE(s.fecha_cierre, s.fecha_cierre_segundo_llamado, s.fecha_cierre_primer_llamado)';
+        if ($desde !== null) {
+            $query->whereRaw("{$exprCierre} >= ?", [$desde]);
+        }
+        if ($hasta !== null) {
+            $query->whereRaw("{$exprCierre} <= ?", [$hasta]);
+        }
+    }
+
+    private function enriquecerFilaProductoProveedorSeleccionado(object $row): object
+    {
+        $row->proveedor_seleccionado = $this->etiquetaProveedorGrupoPorRazonSocial($row->razon_social ?? null)
+            ?? $this->etiquetaGanadorPorRut($row->rut_proveedor ?? null)
+            ?? '—';
+
+        return $row;
+    }
+
+    private function etiquetaProveedorGrupoPorRazonSocial(?string $razonSocial): ?string
+    {
+        if ($razonSocial === null || trim($razonSocial) === '') {
+            return null;
+        }
+
+        $lower = mb_strtolower(trim($razonSocial));
+        if (str_contains($lower, 'reicol')) {
+            return 'Reicol';
+        }
+        if (str_contains($lower, 'romulo') || str_contains($lower, 'rómulo')) {
+            return 'Romulo';
+        }
+
+        return null;
     }
 
     private function normalizarRutEmpresa(string $rut): string
@@ -2430,13 +2469,6 @@ class NotaMpResultadosService
         $rut = trim($rut);
 
         return $rut !== '' ? $this->parser->normalizarRut($rut) : '';
-    }
-
-    private function enriquecerFilaProductoGanado(object $row): object
-    {
-        $row->ganador = $this->etiquetaGanadorPorRut($row->rut_proveedor ?? null) ?? '—';
-
-        return $row;
     }
 
     public function contarCerradas(): int

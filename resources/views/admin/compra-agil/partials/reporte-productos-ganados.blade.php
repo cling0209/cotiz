@@ -2,13 +2,14 @@
     <div class="card-header py-2">
         <h2 class="h6 mb-0">
             <span class="badge text-bg-secondary me-1">1</span>
-            Productos ganados Reicol / Romulo
+            Productos proveedor seleccionado Reicol / Romulo
         </h2>
     </div>
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
-            Productos adjudicados agrupados por código, con cantidad y monto de venta acumulados.
-            Filtre por fecha de publicación o de cierre del proceso y por ganador.
+            Productos de procesos con seguimiento <strong>Cerrada</strong>, agrupados por código, con cantidad y monto acumulados.
+            Solo ofertas con proveedor seleccionado cuya razón social contenga Reicol o Romulo.
+            Filtre por fecha de publicación o de cierre del proceso.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
             <div class="col-12 col-md-auto">
@@ -29,7 +30,7 @@
                 <input type="date" class="form-control form-control-sm" id="pg-fecha-hasta" name="fecha_hasta" required>
             </div>
             <div class="col-auto">
-                <label for="pg-ganador" class="form-label small mb-0">Ganador</label>
+                <label for="pg-ganador" class="form-label small mb-0">Proveedor seleccionado</label>
                 <select class="form-select form-select-sm" id="pg-ganador" name="ganador" style="width:9rem">
                     <option value="ambos" selected>Ambos</option>
                     <option value="reicol">Reicol</option>
@@ -43,7 +44,7 @@
             </div>
         </form>
         <p class="small text-muted mb-0 mt-2">
-            Columnas: código producto, producto, ganador, cantidad acumulada, monto venta acumulado.
+            Columnas: código producto, producto, proveedor seleccionado, cantidad acumulada, monto venta acumulado.
         </p>
 
         <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
@@ -58,10 +59,12 @@
 
         <div class="d-none alert alert-success small py-2 mt-3 mb-0" id="reporte-pg-listo">
             <i class="bi bi-check-circle"></i>
-            Reporte listo:
+            <span id="reporte-pg-listo-texto">Reporte listo:</span>
             <a href="#" id="reporte-pg-download-link" class="fw-semibold" download>Descargar CSV</a>
             <span class="text-muted"> (el enlace desaparece tras descargar)</span>
         </div>
+
+        <div class="d-none alert alert-warning small py-2 mt-3 mb-0" id="reporte-pg-vacio"></div>
 
         <div class="d-none alert alert-danger small py-2 mt-3 mb-0" id="reporte-pg-error"></div>
     </div>
@@ -101,6 +104,8 @@
     const texto = document.getElementById('reporte-pg-progreso-texto');
     const pctLabel = document.getElementById('reporte-pg-progreso-pct');
     const listo = document.getElementById('reporte-pg-listo');
+    const listoTexto = document.getElementById('reporte-pg-listo-texto');
+    const vacio = document.getElementById('reporte-pg-vacio');
     const downloadLink = document.getElementById('reporte-pg-download-link');
     const errorBox = document.getElementById('reporte-pg-error');
 
@@ -126,12 +131,15 @@
         errorBox.textContent = message;
         errorBox.classList.remove('d-none');
         listo.classList.add('d-none');
+        vacio.classList.add('d-none');
     }
 
     function clearFeedback() {
         errorBox.classList.add('d-none');
         errorBox.textContent = '';
         listo.classList.add('d-none');
+        vacio.classList.add('d-none');
+        vacio.textContent = '';
         wrapProgreso.classList.add('d-none');
         bar.classList.remove('bg-success');
     }
@@ -159,9 +167,17 @@
                 downloadLink.href = data.download_url;
                 downloadLink.textContent = data.filename || 'Descargar CSV';
                 listo.classList.remove('d-none');
+                if ((data.row_count ?? 0) === 0) {
+                    vacio.textContent = 'No hay productos para los filtros aplicados (seguimiento Cerrada y proveedor Reicol/Romulo).';
+                    vacio.classList.remove('d-none');
+                    if (listoTexto) listoTexto.textContent = 'CSV generado (sin filas):';
+                } else if (listoTexto) {
+                    listoTexto.textContent = 'Reporte listo:';
+                }
                 downloadLink.addEventListener('click', function onDownload() {
                     setTimeout(function () {
                         listo.classList.add('d-none');
+                        vacio.classList.add('d-none');
                         wrapProgreso.classList.add('d-none');
                         currentJobId = null;
                     }, 1500);

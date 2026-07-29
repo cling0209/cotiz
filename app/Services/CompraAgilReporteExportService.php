@@ -96,6 +96,7 @@ class CompraAgilReporteExportService
             'download_url' => $status === self::STATUS_COMPLETED
                 ? route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobId])
                 : null,
+            'row_count' => (int) ($payload['row_count'] ?? 0),
             'updated_at' => $payload['updated_at'] ?? null,
         ];
     }
@@ -122,8 +123,9 @@ class CompraAgilReporteExportService
 
             $path = $directory.'/'.(string) ($payload['filename'] ?? 'reporte.csv');
 
+            $rowCount = 0;
             if ($type === self::TYPE_PRODUCTOS_GANADOS) {
-                $this->generarCsvProductosGanados($jobId, $path, $filtros);
+                $rowCount = $this->generarCsvProductosGanados($jobId, $path, $filtros);
             } else {
                 throw new RuntimeException('Tipo de reporte no soportado.');
             }
@@ -131,8 +133,11 @@ class CompraAgilReporteExportService
             $this->patch($jobId, [
                 'status' => self::STATUS_COMPLETED,
                 'percent' => 100,
-                'detail' => 'Listo para descargar.',
+                'detail' => $rowCount > 0
+                    ? 'Listo para descargar.'
+                    : 'Listo (sin filas para los filtros aplicados).',
                 'file_path' => $path,
+                'row_count' => $rowCount,
                 'error' => null,
             ]);
         } catch (\Throwable $e) {
@@ -191,11 +196,11 @@ class CompraAgilReporteExportService
     /**
      * @param  array<string, mixed>  $filtros
      */
-    private function generarCsvProductosGanados(string $jobId, string $path, array $filtros): void
+    private function generarCsvProductosGanados(string $jobId, string $path, array $filtros): int
     {
         $this->patch($jobId, [
             'percent' => 35,
-            'detail' => 'Agregando productos ganados…',
+            'detail' => 'Agregando productos del proveedor seleccionado…',
         ]);
 
         $filas = $this->resultados->productosGanadosExportar($filtros);
@@ -217,7 +222,7 @@ class CompraAgilReporteExportService
         fputcsv($out, [
             'Código producto',
             'Producto',
-            'Ganador',
+            'Proveedor seleccionado',
             'Cantidad acumulada',
             'Monto venta acumulado',
         ], ';');
@@ -227,7 +232,7 @@ class CompraAgilReporteExportService
             fputcsv($out, [
                 $f->codigo_producto,
                 $f->nombre_producto,
-                $f->ganador,
+                $f->proveedor_seleccionado,
                 $f->cantidad_acumulada,
                 $f->monto_venta_acumulado,
             ], ';');
@@ -242,6 +247,8 @@ class CompraAgilReporteExportService
         }
 
         fclose($out);
+
+        return $total;
     }
 
     /**
@@ -273,7 +280,7 @@ class CompraAgilReporteExportService
     private function buildFilename(string $type): string
     {
         return match ($type) {
-            self::TYPE_PRODUCTOS_GANADOS => 'productos_ganados_'.now()->format('Ymd_His').'.csv',
+            self::TYPE_PRODUCTOS_GANADOS => 'productos_proveedor_seleccionado_'.now()->format('Ymd_His').'.csv',
             default => 'reporte_'.now()->format('Ymd_His').'.csv',
         };
     }

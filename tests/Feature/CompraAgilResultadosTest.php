@@ -2464,7 +2464,7 @@ class CompraAgilResultadosTest extends TestCase
 
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
 
-        foreach ([901, 902] as $nronota) {
+        foreach ([901, 902, 903] as $nronota) {
             Nota::query()->create([
                 'nronota' => $nronota,
                 'descripcion' => 'Test productos ganados '.$nronota,
@@ -2490,9 +2490,18 @@ class CompraAgilResultadosTest extends TestCase
             'nronota' => 902,
             'codigo_proceso' => '902-1-COT26',
             'fecha_publicacion' => '2026-02-10 10:00:00',
-            'fecha_cierre' => '2026-03-20 18:00:00',
+            'fecha_cierre_primer_llamado' => '2026-03-22 18:00:00',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 903,
+            'codigo_proceso' => '903-1-COT26',
+            'fecha_publicacion' => '2026-03-05 10:00:00',
+            'fecha_cierre' => '2026-03-18 18:00:00',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
         ]);
 
         $ofertaReicol = NotaMpOferta::query()->create([
@@ -2522,8 +2531,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $ofertaRomulo = NotaMpOferta::query()->create([
             'nronota' => 902,
-            'rut_proveedor' => '76779675-7',
-            'razon_social' => 'INTEGRAMUNDO SPA',
+            'rut_proveedor' => '99999999-9',
+            'razon_social' => 'COMERCIALIZADORA ROMULO LIMITADA',
             'proveedor_seleccionado' => true,
             'monto_total' => 15000,
             'es_propio' => false,
@@ -2537,14 +2546,31 @@ class CompraAgilResultadosTest extends TestCase
             'monto_total' => 15000,
         ]);
 
+        $ofertaPendiente = NotaMpOferta::query()->create([
+            'nronota' => 903,
+            'rut_proveedor' => '76356855-5',
+            'razon_social' => 'COMERCIALIZADORA REICOL SPA',
+            'proveedor_seleccionado' => true,
+            'monto_total' => 8000,
+            'es_propio' => true,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $ofertaPendiente->id,
+            'codigo_producto' => 'P003',
+            'nombre_producto' => 'Producto pendiente',
+            'cantidad' => 1,
+            'precio_unitario' => 8000,
+            'monto_total' => 8000,
+        ]);
+
         $this->actingAs($admin)
             ->get(route('admin.compra-agil.resultados.reportes'))
             ->assertOk()
             ->assertSee('Reportes', false)
-            ->assertSee('Productos ganados Reicol / Romulo', false)
+            ->assertSee('Productos proveedor seleccionado Reicol / Romulo', false)
             ->assertSee('Generar CSV', false)
             ->assertSee('Filtrar por', false)
-            ->assertSee('Cierre', false);
+            ->assertSee('Proveedor seleccionado', false);
 
         $encolar = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
@@ -2572,7 +2598,26 @@ class CompraAgilResultadosTest extends TestCase
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
         $this->assertStringContainsString('P001', $csv->getContent());
+        $this->assertStringContainsString('Proveedor seleccionado', $csv->getContent());
         $this->assertStringNotContainsString('P002', $csv->getContent());
+        $this->assertStringNotContainsString('P003', $csv->getContent());
+
+        $encolarRomulo = $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
+                'ganador' => 'romulo',
+            ])
+            ->assertOk();
+
+        $jobRomulo = $encolarRomulo->json('job_id');
+        $csvRomulo = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobRomulo]))
+            ->assertOk();
+
+        $this->assertStringContainsString('P002', $csvRomulo->getContent());
+        $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
 
         $this->actingAs($admin)
             ->getJson(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => $jobId]))
