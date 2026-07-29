@@ -1,4 +1,4 @@
-<div class="card shadow-sm">
+<div class="card shadow-sm" id="reporte-productos-ganados">
     <div class="card-header py-2">
         <h2 class="h6 mb-0">
             <span class="badge text-bg-secondary me-1">1</span>
@@ -10,10 +10,7 @@
             Productos adjudicados agrupados por código, con cantidad y monto de venta acumulados.
             Filtre por fecha de publicación del proceso y por ganador.
         </p>
-        <form method="GET"
-            action="{{ route('admin.compra-agil.resultados.reportes.productos-ganados.exportar') }}"
-            class="row g-2 align-items-end"
-            data-no-loader>
+        <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
             <div class="col-auto">
                 <label for="pg-fecha-desde" class="form-label small mb-0">Publicación desde</label>
                 <input type="date" class="form-control form-control-sm" id="pg-fecha-desde" name="fecha_desde" required>
@@ -31,13 +28,181 @@
                 </select>
             </div>
             <div class="col-auto">
-                <button type="submit" class="btn btn-success btn-sm">
-                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar CSV
+                <button type="submit" class="btn btn-success btn-sm" id="btn-reporte-pg-generar">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Generar CSV
                 </button>
             </div>
         </form>
         <p class="small text-muted mb-0 mt-2">
             Columnas: código producto, producto, ganador, cantidad acumulada, monto venta acumulado.
         </p>
+
+        <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span class="small fw-semibold" id="reporte-pg-progreso-texto">Preparando…</span>
+                <span class="small text-muted tabular-nums" id="reporte-pg-progreso-pct">0%</span>
+            </div>
+            <div class="progress" style="height: 1rem;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="reporte-pg-progreso-bar" role="progressbar" style="width: 0%">0%</div>
+            </div>
+        </div>
+
+        <div class="d-none alert alert-success small py-2 mt-3 mb-0" id="reporte-pg-listo">
+            <i class="bi bi-check-circle"></i>
+            Reporte listo:
+            <a href="#" id="reporte-pg-download-link" class="fw-semibold" download>Descargar CSV</a>
+            <span class="text-muted"> (el enlace desaparece tras descargar)</span>
+        </div>
+
+        <div class="d-none alert alert-danger small py-2 mt-3 mb-0" id="reporte-pg-error"></div>
     </div>
 </div>
+
+@push('scripts')
+<script>
+(function () {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const urls = {
+        generar: @json(route('admin.compra-agil.resultados.reportes.productos-ganados.generar')),
+        estado: @json(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => '__JOB__'])),
+    };
+
+    const form = document.getElementById('form-reporte-productos-ganados');
+    const btnGenerar = document.getElementById('btn-reporte-pg-generar');
+    const wrapProgreso = document.getElementById('reporte-pg-progreso-wrap');
+    const bar = document.getElementById('reporte-pg-progreso-bar');
+    const texto = document.getElementById('reporte-pg-progreso-texto');
+    const pctLabel = document.getElementById('reporte-pg-progreso-pct');
+    const listo = document.getElementById('reporte-pg-listo');
+    const downloadLink = document.getElementById('reporte-pg-download-link');
+    const errorBox = document.getElementById('reporte-pg-error');
+
+    let pollTimer = null;
+    let currentJobId = null;
+
+    function estadoUrl(jobId) {
+        return urls.estado.replace('__JOB__', encodeURIComponent(jobId));
+    }
+
+    function setProgress(percent, detail) {
+        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        wrapProgreso.classList.remove('d-none');
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        pctLabel.textContent = pct + '%';
+        texto.textContent = detail || 'Generando reporte…';
+        bar.classList.toggle('progress-bar-animated', pct < 100);
+        bar.classList.toggle('bg-success', pct >= 100);
+    }
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.remove('d-none');
+        listo.classList.add('d-none');
+    }
+
+    function clearFeedback() {
+        errorBox.classList.add('d-none');
+        errorBox.textContent = '';
+        listo.classList.add('d-none');
+        wrapProgreso.classList.add('d-none');
+        bar.classList.remove('bg-success');
+    }
+
+    function stopPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    async function pollEstado(jobId) {
+        try {
+            const res = await fetch(estadoUrl(jobId), { headers: { 'Accept': 'application/json' } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'No se pudo consultar el progreso.');
+            }
+
+            setProgress(data.percent, data.detail);
+
+            if (data.status === 'completed' && data.download_url) {
+                stopPolling();
+                btnGenerar.disabled = false;
+                downloadLink.href = data.download_url;
+                downloadLink.textContent = data.filename || 'Descargar CSV';
+                listo.classList.remove('d-none');
+                downloadLink.addEventListener('click', function onDownload() {
+                    setTimeout(function () {
+                        listo.classList.add('d-none');
+                        wrapProgreso.classList.add('d-none');
+                        currentJobId = null;
+                    }, 1500);
+                }, { once: true });
+                return;
+            }
+
+            if (data.status === 'failed') {
+                stopPolling();
+                btnGenerar.disabled = false;
+                wrapProgreso.classList.add('d-none');
+                showError(data.error || 'Error al generar el reporte.');
+            }
+        } catch (e) {
+            stopPolling();
+            btnGenerar.disabled = false;
+            wrapProgreso.classList.add('d-none');
+            showError(e.message || 'Error de conexión.');
+        }
+    }
+
+    form?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        stopPolling();
+        clearFeedback();
+        btnGenerar.disabled = true;
+        setProgress(0, 'Encolando reporte…');
+
+        const body = {
+            fecha_desde: form.fecha_desde.value,
+            fecha_hasta: form.fecha_hasta.value,
+            ganador: form.ganador.value,
+        };
+
+        try {
+            const res = await fetch(urls.generar, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'No se pudo iniciar la exportación.');
+            }
+
+            currentJobId = data.job_id;
+            if (data.estado) {
+                setProgress(data.estado.percent, data.estado.detail);
+                if (data.estado.status === 'completed' && data.estado.download_url) {
+                    await pollEstado(currentJobId);
+                    return;
+                }
+            }
+
+            pollTimer = setInterval(function () {
+                pollEstado(currentJobId);
+            }, 1200);
+            pollEstado(currentJobId);
+        } catch (err) {
+            btnGenerar.disabled = false;
+            wrapProgreso.classList.add('d-none');
+            showError(err.message || 'Error al generar.');
+        }
+    });
+})();
+</script>
+@endpush

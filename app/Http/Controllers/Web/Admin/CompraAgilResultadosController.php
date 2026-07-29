@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\CompraAgilReporteExportService;
 use App\Services\NotaListadoService;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Database\Eloquent\Collection;
@@ -10,12 +11,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CompraAgilResultadosController extends Controller
 {
     public function __construct(
         protected NotaMpResultadosService $resultados,
         protected NotaListadoService $notaListado,
+        protected CompraAgilReporteExportService $reporteExports,
     ) {}
 
     public function index(Request $request): View
@@ -434,39 +437,61 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-reportes');
     }
 
-    public function productosGanadosExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function productosGanadosGenerar(Request $request): JsonResponse
     {
         $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador']);
         if (! $request->has('ganador')) {
             $filtros['ganador'] = 'ambos';
         }
 
-        $filas = $this->resultados->productosGanadosExportar($filtros);
-        $filename = 'productos_ganados_'.now()->format('Ymd_His').'.csv';
+        try {
+            $jobId = $this->reporteExports->encolar(
+                CompraAgilReporteExportService::TYPE_PRODUCTOS_GANADOS,
+                (int) $request->user()->id,
+                $filtros,
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
 
-        return response()->streamDownload(function () use ($filas) {
-            $out = fopen('php://output', 'w');
-            fprintf($out, "\xEF\xBB\xBF");
-            fputcsv($out, [
-                'Código producto',
-                'Producto',
-                'Ganador',
-                'Cantidad acumulada',
-                'Monto venta acumulado',
-            ], ';');
-            foreach ($filas as $f) {
-                fputcsv($out, [
-                    $f->codigo_producto,
-                    $f->nombre_producto,
-                    $f->ganador,
-                    $f->cantidad_acumulada,
-                    $f->monto_venta_acumulado,
-                ], ';');
-            }
-            fclose($out);
-        }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+        return response()->json([
+            'ok' => true,
+            'job_id' => $jobId,
+            'estado' => $this->reporteExports->estadoParaPoll($jobId, (int) $request->user()->id),
         ]);
+    }
+
+    public function reporteExportEstado(Request $request, string $jobId): JsonResponse
+    {
+        try {
+            return response()->json(
+                $this->reporteExports->estadoParaPoll($jobId, (int) $request->user()->id),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
+        }
+    }
+
+    public function reporteExportDescargar(Request $request, string $jobId): BinaryFileResponse
+    {
+        try {
+            $download = $this->reporteExports->resolveDownload((int) $request->user()->id, $jobId);
+        } catch (RuntimeException $e) {
+            abort(404, $e->getMessage());
+        }
+
+        $response = response()->download(
+            $download['path'],
+            $download['filename'],
+            ['Content-Type' => 'text/csv; charset=UTF-8'],
+        )->deleteFileAfterSend(true);
+
+        $this->reporteExports->forget($jobId);
+        app()->terminating(function () use ($jobId): void {
+            $this->reporteExports->cleanupDirectory($jobId);
+        });
+
+        return $response;
     }
 
     public function iniciar(Request $request): JsonResponse

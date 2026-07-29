@@ -126,7 +126,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('compra-agil/resultados/analisis-precios', [CompraAgilResultadosController::class, 'analisisPrecios'])->name('compra-agil.resultados.analisis-precios');
             Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
             Route::get('compra-agil/resultados/reportes', [CompraAgilResultadosController::class, 'reportes'])->name('compra-agil.resultados.reportes');
-            Route::get('compra-agil/resultados/reportes/productos-ganados/exportar', [CompraAgilResultadosController::class, 'productosGanadosExportar'])->name('compra-agil.resultados.reportes.productos-ganados.exportar');
+            Route::post('compra-agil/resultados/reportes/productos-ganados/generar', [CompraAgilResultadosController::class, 'productosGanadosGenerar'])->name('compra-agil.resultados.reportes.productos-ganados.generar');
+            Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/estado', [CompraAgilResultadosController::class, 'reporteExportEstado'])->name('compra-agil.resultados.reportes.exportaciones.estado');
+            Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/descargar', [CompraAgilResultadosController::class, 'reporteExportDescargar'])->name('compra-agil.resultados.reportes.exportaciones.descargar');
         });
 
         Route::middleware('oportunidades-ver')->group(function () {
