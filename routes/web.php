@@ -169,6 +169,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.palabras-clave.index');
             Route::post('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'store'])
                 ->name('oportunidades.palabras-clave.store');
+            Route::put('oportunidades/palabras-clave/{palabra}', [OportunidadPalabraClaveController::class, 'update'])
+                ->name('oportunidades.palabras-clave.update');
             Route::post('oportunidades/palabras-clave/reordenar', [OportunidadPalabraClaveController::class, 'reordenar'])
                 ->name('oportunidades.palabras-clave.reordenar');
             Route::post('oportunidades/palabras-clave/{palabra}/mover', [OportunidadPalabraClaveController::class, 'mover'])

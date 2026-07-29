@@ -360,4 +360,93 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->assertNotFalse($posPapel);
         $this->assertLessThan($posAseo, $posPapel);
     }
+
+    public function test_store_con_regiones_asocia_solo_esas(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [13, 5, 8]]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.store'), [
+                'frase' => 'papel bond',
+                'regiones' => ['13', '5'],
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $palabra = OportunidadPalabraClave::query()->where('frase', 'papel bond')->firstOrFail();
+        $this->assertDatabaseHas('oportunidad_palabra_clave_regiones', [
+            'palabra_clave_id' => $palabra->id,
+            'region_codigo' => 13,
+        ]);
+        $this->assertDatabaseHas('oportunidad_palabra_clave_regiones', [
+            'palabra_clave_id' => $palabra->id,
+            'region_codigo' => 5,
+        ]);
+        $this->assertDatabaseMissing('oportunidad_palabra_clave_regiones', [
+            'palabra_clave_id' => $palabra->id,
+            'region_codigo' => 8,
+        ]);
+    }
+
+    public function test_update_sin_regiones_deja_busqueda_en_todas(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [13, 5]]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $palabra = OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+        $palabra->regiones()->create(['region_codigo' => 13]);
+
+        $this->actingAs($user)
+            ->put(route('admin.oportunidades.palabras-clave.update', $palabra), [
+                'regiones' => [],
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $this->assertDatabaseCount('oportunidad_palabra_clave_regiones', 0);
+        $palabra->refresh();
+        $this->assertTrue($palabra->aplicaATodasLasRegiones());
+    }
+
+    public function test_palabras_clave_para_region_respeta_asociacion(): void
+    {
+        config(['cotiz.mercadopublico.regiones' => [13, 8]]);
+
+        OportunidadPalabraClave::query()->create(['frase' => 'aseo', 'orden' => 1]);
+        $rm = OportunidadPalabraClave::query()->create(['frase' => 'papel', 'orden' => 2]);
+        $rm->regiones()->create(['region_codigo' => 13]);
+
+        $servicio = app(\App\Services\OportunidadParaCotizarService::class);
+
+        $this->assertSame(['aseo', 'papel'], $servicio->palabrasClaveParaRegion(13));
+        $this->assertSame(['aseo'], $servicio->palabrasClaveParaRegion(8));
+    }
+
+    public function test_plan_busqueda_omite_region_sin_frases_aplicables(): void
+    {
+        config([
+            'cotiz.mercadopublico.regiones' => [13, 8],
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+        ]);
+
+        $soloRm = OportunidadPalabraClave::query()->create(['frase' => 'papel', 'orden' => 1]);
+        $soloRm->regiones()->create(['region_codigo' => 13]);
+
+        $plan = app(\App\Services\OportunidadParaCotizarService::class)->planBusqueda();
+
+        $this->assertNull($plan['error']);
+        $this->assertSame(1, $plan['total_pasos']);
+        $this->assertSame(13, $plan['pasos'][0]['region']);
+    }
 }

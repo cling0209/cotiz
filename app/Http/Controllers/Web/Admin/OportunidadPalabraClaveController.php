@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\OportunidadPalabraClave;
+use App\Services\CompraAgilRegionScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class OportunidadPalabraClaveController extends Controller
             $ordenDir = 'ASC';
         }
 
-        $query = OportunidadPalabraClave::query()->with('creador');
+        $query = OportunidadPalabraClave::query()->with(['creador', 'regiones']);
 
         if ($ordenCampo === 'creador') {
             $query
@@ -52,7 +53,11 @@ class OportunidadPalabraClaveController extends Controller
             'orden_dir' => $ordenDir,
         ];
 
-        return view('admin.oportunidades.palabras-clave.index', compact('palabras', 'filtros'));
+        return view('admin.oportunidades.palabras-clave.index', [
+            'palabras' => $palabras,
+            'filtros' => $filtros,
+            'regionesDisponibles' => $this->regionesDisponibles(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -68,6 +73,8 @@ class OportunidadPalabraClaveController extends Controller
                 'max:200',
                 Rule::unique('oportunidad_palabras_clave', 'frase'),
             ],
+            'regiones' => ['nullable', 'array'],
+            'regiones.*' => ['integer'],
         ], [
             'frase.required' => 'Indique la palabra clave.',
             'frase.unique' => 'Esa palabra clave ya está registrada.',
@@ -76,15 +83,31 @@ class OportunidadPalabraClaveController extends Controller
 
         $maxOrden = (int) OportunidadPalabraClave::query()->max('orden');
 
-        OportunidadPalabraClave::query()->create([
+        $palabra = OportunidadPalabraClave::query()->create([
             'frase' => $frase,
             'orden' => $maxOrden + 1,
             'created_by' => $request->user()?->id,
         ]);
 
+        $this->syncRegiones($palabra, $this->normalizarRegiones($request));
+
         return redirect()
             ->route('admin.oportunidades.palabras-clave.index')
             ->with('success', 'Palabra clave agregada.');
+    }
+
+    public function update(Request $request, OportunidadPalabraClave $palabra): RedirectResponse
+    {
+        $request->validate([
+            'regiones' => ['nullable', 'array'],
+            'regiones.*' => ['integer'],
+        ]);
+
+        $this->syncRegiones($palabra, $this->normalizarRegiones($request));
+
+        return redirect()
+            ->route('admin.oportunidades.palabras-clave.index')
+            ->with('success', 'Regiones de «'.$palabra->frase.'» actualizadas.');
     }
 
     public function destroy(OportunidadPalabraClave $palabra): RedirectResponse
@@ -194,5 +217,56 @@ class OportunidadPalabraClaveController extends Controller
     private function normalizarFrase(string $frase): string
     {
         return trim(preg_replace('/\s+/u', ' ', $frase) ?? $frase);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function regionesDisponibles(): array
+    {
+        $out = [];
+        foreach (CompraAgilRegionScope::regionesIncluidas() as $codigo) {
+            $out[(int) $codigo] = CompraAgilRegionScope::nombreRegion((int) $codigo);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function normalizarRegiones(Request $request): array
+    {
+        $permitidas = CompraAgilRegionScope::regionesIncluidas();
+        $input = $request->input('regiones', []);
+        if (! is_array($input)) {
+            return [];
+        }
+
+        $codigos = [];
+        foreach ($input as $valor) {
+            $codigo = (int) $valor;
+            if ($codigo > 0 && in_array($codigo, $permitidas, true)) {
+                $codigos[$codigo] = $codigo;
+            }
+        }
+
+        return array_values($codigos);
+    }
+
+    /**
+     * @param  list<int>  $codigos  vacío = todas las regiones
+     */
+    private function syncRegiones(OportunidadPalabraClave $palabra, array $codigos): void
+    {
+        DB::transaction(function () use ($palabra, $codigos) {
+            $palabra->regiones()->delete();
+
+            foreach ($codigos as $codigo) {
+                $palabra->regiones()->create([
+                    'region_codigo' => $codigo,
+                ]);
+            }
+        });
     }
 }

@@ -48,6 +48,57 @@ class OportunidadParaCotizarService
             ->all();
     }
 
+    /**
+     * Frases que aplican a una región: sin restricción (todas) + las que incluyen el código.
+     *
+     * @return list<string>
+     */
+    public function palabrasClaveParaRegion(int $region): array
+    {
+        if ($region < 1) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->palabrasClaveConRegiones() as $row) {
+            $frase = trim((string) ($row['frase'] ?? ''));
+            if ($frase === '') {
+                continue;
+            }
+
+            $codigos = $row['regiones'] ?? [];
+            if ($codigos === [] || in_array($region, $codigos, true)) {
+                $out[] = $frase;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    public function regionTienePalabrasClave(int $region): bool
+    {
+        return $this->palabrasClaveParaRegion($region) !== [];
+    }
+
+    /**
+     * @return list<array{frase: string, regiones: list<int>}>
+     */
+    private function palabrasClaveConRegiones(): array
+    {
+        return OportunidadPalabraClave::query()
+            ->with('regiones')
+            ->orderByRaw('LOWER(frase) ASC')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (OportunidadPalabraClave $p) => [
+                'frase' => trim((string) $p->frase),
+                'regiones' => $p->codigosRegion(),
+            ])
+            ->filter(fn (array $row) => ($row['frase'] ?? '') !== '')
+            ->values()
+            ->all();
+    }
+
     public function fechaBusquedaHoy(): string
     {
         return now()->timezone(config('app.timezone'))->toDateString();
@@ -705,10 +756,26 @@ class OportunidadParaCotizarService
 
         $pasos = [];
         foreach ($regiones as $region) {
+            $region = (int) $region;
+            if (! $this->regionTienePalabrasClave($region)) {
+                continue;
+            }
+
             $pasos[] = [
                 'frase' => '(todas)',
-                'region' => (int) $region,
-                'region_nombre' => CompraAgilRegionScope::nombreRegion((int) $region),
+                'region' => $region,
+                'region_nombre' => CompraAgilRegionScope::nombreRegion($region),
+            ];
+        }
+
+        if ($pasos === []) {
+            return [
+                'palabras' => $palabras,
+                'pasos' => [],
+                'total_pasos' => 0,
+                'fecha' => $fecha,
+                'api_configurada' => true,
+                'error' => 'Ninguna palabra clave aplica a las regiones configuradas.',
             ];
         }
 
@@ -897,7 +964,7 @@ class OportunidadParaCotizarService
         mixed $cambioDesde = null,
     ): array {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
-        $palabras = $this->palabrasClave();
+        $palabras = $this->palabrasClaveParaRegion($region);
         $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
         if ($region < 1 || $palabras === []) {
             return [
