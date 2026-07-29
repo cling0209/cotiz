@@ -120,8 +120,7 @@ class NotaDetalleService
 
         return [
             'linea' => $linea,
-            'prod_nombre' => $producto?->prod_nombre
-                ?? ($descripcionMaestro !== '' ? $descripcionMaestro : $codigoProducto),
+            'prod_nombre' => $descripcionMaestro !== '' ? $descripcionMaestro : $codigoProducto,
             'prod_familia' => $producto?->prod_familia,
             'prod_imagen' => $producto?->imageUrl(),
             'image_url' => $producto?->imageUrl(),
