@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Models\Nota;
 use App\Models\NotaDetalle;
+use App\Support\CotizInstanciaPar;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class NotaEnvioRelayService
@@ -22,6 +25,8 @@ class NotaEnvioRelayService
         if ($destino === '') {
             throw new RuntimeException('No está configurada la URL de recepción API (COTIZ_API_NOTA_URL).');
         }
+
+        $this->despertarSitioPar();
 
         $nota->load(['detalle.producto']);
 
@@ -114,7 +119,7 @@ class NotaEnvioRelayService
         $response = $request->post($url, $payload);
 
         if (! $response->successful()) {
-            throw new RuntimeException('Error HTTP al enviar cotización a la API remota.');
+            throw new RuntimeException($this->mensajeErrorHttp($response, $url));
         }
 
         $data = $response->json();
@@ -125,6 +130,75 @@ class NotaEnvioRelayService
         }
 
         return (int) ($data['nronota'] ?? 0);
+    }
+
+    private function despertarSitioPar(): void
+    {
+        $url = CotizInstanciaPar::urlDespertarSitioPar();
+        if ($url === '') {
+            return;
+        }
+
+        $maxSeg = max(0, min(60, (int) config('cotiz.api_nota.consulta_par_timeout', 15)));
+        $intervalo = max(1, (int) config('cotiz.api_nota.consulta_par_espera_segundos', 5));
+        $inicio = time();
+
+        while (true) {
+            try {
+                if (Http::timeout(8)->get($url)->successful()) {
+                    return;
+                }
+            } catch (\Throwable $e) {
+                Log::info('Envío cotización: sitio par sin respuesta aún', [
+                    'url' => $url,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            if ($maxSeg <= 0 || (time() - $inicio) >= $maxSeg) {
+                Log::warning('Envío cotización: sitio par no despertó a tiempo, se intentará enviar igual', [
+                    'url' => $url,
+                    'max_seg' => $maxSeg,
+                ]);
+
+                return;
+            }
+
+            sleep($intervalo);
+        }
+    }
+
+    private function mensajeErrorHttp(Response $response, string $url): string
+    {
+        $peer = $this->nombreInstanciaPar($url);
+        $data = $response->json();
+        if (is_array($data)) {
+            $mensaje = trim((string) ($data['mensaje'] ?? ''));
+            if ($mensaje !== '') {
+                return $peer.': '.$mensaje;
+            }
+        }
+
+        return match ($response->status()) {
+            401 => $peer.': autorización rechazada (401). Verifique que COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD sean iguales en Romulo y Reicol.',
+            404 => $peer.': ruta no encontrada (404). URL configurada: '.$url,
+            502, 503, 504 => $peer.': servicio no disponible ('.$response->status().'). Espere unos segundos e intente de nuevo.',
+            default => 'Error HTTP al enviar cotización a la API remota ('.$response->status().').',
+        };
+    }
+
+    private function nombreInstanciaPar(string $url): string
+    {
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?: ''));
+
+        if (str_contains($host, 'reicol')) {
+            return 'Reicol';
+        }
+        if (str_contains($host, 'romulo')) {
+            return 'Romulo';
+        }
+
+        return $host !== '' ? $host : CotizInstanciaPar::nombrePar();
     }
 
     private function imagenBase64(?string $url): string

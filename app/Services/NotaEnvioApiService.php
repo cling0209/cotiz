@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Nota;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -43,7 +44,7 @@ class NotaEnvioApiService
         $response = $request->post($urlEnvio, $payload);
 
         if (! $response->successful()) {
-            throw new RuntimeException('Error HTTP al enviar la cotización a la API.');
+            throw new RuntimeException($this->mensajeErrorHttp($response, $urlEnvio));
         }
 
         $data = $response->json();
@@ -52,5 +53,22 @@ class NotaEnvioApiService
 
             throw new RuntimeException('No se realizó el envío: '.$mensaje);
         }
+    }
+
+    private function mensajeErrorHttp(Response $response, string $url): string
+    {
+        $data = $response->json();
+        if (is_array($data)) {
+            $mensaje = trim((string) ($data['mensaje'] ?? ''));
+            if ($mensaje !== '') {
+                return $mensaje;
+            }
+        }
+
+        return match ($response->status()) {
+            401 => 'Autorización rechazada (401). Verifique COTIZ_API_NOTA_USER y COTIZ_API_NOTA_PASSWORD.',
+            404 => 'Ruta no encontrada (404). URL configurada: '.$url,
+            default => 'Error HTTP al enviar la cotización a la API ('.$response->status().').',
+        };
     }
 }

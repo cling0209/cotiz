@@ -150,6 +150,59 @@ class CotizacionListadoAccionesTest extends TestCase
         });
     }
 
+    public function test_enviar_relay_muestra_mensaje_remoto_cuando_par_responde_400(): void
+    {
+        config([
+            'cotiz.api_nota.url' => 'https://cotiza.romulo.cl/api/v1/nota',
+            'cotiz.api_nota.user' => 'api_nota_user',
+            'cotiz.api_nota.password' => 'api_nota_secret',
+            'cotiz.api_nota_envio.url' => '',
+            'cotiz.sistema' => 'Reicol',
+            'products.image_base_url' => '',
+        ]);
+
+        Http::fake([
+            'cotiza.romulo.cl/up' => Http::response('ok', 200),
+            'cotiza.romulo.cl/*' => Http::response([
+                'resultado' => 'ERROR',
+                'mensaje' => 'Usuario no existe: Invitado18CS',
+            ], 400),
+        ]);
+
+        $nota = $this->crearNota([
+            'usuario' => 'Invitado18CS',
+            'encargado' => '2294-1487-COT26',
+            'enviadoapi' => 0,
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'DEMO001',
+            'prod_nombre' => 'Papel bond',
+            'prod_familia' => 'PAPEL',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DEMO001',
+            'prod_valor' => 1000,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 800,
+        ]);
+
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.enviar', $nota->nronota));
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+        $response->assertSessionHas('error', 'Romulo: Usuario no existe: Invitado18CS');
+        $this->assertDatabaseHas('notas', [
+            'nronota' => $nota->nronota,
+            'enviadoapi' => 0,
+        ]);
+    }
+
     public function test_export_aceptadas_requiere_superadmin(): void
     {
         $this->actingAs($this->ejecutivo)
