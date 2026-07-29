@@ -2314,6 +2314,119 @@ class NotaMpResultadosService
             ->get();
     }
 
+    /**
+     * @return array{reicol: string, romulo: string}
+     */
+    public function rutsEmpresasGrupo(): array
+    {
+        return [
+            'reicol' => $this->normalizarRutEmpresa((string) config('cotiz.reicol_rut', '76.356.855-5')),
+            'romulo' => $this->normalizarRutEmpresa((string) config('cotiz.romulo_rut', '76.779.675-7')),
+        ];
+    }
+
+    public function etiquetaGanadorPorRut(?string $rut): ?string
+    {
+        if ($rut === null || trim($rut) === '') {
+            return null;
+        }
+
+        $ruts = $this->rutsEmpresasGrupo();
+        if ($ruts['reicol'] !== '' && $this->ganador->rutsCoinciden($rut, $ruts['reicol'])) {
+            return 'Reicol';
+        }
+        if ($ruts['romulo'] !== '' && $this->ganador->rutsCoinciden($rut, $ruts['romulo'])) {
+            return 'Romulo';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     * @return Collection<int, object>
+     */
+    public function productosGanadosExportar(array $filtros = []): Collection
+    {
+        return $this->buildProductosGanadosQuery($filtros)
+            ->limit(10000)
+            ->get()
+            ->map(fn ($row) => $this->enriquecerFilaProductoGanado($row));
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     * @return \Illuminate\Database\Eloquent\Builder<NotaMpOfertaLinea>
+     */
+    private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        $rutsFiltrados = $this->rutsGanadorFiltro($filtros['ganador'] ?? 'ambos');
+
+        $query = NotaMpOfertaLinea::query()
+            ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
+            ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
+            ->whereRaw('o.proveedor_seleccionado IS TRUE')
+            ->select([
+                'nota_mp_oferta_lineas.codigo_producto',
+                'o.rut_proveedor',
+                DB::raw('MAX(nota_mp_oferta_lineas.nombre_producto) as nombre_producto'),
+                DB::raw('SUM(nota_mp_oferta_lineas.cantidad) as cantidad_acumulada'),
+                DB::raw('SUM(nota_mp_oferta_lineas.monto_total) as monto_venta_acumulado'),
+            ])
+            ->groupBy('nota_mp_oferta_lineas.codigo_producto', 'o.rut_proveedor');
+
+        if ($rutsFiltrados !== []) {
+            $query->where(function ($q) use ($rutsFiltrados): void {
+                foreach ($rutsFiltrados as $rut) {
+                    $q->orWhere('o.rut_proveedor', $rut);
+                }
+            });
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        if (! empty($filtros['fecha_desde'])) {
+            $query->where('s.fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
+        }
+
+        if (! empty($filtros['fecha_hasta'])) {
+            $query->where('s.fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
+        }
+
+        return $query
+            ->orderByDesc('monto_venta_acumulado')
+            ->orderBy('nota_mp_oferta_lineas.codigo_producto');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rutsGanadorFiltro(string $ganador): array
+    {
+        $ruts = $this->rutsEmpresasGrupo();
+        $ganador = strtolower(trim($ganador));
+
+        return match ($ganador) {
+            'reicol' => array_values(array_filter([$ruts['reicol']])),
+            'romulo', 'rómulo' => array_values(array_filter([$ruts['romulo']])),
+            default => array_values(array_filter([$ruts['reicol'], $ruts['romulo']])),
+        };
+    }
+
+    private function normalizarRutEmpresa(string $rut): string
+    {
+        $rut = trim($rut);
+
+        return $rut !== '' ? $this->parser->normalizarRut($rut) : '';
+    }
+
+    private function enriquecerFilaProductoGanado(object $row): object
+    {
+        $row->ganador = $this->etiquetaGanadorPorRut($row->rut_proveedor ?? null) ?? '—';
+
+        return $row;
+    }
+
     public function contarCerradas(): int
     {
         return NotaMpSeguimiento::query()->whereRaw('finalizado IS TRUE')->count();

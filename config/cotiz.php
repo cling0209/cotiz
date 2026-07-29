@@ -3,6 +3,9 @@
 return [
     'empresa_nombre' => env('COTIZ_EMPRESA_NOMBRE', 'Comercializadora Reicol SPA'),
     'empresa_rut' => env('COTIZ_EMPRESA_RUT', '76.356.855-5'),
+    // RUTs del grupo Reicol / Romulo (reportes de productos ganados en Compra Ágil).
+    'reicol_rut' => env('COTIZ_REICOL_RUT', '76.356.855-5'),
+    'romulo_rut' => env('COTIZ_ROMULO_RUT', '76.779.675-7'),
     'empresa_correo' => env('COTIZ_EMPRESA_CORREO', 'jlocier@reicol.cl'),
     'empresa_fono' => env('COTIZ_EMPRESA_FONO', '+56 9 9044 5886'),
     'empresa_direccion' => env('COTIZ_EMPRESA_DIRECCION', 'Santa Carolina Parcela 14-A Lampa, Santiago'),

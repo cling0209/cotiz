@@ -90,6 +90,9 @@
         <a href="{{ route('admin.compra-agil.resultados.analisis-precios') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-bar-chart-line"></i> Análisis de precios
         </a>
+        <a href="{{ route('admin.compra-agil.resultados.reportes') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-file-earmark-bar-graph"></i> Reportes
+        </a>
     </div>
 
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">

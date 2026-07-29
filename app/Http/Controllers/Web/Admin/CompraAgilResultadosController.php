@@ -429,6 +429,46 @@ class CompraAgilResultadosController extends Controller
         ]);
     }
 
+    public function reportes(): View
+    {
+        return view('admin.compra-agil.resultados-reportes');
+    }
+
+    public function productosGanadosExportar(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador']);
+        if (! $request->has('ganador')) {
+            $filtros['ganador'] = 'ambos';
+        }
+
+        $filas = $this->resultados->productosGanadosExportar($filtros);
+        $filename = 'productos_ganados_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($filas) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Código producto',
+                'Producto',
+                'Ganador',
+                'Cantidad acumulada',
+                'Monto venta acumulado',
+            ], ';');
+            foreach ($filas as $f) {
+                fputcsv($out, [
+                    $f->codigo_producto,
+                    $f->nombre_producto,
+                    $f->ganador,
+                    $f->cantidad_acumulada,
+                    $f->monto_venta_acumulado,
+                ], ';');
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function iniciar(Request $request): JsonResponse
     {
         if (! $this->resultados->apiConfigurada()) {

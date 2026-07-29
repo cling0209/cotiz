@@ -6,6 +6,8 @@ use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
 use App\Models\NotaMpCorridaDetalle;
+use App\Models\NotaMpOferta;
+use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
@@ -2451,5 +2453,114 @@ class CompraAgilResultadosTest extends TestCase
             'total_notas' => 1,
             'notas_procesadas' => 1,
         ]);
+    }
+
+    public function test_reporte_productos_ganados_filtra_por_fecha_y_ganador(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.779.675-7',
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        foreach ([901, 902] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Test productos ganados '.$nronota,
+                'fecha' => now()->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => 90000 + $nronota,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 901,
+            'codigo_proceso' => '901-1-COT26',
+            'fecha_publicacion' => '2026-03-10 10:00:00',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 902,
+            'codigo_proceso' => '902-1-COT26',
+            'fecha_publicacion' => '2026-03-20 10:00:00',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $ofertaReicol = NotaMpOferta::query()->create([
+            'nronota' => 901,
+            'rut_proveedor' => '76356855-5',
+            'razon_social' => 'REICOL SPA',
+            'proveedor_seleccionado' => true,
+            'monto_total' => 50000,
+            'es_propio' => true,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $ofertaReicol->id,
+            'codigo_producto' => 'P001',
+            'nombre_producto' => 'Producto Reicol',
+            'cantidad' => 2,
+            'precio_unitario' => 10000,
+            'monto_total' => 20000,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $ofertaReicol->id,
+            'codigo_producto' => 'P001',
+            'nombre_producto' => 'Producto Reicol',
+            'cantidad' => 3,
+            'precio_unitario' => 10000,
+            'monto_total' => 30000,
+        ]);
+
+        $ofertaRomulo = NotaMpOferta::query()->create([
+            'nronota' => 902,
+            'rut_proveedor' => '76779675-7',
+            'razon_social' => 'INTEGRAMUNDO SPA',
+            'proveedor_seleccionado' => true,
+            'monto_total' => 15000,
+            'es_propio' => false,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $ofertaRomulo->id,
+            'codigo_producto' => 'P002',
+            'nombre_producto' => 'Producto Romulo',
+            'cantidad' => 1,
+            'precio_unitario' => 15000,
+            'monto_total' => 15000,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes'))
+            ->assertOk()
+            ->assertSee('Reportes', false)
+            ->assertSee('Productos ganados Reicol / Romulo', false)
+            ->assertSee('Descargar CSV', false);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.productos-ganados.exportar', [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'ganador' => 'reicol',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $this->assertStringContainsString('P001', $csv->streamedContent());
+        $this->assertStringNotContainsString('P002', $csv->streamedContent());
+
+        $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.productos-ganados.exportar', [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'ganador' => 'ambos',
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
     }
 }

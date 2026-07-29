@@ -125,6 +125,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('compra-agil/resultados/consultar/{nronota}', [CompraAgilResultadosController::class, 'consultarIndividual'])->name('compra-agil.resultados.consultar-individual')->whereNumber('nronota');
             Route::get('compra-agil/resultados/analisis-precios', [CompraAgilResultadosController::class, 'analisisPrecios'])->name('compra-agil.resultados.analisis-precios');
             Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
+            Route::get('compra-agil/resultados/reportes', [CompraAgilResultadosController::class, 'reportes'])->name('compra-agil.resultados.reportes');
+            Route::get('compra-agil/resultados/reportes/productos-ganados/exportar', [CompraAgilResultadosController::class, 'productosGanadosExportar'])->name('compra-agil.resultados.reportes.productos-ganados.exportar');
         });
 
         Route::middleware('oportunidades-ver')->group(function () {
