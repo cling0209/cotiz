@@ -37,14 +37,24 @@
                     <option value="romulo">Romulo</option>
                 </select>
             </div>
+            <div class="col-12 col-md-auto">
+                <span class="form-label small mb-1 d-block">Formato</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Formato del reporte">
+                    <input type="radio" class="btn-check" name="formato" id="pg-formato-resumen" value="resumen" checked>
+                    <label class="btn btn-outline-secondary" for="pg-formato-resumen">Resumen</label>
+                    <input type="radio" class="btn-check" name="formato" id="pg-formato-detalle" value="detalle">
+                    <label class="btn btn-outline-secondary" for="pg-formato-detalle">Detalle</label>
+                </div>
+            </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-success btn-sm" id="btn-reporte-pg-generar">
                     <i class="bi bi-file-earmark-spreadsheet"></i> Generar CSV
                 </button>
             </div>
         </form>
-        <p class="small text-muted mb-0 mt-2">
-            Columnas: código y nombre del maestro de productos, proveedor seleccionado, cantidad y monto del detalle de cotización.
+        <p class="small text-muted mb-0 mt-2" id="pg-columnas-desc">
+            <strong>Resumen:</strong> código y nombre del maestro, proveedor, cantidad y monto acumulados por producto.
+            <strong>Detalle:</strong> número de nota, cotización, producto, cantidad, valor y total por línea.
         </p>
 
         <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
@@ -86,6 +96,10 @@
 
     function tipoFechaSeleccionado() {
         return form?.querySelector('input[name="tipo_fecha"]:checked')?.value || 'cierre';
+    }
+
+    function formatoSeleccionado() {
+        return form?.querySelector('input[name="formato"]:checked')?.value || 'resumen';
     }
 
     function actualizarEtiquetasFecha() {
@@ -211,6 +225,7 @@
             fecha_hasta: form.fecha_hasta.value,
             tipo_fecha: tipoFechaSeleccionado(),
             ganador: form.ganador.value,
+            formato: formatoSeleccionado(),
         };
 
         try {

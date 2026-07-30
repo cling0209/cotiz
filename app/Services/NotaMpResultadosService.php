@@ -2356,13 +2356,22 @@ class NotaMpResultadosService
     }
 
     /**
-     * Productos de cotizaciones con seguimiento Cerrada y proveedor Reicol/Romulo.
-     * Código, cantidad y monto desde notasdetalle; nombre desde maeprod.
-     *
+     * @param  array<string, mixed>  $filtros
+     * @return Collection<int, object>
+     */
+    public function productosGanadosDetalleExportar(array $filtros = []): Collection
+    {
+        return $this->buildProductosGanadosDetalleQuery($filtros)
+            ->limit(50000)
+            ->get()
+            ->map(fn ($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      * @return \Illuminate\Database\Eloquent\Builder<NotaDetalle>
      */
-    private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    private function buildProductosGanadosBaseQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
         $query = NotaDetalle::query()
             ->join('notas as n', 'n.nronota', '=', 'notasdetalle.nronota')
@@ -2373,7 +2382,24 @@ class NotaMpResultadosService
             ->where('s.resultado_propio', 'cerrada')
             ->whereRaw("trim(coalesce(notasdetalle.prod_item, '')) <> ''")
             ->where('notasdetalle.prod_item', '!=', '0')
-            ->whereRaw("upper(trim(notasdetalle.prod_item)) NOT LIKE 'NOK-%'")
+            ->whereRaw("upper(trim(notasdetalle.prod_item)) NOT LIKE 'NOK-%'");
+
+        $this->aplicarFiltroCodigoCaEnNotas($query, 'n.encargado');
+        $this->aplicarFiltroProveedorGrupoReporte($query, $filtros['ganador'] ?? 'ambos');
+        $this->aplicarFiltroFechaProductosGanados($query, $filtros);
+
+        return $query;
+    }
+
+    /**
+     * Resumen agrupado por producto maestro y proveedor.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return \Illuminate\Database\Eloquent\Builder<NotaDetalle>
+     */
+    private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
                 'notasdetalle.prod_item as codigo_producto',
                 'mp.prod_nombre as nombre_producto',
@@ -2382,15 +2408,33 @@ class NotaMpResultadosService
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
                 DB::raw('SUM(notasdetalle.prod_valor * notasdetalle.cantidad) as monto_venta_acumulado'),
             ])
-            ->groupBy('notasdetalle.prod_item', 'mp.prod_nombre', 'o.rut_proveedor');
-
-        $this->aplicarFiltroCodigoCaEnNotas($query, 'n.encargado');
-        $this->aplicarFiltroProveedorGrupoReporte($query, $filtros['ganador'] ?? 'ambos');
-        $this->aplicarFiltroFechaProductosGanados($query, $filtros);
-
-        return $query
+            ->groupBy('notasdetalle.prod_item', 'mp.prod_nombre', 'o.rut_proveedor')
             ->orderByDesc('monto_venta_acumulado')
             ->orderBy('notasdetalle.prod_item');
+    }
+
+    /**
+     * Detalle: una fila por línea de notasdetalle.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return \Illuminate\Database\Eloquent\Builder<NotaDetalle>
+     */
+    private function buildProductosGanadosDetalleQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->buildProductosGanadosBaseQuery($filtros)
+            ->select([
+                'notasdetalle.nronota',
+                'n.encargado as numero_cotizacion',
+                'notasdetalle.prod_item as codigo_producto',
+                'mp.prod_nombre as nombre_producto',
+                'notasdetalle.cantidad',
+                'notasdetalle.prod_valor as valor',
+                DB::raw('(notasdetalle.prod_valor * notasdetalle.cantidad) as total'),
+                'o.rut_proveedor',
+                'o.razon_social',
+            ])
+            ->orderBy('notasdetalle.nronota')
+            ->orderBy('notasdetalle.orden');
     }
 
     /**

@@ -2664,6 +2664,31 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringNotContainsString('Perforadoras de papel', $csvRomulo->getContent());
         $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
 
+        $encolarDetalle = $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
+                'ganador' => 'reicol',
+                'formato' => 'detalle',
+            ])
+            ->assertOk();
+
+        $jobDetalle = $encolarDetalle->json('job_id');
+        $csvDetalle = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobDetalle]))
+            ->assertOk();
+
+        $this->assertStringContainsString('Número nota', $csvDetalle->getContent());
+        $this->assertStringContainsString('Número cotización', $csvDetalle->getContent());
+        $this->assertStringContainsString('901', $csvDetalle->getContent());
+        $this->assertStringContainsString('901-1-COT26', $csvDetalle->getContent());
+        $this->assertStringContainsString('P001', $csvDetalle->getContent());
+        $this->assertStringContainsString('Nombre maestro P001', $csvDetalle->getContent());
+        $this->assertStringContainsString('50000', $csvDetalle->getContent());
+        $this->assertStringNotContainsString('14111509', $csvDetalle->getContent());
+        $this->assertStringNotContainsString('P002', $csvDetalle->getContent());
+
         $this->actingAs($admin)
             ->getJson(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => $jobId]))
             ->assertNotFound();

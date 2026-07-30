@@ -447,9 +447,14 @@ class CompraAgilResultadosController extends Controller
             $filtros['tipo_fecha'] = 'cierre';
         }
 
+        $formato = strtolower(trim((string) $request->input('formato', 'resumen')));
+        $type = $formato === 'detalle'
+            ? CompraAgilReporteExportService::TYPE_PRODUCTOS_GANADOS_DETALLE
+            : CompraAgilReporteExportService::TYPE_PRODUCTOS_GANADOS;
+
         try {
             $jobId = $this->reporteExports->encolar(
-                CompraAgilReporteExportService::TYPE_PRODUCTOS_GANADOS,
+                $type,
                 (int) $request->user()->id,
                 $filtros,
             );

@@ -11,6 +11,8 @@ class CompraAgilReporteExportService
 {
     public const TYPE_PRODUCTOS_GANADOS = 'productos_ganados';
 
+    public const TYPE_PRODUCTOS_GANADOS_DETALLE = 'productos_ganados_detalle';
+
     public const STATUS_QUEUED = 'queued';
 
     public const STATUS_PROCESSING = 'processing';
@@ -126,6 +128,8 @@ class CompraAgilReporteExportService
             $rowCount = 0;
             if ($type === self::TYPE_PRODUCTOS_GANADOS) {
                 $rowCount = $this->generarCsvProductosGanados($jobId, $path, $filtros);
+            } elseif ($type === self::TYPE_PRODUCTOS_GANADOS_DETALLE) {
+                $rowCount = $this->generarCsvProductosGanadosDetalle($jobId, $path, $filtros);
             } else {
                 throw new RuntimeException('Tipo de reporte no soportado.');
             }
@@ -254,9 +258,73 @@ class CompraAgilReporteExportService
     /**
      * @param  array<string, mixed>  $filtros
      */
+    private function generarCsvProductosGanadosDetalle(string $jobId, string $path, array $filtros): int
+    {
+        $this->patch($jobId, [
+            'percent' => 35,
+            'detail' => 'Consultando detalle de cotizaciones…',
+        ]);
+
+        $filas = $this->resultados->productosGanadosDetalleExportar($filtros);
+        $total = $filas->count();
+
+        $this->patch($jobId, [
+            'percent' => 55,
+            'detail' => $total > 0
+                ? sprintf('Escribiendo CSV detalle (%s filas)…', number_format($total, 0, '', '.'))
+                : 'Escribiendo CSV…',
+        ]);
+
+        $out = fopen($path, 'w');
+        if ($out === false) {
+            throw new RuntimeException('No se pudo crear el archivo CSV.');
+        }
+
+        fprintf($out, "\xEF\xBB\xBF");
+        fputcsv($out, [
+            'Número nota',
+            'Número cotización',
+            'Código producto',
+            'Producto',
+            'Proveedor seleccionado',
+            'Cantidad',
+            'Valor',
+            'Total',
+        ], ';');
+
+        $written = 0;
+        foreach ($filas as $f) {
+            fputcsv($out, [
+                $f->nronota,
+                $f->numero_cotizacion,
+                $f->codigo_producto,
+                $f->nombre_producto,
+                $f->proveedor_seleccionado,
+                $f->cantidad,
+                $f->valor,
+                $f->total,
+            ], ';');
+            $written++;
+            if ($total > 0 && ($written % 50 === 0 || $written === $total)) {
+                $percent = 55 + (int) round(($written / $total) * 40);
+                $this->patch($jobId, [
+                    'percent' => min(95, $percent),
+                    'detail' => sprintf('Escribiendo CSV (%s / %s)…', number_format($written, 0, '', '.'), number_format($total, 0, '', '.')),
+                ]);
+            }
+        }
+
+        fclose($out);
+
+        return $total;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     */
     private function validarFiltrosProductosGanados(string $type, array $filtros): void
     {
-        if ($type !== self::TYPE_PRODUCTOS_GANADOS) {
+        if (! in_array($type, [self::TYPE_PRODUCTOS_GANADOS, self::TYPE_PRODUCTOS_GANADOS_DETALLE], true)) {
             return;
         }
 
@@ -272,7 +340,7 @@ class CompraAgilReporteExportService
 
     private function assertSupportedType(string $type): void
     {
-        if ($type !== self::TYPE_PRODUCTOS_GANADOS) {
+        if (! in_array($type, [self::TYPE_PRODUCTOS_GANADOS, self::TYPE_PRODUCTOS_GANADOS_DETALLE], true)) {
             throw new RuntimeException('Tipo de reporte no soportado.');
         }
     }
@@ -280,7 +348,8 @@ class CompraAgilReporteExportService
     private function buildFilename(string $type): string
     {
         return match ($type) {
-            self::TYPE_PRODUCTOS_GANADOS => 'productos_proveedor_seleccionado_'.now()->format('Ymd_His').'.csv',
+            self::TYPE_PRODUCTOS_GANADOS => 'productos_proveedor_seleccionado_resumen_'.now()->format('Ymd_His').'.csv',
+            self::TYPE_PRODUCTOS_GANADOS_DETALLE => 'productos_proveedor_seleccionado_detalle_'.now()->format('Ymd_His').'.csv',
             default => 'reporte_'.now()->format('Ymd_His').'.csv',
         };
     }
