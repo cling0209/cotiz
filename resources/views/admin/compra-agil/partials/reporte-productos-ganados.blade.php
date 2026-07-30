@@ -57,9 +57,21 @@
             <strong>Detalle:</strong> número de nota, cotización, orden de compra (O.Compra), producto, cantidad, valor y total por línea.
         </p>
 
+        <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span class="small fw-semibold" id="reporte-pg-progreso-texto">Preparando…</span>
+                <span class="small text-muted tabular-nums" id="reporte-pg-progreso-pct">0%</span>
+            </div>
+            <div class="progress" style="height: 1rem;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="reporte-pg-progreso-bar" role="progressbar" style="width: 0%">0%</div>
+            </div>
+        </div>
+
         <div class="d-none alert alert-success small py-2 mt-3 mb-0" id="reporte-pg-listo">
             <i class="bi bi-check-circle"></i>
-            <span id="reporte-pg-listo-texto">CSV descargado.</span>
+            <span id="reporte-pg-listo-texto">Reporte listo:</span>
+            <a href="#" id="reporte-pg-download-link" class="fw-semibold" download>Descargar CSV</a>
+            <span class="text-muted"> (el enlace desaparece tras descargar)</span>
         </div>
 
         <div class="d-none alert alert-warning small py-2 mt-3 mb-0" id="reporte-pg-vacio"></div>
@@ -72,17 +84,15 @@
 <script>
 (function () {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-    const urlGenerar = @json(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'));
+    const urls = {
+        generar: @json(route('admin.compra-agil.resultados.reportes.productos-ganados.generar')),
+        estado: @json(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => '__JOB__'])),
+    };
 
     const form = document.getElementById('form-reporte-productos-ganados');
     const btnGenerar = document.getElementById('btn-reporte-pg-generar');
-    const btnGenerarHtml = btnGenerar?.innerHTML || '';
     const labelDesde = document.getElementById('pg-label-desde');
     const labelHasta = document.getElementById('pg-label-hasta');
-    const listo = document.getElementById('reporte-pg-listo');
-    const listoTexto = document.getElementById('reporte-pg-listo-texto');
-    const vacio = document.getElementById('reporte-pg-vacio');
-    const errorBox = document.getElementById('reporte-pg-error');
 
     function tipoFechaSeleccionado() {
         return form?.querySelector('input[name="tipo_fecha"]:checked')?.value || 'cierre';
@@ -103,6 +113,33 @@
         radio.addEventListener('change', actualizarEtiquetasFecha);
     });
     actualizarEtiquetasFecha();
+    const wrapProgreso = document.getElementById('reporte-pg-progreso-wrap');
+    const bar = document.getElementById('reporte-pg-progreso-bar');
+    const texto = document.getElementById('reporte-pg-progreso-texto');
+    const pctLabel = document.getElementById('reporte-pg-progreso-pct');
+    const listo = document.getElementById('reporte-pg-listo');
+    const listoTexto = document.getElementById('reporte-pg-listo-texto');
+    const vacio = document.getElementById('reporte-pg-vacio');
+    const downloadLink = document.getElementById('reporte-pg-download-link');
+    const errorBox = document.getElementById('reporte-pg-error');
+
+    let pollTimer = null;
+    let currentJobId = null;
+
+    function estadoUrl(jobId) {
+        return urls.estado.replace('__JOB__', encodeURIComponent(jobId));
+    }
+
+    function setProgress(percent, detail) {
+        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        wrapProgreso.classList.remove('d-none');
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        pctLabel.textContent = pct + '%';
+        texto.textContent = detail || 'Generando reporte…';
+        bar.classList.toggle('progress-bar-animated', pct < 100);
+        bar.classList.toggle('bg-success', pct >= 100);
+    }
 
     function showError(message) {
         errorBox.textContent = message;
@@ -117,38 +154,74 @@
         listo.classList.add('d-none');
         vacio.classList.add('d-none');
         vacio.textContent = '';
+        wrapProgreso.classList.add('d-none');
+        bar.classList.remove('bg-success');
     }
 
-    function nombreDesdeContentDisposition(header) {
-        if (!header) return 'productos_proveedor_seleccionado.csv';
-        const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
-        if (utf8?.[1]) {
-            try {
-                return decodeURIComponent(utf8[1]);
-            } catch (e) {
-                return utf8[1];
-            }
+    function stopPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
         }
-        const simple = header.match(/filename="?([^";]+)"?/i);
-        return simple?.[1] || 'productos_proveedor_seleccionado.csv';
     }
 
-    function descargarBlob(blob, filename) {
-        const objectUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1000);
+    async function pollEstado(jobId) {
+        try {
+            const res = await fetch(estadoUrl(jobId), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || ('No se pudo consultar el progreso (HTTP ' + res.status + ').'));
+            }
+
+            setProgress(data.percent, data.detail);
+
+            if (data.status === 'completed' && data.download_url) {
+                stopPolling();
+                btnGenerar.disabled = false;
+                downloadLink.href = data.download_url;
+                downloadLink.textContent = data.filename || 'Descargar CSV';
+                listo.classList.remove('d-none');
+                if ((data.row_count ?? 0) === 0) {
+                    vacio.textContent = 'No hay productos para los filtros aplicados (seguimiento Cerrada y proveedor Reicol/Romulo).';
+                    vacio.classList.remove('d-none');
+                    if (listoTexto) listoTexto.textContent = 'CSV generado (sin filas):';
+                } else if (listoTexto) {
+                    listoTexto.textContent = 'Reporte listo:';
+                }
+                downloadLink.addEventListener('click', function onDownload() {
+                    setTimeout(function () {
+                        listo.classList.add('d-none');
+                        vacio.classList.add('d-none');
+                        wrapProgreso.classList.add('d-none');
+                        currentJobId = null;
+                    }, 1500);
+                }, { once: true });
+                return;
+            }
+
+            if (data.status === 'failed') {
+                stopPolling();
+                btnGenerar.disabled = false;
+                wrapProgreso.classList.add('d-none');
+                showError(data.error || 'Error al generar el reporte.');
+            }
+        } catch (e) {
+            stopPolling();
+            btnGenerar.disabled = false;
+            wrapProgreso.classList.add('d-none');
+            showError(e.message || 'Error de conexión.');
+        }
     }
 
     form?.addEventListener('submit', async function (e) {
         e.preventDefault();
+        stopPolling();
         clearFeedback();
         btnGenerar.disabled = true;
-        btnGenerar.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generando CSV…';
+        setProgress(0, 'Encolando reporte…');
 
         const body = {
             fecha_desde: form.fecha_desde.value,
@@ -159,43 +232,38 @@
         };
 
         try {
-            const res = await fetch(urlGenerar, {
+            const res = await fetch(urls.generar, {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'text/csv, application/json',
+                    'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrf,
                 },
                 body: JSON.stringify(body),
             });
-
-            const contentType = res.headers.get('Content-Type') || '';
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (contentType.includes('application/json')) {
-                    const data = await res.json().catch(() => ({}));
-                    throw new Error(data.error || 'No se pudo generar el reporte.');
+                throw new Error(data.error || 'No se pudo iniciar la exportación.');
+            }
+
+            currentJobId = data.job_id;
+            if (data.estado) {
+                setProgress(data.estado.percent, data.estado.detail);
+                if (data.estado.status === 'completed' && data.estado.download_url) {
+                    await pollEstado(currentJobId);
+                    return;
                 }
-                throw new Error('No se pudo generar el reporte.');
             }
 
-            const csvText = await res.text();
-            const filename = nombreDesdeContentDisposition(res.headers.get('Content-Disposition'));
-            descargarBlob(new Blob([csvText], { type: 'text/csv;charset=utf-8' }), filename);
-
-            const soloEncabezado = csvText.split(/\r?\n/).filter(function (linea) { return linea.trim() !== ''; }).length <= 1;
-            listo.classList.remove('d-none');
-            if (soloEncabezado) {
-                vacio.textContent = 'No hay productos para los filtros aplicados (seguimiento Cerrada y proveedor Reicol/Romulo).';
-                vacio.classList.remove('d-none');
-                if (listoTexto) listoTexto.textContent = 'CSV generado (sin filas de datos):';
-            } else if (listoTexto) {
-                listoTexto.textContent = 'CSV descargado correctamente.';
-            }
+            pollTimer = setInterval(function () {
+                pollEstado(currentJobId);
+            }, 1200);
+            pollEstado(currentJobId);
         } catch (err) {
-            showError(err.message || 'Error al generar.');
-        } finally {
             btnGenerar.disabled = false;
-            btnGenerar.innerHTML = btnGenerarHtml;
+            wrapProgreso.classList.add('d-none');
+            showError(err.message || 'Error al generar.');
         }
     });
 })();

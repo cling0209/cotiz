@@ -2609,13 +2609,28 @@ class CompraAgilResultadosTest extends TestCase
             ->assertSee('Filtrar por', false)
             ->assertSee('Proveedor seleccionado', false);
 
-        $csv = $this->actingAs($admin)
+        $encolar = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
                 'fecha_desde' => '2026-03-01',
                 'fecha_hasta' => '2026-03-31',
                 'tipo_fecha' => 'cierre',
                 'ganador' => 'reicol',
             ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $jobId = $encolar->json('job_id');
+        $this->assertNotEmpty($jobId);
+
+        $estado = $this->actingAs($admin)
+            ->getJson(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => $jobId]))
+            ->assertOk();
+
+        $this->assertSame('completed', $estado->json('status'));
+        $this->assertSame(100, $estado->json('percent'));
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobId]))
             ->assertOk()
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
@@ -2629,7 +2644,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringNotContainsString('P002', $csv->getContent());
         $this->assertStringNotContainsString('45101903', $csv->getContent());
 
-        $csvRomulo = $this->actingAs($admin)
+        $encolarRomulo = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
                 'fecha_desde' => '2026-03-01',
                 'fecha_hasta' => '2026-03-31',
@@ -2637,7 +2652,12 @@ class CompraAgilResultadosTest extends TestCase
                 'ganador' => 'romulo',
             ])
             ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertJsonPath('ok', true);
+
+        $jobRomulo = $encolarRomulo->json('job_id');
+        $csvRomulo = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobRomulo]))
+            ->assertOk();
 
         $this->assertStringContainsString('P002', $csvRomulo->getContent());
         $this->assertStringContainsString('Nombre maestro P002', $csvRomulo->getContent());
@@ -2646,7 +2666,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringNotContainsString('Perforadoras de papel', $csvRomulo->getContent());
         $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
 
-        $csvDetalle = $this->actingAs($admin)
+        $encolarDetalle = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
                 'fecha_desde' => '2026-03-01',
                 'fecha_hasta' => '2026-03-31',
@@ -2655,7 +2675,12 @@ class CompraAgilResultadosTest extends TestCase
                 'formato' => 'detalle',
             ])
             ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertJsonPath('ok', true);
+
+        $jobDetalle = $encolarDetalle->json('job_id');
+        $csvDetalle = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', ['jobId' => $jobDetalle]))
+            ->assertOk();
 
         $this->assertStringContainsString('Número nota', $csvDetalle->getContent());
         $this->assertStringContainsString('Número cotización', $csvDetalle->getContent());
@@ -2668,5 +2693,9 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('50000', $csvDetalle->getContent());
         $this->assertStringNotContainsString('14111509', $csvDetalle->getContent());
         $this->assertStringNotContainsString('P002', $csvDetalle->getContent());
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => $jobId]))
+            ->assertNotFound();
     }
 }

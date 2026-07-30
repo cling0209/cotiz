@@ -13,7 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilResultadosController extends Controller
 {
@@ -445,7 +444,7 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-reportes');
     }
 
-    public function productosGanadosGenerar(Request $request): StreamedResponse|JsonResponse
+    public function productosGanadosGenerar(Request $request): JsonResponse
     {
         $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador', 'tipo_fecha']);
         if (! $request->has('ganador')) {
@@ -461,10 +460,20 @@ class CompraAgilResultadosController extends Controller
             : CompraAgilReporteExportService::TYPE_PRODUCTOS_GANADOS;
 
         try {
-            return $this->reporteExports->streamProductosGanados($type, $filtros);
+            $jobId = $this->reporteExports->encolar(
+                $type,
+                (int) $request->user()->id,
+                $filtros,
+            );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
+
+        return response()->json([
+            'ok' => true,
+            'job_id' => $jobId,
+            'estado' => $this->reporteExports->estadoParaPoll($jobId, (int) $request->user()->id),
+        ]);
     }
 
     public function reporteExportEstado(Request $request, string $jobId): JsonResponse

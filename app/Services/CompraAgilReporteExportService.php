@@ -53,11 +53,10 @@ class CompraAgilReporteExportService
             'updated_at' => now()->toIso8601String(),
         ]);
 
-        $dispatch = ProcessCompraAgilReporteExportJob::dispatch($jobId);
-
-        if (config('queue.default') !== 'sync') {
-            $dispatch->afterResponse();
-        }
+        // sync + afterResponse: corre tras la respuesta HTTP, sin depender del worker database.
+        ProcessCompraAgilReporteExportJob::dispatch($jobId)
+            ->onConnection('sync')
+            ->afterResponse();
 
         return $jobId;
     }
