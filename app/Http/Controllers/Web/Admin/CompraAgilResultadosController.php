@@ -465,7 +465,7 @@ class CompraAgilResultadosController extends Controller
                 (int) $request->user()->id,
                 $filtros,
             );
-        } catch (RuntimeException $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
 

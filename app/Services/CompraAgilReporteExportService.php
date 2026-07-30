@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Jobs\ProcessCompraAgilReporteExportJob;
+use App\Support\RenderKeepAlive;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -53,10 +53,8 @@ class CompraAgilReporteExportService
             'updated_at' => now()->toIso8601String(),
         ]);
 
-        // sync + afterResponse: corre tras la respuesta HTTP, sin depender del worker database.
-        ProcessCompraAgilReporteExportJob::dispatch($jobId)
-            ->onConnection('sync')
-            ->afterResponse();
+        // Generación inline en la misma petición: evita cola database y afterResponse (poco fiable en Render).
+        $this->run($jobId);
 
         return $jobId;
     }
@@ -105,6 +103,8 @@ class CompraAgilReporteExportService
 
     public function run(string $jobId): void
     {
+        RenderKeepAlive::pingIfDue();
+
         $payload = $this->read($jobId);
         if ($payload === null) {
             return;

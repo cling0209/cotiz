@@ -181,6 +181,9 @@
             if (data.status === 'completed' && data.download_url) {
                 stopPolling();
                 btnGenerar.disabled = false;
+                if (window.CotizRenderKeepAlive) {
+                    window.CotizRenderKeepAlive.stop();
+                }
                 downloadLink.href = data.download_url;
                 downloadLink.textContent = data.filename || 'Descargar CSV';
                 listo.classList.remove('d-none');
@@ -205,12 +208,18 @@
             if (data.status === 'failed') {
                 stopPolling();
                 btnGenerar.disabled = false;
+                if (window.CotizRenderKeepAlive) {
+                    window.CotizRenderKeepAlive.stop();
+                }
                 wrapProgreso.classList.add('d-none');
                 showError(data.error || 'Error al generar el reporte.');
             }
         } catch (e) {
             stopPolling();
             btnGenerar.disabled = false;
+            if (window.CotizRenderKeepAlive) {
+                window.CotizRenderKeepAlive.stop();
+            }
             wrapProgreso.classList.add('d-none');
             showError(e.message || 'Error de conexión.');
         }
@@ -221,7 +230,10 @@
         stopPolling();
         clearFeedback();
         btnGenerar.disabled = true;
-        setProgress(0, 'Encolando reporte…');
+        setProgress(0, 'Generando reporte…');
+        if (window.CotizRenderKeepAlive) {
+            window.CotizRenderKeepAlive.start();
+        }
 
         const body = {
             fecha_desde: form.fecha_desde.value,
@@ -252,6 +264,9 @@
                 setProgress(data.estado.percent, data.estado.detail);
                 if (data.estado.status === 'completed' && data.estado.download_url) {
                     await pollEstado(currentJobId);
+                    if (window.CotizRenderKeepAlive) {
+                        window.CotizRenderKeepAlive.stop();
+                    }
                     return;
                 }
             }
@@ -264,6 +279,9 @@
             btnGenerar.disabled = false;
             wrapProgreso.classList.add('d-none');
             showError(err.message || 'Error al generar.');
+            if (window.CotizRenderKeepAlive) {
+                window.CotizRenderKeepAlive.stop();
+            }
         }
     });
 })();
