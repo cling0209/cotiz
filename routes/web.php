@@ -18,8 +18,12 @@ use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
 use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
 use App\Http\Controllers\Web\Admin\OrganismoObservacionController;
 use App\Http\Controllers\Web\Admin\PasswordResetController;
+use App\Http\Controllers\Web\Admin\ThemeController;
 use App\Http\Controllers\Web\Admin\UserController;
+use App\Http\Controllers\Web\ThemeFaviconController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('theme/favicon.svg', [ThemeFaviconController::class, 'svg'])->name('theme.favicon');
 
 Route::redirect('/', '/admin/login');
 
@@ -238,6 +242,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('organismos-observaciones.edit');
             Route::put('organismos-observaciones/{organismo}', [OrganismoObservacionController::class, 'update'])
                 ->name('organismos-observaciones.update');
+
+            Route::get('colores', [ThemeController::class, 'edit'])->name('colores.index');
+            Route::put('colores', [ThemeController::class, 'update'])->name('colores.update');
+            Route::delete('colores', [ThemeController::class, 'reset'])->name('colores.reset');
         });
     });
 });

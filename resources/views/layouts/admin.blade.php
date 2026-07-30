@@ -10,6 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="{{ asset('css/admin.css') }}?v=maeprod-frase-sep-20260723" rel="stylesheet">
+    <x-theme-styles />
     <link href="{{ asset('css/page-loader.css') }}?v=levanta-servicio" rel="stylesheet">
     @stack('head')
 </head>
@@ -55,7 +56,7 @@
                     </a>
                 @endif
                 <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') ? 'active' : '' }}"
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-gear"></i> Mantenedores
                     </a>
@@ -92,6 +93,12 @@
                                 </a>
                             </li>
                         @endif
+                        <li>
+                            <a class="dropdown-item {{ request()->routeIs('admin.colores.*') ? 'active' : '' }}"
+                               href="{{ route('admin.colores.index') }}">
+                                <i class="bi bi-palette"></i> Colores
+                            </a>
+                        </li>
                     </ul>
                 </div>
             @elseif(auth()->user()->isEjecutivo())
