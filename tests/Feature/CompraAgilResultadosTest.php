@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
@@ -2464,6 +2465,15 @@ class CompraAgilResultadosTest extends TestCase
 
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
 
+        Maeprod::query()->create([
+            'prod_item' => 'P001',
+            'prod_nombre' => 'Nombre maestro P001',
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'P002',
+            'prod_nombre' => 'Nombre maestro P002',
+        ]);
+
         foreach ([901, 902, 903] as $nronota) {
             Nota::query()->create([
                 'nronota' => $nronota,
@@ -2598,6 +2608,8 @@ class CompraAgilResultadosTest extends TestCase
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
         $this->assertStringContainsString('P001', $csv->getContent());
+        $this->assertStringContainsString('Nombre maestro P001', $csv->getContent());
+        $this->assertStringNotContainsString('Producto Reicol', $csv->getContent());
         $this->assertStringContainsString('Proveedor seleccionado', $csv->getContent());
         $this->assertStringNotContainsString('P002', $csv->getContent());
         $this->assertStringNotContainsString('P003', $csv->getContent());
@@ -2617,6 +2629,8 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk();
 
         $this->assertStringContainsString('P002', $csvRomulo->getContent());
+        $this->assertStringContainsString('Nombre maestro P002', $csvRomulo->getContent());
+        $this->assertStringNotContainsString('Producto Romulo', $csvRomulo->getContent());
         $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
 
         $this->actingAs($admin)

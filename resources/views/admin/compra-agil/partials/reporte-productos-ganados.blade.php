@@ -44,7 +44,7 @@
             </div>
         </form>
         <p class="small text-muted mb-0 mt-2">
-            Columnas: código producto, producto, proveedor seleccionado, cantidad acumulada, monto venta acumulado.
+            Columnas: código y nombre del maestro de productos, proveedor seleccionado, cantidad acumulada, monto venta acumulado.
         </p>
 
         <div class="d-none mt-3" id="reporte-pg-progreso-wrap">

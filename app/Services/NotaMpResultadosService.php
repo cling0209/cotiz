@@ -2360,21 +2360,25 @@ class NotaMpResultadosService
      */
     private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
+        $codigoProductoExpr = 'COALESCE(mp.prod_item, nota_mp_oferta_lineas.codigo_producto)';
+        $nombreProductoExpr = 'COALESCE(mp.prod_nombre, nota_mp_oferta_lineas.nombre_producto)';
+
         $query = NotaMpOfertaLinea::query()
             ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
             ->join('notas as n', 'n.nronota', '=', 'o.nronota')
+            ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nota_mp_oferta_lineas.codigo_producto')
             ->whereRaw('o.proveedor_seleccionado IS TRUE')
             ->where('s.resultado_propio', 'cerrada')
             ->select([
-                'nota_mp_oferta_lineas.codigo_producto',
+                DB::raw("{$codigoProductoExpr} as codigo_producto"),
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
-                DB::raw('MAX(nota_mp_oferta_lineas.nombre_producto) as nombre_producto'),
+                DB::raw("MAX({$nombreProductoExpr}) as nombre_producto"),
                 DB::raw('SUM(nota_mp_oferta_lineas.cantidad) as cantidad_acumulada'),
                 DB::raw('SUM(nota_mp_oferta_lineas.monto_total) as monto_venta_acumulado'),
             ])
-            ->groupBy('nota_mp_oferta_lineas.codigo_producto', 'o.rut_proveedor');
+            ->groupBy(DB::raw($codigoProductoExpr), 'o.rut_proveedor');
 
         $this->aplicarFiltroCodigoCaEnNotas($query, 'n.encargado');
         $this->aplicarFiltroProveedorGrupoReporte($query, $filtros['ganador'] ?? 'ambos');
@@ -2382,7 +2386,7 @@ class NotaMpResultadosService
 
         return $query
             ->orderByDesc('monto_venta_acumulado')
-            ->orderBy('nota_mp_oferta_lineas.codigo_producto');
+            ->orderBy(DB::raw($codigoProductoExpr));
     }
 
     /**
