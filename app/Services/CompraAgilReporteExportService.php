@@ -6,6 +6,7 @@ use App\Jobs\ProcessCompraAgilReporteExportJob;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilReporteExportService
 {
@@ -198,6 +199,36 @@ class CompraAgilReporteExportService
     }
 
     /**
+     * Descarga directa del CSV (sin cola ni polling).
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    public function streamProductosGanados(string $type, array $filtros): StreamedResponse
+    {
+        $this->assertSupportedType($type);
+        $this->validarFiltrosProductosGanados($type, $filtros);
+
+        $filename = $this->buildFilename($type);
+
+        return response()->streamDownload(function () use ($type, $filtros): void {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                throw new RuntimeException('No se pudo crear el archivo CSV.');
+            }
+
+            if ($type === self::TYPE_PRODUCTOS_GANADOS) {
+                $this->escribirCsvProductosGanadosResumen($out, $filtros);
+            } else {
+                $this->escribirCsvProductosGanadosDetalle($out, $filtros);
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      */
     private function generarCsvProductosGanados(string $jobId, string $path, array $filtros): int
@@ -207,19 +238,54 @@ class CompraAgilReporteExportService
             'detail' => 'Agregando productos del proveedor seleccionado…',
         ]);
 
-        $filas = $this->resultados->productosGanadosExportar($filtros);
-        $total = $filas->count();
+        $out = fopen($path, 'w');
+        if ($out === false) {
+            throw new RuntimeException('No se pudo crear el archivo CSV.');
+        }
 
+        $total = $this->escribirCsvProductosGanadosResumen($out, $filtros, $jobId);
+        fclose($out);
+
+        return $total;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     */
+    private function generarCsvProductosGanadosDetalle(string $jobId, string $path, array $filtros): int
+    {
         $this->patch($jobId, [
-            'percent' => 55,
-            'detail' => $total > 0
-                ? sprintf('Escribiendo CSV (%s filas)…', number_format($total, 0, '', '.'))
-                : 'Escribiendo CSV…',
+            'percent' => 35,
+            'detail' => 'Consultando detalle de cotizaciones…',
         ]);
 
         $out = fopen($path, 'w');
         if ($out === false) {
             throw new RuntimeException('No se pudo crear el archivo CSV.');
+        }
+
+        $total = $this->escribirCsvProductosGanadosDetalle($out, $filtros, $jobId);
+        fclose($out);
+
+        return $total;
+    }
+
+    /**
+     * @param  resource  $out
+     * @param  array<string, mixed>  $filtros
+     */
+    private function escribirCsvProductosGanadosResumen($out, array $filtros, ?string $jobId = null): int
+    {
+        $filas = $this->resultados->productosGanadosExportar($filtros);
+        $total = $filas->count();
+
+        if ($jobId !== null) {
+            $this->patch($jobId, [
+                'percent' => 55,
+                'detail' => $total > 0
+                    ? sprintf('Escribiendo CSV (%s filas)…', number_format($total, 0, '', '.'))
+                    : 'Escribiendo CSV…',
+            ]);
         }
 
         fprintf($out, "\xEF\xBB\xBF");
@@ -241,7 +307,7 @@ class CompraAgilReporteExportService
                 $f->monto_venta_acumulado,
             ], ';');
             $written++;
-            if ($total > 0 && ($written % 50 === 0 || $written === $total)) {
+            if ($jobId !== null && $total > 0 && ($written % 50 === 0 || $written === $total)) {
                 $percent = 55 + (int) round(($written / $total) * 40);
                 $this->patch($jobId, [
                     'percent' => min(95, $percent),
@@ -250,34 +316,25 @@ class CompraAgilReporteExportService
             }
         }
 
-        fclose($out);
-
         return $total;
     }
 
     /**
+     * @param  resource  $out
      * @param  array<string, mixed>  $filtros
      */
-    private function generarCsvProductosGanadosDetalle(string $jobId, string $path, array $filtros): int
+    private function escribirCsvProductosGanadosDetalle($out, array $filtros, ?string $jobId = null): int
     {
-        $this->patch($jobId, [
-            'percent' => 35,
-            'detail' => 'Consultando detalle de cotizaciones…',
-        ]);
-
         $filas = $this->resultados->productosGanadosDetalleExportar($filtros);
         $total = $filas->count();
 
-        $this->patch($jobId, [
-            'percent' => 55,
-            'detail' => $total > 0
-                ? sprintf('Escribiendo CSV detalle (%s filas)…', number_format($total, 0, '', '.'))
-                : 'Escribiendo CSV…',
-        ]);
-
-        $out = fopen($path, 'w');
-        if ($out === false) {
-            throw new RuntimeException('No se pudo crear el archivo CSV.');
+        if ($jobId !== null) {
+            $this->patch($jobId, [
+                'percent' => 55,
+                'detail' => $total > 0
+                    ? sprintf('Escribiendo CSV detalle (%s filas)…', number_format($total, 0, '', '.'))
+                    : 'Escribiendo CSV…',
+            ]);
         }
 
         fprintf($out, "\xEF\xBB\xBF");
@@ -307,7 +364,7 @@ class CompraAgilReporteExportService
                 $f->total,
             ], ';');
             $written++;
-            if ($total > 0 && ($written % 50 === 0 || $written === $total)) {
+            if ($jobId !== null && $total > 0 && ($written % 50 === 0 || $written === $total)) {
                 $percent = 55 + (int) round(($written / $total) * 40);
                 $this->patch($jobId, [
                     'percent' => min(95, $percent),
@@ -315,8 +372,6 @@ class CompraAgilReporteExportService
                 ]);
             }
         }
-
-        fclose($out);
 
         return $total;
     }
