@@ -18,6 +18,13 @@ class ThemePaletteTest extends TestCase
         ThemePalette::resetStored();
     }
 
+    public function test_favicon_letter_is_always_r(): void
+    {
+        config(['app.name' => 'Cotiz']);
+
+        $this->assertSame('R', ThemePalette::faviconLetter());
+    }
+
     public function test_uses_defaults_when_no_settings(): void
     {
         $this->assertSame(ThemePalette::DEFAULT_PRIMARY, ThemePalette::primary());

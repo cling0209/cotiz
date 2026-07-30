@@ -18,6 +18,8 @@ class ThemePalette
 
     public const DEFAULT_ACCENT = '#0ea5e9';
 
+    public const FAVICON_LETTER = 'R';
+
     /** @var array<string, string> */
     public const DEFAULTS = [
         self::KEY_PRIMARY => self::DEFAULT_PRIMARY,
@@ -52,10 +54,7 @@ class ThemePalette
 
     public static function faviconLetter(): string
     {
-        $name = trim((string) config('app.name', 'Cotiz'));
-        $letter = strtoupper(substr($name, 0, 1));
-
-        return $letter !== '' ? $letter : 'C';
+        return self::FAVICON_LETTER;
     }
 
     /** @return array<string, string|null> */

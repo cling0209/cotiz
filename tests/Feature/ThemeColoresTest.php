@@ -97,7 +97,18 @@ class ThemeColoresTest extends TestCase
             ->assertOk()
             ->assertHeader('Content-Type', 'image/svg+xml; charset=utf-8')
             ->assertSee('#6d28d9', false)
-            ->assertSee('#a78bfa', false);
+            ->assertSee('#a78bfa', false)
+            ->assertSee('>R</text>', false);
+    }
+
+    public function test_favicon_siempre_usa_letra_r(): void
+    {
+        config(['app.name' => 'Cotiz']);
+
+        $this->get(route('theme.favicon'))
+            ->assertOk()
+            ->assertSee('>R</text>', false)
+            ->assertDontSee('>C</text>', false);
     }
 
     public function test_layout_admin_inyecta_variables_css(): void
