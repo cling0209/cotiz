@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Jobs\ProcessNotaMpCorridaJob;
 use App\Models\Nota;
+use App\Models\NotaDetalle;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
 use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Models\Maeprod;
 use App\Support\RenderKeepAlive;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -34,6 +36,7 @@ class NotaMpResultadosService
         protected CompraAgilGanadorResolver $ganador,
         protected CompraAgilTextoParserService $parser,
         protected OrganismoObservacionService $organismoObservacion,
+        protected AgileVinculoAprendizajeService $vinculoAprendizaje,
     ) {}
 
     public function ultimaCorrida(): ?NotaMpCorrida
@@ -2348,45 +2351,213 @@ class NotaMpResultadosService
      */
     public function productosGanadosExportar(array $filtros = []): Collection
     {
-        return $this->buildProductosGanadosQuery($filtros)
-            ->limit(10000)
-            ->get()
+        $lineas = $this->buildProductosGanadosLineasQuery($filtros)
+            ->limit(50000)
+            ->get();
+
+        return $this->agregarProductosGanadosPorMaestro($lineas)
+            ->sortByDesc('monto_venta_acumulado')
+            ->values()
             ->map(fn ($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
+    }
+
+    /**
+     * @param  Collection<int, object>  $lineas
+     * @return Collection<int, object>
+     */
+    private function agregarProductosGanadosPorMaestro(Collection $lineas): Collection
+    {
+        if ($lineas->isEmpty()) {
+            return collect();
+        }
+
+        $detallesPorNota = NotaDetalle::query()
+            ->whereIn('nronota', $lineas->pluck('nronota')->unique()->filter()->values())
+            ->get(['nronota', 'prod_item', 'prod_item_agile', 'prod_descripcion_agile'])
+            ->groupBy('nronota');
+
+        $agrupado = [];
+
+        foreach ($lineas as $linea) {
+            $maestro = $this->resolverMaestroProductoLineaMp($linea, $detallesPorNota);
+            if ($maestro === null) {
+                continue;
+            }
+
+            $clave = $maestro['prod_item'].'|'.trim((string) ($linea->rut_proveedor ?? ''));
+            if (! isset($agrupado[$clave])) {
+                $agrupado[$clave] = (object) [
+                    'codigo_producto' => $maestro['prod_item'],
+                    'nombre_producto' => $maestro['prod_nombre'],
+                    'rut_proveedor' => $linea->rut_proveedor,
+                    'razon_social' => $linea->razon_social,
+                    'cantidad_acumulada' => 0,
+                    'monto_venta_acumulado' => 0,
+                ];
+            }
+
+            $agrupado[$clave]->cantidad_acumulada += (float) ($linea->cantidad ?? 0);
+            $agrupado[$clave]->monto_venta_acumulado += (int) ($linea->monto_total ?? 0);
+        }
+
+        return collect(array_values($agrupado));
+    }
+
+    /**
+     * @param  Collection<int|string, Collection<int, NotaDetalle>>  $detallesPorNota
+     * @return ?array{prod_item: string, prod_nombre: string}
+     */
+    private function resolverMaestroProductoLineaMp(object $linea, Collection $detallesPorNota): ?array
+    {
+        $codigoMp = trim((string) ($linea->codigo_producto_mp ?? ''));
+        $descripcion = $this->descripcionMpParaVinculo($linea);
+
+        $desdeNota = $this->resolverMaestroDesdeNotaDetalle(
+            (int) ($linea->nronota ?? 0),
+            $codigoMp,
+            $descripcion,
+            $detallesPorNota,
+        );
+        if ($desdeNota !== null) {
+            return $desdeNota;
+        }
+
+        if ($descripcion !== '') {
+            $aprendido = $this->vinculoAprendizaje->buscarCodigoAprendido($descripcion);
+            if ($aprendido !== null) {
+                return [
+                    'prod_item' => $aprendido['prod_item'],
+                    'prod_nombre' => $aprendido['prod_nombre'],
+                ];
+            }
+        }
+
+        if ($codigoMp !== '') {
+            return $this->maestroArrayDesdeProdItem($codigoMp);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  Collection<int|string, Collection<int, NotaDetalle>>  $detallesPorNota
+     * @return ?array{prod_item: string, prod_nombre: string}
+     */
+    private function resolverMaestroDesdeNotaDetalle(
+        int $nronota,
+        string $codigoMp,
+        string $descripcion,
+        Collection $detallesPorNota,
+    ): ?array {
+        if ($nronota <= 0) {
+            return null;
+        }
+
+        $lineasNota = $detallesPorNota->get($nronota, collect());
+        if ($lineasNota->isEmpty()) {
+            return null;
+        }
+
+        $descNorm = $descripcion !== ''
+            ? $this->vinculoAprendizaje->descripcionNormalizada($descripcion)
+            : '';
+
+        $candidatas = $lineasNota->filter(function (NotaDetalle $nd) use ($codigoMp): bool {
+            $prodItem = trim((string) ($nd->prod_item ?? ''));
+            if ($prodItem === '' || $prodItem === '0' || NotaDetalleService::esCodigoNokPendiente($prodItem)) {
+                return false;
+            }
+
+            if ($codigoMp === '') {
+                return true;
+            }
+
+            return trim((string) ($nd->prod_item_agile ?? '')) === $codigoMp;
+        });
+
+        if ($candidatas->isEmpty()) {
+            return null;
+        }
+
+        if ($descNorm !== '') {
+            foreach ($candidatas as $nd) {
+                $descNd = trim((string) ($nd->prod_descripcion_agile ?? ''));
+                if ($descNd === '') {
+                    continue;
+                }
+
+                if ($this->vinculoAprendizaje->descripcionNormalizada($descNd) === $descNorm) {
+                    return $this->maestroArrayDesdeProdItem(trim((string) $nd->prod_item));
+                }
+            }
+        }
+
+        if ($candidatas->count() === 1) {
+            return $this->maestroArrayDesdeProdItem(trim((string) $candidatas->first()->prod_item));
+        }
+
+        return null;
+    }
+
+    /**
+     * @return ?array{prod_item: string, prod_nombre: string}
+     */
+    private function maestroArrayDesdeProdItem(string $prodItem): ?array
+    {
+        $prodItem = trim($prodItem);
+        if ($prodItem === '') {
+            return null;
+        }
+
+        $mae = Maeprod::query()->find($prodItem);
+        if ($mae === null) {
+            return null;
+        }
+
+        return [
+            'prod_item' => $mae->prod_item,
+            'prod_nombre' => trim((string) $mae->prod_nombre),
+        ];
+    }
+
+    private function descripcionMpParaVinculo(object $linea): string
+    {
+        $descripcion = trim((string) ($linea->descripcion ?? ''));
+        if ($descripcion !== '') {
+            return $descripcion;
+        }
+
+        return trim((string) ($linea->nombre_producto ?? ''));
     }
 
     /**
      * @param  array<string, mixed>  $filtros
      * @return \Illuminate\Database\Eloquent\Builder<NotaMpOfertaLinea>
      */
-    private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
+    private function buildProductosGanadosLineasQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
-        $codigoProductoExpr = 'COALESCE(mp.prod_item, nota_mp_oferta_lineas.codigo_producto)';
-        $nombreProductoExpr = 'COALESCE(mp.prod_nombre, nota_mp_oferta_lineas.nombre_producto)';
-
         $query = NotaMpOfertaLinea::query()
             ->join('nota_mp_ofertas as o', 'o.id', '=', 'nota_mp_oferta_lineas.oferta_id')
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
             ->join('notas as n', 'n.nronota', '=', 'o.nronota')
-            ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nota_mp_oferta_lineas.codigo_producto')
             ->whereRaw('o.proveedor_seleccionado IS TRUE')
             ->where('s.resultado_propio', 'cerrada')
             ->select([
-                DB::raw("{$codigoProductoExpr} as codigo_producto"),
+                'nota_mp_oferta_lineas.codigo_producto as codigo_producto_mp',
+                'nota_mp_oferta_lineas.nombre_producto',
+                'nota_mp_oferta_lineas.descripcion',
+                'nota_mp_oferta_lineas.cantidad',
+                'nota_mp_oferta_lineas.monto_total',
+                'o.nronota',
                 'o.rut_proveedor',
-                DB::raw('MAX(o.razon_social) as razon_social'),
-                DB::raw("MAX({$nombreProductoExpr}) as nombre_producto"),
-                DB::raw('SUM(nota_mp_oferta_lineas.cantidad) as cantidad_acumulada'),
-                DB::raw('SUM(nota_mp_oferta_lineas.monto_total) as monto_venta_acumulado'),
-            ])
-            ->groupBy(DB::raw($codigoProductoExpr), 'o.rut_proveedor');
+                'o.razon_social',
+            ]);
 
         $this->aplicarFiltroCodigoCaEnNotas($query, 'n.encargado');
         $this->aplicarFiltroProveedorGrupoReporte($query, $filtros['ganador'] ?? 'ambos');
         $this->aplicarFiltroFechaProductosGanados($query, $filtros);
 
-        return $query
-            ->orderByDesc('monto_venta_acumulado')
-            ->orderBy(DB::raw($codigoProductoExpr));
+        return $query->orderByDesc('nota_mp_oferta_lineas.monto_total');
     }
 
     /**

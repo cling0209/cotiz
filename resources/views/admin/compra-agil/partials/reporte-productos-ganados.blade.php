@@ -7,8 +7,9 @@
     </div>
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
-            Productos de procesos con seguimiento <strong>Cerrada</strong>, agrupados por código, con cantidad y monto acumulados.
+            Productos de procesos con seguimiento <strong>Cerrada</strong>, agrupados por código del maestro de productos.
             Solo ofertas con proveedor seleccionado cuya razón social contenga Reicol o Romulo.
+            El código MP se vincula a la cotización o al aprendizaje por descripción Agile.
             Filtre por fecha de publicación o de cierre del proceso.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>

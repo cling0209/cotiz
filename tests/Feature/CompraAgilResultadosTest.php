@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Maeprod;
 use App\Models\Nota;
+use App\Models\NotaDetalle;
 use App\Models\NotaMpCorrida;
 use App\Models\NotaMpCorridaCambio;
 use App\Models\NotaMpCorridaDetalle;
@@ -11,6 +12,7 @@ use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
+use App\Services\AgileVinculoAprendizajeService;
 use App\Services\NotaMpResultadosService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -2474,6 +2476,12 @@ class CompraAgilResultadosTest extends TestCase
             'prod_nombre' => 'Nombre maestro P002',
         ]);
 
+        app(AgileVinculoAprendizajeService::class)->guardarAprendizaje(
+            'PERFORADORA METAL 2 DEDOS',
+            'P002',
+            '45101903',
+        );
+
         foreach ([901, 902, 903] as $nronota) {
             Nota::query()->create([
                 'nronota' => $nronota,
@@ -2514,6 +2522,17 @@ class CompraAgilResultadosTest extends TestCase
             'finalizado' => false,
         ]);
 
+        NotaDetalle::query()->create([
+            'nronota' => 901,
+            'prod_item' => 'P001',
+            'prod_valor' => 10000,
+            'cantidad' => 5,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '14111509',
+            'prod_descripcion_agile' => 'GREDAS ESCOLARES DE 1 KILO',
+        ]);
+
         $ofertaReicol = NotaMpOferta::query()->create([
             'nronota' => 901,
             'rut_proveedor' => '76356855-5',
@@ -2524,16 +2543,18 @@ class CompraAgilResultadosTest extends TestCase
         ]);
         NotaMpOfertaLinea::query()->create([
             'oferta_id' => $ofertaReicol->id,
-            'codigo_producto' => 'P001',
-            'nombre_producto' => 'Producto Reicol',
+            'codigo_producto' => '14111509',
+            'nombre_producto' => 'Artículos de papelería',
+            'descripcion' => 'GREDAS ESCOLARES DE 1 KILO',
             'cantidad' => 2,
             'precio_unitario' => 10000,
             'monto_total' => 20000,
         ]);
         NotaMpOfertaLinea::query()->create([
             'oferta_id' => $ofertaReicol->id,
-            'codigo_producto' => 'P001',
-            'nombre_producto' => 'Producto Reicol',
+            'codigo_producto' => '14111509',
+            'nombre_producto' => 'Artículos de papelería',
+            'descripcion' => 'GREDAS ESCOLARES DE 1 KILO',
             'cantidad' => 3,
             'precio_unitario' => 10000,
             'monto_total' => 30000,
@@ -2549,8 +2570,9 @@ class CompraAgilResultadosTest extends TestCase
         ]);
         NotaMpOfertaLinea::query()->create([
             'oferta_id' => $ofertaRomulo->id,
-            'codigo_producto' => 'P002',
-            'nombre_producto' => 'Producto Romulo',
+            'codigo_producto' => '45101903',
+            'nombre_producto' => 'Perforadoras de papel',
+            'descripcion' => 'PERFORADORA METAL 2 DEDOS',
             'cantidad' => 1,
             'precio_unitario' => 15000,
             'monto_total' => 15000,
@@ -2609,10 +2631,11 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P001', $csv->getContent());
         $this->assertStringContainsString('Nombre maestro P001', $csv->getContent());
-        $this->assertStringNotContainsString('Producto Reicol', $csv->getContent());
+        $this->assertStringNotContainsString('14111509', $csv->getContent());
+        $this->assertStringNotContainsString('Artículos de papelería', $csv->getContent());
         $this->assertStringContainsString('Proveedor seleccionado', $csv->getContent());
         $this->assertStringNotContainsString('P002', $csv->getContent());
-        $this->assertStringNotContainsString('P003', $csv->getContent());
+        $this->assertStringNotContainsString('45101903', $csv->getContent());
 
         $encolarRomulo = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
@@ -2630,7 +2653,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P002', $csvRomulo->getContent());
         $this->assertStringContainsString('Nombre maestro P002', $csvRomulo->getContent());
-        $this->assertStringNotContainsString('Producto Romulo', $csvRomulo->getContent());
+        $this->assertStringNotContainsString('45101903', $csvRomulo->getContent());
+        $this->assertStringNotContainsString('Perforadoras de papel', $csvRomulo->getContent());
         $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
 
         $this->actingAs($admin)
