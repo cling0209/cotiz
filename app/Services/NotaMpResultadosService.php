@@ -2425,6 +2425,7 @@ class NotaMpResultadosService
             ->select([
                 'notasdetalle.nronota',
                 'n.encargado as numero_cotizacion',
+                'n.ocompra as orden_compra',
                 'notasdetalle.prod_item as codigo_producto',
                 'mp.prod_nombre as nombre_producto',
                 'notasdetalle.cantidad',

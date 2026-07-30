@@ -2483,6 +2483,7 @@ class CompraAgilResultadosTest extends TestCase
                 'usuario' => 'admin',
                 'empresa' => 'Cliente',
                 'encargado' => $nronota.'-1-COT26',
+                'ocompra' => $nronota === 901 ? 'OC-TEST-901' : '',
                 'nota_softland' => 90000 + $nronota,
                 'enviadoapi' => 0,
                 'factor_precio_venta' => 1.22,
@@ -2681,8 +2682,10 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('Número nota', $csvDetalle->getContent());
         $this->assertStringContainsString('Número cotización', $csvDetalle->getContent());
+        $this->assertStringContainsString('Orden de compra', $csvDetalle->getContent());
         $this->assertStringContainsString('901', $csvDetalle->getContent());
         $this->assertStringContainsString('901-1-COT26', $csvDetalle->getContent());
+        $this->assertStringContainsString('OC-TEST-901', $csvDetalle->getContent());
         $this->assertStringContainsString('P001', $csvDetalle->getContent());
         $this->assertStringContainsString('Nombre maestro P001', $csvDetalle->getContent());
         $this->assertStringContainsString('50000', $csvDetalle->getContent());

@@ -284,6 +284,7 @@ class CompraAgilReporteExportService
         fputcsv($out, [
             'Número nota',
             'Número cotización',
+            'Orden de compra',
             'Código producto',
             'Producto',
             'Proveedor seleccionado',
@@ -297,6 +298,7 @@ class CompraAgilReporteExportService
             fputcsv($out, [
                 $f->nronota,
                 $f->numero_cotizacion,
+                $f->orden_compra ?? '',
                 $f->codigo_producto,
                 $f->nombre_producto,
                 $f->proveedor_seleccionado,

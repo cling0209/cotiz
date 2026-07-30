@@ -54,7 +54,7 @@
         </form>
         <p class="small text-muted mb-0 mt-2" id="pg-columnas-desc">
             <strong>Resumen:</strong> código y nombre del maestro, proveedor, cantidad y monto acumulados por producto.
-            <strong>Detalle:</strong> número de nota, cotización, producto, cantidad, valor y total por línea.
+            <strong>Detalle:</strong> número de nota, cotización, orden de compra (O.Compra), producto, cantidad, valor y total por línea.
         </p>
 
         <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
