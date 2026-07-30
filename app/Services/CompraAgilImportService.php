@@ -132,12 +132,17 @@ class CompraAgilImportService
      */
     public function aplicarLoteDesdePreview(Nota $nota, array $datos, string $usuario, int $desde, int $hasta): array
     {
-        return $this->aplicarLoteDesdeDatos(
+        $normalizado = $this->normalizarDatosPreview($datos);
+        $total = count($normalizado['lineas']);
+        $hasta = max($desde, min($hasta, $total));
+
+        return $this->aplicarConPreview(
             $nota,
-            $this->normalizarDatosPreview($datos),
+            $normalizado,
             $usuario,
             $desde,
             $hasta,
+            omitirValidacionMp: true,
         );
     }
 
@@ -490,9 +495,15 @@ class CompraAgilImportService
      *   completado: bool
      * }
      */
-    private function aplicarConPreview(Nota $nota, array $preview, string $usuario, int $desde, int $hasta): array
-    {
-        return DB::transaction(function () use ($nota, $preview, $usuario, $desde, $hasta) {
+    private function aplicarConPreview(
+        Nota $nota,
+        array $preview,
+        string $usuario,
+        int $desde,
+        int $hasta,
+        bool $omitirValidacionMp = false,
+    ): array {
+        return DB::transaction(function () use ($nota, $preview, $usuario, $desde, $hasta, $omitirValidacionMp) {
             $mensajes = [];
             $total = count($preview['lineas']);
 
@@ -552,7 +563,9 @@ class CompraAgilImportService
                         if ($error !== null) {
                             throw new RuntimeException($error);
                         }
-                        $this->oportunidad->assertExisteEnMpSiCompraAgil($datosCabecera['encargado']);
+                        if (! $omitirValidacionMp) {
+                            $this->oportunidad->assertExisteEnMpSiCompraAgil($datosCabecera['encargado']);
+                        }
                     }
                     $this->notaService->modificarCabecera($nota, $datosCabecera);
                     $cabeceraActualizada = true;

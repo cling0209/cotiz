@@ -3548,7 +3548,10 @@
                     );
                     const body = new FormData();
                     body.append('_token', csrf);
-                    body.append('codigo', importCodigoApi);
+                    const codigoImportar = desdeVinculo
+                        ? String(document.getElementById('encargado')?.value || importCodigoApi || '').trim().toUpperCase()
+                        : importCodigoApi;
+                    body.append('codigo', codigoImportar);
                     body.append('desde', String(desde));
                     body.append('hasta', String(hasta));
                     if (desdeVinculo && lineasPreview) {

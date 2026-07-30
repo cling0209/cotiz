@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Maeprod;
 use App\Models\Nota;
+use App\Models\OportunidadEncontrada;
 use App\Models\User;
 use App\Services\CompraAgilPayloadMapper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -338,6 +339,183 @@ class CompraAgilApiTest extends TestCase
             ->assertStatus(422);
 
         Http::assertNothingSent();
+    }
+
+    public function test_importar_desde_preview_oportunidades_omite_mp_pero_valida_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'mensaje' => 'No existe',
+                'nronota' => null,
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response([], 404),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1161-172-COT26',
+            'nombre' => 'Compra desde oportunidades',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => true,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'Limpiador',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                        'estado' => 'pendiente',
+                        'es_sugerencia' => false,
+                    ],
+                ]),
+                'cabecera_json' => json_encode([
+                    'codigo_cotizacion' => '1161-172-COT26',
+                    'empresa' => 'Hospital Test',
+                    'rutempresa' => '61303000-7',
+                    'nombre' => 'Compra desde oportunidades',
+                ]),
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('agregadas', 1);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.reicol.cl'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
+
+        $nota->refresh();
+        $this->assertSame('1161-172-COT26', trim((string) $nota->encargado));
+    }
+
+    public function test_importar_desde_preview_oportunidades_rechaza_duplicado_en_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'mensaje' => 'La cotización «1161-172-COT26» ya existe (nota #99).',
+                'nronota' => 99,
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK'], 200),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1161-172-COT26',
+            'nombre' => 'Compra desde oportunidades',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => true,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'Limpiador',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                    ],
+                ]),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', fn ($msg) => str_contains((string) $msg, '1161-172-COT26'));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'cotiza.reicol.cl'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
+    }
+
+    public function test_importar_preview_oportunidades_codigo_cambiado_consulta_mp(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'mensaje' => 'No existe',
+                'nronota' => null,
+            ], 200),
+            'api2.mercadopublico.cl/v2/compra-agil/2200-50-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '2200-50-COT26',
+                    'nombre' => 'Compra nueva',
+                    'institucion' => ['organismo_comprador' => 'Hospital Nuevo', 'rut' => '61.303.000-7'],
+                    'productos_solicitados' => [
+                        ['codigo_producto' => '99', 'nombre' => 'Item MP nuevo', 'cantidad' => 3],
+                    ],
+                ],
+                'errors' => null,
+            ]),
+            'api2.mercadopublico.cl/v2/compra-agil/1161-172-COT26' => Http::response([], 404),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota), [
+                'codigo' => '2200-50-COT26',
+                'lineas_json' => json_encode([
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'Limpiador preview viejo',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                    ],
+                ]),
+                'cabecera_json' => json_encode([
+                    'codigo_cotizacion' => '1161-172-COT26',
+                    'empresa' => 'Hospital Test',
+                    'rutempresa' => '61303000-7',
+                    'nombre' => 'Compra desde oportunidades',
+                ]),
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('agregadas', 1);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'mercadopublico.cl'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '2200-50-COT26'));
+
+        $nota->refresh();
+        $this->assertSame('2200-50-COT26', trim((string) $nota->encargado));
     }
 
     public function test_analisis_admin_solo_usuario_admin(): void

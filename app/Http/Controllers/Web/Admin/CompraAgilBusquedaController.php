@@ -141,23 +141,25 @@ class CompraAgilBusquedaController extends Controller
             }
 
             $lineasPreview = $this->lineasPreviewDesdeRequest($request);
+            $cabeceraPreview = $lineasPreview !== null
+                ? $this->cabeceraPreviewDesdeRequest($request, $datos)
+                : [];
+            $usarPreviewOportunidad = $lineasPreview !== null
+                && $this->codigoPreviewCoincideConImport($codigo, $cabeceraPreview);
 
-            if ($lineasPreview !== null) {
-                // Tras vincular (preview en Oportunidades): siempre validar existencia en MP
-                // aunque el código ya esté en base local; no cargar si MP ya no lo tiene.
-                $this->oportunidad->detalleParaCarga($codigo);
+            [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
 
-                [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
-                $cabecera = $this->cabeceraPreviewDesdeRequest($request, $datos);
-                if (trim((string) ($cabecera['codigo_cotizacion'] ?? '')) === '') {
-                    $cabecera['codigo_cotizacion'] = $codigo;
+            if ($usarPreviewOportunidad) {
+                // Mismo código que en Oportunidades: confiar en preview cacheado, no reconsultar MP.
+                if (trim((string) ($cabeceraPreview['codigo_cotizacion'] ?? '')) === '') {
+                    $cabeceraPreview['codigo_cotizacion'] = $codigo;
                 }
                 $desde = (int) ($datos['desde'] ?? 0);
                 $hasta = (int) ($datos['hasta'] ?? count($lineasPreview));
                 $resultado = $this->importService->aplicarLoteDesdePreview(
                     $nota,
                     [
-                        'cabecera' => $cabecera,
+                        'cabecera' => $cabeceraPreview,
                         'lineas' => $lineasPreview,
                     ],
                     $request->user()->username,
@@ -165,12 +167,11 @@ class CompraAgilBusquedaController extends Controller
                     $hasta,
                 );
             } else {
+                // Sin preview o código distinto al de Oportunidades: validar y cargar desde MP.
                 $payload = $this->oportunidad->detalleParaCarga($codigo);
                 $parseado = $this->importService->enriquecerCabeceraDesdeOportunidad(
                     $this->mapper->fromDetalle($payload)
                 );
-
-                [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
 
                 if (isset($datos['desde'], $datos['hasta'])) {
                     $resultado = $this->importService->aplicarLoteDesdeDatos(
@@ -266,6 +267,19 @@ class CompraAgilBusquedaController extends Controller
             'puede_importar' => $puedeImportar,
             'codigo_api' => $resultado['cabecera']['codigo_cotizacion'] ?? '',
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $cabeceraPreview
+     */
+    private function codigoPreviewCoincideConImport(string $codigoImportar, array $cabeceraPreview): bool
+    {
+        $codigoPreview = strtoupper(trim((string) ($cabeceraPreview['codigo_cotizacion'] ?? '')));
+        if ($codigoPreview === '') {
+            return true;
+        }
+
+        return strcasecmp($codigoImportar, $codigoPreview) === 0;
     }
 
     private function validarCodigoCabecera(Nota $nota, string $codigo, bool $omitirConsultaParSiVerificado = false): ?string
