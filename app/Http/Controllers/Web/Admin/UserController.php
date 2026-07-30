@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\User;
 use App\Services\UserRelayService;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +22,7 @@ class UserController extends Controller
 
     public function index(Request $request): View
     {
+        $porPagina = ListadoPorPagina::resolver($request);
         $usuarios = User::query()
             ->whereIn('perfil', [User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])
             ->when($request->filled('q'), function ($query) use ($request) {
@@ -34,7 +36,7 @@ class UserController extends Controller
                 });
             })
             ->orderBy('username')
-            ->paginate(20)
+            ->paginate($porPagina)
             ->withQueryString();
 
         return view('admin.users.index', compact('usuarios'));

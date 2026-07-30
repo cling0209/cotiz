@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Maeprod;
 use App\Models\MaeprodFrase;
 use App\Models\MaeprodImportRun;
+use App\Support\ListadoPorPagina;
 use App\Services\MaeprodAdminService;
 use App\Services\MaeprodChunkUploadService;
 use App\Services\MaeprodFraseRelayService;
@@ -39,10 +40,11 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
+        $porPagina = ListadoPorPagina::resolver($request);
         $productos = $this->maeprodService->listado(
             $request->string('q')->trim()->toString() ?: null,
             $request->string('familia')->trim()->toString() ?: null,
-            (int) config('cotiz.listado_por_pagina', 20),
+            $porPagina,
         );
 
         return view('admin.maeprod.index', [
@@ -463,7 +465,7 @@ class MaeprodController extends Controller
             'run' => $runModel,
             'errores' => $runService->paginateErrors(
                 $runModel,
-                (int) config('cotiz.listado_por_pagina', 50),
+                ListadoPorPagina::resolver($request, 'maeprod-import-errores-'.$run),
             ),
         ]);
     }

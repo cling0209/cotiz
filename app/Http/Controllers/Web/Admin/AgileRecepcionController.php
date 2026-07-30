@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Nota;
+use App\Support\ListadoPorPagina;
 use App\Services\AgileRecepcionService;
 use App\Services\NotaService;
 use Illuminate\Http\JsonResponse;
@@ -31,7 +32,8 @@ class AgileRecepcionController extends Controller
             'valor' => trim((string) $request->input('valor', '')),
         ];
 
-        $cotizaciones = $this->agileService->listar($request->user(), $filtros);
+        $porPagina = ListadoPorPagina::resolver($request);
+        $cotizaciones = $this->agileService->listar($request->user(), $filtros, $porPagina);
 
         return view('admin.agile.index', [
             'cotizaciones' => $cotizaciones,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\OrganismoObservacion;
+use App\Support\ListadoPorPagina;
 use App\Services\OrganismoObservacionRelayService;
 use App\Services\OrganismoObservacionService;
 use App\Services\OrganismoPerfilAutomaticoService;
@@ -22,9 +23,10 @@ class OrganismoObservacionController extends Controller
 
     public function index(Request $request): View
     {
+        $porPagina = ListadoPorPagina::resolver($request);
         $organismos = $this->service->listar(
             $request->string('q')->trim()->toString() ?: null,
-            20,
+            $porPagina,
         );
 
         return view('admin.organismos-observaciones.index', [

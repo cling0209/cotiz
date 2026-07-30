@@ -102,11 +102,9 @@
                 </tbody>
             </table>
         </div>
-        @if($organismos->hasPages())
-            <div class="card-footer">
-                {{ $organismos->links() }}
-            </div>
-        @endif
+        <div class="card-footer">
+            <x-listado-paginacion :paginator="$organismos" entity-label="organismos" />
+        </div>
     </div>
 </div>
 @endsection

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\Order;
 use App\Services\Admin\OrderAdminService;
 use Illuminate\Http\Request;
@@ -22,8 +23,9 @@ class OrderController extends Controller
 
         $dates = $this->orderAdmin->resolveDateRange($request);
 
+        $porPagina = ListadoPorPagina::resolver($request);
         $orders = $this->orderAdmin->filteredQuery($request)
-            ->paginate(20)
+            ->paginate($porPagina)
             ->withQueryString();
 
         return view('admin.orders.index', [

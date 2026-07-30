@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Services\CompraAgilReporteExportService;
 use App\Services\NotaListadoService;
 use App\Services\NotaMpResultadosService;
@@ -42,13 +43,14 @@ class CompraAgilResultadosController extends Controller
         ]);
     }
 
-    public function resultado(): View
+    public function resultado(Request $request): View
     {
         $ultimaCorrida = $this->resultados->ultimaCorrida();
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-resultado-detalle');
 
         return view('admin.compra-agil.resultados-resultado', [
             'ultimaCorrida' => $ultimaCorrida,
-            'detalleCorrida' => $this->resultados->detalleUltimaCorridaPaginado(50),
+            'detalleCorrida' => $this->resultados->detalleUltimaCorridaPaginado($porPagina),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
         ]);
     }
@@ -56,9 +58,10 @@ class CompraAgilResultadosController extends Controller
     public function cerradas(Request $request): View
     {
         $filtros = $this->filtrosListadoSeguimiento($request);
+        $porPagina = ListadoPorPagina::resolver($request);
 
         return view('admin.compra-agil.resultados-cerradas', [
-            'cerradas' => $this->resultados->listadoCerradasPaginado(20, $filtros),
+            'cerradas' => $this->resultados->listadoCerradasPaginado($porPagina, $filtros),
             'filtros' => $filtros,
             'ejecutivosFiltro' => $this->ejecutivosFiltro(),
         ]);
@@ -67,9 +70,10 @@ class CompraAgilResultadosController extends Controller
     public function pendientes(Request $request): View
     {
         $filtros = $this->filtrosListadoSeguimiento($request);
+        $porPagina = ListadoPorPagina::resolver($request);
 
         return view('admin.compra-agil.resultados-pendientes', [
-            'pendientes' => $this->resultados->listadoPendientesPaginado(20, $filtros),
+            'pendientes' => $this->resultados->listadoPendientesPaginado($porPagina, $filtros),
             'filtros' => $filtros,
             'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
@@ -80,9 +84,10 @@ class CompraAgilResultadosController extends Controller
     public function segundoLlamado(Request $request): View
     {
         $filtros = $this->filtrosSegundoLlamadoUi($request);
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-segundo-llamado');
 
         return view('admin.compra-agil.resultados-segundo-llamado', [
-            'items' => $this->resultados->listadoPendientesPaginado(20, $this->filtrosSegundoLlamado($filtros)),
+            'items' => $this->resultados->listadoPendientesPaginado($porPagina, $this->filtrosSegundoLlamado($filtros)),
             'filtros' => $filtros,
             'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
@@ -93,9 +98,10 @@ class CompraAgilResultadosController extends Controller
     public function todas(Request $request): View
     {
         $filtros = $this->filtrosListadoSeguimiento($request);
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-todas');
 
         return view('admin.compra-agil.resultados-todas', [
-            'todas' => $this->resultados->listadoTodasPaginado(20, $filtros),
+            'todas' => $this->resultados->listadoTodasPaginado($porPagina, $filtros),
             'filtros' => $filtros,
             'ejecutivosFiltro' => $this->ejecutivosFiltro(),
             'apiConfigurada' => $this->resultados->apiConfigurada(),
@@ -371,6 +377,7 @@ class CompraAgilResultadosController extends Controller
     public function analisisPrecios(Request $request): View
     {
         $filtros = $request->only(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta', 'precio_desde', 'precio_hasta', 'solo_ganador']);
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-analisis-precios');
 
         if (! $request->has('solo_ganador') && ! $request->hasAny(['producto', 'nronota', 'codigo_proceso', 'proveedor', 'fecha_desde', 'fecha_hasta'])) {
             $filtros['solo_ganador'] = '1';
@@ -378,7 +385,7 @@ class CompraAgilResultadosController extends Controller
 
         return view('admin.compra-agil.resultados-analisis-precios', [
             'lineas' => ! empty(array_filter(collect($filtros)->except('solo_ganador')->all()))
-                ? $this->resultados->analisisPrecios($filtros)
+                ? $this->resultados->analisisPrecios($filtros, $porPagina)
                 : null,
             'filtros' => $filtros,
         ]);

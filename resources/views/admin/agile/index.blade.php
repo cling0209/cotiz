@@ -77,9 +77,9 @@
                 </tbody>
             </table>
         </div>
-        @if($cotizaciones->hasPages())
-            <div class="card-footer">{{ $cotizaciones->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$cotizaciones" entity-label="cotizaciones Agile" />
+        </div>
     </div>
 </div>
 @endsection

@@ -163,11 +163,9 @@
                 </tbody>
             </table>
         </div>
-        @if($cerradas->hasPages())
-            <div class="card-footer py-2 d-flex justify-content-center">
-                {{ $cerradas->links() }}
-            </div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$cerradas" entity-label="notas cerradas" />
+        </div>
     </div>
 </div>
 

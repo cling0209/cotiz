@@ -117,11 +117,9 @@
                     </tbody>
                 </table>
             </div>
-            @if($detalleCorrida->hasPages())
-                <div class="card-footer py-2 d-flex justify-content-center">
-                    {{ $detalleCorrida->links() }}
-                </div>
-            @endif
+            <div class="card-footer border-top-0 pt-0">
+                <x-listado-paginacion :paginator="$detalleCorrida" entity-label="registros" screen-key="compra-agil-resultado-detalle" />
+            </div>
         </div>
     @else
         <div class="alert alert-info">No se ha ejecutado ninguna consulta aún.</div>

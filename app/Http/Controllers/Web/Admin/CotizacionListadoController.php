@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Nota;
+use App\Support\ListadoPorPagina;
 use App\Services\CotizacionListadoExportService;
 use App\Services\NotaEnvioApiService;
 use App\Services\NotaListadoService;
@@ -28,7 +29,8 @@ class CotizacionListadoController extends Controller
         $user = $request->user();
         $puedeVerEstadoMp = $this->listadoService->puedeVerEstadoMp($user);
         $filtros = $this->normalizarFiltros($request, $puedeVerEstadoMp);
-        $cotizaciones = $this->listadoService->listar($user, $filtros);
+        $porPagina = ListadoPorPagina::resolver($request);
+        $cotizaciones = $this->listadoService->listar($user, $filtros, $porPagina);
         $segundoLlamado = $this->listadoService->cotizacionesSegundoLlamadoParaPostular($user);
 
         return view('admin.cotizaciones.index', [

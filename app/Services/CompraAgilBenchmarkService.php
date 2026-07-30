@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\ListadoPorPagina;
+
 use App\Models\AgileMaeprod;
 use App\Models\CompraAgilBenchmark;
 use App\Models\CompraAgilLineaMercado;
@@ -111,7 +113,7 @@ class CompraAgilBenchmarkService
         };
 
         $pagina = max(1, (int) ($filtros['page'] ?? 1));
-        $porPagina = max(10, min(100, (int) ($filtros['por_pagina'] ?? 25)));
+        $porPagina = ListadoPorPagina::normalizar((int) ($filtros['por_pagina'] ?? ListadoPorPagina::DEFAULT));
 
         $paginator = $query->paginate($porPagina, ['*'], 'page', $pagina);
         $prodItems = collect($paginator->items())
@@ -185,7 +187,7 @@ class CompraAgilBenchmarkService
         };
 
         $pagina = max(1, (int) ($filtros['page'] ?? 1));
-        $porPagina = max(10, min(100, (int) ($filtros['por_pagina'] ?? 25)));
+        $porPagina = ListadoPorPagina::normalizar((int) ($filtros['por_pagina'] ?? ListadoPorPagina::DEFAULT));
 
         $busqueda = app(MaeprodBusquedaSimilitudService::class);
 

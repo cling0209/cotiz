@@ -433,13 +433,23 @@
             </table>
         </div>
         <div class="card-body border-top py-2">
-            <div class="small text-muted mb-2" id="oportunidad-footer">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <div class="small text-muted" id="oportunidad-footer">
                 Use <strong>Ir a cotizar</strong> en la fila deseada.
                 @if($puedeBuscar)
                 Los resultados del d&iacute;a quedan grabados y se sincronizan con el sitio par.
                 @else
                 Resultados sincronizados desde el sitio de b&uacute;squeda.
                 @endif
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <label for="oportunidad-por-pagina" class="form-label small mb-0 text-nowrap">Registros por página:</label>
+                    <select id="oportunidad-por-pagina" class="form-select form-select-sm w-auto">
+                        <option value="20">20</option>
+                        <option value="40">40</option>
+                        <option value="60">60</option>
+                    </select>
+                </div>
             </div>
             <nav id="oportunidad-paginacion" class="d-flex justify-content-center" aria-label="Paginaci&oacute;n de oportunidades">
                 <ul class="pagination mb-0" id="oportunidad-paginacion-lista"></ul>
@@ -605,7 +615,34 @@
         let pollTimer = null;
         let ultimaCorridaId = null;
         let intentosCambioDia = 0;
-        const PAGE_SIZE = 20;
+        const PAGE_SIZE_STORAGE_KEY = 'cotiz_por_pagina_admin.oportunidades.para-cotizar';
+        const PAGE_SIZE_OPCIONES = [20, 40, 60];
+        function normalizarPageSize(valor) {
+            const n = Number.parseInt(String(valor), 10);
+            return PAGE_SIZE_OPCIONES.includes(n) ? n : 20;
+        }
+        let PAGE_SIZE = (() => {
+            try {
+                const guardado = localStorage.getItem(PAGE_SIZE_STORAGE_KEY);
+                return guardado !== null ? normalizarPageSize(guardado) : 20;
+            } catch (_e) {
+                return 20;
+            }
+        })();
+        const selectPorPagina = document.getElementById('oportunidad-por-pagina');
+        if (selectPorPagina) {
+            selectPorPagina.value = String(PAGE_SIZE);
+            selectPorPagina.addEventListener('change', () => {
+                PAGE_SIZE = normalizarPageSize(selectPorPagina.value);
+                try {
+                    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(PAGE_SIZE));
+                } catch (_e) {
+                    // Ignorar
+                }
+                paginaActual = 1;
+                renderTabla();
+            });
+        }
         let paginaActual = 1;
         let sortState = {
             column: 'presupuesto',

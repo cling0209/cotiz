@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Services\CotizacionListadoExportService;
 use App\Services\NotaAdjudicadaListadoService;
 use Illuminate\Http\RedirectResponse;
@@ -29,7 +30,8 @@ class AdjudicadaListadoController extends Controller
                 ->with('error', 'Debe ingresar fecha entrega desde y hasta.');
         }
 
-        $cotizaciones = $this->adjudicadaService->listar($request->user(), $filtros);
+        $porPagina = ListadoPorPagina::resolver($request);
+        $cotizaciones = $this->adjudicadaService->listar($request->user(), $filtros, $porPagina);
 
         return view('admin.cotizaciones.adjudicadas.index', [
             'cotizaciones' => $cotizaciones,

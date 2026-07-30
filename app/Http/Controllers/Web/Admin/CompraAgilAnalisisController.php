@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Services\CompraAgilBenchmarkService;
 use App\Services\CompraAgilSyncService;
 use Illuminate\Http\JsonResponse;
@@ -24,6 +25,7 @@ class CompraAgilAnalisisController extends Controller
             $vista = 'vinculados';
         }
 
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-analisis-'.$vista);
         $filtros = [
             'vista' => $vista,
             'buscar' => trim((string) $request->query('buscar', '')),
@@ -31,6 +33,7 @@ class CompraAgilAnalisisController extends Controller
             'solo_con_datos' => $request->boolean('solo_con_datos'),
             'orden' => $request->query('orden', $vista === 'sin_vinculo' ? 'procesos_desc' : 'desvio_desc'),
             'page' => $request->integer('page', 1),
+            'por_pagina' => $porPagina,
         ];
 
         return view('admin.compra-agil.analisis', [

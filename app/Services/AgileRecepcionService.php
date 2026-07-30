@@ -29,7 +29,7 @@ class AgileRecepcionService
         return strcasecmp($sistema, (string) config('cotiz.agile.sistema', 'API')) === 0;
     }
 
-    public function listar(User $user, array $filtros): LengthAwarePaginator
+    public function listar(User $user, array $filtros, int $porPagina = 20): LengthAwarePaginator
     {
         $query = Nota::query()
             ->where('sistema', config('cotiz.agile.sistema', 'API'));
@@ -49,7 +49,7 @@ class AgileRecepcionService
 
         return $query
             ->orderByDesc('nronota')
-            ->paginate(10)
+            ->paginate($porPagina)
             ->withQueryString();
     }
 

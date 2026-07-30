@@ -126,9 +126,9 @@
                 </tbody>
             </table>
         </div>
-        @if($products->hasPages())
-            <div class="card-footer">{{ $products->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$products" entity-label="productos" />
+        </div>
     </div>
 </div>
 @endsection

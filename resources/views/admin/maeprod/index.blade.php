@@ -141,9 +141,9 @@
                 </tbody>
             </table>
         </div>
-        @if($productos->hasPages())
-            <div class="card-body border-top py-2">{{ $productos->links() }}</div>
-        @endif
+        <div class="card-body border-top py-2">
+            <x-listado-paginacion :paginator="$productos" entity-label="productos" />
+        </div>
     </div>
 </div>
 

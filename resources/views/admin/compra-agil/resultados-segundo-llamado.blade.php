@@ -184,11 +184,9 @@
                 </tbody>
             </table>
         </div>
-        @if($items->hasPages())
-            <div class="card-footer py-2 d-flex justify-content-center">
-                {{ $items->links() }}
-            </div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$items" entity-label="notas" screen-key="compra-agil-segundo-llamado" />
+        </div>
     </div>
 </div>
 

@@ -205,9 +205,9 @@
                 </tbody>
             </table>
         </div>
-        @if($productos->hasPages())
-            <div class="card-footer">{{ $productos->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$productos" entity-label="productos vinculados" screen-key="compra-agil-analisis-vinculados" />
+        </div>
     </div>
     @else
     <div class="card shadow-sm">
@@ -255,9 +255,9 @@
                 </tbody>
             </table>
         </div>
-        @if($sinVinculo->hasPages())
-            <div class="card-footer">{{ $sinVinculo->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$sinVinculo" entity-label="productos sin vínculo" screen-key="compra-agil-analisis-sin-vinculo" />
+        </div>
     </div>
     @endif
 </div>

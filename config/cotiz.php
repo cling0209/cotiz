@@ -22,7 +22,9 @@ return [
     'diashabiles_otras' => (int) env('COTIZ_DIASHABILES_OTRAS', 10),
     // Umbral (meses) para marcar prod_valor_fecha en rojo (cotización y recepción Agile). Legacy: AGILERECEPCION_PROD_VALOR_FECHA_MESES.
     'prod_valor_fecha_meses' => (int) env('COTIZ_PROD_VALOR_FECHA_MESES', 3),
+    // Default histórico; en pantalla se usa App\Support\ListadoPorPagina (20/40/60 + sesión).
     'listado_por_pagina' => (int) env('COTIZ_LISTADO_POR_PAGINA', 20),
+    'listado_por_pagina_opciones' => [20, 40, 60],
 
     // Recepción / consulta (apinota.php, apiconsulta.php) y destino del relay
     'sistema' => env('COTIZ_SISTEMA', env('APP_NAME', 'Cotiz')),

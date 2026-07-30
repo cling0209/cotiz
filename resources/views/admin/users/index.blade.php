@@ -78,9 +78,9 @@
                 </tbody>
             </table>
         </div>
-        @if($usuarios->hasPages())
-            <div class="card-body border-top py-2">{{ $usuarios->links() }}</div>
-        @endif
+        <div class="card-body border-top py-2">
+            <x-listado-paginacion :paginator="$usuarios" entity-label="usuarios" />
+        </div>
     </div>
 </div>
 @endsection

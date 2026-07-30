@@ -9,10 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class NotaAdjudicadaListadoService
 {
-    public function listar(User $user, array $filtros): LengthAwarePaginator
+    public function listar(User $user, array $filtros, int $porPagina): LengthAwarePaginator
     {
-        $porPagina = config('cotiz.listado_por_pagina', 20);
-
         return $this->baseQuery($user, $filtros)
             ->orderByDesc('notas.nronota')
             ->paginate($porPagina)

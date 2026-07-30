@@ -181,6 +181,7 @@ window.CotizSesionConfig = {
 </script>
 <script src="{{ asset('js/session-expired.js') }}?v=2"></script>
 <script src="{{ asset('js/page-loader.js') }}?v=levanta-servicio" defer></script>
+<script src="{{ asset('js/listado-por-pagina.js') }}?v=1" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>
 @if(config('cotiz.render_keepalive.enabled'))

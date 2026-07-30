@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class CustomerController extends Controller
 {
     public function index(Request $request): View
     {
+        $porPagina = ListadoPorPagina::resolver($request);
         $customers = User::query()
             ->where('role', 'customer')
             ->withCount('orders')
@@ -25,7 +27,7 @@ class CustomerController extends Controller
                 });
             })
             ->orderByDesc('created_at')
-            ->paginate(20)
+            ->paginate($porPagina)
             ->withQueryString();
 
         return view('admin.customers.index', compact('customers'));

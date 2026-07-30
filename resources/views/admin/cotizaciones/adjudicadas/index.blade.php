@@ -68,9 +68,9 @@
             </table>
         </div>
 
-        @if($cotizaciones->hasPages())
-            <div class="card-footer">{{ $cotizaciones->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$cotizaciones" entity-label="cotizaciones adjudicadas" />
+        </div>
 
         <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
             <a href="{{ route('admin.cotizaciones.adjudicadas.export.sin-codigo-softland') }}" class="btn btn-secondary btn-sm" data-no-loader

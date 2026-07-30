@@ -75,11 +75,9 @@
                 </tbody>
             </table>
         </div>
-        @if($customers->hasPages())
-            <div class="card-body border-top">
-                {{ $customers->links() }}
-            </div>
-        @endif
+        <div class="card-body border-top">
+            <x-listado-paginacion :paginator="$customers" entity-label="clientes" />
+        </div>
     </div>
 </div>
 @endsection

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\Category;
 use App\Support\CategorySlug;
 use Illuminate\Http\RedirectResponse;
@@ -14,6 +15,7 @@ class CategoryController extends Controller
 {
     public function index(Request $request): View
     {
+        $porPagina = ListadoPorPagina::resolver($request);
         $categories = Category::query()
             ->with('parent')
             ->withCount('products')
@@ -27,7 +29,7 @@ class CategoryController extends Controller
             })
             ->orderBy('sort_order')
             ->orderBy('name')
-            ->paginate(20)
+            ->paginate($porPagina)
             ->withQueryString();
 
         return view('admin.categories.index', compact('categories'));

@@ -2301,10 +2301,10 @@ class NotaMpResultadosService
             ->orderBy('nota_mp_oferta_lineas.precio_unitario');
     }
 
-    public function analisisPrecios(array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    public function analisisPrecios(array $filtros = [], int $porPagina = 20): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         return $this->buildAnalisisPreciosQuery($filtros)
-            ->paginate(30)
+            ->paginate($porPagina)
             ->withQueryString();
     }
 

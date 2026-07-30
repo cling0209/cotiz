@@ -193,11 +193,9 @@
                 </tbody>
             </table>
         </div>
-        @if($pendientes->hasPages())
-            <div class="card-footer py-2 d-flex justify-content-center">
-                {{ $pendientes->links() }}
-            </div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$pendientes" entity-label="notas pendientes" />
+        </div>
     </div>
 </div>
 

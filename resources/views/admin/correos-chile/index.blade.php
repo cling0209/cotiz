@@ -128,11 +128,9 @@
                 </tbody>
             </table>
         </div>
-        @if($tarifas->hasPages())
-            <div class="card-footer">
-                {{ $tarifas->links() }}
-            </div>
-        @endif
+        <div class="card-footer">
+            <x-listado-paginacion :paginator="$tarifas" entity-label="tarifas" />
+        </div>
     </div>
 </div>
 @endsection

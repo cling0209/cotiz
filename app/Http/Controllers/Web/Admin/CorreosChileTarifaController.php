@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\CorreosChileDexTarifa;
 use App\Services\Admin\CorreosChileDexImportService;
 use Illuminate\Http\RedirectResponse;
@@ -28,7 +29,8 @@ class CorreosChileTarifaController extends Controller
             });
         }
 
-        $tarifas = $query->paginate(40)->withQueryString();
+        $porPagina = ListadoPorPagina::resolver($request);
+        $tarifas = $query->paginate($porPagina)->withQueryString();
 
         $ultima = CorreosChileDexTarifa::query()
             ->whereNotNull('imported_at')

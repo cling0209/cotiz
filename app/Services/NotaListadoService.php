@@ -26,9 +26,8 @@ class NotaListadoService
         protected CompraAgilGanadorResolver $ganadorResolver,
     ) {}
 
-    public function listar(User $user, array $filtros): LengthAwarePaginator
+    public function listar(User $user, array $filtros, int $porPagina): LengthAwarePaginator
     {
-        $porPagina = config('cotiz.listado_por_pagina', 20);
         $query = $this->baseQuery($user, $filtros);
 
         $campo = $filtros['orden_campo'] ?? 'nronota';

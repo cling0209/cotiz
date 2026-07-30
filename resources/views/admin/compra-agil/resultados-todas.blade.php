@@ -206,11 +206,9 @@
                 </tbody>
             </table>
         </div>
-        @if($todas->hasPages())
-            <div class="card-footer py-2 d-flex justify-content-center">
-                {{ $todas->links() }}
-            </div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$todas" entity-label="notas" screen-key="compra-agil-todas" />
+        </div>
     </div>
 </div>
 

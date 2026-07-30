@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\ListadoPorPagina;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\ProductChunkUploadService;
@@ -20,12 +21,13 @@ class ProductController extends Controller
 {
     public function index(Request $request): View
     {
+        $porPagina = ListadoPorPagina::resolver($request);
         $products = Product::query()
             ->with('category')
             ->when($request->filled('q'), fn ($q) => $q->search($request->query('q')))
             ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->integer('category_id')))
             ->orderByDesc('updated_at')
-            ->paginate(15)
+            ->paginate($porPagina)
             ->withQueryString();
 
         $categories = Category::query()->orderBy('name')->get();

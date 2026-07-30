@@ -102,9 +102,9 @@
                 </tbody>
             </table>
         </div>
-        @if($errores->hasPages())
-            <div class="card-body border-top py-2">{{ $errores->links() }}</div>
-        @endif
+        <div class="card-body border-top py-2">
+            <x-listado-paginacion :paginator="$errores" entity-label="errores" :screen-key="'maeprod-import-errores-'.$run->id" />
+        </div>
     </div>
 </div>
 @endsection

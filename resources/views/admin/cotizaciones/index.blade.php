@@ -260,9 +260,9 @@
                 </tbody>
             </table>
         </div>
-        @if($cotizaciones->hasPages())
-            <div class="card-footer">{{ $cotizaciones->links() }}</div>
-        @endif
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$cotizaciones" entity-label="cotizaciones" />
+        </div>
 
         @if($puedeGestionar)
             <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
