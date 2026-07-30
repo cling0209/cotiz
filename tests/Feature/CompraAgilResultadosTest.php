@@ -12,7 +12,6 @@ use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use App\Models\User;
-use App\Services\AgileVinculoAprendizajeService;
 use App\Services\NotaMpResultadosService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -2476,12 +2475,6 @@ class CompraAgilResultadosTest extends TestCase
             'prod_nombre' => 'Nombre maestro P002',
         ]);
 
-        app(AgileVinculoAprendizajeService::class)->guardarAprendizaje(
-            'PERFORADORA METAL 2 DEDOS',
-            'P002',
-            '45101903',
-        );
-
         foreach ([901, 902, 903] as $nronota) {
             Nota::query()->create([
                 'nronota' => $nronota,
@@ -2531,6 +2524,17 @@ class CompraAgilResultadosTest extends TestCase
             'orden' => 1,
             'prod_item_agile' => '14111509',
             'prod_descripcion_agile' => 'GREDAS ESCOLARES DE 1 KILO',
+        ]);
+
+        NotaDetalle::query()->create([
+            'nronota' => 902,
+            'prod_item' => 'P002',
+            'prod_valor' => 7500,
+            'cantidad' => 2,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '45101903',
+            'prod_descripcion_agile' => 'PERFORADORA METAL 2 DEDOS',
         ]);
 
         $ofertaReicol = NotaMpOferta::query()->create([
@@ -2631,6 +2635,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P001', $csv->getContent());
         $this->assertStringContainsString('Nombre maestro P001', $csv->getContent());
+        $this->assertStringContainsString('5', $csv->getContent());
+        $this->assertStringContainsString('50000', $csv->getContent());
         $this->assertStringNotContainsString('14111509', $csv->getContent());
         $this->assertStringNotContainsString('Artículos de papelería', $csv->getContent());
         $this->assertStringContainsString('Proveedor seleccionado', $csv->getContent());
@@ -2653,6 +2659,7 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P002', $csvRomulo->getContent());
         $this->assertStringContainsString('Nombre maestro P002', $csvRomulo->getContent());
+        $this->assertStringContainsString('15000', $csvRomulo->getContent());
         $this->assertStringNotContainsString('45101903', $csvRomulo->getContent());
         $this->assertStringNotContainsString('Perforadoras de papel', $csvRomulo->getContent());
         $this->assertStringNotContainsString('P001', $csvRomulo->getContent());
