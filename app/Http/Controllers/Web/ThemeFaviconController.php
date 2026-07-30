@@ -16,6 +16,7 @@ class ThemeFaviconController extends Controller
         $accent = e(ThemePalette::accent());
         $letter = e(ThemePalette::faviconLetter());
         $label = e(config('app.name', 'Cotiz'));
+        $version = ThemePalette::faviconVersion();
 
         $svg = <<<SVG
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="{$label}">
@@ -34,7 +35,8 @@ SVG;
 
         return response($svg, 200, [
             'Content-Type' => 'image/svg+xml; charset=utf-8',
-            'Cache-Control' => 'public, max-age=300',
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+            'ETag' => '"'.$version.'"',
         ]);
     }
 }

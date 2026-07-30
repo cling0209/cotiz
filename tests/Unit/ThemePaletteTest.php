@@ -25,6 +25,15 @@ class ThemePaletteTest extends TestCase
         $this->assertSame('R', ThemePalette::faviconLetter());
     }
 
+    public function test_favicon_version_cambia_con_colores(): void
+    {
+        $defaultVersion = ThemePalette::faviconVersion();
+
+        ThemeSetting::setValue(ThemePalette::KEY_PRIMARY, '#6d28d9');
+
+        $this->assertNotSame($defaultVersion, ThemePalette::faviconVersion());
+    }
+
     public function test_uses_defaults_when_no_settings(): void
     {
         $this->assertSame(ThemePalette::DEFAULT_PRIMARY, ThemePalette::primary());

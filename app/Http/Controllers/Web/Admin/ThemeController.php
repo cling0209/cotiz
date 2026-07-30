@@ -20,6 +20,7 @@ class ThemeController extends Controller
             'stored' => $stored,
             'resolved' => $resolved,
             'defaults' => ThemePalette::DEFAULTS,
+            'faviconUrl' => route('theme.favicon', ['v' => ThemePalette::faviconVersion()]),
         ]);
     }
 

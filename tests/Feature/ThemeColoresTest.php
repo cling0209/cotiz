@@ -55,7 +55,8 @@ class ThemeColoresTest extends TestCase
                 'theme_primary_hover' => '#5b21b6',
                 'theme_accent' => '#a78bfa',
             ])
-            ->assertRedirect(route('admin.colores.index'));
+            ->assertRedirect(route('admin.colores.index'))
+            ->assertSessionHas('success');
 
         $this->assertSame('#6d28d9', ThemePalette::primary());
         $this->assertSame('#5b21b6', ThemePalette::primaryHover());
@@ -109,6 +110,17 @@ class ThemeColoresTest extends TestCase
             ->assertOk()
             ->assertSee('>R</text>', false)
             ->assertDontSee('>C</text>', false);
+    }
+
+    public function test_layout_admin_favicon_incluye_version_de_cache(): void
+    {
+        ThemeSetting::setValue(ThemePalette::KEY_PRIMARY, '#6d28d9');
+        $version = ThemePalette::faviconVersion();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.index'))
+            ->assertOk()
+            ->assertSee('theme/favicon.svg?v='.$version, false);
     }
 
     public function test_layout_admin_inyecta_variables_css(): void

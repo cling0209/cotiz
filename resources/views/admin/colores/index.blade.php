@@ -125,7 +125,7 @@
                         <span id="theme-preview-badge" class="badge text-bg-primary">Badge</span>
                     </div>
                     <div class="d-flex align-items-center gap-3">
-                        <img src="{{ route('theme.favicon') }}?preview=1" alt="" width="40" height="40" class="rounded">
+                        <img src="{{ $faviconUrl }}" alt="" width="40" height="40" class="rounded theme-favicon-preview">
                         <span class="text-muted small">Favicon (pestaña del navegador)</span>
                     </div>
                 </div>

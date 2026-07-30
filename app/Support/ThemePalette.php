@@ -57,6 +57,16 @@ class ThemePalette
         return self::FAVICON_LETTER;
     }
 
+    /** Cache-bust token for favicon URL when theme colors change. */
+    public static function faviconVersion(): string
+    {
+        return hash('crc32b', implode('|', [
+            self::primary(),
+            self::primaryHover(),
+            self::accent(),
+        ]));
+    }
+
     /** @return array<string, string|null> */
     public static function storedValues(): array
     {
