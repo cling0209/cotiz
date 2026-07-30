@@ -130,6 +130,7 @@ class ThemeColoresTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.cotizaciones.index'))
             ->assertOk()
-            ->assertSee('--admin-primary: #6d28d9', false);
+            ->assertSee('--admin-primary: #6d28d9', false)
+            ->assertSee('theme-table-headers-20260730', false);
     }
 }
