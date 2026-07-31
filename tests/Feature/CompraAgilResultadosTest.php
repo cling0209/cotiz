@@ -2698,4 +2698,108 @@ class CompraAgilResultadosTest extends TestCase
             ->getJson(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => $jobId]))
             ->assertNotFound();
     }
+
+    public function test_reporte_productos_ganados_usa_descripcion_maestro_si_no_esta_en_maeprod(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.779.675-7',
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Nota::query()->create([
+            'nronota' => 910,
+            'descripcion' => 'Test sin maeprod',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '910-1-COT26',
+            'ocompra' => 'OC-910',
+            'nota_softland' => 90910,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 910,
+            'codigo_proceso' => '910-1-COT26',
+            'fecha_publicacion' => '2026-03-01 10:00:00',
+            'fecha_cierre' => '2026-03-20 18:00:00',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        NotaDetalle::query()->create([
+            'nronota' => 910,
+            'prod_item' => 'SIN-MAE',
+            'prod_valor' => 2000,
+            'cantidad' => 3,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '99999999',
+            'prod_descripcion_agile' => 'Desc agile fallback',
+            'prod_descripcion_maestro' => 'Desc maestro desde nota',
+        ]);
+
+        $oferta = NotaMpOferta::query()->create([
+            'nronota' => 910,
+            'rut_proveedor' => '76356855-5',
+            'razon_social' => 'REICOL SPA',
+            'proveedor_seleccionado' => true,
+            'monto_total' => 6000,
+            'es_propio' => true,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $oferta->id,
+            'codigo_producto' => '99999999',
+            'nombre_producto' => 'Ignorar nombre oferta',
+            'descripcion' => 'Ignorar',
+            'cantidad' => 3,
+            'precio_unitario' => 2000,
+            'monto_total' => 6000,
+        ]);
+
+        $encolarDetalle = $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
+                'ganador' => 'reicol',
+                'formato' => 'detalle',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $csvDetalle = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', [
+                'jobId' => $encolarDetalle->json('job_id'),
+            ]))
+            ->assertOk();
+
+        $this->assertStringContainsString('SIN-MAE', $csvDetalle->getContent());
+        $this->assertStringContainsString('Desc maestro desde nota', $csvDetalle->getContent());
+        $this->assertStringNotContainsString('Desc agile fallback', $csvDetalle->getContent());
+
+        $encolarResumen = $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
+                'ganador' => 'reicol',
+                'formato' => 'resumen',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $csvResumen = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', [
+                'jobId' => $encolarResumen->json('job_id'),
+            ]))
+            ->assertOk();
+
+        $this->assertStringContainsString('SIN-MAE', $csvResumen->getContent());
+        $this->assertStringContainsString('Desc maestro desde nota', $csvResumen->getContent());
+        $this->assertStringContainsString('6000', $csvResumen->getContent());
+    }
 }

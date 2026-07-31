@@ -2377,7 +2377,7 @@ class NotaMpResultadosService
             ->join('notas as n', 'n.nronota', '=', 'notasdetalle.nronota')
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'notasdetalle.nronota')
             ->join('nota_mp_ofertas as o', 'o.nronota', '=', 'notasdetalle.nronota')
-            ->join('maeprod as mp', 'mp.prod_item', '=', 'notasdetalle.prod_item')
+            ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'notasdetalle.prod_item')
             ->whereRaw('o.proveedor_seleccionado IS TRUE')
             ->where('s.resultado_propio', 'cerrada')
             ->whereRaw("trim(coalesce(notasdetalle.prod_item, '')) <> ''")
@@ -2392,6 +2392,18 @@ class NotaMpResultadosService
     }
 
     /**
+     * Nombre producto: maeprod; si no existe / vacío → descripcion maestro de la nota; si vacío → agile.
+     */
+    private function sqlNombreProductoReporte(): string
+    {
+        return "COALESCE("
+            ."NULLIF(TRIM(mp.prod_nombre), ''), "
+            ."NULLIF(TRIM(notasdetalle.prod_descripcion_maestro), ''), "
+            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
+            ."'')";
+    }
+
+    /**
      * Resumen agrupado por producto maestro y proveedor.
      *
      * @param  array<string, mixed>  $filtros
@@ -2399,16 +2411,18 @@ class NotaMpResultadosService
      */
     private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
+        $nombreProducto = $this->sqlNombreProductoReporte();
+
         return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
                 'notasdetalle.prod_item as codigo_producto',
-                'mp.prod_nombre as nombre_producto',
+                DB::raw("{$nombreProducto} as nombre_producto"),
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
                 DB::raw('SUM(notasdetalle.prod_valor * notasdetalle.cantidad) as monto_venta_acumulado'),
             ])
-            ->groupBy('notasdetalle.prod_item', 'mp.prod_nombre', 'o.rut_proveedor')
+            ->groupBy('notasdetalle.prod_item', DB::raw($nombreProducto), 'o.rut_proveedor')
             ->orderByDesc('monto_venta_acumulado')
             ->orderBy('notasdetalle.prod_item');
     }
@@ -2421,13 +2435,15 @@ class NotaMpResultadosService
      */
     private function buildProductosGanadosDetalleQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
+        $nombreProducto = $this->sqlNombreProductoReporte();
+
         return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
                 'notasdetalle.nronota',
                 'n.encargado as numero_cotizacion',
                 'n.ocompra as orden_compra',
                 'notasdetalle.prod_item as codigo_producto',
-                'mp.prod_nombre as nombre_producto',
+                DB::raw("{$nombreProducto} as nombre_producto"),
                 'notasdetalle.cantidad',
                 'notasdetalle.prod_valor as valor',
                 DB::raw('(notasdetalle.prod_valor * notasdetalle.cantidad) as total'),
