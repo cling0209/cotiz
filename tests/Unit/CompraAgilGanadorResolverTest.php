@@ -60,4 +60,58 @@ class CompraAgilGanadorResolverTest extends TestCase
         $this->assertTrue($this->resolver->tieneProveedorAdjudicado($payload));
         $this->assertSame('76356855-5', $this->resolver->rutGanador($payload));
     }
+
+    public function test_proveedor_seleccionado_muestra_cerrada_pero_no_finaliza_seguimiento(): void
+    {
+        $payload = [
+            'estado' => ['codigo' => 'proveedor_seleccionado', 'glosa' => 'Proveedor seleccionado'],
+            'id_orden_compra' => 55070937,
+            'proveedores_cotizando' => [
+                [
+                    'rut_proveedor' => '76.779.675-7',
+                    'proveedor_seleccionado' => 1,
+                    'id_oc' => 55070937,
+                ],
+            ],
+        ];
+
+        $this->assertSame('cerrada', $this->resolver->resultadoPropio($payload));
+        $this->assertFalse($this->resolver->esEstadoFinal($payload));
+    }
+
+    public function test_oc_emitida_finaliza_seguimiento(): void
+    {
+        $payload = [
+            'estado' => ['codigo' => 'oc_emitida', 'glosa' => 'OC emitida'],
+            'id_orden_compra' => 55070937,
+            'proveedores_cotizando' => [
+                [
+                    'rut_proveedor' => '76.779.675-7',
+                    'proveedor_seleccionado' => 1,
+                    'id_oc' => 55070937,
+                ],
+            ],
+        ];
+
+        $this->assertSame('cerrada', $this->resolver->resultadoPropio($payload));
+        $this->assertTrue($this->resolver->esEstadoFinal($payload));
+    }
+
+    public function test_cerrada_con_adjudicado_no_finaliza_seguimiento(): void
+    {
+        $payload = [
+            'estado' => ['codigo' => 'cerrada', 'glosa' => 'Cerrada'],
+            'id_orden_compra' => 55070937,
+            'proveedores_cotizando' => [
+                [
+                    'rut_proveedor' => '76.779.675-7',
+                    'proveedor_seleccionado' => 1,
+                    'id_oc' => 55070937,
+                ],
+            ],
+        ];
+
+        $this->assertSame('cerrada', $this->resolver->resultadoPropio($payload));
+        $this->assertFalse($this->resolver->esEstadoFinal($payload));
+    }
 }

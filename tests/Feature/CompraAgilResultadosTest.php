@@ -313,7 +313,8 @@ class CompraAgilResultadosTest extends TestCase
             'nronota' => $nota->nronota,
             'rut_ganador' => '76779675-7',
             'resultado_propio' => 'cerrada',
-            'finalizado' => true,
+            // proveedor_seleccionado aún no corta consulta; solo oc_emitida.
+            'finalizado' => false,
             'fecha_publicacion' => '2026-03-20 16:19:00',
             'fecha_cierre' => '2026-03-25 09:00:00',
             'fecha_ultimo_cambio' => '2026-03-25 11:00:00',
@@ -2368,7 +2369,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertDatabaseHas('nota_mp_seguimientos', [
             'nronota' => $nota->nronota,
             'resultado_propio' => 'cerrada',
-            'finalizado' => true,
+            'finalizado' => false,
         ]);
     }
 

@@ -164,6 +164,10 @@ class CompraAgilGanadorResolver
     }
 
     /**
+     * Seguimiento cerrado: deja de consultar MP.
+     * Solo OC emitida (o desierta/cancelada). proveedor_seleccionado / cerrada+adjudicado
+     * aún pueden cambiar en MP, así que siguen en consulta.
+     *
      * @param  array<string, mixed>  $payload
      */
     public function esEstadoFinal(array $payload): bool
@@ -171,15 +175,16 @@ class CompraAgilGanadorResolver
         $codigo = $this->codigoEstadoMp($payload);
 
         return in_array($codigo, [
-            'proveedor_seleccionado',
             'oc_emitida',
             'desierta',
             'cancelada',
-        ], true) || ($codigo === 'cerrada' && $this->tieneProveedorAdjudicado($payload));
+        ], true);
     }
 
     /**
      * Clasificación de seguimiento (sin ganada/perdida).
+     * "cerrada" = ya hay resultado visible (adjudicado / proveedor seleccionado / OC);
+     * el corte de consulta lo define esEstadoFinal().
      *
      * @param  array<string, mixed>  $payload
      */
@@ -194,11 +199,14 @@ class CompraAgilGanadorResolver
             return 'cancelada';
         }
 
-        $finalizado = $this->esEstadoFinal($payload);
-        if ($codigo === 'cerrada' && ! $this->tieneProveedorAdjudicado($payload)) {
-            $finalizado = false;
+        if (in_array($codigo, ['oc_emitida', 'proveedor_seleccionado'], true)) {
+            return 'cerrada';
         }
 
-        return $finalizado ? 'cerrada' : 'pendiente';
+        if ($codigo === 'cerrada' && $this->tieneProveedorAdjudicado($payload)) {
+            return 'cerrada';
+        }
+
+        return 'pendiente';
     }
 }

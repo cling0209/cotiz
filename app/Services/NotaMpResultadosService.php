@@ -723,7 +723,7 @@ class NotaMpResultadosService
      * Notas candidatas a consulta masiva MP:
      * - sin seguimiento aún, o
      * - pendientes de seguimiento (resultado_propio = pendiente), o
-     * - no finalizadas (finalizado = false).
+     * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún).
      * Opcionalmente omite las ya consultadas hoy con éxito (SKIP_MISMO_DIA),
      * salvo si el último detalle de corrida fue fallo (reintento en corrida siguiente).
      * El filtro por horario de último cambio se aplica en notasPendientesConsulta().
@@ -1800,7 +1800,8 @@ class NotaMpResultadosService
         $estadoCodigo = $this->ganador->codigoEstadoMp($payload);
         $estadoGlosa = $this->ganador->glosaEstadoMp($payload);
         $resultadoPropio = $this->ganador->resultadoPropio($payload);
-        $finalizado = in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true);
+        // Cortar consulta solo con OC emitida / desierta / cancelada (no en proveedor_seleccionado).
+        $finalizado = $this->ganador->esEstadoFinal($payload);
 
         $rutGanador = $this->ganador->rutGanador($payload);
         $montoGanador = $ganadorProv !== null ? (int) round((float) ($ganadorProv['monto_total'] ?? 0)) : null;
