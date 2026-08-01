@@ -407,7 +407,7 @@ class CotizacionController extends Controller
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
         try {
-            $this->notaService->modificarCabecera($nota, $datos);
+            $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
         } catch (RuntimeException $e) {
             return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
         }
@@ -472,7 +472,7 @@ class CotizacionController extends Controller
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
         try {
-            $this->notaService->modificarCabecera($nota, $datos);
+            $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
         } catch (RuntimeException $e) {
             return response()->json([
                 'error' => $e->getMessage(),
@@ -685,6 +685,7 @@ class CotizacionController extends Controller
                 $nota,
                 (int) $datos['orden'],
                 $datos['prod_item'] ?? null,
+                $request->user()->username,
             );
         } catch (\InvalidArgumentException $e) {
             if ($request->expectsJson()) {

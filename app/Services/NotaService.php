@@ -11,6 +11,7 @@ class NotaService
 
     public function __construct(
         protected OportunidadEncontradaRelayService $oportunidadRelay,
+        protected NotaAuditoriaService $auditoria,
     ) {}
 
     public function crear(string $usuario, ?string $descripcion = null, ?int $notaOrigen = null, ?string $sistema = null): Nota
@@ -39,6 +40,7 @@ class NotaService
             ]);
 
             $this->adoptarVerificacionParDesdeBorrador($nronota);
+            $this->auditoria->registrarAgregar($nota, $usuario, 'Alta de cotización');
 
             return $nota;
         });
@@ -86,9 +88,9 @@ class NotaService
      *
      * La copia nace sin estado (no aceptada), sin enviar a la API y como nota local.
      */
-    public function duplicar(Nota $origen): Nota
+    public function duplicar(Nota $origen, ?string $usuarioAccion = null): Nota
     {
-        return DB::transaction(function () use ($origen) {
+        return DB::transaction(function () use ($origen, $usuarioAccion) {
             $nronota = $this->siguienteNronota();
 
             // La copia queda con el mismo ejecutivo dueño, aunque la cree un superadmin.
@@ -126,6 +128,12 @@ class NotaService
                 $lineaCopia->fechahora = now();
                 $lineaCopia->save();
             }
+
+            $this->auditoria->registrarAgregar(
+                $copia,
+                $usuarioAccion ?: $origen->usuario,
+                'Duplicación desde nota #'.$origen->nronota,
+            );
 
             return $copia;
         });
@@ -285,7 +293,7 @@ class NotaService
         return $ultima;
     }
 
-    public function modificarCabecera(Nota $nota, array $datos): Nota
+    public function modificarCabecera(Nota $nota, array $datos, ?string $usuarioModifica = null): Nota
     {
         $encargadoAnterior = strtoupper(trim((string) $nota->encargado));
         $encargadoNuevo = strtoupper(trim((string) ($datos['encargado'] ?? $nota->encargado)));
@@ -338,6 +346,12 @@ class NotaService
         }
 
         $nota->update($payload);
+
+        $this->auditoria->registrarModificar(
+            $nota,
+            $usuarioModifica,
+            'Modificación de cabecera',
+        );
 
         return $nota->fresh();
     }

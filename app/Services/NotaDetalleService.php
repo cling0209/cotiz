@@ -17,6 +17,7 @@ class NotaDetalleService
     public function __construct(
         protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
         protected AgileMaeprodService $agileMaeprodService,
+        protected NotaAuditoriaService $auditoria,
     ) {}
 
     public function lineasDeNota(Nota $nota): Collection
@@ -368,6 +369,10 @@ class NotaDetalleService
             }
         }
 
+        if ($actualizadas > 0) {
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Modificación de líneas');
+        }
+
         return [
             'actualizadas' => $actualizadas,
             'omitidas' => $omitidas,
@@ -433,6 +438,8 @@ class NotaDetalleService
                 $okCount++;
             }
 
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Aplicación de factor de precio');
+
             return [
                 'ok' => $okCount,
                 'total' => $lineas->count(),
@@ -452,7 +459,7 @@ class NotaDetalleService
         ?string $prodItemAgile = null,
         ?string $prodDescripcionAgile = null,
     ): NotaDetalle {
-        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $prodItemAgile, $prodDescripcionAgile) {
+        return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
             $producto = Maeprod::query()->find(trim($prodItem));
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
 
@@ -468,7 +475,7 @@ class NotaDetalleService
                 ? $nombreMaestro
                 : ($agileDesc !== '' ? $agileDesc : null);
 
-            return NotaDetalle::create([
+            $detalle = NotaDetalle::create([
                 'nronota' => $nota->nronota,
                 'prod_item' => trim($prodItem),
                 'prod_valor' => $prodValor,
@@ -480,6 +487,10 @@ class NotaDetalleService
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
                 'prod_descripcion_maestro' => $descripcionMaestro,
             ]);
+
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Alta de línea de producto');
+
+            return $detalle;
         });
     }
 
@@ -523,8 +534,9 @@ class NotaDetalleService
         string $idAgile,
         string $descripcionAgile,
         int $cantidad,
+        ?string $usuarioUpd = null,
     ): NotaDetalle {
-        return DB::transaction(function () use ($nota, $idAgile, $descripcionAgile, $cantidad) {
+        return DB::transaction(function () use ($nota, $idAgile, $descripcionAgile, $cantidad, $usuarioUpd) {
             $orden = ((int) NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->max('orden')) + 1;
@@ -536,7 +548,7 @@ class NotaDetalleService
             $agileId = trim($idAgile);
             $agileDesc = trim($descripcionAgile);
 
-            return NotaDetalle::create([
+            $detalle = NotaDetalle::create([
                 'nronota' => $nota->nronota,
                 'prod_item' => $prodItem,
                 'prod_valor' => 0,
@@ -548,6 +560,10 @@ class NotaDetalleService
                 'prod_descripcion_agile' => $agileDesc !== '' ? $agileDesc : null,
                 'prod_descripcion_maestro' => $agileDesc !== '' ? $agileDesc : null,
             ]);
+
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Alta de línea pendiente Agile');
+
+            return $detalle;
         });
     }
 
@@ -601,7 +617,7 @@ class NotaDetalleService
             $factorOverride,
         );
 
-        return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor) {
+        return DB::transaction(function () use ($nota, $linea, $agileId, $codigo, $producto, $costo, $valor, $usuarioUpd) {
             $nombreMaestro = trim((string) $producto->prod_nombre);
             $descripcionMaestro = $nombreMaestro !== ''
                 ? $nombreMaestro
@@ -648,6 +664,8 @@ class NotaDetalleService
                 ->where('prod_item_agile', $agileId)
                 ->firstOrFail();
 
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Vinculación de línea Agile');
+
             // Aprendizaje se confirma al grabar o al generar PDF (no al seleccionar).
             // Precios de la nota no se vuelcan a maeprod.
 
@@ -671,9 +689,9 @@ class NotaDetalleService
         });
     }
 
-    public function eliminarLinea(Nota $nota, int $orden, ?string $prodItem = null): void
+    public function eliminarLinea(Nota $nota, int $orden, ?string $prodItem = null, ?string $usuarioUpd = null): void
     {
-        DB::transaction(function () use ($nota, $orden, $prodItem) {
+        DB::transaction(function () use ($nota, $orden, $prodItem, $usuarioUpd) {
             $linea = $this->resolverLineaPorOrden($nota, $orden, $prodItem);
 
             $eliminadas = NotaDetalle::query()
@@ -692,6 +710,7 @@ class NotaDetalleService
                 ->get();
 
             $this->persistirOrdenLineas($nota->nronota, $quedan);
+            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Eliminación de línea');
         });
     }
 

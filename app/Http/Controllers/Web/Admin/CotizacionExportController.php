@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Nota;
 use App\Models\User;
 use App\Services\CotizacionExportService;
+use App\Services\NotaAuditoriaService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -19,6 +20,7 @@ class CotizacionExportController extends Controller
         protected CotizacionExportService $exportService,
         protected NotaDetalleService $detalleService,
         protected NotaService $notaService,
+        protected NotaAuditoriaService $auditoria,
     ) {}
 
     public function pdf(Request $request, int $nronota)
@@ -47,6 +49,8 @@ class CotizacionExportController extends Controller
             $request->user()?->username,
             VinculoOrigen::PDF,
         );
+
+        $this->auditoria->registrarPdf($nota, $request->user()?->username);
 
         $datos = $this->exportService->datosPdf($nota);
 

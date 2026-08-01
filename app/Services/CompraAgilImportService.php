@@ -567,7 +567,7 @@ class CompraAgilImportService
                             $this->oportunidad->assertExisteEnMpSiCompraAgil($datosCabecera['encargado']);
                         }
                     }
-                    $this->notaService->modificarCabecera($nota, $datosCabecera);
+                    $this->notaService->modificarCabecera($nota, $datosCabecera, $usuario);
                     $cabeceraActualizada = true;
                     $nota = $nota->fresh();
                 }
@@ -603,6 +603,7 @@ class CompraAgilImportService
                         $linea['id_agile'],
                         $descripcionMp,
                         (int) $linea['cantidad'],
+                        $usuario,
                     );
 
                     $pendientes++;

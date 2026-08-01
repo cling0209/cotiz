@@ -46,6 +46,11 @@ class Nota extends Model
         return $this->hasMany(NotaDetalle::class, 'nronota', 'nronota')->orderBy('orden');
     }
 
+    public function auditorias(): HasMany
+    {
+        return $this->hasMany(NotaAuditoria::class, 'nronota', 'nronota')->orderByDesc('fechahora');
+    }
+
     public function usuarioRel(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario', 'username');

@@ -248,13 +248,13 @@ class CotizacionCargaArchivoService
                 $this->notaService->modificarCabecera($nota, array_merge($resumen, [
                     'descripcion' => '',
                     'factor_precio_venta' => $factor,
-                ]));
+                ]), $username);
             } else {
                 $nota = $this->notaService->crear($username, '', null, 'CARGA_ARCHIVO');
                 $this->notaService->modificarCabecera($nota, array_merge($resumen, [
                     'descripcion' => '',
                     'factor_precio_venta' => $factor,
-                ]));
+                ]), $username);
             }
 
             $nota->update(['sistema' => 'CARGA_ARCHIVO', 'enviadoapi' => 0]);

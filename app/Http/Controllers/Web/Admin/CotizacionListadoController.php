@@ -126,7 +126,7 @@ class CotizacionListadoController extends Controller
             ));
         }
 
-        $copia = $this->notaService->duplicar($nota);
+        $copia = $this->notaService->duplicar($nota, $request->user()->username);
 
         $mensaje = sprintf(
             'Cotización #%d duplicada en la #%d con el mismo código «%s» (copia %d).',
