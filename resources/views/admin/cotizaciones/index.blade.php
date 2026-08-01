@@ -273,6 +273,14 @@
                 <a href="{{ route('admin.cotizaciones.export.aceptadas') }}" class="btn btn-secondary btn-sm">
                     Descargar aceptadas
                 </a>
+                <a href="{{ route('admin.cotizaciones.export.aceptadas-totales-producto') }}" class="btn btn-secondary btn-sm" data-no-loader
+                   title="Totales acumulados por producto de cotizaciones aceptadas">
+                    Descargar aceptadas totales por producto
+                </a>
+                <a href="{{ route('admin.cotizaciones.export.aceptadas-detalle-producto') }}" class="btn btn-secondary btn-sm" data-no-loader
+                   title="Detalle por línea de producto de cotizaciones aceptadas">
+                    Descargar aceptadas detalle por producto
+                </a>
             </div>
         @endif
     </div>

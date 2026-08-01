@@ -207,6 +207,24 @@ class CotizacionListadoController extends Controller
         return $this->exportService->respuestaAceptadasCsv();
     }
 
+    public function exportAceptadasTotalesPorProducto(Request $request): StreamedResponse
+    {
+        if (! $this->listadoService->puedeGestionar($request->user())) {
+            abort(403);
+        }
+
+        return $this->exportService->respuestaAceptadasTotalesPorProductoCsv();
+    }
+
+    public function exportAceptadasDetallePorProducto(Request $request): StreamedResponse
+    {
+        if (! $this->listadoService->puedeGestionar($request->user())) {
+            abort(403);
+        }
+
+        return $this->exportService->respuestaAceptadasDetallePorProductoCsv();
+    }
+
     private function notaGestionable(Request $request, int $nronota): Nota
     {
         $nota = Nota::query()->findOrFail($nronota);

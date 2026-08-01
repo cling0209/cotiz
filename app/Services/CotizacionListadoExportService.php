@@ -128,6 +128,124 @@ class CotizacionListadoExportService
         ]);
     }
 
+    public function respuestaAceptadasTotalesPorProductoCsv(): StreamedResponse
+    {
+        $nombre = 'notaventa_aceptadas_totales_producto_'.now()->format('d-m-Y_His').'.csv';
+        $nombreProducto = $this->sqlNombreProductoExport();
+
+        return response()->streamDownload(function () use ($nombreProducto) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Código producto',
+                'Producto',
+                'Cantidad acumulada',
+                'Monto venta acumulado',
+            ], ';');
+
+            $rows = DB::table('notasdetalle as nd')
+                ->join('notas as n', 'n.nronota', '=', 'nd.nronota')
+                ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nd.prod_item')
+                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
+                ->groupBy('nd.prod_item', DB::raw($nombreProducto))
+                ->orderByDesc(DB::raw('SUM(nd.prod_valor * nd.cantidad)'))
+                ->orderBy('nd.prod_item')
+                ->get([
+                    'nd.prod_item as codigo_producto',
+                    DB::raw("{$nombreProducto} as nombre_producto"),
+                    DB::raw('SUM(nd.cantidad) as cantidad_acumulada'),
+                    DB::raw('SUM(nd.prod_valor * nd.cantidad) as monto_venta_acumulado'),
+                ]);
+
+            foreach ($rows as $row) {
+                fputcsv($out, [
+                    $row->codigo_producto,
+                    $row->nombre_producto,
+                    (int) $row->cantidad_acumulada,
+                    (int) $row->monto_venta_acumulado,
+                ], ';');
+            }
+
+            fclose($out);
+        }, $nombre, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function respuestaAceptadasDetallePorProductoCsv(): StreamedResponse
+    {
+        $nombre = 'notaventa_aceptadas_detalle_producto_'.now()->format('d-m-Y_His').'.csv';
+        $nombreProducto = $this->sqlNombreProductoExport();
+
+        return response()->streamDownload(function () use ($nombreProducto) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Número nota',
+                'Número cotización',
+                'Orden de compra',
+                'Código producto',
+                'Producto',
+                'Cantidad',
+                'Valor',
+                'Total',
+            ], ';');
+
+            $rows = DB::table('notasdetalle as nd')
+                ->join('notas as n', 'n.nronota', '=', 'nd.nronota')
+                ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nd.prod_item')
+                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
+                ->orderByDesc('nd.nronota')
+                ->orderBy('nd.orden')
+                ->get([
+                    'nd.nronota',
+                    'n.encargado as numero_cotizacion',
+                    'n.ocompra as orden_compra',
+                    'nd.prod_item as codigo_producto',
+                    DB::raw("{$nombreProducto} as nombre_producto"),
+                    'nd.cantidad',
+                    'nd.prod_valor as valor',
+                    DB::raw('(nd.prod_valor * nd.cantidad) as total'),
+                ]);
+
+            foreach ($rows as $row) {
+                fputcsv($out, [
+                    $row->nronota,
+                    $row->numero_cotizacion,
+                    $row->orden_compra ?? '',
+                    $row->codigo_producto,
+                    $row->nombre_producto,
+                    (int) $row->cantidad,
+                    (int) $row->valor,
+                    (int) $row->total,
+                ], ';');
+            }
+
+            fclose($out);
+        }, $nombre, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function sqlNombreProductoExport(): string
+    {
+        return "COALESCE("
+            ."NULLIF(TRIM(mp.prod_nombre), ''), "
+            ."NULLIF(TRIM(nd.prod_descripcion_maestro), ''), "
+            ."NULLIF(TRIM(nd.prod_descripcion_agile), ''), "
+            ."'')";
+    }
+
     /**
      * @param  array{nronota: int, fechaentregadesde: ?string, fechaentregahasta: ?string}  $filtros
      */

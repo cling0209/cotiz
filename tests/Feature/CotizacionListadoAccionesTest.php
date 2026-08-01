@@ -215,6 +215,146 @@ class CotizacionListadoAccionesTest extends TestCase
             ->assertHeader('content-disposition');
     }
 
+    public function test_export_aceptadas_totales_por_producto_agrupa_lineas(): void
+    {
+        $this->actingAs($this->ejecutivo)
+            ->get(route('admin.cotizaciones.export.aceptadas-totales-producto'))
+            ->assertForbidden();
+
+        $aceptada = $this->crearNota([
+            'nronota' => 501,
+            'usuario' => 'ejecutivo',
+            'estado' => 'aceptada',
+            'encargado' => 'COT-TOT',
+        ]);
+        $pendiente = $this->crearNota([
+            'nronota' => 502,
+            'usuario' => 'ejecutivo',
+            'estado' => null,
+            'encargado' => 'COT-PEND',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'PROD-TOT',
+            'prod_nombre' => 'Producto totales',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            [
+                'nronota' => $aceptada->nronota,
+                'prod_item' => 'PROD-TOT',
+                'prod_valor' => 1000,
+                'cantidad' => 2,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 800,
+            ],
+            [
+                'nronota' => $aceptada->nronota,
+                'prod_item' => 'PROD-TOT',
+                'prod_valor' => 1000,
+                'cantidad' => 3,
+                'fechahora' => now(),
+                'orden' => 2,
+                'prod_valor_costo' => 800,
+            ],
+            [
+                'nronota' => $pendiente->nronota,
+                'prod_item' => 'PROD-TOT',
+                'prod_valor' => 1000,
+                'cantidad' => 10,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 800,
+            ],
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.export.aceptadas-totales-producto'));
+
+        $response->assertOk();
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('Código producto', $csv);
+        $this->assertStringContainsString('PROD-TOT', $csv);
+        $this->assertStringContainsString('Producto totales', $csv);
+        $this->assertStringContainsString('5', $csv);
+        $this->assertStringContainsString('5000', $csv);
+        $this->assertStringNotContainsString('COT-PEND', $csv);
+    }
+
+    public function test_export_aceptadas_detalle_por_producto_incluye_lineas(): void
+    {
+        $this->actingAs($this->ejecutivo)
+            ->get(route('admin.cotizaciones.export.aceptadas-detalle-producto'))
+            ->assertForbidden();
+
+        $aceptada = $this->crearNota([
+            'nronota' => 601,
+            'usuario' => 'ejecutivo',
+            'estado' => 'aceptada',
+            'encargado' => 'COT-DET',
+            'ocompra' => 'OC-99',
+        ]);
+        $pendiente = $this->crearNota([
+            'nronota' => 602,
+            'usuario' => 'ejecutivo',
+            'estado' => null,
+            'encargado' => 'COT-NO',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'PROD-DET',
+            'prod_nombre' => 'Producto detalle',
+            'prod_valor' => 1500,
+            'prod_valor_costo' => 900,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            [
+                'nronota' => $aceptada->nronota,
+                'prod_item' => 'PROD-DET',
+                'prod_valor' => 1500,
+                'cantidad' => 2,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 900,
+            ],
+            [
+                'nronota' => $pendiente->nronota,
+                'prod_item' => 'PROD-DET',
+                'prod_valor' => 1500,
+                'cantidad' => 4,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 900,
+            ],
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.export.aceptadas-detalle-producto'));
+
+        $response->assertOk();
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('Número nota', $csv);
+        $this->assertStringContainsString('COT-DET', $csv);
+        $this->assertStringContainsString('OC-99', $csv);
+        $this->assertStringContainsString('PROD-DET', $csv);
+        $this->assertStringContainsString('Producto detalle', $csv);
+        $this->assertStringContainsString('3000', $csv);
+        $this->assertStringNotContainsString('COT-NO', $csv);
+    }
+
+    public function test_listado_muestra_botones_export_aceptadas_producto(): void
+    {
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.index'))
+            ->assertOk()
+            ->assertSee('Descargar aceptadas totales por producto', false)
+            ->assertSee('Descargar aceptadas detalle por producto', false);
+    }
+
     public function test_export_sin_codigo_softland_vacio_sin_cotizaciones_aceptadas(): void
     {
         $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => null]);

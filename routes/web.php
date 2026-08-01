@@ -68,6 +68,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/duplicar', [CotizacionListadoController::class, 'duplicar'])->name('cotizaciones.duplicar')->whereNumber('nronota');
         Route::get('cotizaciones/export/sin-codigo-softland', [CotizacionListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.export.sin-codigo-softland');
         Route::get('cotizaciones/export/aceptadas', [CotizacionListadoController::class, 'exportAceptadas'])->name('cotizaciones.export.aceptadas');
+        Route::get('cotizaciones/export/aceptadas-totales-producto', [CotizacionListadoController::class, 'exportAceptadasTotalesPorProducto'])->name('cotizaciones.export.aceptadas-totales-producto');
+        Route::get('cotizaciones/export/aceptadas-detalle-producto', [CotizacionListadoController::class, 'exportAceptadasDetallePorProducto'])->name('cotizaciones.export.aceptadas-detalle-producto');
         Route::match(['get', 'post'], 'cotizaciones/nueva', [CotizacionController::class, 'create'])->name('cotizaciones.create');
         Route::get('cotizaciones/retomar', [CotizacionController::class, 'retomar'])->name('cotizaciones.retomar');
         Route::get('cotizaciones/carga-archivo', [CotizacionCargaArchivoController::class, 'index'])->name('cotizaciones.carga-archivo.index');
