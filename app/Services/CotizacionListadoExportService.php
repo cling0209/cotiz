@@ -64,11 +64,14 @@ class CotizacionListadoExportService
         );
     }
 
-    public function respuestaAceptadasCsv(): StreamedResponse
+    /**
+     * @param  array{fechadesde?: ?string, fechahasta?: ?string}  $filtros
+     */
+    public function respuestaAceptadasCsv(array $filtros = []): StreamedResponse
     {
         $nombre = 'notaventa_aceptadas_'.now()->format('d-m-Y_His').'.csv';
 
-        return response()->streamDownload(function () {
+        return response()->streamDownload(function () use ($filtros) {
             $out = fopen('php://output', 'w');
             if ($out === false) {
                 return;
@@ -80,7 +83,7 @@ class CotizacionListadoExportService
                 'Nota', 'Fecha', 'Empresa', 'Nro.Cotización', 'Total', 'Usuario', 'Fecha Aceptación', 'Usuario Aceptación',
             ], ';');
 
-            $rows = DB::table('notas as n')
+            $query = DB::table('notas as n')
                 ->leftJoinSub(
                     DB::table('notasdetalle')
                         ->selectRaw('nronota, COALESCE(SUM(prod_valor * cantidad), 0) AS total')
@@ -90,7 +93,11 @@ class CotizacionListadoExportService
                     '=',
                     'n.nronota'
                 )
-                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
+                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'");
+
+            $this->aplicarFiltroFechaListado($query, $filtros);
+
+            $rows = $query
                 ->orderByDesc('n.nronota')
                 ->limit(5000)
                 ->get([
@@ -128,12 +135,15 @@ class CotizacionListadoExportService
         ]);
     }
 
-    public function respuestaAceptadasTotalesPorProductoCsv(): StreamedResponse
+    /**
+     * @param  array{fechadesde?: ?string, fechahasta?: ?string}  $filtros
+     */
+    public function respuestaAceptadasTotalesPorProductoCsv(array $filtros = []): StreamedResponse
     {
         $nombre = 'notaventa_aceptadas_totales_producto_'.now()->format('d-m-Y_His').'.csv';
         $nombreProducto = $this->sqlNombreProductoExport();
 
-        return response()->streamDownload(function () use ($nombreProducto) {
+        return response()->streamDownload(function () use ($nombreProducto, $filtros) {
             $out = fopen('php://output', 'w');
             if ($out === false) {
                 return;
@@ -148,10 +158,14 @@ class CotizacionListadoExportService
                 'Monto venta acumulado',
             ], ';');
 
-            $rows = DB::table('notasdetalle as nd')
+            $query = DB::table('notasdetalle as nd')
                 ->join('notas as n', 'n.nronota', '=', 'nd.nronota')
                 ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nd.prod_item')
-                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
+                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'");
+
+            $this->aplicarFiltroFechaListado($query, $filtros);
+
+            $rows = $query
                 ->groupBy('nd.prod_item', DB::raw($nombreProducto))
                 ->orderByDesc(DB::raw('SUM(nd.prod_valor * nd.cantidad)'))
                 ->orderBy('nd.prod_item')
@@ -177,12 +191,15 @@ class CotizacionListadoExportService
         ]);
     }
 
-    public function respuestaAceptadasDetallePorProductoCsv(): StreamedResponse
+    /**
+     * @param  array{fechadesde?: ?string, fechahasta?: ?string}  $filtros
+     */
+    public function respuestaAceptadasDetallePorProductoCsv(array $filtros = []): StreamedResponse
     {
         $nombre = 'notaventa_aceptadas_detalle_producto_'.now()->format('d-m-Y_His').'.csv';
         $nombreProducto = $this->sqlNombreProductoExport();
 
-        return response()->streamDownload(function () use ($nombreProducto) {
+        return response()->streamDownload(function () use ($nombreProducto, $filtros) {
             $out = fopen('php://output', 'w');
             if ($out === false) {
                 return;
@@ -192,6 +209,7 @@ class CotizacionListadoExportService
 
             fputcsv($out, [
                 'Número nota',
+                'Fecha',
                 'Número cotización',
                 'Orden de compra',
                 'Código producto',
@@ -201,14 +219,19 @@ class CotizacionListadoExportService
                 'Total',
             ], ';');
 
-            $rows = DB::table('notasdetalle as nd')
+            $query = DB::table('notasdetalle as nd')
                 ->join('notas as n', 'n.nronota', '=', 'nd.nronota')
                 ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nd.prod_item')
-                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
+                ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'");
+
+            $this->aplicarFiltroFechaListado($query, $filtros);
+
+            $rows = $query
                 ->orderByDesc('nd.nronota')
                 ->orderBy('nd.orden')
                 ->get([
                     'nd.nronota',
+                    'n.fecha',
                     'n.encargado as numero_cotizacion',
                     'n.ocompra as orden_compra',
                     'nd.prod_item as codigo_producto',
@@ -221,6 +244,7 @@ class CotizacionListadoExportService
             foreach ($rows as $row) {
                 fputcsv($out, [
                     $row->nronota,
+                    $row->fecha ? date('d/m/Y', strtotime((string) $row->fecha)) : '',
                     $row->numero_cotizacion,
                     $row->orden_compra ?? '',
                     $row->codigo_producto,
@@ -235,6 +259,23 @@ class CotizacionListadoExportService
         }, $nombre, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  array{fechadesde?: ?string, fechahasta?: ?string}  $filtros
+     */
+    private function aplicarFiltroFechaListado($query, array $filtros): void
+    {
+        $desde = trim((string) ($filtros['fechadesde'] ?? ''));
+        $hasta = trim((string) ($filtros['fechahasta'] ?? ''));
+
+        if ($desde !== '') {
+            $query->whereDate('n.fecha', '>=', $desde);
+        }
+        if ($hasta !== '') {
+            $query->whereDate('n.fecha', '<=', $hasta);
+        }
     }
 
     private function sqlNombreProductoExport(): string

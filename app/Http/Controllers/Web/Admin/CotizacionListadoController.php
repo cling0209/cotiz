@@ -204,7 +204,7 @@ class CotizacionListadoController extends Controller
             abort(403);
         }
 
-        return $this->exportService->respuestaAceptadasCsv();
+        return $this->exportService->respuestaAceptadasCsv($this->filtrosFechaExport($request));
     }
 
     public function exportAceptadasTotalesPorProducto(Request $request): StreamedResponse
@@ -213,7 +213,7 @@ class CotizacionListadoController extends Controller
             abort(403);
         }
 
-        return $this->exportService->respuestaAceptadasTotalesPorProductoCsv();
+        return $this->exportService->respuestaAceptadasTotalesPorProductoCsv($this->filtrosFechaExport($request));
     }
 
     public function exportAceptadasDetallePorProducto(Request $request): StreamedResponse
@@ -222,7 +222,21 @@ class CotizacionListadoController extends Controller
             abort(403);
         }
 
-        return $this->exportService->respuestaAceptadasDetallePorProductoCsv();
+        return $this->exportService->respuestaAceptadasDetallePorProductoCsv($this->filtrosFechaExport($request));
+    }
+
+    /**
+     * @return array{fechadesde: ?string, fechahasta: ?string}
+     */
+    private function filtrosFechaExport(Request $request): array
+    {
+        $desde = trim((string) $request->input('fechadesde', ''));
+        $hasta = trim((string) $request->input('fechahasta', ''));
+
+        return [
+            'fechadesde' => $desde !== '' ? $desde : null,
+            'fechahasta' => $hasta !== '' ? $hasta : null,
+        ];
     }
 
     private function notaGestionable(Request $request, int $nronota): Nota

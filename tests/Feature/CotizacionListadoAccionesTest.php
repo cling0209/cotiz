@@ -226,12 +226,21 @@ class CotizacionListadoAccionesTest extends TestCase
             'usuario' => 'ejecutivo',
             'estado' => 'aceptada',
             'encargado' => 'COT-TOT',
+            'fecha' => '2026-06-15',
+        ]);
+        $fueraRango = $this->crearNota([
+            'nronota' => 503,
+            'usuario' => 'ejecutivo',
+            'estado' => 'aceptada',
+            'encargado' => 'COT-OLD',
+            'fecha' => '2025-01-10',
         ]);
         $pendiente = $this->crearNota([
             'nronota' => 502,
             'usuario' => 'ejecutivo',
             'estado' => null,
             'encargado' => 'COT-PEND',
+            'fecha' => '2026-06-15',
         ]);
 
         Maeprod::query()->create([
@@ -261,6 +270,15 @@ class CotizacionListadoAccionesTest extends TestCase
                 'prod_valor_costo' => 800,
             ],
             [
+                'nronota' => $fueraRango->nronota,
+                'prod_item' => 'PROD-TOT',
+                'prod_valor' => 1000,
+                'cantidad' => 7,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 800,
+            ],
+            [
                 'nronota' => $pendiente->nronota,
                 'prod_item' => 'PROD-TOT',
                 'prod_valor' => 1000,
@@ -272,16 +290,20 @@ class CotizacionListadoAccionesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->get(route('admin.cotizaciones.export.aceptadas-totales-producto'));
+            ->get(route('admin.cotizaciones.export.aceptadas-totales-producto', [
+                'fechadesde' => '2026-06-01',
+                'fechahasta' => '2026-06-30',
+            ]));
 
         $response->assertOk();
         $csv = $response->streamedContent();
         $this->assertStringContainsString('Código producto', $csv);
         $this->assertStringContainsString('PROD-TOT', $csv);
         $this->assertStringContainsString('Producto totales', $csv);
-        $this->assertStringContainsString('5', $csv);
+        $this->assertStringContainsString(';5;', $csv);
         $this->assertStringContainsString('5000', $csv);
         $this->assertStringNotContainsString('COT-PEND', $csv);
+        $this->assertStringNotContainsString(';7;', $csv);
     }
 
     public function test_export_aceptadas_detalle_por_producto_incluye_lineas(): void
@@ -296,12 +318,21 @@ class CotizacionListadoAccionesTest extends TestCase
             'estado' => 'aceptada',
             'encargado' => 'COT-DET',
             'ocompra' => 'OC-99',
+            'fecha' => '2026-06-12',
+        ]);
+        $fueraRango = $this->crearNota([
+            'nronota' => 603,
+            'usuario' => 'ejecutivo',
+            'estado' => 'aceptada',
+            'encargado' => 'COT-OLD',
+            'fecha' => '2025-02-01',
         ]);
         $pendiente = $this->crearNota([
             'nronota' => 602,
             'usuario' => 'ejecutivo',
             'estado' => null,
             'encargado' => 'COT-NO',
+            'fecha' => '2026-06-12',
         ]);
 
         Maeprod::query()->create([
@@ -322,6 +353,15 @@ class CotizacionListadoAccionesTest extends TestCase
                 'prod_valor_costo' => 900,
             ],
             [
+                'nronota' => $fueraRango->nronota,
+                'prod_item' => 'PROD-DET',
+                'prod_valor' => 1500,
+                'cantidad' => 1,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_valor_costo' => 900,
+            ],
+            [
                 'nronota' => $pendiente->nronota,
                 'prod_item' => 'PROD-DET',
                 'prod_valor' => 1500,
@@ -333,17 +373,24 @@ class CotizacionListadoAccionesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)
-            ->get(route('admin.cotizaciones.export.aceptadas-detalle-producto'));
+            ->get(route('admin.cotizaciones.export.aceptadas-detalle-producto', [
+                'fechadesde' => '2026-06-01',
+                'fechahasta' => '2026-06-30',
+            ]));
 
         $response->assertOk();
         $csv = $response->streamedContent();
         $this->assertStringContainsString('Número nota', $csv);
+        $this->assertStringContainsString('Fecha', $csv);
+        $this->assertStringContainsString('12/06/2026', $csv);
         $this->assertStringContainsString('COT-DET', $csv);
         $this->assertStringContainsString('OC-99', $csv);
         $this->assertStringContainsString('PROD-DET', $csv);
         $this->assertStringContainsString('Producto detalle', $csv);
         $this->assertStringContainsString('3000', $csv);
         $this->assertStringNotContainsString('COT-NO', $csv);
+        $this->assertStringNotContainsString('COT-OLD', $csv);
+        $this->assertStringNotContainsString('01/02/2025', $csv);
     }
 
     public function test_listado_muestra_botones_export_aceptadas_producto(): void
