@@ -375,7 +375,7 @@
                         title="Mostrar solo cotizaciones que cierran en las pr&oacute;ximas 24 horas"
                         aria-pressed="false">
                         <i class="bi bi-alarm"></i> Cierran en 24 h
-                        <span id="filtro-cierre-24h-count" class="badge text-bg-light text-dark ms-1">0</span>
+                        (<span id="filtro-cierre-24h-count" class="filtro-cierre-24h-count">0</span>)
                     </button>
                 </div>
                 <div class="col-12 col-md-6 col-xl-3">
@@ -534,15 +534,18 @@
         font-weight: 600;
     }
 
+    .filtro-cierre-24h .filtro-cierre-24h-count {
+        color: inherit;
+        font-size: 1.15rem;
+        font-weight: 700;
+        line-height: 1;
+        vertical-align: baseline;
+    }
+
     .filtro-cierre-24h.is-active {
         color: #fff;
         background-color: #ea580c;
         border-color: #c2410c;
-    }
-
-    .filtro-cierre-24h.is-active .badge {
-        color: #9a3412 !important;
-        background-color: #fff7ed !important;
     }
 </style>
 @endsection
