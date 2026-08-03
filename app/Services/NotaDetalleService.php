@@ -54,11 +54,8 @@ class NotaDetalleService
                 ->whereIn('prod_item_agile', $agileIds)
                 ->pluck('prod_descripcion_agile', 'prod_item_agile');
 
-        $repetidosPorProd = NotaDetalle::query()
-            ->where('nronota', $nota->nronota)
-            ->selectRaw('prod_item, COUNT(*) as total')
-            ->groupBy('prod_item')
-            ->pluck('total', 'prod_item');
+        // Contar repetidos en memoria (evita un GROUP BY extra a notasdetalle).
+        $repetidosPorProd = $lineas->countBy(fn (NotaDetalle $linea) => $linea->prod_item);
 
         return $lineas
             ->map(function (NotaDetalle $linea) use ($descripcionesAgile, $repetidosPorProd, $maeprods) {
@@ -741,9 +738,26 @@ class NotaDetalleService
             ->where('nronota', $nota->nronota)
             ->get(['prod_item_agile']);
 
-        $conAgile = $lineas->filter(
-            fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')) !== ''
-        )->count();
+        return $this->resumenDesdeColeccionLineas($lineas);
+    }
+
+    /**
+     * Resumen a partir de filas ya mapeadas por lineasDeNota() (evita reconsultar BD).
+     *
+     * @param  Collection<int, array<string, mixed>|NotaDetalle>  $lineas
+     * @return array{total: int, con_agile: int, sin_agile: int}
+     */
+    public function resumenDesdeColeccionLineas(Collection $lineas): array
+    {
+        $conAgile = $lineas->filter(function ($linea): bool {
+            if ($linea instanceof NotaDetalle) {
+                return trim((string) ($linea->prod_item_agile ?? '')) !== '';
+            }
+
+            $agile = $linea['prod_item_agile'] ?? '';
+
+            return trim((string) $agile) !== '';
+        })->count();
         $total = $lineas->count();
 
         return [

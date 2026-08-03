@@ -102,7 +102,8 @@ class CotizacionController extends Controller
             return $this->create($request);
         }
 
-        $nota = Nota::query()->with('detalle.producto')->find($nronota);
+        // Sin eager load de detalle/producto: lineasDeNota() ya los resuelve en lote.
+        $nota = Nota::query()->find($nronota);
 
         if (! $nota) {
             return $this->notaNoEncontrada($nronota);
@@ -146,7 +147,7 @@ class CotizacionController extends Controller
             'total' => $lineas->sum(fn ($row) => $row['total']),
             'resumenLineas' => $esBorrador
                 ? ['total' => 0, 'con_agile' => 0, 'sin_agile' => 0]
-                : $this->detalleService->resumenLineasNota($nota),
+                : $this->detalleService->resumenDesdeColeccionLineas($lineas),
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),

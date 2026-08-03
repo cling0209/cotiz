@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class NotaListadoService
@@ -28,7 +29,8 @@ class NotaListadoService
 
     public function listar(User $user, array $filtros, int $porPagina): LengthAwarePaginator
     {
-        $query = $this->baseQuery($user, $filtros);
+        $ordenarPorTotal = ($filtros['orden_campo'] ?? 'nronota') === 'total';
+        $query = $this->baseQuery($user, $filtros, incluirTotal: $ordenarPorTotal);
 
         $campo = $filtros['orden_campo'] ?? 'nronota';
         $dir = strtolower($filtros['orden_dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
@@ -42,9 +44,37 @@ class NotaListadoService
         }
 
         $paginado = $query->paginate($porPagina)->withQueryString();
+
+        if (! $ordenarPorTotal) {
+            $this->hidratarTotalesPagina($paginado->getCollection());
+        }
+
         $this->marcarGanadorPropio($paginado->getCollection());
 
         return $paginado;
+    }
+
+    /**
+     * Totales solo para las filas de la página (evita selectSub correlacionado en cada fila del resultado).
+     *
+     * @param  Collection<int, Nota>  $notas
+     */
+    private function hidratarTotalesPagina(Collection $notas): void
+    {
+        if ($notas->isEmpty()) {
+            return;
+        }
+
+        $ids = $notas->pluck('nronota')->all();
+        $totales = DB::table('notasdetalle')
+            ->selectRaw('nronota, COALESCE(SUM(prod_valor * cantidad), 0) as total_calculado')
+            ->whereIn('nronota', $ids)
+            ->groupBy('nronota')
+            ->pluck('total_calculado', 'nronota');
+
+        foreach ($notas as $nota) {
+            $nota->setAttribute('total_calculado', (int) ($totales[$nota->nronota] ?? 0));
+        }
     }
 
     /**
@@ -79,36 +109,45 @@ class NotaListadoService
      */
     public function cotizacionesSegundoLlamadoParaPostular(User $user): Collection
     {
-        return Nota::query()
-            ->select(
-                'notas.nronota',
-                'notas.encargado',
-                'notas.empresa',
-                'seg.fecha_cierre_segundo_llamado',
-            )
-            ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->where('notas.usuario', $user->username)
-            ->where('seg.resultado_propio', 'pendiente')
-            ->where(function ($q): void {
-                $q->whereRaw('lower(seg.estado_mp_glosa) like ?', ['%publicada%'])
-                    ->orWhereRaw('lower(seg.estado_mp_codigo) like ?', ['%publicada%']);
-            })
-            ->whereRaw('lower(seg.convocatoria_descripcion) like ?', ['%segundo llamado%'])
-            ->orderByDesc('notas.nronota')
-            ->get();
+        $cacheKey = 'cotiz.segundo_llamado.'.$user->username;
+
+        /** @var Collection<int, Nota> */
+        return Cache::remember($cacheKey, 60, function () use ($user) {
+            return Nota::query()
+                ->select(
+                    'notas.nronota',
+                    'notas.encargado',
+                    'notas.empresa',
+                    'seg.fecha_cierre_segundo_llamado',
+                )
+                ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+                ->where('notas.usuario', $user->username)
+                ->where('seg.resultado_propio', 'pendiente')
+                ->where(function ($q): void {
+                    $q->whereRaw('lower(seg.estado_mp_glosa) like ?', ['%publicada%'])
+                        ->orWhereRaw('lower(seg.estado_mp_codigo) like ?', ['%publicada%']);
+                })
+                ->whereRaw('lower(seg.convocatoria_descripcion) like ?', ['%segundo llamado%'])
+                ->orderByDesc('notas.nronota')
+                ->get();
+        });
     }
 
-    private function baseQuery(User $user, array $filtros): Builder
+    private function baseQuery(User $user, array $filtros, bool $incluirTotal = true): Builder
     {
         $query = Nota::query()
             ->select('notas.*')
-            ->selectSub(
+            ->with(['usuarioRel', 'mpSeguimiento']);
+
+        if ($incluirTotal) {
+            // Solo necesario al ordenar por total (el planner debe calcularlo para todo el set filtrado).
+            $query->selectSub(
                 DB::table('notasdetalle')
                     ->selectRaw('COALESCE(SUM(prod_valor * cantidad), 0)')
                     ->whereColumn('notasdetalle.nronota', 'notas.nronota'),
                 'total_calculado'
-            )
-            ->with(['usuarioRel', 'mpSeguimiento']);
+            );
+        }
 
         $this->aplicarReglasPerfil($query, $user);
         $this->aplicarFiltroEstadoMp($query, $user, $filtros);
@@ -119,11 +158,12 @@ class NotaListadoService
             $term = trim($filtros['cotizacion']);
             $query->whereRaw('lower(trim(notas.encargado)) like lower(?)', ['%'.$term.'%']);
         } else {
+            // fecha es DATE: comparación directa usa el índice (whereDate envuelve en DATE()).
             if (! empty($filtros['fechadesde'])) {
-                $query->whereDate('notas.fecha', '>=', $filtros['fechadesde']);
+                $query->where('notas.fecha', '>=', $filtros['fechadesde']);
             }
             if (! empty($filtros['fechahasta'])) {
-                $query->whereDate('notas.fecha', '<=', $filtros['fechahasta']);
+                $query->where('notas.fecha', '<=', $filtros['fechahasta']);
             }
         }
 
@@ -142,7 +182,11 @@ class NotaListadoService
         }
 
         if ($estado === 'sin_consultar') {
-            $query->whereDoesntHave('mpSeguimiento');
+            $query->whereNotExists(function ($q): void {
+                $q->selectRaw('1')
+                    ->from('nota_mp_seguimientos as seg')
+                    ->whereColumn('seg.nronota', 'notas.nronota');
+            });
 
             return;
         }
@@ -153,8 +197,11 @@ class NotaListadoService
             return;
         }
 
-        $query->whereHas('mpSeguimiento', function (Builder $q) use ($estado): void {
-            $q->where('resultado_propio', $estado);
+        $query->whereExists(function ($q) use ($estado): void {
+            $q->selectRaw('1')
+                ->from('nota_mp_seguimientos as seg')
+                ->whereColumn('seg.nronota', 'notas.nronota')
+                ->where('seg.resultado_propio', $estado);
         });
     }
 
@@ -168,11 +215,14 @@ class NotaListadoService
             return;
         }
 
-        $query->whereHas('mpSeguimiento', function (Builder $q) use ($rutNorm): void {
-            $q->where('resultado_propio', 'cerrada')
-                ->whereNotNull('rut_ganador')
+        $query->whereExists(function ($q) use ($rutNorm): void {
+            $q->selectRaw('1')
+                ->from('nota_mp_seguimientos as seg')
+                ->whereColumn('seg.nronota', 'notas.nronota')
+                ->where('seg.resultado_propio', 'cerrada')
+                ->whereNotNull('seg.rut_ganador')
                 ->whereRaw(
-                    "replace(replace(replace(replace(lower(coalesce(rut_ganador, '')), '.', ''), '-', ''), ' ', ''), '/', '') = ?",
+                    "replace(replace(replace(replace(lower(coalesce(seg.rut_ganador, '')), '.', ''), '-', ''), ' ', ''), '/', '') = ?",
                     [mb_strtolower($rutNorm)]
                 );
         });
