@@ -370,6 +370,13 @@
                         <input type="number" id="filtro-vinculo-hasta" class="form-control form-control-sm"
                             min="0" max="100" step="1" placeholder="Hasta" inputmode="numeric" autocomplete="off">
                     </div>
+                    <button type="button" id="filtro-cierre-24h" class="btn btn-sm mt-1 w-100 filtro-cierre-24h"
+                        data-no-loader
+                        title="Mostrar solo cotizaciones que cierran en las pr&oacute;ximas 24 horas"
+                        aria-pressed="false">
+                        <i class="bi bi-alarm"></i> Cierran en 24 h
+                        <span id="filtro-cierre-24h-count" class="badge text-bg-light text-dark ms-1">0</span>
+                    </button>
                 </div>
                 <div class="col-12 col-md-6 col-xl-3">
                     <label class="form-label small mb-1">Fecha publicaci&oacute;n</label>
@@ -513,6 +520,30 @@
         color: var(--bs-secondary-color);
         font-size: 0.8rem;
     }
+
+    .filtro-cierre-24h {
+        --bs-btn-color: #c2410c;
+        --bs-btn-bg: #fff7ed;
+        --bs-btn-border-color: #fb923c;
+        --bs-btn-hover-color: #9a3412;
+        --bs-btn-hover-bg: #ffedd5;
+        --bs-btn-hover-border-color: #f97316;
+        --bs-btn-active-color: #fff;
+        --bs-btn-active-bg: #ea580c;
+        --bs-btn-active-border-color: #c2410c;
+        font-weight: 600;
+    }
+
+    .filtro-cierre-24h.is-active {
+        color: #fff;
+        background-color: #ea580c;
+        border-color: #c2410c;
+    }
+
+    .filtro-cierre-24h.is-active .badge {
+        color: #9a3412 !important;
+        background-color: #fff7ed !important;
+    }
 </style>
 @endsection
 
@@ -600,7 +631,10 @@
         const filtroPubHasta = document.getElementById('filtro-pub-hasta');
         const filtroCierreDesde = document.getElementById('filtro-cierre-desde');
         const filtroCierreHasta = document.getElementById('filtro-cierre-hasta');
+        const btnFiltroCierre24h = document.getElementById('filtro-cierre-24h');
+        const badgeFiltroCierre24h = document.getElementById('filtro-cierre-24h-count');
         const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
+        let filtroCierre24hActivo = false;
         const btnDescargarCsv = document.getElementById('btn-descargar-csv');
         const paginacionNav = document.getElementById('oportunidad-paginacion');
         const paginacionLista = document.getElementById('oportunidad-paginacion-lista');
@@ -959,6 +993,40 @@
             return true;
         }
 
+        function itemCierraEn24h(item, ahoraMs, hastaMs) {
+            const ms = fechaItemMs(item.fecha_cierre);
+            if (ms == null) {
+                return false;
+            }
+            return ms >= ahoraMs && ms <= hastaMs;
+        }
+
+        function contarCierre24h() {
+            const ahoraMs = Date.now();
+            const hastaMs = ahoraMs + (24 * 60 * 60 * 1000);
+            let n = 0;
+            porCodigo.forEach((item) => {
+                if (itemCierraEn24h(item, ahoraMs, hastaMs)) {
+                    n += 1;
+                }
+            });
+            return n;
+        }
+
+        function actualizarUiCierre24h() {
+            const n = contarCierre24h();
+            if (badgeFiltroCierre24h) {
+                badgeFiltroCierre24h.textContent = String(n);
+            }
+            if (btnFiltroCierre24h) {
+                btnFiltroCierre24h.classList.toggle('is-active', filtroCierre24hActivo);
+                btnFiltroCierre24h.setAttribute('aria-pressed', filtroCierre24hActivo ? 'true' : 'false');
+                btnFiltroCierre24h.title = filtroCierre24hActivo
+                    ? 'Quitar filtro: mostrar todas las cotizaciones'
+                    : 'Mostrar solo cotizaciones que cierran en las próximas 24 horas';
+            }
+        }
+
         function itemsFiltrados() {
             const regionSel = filtroRegion ? String(filtroRegion.value || '').trim() : '';
             const organismoSel = filtroOrganismo ? normalizarTexto(filtroOrganismo.value) : '';
@@ -989,6 +1057,11 @@
             }
             if (cierreRango) {
                 items = items.filter((item) => itemCoincideFecha(item.fecha_cierre, cierreRango));
+            }
+            if (filtroCierre24hActivo) {
+                const ahoraMs = Date.now();
+                const hastaMs = ahoraMs + (24 * 60 * 60 * 1000);
+                items = items.filter((item) => itemCierraEn24h(item, ahoraMs, hastaMs));
             }
             return items.sort(comparar);
         }
@@ -1034,6 +1107,7 @@
                     pub_hasta: filtroPubHasta ? String(filtroPubHasta.value || '') : '',
                     cierre_desde: filtroCierreDesde ? String(filtroCierreDesde.value || '') : '',
                     cierre_hasta: filtroCierreHasta ? String(filtroCierreHasta.value || '') : '',
+                    cierre_24h: filtroCierre24hActivo === true,
                 }));
             } catch (e) {
                 // localStorage no disponible
@@ -1075,6 +1149,7 @@
             if (filtroCierreHasta && data.cierre_hasta != null) {
                 filtroCierreHasta.value = String(data.cierre_hasta || '');
             }
+            filtroCierre24hActivo = data.cierre_24h === true;
             filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null ?
                 String(data.palabra_clave_aplicada || '') :
                 (filtroPalabraClave ? normalizarTexto(filtroPalabraClave.value) : '');
@@ -1332,6 +1407,7 @@
                 paginaActual = 1;
             }
             actualizarIndicadoresOrden();
+            actualizarUiCierre24h();
             if (relEncontradas) relEncontradas.textContent = String(total);
 
             if (total === 0) {
@@ -1348,7 +1424,9 @@
                 tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">
                 No hay oportunidades con los filtros seleccionados.
             </td></tr>`;
-                footer.textContent = `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
+                footer.textContent = filtroCierre24hActivo
+                    ? `Ninguna oportunidad cierra en las próximas 24 h (${total} vigentes).`
+                    : `0 de ${total} oportunidad${total === 1 ? '' : 'es'} visibles con el filtro actual.`;
                 if (btnDescargarCsv) btnDescargarCsv.disabled = true;
                 actualizarPaginadores(1);
                 return;
@@ -1431,11 +1509,14 @@
                 (filtroCodigo && String(filtroCodigo.value || '').trim() !== '') ||
                 rangoVinculoFiltro() != null ||
                 rangoFechaFiltro(filtroPubDesde, filtroPubHasta) != null ||
-                rangoFechaFiltro(filtroCierreDesde, filtroCierreHasta) != null;
+                rangoFechaFiltro(filtroCierreDesde, filtroCierreHasta) != null ||
+                filtroCierre24hActivo;
             const sufijo = cancelado ? ' (parcial, cancelada).' : ' del día.';
-            const visibles = filtroActivo ?
-                `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.` :
-                `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo}`;
+            const visibles = filtroCierre24hActivo ?
+                `${items.length} oportunidad${items.length === 1 ? '' : 'es'} cierran en 24 h (${total} vigentes).` :
+                (filtroActivo ?
+                    `${items.length} de ${total} oportunidad${total === 1 ? '' : 'es'} visibles.` :
+                    `${items.length} oportunidad${items.length === 1 ? '' : 'es'}${sufijo}`);
             const rango = items.length > PAGE_SIZE ?
                 ` Mostrando ${desde + 1}–${Math.min(desde + PAGE_SIZE, items.length)}.` :
                 '';
@@ -1547,6 +1628,18 @@
             btnFiltrarOportunidades.addEventListener('click', () => aplicarFiltros());
         }
 
+        if (btnFiltroCierre24h) {
+            btnFiltroCierre24h.addEventListener('click', () => {
+                filtroCierre24hActivo = !filtroCierre24hActivo;
+                if (filtroCierre24hActivo) {
+                    if (filtroCierreDesde) filtroCierreDesde.value = '';
+                    if (filtroCierreHasta) filtroCierreHasta.value = '';
+                }
+                guardarFiltros();
+                renderTabla(true);
+            });
+        }
+
         if (filtroPalabraClave) {
             filtroPalabraClave.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -1567,6 +1660,13 @@
                 }
             });
             el.addEventListener('change', () => {
+                if ((el === filtroCierreDesde || el === filtroCierreHasta) && filtroCierre24hActivo) {
+                    const tieneRango = String(filtroCierreDesde?.value || '').trim() !== ''
+                        || String(filtroCierreHasta?.value || '').trim() !== '';
+                    if (tieneRango) {
+                        filtroCierre24hActivo = false;
+                    }
+                }
                 guardarFiltros();
                 renderTabla(true);
             });
