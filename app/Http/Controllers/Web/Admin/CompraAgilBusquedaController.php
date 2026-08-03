@@ -136,9 +136,6 @@ class CompraAgilBusquedaController extends Controller
 
         try {
             $codigo = strtoupper(trim($datos['codigo']));
-            if ($error = $this->validarCodigoCabecera($notaCheck, $codigo, true)) {
-                return response()->json(['error' => $error], 422);
-            }
 
             $lineasPreview = $this->lineasPreviewDesdeRequest($request);
             $cabeceraPreview = $lineasPreview !== null
@@ -146,6 +143,15 @@ class CompraAgilBusquedaController extends Controller
                 : [];
             $usarPreviewOportunidad = $lineasPreview !== null
                 && $this->codigoPreviewCoincideConImport($codigo, $cabeceraPreview);
+
+            // Preview Oportunidades: unicidad local (mismo criterio que el modal cacheado).
+            // Resto: también consulta sitio par.
+            if ($error = $usarPreviewOportunidad
+                ? $this->notaService->validarNumeroCotizacion($notaCheck, $codigo)
+                : $this->validarCodigoCabecera($notaCheck, $codigo, true)
+            ) {
+                return response()->json(['error' => $error], 422);
+            }
 
             [$nota, $recienCreada] = $this->notaAutorizada($request, $nronota, true);
 

@@ -578,6 +578,130 @@ class NotaDetalleService
     }
 
     /**
+     * Alta masiva de líneas (import Compra Ágil): un MAX(orden), maeprod en batch,
+     * inserts por chunk y una sola auditoría.
+     *
+     * @param  list<array{
+     *   pendiente?: bool,
+     *   prod_item?: string,
+     *   cantidad: int,
+     *   prod_valor?: int,
+     *   prod_valor_costo?: int,
+     *   prod_item_agile?: string|null,
+     *   prod_descripcion_agile?: string|null,
+     *   prod_nombre?: string|null
+     * }>  $lineas
+     */
+    public function agregarLineasImportacionLote(Nota $nota, array $lineas, ?string $usuarioUpd = null): int
+    {
+        if ($lineas === []) {
+            return 0;
+        }
+
+        return (int) DB::transaction(function () use ($nota, $lineas, $usuarioUpd) {
+            $orden = ((int) NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->max('orden')) + 1;
+            if ($orden < 1) {
+                $orden = 1;
+            }
+
+            $codigos = [];
+            foreach ($lineas as $linea) {
+                if (! empty($linea['pendiente'])) {
+                    continue;
+                }
+                $codigo = trim((string) ($linea['prod_item'] ?? ''));
+                if ($codigo !== '') {
+                    $codigos[$codigo] = true;
+                }
+            }
+
+            $maeprods = $codigos === []
+                ? collect()
+                : Maeprod::query()
+                    ->whereIn('prod_item', array_keys($codigos))
+                    ->get()
+                    ->keyBy(fn (Maeprod $m) => (string) $m->prod_item);
+
+            $ahora = now();
+            $rows = [];
+            $vinculadas = 0;
+            $pendientes = 0;
+
+            foreach ($lineas as $linea) {
+                $agileId = trim((string) ($linea['prod_item_agile'] ?? ''));
+                $agileDesc = AgileDescripcion::paraDetalle($linea['prod_descripcion_agile'] ?? null);
+                $cantidad = max(1, (int) ($linea['cantidad'] ?? 1));
+
+                if (! empty($linea['pendiente'])) {
+                    $prodItem = self::codigoNokParaOrden($orden);
+                    $rows[] = [
+                        'nronota' => $nota->nronota,
+                        'prod_item' => $prodItem,
+                        'prod_valor' => 0,
+                        'cantidad' => $cantidad,
+                        'fechahora' => $ahora,
+                        'orden' => $orden,
+                        'prod_valor_costo' => 0,
+                        'prod_item_agile' => $agileId !== '' ? $agileId : null,
+                        'prod_descripcion_agile' => $agileDesc,
+                        'prod_descripcion_maestro' => $agileDesc,
+                    ];
+                    $pendientes++;
+                } else {
+                    $prodItem = trim((string) ($linea['prod_item'] ?? ''));
+                    /** @var Maeprod|null $producto */
+                    $producto = $maeprods->get($prodItem);
+                    $costo = array_key_exists('prod_valor_costo', $linea)
+                        ? (int) $linea['prod_valor_costo']
+                        : (int) ($producto?->prod_valor_costo ?? 0);
+                    $nombreMaestro = trim((string) ($producto?->prod_nombre ?? $linea['prod_nombre'] ?? ''));
+                    $descripcionMaestro = $nombreMaestro !== ''
+                        ? AgileDescripcion::paraDetalle($nombreMaestro)
+                        : $agileDesc;
+
+                    $rows[] = [
+                        'nronota' => $nota->nronota,
+                        'prod_item' => $prodItem,
+                        'prod_valor' => (int) ($linea['prod_valor'] ?? 0),
+                        'cantidad' => $cantidad,
+                        'fechahora' => $ahora,
+                        'orden' => $orden,
+                        'prod_valor_costo' => $costo,
+                        'prod_item_agile' => $agileId !== '' ? $agileId : null,
+                        'prod_descripcion_agile' => $agileDesc,
+                        'prod_descripcion_maestro' => $descripcionMaestro,
+                    ];
+                    $vinculadas++;
+                }
+
+                $orden++;
+            }
+
+            foreach (array_chunk($rows, 100) as $chunk) {
+                NotaDetalle::query()->insert($chunk);
+            }
+
+            $total = count($rows);
+            if ($total > 0) {
+                $this->auditoria->registrarModificar(
+                    $nota,
+                    $usuarioUpd,
+                    sprintf(
+                        'Importación Compra Ágil: %d línea(s) (%d vinculadas, %d pendientes)',
+                        $total,
+                        $vinculadas,
+                        $pendientes,
+                    ),
+                );
+            }
+
+            return $total;
+        });
+    }
+
+    /**
      * @return array{
      *   prod_item: string,
      *   prod_nombre: string,

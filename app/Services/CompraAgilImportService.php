@@ -559,7 +559,15 @@ class CompraAgilImportService
 
                 if ($datosCabecera !== []) {
                     if (isset($datosCabecera['encargado'])) {
-                        $error = $this->notaService->validarNumeroCotizacionDisponible($nota, $datosCabecera['encargado'], true);
+                        // Desde preview Oportunidades: solo unicidad local (el modal ya validó;
+                        // evita round-trip al sitio par en cada lote de importación).
+                        $error = $omitirValidacionMp
+                            ? $this->notaService->validarNumeroCotizacion($nota, $datosCabecera['encargado'])
+                            : $this->notaService->validarNumeroCotizacionDisponible(
+                                $nota,
+                                $datosCabecera['encargado'],
+                                true,
+                            );
                         if ($error !== null) {
                             throw new RuntimeException($error);
                         }
@@ -576,41 +584,47 @@ class CompraAgilImportService
             $agregadas = 0;
             $vinculadas = 0;
             $pendientes = 0;
+            $loteInsert = [];
 
             for ($i = $desde; $i < $hasta; $i++) {
                 $linea = $preview['lineas'][$i];
                 $descripcionMp = $this->descripcionAgileParaLinea($linea['id_agile'], $linea['descripcion']);
 
-                $vinculo = $this->productoDesdePreviewLinea($linea)
-                    ?? $this->resolverProductoParaImportar($linea['descripcion']);
+                // Preview cacheado: confiar en vínculos firmes ya resueltos; no re-scorear.
+                // Sin preview: solo aprendizaje firme (nunca auto-aplica similitud maeprod).
+                $vinculo = $this->productoDesdePreviewLinea($linea);
+                if ($vinculo === null && ! $omitirValidacionMp) {
+                    $vinculo = $this->resolverProductoParaImportar($linea['descripcion']);
+                }
 
                 if ($vinculo) {
-                    $this->detalleService->agregarLinea(
-                        $nota,
-                        $vinculo['prod_item'],
-                        (int) $linea['cantidad'],
-                        (int) $vinculo['prod_valor'],
-                        (int) $vinculo['prod_valor_costo'],
-                        $usuario,
-                        $linea['id_agile'],
-                        $descripcionMp,
-                    );
-
+                    $loteInsert[] = [
+                        'pendiente' => false,
+                        'prod_item' => $vinculo['prod_item'],
+                        'cantidad' => (int) $linea['cantidad'],
+                        'prod_valor' => (int) $vinculo['prod_valor'],
+                        'prod_valor_costo' => (int) $vinculo['prod_valor_costo'],
+                        'prod_item_agile' => $linea['id_agile'],
+                        'prod_descripcion_agile' => $descripcionMp,
+                        'prod_nombre' => $vinculo['prod_nombre'] ?? null,
+                    ];
                     $vinculadas++;
                 } else {
-                    $this->detalleService->agregarLineaAgilePendiente(
-                        $nota,
-                        $linea['id_agile'],
-                        $descripcionMp,
-                        (int) $linea['cantidad'],
-                        $usuario,
-                    );
-
+                    $loteInsert[] = [
+                        'pendiente' => true,
+                        'cantidad' => (int) $linea['cantidad'],
+                        'prod_item_agile' => $linea['id_agile'],
+                        'prod_descripcion_agile' => $descripcionMp,
+                    ];
                     $pendientes++;
                     $mensajes[] = 'Pendiente de vincular: '.$linea['descripcion'];
                 }
 
                 $agregadas++;
+            }
+
+            if ($loteInsert !== []) {
+                $this->detalleService->agregarLineasImportacionLote($nota, $loteInsert, $usuario);
             }
 
             if ($desde === 0 && $hasta >= $total && $agregadas === 0) {
@@ -686,19 +700,13 @@ class CompraAgilImportService
     }
 
     /**
-     * Solo vínculo firme (aprendizaje). Sugerencias por similitud no se auto-aplican:
-     * quedan como NOK-{orden} para vincular después con Buscar.
+     * Solo vínculo firme (aprendizaje). No corre similitud maeprod:
+     * las sugerencias quedan como NOK-{orden} para vincular después con Buscar.
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
     private function resolverProductoParaImportar(string $descripcion): ?array
     {
-        $resuelto = $this->vinculoAprendizaje->resolverParaImportacion($descripcion);
-
-        if (($resuelto['estado'] ?? '') !== 'vinculado' || ! empty($resuelto['es_sugerencia'])) {
-            return null;
-        }
-
-        return $resuelto['producto'];
+        return $this->vinculoAprendizaje->buscarCodigoAprendido($descripcion);
     }
 }
