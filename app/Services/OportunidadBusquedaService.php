@@ -298,7 +298,13 @@ class OportunidadBusquedaService
         $cambioDesde = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
         $cambioDesde = $cambioDesde !== '' ? $cambioDesde : null;
         $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
+        $maxPaginasPaso = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', 8)));
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
+        $pasos[$indice]['pagina'] = 1;
+        $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+        $pasos[$indice]['items_leidos'] = 0;
+        $pasos[$indice]['items_pagina'] = 0;
+        $pasos[$indice]['duracion_segundos'] = $duracionPrevia;
         $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
             $frase !== '' ? $frase : '(todas)',
             $region,
@@ -308,10 +314,11 @@ class OportunidadBusquedaService
             $cambioDesde,
         );
         $mensajeInicio = sprintf(
-            'Consultando %s (paso %d/%d)…',
+            'Consultando %s (paso %d/%d) — página 1/%d…',
             $regionNombre !== '' ? $regionNombre : ('región '.$region),
             $this->contarTerminados($pasos) + 1,
             count($pasos),
+            $maxPaginasPaso,
         );
 
         try {
@@ -340,14 +347,23 @@ class OportunidadBusquedaService
             $regionNombre,
             $region,
             $assertCorridaActiva,
+            $inicioPaso,
+            $duracionPrevia,
+            $maxPaginasPaso,
         ): void {
             $assertCorridaActiva();
             $pasos[$indice]['estado'] = self::PASO_RUNNING;
             $pasos[$indice]['consulta'] = $consulta;
+            $pasos[$indice]['pagina'] = max(1, $pagina);
+            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+            $pasos[$indice]['items_pagina'] = max(0, $itemsPagina);
+            $pasos[$indice]['items_leidos'] = max(0, $itemsAcumulados);
+            $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $mensaje = sprintf(
-                'Consultando %s — página %d (%d ítems leídos)…',
+                'Consultando %s — página %d/%d (%d ítems leídos)…',
                 $regionNombre !== '' ? $regionNombre : ('región '.$region),
                 $pagina,
+                $maxPaginasPaso,
                 $itemsAcumulados,
             );
             $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje);
@@ -892,6 +908,16 @@ class OportunidadBusquedaService
                 ? max(0, (int) $paso['duracion_segundos'])
                 : null;
 
+            $pagina = array_key_exists('pagina', $paso) && $paso['pagina'] !== null
+                ? max(1, (int) $paso['pagina'])
+                : null;
+            $paginasMax = array_key_exists('paginas_max', $paso) && $paso['paginas_max'] !== null
+                ? max(1, (int) $paso['paginas_max'])
+                : null;
+            $itemsLeidos = array_key_exists('items_leidos', $paso) && $paso['items_leidos'] !== null
+                ? max(0, (int) $paso['items_leidos'])
+                : null;
+
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
             if ($consulta === null) {
                 $cambioDesdePaso = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
@@ -913,6 +939,9 @@ class OportunidadBusquedaService
                 'frase' => (string) ($paso['frase'] ?? ''),
                 'intentos' => $intentos,
                 'encontradas' => $encontradas,
+                'pagina' => $pagina,
+                'paginas_max' => $paginasMax,
+                'items_leidos' => $itemsLeidos,
                 'duracion_segundos' => $duracionSegundos,
                 'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
                 'consulta' => $consulta,
@@ -945,6 +974,9 @@ class OportunidadBusquedaService
                 'estado' => self::PASO_PENDING,
                 'intentos' => 0,
                 'encontradas' => null,
+                'pagina' => null,
+                'paginas_max' => null,
+                'items_leidos' => null,
                 'duracion_segundos' => null,
                 'consulta' => null,
             ];

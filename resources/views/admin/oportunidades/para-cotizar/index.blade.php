@@ -122,6 +122,7 @@
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
+                                <th class="text-nowrap text-end">P&aacute;gina</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
                                 <th class="text-nowrap">Resultado</th>
                             </tr>
@@ -2435,6 +2436,23 @@
                     tdEncontradas.textContent = String(Number(paso.encontradas) || 0);
                 }
 
+                const tdPagina = document.createElement('td');
+                tdPagina.className = 'text-end text-nowrap tabular-nums';
+                const pagina = Number(paso.pagina);
+                const paginasMax = Number(paso.paginas_max);
+                const itemsLeidos = Number(paso.items_leidos);
+                if (Number.isFinite(pagina) && pagina > 0) {
+                    const maxTxt = Number.isFinite(paginasMax) && paginasMax > 0 ? `/${paginasMax}` : '';
+                    let paginaTxt = `${pagina}${maxTxt}`;
+                    if (Number.isFinite(itemsLeidos) && itemsLeidos >= 0 && paso.resultado === 'en_curso') {
+                        paginaTxt += ` · ${itemsLeidos} ítems`;
+                    }
+                    tdPagina.textContent = paginaTxt;
+                } else {
+                    tdPagina.textContent = '—';
+                    tdPagina.classList.add('text-muted');
+                }
+
                 const tdTiempo = document.createElement('td');
                 tdTiempo.className = 'text-end text-nowrap tabular-nums';
                 const duracionTexto = paso.duracion_texto ||
@@ -2458,7 +2476,7 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdPagina, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }
