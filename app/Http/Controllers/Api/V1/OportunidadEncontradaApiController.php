@@ -66,6 +66,25 @@ class OportunidadEncontradaApiController extends Controller
             }
         }
 
+        if ($accion === 'consultar_vinculo') {
+            $codigo = strtoupper(trim((string) ($payload['codigo'] ?? '')));
+            if ($codigo === '') {
+                return $this->error('no viene codigo');
+            }
+
+            $item = $this->relay->itemVinculoProcesado($codigo);
+
+            return response()->json([
+                'resultado' => 'OK',
+                'encontrado' => $item !== null,
+                'mensaje' => $item !== null
+                    ? 'Vínculo procesado encontrado'
+                    : 'Sin vínculo procesado',
+                'codigo' => $codigo,
+                'item' => $item,
+            ]);
+        }
+
         if ($accion !== 'graba') {
             return $this->error('Accion no existe: '.$accion);
         }

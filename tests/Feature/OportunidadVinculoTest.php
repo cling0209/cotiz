@@ -851,6 +851,133 @@ class OportunidadVinculoTest extends TestCase
         $this->assertNull($row->vinculo_preview_json['lineas'][0]['producto'] ?? null);
     }
 
+    public function test_asegurar_vinculo_importa_desde_par_sin_llamar_mp(): void
+    {
+        config([
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.mercadopublico.ticket' => 'TICKET-TEST',
+        ]);
+
+        $preview = [
+            'cabecera' => ['codigo_cotizacion' => '4323-127-COT26'],
+            'lineas' => [
+                [
+                    'id_agile' => '1',
+                    'descripcion' => 'Producto A',
+                    'cantidad' => 1,
+                    'producto' => ['codigo' => 'P1', 'nombre' => 'Prod'],
+                    'estado' => 'vinculado',
+                ],
+            ],
+            'resumen' => ['total' => 1, 'vinculados' => 1, 'pendientes' => 0],
+        ];
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'encontrado' => true,
+                'item' => [
+                    'codigo' => '4323-127-COT26',
+                    'nombre' => 'Cot desde par',
+                    'vinculo_completo' => true,
+                    'cantidad_productos' => 1,
+                    'productos_vinculados' => 1,
+                    'porcentaje_vinculo' => 100,
+                    'vinculo_preview_json' => $preview,
+                    'vinculo_at' => now()->toIso8601String(),
+                    'fecha_busqueda' => '2026-07-10',
+                ],
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response('no debe llamarse', 500),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '4323-127-COT26',
+            'nombre' => 'Pendiente local',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $resultado = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarVinculoCodigo('4323-127-COT26');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertFalse($resultado['ya_estaba']);
+        $this->assertTrue($resultado['desde_par']);
+        $this->assertSame(1, $resultado['vinculados']);
+        $this->assertSame(100, $resultado['porcentaje']);
+
+        $row = OportunidadEncontrada::query()->where('codigo', '4323-127-COT26')->firstOrFail();
+        $this->assertTrue((bool) $row->vinculo_completo);
+        $this->assertSame('2026-07-16', $row->fecha_busqueda->toDateString());
+        $this->assertSame('procesada', $row->estadoVinculoUi());
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'mercadopublico'));
+    }
+
+    public function test_asegurar_vinculo_cae_a_mp_si_par_no_tiene(): void
+    {
+        config([
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.mercadopublico.ticket' => 'TICKET-TEST',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'encontrado' => false,
+                'item' => null,
+            ], 200),
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => 'PAR-FALLBACK-001',
+                    'nombre' => 'Fallback MP',
+                    'institucion' => [
+                        'organismo_comprador' => 'CORP',
+                        'region' => 13,
+                    ],
+                    'productos_solicitados' => [
+                        [
+                            'codigo_producto' => '1',
+                            'nombre' => 'Item',
+                            'descripcion' => 'Item uno',
+                            'cantidad' => 1,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'PAR-FALLBACK-001',
+            'nombre' => 'Sin vínculo',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $resultado = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarVinculoCodigo('PAR-FALLBACK-001');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertFalse($resultado['desde_par']);
+        $this->assertTrue((bool) OportunidadEncontrada::query()
+            ->where('codigo', 'PAR-FALLBACK-001')
+            ->value('vinculo_completo'));
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'mercadopublico'));
+    }
+
     public function test_refrescar_vinculos_por_frases_aplica_sin_vinculo_y_reasigna(): void
     {
         $this->seed(GramajeSeeder::class);

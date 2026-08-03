@@ -35,6 +35,152 @@ class OportunidadEncontradaRelayService
     private const CACHE_COLA_PLAN_PREFIX = 'oportunidad_sync_par.cola_plan.';
 
     /**
+     * Preview de vinculación ya procesada (para responder al sitio par).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function itemVinculoProcesado(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        $row = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($row === null || $row->estadoVinculoUi() !== 'procesada') {
+            return null;
+        }
+
+        return $row->toResumenConPreviewVinculo();
+    }
+
+    /**
+     * Consulta al sitio par un vínculo ya procesado e intenta aplicarlo a la fila local.
+     * Timeout corto (sin despertar el par): si no responde, el llamador puede vincular local.
+     */
+    public function importarVinculoDesdePar(string $codigo): bool
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '' || $this->urlDestino() === '') {
+            return false;
+        }
+
+        $item = $this->consultarVinculoEnPar($codigo);
+        if ($item === null) {
+            return false;
+        }
+
+        if (! (bool) ($item['vinculo_completo'] ?? false)) {
+            return false;
+        }
+
+        $preview = $item['vinculo_preview_json'] ?? null;
+        if (! is_array($preview) || ! isset($preview['lineas']) || ! is_array($preview['lineas'])) {
+            return false;
+        }
+
+        $local = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+
+        $attrs = [
+            'vinculo_completo' => true,
+            'productos_vinculados' => isset($item['productos_vinculados'])
+                ? (int) $item['productos_vinculados']
+                : null,
+            'porcentaje_vinculo' => isset($item['porcentaje_vinculo'])
+                ? (int) $item['porcentaje_vinculo']
+                : null,
+            'vinculo_preview_json' => $preview,
+            'vinculo_at' => $this->parseFechaNullable($item['vinculo_at'] ?? null) ?? now(),
+            'vinculo_error' => null,
+        ];
+
+        if (isset($item['cantidad_productos'])) {
+            $attrs['cantidad_productos'] = (int) $item['cantidad_productos'];
+        }
+
+        if ($local !== null) {
+            $local->fill($attrs);
+            $local->save();
+
+            return $local->estadoVinculoUi() === 'procesada';
+        }
+
+        $this->recibir([$item]);
+
+        return $this->itemVinculoProcesado($codigo) !== null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function consultarVinculoEnPar(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        $destino = $this->urlDestino();
+        if ($codigo === '' || $destino === '') {
+            return null;
+        }
+
+        $userAuth = (string) config('cotiz.api_nota.user', '');
+        $passwordAuth = (string) config('cotiz.api_nota.password', '');
+        if ($userAuth === '' || $passwordAuth === '') {
+            return null;
+        }
+
+        $timeout = max(3, (int) config('cotiz.api_oportunidad_encontrada.consultar_vinculo_timeout_seg', 12));
+
+        try {
+            $response = Http::timeout($timeout)
+                ->asJson()
+                ->withBasicAuth($userAuth, $passwordAuth)
+                ->post($destino, [
+                    'accion' => 'consultar_vinculo',
+                    'codigo' => $codigo,
+                    'replicacion' => true,
+                    'origen_sistema' => (string) config('cotiz.sistema', config('app.name')),
+                ]);
+        } catch (\Throwable $e) {
+            Log::info('Consultar vínculo en par: sin respuesta', [
+                'codigo' => $codigo,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            Log::info('Consultar vínculo en par: HTTP no OK', [
+                'codigo' => $codigo,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ($data['resultado'] ?? '') !== 'OK') {
+            return null;
+        }
+
+        if (! ($data['encontrado'] ?? false)) {
+            return null;
+        }
+
+        $item = $data['item'] ?? null;
+
+        return is_array($item) ? $item : null;
+    }
+
+    /**
      * Replica oportunidades encontradas al sitio par (Romulo ↔ Reicol).
      * No lanza: encola si el par no responde.
      *

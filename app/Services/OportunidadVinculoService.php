@@ -887,11 +887,13 @@ class OportunidadVinculoService
 
     /**
      * Vincula on-demand una cotización (Productos / Ir a cotizar).
-     * Si ya estaba procesada, no reaplica frases: usa el preview guardado.
+     * Si ya estaba procesada, usa el preview local.
+     * Si falta, consulta el sitio par; solo si el par no tiene, vincula vía Mercado Público.
      *
      * @return array{
      *   ok: bool,
      *   ya_estaba: bool,
+     *   desde_par: bool,
      *   total: int,
      *   vinculados: int,
      *   porcentaje: int,
@@ -907,6 +909,7 @@ class OportunidadVinculoService
             return [
                 'ok' => false,
                 'ya_estaba' => false,
+                'desde_par' => false,
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,
@@ -926,6 +929,29 @@ class OportunidadVinculoService
             return [
                 'ok' => true,
                 'ya_estaba' => true,
+                'desde_par' => false,
+                'total' => (int) ($row->cantidad_productos ?? 0),
+                'vinculados' => (int) ($row->productos_vinculados ?? 0),
+                'porcentaje' => (int) ($row->porcentaje_vinculo ?? 0),
+                'cambios_frase' => 0,
+                'item' => $row?->toResumen(),
+                'error' => null,
+            ];
+        }
+
+        if ($this->encontradaRelay->importarVinculoDesdePar($codigo)
+            && ! $this->necesitaVincularCodigo($codigo)
+        ) {
+            $row = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->orderByDesc('fecha_busqueda')
+                ->orderByDesc('id')
+                ->first();
+
+            return [
+                'ok' => true,
+                'ya_estaba' => false,
+                'desde_par' => true,
                 'total' => (int) ($row->cantidad_productos ?? 0),
                 'vinculados' => (int) ($row->productos_vinculados ?? 0),
                 'porcentaje' => (int) ($row->porcentaje_vinculo ?? 0),
@@ -942,6 +968,7 @@ class OportunidadVinculoService
             return [
                 'ok' => false,
                 'ya_estaba' => false,
+                'desde_par' => false,
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,
@@ -962,6 +989,7 @@ class OportunidadVinculoService
             return [
                 'ok' => true,
                 'ya_estaba' => false,
+                'desde_par' => false,
                 'total' => $resultado['total'],
                 'vinculados' => $resultado['vinculados'],
                 'porcentaje' => $resultado['porcentaje'],
@@ -975,6 +1003,7 @@ class OportunidadVinculoService
             return [
                 'ok' => false,
                 'ya_estaba' => false,
+                'desde_par' => false,
                 'total' => 0,
                 'vinculados' => 0,
                 'porcentaje' => 0,

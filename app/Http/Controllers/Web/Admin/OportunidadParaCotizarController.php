@@ -405,6 +405,7 @@ class OportunidadParaCotizarController extends Controller
         return response()->json([
             'ok' => true,
             'ya_estaba' => $resultado['ya_estaba'],
+            'desde_par' => (bool) ($resultado['desde_par'] ?? false),
             'total' => $resultado['total'],
             'vinculados' => $resultado['vinculados'],
             'porcentaje' => $resultado['porcentaje'],

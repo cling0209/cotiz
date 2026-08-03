@@ -1738,7 +1738,7 @@
                 return { ok: true };
             }
             if (typeof onAviso === 'function') {
-                onAviso('Se va a vincular antes de mostrar…');
+                onAviso('Sin vínculo local; consultando sitio par…');
             }
             if (!urls.vincularCodigo) {
                 return { ok: false, error: 'No hay endpoint de vinculación disponible.' };
@@ -1811,7 +1811,7 @@
             const necesitaVinculo = itemNecesitaVincular(porCodigo.get(cod));
             setModalVinculoLoading(
                 necesitaVinculo
-                    ? 'Se va a vincular antes de mostrar…'
+                    ? 'Sin vínculo local; consultando sitio par…'
                     : 'Cargando productos…'
             );
             bsModalVinculo.show();
@@ -1967,7 +1967,7 @@
                 const labelPrev = link.innerHTML;
                 link.classList.add('disabled');
                 link.setAttribute('aria-disabled', 'true');
-                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…';
+                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando vínculo…';
                 const prev = await asegurarVinculoAntes(cod);
                 if (!prev.ok) {
                     link.classList.remove('disabled');

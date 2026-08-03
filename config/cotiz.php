@@ -59,6 +59,8 @@ return [
         // Reintentos por lote ante 429 (rate limit), con backoff.
         'sync_reintentos_429' => max(0, min(10, (int) env('COTIZ_OPORTUNIDAD_SYNC_REINTENTOS_429', 3))),
         'sync_backoff_429_seg' => max(1, min(60, (int) env('COTIZ_OPORTUNIDAD_SYNC_BACKOFF_429_SEG', 3))),
+        // Timeout corto al pedir un vínculo ya procesado al par (Productos / Ir a cotizar).
+        'consultar_vinculo_timeout_seg' => max(3, min(60, (int) env('COTIZ_OPORTUNIDAD_CONSULTAR_VINCULO_TIMEOUT_SEG', 12))),
     ],
     'api_nota' => [
         'url' => env('COTIZ_API_NOTA_URL', ''),

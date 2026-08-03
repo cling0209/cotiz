@@ -707,4 +707,68 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertJsonPath('resultado', 'OK')
             ->assertJsonPath('eliminados', 0);
     }
+
+    public function test_api_consultar_vinculo_devuelve_item_procesado(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '8888-1-COT26',
+            'nombre' => 'Con vínculo',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'cantidad_productos' => 1,
+            'productos_vinculados' => 1,
+            'porcentaje_vinculo' => 100,
+            'vinculo_at' => now(),
+            'vinculo_preview_json' => [
+                'cabecera' => [],
+                'lineas' => [['id_agile' => '1', 'estado' => 'vinculado']],
+                'resumen' => ['total' => 1, 'vinculados' => 1],
+            ],
+        ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'consultar_vinculo',
+                'codigo' => '8888-1-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('encontrado', true)
+            ->assertJsonPath('item.codigo', '8888-1-COT26')
+            ->assertJsonPath('item.vinculo_completo', true);
+    }
+
+    public function test_api_consultar_vinculo_sin_procesar(): void
+    {
+        config([
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '8888-2-COT26',
+            'nombre' => 'Sin vínculo',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+        ]);
+
+        $this->withBasicAuth('api', 'secret')
+            ->postJson('/api/v1/oportunidad-encontrada', [
+                'accion' => 'consultar_vinculo',
+                'codigo' => '8888-2-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('resultado', 'OK')
+            ->assertJsonPath('encontrado', false)
+            ->assertJsonPath('item', null);
+    }
 }
