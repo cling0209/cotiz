@@ -559,15 +559,13 @@ class CompraAgilImportService
 
                 if ($datosCabecera !== []) {
                     if (isset($datosCabecera['encargado'])) {
-                        // Desde preview Oportunidades: solo unicidad local (el modal ya validó;
-                        // evita round-trip al sitio par en cada lote de importación).
-                        $error = $omitirValidacionMp
-                            ? $this->notaService->validarNumeroCotizacion($nota, $datosCabecera['encargado'])
-                            : $this->notaService->validarNumeroCotizacionDisponible(
-                                $nota,
-                                $datosCabecera['encargado'],
-                                true,
-                            );
+                        // Consulta sitio par (si ya se verificó en este request/lote, se omite).
+                        $error = $this->notaService->validarNumeroCotizacionDisponible(
+                            $nota,
+                            $datosCabecera['encargado'],
+                            true,
+                            $omitirValidacionMp,
+                        );
                         if ($error !== null) {
                             throw new RuntimeException($error);
                         }
@@ -624,7 +622,7 @@ class CompraAgilImportService
             }
 
             if ($loteInsert !== []) {
-                $this->detalleService->agregarLineasImportacionLote($nota, $loteInsert, $usuario);
+                $this->detalleService->agregarLineasImportacionLote($nota, $loteInsert);
             }
 
             if ($desde === 0 && $hasta >= $total && $agregadas === 0) {

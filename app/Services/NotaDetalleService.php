@@ -578,8 +578,8 @@ class NotaDetalleService
     }
 
     /**
-     * Alta masiva de líneas (import Compra Ágil): un MAX(orden), maeprod en batch,
-     * inserts por chunk y una sola auditoría.
+     * Alta masiva de líneas (import Compra Ágil): un MAX(orden), maeprod en batch
+     * e inserts por chunk. Sin auditoría: el alta masiva no es un “cambio” manual.
      *
      * @param  list<array{
      *   pendiente?: bool,
@@ -592,13 +592,13 @@ class NotaDetalleService
      *   prod_nombre?: string|null
      * }>  $lineas
      */
-    public function agregarLineasImportacionLote(Nota $nota, array $lineas, ?string $usuarioUpd = null): int
+    public function agregarLineasImportacionLote(Nota $nota, array $lineas): int
     {
         if ($lineas === []) {
             return 0;
         }
 
-        return (int) DB::transaction(function () use ($nota, $lineas, $usuarioUpd) {
+        return (int) DB::transaction(function () use ($nota, $lineas) {
             $orden = ((int) NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->max('orden')) + 1;
@@ -626,8 +626,6 @@ class NotaDetalleService
 
             $ahora = now();
             $rows = [];
-            $vinculadas = 0;
-            $pendientes = 0;
 
             foreach ($lineas as $linea) {
                 $agileId = trim((string) ($linea['prod_item_agile'] ?? ''));
@@ -648,7 +646,6 @@ class NotaDetalleService
                         'prod_descripcion_agile' => $agileDesc,
                         'prod_descripcion_maestro' => $agileDesc,
                     ];
-                    $pendientes++;
                 } else {
                     $prodItem = trim((string) ($linea['prod_item'] ?? ''));
                     /** @var Maeprod|null $producto */
@@ -673,7 +670,6 @@ class NotaDetalleService
                         'prod_descripcion_agile' => $agileDesc,
                         'prod_descripcion_maestro' => $descripcionMaestro,
                     ];
-                    $vinculadas++;
                 }
 
                 $orden++;
@@ -683,21 +679,7 @@ class NotaDetalleService
                 NotaDetalle::query()->insert($chunk);
             }
 
-            $total = count($rows);
-            if ($total > 0) {
-                $this->auditoria->registrarModificar(
-                    $nota,
-                    $usuarioUpd,
-                    sprintf(
-                        'Importación Compra Ágil: %d línea(s) (%d vinculadas, %d pendientes)',
-                        $total,
-                        $vinculadas,
-                        $pendientes,
-                    ),
-                );
-            }
-
-            return $total;
+            return count($rows);
         });
     }
 
