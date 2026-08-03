@@ -73,10 +73,17 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
             return;
         }
 
-        $corrida->fill([
-            'mensaje' => 'Worker interrumpido; la búsqueda se retomará desde el paso '
-                .((int) $corrida->pasos_procesados + 1).'.',
-        ])->save();
+        try {
+            app(OportunidadBusquedaService::class)->registrarInterrupcionWorker(
+                $corrida,
+                $exception?->getMessage(),
+            );
+        } catch (Throwable) {
+            $corrida->fill([
+                'mensaje' => 'Worker interrumpido; la búsqueda se retomará desde el paso '
+                    .((int) $corrida->pasos_procesados + 1).'.',
+            ])->save();
+        }
 
         // Nuevo job con contador de intentos limpio. El índice persistido evita repetir pasos completos.
         self::dispatch($corrida->id)->delay(now()->addMinute());

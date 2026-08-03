@@ -20,6 +20,7 @@ class OportunidadBusquedaCorrida extends Model
         'oportunidades_encontradas',
         'plan_json',
         'errores_json',
+        'eventos_json',
         'mensaje',
     ];
 
@@ -35,6 +36,7 @@ class OportunidadBusquedaCorrida extends Model
             'oportunidades_encontradas' => 'integer',
             'plan_json' => 'array',
             'errores_json' => 'array',
+            'eventos_json' => 'array',
         ];
     }
 }

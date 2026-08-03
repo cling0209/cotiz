@@ -130,6 +130,18 @@
                         <tbody id="rel-pasos-tbody"></tbody>
                     </table>
                 </div>
+                <div id="rel-eventos" class="mt-3 d-none">
+                    <button type="button" id="rel-eventos-toggle" class="btn btn-sm btn-outline-secondary mb-2"
+                        aria-expanded="true" aria-controls="rel-eventos-panel">
+                        <i class="bi bi-activity"></i>
+                        Eventos <span id="rel-eventos-contador" class="badge text-bg-secondary ms-1">0</span>
+                        <i id="rel-eventos-chevron" class="bi bi-chevron-up ms-1"></i>
+                    </button>
+                    <div id="rel-eventos-panel" class="border rounded bg-light p-2"
+                        style="max-height: 220px; overflow-y: auto;">
+                        <ul id="rel-eventos-lista" class="list-unstyled small mb-0"></ul>
+                    </div>
+                </div>
                 <div id="oportunidad-debug" class="mt-3 d-none">
                     <button type="button" id="debug-toggle" class="btn btn-sm btn-outline-secondary mb-2"
                         aria-expanded="false" aria-controls="debug-panel">
@@ -616,6 +628,12 @@
         const relPasosPanel = document.getElementById('rel-pasos-panel');
         const relPasosTbody = document.getElementById('rel-pasos-tbody');
         const relPasosContador = document.getElementById('rel-pasos-contador');
+        const relEventos = document.getElementById('rel-eventos');
+        const relEventosToggle = document.getElementById('rel-eventos-toggle');
+        const relEventosPanel = document.getElementById('rel-eventos-panel');
+        const relEventosLista = document.getElementById('rel-eventos-lista');
+        const relEventosContador = document.getElementById('rel-eventos-contador');
+        const relEventosChevron = document.getElementById('rel-eventos-chevron');
         const debugPanel = document.getElementById('oportunidad-debug');
         const debugToggle = document.getElementById('debug-toggle');
         const debugToggleChevron = document.getElementById('debug-toggle-chevron');
@@ -2677,6 +2695,82 @@
             });
         }
 
+        function setEventosPanelAbierto(abierto) {
+            if (!relEventosPanel) return;
+            relEventosPanel.classList.toggle('d-none', !abierto);
+            if (relEventosToggle) {
+                relEventosToggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+            }
+            if (relEventosChevron) {
+                relEventosChevron.classList.toggle('bi-chevron-down', !abierto);
+                relEventosChevron.classList.toggle('bi-chevron-up', abierto);
+            }
+        }
+        if (relEventosToggle && relEventosPanel) {
+            relEventosToggle.addEventListener('click', () => {
+                setEventosPanelAbierto(relEventosPanel.classList.contains('d-none'));
+            });
+        }
+
+        function formatearHoraEvento(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString('es-CL', { hour12: false });
+        }
+
+        function badgeClaseEvento(tipo) {
+            switch (String(tipo || '')) {
+                case 'esperando_worker':
+                case 'worker_error':
+                    return 'text-bg-warning';
+                case 'region_error':
+                    return 'text-bg-danger';
+                case 'region_ok':
+                case 'completada':
+                    return 'text-bg-success';
+                case 'mp_pagina':
+                case 'region':
+                    return 'text-bg-info';
+                case 'reencolada':
+                case 'encolada':
+                    return 'text-bg-secondary';
+                case 'cancelada':
+                    return 'text-bg-dark';
+                default:
+                    return 'text-bg-light text-dark border';
+            }
+        }
+
+        function renderEventosCorrida(eventos) {
+            if (!relEventos || !relEventosLista) return;
+            const lista = Array.isArray(eventos) ? eventos : [];
+            if (lista.length === 0) {
+                relEventos.classList.add('d-none');
+                relEventosLista.innerHTML = '';
+                if (relEventosContador) relEventosContador.textContent = '0';
+                return;
+            }
+
+            relEventos.classList.remove('d-none');
+            if (relEventosContador) {
+                relEventosContador.textContent = String(lista.length);
+            }
+
+            relEventosLista.innerHTML = lista.map((ev) => {
+                const hora = formatearHoraEvento(ev?.t);
+                const tipo = String(ev?.tipo || 'info');
+                const texto = String(ev?.texto || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return (
+                    `<li class="d-flex gap-2 align-items-start py-1 border-bottom border-light-subtle">` +
+                    `<span class="text-muted tabular-nums flex-shrink-0">${hora || '—'}</span>` +
+                    `<span class="badge ${badgeClaseEvento(tipo)} flex-shrink-0">${tipo}</span>` +
+                    `<span class="flex-grow-1">${texto}</span>` +
+                    `</li>`
+                );
+            }).join('');
+        }
+
         let syncParEnCurso = false;
 
         function formatearFechaSync(iso) {
@@ -3068,6 +3162,7 @@
             }
             renderTabla();
             renderPasosCorrida(corrida.pasos_resumen || [], corrida);
+            renderEventosCorrida(corrida.eventos || []);
             actualizarDebugDesdeCorrida(corrida);
             if (corrida.fecha_busqueda && relFecha) {
                 relFecha.textContent = cambiandoDia ?

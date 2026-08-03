@@ -123,7 +123,11 @@ class OportunidadBusquedaService
             $pasos = $this->priorizarPasosReintentoFallidos($pasos);
         }
 
-        $corrida = OportunidadBusquedaCorrida::query()->create([
+        $mensajeInicio = $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento);
+        $eventos = [];
+        $this->pushEvento($eventos, 'encolada', 'Búsqueda encolada ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…');
+
+        $payload = [
             'usuario' => trim($usuario) ?: 'sistema',
             'fecha_busqueda' => $dia,
             'inicio' => now(),
@@ -134,8 +138,13 @@ class OportunidadBusquedaService
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($dia)),
             'plan_json' => $pasos,
             'errores_json' => [],
-            'mensaje' => $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento),
-        ]);
+            'mensaje' => $mensajeInicio,
+        ];
+        if ($this->soportaEventosJson()) {
+            $payload['eventos_json'] = $eventos;
+        }
+
+        $corrida = OportunidadBusquedaCorrida::query()->create($payload);
 
         ProcessOportunidadBusquedaJob::dispatch($corrida->id);
 
@@ -267,13 +276,14 @@ class OportunidadBusquedaService
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        $eventos = $this->eventosDeCorrida($corrida);
         $cursor = (int) $corrida->pasos_procesados;
         $pasos = $this->asegurarEstadosPlan($pasos, $cursor, $errores);
 
         $seleccion = $this->seleccionarSiguiente($pasos);
         if ($seleccion === null) {
             try {
-                $this->persistirPlan($corrida, $pasos, $errores, (int) $corrida->pasos_fallidos, $corrida->mensaje);
+                $this->persistirPlan($corrida, $pasos, $errores, (int) $corrida->pasos_fallidos, $corrida->mensaje, $eventos);
             } catch (RuntimeException $e) {
                 if (str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
                     return false;
@@ -320,9 +330,19 @@ class OportunidadBusquedaService
             count($pasos),
             $maxPaginasPaso,
         );
+        $this->pushEvento(
+            $eventos,
+            'region',
+            sprintf(
+                'Worker inició %s (paso %d/%d). Esperando Mercado Público…',
+                $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                $this->contarTerminados($pasos) + 1,
+                count($pasos),
+            ),
+        );
 
         try {
-            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio);
+            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio, $eventos);
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
                 return false;
@@ -341,6 +361,7 @@ class OportunidadBusquedaService
         $onProgreso = function (int $pagina, int $itemsPagina, int $itemsAcumulados, array $consulta) use (
             $corrida,
             &$pasos,
+            &$eventos,
             $indice,
             $errores,
             $fallidos,
@@ -366,7 +387,18 @@ class OportunidadBusquedaService
                 $maxPaginasPaso,
                 $itemsAcumulados,
             );
-            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje);
+            $this->pushEvento(
+                $eventos,
+                'mp_pagina',
+                sprintf(
+                    '%s · pág %d/%d · %d ítems (Mercado Público)',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $pagina,
+                    $maxPaginasPaso,
+                    $itemsAcumulados,
+                ),
+            );
+            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje, $eventos);
         };
 
         try {
@@ -407,6 +439,15 @@ class OportunidadBusquedaService
                     $this->contarTerminados($pasos),
                     count($pasos),
                 );
+            $this->pushEvento(
+                $eventos,
+                'region_ok',
+                sprintf(
+                    '%s terminada: %d cotización(es).',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $encontradas,
+                ),
+            );
         } catch (\Throwable $e) {
             $corrida->refresh();
             if ($corrida->estado === self::ESTADO_CANCELLED
@@ -451,21 +492,35 @@ class OportunidadBusquedaService
                     $region,
                     mb_substr($e->getMessage(), 0, 200),
                 );
+            $this->pushEvento(
+                $eventos,
+                'region_error',
+                sprintf(
+                    '%s falló: %s',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    mb_substr($e->getMessage(), 0, 180),
+                ),
+            );
+        }
+
+        $updatePaso = [
+            'pasos_procesados' => $cursor + 1,
+            'pasos_fallidos' => $fallidos,
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($fechaBusqueda)),
+            'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
+            'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
+            'mensaje' => $mensaje,
+            'updated_at' => now(),
+        ];
+        if ($this->soportaEventosJson()) {
+            $updatePaso['eventos_json'] = json_encode(array_values($eventos), JSON_UNESCAPED_UNICODE);
         }
 
         $actualizada = OportunidadBusquedaCorrida::query()
             ->whereKey($corrida->id)
             ->where('estado', self::ESTADO_RUNNING)
             ->where('pasos_procesados', $cursor)
-            ->update([
-                'pasos_procesados' => $cursor + 1,
-                'pasos_fallidos' => $fallidos,
-                'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($fechaBusqueda)),
-                'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
-                'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
-                'mensaje' => $mensaje,
-                'updated_at' => now(),
-            ]);
+            ->update($updatePaso);
 
         $corrida->refresh();
         if ($actualizada !== 1) {
@@ -506,12 +561,19 @@ class OportunidadBusquedaService
             }
         }
 
-        $corrida->fill([
+        $mensaje = self::MENSAJE_CANCELADA.' Tiempo: '.$this->formatearDuracion($corrida->inicio, $fin);
+        $payload = [
             'estado' => self::ESTADO_CANCELLED,
             'fin' => $fin,
             'plan_json' => array_values($pasos),
-            'mensaje' => self::MENSAJE_CANCELADA.' Tiempo: '.$this->formatearDuracion($corrida->inicio, $fin),
-        ])->save();
+            'mensaje' => $mensaje,
+        ];
+        if ($this->soportaEventosJson()) {
+            $eventos = $this->eventosDeCorrida($corrida);
+            $this->pushEvento($eventos, 'cancelada', $mensaje);
+            $payload['eventos_json'] = $eventos;
+        }
+        $corrida->fill($payload)->save();
 
         return $corrida;
     }
@@ -537,9 +599,14 @@ class OportunidadBusquedaService
 
         // Job en cola sin reservar: el worker no está corriendo. Solo avisa (touch evita spam).
         if ($pendientes > 0 && $reservados === 0) {
-            $corrida->fill([
-                'mensaje' => 'Búsqueda en cola esperando worker. Verifique RUN_QUEUE_WORKER=true en Render.',
-            ])->save();
+            $mensaje = 'Búsqueda en cola esperando worker. Verifique RUN_QUEUE_WORKER=true en Render.';
+            $this->guardarMensajeYEvento(
+                $corrida,
+                $mensaje,
+                'esperando_worker',
+                'Esperando worker (job en cola sin tomar). Verifique RUN_QUEUE_WORKER=true.',
+                true,
+            );
 
             Log::warning('OportunidadBusqueda: corrida stalled con job pendiente (sin worker)', [
                 'corrida_id' => $corrida->id,
@@ -562,10 +629,14 @@ class OportunidadBusquedaService
         $terminados = $this->contarTerminados($pasos);
         $siguiente = $terminados + 1;
 
-        $corrida->fill([
-            'mensaje' => 'Búsqueda retomada automáticamente tras detectar worker detenido (paso '
-                .$siguiente.'/'.max(1, (int) $corrida->total_pasos).').',
-        ])->save();
+        $mensaje = 'Búsqueda retomada automáticamente tras detectar worker detenido (paso '
+            .$siguiente.'/'.max(1, (int) $corrida->total_pasos).').';
+        $this->guardarMensajeYEvento(
+            $corrida,
+            $mensaje,
+            'reencolada',
+            'Worker detenido: job reencolado desde paso '.$siguiente.'/'.max(1, (int) $corrida->total_pasos).'.',
+        );
 
         ProcessOportunidadBusquedaJob::dispatch($corrida->id);
 
@@ -595,13 +666,29 @@ class OportunidadBusquedaService
         if (! $this->jobOportunidadEncolado($corrida->id)) {
             ProcessOportunidadBusquedaJob::dispatch($corrida->id);
             $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
-            $corrida->fill([
-                'mensaje' => 'Búsqueda reencolada (paso '
-                    .($this->contarTerminados($pasos) + 1).'/'.max(1, (int) $corrida->total_pasos).').',
-            ])->save();
+            $pasoTxt = ($this->contarTerminados($pasos) + 1).'/'.max(1, (int) $corrida->total_pasos);
+            $this->guardarMensajeYEvento(
+                $corrida,
+                'Búsqueda reencolada (paso '.$pasoTxt.').',
+                'reencolada',
+                'Reencolada manual/automática (paso '.$pasoTxt.').',
+            );
         }
 
         return $corrida->fresh() ?? $corrida;
+    }
+
+    /**
+     * Registra evento cuando el job del worker falla a nivel Laravel.
+     */
+    public function registrarInterrupcionWorker(OportunidadBusquedaCorrida $corrida, ?string $detalle = null): void
+    {
+        $paso = ((int) $corrida->pasos_procesados) + 1;
+        $texto = 'Worker interrumpido; se reintentará desde el paso '.$paso.'.';
+        if ($detalle !== null && trim($detalle) !== '') {
+            $texto .= ' '.mb_substr(trim($detalle), 0, 160);
+        }
+        $this->guardarMensajeYEvento($corrida, $texto, 'worker_error', $texto);
     }
 
     public function jobOportunidadEncolado(int $corridaId): bool
@@ -803,6 +890,7 @@ class OportunidadBusquedaService
             'ultima_consulta' => $ultimaConsulta,
             'worker_stalled' => $workerStalled,
             'reanudada_auto' => $reanudadaAuto,
+            'eventos' => $this->eventosParaUi($corrida),
             'pasos_resumen' => $pasosResumen,
             // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
             'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
@@ -1106,6 +1194,7 @@ class OportunidadBusquedaService
     /**
      * @param  list<array<string, mixed>>  $pasos
      * @param  list<array<string, mixed>>  $errores
+     * @param  list<array<string, mixed>>  $eventos
      */
     private function persistirPlan(
         OportunidadBusquedaCorrida $corrida,
@@ -1113,24 +1202,128 @@ class OportunidadBusquedaService
         array $errores,
         int $fallidos,
         ?string $mensaje,
+        array $eventos = [],
     ): void {
+        $update = [
+            'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
+            'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
+            'pasos_fallidos' => $fallidos,
+            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
+            'mensaje' => $mensaje,
+            'updated_at' => now(),
+        ];
+        if ($this->soportaEventosJson()) {
+            $update['eventos_json'] = json_encode(array_values($eventos), JSON_UNESCAPED_UNICODE);
+        }
+
         $actualizada = OportunidadBusquedaCorrida::query()
             ->whereKey($corrida->id)
             ->where('estado', self::ESTADO_RUNNING)
-            ->update([
-                'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
-                'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
-                'pasos_fallidos' => $fallidos,
-                'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
-                'mensaje' => $mensaje,
-                'updated_at' => now(),
-            ]);
+            ->update($update);
 
         $corrida->refresh();
 
         if ($actualizada !== 1) {
             throw new RuntimeException(self::MENSAJE_CANCELADA);
         }
+    }
+
+    private function soportaEventosJson(): bool
+    {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = Schema::hasColumn('oportunidad_busqueda_corridas', 'eventos_json');
+        }
+
+        return $cache;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function eventosDeCorrida(OportunidadBusquedaCorrida $corrida): array
+    {
+        if (! $this->soportaEventosJson()) {
+            return [];
+        }
+
+        return is_array($corrida->eventos_json) ? array_values($corrida->eventos_json) : [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $eventos
+     */
+    private function pushEvento(array &$eventos, string $tipo, string $texto): void
+    {
+        $ultimo = $eventos !== [] ? $eventos[array_key_last($eventos)] : null;
+        if (is_array($ultimo)
+            && (string) ($ultimo['tipo'] ?? '') === $tipo
+            && (string) ($ultimo['texto'] ?? '') === mb_substr($texto, 0, 300)) {
+            return;
+        }
+
+        $eventos[] = [
+            't' => now()->toIso8601String(),
+            'tipo' => $tipo,
+            'texto' => mb_substr($texto, 0, 300),
+        ];
+
+        if (count($eventos) > 80) {
+            $eventos = array_values(array_slice($eventos, -80));
+        }
+    }
+
+    private function guardarMensajeYEvento(
+        OportunidadBusquedaCorrida $corrida,
+        string $mensaje,
+        string $tipo,
+        string $textoEvento,
+        bool $evitarSpamMismoTipo = false,
+    ): void {
+        $payload = ['mensaje' => $mensaje];
+        if ($this->soportaEventosJson()) {
+            $eventos = $this->eventosDeCorrida($corrida);
+            $ultimo = $eventos !== [] ? $eventos[array_key_last($eventos)] : null;
+            if (! $evitarSpamMismoTipo
+                || ! is_array($ultimo)
+                || (string) ($ultimo['tipo'] ?? '') !== $tipo) {
+                $this->pushEvento($eventos, $tipo, $textoEvento);
+            }
+            $payload['eventos_json'] = $eventos;
+        }
+        $corrida->fill($payload)->save();
+    }
+
+    /**
+     * @return list<array{t: string, tipo: string, texto: string}>
+     */
+    private function eventosParaUi(OportunidadBusquedaCorrida $corrida): array
+    {
+        $eventos = $this->eventosDeCorrida($corrida);
+        if ($eventos === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (array_reverse($eventos) as $evento) {
+            if (! is_array($evento)) {
+                continue;
+            }
+            $texto = trim((string) ($evento['texto'] ?? ''));
+            if ($texto === '') {
+                continue;
+            }
+            $out[] = [
+                't' => (string) ($evento['t'] ?? ''),
+                'tipo' => (string) ($evento['tipo'] ?? 'info'),
+                'texto' => $texto,
+            ];
+            if (count($out) >= 40) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     private function fechaInicioBusqueda(): string
@@ -1248,15 +1441,22 @@ class OportunidadBusquedaService
         $fallidos = $this->contarFallidosDefinitivos($pasos);
         $fin = now();
         $tiempo = $this->formatearDuracion($corrida->inicio, $fin);
-        $corrida->fill([
+        $mensaje = $fallidos > 0
+            ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región. Tiempo: '.$tiempo
+            : 'Búsqueda terminada correctamente. Tiempo: '.$tiempo;
+        $payload = [
             'estado' => self::ESTADO_COMPLETED,
             'fin' => $fin,
             'pasos_fallidos' => $fallidos,
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
-            'mensaje' => $fallidos > 0
-                ? 'Búsqueda terminada con '.$fallidos.' paso(s) fallido(s) tras reintento por región. Tiempo: '.$tiempo
-                : 'Búsqueda terminada correctamente. Tiempo: '.$tiempo,
-        ])->save();
+            'mensaje' => $mensaje,
+        ];
+        if ($this->soportaEventosJson()) {
+            $eventos = $this->eventosDeCorrida($corrida);
+            $this->pushEvento($eventos, 'completada', $mensaje);
+            $payload['eventos_json'] = $eventos;
+        }
+        $corrida->fill($payload)->save();
 
         // Si el par dormía durante la búsqueda, reintenta sync (wake + pendientes) antes de vincular.
         try {
