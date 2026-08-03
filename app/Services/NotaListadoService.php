@@ -109,10 +109,11 @@ class NotaListadoService
      */
     public function cotizacionesSegundoLlamadoParaPostular(User $user): Collection
     {
-        $cacheKey = 'cotiz.segundo_llamado.'.$user->username;
+        // v2: solo arrays serializables (cachear Eloquent provoca __PHP_Incomplete_Class).
+        $cacheKey = 'cotiz.segundo_llamado.v2.'.$user->username;
 
-        /** @var Collection<int, Nota> */
-        return Cache::remember($cacheKey, 60, function () use ($user) {
+        /** @var list<array{nronota: int, encargado: mixed, empresa: mixed, fecha_cierre_segundo_llamado: mixed}> $rows */
+        $rows = Cache::remember($cacheKey, 60, function () use ($user): array {
             return Nota::query()
                 ->select(
                     'notas.nronota',
@@ -129,8 +130,27 @@ class NotaListadoService
                 })
                 ->whereRaw('lower(seg.convocatoria_descripcion) like ?', ['%segundo llamado%'])
                 ->orderByDesc('notas.nronota')
-                ->get();
+                ->get()
+                ->map(static fn (Nota $n): array => [
+                    'nronota' => (int) $n->nronota,
+                    'encargado' => $n->encargado,
+                    'empresa' => $n->empresa,
+                    'fecha_cierre_segundo_llamado' => $n->getAttribute('fecha_cierre_segundo_llamado'),
+                ])
+                ->all();
         });
+
+        return new Collection(array_map(static function (array $row): Nota {
+            $nota = new Nota([
+                'nronota' => $row['nronota'],
+                'encargado' => $row['encargado'],
+                'empresa' => $row['empresa'],
+            ]);
+            $nota->exists = true;
+            $nota->setAttribute('fecha_cierre_segundo_llamado', $row['fecha_cierre_segundo_llamado'] ?? null);
+
+            return $nota;
+        }, $rows));
     }
 
     private function baseQuery(User $user, array $filtros, bool $incluirTotal = true): Builder
