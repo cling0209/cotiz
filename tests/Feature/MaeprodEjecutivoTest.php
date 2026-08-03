@@ -17,6 +17,8 @@ class MaeprodEjecutivoTest extends TestCase
 
     private User $ejecutivo;
 
+    private User $ejecutivoConFrases;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -27,6 +29,11 @@ class MaeprodEjecutivoTest extends TestCase
         $this->ejecutivo = User::factory()->create([
             'username' => 'ejecutivo',
             'perfil' => User::PERFIL_EJECUTIVO,
+            'puede_gestionar_frases' => false,
+        ]);
+
+        $this->ejecutivoConFrases = User::factory()->conPermisoFrases()->create([
+            'username' => 'ejecutivo_frases',
         ]);
     }
 
@@ -79,8 +86,25 @@ class MaeprodEjecutivoTest extends TestCase
             ->assertSee('LIST01')
             ->assertSee('PARA LISTAR')
             ->assertSee('Imagen')
+            ->assertDontSee('>Frases</a>', false)
             ->assertDontSee('Carga masiva')
             ->assertDontSee('>Editar<', false);
+    }
+
+    public function test_ejecutivo_con_permiso_ve_boton_frases(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'LIST02',
+            'prod_nombre' => 'CON PERMISO',
+            'prod_valor' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $this->actingAs($this->ejecutivoConFrases)
+            ->get(route('admin.productos.index'))
+            ->assertOk()
+            ->assertSee('>Frases</a>', false)
+            ->assertSee('Imagen');
     }
 
     public function test_ejecutivo_puede_acceder_formulario_solo_imagen(): void
@@ -126,7 +150,27 @@ class MaeprodEjecutivoTest extends TestCase
         ]);
     }
 
-    public function test_ejecutivo_no_puede_editar_productos(): void
+    public function test_ejecutivo_sin_permiso_no_accede_a_frases(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'EXIST00',
+            'prod_nombre' => 'SIN PERMISO',
+            'prod_valor' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $this->actingAs($this->ejecutivo)
+            ->get(route('admin.productos.edit', 'EXIST00'))
+            ->assertForbidden();
+
+        $this->actingAs($this->ejecutivo)
+            ->post(route('admin.productos.frases.store', 'EXIST00'), [
+                'frase' => 'lapiz azul',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_ejecutivo_con_permiso_puede_ver_formulario_frases_sin_editar_producto(): void
     {
         Maeprod::query()->create([
             'prod_item' => 'EXIST01',
@@ -135,9 +179,35 @@ class MaeprodEjecutivoTest extends TestCase
             'prod_familia' => 'PAPEL',
         ]);
 
-        $this->actingAs($this->ejecutivo)
+        $this->actingAs($this->ejecutivoConFrases)
             ->get(route('admin.productos.edit', 'EXIST01'))
-            ->assertForbidden();
+            ->assertOk()
+            ->assertSee('Frases para vincular')
+            ->assertSee('EXIST01')
+            ->assertDontSee('>Guardar<', false);
+    }
+
+    public function test_ejecutivo_con_permiso_puede_agregar_frase(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'FRASE01',
+            'prod_nombre' => 'CON FRASE',
+            'prod_valor' => 1000,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $this->actingAs($this->ejecutivoConFrases)
+            ->post(route('admin.productos.frases.store', 'FRASE01'), [
+                'frase' => 'lapiz azul',
+            ])
+            ->assertRedirect(route('admin.productos.edit', 'FRASE01'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('maeprod_frases', [
+            'prod_item' => 'FRASE01',
+            'frase' => 'lapiz azul',
+            'frase_norm' => 'LAPIZ AZUL',
+        ]);
     }
 
     public function test_ejecutivo_no_puede_actualizar_productos(): void

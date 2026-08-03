@@ -23,8 +23,17 @@ class UserFactory extends Factory
             'apellidom' => '',
             'correo' => fake()->unique()->safeEmail(),
             'perfil' => User::PERFIL_EJECUTIVO,
+            'puede_gestionar_frases' => false,
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
+    }
+
+    public function conPermisoFrases(): static
+    {
+        return $this->state(fn () => [
+            'perfil' => User::PERFIL_EJECUTIVO,
+            'puede_gestionar_frases' => true,
+        ]);
     }
 }

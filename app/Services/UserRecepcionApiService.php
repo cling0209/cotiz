@@ -23,6 +23,7 @@ class UserRecepcionApiService
             'apellidom' => ['nullable', 'string', 'max:20'],
             'correo' => ['nullable', 'email', 'max:60'],
             'perfil' => ['required', 'integer', Rule::in([User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])],
+            'puede_gestionar_frases' => ['sometimes', 'boolean'],
             'password' => ['required', 'string', 'max:20', Password::min(8)->letters()->numbers()],
         ])->validate();
 
@@ -35,13 +36,18 @@ class UserRecepcionApiService
             return ['created' => false, 'username' => $username];
         }
 
+        $perfil = (int) $datos['perfil'];
+        $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
+            && filter_var($datos['puede_gestionar_frases'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         User::query()->create([
             'username' => $username,
             'nombre' => $datos['nombre'],
             'apellidop' => $datos['apellidop'] ?? null,
             'apellidom' => $datos['apellidom'] ?? null,
             'correo' => $datos['correo'] ?? null,
-            'perfil' => (int) $datos['perfil'],
+            'perfil' => $perfil,
+            'puede_gestionar_frases' => $puedeGestionarFrases,
             'password' => $datos['password'],
         ]);
 

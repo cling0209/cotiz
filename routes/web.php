@@ -82,6 +82,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
         Route::get('productos/{prod_item}/imagen', [MaeprodController::class, 'editImagen'])->name('productos.imagen.edit')->where('prod_item', '[^/]+');
         Route::put('productos/{prod_item}/imagen', [MaeprodController::class, 'updateImagen'])->name('productos.imagen.update')->where('prod_item', '[^/]+');
+        Route::get('productos/{prod_item}', [MaeprodController::class, 'edit'])->name('productos.edit')->where('prod_item', '[^/]+');
+        Route::post('productos/{prod_item}/frases', [MaeprodController::class, 'storeFrase'])->name('productos.frases.store')->where('prod_item', '[^/]+');
+        Route::post('productos/{prod_item}/frases/{frase}/eliminar', [MaeprodController::class, 'destroyFrase'])->name('productos.frases.destroy')->where('prod_item', '[^/]+')->whereNumber('frase');
 
         Route::get('cotizaciones/{nronota}', [CotizacionController::class, 'edit'])->name('cotizaciones.edit')->whereNumber('nronota');
         Route::match(['put', 'post'], 'cotizaciones/{nronota}', [CotizacionController::class, 'update'])->name('cotizaciones.update')->whereNumber('nronota');
@@ -218,10 +221,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
 
-            Route::get('productos/{prod_item}', [MaeprodController::class, 'edit'])->name('productos.edit')->where('prod_item', '[^/]+');
             Route::put('productos/{prod_item}', [MaeprodController::class, 'update'])->name('productos.update')->where('prod_item', '[^/]+');
-            Route::post('productos/{prod_item}/frases', [MaeprodController::class, 'storeFrase'])->name('productos.frases.store')->where('prod_item', '[^/]+');
-            Route::post('productos/{prod_item}/frases/{frase}/eliminar', [MaeprodController::class, 'destroyFrase'])->name('productos.frases.destroy')->where('prod_item', '[^/]+')->whereNumber('frase');
             Route::delete('productos/{prod_item}', [MaeprodController::class, 'destroy'])->name('productos.destroy')->where('prod_item', '[^/]+');
 
             Route::get('usuarios', [UserController::class, 'index'])->name('users.index');

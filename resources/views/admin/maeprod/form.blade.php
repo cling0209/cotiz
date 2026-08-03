@@ -1,11 +1,21 @@
 @extends('layouts.admin')
 
-@section('title', $producto ? 'Editar producto' : 'Nuevo producto')
+@section('title')
+@if(! $producto)
+Nuevo producto
+@elseif($puedeModificarProducto ?? false)
+Editar producto
+@else
+Frases Agile
+@endif
+@endsection
 
 @section('content')
 @php
     $esNuevo = ! $producto;
     $puedeEditarSoftland = $puedeEditarSoftland ?? auth()->user()?->isSuperAdmin();
+    $puedeModificarProducto = $puedeModificarProducto ?? ($esNuevo || auth()->user()?->isSuperAdmin());
+    $puedeGestionarFrases = $puedeGestionarFrases ?? ($producto && auth()->user()?->canManageMaeprodFrases());
     $listadoQuery = $listadoQuery ?? [];
     $action = $esNuevo
         ? route('admin.productos.store')
@@ -14,7 +24,15 @@
 
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h1 class="h4 mb-0">{{ $esNuevo ? 'Nuevo producto' : 'Editar producto' }}</h1>
+        <h1 class="h4 mb-0">
+            @if($esNuevo)
+                Nuevo producto
+            @elseif($puedeModificarProducto)
+                Editar producto
+            @else
+                Frases Agile — {{ $producto->prod_item }}
+            @endif
+        </h1>
         @if(auth()->user()->isSuperAdmin() || auth()->user()->isEjecutivo())
             <a href="{{ route('admin.productos.index', $listadoQuery) }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
         @else
@@ -26,7 +44,8 @@
         <div class="col-lg-8">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <form method="post" action="{{ $action }}" enctype="multipart/form-data">
+                    <form method="post" action="{{ $action }}" enctype="multipart/form-data"
+                          @if(! $puedeModificarProducto) onsubmit="return false;" @endif>
                         @csrf
                         @if(! $esNuevo) @method('PUT') @endif
                         @foreach($listadoQuery as $key => $value)
@@ -47,7 +66,8 @@
                             <div class="col-md-8">
                                 <label class="form-label">Descripci&oacute;n <span class="text-danger">*</span></label>
                                 <input type="text" name="prod_nombre" class="form-control form-control-sm @error('prod_nombre') is-invalid @enderror"
-                                       value="{{ old('prod_nombre', $producto?->prod_nombre) }}" maxlength="255" required>
+                                       value="{{ old('prod_nombre', $producto?->prod_nombre) }}" maxlength="255"
+                                       @if($puedeModificarProducto) required @else readonly @endif>
                                 @error('prod_nombre')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
@@ -58,7 +78,8 @@
                                 @endphp
                                 <select name="prod_familia" id="prod_familia"
                                         class="form-select form-select-sm @error('prod_familia') is-invalid @enderror"
-                                        @if($esNuevo) required @endif>
+                                        @if($esNuevo) required @endif
+                                        @disabled(! $puedeModificarProducto)>
                                     <option value="">— Seleccione —</option>
                                     @foreach($familias as $fam)
                                         <option value="{{ $fam->codigo }}" @selected($familiaActual === $fam->codigo)>
@@ -80,7 +101,8 @@
                                 @if($gramajes->isNotEmpty())
                                     <select name="prod_gramaje" id="prod_gramaje"
                                             class="form-select form-select-sm @error('prod_gramaje') is-invalid @enderror"
-                                            @if($esNuevo) required @endif>
+                                            @if($esNuevo) required @endif
+                                            @disabled(! $puedeModificarProducto)>
                                         <option value="">— Seleccione —</option>
                                         @foreach($gramajes as $gramaje)
                                             <option value="{{ $gramaje->nombre }}" @selected($gramajeActual === $gramaje->nombre)>
@@ -93,7 +115,8 @@
                                     </select>
                                 @else
                                     <input type="text" name="prod_gramaje" id="prod_gramaje" class="form-control form-control-sm @error('prod_gramaje') is-invalid @enderror"
-                                           value="{{ $gramajeActual }}" maxlength="120">
+                                           value="{{ $gramajeActual }}" maxlength="120"
+                                           @if(! $puedeModificarProducto) readonly @endif>
                                 @endif
                                 @error('prod_gramaje')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
@@ -101,9 +124,13 @@
                                 <label class="form-label">Archivo imagen</label>
                                 <input type="text" name="prod_imagen" id="prod_imagen" class="form-control form-control-sm"
                                        value="{{ old('prod_imagen', $producto?->prod_imagen) }}" maxlength="255"
-                                       placeholder="ej. 73027.jpg">
-                                <div class="form-text">Por defecto el c&oacute;digo; al subir archivo se agrega su extensi&oacute;n.</div>
+                                       placeholder="ej. 73027.jpg"
+                                       @if(! $puedeModificarProducto) readonly @endif>
+                                @if($puedeModificarProducto)
+                                    <div class="form-text">Por defecto el c&oacute;digo; al subir archivo se agrega su extensi&oacute;n.</div>
+                                @endif
                             </div>
+                            @if($puedeModificarProducto)
                             <div class="col-md-4">
                                 <label class="form-label">Subir imagen (R2)</label>
                                 <input type="file" name="imagen" id="imagen" accept="image/jpeg,image/png,image/webp,image/gif"
@@ -115,36 +142,49 @@
                                     <div class="form-text">Se guarda en {{ config('products.r2_prefix') }}/familia/c&oacute;digo.jpg. Al subir, se ajusta a {{ config('products.image_listing_size') }}&times;{{ config('products.image_listing_size') }} px para listados.</div>
                                 @endif
                             </div>
+                            @endif
                             <div class="col-md-4">
                                 <label class="form-label">Precio venta <span class="text-danger">*</span></label>
                                 <input type="number" name="prod_valor" class="form-control form-control-sm @error('prod_valor') is-invalid @enderror"
-                                       value="{{ old('prod_valor', $producto?->prod_valor ?? 0) }}" min="0" required>
+                                       value="{{ old('prod_valor', $producto?->prod_valor ?? 0) }}" min="0"
+                                       @if($puedeModificarProducto) required @else readonly @endif>
                                 @error('prod_valor')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Precio costo</label>
                                 <input type="number" name="prod_valor_costo" class="form-control form-control-sm"
-                                       value="{{ old('prod_valor_costo', $producto?->prod_valor_costo ?? 0) }}" min="0">
+                                       value="{{ old('prod_valor_costo', $producto?->prod_valor_costo ?? 0) }}" min="0"
+                                       @if(! $puedeModificarProducto) readonly @endif>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Peso (kg)</label>
                                 <input type="number" name="peso_kg" id="peso_kg" min="0" step="0.001"
                                        class="form-control form-control-sm @error('peso_kg') is-invalid @enderror"
                                        value="{{ old('peso_kg', isset($producto) && $producto->peso_kg !== null ? $producto->peso_kg : '') }}"
-                                       placeholder="Opcional">
-                                <div class="form-text">Opcional. En cotizaci&oacute;n DEX: peso &times; cantidad.</div>
+                                       placeholder="Opcional"
+                                       @if(! $puedeModificarProducto) readonly @endif>
+                                @if($puedeModificarProducto)
+                                    <div class="form-text">Opcional. En cotizaci&oacute;n DEX: peso &times; cantidad.</div>
+                                @endif
                                 @error('peso_kg')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Stock real</label>
                                 <input type="number" name="prod_stock_real" class="form-control form-control-sm"
-                                       value="{{ old('prod_stock_real', $producto?->prod_stock_real) }}" min="0">
+                                       value="{{ old('prod_stock_real', $producto?->prod_stock_real) }}" min="0"
+                                       @if(! $puedeModificarProducto) readonly @endif>
                             </div>
                             @if($puedeEditarSoftland)
                             <div class="col-md-4">
                                 <label class="form-label">C&oacute;d. Softland</label>
                                 <input type="text" name="prod_item_softland" class="form-control form-control-sm"
                                        value="{{ old('prod_item_softland', $producto?->prod_item_softland) }}" maxlength="50">
+                            </div>
+                            @elseif($producto?->prod_item_softland)
+                            <div class="col-md-4">
+                                <label class="form-label">C&oacute;d. Softland</label>
+                                <input type="text" class="form-control form-control-sm"
+                                       value="{{ $producto->prod_item_softland }}" readonly>
                             </div>
                             @endif
                             @if($producto)
@@ -164,9 +204,13 @@
                             @endif
                         </div>
 
+                        @if($puedeModificarProducto)
                         <div class="mt-4">
                             <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
                         </div>
+                        @elseif(! $esNuevo)
+                        <p class="small text-muted mt-3 mb-0">Solo puede administrar las frases de vinculaci&oacute;n Agile. Para cambiar datos del producto use Imagen o solicite a un superadmin.</p>
+                        @endif
                     </form>
                 </div>
             </div>
@@ -180,6 +224,7 @@
                     </div>
                 </div>
 
+                @if($puedeGestionarFrases)
                 <div class="card shadow-sm">
                     <div class="card-header py-2 small fw-semibold">Frases para vincular (Agile)</div>
                     <div class="card-body">
@@ -231,12 +276,12 @@
                         </ul>
                     </div>
                 </div>
+                @endif
             </div>
         @endif
     </div>
 </div>
 @endsection
-
 @push('scripts')
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script>

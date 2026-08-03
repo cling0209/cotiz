@@ -39,6 +39,7 @@
                         <th>Nombre</th>
                         <th>Correo</th>
                         <th>Perfil</th>
+                        <th>Frases Agile</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -60,6 +61,15 @@
                                     'text-bg-secondary' => $u->isEjecutivo(),
                                 ])>{{ $u->perfilLabel() }}</span>
                             </td>
+                            <td class="small">
+                                @if($u->isSuperAdmin())
+                                    <span class="text-muted">Siempre</span>
+                                @elseif($u->puede_gestionar_frases)
+                                    <span class="badge text-bg-success">S&iacute;</span>
+                                @else
+                                    <span class="text-muted">No</span>
+                                @endif
+                            </td>
                             <td class="text-end text-nowrap">
                                 <a href="{{ route('admin.users.edit', $u) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
                                 @if($u->id !== auth()->id())
@@ -73,7 +83,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted py-4">Sin usuarios.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-4">Sin usuarios.</td></tr>
                     @endforelse
                 </tbody>
             </table>

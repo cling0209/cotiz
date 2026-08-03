@@ -57,6 +57,7 @@ class MaeprodController extends Controller
             'listadoQuery' => $this->listadoQuery($request),
             'puedeModificar' => $request->user()->isSuperAdmin(),
             'puedeEditarImagen' => $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            'puedeGestionarFrases' => $request->user()->canManageMaeprodFrases(),
         ]);
     }
 
@@ -74,6 +75,8 @@ class MaeprodController extends Controller
             'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
             'puedeEditarSoftland' => $request->user()->isSuperAdmin(),
+            'puedeModificarProducto' => true,
+            'puedeGestionarFrases' => false,
             'listadoQuery' => $this->listadoQuery($request),
         ]);
     }
@@ -154,6 +157,12 @@ class MaeprodController extends Controller
 
     public function edit(Request $request, string $prod_item): View|RedirectResponse
     {
+        abort_unless(
+            $request->user()->canManageMaeprodFrases(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         $producto = Maeprod::query()->with('frases')->find($prod_item);
 
         if (! $producto) {
@@ -162,18 +171,28 @@ class MaeprodController extends Controller
                 ->with('info', 'El producto ya no existe o fue eliminado.');
         }
 
+        $puedeModificarProducto = $request->user()->isSuperAdmin();
+
         return view('admin.maeprod.form', [
             'producto' => $producto,
             'familias' => $this->maeprodService->familias(),
             'gramajes' => $this->maeprodService->gramajes(),
             'storageImagenConfigurado' => $this->maeprodService->almacenamientoImagenConfigurado(),
-            'puedeEditarSoftland' => true,
+            'puedeEditarSoftland' => $puedeModificarProducto,
+            'puedeModificarProducto' => $puedeModificarProducto,
+            'puedeGestionarFrases' => true,
             'listadoQuery' => $this->listadoQuery($request),
         ]);
     }
 
     public function update(Request $request, string $prod_item): RedirectResponse
     {
+        abort_unless(
+            $request->user()->isSuperAdmin(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         $producto = Maeprod::query()->findOrFail($prod_item);
 
         $datos = $request->validate($this->maeprodService->reglasValidacion(false, true, $producto->prod_gramaje));
@@ -191,6 +210,12 @@ class MaeprodController extends Controller
 
     public function storeFrase(Request $request, string $prod_item): RedirectResponse|JsonResponse
     {
+        abort_unless(
+            $request->user()->canManageMaeprodFrases(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         $listadoQuery = $this->listadoQuery($request);
         $producto = Maeprod::query()->find($prod_item);
 
@@ -260,6 +285,12 @@ class MaeprodController extends Controller
 
     public function destroyFrase(Request $request, string $prod_item, int $frase): RedirectResponse|JsonResponse
     {
+        abort_unless(
+            $request->user()->canManageMaeprodFrases(),
+            403,
+            'Acceso no autorizado.',
+        );
+
         $listadoQuery = $this->listadoQuery($request);
         $producto = Maeprod::query()->find($prod_item);
 

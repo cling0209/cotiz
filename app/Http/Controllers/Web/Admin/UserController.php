@@ -54,13 +54,18 @@ class UserController extends Controller
     {
         $datos = $request->validate($this->reglasUsuario(true));
 
+        $perfil = (int) $datos['perfil'];
+        $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
+            && $request->boolean('puede_gestionar_frases');
+
         $usuarioCreado = User::query()->create([
             'username' => $datos['username'],
             'nombre' => $datos['nombre'],
             'apellidop' => $datos['apellidop'] ?? null,
             'apellidom' => $datos['apellidom'] ?? null,
             'correo' => $datos['correo'] ?? null,
-            'perfil' => (int) $datos['perfil'],
+            'perfil' => $perfil,
+            'puede_gestionar_frases' => $puedeGestionarFrases,
             'password' => $datos['password'],
         ]);
 
@@ -99,26 +104,31 @@ class UserController extends Controller
 
         $datos = $request->validate($this->reglasUsuario(false, $usuario));
 
+        $perfil = (int) $datos['perfil'];
+        $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
+            && $request->boolean('puede_gestionar_frases');
+
         $updates = [
             'nombre' => $datos['nombre'],
             'apellidop' => $datos['apellidop'] ?? null,
             'apellidom' => $datos['apellidom'] ?? null,
             'correo' => $datos['correo'] ?? null,
-            'perfil' => (int) $datos['perfil'],
+            'perfil' => $perfil,
+            'puede_gestionar_frases' => $puedeGestionarFrases,
         ];
 
         if (! empty($datos['password'])) {
             $updates['password'] = $datos['password'];
         }
 
-        if ($usuario->id === $request->user()->id && (int) $datos['perfil'] !== User::PERFIL_SUPERADMIN) {
+        if ($usuario->id === $request->user()->id && $perfil !== User::PERFIL_SUPERADMIN) {
             return back()
                 ->withInput($request->except('password', 'password_confirmation'))
                 ->with('error', 'No puedes quitarte el perfil de superadministrador.');
         }
 
         if ($usuario->isSuperAdmin()
-            && (int) $datos['perfil'] !== User::PERFIL_SUPERADMIN
+            && $perfil !== User::PERFIL_SUPERADMIN
             && $this->cantidadSuperadmins() <= 1) {
             return back()
                 ->withInput($request->except('password', 'password_confirmation'))
@@ -178,6 +188,7 @@ class UserController extends Controller
             'apellidom' => ['nullable', 'string', 'max:20'],
             'correo' => ['nullable', 'email', 'max:60'],
             'perfil' => ['required', 'integer', Rule::in([User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])],
+            'puede_gestionar_frases' => ['sometimes', 'boolean'],
         ];
 
         if ($esNuevo) {

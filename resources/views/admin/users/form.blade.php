@@ -60,7 +60,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Perfil <span class="text-danger">*</span></label>
-                            <select name="perfil" class="form-select form-select-sm @error('perfil') is-invalid @enderror" required>
+                            <select name="perfil" id="perfil" class="form-select form-select-sm @error('perfil') is-invalid @enderror" required>
                                 <option value="{{ \App\Models\User::PERFIL_SUPERADMIN }}" @selected((int) old('perfil', $usuario?->perfil) === \App\Models\User::PERFIL_SUPERADMIN)>
                                     Superadministrador (mantenedores + todo)
                                 </option>
@@ -69,6 +69,24 @@
                                 </option>
                             </select>
                             @error('perfil')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+
+                        <div class="mb-3" id="permiso-frases-wrap">
+                            <div class="form-check">
+                                <input type="hidden" name="puede_gestionar_frases" value="0">
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       name="puede_gestionar_frases"
+                                       id="puede_gestionar_frases"
+                                       value="1"
+                                       @checked((bool) old('puede_gestionar_frases', $usuario?->puede_gestionar_frases))>
+                                <label class="form-check-label" for="puede_gestionar_frases">
+                                    Puede agregar y eliminar frases Agile
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                Solo aplica a ejecutivos. Les permite vincular productos con frases manuales (prioridad sobre el aprendizaje autom&aacute;tico).
+                            </div>
                         </div>
 
                         <div class="mb-3">
@@ -104,3 +122,27 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    var perfil = document.getElementById('perfil');
+    var wrap = document.getElementById('permiso-frases-wrap');
+    var check = document.getElementById('puede_gestionar_frases');
+    if (!perfil || !wrap) return;
+
+    var ejecutivo = '{{ \App\Models\User::PERFIL_EJECUTIVO }}';
+
+    function sync() {
+        var esEjecutivo = String(perfil.value) === String(ejecutivo);
+        wrap.classList.toggle('d-none', !esEjecutivo);
+        if (!esEjecutivo && check) {
+            check.checked = false;
+        }
+    }
+
+    perfil.addEventListener('change', sync);
+    sync();
+})();
+</script>
+@endpush

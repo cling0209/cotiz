@@ -6,7 +6,8 @@
 @php
     $puedeModificar = $puedeModificar ?? auth()->user()?->isSuperAdmin();
     $puedeEditarImagen = $puedeEditarImagen ?? ($puedeModificar || auth()->user()?->isEjecutivo());
-    $mostrarAcciones = $puedeModificar || $puedeEditarImagen;
+    $puedeGestionarFrases = $puedeGestionarFrases ?? auth()->user()?->canManageMaeprodFrases();
+    $mostrarAcciones = $puedeModificar || $puedeEditarImagen || $puedeGestionarFrases;
     $listadoQuery = $listadoQuery ?? [];
 @endphp
 <div class="container-fluid py-4">
@@ -130,7 +131,12 @@
                                         <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
                                     </form>
                                 @else
-                                    <a href="{{ route('admin.productos.imagen.edit', array_merge(['prod_item' => $producto->prod_item], $listadoQuery)) }}" class="btn btn-outline-primary btn-sm py-0">Imagen</a>
+                                    @if($puedeGestionarFrases)
+                                        <a href="{{ route('admin.productos.edit', array_merge(['prod_item' => $producto->prod_item], $listadoQuery)) }}" class="btn btn-outline-primary btn-sm py-0">Frases</a>
+                                    @endif
+                                    @if($puedeEditarImagen)
+                                        <a href="{{ route('admin.productos.imagen.edit', array_merge(['prod_item' => $producto->prod_item], $listadoQuery)) }}" class="btn btn-outline-secondary btn-sm py-0">Imagen</a>
+                                    @endif
                                 @endif
                             </td>
                             @endif

@@ -42,6 +42,7 @@ class UserSyncTest extends TestCase
                 'apellidop' => 'Usuario',
                 'correo' => 'nuevo@test.cl',
                 'perfil' => User::PERFIL_EJECUTIVO,
+                'puede_gestionar_frases' => true,
                 'password' => 'Clave1234',
             ]);
 
@@ -56,6 +57,7 @@ class UserSyncTest extends TestCase
             'username' => 'nuevo1',
             'nombre' => 'Nuevo',
             'perfil' => User::PERFIL_EJECUTIVO,
+            'puede_gestionar_frases' => true,
         ]);
     }
 

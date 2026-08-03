@@ -154,6 +154,46 @@ class MaeprodFraseTest extends TestCase
             ->assertSee('lapiz azul');
     }
 
+    public function test_ejecutivo_puede_agregar_y_eliminar_frase(): void
+    {
+        $ejecutivo = User::factory()->conPermisoFrases()->create([
+            'username' => 'ejecutivo_frases',
+        ]);
+
+        $this->actingAs($ejecutivo)
+            ->post(route('admin.productos.frases.store', 'DEMO003'), [
+                'frase' => 'adhesivo barra',
+            ])
+            ->assertRedirect(route('admin.productos.edit', 'DEMO003'))
+            ->assertSessionHas('success');
+
+        $frase = MaeprodFrase::query()->where('frase_norm', 'ADHESIVO BARRA')->firstOrFail();
+
+        $this->actingAs($ejecutivo)
+            ->post(route('admin.productos.frases.destroy', [
+                'prod_item' => 'DEMO003',
+                'frase' => $frase->id,
+            ]))
+            ->assertRedirect(route('admin.productos.edit', 'DEMO003'));
+
+        $this->assertDatabaseMissing('maeprod_frases', ['id' => $frase->id]);
+    }
+
+    public function test_ejecutivo_sin_permiso_no_puede_agregar_frase(): void
+    {
+        $ejecutivo = User::factory()->create([
+            'username' => 'ejecutivo_sin',
+            'perfil' => User::PERFIL_EJECUTIVO,
+            'puede_gestionar_frases' => false,
+        ]);
+
+        $this->actingAs($ejecutivo)
+            ->post(route('admin.productos.frases.store', 'DEMO003'), [
+                'frase' => 'adhesivo barra',
+            ])
+            ->assertForbidden();
+    }
+
     public function test_eliminar_frase_sin_producto_redirige_al_listado(): void
     {
         $this->actingAs($this->superadmin)

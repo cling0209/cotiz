@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['username', 'nombre', 'apellidop', 'apellidom', 'correo', 'perfil', 'empresa', 'ccosto', 'password'])]
+#[Fillable(['username', 'nombre', 'apellidop', 'apellidom', 'correo', 'perfil', 'puede_gestionar_frases', 'empresa', 'ccosto', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -96,6 +96,19 @@ class User extends Authenticatable
             && config('cotiz.mercadopublico.resultados_admin_habilitado', true);
     }
 
+    /**
+     * Agregar/quitar frases de vinculación Agile en productos.
+     * Superadmin siempre; ejecutivo solo si se le otorgó el permiso en Usuarios.
+     */
+    public function canManageMaeprodFrases(): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        return $this->isEjecutivo() && (bool) $this->puede_gestionar_frases;
+    }
+
     public function getEmailForPasswordReset(): string
     {
         return (string) ($this->correo ?? '');
@@ -137,6 +150,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'perfil' => 'integer',
+            'puede_gestionar_frases' => 'boolean',
         ];
     }
 }
