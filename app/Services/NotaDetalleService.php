@@ -39,7 +39,7 @@ class NotaDetalleService
             : Maeprod::query()
                 ->whereIn('prod_item', $codigosProducto)
                 ->get()
-                ->keyBy('prod_item');
+                ->keyBy(fn (Maeprod $p) => trim((string) $p->prod_item));
 
         $agileIds = $lineas
             ->map(fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')))
@@ -64,6 +64,7 @@ class NotaDetalleService
                     $descripcionesAgile,
                     (int) ($repetidosPorProd[$linea->prod_item] ?? 0),
                     $maeprods->get($linea->codigoProducto()),
+                    productoYaResuelto: true,
                 );
             });
     }
@@ -96,8 +97,11 @@ class NotaDetalleService
         Collection $descripcionesAgile,
         int $repetidos,
         ?Maeprod $producto = null,
+        bool $productoYaResuelto = false,
     ): array {
-        $producto ??= $linea->resolveProducto();
+        if (! $productoYaResuelto) {
+            $producto ??= $linea->resolveProducto();
+        }
         $codigoProducto = $linea->codigoProducto();
 
         [$fechaFmt, $fechaAntigua] = ProdValorFechaUi::textoYAntigua(
@@ -116,12 +120,14 @@ class NotaDetalleService
             $descripcionMaestro = $nombreProducto !== '' ? $nombreProducto : $descripcionAgile;
         }
 
+        $imageUrl = $producto?->imageUrl() ?? '';
+
         return [
             'linea' => $linea,
             'prod_nombre' => $descripcionMaestro !== '' ? $descripcionMaestro : $codigoProducto,
             'prod_familia' => $producto?->prod_familia,
-            'prod_imagen' => $producto?->imageUrl(),
-            'image_url' => $producto?->imageUrl(),
+            'prod_imagen' => $imageUrl,
+            'image_url' => $imageUrl,
             'prod_item_softland' => $producto?->prod_item_softland ?? '',
             'prod_item_agile' => $agileId,
             'prod_descripcion_agile' => $descripcionAgile,
@@ -129,7 +135,7 @@ class NotaDetalleService
             'observacion' => trim((string) ($linea->observacion ?? '')),
             'observacion_cliente' => trim((string) ($linea->observacion_cliente ?? '')),
             'peso_kg' => $producto?->peso_kg !== null ? (float) $producto->peso_kg : null,
-            'pendiente_vinculo' => self::lineaPendienteVinculo($linea),
+            'pendiente_vinculo' => self::lineaPendienteVinculo($linea, $producto, $productoYaResuelto),
             'prod_valor_fecha' => $fechaFmt,
             'prod_valor_fecha_antigua' => $fechaAntigua,
             'total' => $linea->lineTotal(),
@@ -503,8 +509,11 @@ class NotaDetalleService
         return 'NOK-'.$orden;
     }
 
-    public static function lineaPendienteVinculo(NotaDetalle $linea): bool
-    {
+    public static function lineaPendienteVinculo(
+        NotaDetalle $linea,
+        ?Maeprod $producto = null,
+        bool $productoYaResuelto = false,
+    ): bool {
         $agile = trim((string) ($linea->prod_item_agile ?? ''));
         if ($agile === '') {
             return false;
@@ -519,7 +528,11 @@ class NotaDetalleService
             return true;
         }
 
-        return $linea->resolveProducto() === null;
+        if ($productoYaResuelto) {
+            return $producto === null;
+        }
+
+        return ($producto ?? $linea->resolveProducto()) === null;
     }
 
     /**

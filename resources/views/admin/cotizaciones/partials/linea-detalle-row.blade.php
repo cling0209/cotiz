@@ -42,7 +42,7 @@
                 <img src="{{ $lineaImagenUrl }}"
                      alt=""
                      class="cotiz-buscar-thumb"
-                     loading="eager"
+                     loading="lazy"
                      decoding="async"
                      referrerpolicy="no-referrer"
                      onerror="this.onerror=null;this.src='{{ asset('images/no-image.svg') }}'">
@@ -51,7 +51,7 @@
             <img src="{{ asset('images/no-image.svg') }}"
                  alt=""
                  class="cotiz-buscar-thumb"
-                 loading="eager"
+                 loading="lazy"
                  decoding="async">
         @endif
     </td>

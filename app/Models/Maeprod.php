@@ -17,6 +17,9 @@ class Maeprod extends Model
 
     public $timestamps = false;
 
+    /** @var array<string, string>|null codigo/nombre familia → carpeta imagen */
+    private static ?array $familiaFolderLookup = null;
+
     protected $fillable = [
         'prod_item', 'prod_nombre', 'prod_imagen', 'prod_valor', 'prod_stock_real',
         'prod_gramaje', 'peso_kg', 'prod_familia', 'prod_item_softland', 'prod_valor_fecha',
@@ -91,6 +94,11 @@ class Maeprod extends Model
         return array_values(array_unique($urls));
     }
 
+    public static function flushFamiliaFolderCache(): void
+    {
+        self::$familiaFolderLookup = null;
+    }
+
     public static function resolveFamiliaFolderFor(?string $prodFamilia): string
     {
         $familia = trim((string) $prodFamilia);
@@ -99,13 +107,16 @@ class Maeprod extends Model
             return '';
         }
 
-        $codigo = Famprod::query()
-            ->where('codigo', $familia)
-            ->orWhere('nombre', $familia)
-            ->value('codigo');
+        $lookup = self::familiaFolderLookup();
+        if (isset($lookup[$familia])) {
+            return $lookup[$familia];
+        }
 
-        if ($codigo) {
-            return trim((string) $codigo);
+        // Búsqueda case-insensitive sobre el catálogo ya cargado (1 query por request).
+        foreach ($lookup as $clave => $codigo) {
+            if (strcasecmp((string) $clave, $familia) === 0) {
+                return $codigo;
+            }
         }
 
         return match (mb_strtoupper($familia)) {
@@ -113,6 +124,31 @@ class Maeprod extends Model
             'LIBRERIA' => 'LIBR',
             default => $familia,
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function familiaFolderLookup(): array
+    {
+        if (self::$familiaFolderLookup !== null) {
+            return self::$familiaFolderLookup;
+        }
+
+        $map = [];
+        foreach (Famprod::query()->get(['codigo', 'nombre']) as $row) {
+            $codigo = trim((string) $row->codigo);
+            if ($codigo === '') {
+                continue;
+            }
+            $map[$codigo] = $codigo;
+            $nombre = trim((string) $row->nombre);
+            if ($nombre !== '') {
+                $map[$nombre] = $codigo;
+            }
+        }
+
+        return self::$familiaFolderLookup = $map;
     }
 
     private function resolveFamiliaFolder(): string
