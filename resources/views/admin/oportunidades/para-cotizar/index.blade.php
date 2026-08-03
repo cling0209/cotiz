@@ -2384,6 +2384,8 @@
             en_curso: 'text-bg-primary',
             pendiente: 'text-bg-secondary',
             cancelado: 'text-bg-dark',
+            esperando_worker: 'text-bg-warning',
+            esperando_mp: 'text-bg-info',
         };
 
         function formatearDia(fecha) {
@@ -2392,7 +2394,39 @@
             return (anio && mes && dia) ? `${dia}-${mes}-${anio}` : String(fecha);
         }
 
-        function renderPasosCorrida(pasos) {
+        function etiquetaEsperaPaso(paso, corridaMeta) {
+            const resultado = String(paso?.resultado || '');
+            const mensaje = String(corridaMeta?.mensaje || '').toLowerCase();
+            const hayEnCurso = Boolean(corridaMeta?.hayEnCurso);
+            const esperandoWorker = Boolean(corridaMeta?.esperandoWorker);
+
+            if (resultado === 'en_curso') {
+                const pagina = Number(paso.pagina);
+                const paginasMax = Number(paso.paginas_max);
+                if (Number.isFinite(pagina) && pagina > 0) {
+                    const maxTxt = Number.isFinite(paginasMax) && paginasMax > 0 ? `/${paginasMax}` : '';
+                    return {
+                        clave: 'esperando_mp',
+                        texto: `Esperando Mercado Público · pág ${pagina}${maxTxt}`,
+                    };
+                }
+                return {
+                    clave: 'esperando_mp',
+                    texto: 'Esperando Mercado Público',
+                };
+            }
+
+            if (resultado === 'pendiente' && esperandoWorker && !hayEnCurso) {
+                if (mensaje.includes('esperando worker')) {
+                    return { clave: 'esperando_worker', texto: 'Esperando worker' };
+                }
+                return { clave: 'esperando_worker', texto: 'En cola' };
+            }
+
+            return null;
+        }
+
+        function renderPasosCorrida(pasos, corrida = null) {
             if (!relPasos || !relPasosTbody) return;
             if (!Array.isArray(pasos) || pasos.length === 0) {
                 relPasos.classList.add('d-none');
@@ -2404,6 +2438,20 @@
             if (relPasosContador) {
                 relPasosContador.textContent = `${terminados}/${pasos.length}`;
             }
+
+            const hayEnCurso = pasos.some((p) => p?.resultado === 'en_curso');
+            const mensaje = String(corrida?.mensaje || '');
+            const mensajeLower = mensaje.toLowerCase();
+            const esperandoWorker = Boolean(corrida) &&
+                corrida.estado === 'running' &&
+                !hayEnCurso &&
+                (
+                    Boolean(corrida.worker_stalled) ||
+                    mensajeLower.includes('esperando worker') ||
+                    mensajeLower.includes('encolada') ||
+                    mensajeLower.includes('en cola')
+                );
+            const corridaMeta = { mensaje, hayEnCurso, esperandoWorker };
 
             relPasosTbody.innerHTML = '';
             pasos.forEach((paso, idx) => {
@@ -2465,9 +2513,15 @@
                 }
 
                 const tdResultado = document.createElement('td');
+                const espera = etiquetaEsperaPaso(paso, corridaMeta);
                 const badge = document.createElement('span');
-                badge.className = `badge ${BADGE_PASO[paso.resultado] || 'text-bg-secondary'}`;
-                badge.textContent = paso.etiqueta || 'Pendiente';
+                if (espera) {
+                    badge.className = `badge ${BADGE_PASO[espera.clave] || 'text-bg-secondary'}`;
+                    badge.textContent = espera.texto;
+                } else {
+                    badge.className = `badge ${BADGE_PASO[paso.resultado] || 'text-bg-secondary'}`;
+                    badge.textContent = paso.etiqueta || 'Pendiente';
+                }
                 tdResultado.appendChild(badge);
                 if (paso.error) {
                     const err = document.createElement('div');
@@ -3013,7 +3067,7 @@
                 resultados.classList.remove('d-none');
             }
             renderTabla();
-            renderPasosCorrida(corrida.pasos_resumen || []);
+            renderPasosCorrida(corrida.pasos_resumen || [], corrida);
             actualizarDebugDesdeCorrida(corrida);
             if (corrida.fecha_busqueda && relFecha) {
                 relFecha.textContent = cambiandoDia ?
