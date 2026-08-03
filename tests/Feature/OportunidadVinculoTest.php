@@ -782,7 +782,76 @@ class OportunidadVinculoTest extends TestCase
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
     }
 
-    public function test_asegurar_vinculo_ya_procesado_aplica_frases_sin_vinculo_y_reasigna(): void
+    public function test_asegurar_vinculo_ya_procesado_no_refresca_frases(): void
+    {
+        $this->seed(GramajeSeeder::class);
+        $this->seed(FamprodSeeder::class);
+
+        Maeprod::query()->create([
+            'prod_item' => 'MAT001',
+            'prod_nombre' => 'MATERIAL EDUCATIVO',
+            'prod_valor' => 1000,
+            'prod_familia' => 'LIBR',
+            'prod_gramaje' => 'unidad',
+        ]);
+
+        MaeprodFrase::query()->create([
+            'prod_item' => 'MAT001',
+            'frase' => 'material educativo',
+            'frase_norm' => 'MATERIAL EDUCATIVO',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '273-611-COT26',
+            'nombre' => 'Material educativo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 1,
+            'vinculo_completo' => true,
+            'cantidad_productos' => 2,
+            'productos_vinculados' => 1,
+            'porcentaje_vinculo' => 50,
+            'vinculo_at' => now(),
+            'fecha_cierre' => now()->addDays(3),
+            'vinculo_preview_json' => [
+                'cabecera' => ['codigo_cotizacion' => '273-611-COT26'],
+                'lineas' => [
+                    [
+                        'id_agile' => '1',
+                        'descripcion' => 'KIT MATERIAL EDUCATIVO BASICO',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                        'producto' => null,
+                        'estado' => 'pendiente',
+                        'es_sugerencia' => false,
+                        'origen' => null,
+                    ],
+                ],
+                'resumen' => [
+                    'total' => 2,
+                    'vinculados' => 1,
+                    'pendientes' => 1,
+                    'con_sugerencia' => 0,
+                ],
+            ],
+        ]);
+
+        $resultado = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarVinculoCodigo('273-611-COT26');
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertTrue($resultado['ya_estaba']);
+        $this->assertSame(0, $resultado['cambios_frase']);
+        $this->assertSame(1, $resultado['vinculados']);
+        $this->assertSame(50, $resultado['porcentaje']);
+
+        $row = OportunidadEncontrada::query()->where('codigo', '273-611-COT26')->firstOrFail();
+        $this->assertSame(1, (int) $row->productos_vinculados);
+        $this->assertNull($row->vinculo_preview_json['lineas'][0]['producto'] ?? null);
+    }
+
+    public function test_refrescar_vinculos_por_frases_aplica_sin_vinculo_y_reasigna(): void
     {
         $this->seed(GramajeSeeder::class);
         $this->seed(FamprodSeeder::class);
@@ -865,11 +934,9 @@ class OportunidadVinculoTest extends TestCase
         ]);
 
         $resultado = $this->app->make(OportunidadVinculoService::class)
-            ->asegurarVinculoCodigo('273-611-COT26');
+            ->refrescarVinculosPorFrases('273-611-COT26');
 
-        $this->assertTrue($resultado['ok']);
-        $this->assertTrue($resultado['ya_estaba']);
-        $this->assertSame(2, $resultado['cambios_frase']);
+        $this->assertSame(2, $resultado['cambios']);
         $this->assertSame(2, $resultado['vinculados']);
         $this->assertSame(100, $resultado['porcentaje']);
 

@@ -887,7 +887,7 @@ class OportunidadVinculoService
 
     /**
      * Vincula on-demand una cotización (Productos / Ir a cotizar).
-     * Si ya estaba procesada, reevalúa frases del mantenedor (sin vínculo + reasignación).
+     * Si ya estaba procesada, no reaplica frases: usa el preview guardado.
      *
      * @return array{
      *   ok: bool,
@@ -917,16 +917,20 @@ class OportunidadVinculoService
         }
 
         if (! $this->necesitaVincularCodigo($codigo)) {
-            $refresco = $this->refrescarVinculosPorFrases($codigo);
+            $row = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->orderByDesc('fecha_busqueda')
+                ->orderByDesc('id')
+                ->first();
 
             return [
                 'ok' => true,
                 'ya_estaba' => true,
-                'total' => $refresco['total'],
-                'vinculados' => $refresco['vinculados'],
-                'porcentaje' => $refresco['porcentaje'],
-                'cambios_frase' => $refresco['cambios'],
-                'item' => $refresco['item'],
+                'total' => (int) ($row->cantidad_productos ?? 0),
+                'vinculados' => (int) ($row->productos_vinculados ?? 0),
+                'porcentaje' => (int) ($row->porcentaje_vinculo ?? 0),
+                'cambios_frase' => 0,
+                'item' => $row?->toResumen(),
                 'error' => null,
             ];
         }

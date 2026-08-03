@@ -1622,7 +1622,7 @@
         }
 
         /**
-         * Asegura vinculación (o refresca frases del mantenedor si ya estaba procesada).
+         * Vincula on-demand solo si aún no está procesada (sin refresco por frases).
          * @returns {Promise<{ok: boolean, error?: string}>}
          */
         async function asegurarVinculoAntes(codigo, { onAviso } = {}) {
@@ -1631,11 +1631,11 @@
                 return { ok: false, error: 'Código vacío.' };
             }
             const item = porCodigo.get(cod);
-            const necesita = itemNecesitaVincular(item);
+            if (!itemNecesitaVincular(item)) {
+                return { ok: true };
+            }
             if (typeof onAviso === 'function') {
-                onAviso(necesita
-                    ? 'Se va a vincular antes de mostrar…'
-                    : 'Actualizando vinculaciones por frases…');
+                onAviso('Se va a vincular antes de mostrar…');
             }
             if (!urls.vincularCodigo) {
                 return { ok: false, error: 'No hay endpoint de vinculación disponible.' };
@@ -1705,29 +1705,31 @@
             if (modalVinculoTbody) {
                 modalVinculoTbody.innerHTML = '';
             }
+            const necesitaVinculo = itemNecesitaVincular(porCodigo.get(cod));
             setModalVinculoLoading(
-                itemNecesitaVincular(porCodigo.get(cod))
+                necesitaVinculo
                     ? 'Se va a vincular antes de mostrar…'
-                    : 'Actualizando vinculaciones por frases…'
+                    : 'Cargando productos…'
             );
             bsModalVinculo.show();
 
-            const prev = await asegurarVinculoAntes(cod, {
-                onAviso: (msg) => setModalVinculoLoading(msg),
-            });
-            if (!prev.ok) {
-                if (modalVinculoLoading) {
-                    modalVinculoLoading.classList.add('d-none');
+            if (necesitaVinculo) {
+                const prev = await asegurarVinculoAntes(cod, {
+                    onAviso: (msg) => setModalVinculoLoading(msg),
+                });
+                if (!prev.ok) {
+                    if (modalVinculoLoading) {
+                        modalVinculoLoading.classList.add('d-none');
+                    }
+                    if (modalVinculoError) {
+                        modalVinculoError.className = 'alert alert-danger py-2 small mb-0';
+                        modalVinculoError.textContent = 'Vinculación fallida: ' + (prev.error || 'Error desconocido');
+                        modalVinculoError.classList.remove('d-none');
+                    }
+                    return;
                 }
-                if (modalVinculoError) {
-                    modalVinculoError.className = 'alert alert-danger py-2 small mb-0';
-                    modalVinculoError.textContent = 'Vinculación fallida: ' + (prev.error || 'Error desconocido');
-                    modalVinculoError.classList.remove('d-none');
-                }
-                return;
+                setModalVinculoLoading('Cargando productos…');
             }
-
-            setModalVinculoLoading('Cargando productos…');
 
             try {
                 const urlDetalle = String(urls.detalleVinculoBase || '').replace('__CODIGO__', encodeURIComponent(cod));
@@ -1842,7 +1844,7 @@
         }
 
         if (tbody) {
-            // Ir a cotizar: vincular o refrescar frases antes de navegar.
+            // Ir a cotizar: vincular solo si aún no está procesada (sin refresco por frases).
             tbody.addEventListener('click', async (e) => {
                 const link = e.target.closest('a.btn-ir-cotizar');
                 if (!link) {
@@ -1854,13 +1856,15 @@
                 e.preventDefault();
                 e.stopPropagation();
                 const href = link.getAttribute('href') || '';
+                const necesita = itemNecesitaVincular(porCodigo.get(cod));
+                if (!necesita) {
+                    window.location.href = href;
+                    return;
+                }
                 const labelPrev = link.innerHTML;
                 link.classList.add('disabled');
                 link.setAttribute('aria-disabled', 'true');
-                const necesita = itemNecesitaVincular(porCodigo.get(cod));
-                link.innerHTML = necesita
-                    ? '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…'
-                    : '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando…';
+                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando…';
                 const prev = await asegurarVinculoAntes(cod);
                 if (!prev.ok) {
                     link.classList.remove('disabled');
