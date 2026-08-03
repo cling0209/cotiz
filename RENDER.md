@@ -60,6 +60,7 @@ Plantilla: **`.env.render.example`**.
 | `APP_KEY` | `php artisan key:generate --show` |
 | `APP_ENV` | `production` |
 | `APP_DEBUG` | `false` |
+| `MAINTENANCE_MODE` | `false` (pon `true` para mostrar página de mantención; también acepta `NEXT_PUBLIC_MAINTENANCE_MODE`) |
 | `APP_URL` | `https://cotiza.romulo.cl` |
 | `DB_*` o `DATABASE_URL` | Neon PostgreSQL |
 | `CACHE_STORE` | `database` |

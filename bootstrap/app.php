@@ -4,6 +4,7 @@ use App\Http\Middleware\ForceRequestRootUrl;
 use App\Http\Middleware\EnsureCompraAgilAnalisisAdmin;
 use App\Http\Middleware\EnsureCompraAgilResultadosAdmin;
 use App\Http\Middleware\EnsureAgileBasicAuth;
+use App\Http\Middleware\EnsureMaintenanceMode;
 use App\Http\Middleware\EnsureNotaApiBasicAuth;
 use App\Http\Middleware\EnsureOportunidadesAdmin;
 use App\Http\Middleware\EnsureOportunidadesPalabrasClave;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $middleware->redirectGuestsTo(fn (Request $request) => route('admin.login'));
+        $middleware->prepend(EnsureMaintenanceMode::class);
         $middleware->web(prepend: [
             ForceRequestRootUrl::class,
         ]);

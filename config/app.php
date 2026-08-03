@@ -123,4 +123,20 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Flag de mantención por variable de entorno
+    |--------------------------------------------------------------------------
+    |
+    | Si es true, el middleware EnsureMaintenanceMode muestra la página
+    | genérica de mantención (excepto /up). Alias: NEXT_PUBLIC_MAINTENANCE_MODE
+    | por compatibilidad con variables ya cargadas en Render.
+    |
+    */
+    'maintenance_mode' => filter_var(
+        env('MAINTENANCE_MODE', env('NEXT_PUBLIC_MAINTENANCE_MODE', false)),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
 ];
+
