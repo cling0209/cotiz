@@ -1200,7 +1200,11 @@ class OportunidadParaCotizarService
                     $this->mapper->resumenListadoItem($item),
                 );
 
-                if ($this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
+                if ($this->esPublicadaEnVentanaBusqueda(
+                    $resumen['fecha_publicacion'] ?? null,
+                    $dia,
+                    $cambioDesde,
+                )) {
                     $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
                     if ($coinciden !== []
                         && $this->estaVigente($resumen['fecha_cierre'] ?? null)
@@ -1429,7 +1433,11 @@ class OportunidadParaCotizarService
                 continue;
             }
 
-            if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
+            if (! $this->esPublicadaEnVentanaBusqueda(
+                $resumen['fecha_publicacion'] ?? null,
+                $dia,
+                $cambioDesde,
+            )) {
                 continue;
             }
 
@@ -1730,19 +1738,45 @@ class OportunidadParaCotizarService
      */
     public function esPublicadaEnFecha(mixed $fecha, mixed $fechaBusqueda = null): bool
     {
+        return $this->esPublicadaEnVentanaBusqueda($fecha, $fechaBusqueda, null);
+    }
+
+    /**
+     * Publicada el día de búsqueda, o en [fecha(Desde) .. día] si hay ventana incremental.
+     * Ej.: Desde 31-07 y día 04-08 → acepta pubs del 31, 1, 2, 3 y 4.
+     */
+    public function esPublicadaEnVentanaBusqueda(
+        mixed $fecha,
+        mixed $fechaBusqueda = null,
+        mixed $cambioDesde = null,
+    ): bool {
         $fecha = trim((string) $fecha);
         if ($fecha === '') {
             return false;
         }
 
-        $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        $diaHasta = $this->normalizarFechaBusqueda($fechaBusqueda);
 
         try {
-            return Carbon::parse($fecha)
-                ->timezone(config('app.timezone'))
-                ->toDateString() === $dia;
+            $pubDia = Carbon::parse($fecha)
+                ->timezone((string) config('app.timezone'))
+                ->toDateString();
         } catch (\Throwable) {
             return false;
         }
+
+        if ($cambioDesde === null || trim((string) $cambioDesde) === '') {
+            return $pubDia === $diaHasta;
+        }
+
+        try {
+            $diaDesde = Carbon::parse($cambioDesde)
+                ->timezone((string) config('app.timezone'))
+                ->toDateString();
+        } catch (\Throwable) {
+            return $pubDia === $diaHasta;
+        }
+
+        return $pubDia >= $diaDesde && $pubDia <= $diaHasta;
     }
 }
