@@ -30,10 +30,11 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
      */
     public function middleware(): array
     {
+        // Jobs cortos (1 página MP). Lock breve para no bloquear reencolados tras un kill.
         return [
             (new WithoutOverlapping('oportunidad-busqueda-'.$this->corridaId))
-                ->releaseAfter(30)
-                ->expireAfter(300),
+                ->releaseAfter(15)
+                ->expireAfter(120),
         ];
     }
 

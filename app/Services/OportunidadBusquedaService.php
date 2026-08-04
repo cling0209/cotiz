@@ -264,8 +264,8 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Procesa un único paso (o reintento de región).
-     * Orden: región completa → reintentar fallidos de esa región → siguiente región.
+     * Procesa una unidad de trabajo: 1 página MP de la región actual (como Resultados por lote).
+     * Si la región tiene más páginas, deja el paso en running y reencola.
      */
     public function procesarPaso(OportunidadBusquedaCorrida $corrida): bool
     {
@@ -303,16 +303,29 @@ class OportunidadBusquedaService
         $fallidos = $this->contarFallidosDefinitivos($pasos);
         $inicioPaso = now();
         $duracionPrevia = max(0, (int) ($pasos[$indice]['duracion_segundos'] ?? 0));
+        $estadoPrevio = (string) ($paso['estado'] ?? self::PASO_PENDING);
+        $esInicioRegion = $estadoPrevio !== self::PASO_RUNNING;
 
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
         $cambioDesde = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
         $cambioDesde = $cambioDesde !== '' ? $cambioDesde : null;
         $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
         $maxPaginasPaso = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', 8)));
+
+        // Checkpoint: retomar la página pendiente; no reiniciar Metropolitana desde 1.
+        $siguienteGuardada = (int) ($paso['siguiente_pagina'] ?? 0);
+        $pagina = $esInicioRegion || $siguienteGuardada < 1
+            ? 1
+            : max(1, $siguienteGuardada);
+
+        $itemsLeidosPrevios = $esInicioRegion ? 0 : max(0, (int) ($paso['items_leidos'] ?? 0));
+        $encontradasPrevias = $esInicioRegion ? 0 : max(0, (int) ($paso['encontradas'] ?? 0));
+
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
-        $pasos[$indice]['pagina'] = 1;
+        $pasos[$indice]['pagina'] = $pagina;
         $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
-        $pasos[$indice]['items_leidos'] = 0;
+        $pasos[$indice]['siguiente_pagina'] = $pagina;
+        $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
         $pasos[$indice]['items_pagina'] = 0;
         $pasos[$indice]['duracion_segundos'] = $duracionPrevia;
         $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
@@ -323,23 +336,27 @@ class OportunidadBusquedaService
             $fechaBusqueda,
             $cambioDesde,
         );
+
         $mensajeInicio = sprintf(
-            'Consultando %s (paso %d/%d) — página 1/%d…',
+            'Consultando %s (paso %d/%d) — página %d/%d…',
             $regionNombre !== '' ? $regionNombre : ('región '.$region),
             $this->contarTerminados($pasos) + 1,
             count($pasos),
+            $pagina,
             $maxPaginasPaso,
         );
-        $this->pushEvento(
-            $eventos,
-            'region',
-            sprintf(
-                'Worker inició %s (paso %d/%d). Esperando Mercado Público…',
-                $regionNombre !== '' ? $regionNombre : ('región '.$region),
-                $this->contarTerminados($pasos) + 1,
-                count($pasos),
-            ),
-        );
+        if ($esInicioRegion) {
+            $this->pushEvento(
+                $eventos,
+                'region',
+                sprintf(
+                    'Worker inició %s (paso %d/%d). Esperando Mercado Público…',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $this->contarTerminados($pasos) + 1,
+                    count($pasos),
+                ),
+            );
+        }
 
         try {
             $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensajeInicio, $eventos);
@@ -358,7 +375,7 @@ class OportunidadBusquedaService
             }
         };
 
-        $onProgreso = function (int $pagina, int $itemsPagina, int $itemsAcumulados, array $consulta) use (
+        $onProgreso = function (int $paginaActual, int $itemsPagina, int $itemsAcumulados, array $consulta) use (
             $corrida,
             &$pasos,
             &$eventos,
@@ -375,7 +392,7 @@ class OportunidadBusquedaService
             $assertCorridaActiva();
             $pasos[$indice]['estado'] = self::PASO_RUNNING;
             $pasos[$indice]['consulta'] = $consulta;
-            $pasos[$indice]['pagina'] = max(1, $pagina);
+            $pasos[$indice]['pagina'] = max(1, $paginaActual);
             $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
             $pasos[$indice]['items_pagina'] = max(0, $itemsPagina);
             $pasos[$indice]['items_leidos'] = max(0, $itemsAcumulados);
@@ -383,7 +400,7 @@ class OportunidadBusquedaService
             $mensaje = sprintf(
                 'Consultando %s — página %d/%d (%d ítems leídos)…',
                 $regionNombre !== '' ? $regionNombre : ('región '.$region),
-                $pagina,
+                $paginaActual,
                 $maxPaginasPaso,
                 $itemsAcumulados,
             );
@@ -393,7 +410,7 @@ class OportunidadBusquedaService
                 sprintf(
                     '%s · pág %d/%d · %d ítems (Mercado Público)',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
-                    $pagina,
+                    $paginaActual,
                     $maxPaginasPaso,
                     $itemsAcumulados,
                 ),
@@ -401,53 +418,114 @@ class OportunidadBusquedaService
             $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje, $eventos);
         };
 
+        $regionTerminada = false;
+        $mensaje = $mensajeInicio;
+
         try {
             $assertCorridaActiva();
-            $resultado = $this->oportunidades->ejecutarPaso(
-                $frase,
-                $region,
-                [],
-                null,
-                $fechaBusqueda,
-                $onProgreso,
-                $cambioDesde,
-            );
-            $assertCorridaActiva();
-            // Contar lo realmente grabado y listable, no solo matches en memoria.
-            $encontradas = (int) ($resultado['guardadas'] ?? 0);
-            if ($encontradas <= 0 && is_array($resultado['items'] ?? null)) {
-                $encontradas = count($resultado['items']);
+
+            // Plan nuevo: frase vacía/"(todas)" → una página de región.
+            // Legado con frase concreta: una sola llamada (sin paginar).
+            if ($frase === '' || $frase === '(todas)') {
+                $resultado = $this->oportunidades->ejecutarPasoRegionPagina(
+                    $region,
+                    $pagina,
+                    $itemsLeidosPrevios,
+                    [],
+                    null,
+                    $fechaBusqueda,
+                    $onProgreso,
+                    $cambioDesde,
+                );
+            } else {
+                $resultado = $this->oportunidades->ejecutarPaso(
+                    $frase,
+                    $region,
+                    [],
+                    null,
+                    $fechaBusqueda,
+                    $onProgreso,
+                    $cambioDesde,
+                );
+                $resultado['continuar'] = false;
+                $resultado['pagina'] = 1;
+                $resultado['items_leidos'] = is_array($resultado['items'] ?? null)
+                    ? count($resultado['items'])
+                    : 0;
             }
-            $pasos[$indice]['estado'] = self::PASO_OK;
-            $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+
+            $assertCorridaActiva();
+
+            $guardadasPagina = (int) ($resultado['guardadas'] ?? 0);
+            if ($guardadasPagina <= 0 && is_array($resultado['items'] ?? null)) {
+                $guardadasPagina = count($resultado['items']);
+            }
+            $encontradas = $encontradasPrevias + $guardadasPagina;
+            $itemsLeidos = max($itemsLeidosPrevios, (int) ($resultado['items_leidos'] ?? $itemsLeidosPrevios));
+            $paginaHecha = max(1, (int) ($resultado['pagina'] ?? $pagina));
+            $continuarPaginas = (bool) ($resultado['continuar'] ?? false);
+
+            $pasos[$indice]['pagina'] = $paginaHecha;
+            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+            $pasos[$indice]['items_pagina'] = max(0, (int) ($resultado['items_pagina'] ?? 0));
+            $pasos[$indice]['items_leidos'] = $itemsLeidos;
             $pasos[$indice]['encontradas'] = $encontradas;
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = is_array($resultado['consulta'] ?? null) ? $resultado['consulta'] : null;
-            $fallidos = $this->contarFallidosDefinitivos($pasos);
-            $mensaje = $fase === 'reintento'
-                ? sprintf(
-                    'Reintento OK región %d: %d cotización(es) (%d/%d pasos).',
-                    $region,
-                    $encontradas,
-                    $this->contarTerminados($pasos),
-                    count($pasos),
-                )
-                : sprintf(
-                    'Paso región %d: %d cotización(es) (%d/%d).',
-                    $region,
-                    $encontradas,
-                    $this->contarTerminados($pasos),
-                    count($pasos),
-                );
-            $this->pushEvento(
-                $eventos,
-                'region_ok',
-                sprintf(
-                    '%s terminada: %d cotización(es).',
+
+            if ($continuarPaginas) {
+                $pasos[$indice]['estado'] = self::PASO_RUNNING;
+                $pasos[$indice]['siguiente_pagina'] = $paginaHecha + 1;
+                $mensaje = sprintf(
+                    'Consultando %s — página %d/%d hecha (%d ítems; %d cotiz.). Siguiente página…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $paginaHecha,
+                    $maxPaginasPaso,
+                    $itemsLeidos,
                     $encontradas,
-                ),
-            );
+                );
+                $this->pushEvento(
+                    $eventos,
+                    'mp_pagina_ok',
+                    sprintf(
+                        '%s · pág %d/%d OK · siguiente %d',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $paginaHecha,
+                        $maxPaginasPaso,
+                        $paginaHecha + 1,
+                    ),
+                );
+            } else {
+                $regionTerminada = true;
+                $pasos[$indice]['estado'] = self::PASO_OK;
+                $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+                unset($pasos[$indice]['siguiente_pagina']);
+                $fallidos = $this->contarFallidosDefinitivos($pasos);
+                $mensaje = $fase === 'reintento'
+                    ? sprintf(
+                        'Reintento OK región %d: %d cotización(es) (%d/%d pasos).',
+                        $region,
+                        $encontradas,
+                        $this->contarTerminados($pasos),
+                        count($pasos),
+                    )
+                    : sprintf(
+                        'Paso región %d: %d cotización(es) (%d/%d).',
+                        $region,
+                        $encontradas,
+                        $this->contarTerminados($pasos),
+                        count($pasos),
+                    );
+                $this->pushEvento(
+                    $eventos,
+                    'region_ok',
+                    sprintf(
+                        '%s terminada: %d cotización(es).',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $encontradas,
+                    ),
+                );
+            }
         } catch (\Throwable $e) {
             $corrida->refresh();
             if ($corrida->estado === self::ESTADO_CANCELLED
@@ -455,12 +533,13 @@ class OportunidadBusquedaService
                 return false;
             }
 
+            $regionTerminada = true;
             $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
             $pasos[$indice]['intentos'] = $intentos;
             $pasos[$indice]['estado'] = $intentos >= 2
                 ? self::PASO_RETRY_FAILED
                 : self::PASO_FAILED;
-            $pasos[$indice]['encontradas'] = 0;
+            unset($pasos[$indice]['siguiente_pagina']);
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
                 $frase !== '' ? $frase : '(todas)',
@@ -477,6 +556,7 @@ class OportunidadBusquedaService
                 'region' => $region,
                 'fase' => $fase,
                 'intento' => $intentos,
+                'pagina' => $pagina,
                 'mensaje' => mb_substr($e->getMessage(), 0, 500),
                 'fecha' => now()->toIso8601String(),
             ];
@@ -488,23 +568,26 @@ class OportunidadBusquedaService
                     mb_substr($e->getMessage(), 0, 200),
                 )
                 : sprintf(
-                    'Paso fallido región %d; al cerrar la región se reintentará. %s',
+                    'Paso fallido región %d (pág %d); al cerrar la región se reintentará. %s',
                     $region,
+                    $pagina,
                     mb_substr($e->getMessage(), 0, 200),
                 );
             $this->pushEvento(
                 $eventos,
                 'region_error',
                 sprintf(
-                    '%s falló: %s',
+                    '%s falló (pág %d): %s',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $pagina,
                     mb_substr($e->getMessage(), 0, 180),
                 ),
             );
         }
 
+        $nuevoCursor = $regionTerminada ? $cursor + 1 : $cursor;
         $updatePaso = [
-            'pasos_procesados' => $cursor + 1,
+            'pasos_procesados' => $nuevoCursor,
             'pasos_fallidos' => $fallidos,
             'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($fechaBusqueda)),
             'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
@@ -524,7 +607,6 @@ class OportunidadBusquedaService
 
         $corrida->refresh();
         if ($actualizada !== 1) {
-            // Colisión entre workers: reencolar si aún quedan pasos por procesar.
             if ($corrida->estado === self::ESTADO_RUNNING
                 && $this->seleccionarSiguiente(is_array($corrida->plan_json) ? $corrida->plan_json : []) !== null) {
                 return true;

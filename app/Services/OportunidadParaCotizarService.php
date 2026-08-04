@@ -963,15 +963,83 @@ class OportunidadParaCotizarService
         ?callable $onProgreso = null,
         mixed $cambioDesde = null,
     ): array {
+        $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
+        $items = [];
+        $crudosTotal = 0;
+        $guardadas = 0;
+        $consulta = $this->metaConsultaPaso('(todas)', $region, 0, 0, $fechaBusqueda, null, $cambioDesde);
+
+        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
+            $resultado = $this->ejecutarPasoRegionPagina(
+                $region,
+                $pagina,
+                $crudosTotal,
+                $codigosExcluidos,
+                $userId,
+                $fechaBusqueda,
+                $onProgreso,
+                $cambioDesde,
+            );
+            $loteItems = is_array($resultado['items'] ?? null) ? $resultado['items'] : [];
+            $items = array_merge($items, $loteItems);
+            $guardadas += (int) ($resultado['guardadas'] ?? 0);
+            $crudosTotal = (int) ($resultado['items_leidos'] ?? $crudosTotal);
+            if (is_array($resultado['consulta'] ?? null)) {
+                $consulta = $resultado['consulta'];
+            }
+            if (! ($resultado['continuar'] ?? false)) {
+                break;
+            }
+        }
+
+        return [
+            'items' => $items,
+            'consulta' => $consulta,
+            'guardadas' => $guardadas,
+        ];
+    }
+
+    /**
+     * Una página MP de una región (unidad de trabajo del queue worker).
+     *
+     * @param  list<string>  $codigosExcluidos
+     * @param  (callable(int, int, int, array<string, mixed>): void)|null  $onProgreso
+     * @return array{
+     *   items: list<array<string, mixed>>,
+     *   consulta: array<string, mixed>,
+     *   guardadas: int,
+     *   pagina: int,
+     *   items_pagina: int,
+     *   items_leidos: int,
+     *   continuar: bool
+     * }
+     */
+    public function ejecutarPasoRegionPagina(
+        int $region,
+        int $pagina,
+        int $itemsLeidosPrevios = 0,
+        array $codigosExcluidos = [],
+        ?int $userId = null,
+        mixed $fechaBusqueda = null,
+        ?callable $onProgreso = null,
+        mixed $cambioDesde = null,
+    ): array {
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        $pagina = max(1, $pagina);
         $palabras = $this->palabrasClaveParaRegion($region);
         $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
-        if ($region < 1 || $palabras === []) {
-            return [
-                'items' => [],
-                'consulta' => $this->metaConsultaPaso('(todas)', $region, 0, 0, $dia, null, $cambioDesde),
-                'guardadas' => 0,
-            ];
+        $vacio = [
+            'items' => [],
+            'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+            'guardadas' => 0,
+            'pagina' => $pagina,
+            'items_pagina' => 0,
+            'items_leidos' => $itemsLeidosPrevios,
+            'continuar' => false,
+        ];
+
+        if ($region < 1 || $palabras === [] || $pagina > $maxPaginas) {
+            return $vacio;
         }
 
         if (! $this->api->isConfigured()) {
@@ -993,131 +1061,140 @@ class OportunidadParaCotizarService
             ? ':'.md5(($ventanaKey['desde'] ?? '').'|'.($ventanaKey['hasta'] ?? ''))
             : '';
 
-        $crudos = [];
-        $items = [];
-        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
-            $params = $this->parametrosConsultaRegion($region, $pagina, $dia, $cambioDesde);
-            if ($onProgreso) {
-                $onProgreso(
-                    $pagina,
+        $params = $this->parametrosConsultaRegion($region, $pagina, $dia, $cambioDesde);
+        if ($onProgreso) {
+            $onProgreso(
+                $pagina,
+                0,
+                $itemsLeidosPrevios,
+                $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+            );
+        }
+
+        $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina.$cacheSufijo;
+        $lote = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
+            $resultado = $this->api->listar($params);
+
+            return is_array($resultado['items'] ?? null) ? $resultado['items'] : [];
+        });
+
+        $itemsLeidos = $itemsLeidosPrevios + count($lote);
+        if ($onProgreso) {
+            $onProgreso(
+                $pagina,
+                count($lote),
+                $itemsLeidos,
+                $this->metaConsultaPaso(
+                    '(todas)',
+                    $region,
+                    $itemsLeidos,
                     0,
-                    count($crudos),
-                    $this->metaConsultaPaso('(todas)', $region, count($crudos), count($items), $dia, $this->muestraRespuestaCruda($crudos), $cambioDesde),
-                );
+                    $dia,
+                    $this->muestraRespuestaCruda($lote),
+                    $cambioDesde,
+                ),
+            );
+        }
+
+        if ($lote === []) {
+            return [
+                'items' => [],
+                'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+                'guardadas' => 0,
+                'pagina' => $pagina,
+                'items_pagina' => 0,
+                'items_leidos' => $itemsLeidosPrevios,
+                'continuar' => false,
+            ];
+        }
+
+        $items = [];
+        $todasAnterioresAlDia = true;
+
+        foreach ($lote as $item) {
+            if (! is_array($item) || CompraAgilRegionScope::debeExcluirItem($item)) {
+                continue;
             }
 
-            $cacheKey = 'oportunidad_para_cotizar:'.$dia.':region:'.$region.':p'.$pagina.$cacheSufijo;
-            $lote = Cache::remember($cacheKey, self::CACHE_SEGUNDOS, function () use ($params) {
-                $resultado = $this->api->listar($params);
-
-                return is_array($resultado['items'] ?? null) ? $resultado['items'] : [];
-            });
-
-            if ($onProgreso) {
-                $onProgreso(
-                    $pagina,
-                    count($lote),
-                    count($crudos) + count($lote),
-                    $this->metaConsultaPaso(
-                        '(todas)',
-                        $region,
-                        count($crudos) + count($lote),
-                        count($items),
-                        $dia,
-                        $this->muestraRespuestaCruda(array_merge($crudos, $lote)),
-                        $cambioDesde,
-                    ),
-                );
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo === '') {
+                continue;
             }
 
-            if ($lote === []) {
-                break;
+            $resumen = $this->oportunidad->enriquecerResumen(
+                $this->mapper->resumenListadoItem($item),
+            );
+
+            $fechaPub = trim((string) ($resumen['fecha_publicacion'] ?? ''));
+            $fechaPubDia = null;
+            if ($fechaPub !== '') {
+                try {
+                    $fechaPubDia = Carbon::parse($fechaPub)
+                        ->timezone(config('app.timezone'))
+                        ->toDateString();
+                } catch (\Throwable) {
+                    $fechaPubDia = null;
+                }
             }
 
-            $crudos = array_merge($crudos, $lote);
-            $todasAnterioresAlDia = true;
-
-            foreach ($lote as $item) {
-                if (! is_array($item) || CompraAgilRegionScope::debeExcluirItem($item)) {
-                    continue;
-                }
-
-                $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-                if ($codigo === '') {
-                    continue;
-                }
-
-                $resumen = $this->oportunidad->enriquecerResumen(
-                    $this->mapper->resumenListadoItem($item),
-                );
-
-                $fechaPub = trim((string) ($resumen['fecha_publicacion'] ?? ''));
-                $fechaPubDia = null;
-                if ($fechaPub !== '') {
-                    try {
-                        $fechaPubDia = Carbon::parse($fechaPub)
-                            ->timezone(config('app.timezone'))
-                            ->toDateString();
-                    } catch (\Throwable) {
-                        $fechaPubDia = null;
-                    }
-                }
-
-                if ($fechaPubDia !== null && $fechaPubDia >= $dia) {
-                    $todasAnterioresAlDia = false;
-                }
-
-                if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
-                    continue;
-                }
-
-                $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
-                if ($coinciden === []) {
-                    continue;
-                }
-
-                if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
-                    continue;
-                }
-
-                if (isset($yaVistos[$codigo])) {
-                    foreach ($coinciden as $fraseOk) {
-                        $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
-                    }
-                    $this->completarCantidadProductosGuardada($codigo, $dia);
-
-                    continue;
-                }
-
-                $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
-                $resumen['palabras_coinciden'] = $coinciden;
-                $resumen['cantidad_productos'] = $this->obtenerCantidadProductosReal($codigo);
-                $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
-                $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
-                $resumen['guardada'] = true;
-                $items[] = $resumen;
-                $yaVistos[$codigo] = true;
+            if ($fechaPubDia !== null && $fechaPubDia >= $dia) {
+                $todasAnterioresAlDia = false;
             }
 
-            if ($todasAnterioresAlDia || count($lote) < self::REGION_TAMANO_PAGINA) {
-                break;
+            if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
+                continue;
             }
+
+            $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
+            if ($coinciden === []) {
+                continue;
+            }
+
+            if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
+                continue;
+            }
+
+            if (isset($yaVistos[$codigo])) {
+                foreach ($coinciden as $fraseOk) {
+                    $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
+                }
+                // No llamar detalle MP aquí: bloqueaba el worker minutos tras la pág 1.
+
+                continue;
+            }
+
+            $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
+            $resumen['palabras_coinciden'] = $coinciden;
+            // Diferir detalle MP (cantidad): el listado no debe colgar el job.
+            $resumen['cantidad_productos'] = null;
+            $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
+            $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
+            $resumen['guardada'] = true;
+            $items[] = $resumen;
+            $yaVistos[$codigo] = true;
         }
 
         $guardadas = $this->guardarEncontradas($items, $userId, $dia);
+        $continuar = ! $todasAnterioresAlDia
+            && count($lote) >= self::REGION_TAMANO_PAGINA
+            && $pagina < $maxPaginas;
 
         return [
             'items' => $items,
             'consulta' => $this->metaConsultaPaso(
                 '(todas)',
                 $region,
-                count($crudos),
+                $itemsLeidos,
                 count($items),
                 $dia,
-                $this->muestraRespuestaCruda($crudos),
+                $this->muestraRespuestaCruda($lote),
                 $cambioDesde,
             ),
             'guardadas' => $guardadas,
+            'pagina' => $pagina,
+            'items_pagina' => count($lote),
+            'items_leidos' => $itemsLeidos,
+            'continuar' => $continuar,
         ];
     }
 
