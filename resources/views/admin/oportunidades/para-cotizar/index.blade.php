@@ -138,6 +138,7 @@
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap text-end">P&aacute;gina</th>
+                                <th class="text-nowrap text-end">T. match</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
                                 <th class="text-nowrap">Resultado</th>
                             </tr>
@@ -2718,6 +2719,27 @@
                     tdPagina.classList.add('text-muted');
                 }
 
+                const tdMatchTiempo = document.createElement('td');
+                tdMatchTiempo.className = 'text-end text-nowrap tabular-nums';
+                const matchSeg = Number(paso.match_segundos);
+                const matchSegAcum = Number(paso.match_segundos_acum);
+                const liveMatch = (Number.isFinite(matchSeg) && matchSeg > 0) ? matchSeg : 0;
+                const acumMatch = (Number.isFinite(matchSegAcum) && matchSegAcum > 0) ? matchSegAcum : 0;
+                const enMatchLive = paso.resultado === 'en_curso' &&
+                    (String(paso.fase || '') === 'match' || liveMatch > 0);
+                const matchSegMostrar = enMatchLive
+                    ? (acumMatch + liveMatch)
+                    : (liveMatch > 0 ? liveMatch : (acumMatch > 0 ? acumMatch : null));
+                if (matchSegMostrar != null && matchSegMostrar > 0) {
+                    tdMatchTiempo.textContent = formatearDuracionSegs(matchSegMostrar);
+                    if (enMatchLive) {
+                        tdMatchTiempo.classList.add('fw-semibold', 'text-primary');
+                    }
+                } else {
+                    tdMatchTiempo.textContent = '—';
+                    tdMatchTiempo.classList.add('text-muted');
+                }
+
                 const tdTiempo = document.createElement('td');
                 tdTiempo.className = 'text-end text-nowrap tabular-nums';
                 const duracionTexto = paso.duracion_texto ||
@@ -2747,7 +2769,7 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdPagina, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdPagina, tdMatchTiempo, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }

@@ -712,6 +712,13 @@ class OportunidadBusquedaService
                     : ($pasos[$indice]['encontradas_muestra'] ?? []);
             }
 
+            $matchHecho = max(0, (int) ($pasos[$indice]['match_segundos'] ?? 0));
+            if ($matchHecho === 0 && is_array($resultado['consulta']['respuesta'] ?? null)) {
+                $matchHecho = max(0, (int) ($resultado['consulta']['respuesta']['match_segundos'] ?? 0));
+            }
+            $pasos[$indice]['match_segundos_acum'] = max(0, (int) ($pasos[$indice]['match_segundos_acum'] ?? 0)) + $matchHecho;
+            $pasos[$indice]['match_segundos'] = $matchHecho;
+
             if ($continuarPaginas) {
                 $siguiente = $paginaHecha + 1;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
@@ -1632,6 +1639,9 @@ class OportunidadBusquedaService
             $matchSegundos = array_key_exists('match_segundos', $paso) && $paso['match_segundos'] !== null
                 ? max(0, (int) $paso['match_segundos'])
                 : null;
+            $matchSegundosAcum = array_key_exists('match_segundos_acum', $paso) && $paso['match_segundos_acum'] !== null
+                ? max(0, (int) $paso['match_segundos_acum'])
+                : null;
             $encontradasPorFrase = is_array($paso['encontradas_por_frase'] ?? null)
                 ? $paso['encontradas_por_frase']
                 : null;
@@ -1671,6 +1681,7 @@ class OportunidadBusquedaService
                 'match_revisados' => $matchRevisados,
                 'match_total' => $matchTotal,
                 'match_segundos' => $matchSegundos,
+                'match_segundos_acum' => $matchSegundosAcum,
                 'duracion_segundos' => $duracionSegundos,
                 'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
                 'consulta' => $consulta,
