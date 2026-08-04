@@ -227,6 +227,25 @@ class CompraAgilOportunidadService
 
         return $resumen;
     }
+
+    /**
+     * Enriquecimiento sin consultas a BD (para match masivo / listados rápidos).
+     *
+     * @param  array<string, mixed>  $resumen
+     * @return array<string, mixed>
+     */
+    public function enriquecerResumenBasico(array $resumen): array
+    {
+        if (! array_key_exists('score_oportunidad', $resumen) || $resumen['score_oportunidad'] === null) {
+            $resumen['score_oportunidad'] = 0;
+        }
+        if (! array_key_exists('motivo_score', $resumen) || $resumen['motivo_score'] === null || $resumen['motivo_score'] === '') {
+            $resumen['motivo_score'] = 'Compra pública abierta';
+        }
+
+        return $resumen;
+    }
+
     /**
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>

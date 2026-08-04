@@ -603,7 +603,8 @@ class OportunidadBusquedaService
                 );
             }
 
-            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje, $eventos);
+            // En ticks de progreso no recontar BD (listarGuardadasEn es caro); sumar del plan.
+            $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje, $eventos, false);
         };
 
         $regionTerminada = false;
@@ -1855,12 +1856,17 @@ class OportunidadBusquedaService
         int $fallidos,
         ?string $mensaje,
         array $eventos = [],
+        bool $recontarGuardadas = true,
     ): void {
+        $encontradas = $recontarGuardadas
+            ? count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda))
+            : $this->sumarEncontradasPasos($pasos);
+
         $update = [
             'plan_json' => json_encode(array_values($pasos), JSON_UNESCAPED_UNICODE),
             'errores_json' => json_encode(array_slice($errores, -100), JSON_UNESCAPED_UNICODE),
             'pasos_fallidos' => $fallidos,
-            'oportunidades_encontradas' => count($this->oportunidades->listarGuardadasEn($corrida->fecha_busqueda)),
+            'oportunidades_encontradas' => $encontradas,
             'mensaje' => $mensaje,
             'updated_at' => now(),
         ];
@@ -1878,6 +1884,22 @@ class OportunidadBusquedaService
         if ($actualizada !== 1) {
             throw new RuntimeException(self::MENSAJE_CANCELADA);
         }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function sumarEncontradasPasos(array $pasos): int
+    {
+        $total = 0;
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            $total += max(0, (int) ($paso['encontradas'] ?? 0));
+        }
+
+        return $total;
     }
 
     private function soportaEventosJson(): bool

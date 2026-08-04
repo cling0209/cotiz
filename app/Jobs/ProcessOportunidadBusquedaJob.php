@@ -15,8 +15,8 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Una página MP; si se cuelga, Laravel mata el job y el loop relanza queue:work. */
-    public int $timeout = 120;
+    /** Una página MP + match rápido; margen si MP demora. */
+    public int $timeout = 180;
 
     public int $tries = 5;
 
@@ -35,7 +35,7 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
         return [
             (new WithoutOverlapping('oportunidad-busqueda-'.$this->corridaId))
                 ->releaseAfter(15)
-                ->expireAfter(120),
+                ->expireAfter(180),
         ];
     }
 

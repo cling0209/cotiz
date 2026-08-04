@@ -1081,6 +1081,8 @@ class OportunidadParaCotizarService
                 $yaVistos[$norm] = true;
             }
         }
+        // Una sola carga: evita 2 queries Nota/tomadas por ítem (colgaba el match en 1/50).
+        $tomadasSet = array_fill_keys($this->codigosTomadosNormalizados(), true);
 
         $ventanaKey = $this->ventanaCambioParaDia($dia, $cambioDesde);
         $cacheSufijo = is_array($ventanaKey)
@@ -1193,7 +1195,8 @@ class OportunidadParaCotizarService
             } elseif (($codigo = strtoupper(trim((string) ($item['codigo'] ?? '')))) === '') {
                 // sin código
             } else {
-                $resumen = $this->oportunidad->enriquecerResumen(
+                // Sin score/Nota por ítem: enriquecerResumen hacía ~30s/ítem y nunca llegaba a pág 2.
+                $resumen = $this->oportunidad->enriquecerResumenBasico(
                     $this->mapper->resumenListadoItem($item),
                 );
 
@@ -1201,7 +1204,7 @@ class OportunidadParaCotizarService
                     $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
                     if ($coinciden !== []
                         && $this->estaVigente($resumen['fecha_cierre'] ?? null)
-                        && ! $this->estaTomada($codigo)
+                        && ! isset($tomadasSet[$codigo])
                     ) {
                         $codigosMatchPagina[$codigo] = true;
                         foreach ($coinciden as $fraseOk) {
@@ -1392,6 +1395,7 @@ class OportunidadParaCotizarService
                 $yaVistos[$norm] = true;
             }
         }
+        $tomadasSet = array_fill_keys($this->codigosTomadosNormalizados(), true);
 
         $ventanaKey = $this->ventanaCambioParaDia($dia, $cambioDesde);
         $cacheSufijo = is_array($ventanaKey)
@@ -1417,7 +1421,7 @@ class OportunidadParaCotizarService
                 continue;
             }
 
-            $resumen = $this->oportunidad->enriquecerResumen(
+            $resumen = $this->oportunidad->enriquecerResumenBasico(
                 $this->mapper->resumenListadoItem($item),
             );
 
@@ -1429,7 +1433,7 @@ class OportunidadParaCotizarService
                 continue;
             }
 
-            if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
+            if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || isset($tomadasSet[$codigo])) {
                 continue;
             }
 
