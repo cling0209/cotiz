@@ -2485,7 +2485,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Dump de agilemaeprod: descripción Agile, prod_item maestro y nombre del maestro.
+     * Dump de agilemaeprod: prod_item maestro, nombre del maestro y descripción Agile.
+     * Solo filas con código de producto maestro.
      *
      * @return Collection<int, object>
      */
@@ -2493,11 +2494,12 @@ class NotaMpResultadosService
     {
         return DB::table('agilemaeprod as am')
             ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'am.prod_item')
+            ->whereRaw("NULLIF(TRIM(am.prod_item), '') IS NOT NULL")
             ->whereRaw("NULLIF(TRIM(am.prod_descripcion_agile), '') IS NOT NULL")
             ->select([
-                DB::raw('TRIM(am.prod_descripcion_agile) as prod_descripcion_agile'),
                 'am.prod_item',
                 DB::raw("COALESCE(NULLIF(TRIM(mp.prod_nombre), ''), '') as prod_descripcion_maestro"),
+                DB::raw('TRIM(am.prod_descripcion_agile) as prod_descripcion_agile'),
             ])
             ->orderBy('am.prod_item')
             ->orderBy('am.prod_descripcion_agile')

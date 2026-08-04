@@ -7,8 +7,8 @@
     </div>
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
-            Descarga completa de <code>agilemaeprod</code>: descripción Agile (MP), código maestro
-            (<code>prod_item</code>) y descripción del maestro (<code>maeprod</code>). Sin filtros.
+            Descarga de <code>agilemaeprod</code> con código maestro: código, descripción del maestro
+            (<code>maeprod</code>) y descripción Agile (MP). Sin filtros.
         </p>
         <form id="form-reporte-match-agile" class="row g-2 align-items-end" data-no-loader>
             <div class="col-auto">
@@ -18,7 +18,8 @@
             </div>
         </form>
         <p class="small text-muted mb-0 mt-2">
-            Columnas: Producto Agile (MP), Código producto maestro, Descripción maestro.
+            Columnas: Código producto maestro, Descripción maestro, Producto Agile (MP).
+            Solo filas con código de producto.
         </p>
 
         <div class="d-none mt-3" id="reporte-ma-progreso-wrap">

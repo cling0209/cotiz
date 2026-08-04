@@ -2929,11 +2929,16 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Producto Agile (MP)', $csv);
         $this->assertStringContainsString('Código producto maestro', $csv);
         $this->assertStringContainsString('Descripción maestro', $csv);
-        $this->assertStringContainsString('CALCULADORA ELECTRONICA 12 DIGITOS MP', $csv);
+        $this->assertStringContainsString('Producto Agile (MP)', $csv);
         $this->assertStringContainsString('CALC01', $csv);
         $this->assertStringContainsString('CALCULADORA BASICA OFICINA', $csv);
+        $this->assertStringContainsString('CALCULADORA ELECTRONICA 12 DIGITOS MP', $csv);
+
+        // Orden de columnas: código → descripción maestro → agile
+        $headerLine = strtok($csv, "\n");
+        $this->assertNotFalse($headerLine);
+        $this->assertStringStartsWith("\xEF\xBB\xBFCódigo producto maestro;Descripción maestro;Producto Agile (MP)", trim($headerLine));
     }
 }

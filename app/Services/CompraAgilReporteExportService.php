@@ -425,17 +425,17 @@ class CompraAgilReporteExportService
 
         fprintf($out, "\xEF\xBB\xBF");
         fputcsv($out, [
-            'Producto Agile (MP)',
             'Código producto maestro',
             'Descripción maestro',
+            'Producto Agile (MP)',
         ], ';');
 
         $written = 0;
         foreach ($filas as $f) {
             fputcsv($out, [
-                $f->prod_descripcion_agile,
                 $f->prod_item ?? '',
                 $f->prod_descripcion_maestro ?? '',
+                $f->prod_descripcion_agile,
             ], ';');
             $written++;
             if ($jobId !== null && $total > 0 && ($written % 200 === 0 || $written === $total)) {
