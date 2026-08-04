@@ -2405,47 +2405,16 @@ class NotaMpResultadosService
     }
 
     /**
-     * Descripción Agile/MP: la de la línea; si falta, la de la oferta de la misma cotización
-     * (por código Agile o por orden de línea); si falta, agilemaeprod.
+     * Descripción Agile/MP vía joins (sin subconsultas correlacionadas):
+     * línea → oferta misma cotización (código Agile) → agilemaeprod.
      */
     private function sqlNombreProductoAgileReporte(): string
     {
-        $textoOferta = 'COALESCE(NULLIF(TRIM(ol.descripcion), \'\'), NULLIF(TRIM(ol.nombre_producto), \'\'))';
-
-        $desdeOfertaPorCodigo = '('
-            .'SELECT '.$textoOferta.' '
-            .'FROM nota_mp_oferta_lineas ol '
-            .'WHERE ol.oferta_id = o.id '
-            .'AND NULLIF(TRIM(notasdetalle.prod_item_agile), \'\') IS NOT NULL '
-            .'AND TRIM(ol.codigo_producto) = TRIM(notasdetalle.prod_item_agile) '
-            .'LIMIT 1'
-            .')';
-
-        $desdeOfertaPorOrden = '('
-            .'SELECT '.$textoOferta.' '
-            .'FROM ('
-            .'SELECT ol2.descripcion, ol2.nombre_producto, '
-            .'ROW_NUMBER() OVER (ORDER BY ol2.id) AS rn '
-            .'FROM nota_mp_oferta_lineas ol2 '
-            .'WHERE ol2.oferta_id = o.id'
-            .') ol '
-            .'WHERE ol.rn = notasdetalle.orden '
-            .'LIMIT 1'
-            .')';
-
-        $desdeAgileMaeprod = '('
-            .'SELECT NULLIF(TRIM(am.prod_descripcion_agile), \'\') '
-            .'FROM agilemaeprod am '
-            .'WHERE NULLIF(TRIM(notasdetalle.prod_item_agile), \'\') IS NOT NULL '
-            .'AND TRIM(am.prod_item_agile) = TRIM(notasdetalle.prod_item_agile) '
-            .'LIMIT 1'
-            .')';
-
         return "COALESCE("
             ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
-            ."{$desdeOfertaPorCodigo}, "
-            ."{$desdeOfertaPorOrden}, "
-            ."{$desdeAgileMaeprod}, "
+            ."NULLIF(TRIM(ol.descripcion), ''), "
+            ."NULLIF(TRIM(ol.nombre_producto), ''), "
+            ."NULLIF(TRIM(am.prod_descripcion_agile), ''), "
             ."'')";
     }
 
@@ -2484,7 +2453,22 @@ class NotaMpResultadosService
         $nombreProducto = $this->sqlNombreProductoReporte();
         $nombreProductoAgile = $this->sqlNombreProductoAgileReporte();
 
+        // Una fila por (oferta, código) para no duplicar líneas del detalle.
+        $ofertaLineas = DB::table('nota_mp_oferta_lineas')
+            ->select([
+                'oferta_id',
+                'codigo_producto',
+                DB::raw('MAX(descripcion) as descripcion'),
+                DB::raw('MAX(nombre_producto) as nombre_producto'),
+            ])
+            ->groupBy('oferta_id', 'codigo_producto');
+
         return $this->buildProductosGanadosBaseQuery($filtros)
+            ->leftJoinSub($ofertaLineas, 'ol', function ($join): void {
+                $join->on('ol.oferta_id', '=', 'o.id')
+                    ->on('ol.codigo_producto', '=', 'notasdetalle.prod_item_agile');
+            })
+            ->leftJoin('agilemaeprod as am', 'am.prod_item_agile', '=', 'notasdetalle.prod_item_agile')
             ->select([
                 'notasdetalle.nronota',
                 'n.encargado as numero_cotizacion',

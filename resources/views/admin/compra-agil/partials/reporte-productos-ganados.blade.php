@@ -9,7 +9,8 @@
         <p class="small text-muted mb-3">
             Productos de procesos con seguimiento <strong>Cerrada</strong> y proveedor Reicol/Romulo.
             Código, cantidad y monto desde el detalle de la cotización; nombre desde el maestro de productos.
-            En formato <strong>Detalle</strong> también incluye el producto Agile (MP) de la misma cotización.
+            En formato <strong>Detalle</strong> también incluye el producto Agile (MP)
+            (línea, oferta de la misma cotización o agilemaeprod).
             Filtre por fecha de publicación o de cierre del proceso.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
