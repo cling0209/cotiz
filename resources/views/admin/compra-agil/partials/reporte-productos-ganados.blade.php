@@ -8,7 +8,7 @@
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
             Productos de procesos con seguimiento <strong>Cerrada</strong> y proveedor Reicol/Romulo.
-            Código, cantidad y monto desde el detalle de la cotización; nombre desde el maestro de productos.
+            Código, cantidad y monto desde el detalle de la cotización; nombre del maestro y descripción Agile (MP) de la línea.
             Filtre por fecha de publicación o de cierre del proceso.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
@@ -53,8 +53,8 @@
             </div>
         </form>
         <p class="small text-muted mb-0 mt-2" id="pg-columnas-desc">
-            <strong>Resumen:</strong> código y nombre del maestro, proveedor, cantidad y monto acumulados por producto.
-            <strong>Detalle:</strong> número de nota, cotización, orden de compra (O.Compra), producto, cantidad, valor y total por línea.
+            <strong>Resumen:</strong> código, nombre del maestro, producto Agile (MP), proveedor, cantidad y monto acumulados por producto.
+            <strong>Detalle:</strong> número de nota, cotización, orden de compra (O.Compra), producto maestro, producto Agile (MP), cantidad, valor y total por línea.
         </p>
 
         <div class="d-none mt-3" id="reporte-pg-progreso-wrap">

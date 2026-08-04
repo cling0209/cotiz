@@ -291,6 +291,7 @@ class CompraAgilReporteExportService
         fputcsv($out, [
             'Código producto',
             'Producto',
+            'Producto Agile (MP)',
             'Proveedor seleccionado',
             'Cantidad acumulada',
             'Monto venta acumulado',
@@ -301,6 +302,7 @@ class CompraAgilReporteExportService
             fputcsv($out, [
                 $f->codigo_producto,
                 $f->nombre_producto,
+                $f->nombre_producto_agile ?? '',
                 $f->proveedor_seleccionado,
                 $f->cantidad_acumulada,
                 $f->monto_venta_acumulado,
@@ -343,6 +345,7 @@ class CompraAgilReporteExportService
             'Orden de compra',
             'Código producto',
             'Producto',
+            'Producto Agile (MP)',
             'Proveedor seleccionado',
             'Cantidad',
             'Valor',
@@ -357,6 +360,7 @@ class CompraAgilReporteExportService
                 $f->orden_compra ?? '',
                 $f->codigo_producto,
                 $f->nombre_producto,
+                $f->nombre_producto_agile ?? '',
                 $f->proveedor_seleccionado,
                 $f->cantidad,
                 $f->valor,

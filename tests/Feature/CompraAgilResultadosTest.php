@@ -2637,6 +2637,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P001', $csv->getContent());
         $this->assertStringContainsString('Nombre maestro P001', $csv->getContent());
+        $this->assertStringContainsString('Producto Agile (MP)', $csv->getContent());
+        $this->assertStringContainsString('GREDAS ESCOLARES DE 1 KILO', $csv->getContent());
         $this->assertStringContainsString('5', $csv->getContent());
         $this->assertStringContainsString('50000', $csv->getContent());
         $this->assertStringNotContainsString('14111509', $csv->getContent());
@@ -2662,6 +2664,7 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('P002', $csvRomulo->getContent());
         $this->assertStringContainsString('Nombre maestro P002', $csvRomulo->getContent());
+        $this->assertStringContainsString('PERFORADORA METAL 2 DEDOS', $csvRomulo->getContent());
         $this->assertStringContainsString('15000', $csvRomulo->getContent());
         $this->assertStringNotContainsString('45101903', $csvRomulo->getContent());
         $this->assertStringNotContainsString('Perforadoras de papel', $csvRomulo->getContent());
@@ -2691,6 +2694,8 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('OC-TEST-901', $csvDetalle->getContent());
         $this->assertStringContainsString('P001', $csvDetalle->getContent());
         $this->assertStringContainsString('Nombre maestro P001', $csvDetalle->getContent());
+        $this->assertStringContainsString('Producto Agile (MP)', $csvDetalle->getContent());
+        $this->assertStringContainsString('GREDAS ESCOLARES DE 1 KILO', $csvDetalle->getContent());
         $this->assertStringContainsString('50000', $csvDetalle->getContent());
         $this->assertStringNotContainsString('14111509', $csvDetalle->getContent());
         $this->assertStringNotContainsString('P002', $csvDetalle->getContent());
@@ -2780,7 +2785,7 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('SIN-MAE', $csvDetalle->getContent());
         $this->assertStringContainsString('Desc maestro desde nota', $csvDetalle->getContent());
-        $this->assertStringNotContainsString('Desc agile fallback', $csvDetalle->getContent());
+        $this->assertStringContainsString('Desc agile fallback', $csvDetalle->getContent());
 
         $encolarResumen = $this->actingAs($admin)
             ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
@@ -2801,6 +2806,7 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('SIN-MAE', $csvResumen->getContent());
         $this->assertStringContainsString('Desc maestro desde nota', $csvResumen->getContent());
+        $this->assertStringContainsString('Desc agile fallback', $csvResumen->getContent());
         $this->assertStringContainsString('6000', $csvResumen->getContent());
     }
 }

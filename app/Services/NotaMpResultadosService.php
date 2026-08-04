@@ -2418,6 +2418,7 @@ class NotaMpResultadosService
             ->select([
                 'notasdetalle.prod_item as codigo_producto',
                 DB::raw("{$nombreProducto} as nombre_producto"),
+                DB::raw('MAX(NULLIF(TRIM(notasdetalle.prod_descripcion_agile), \'\')) as nombre_producto_agile'),
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
@@ -2445,6 +2446,7 @@ class NotaMpResultadosService
                 'n.ocompra as orden_compra',
                 'notasdetalle.prod_item as codigo_producto',
                 DB::raw("{$nombreProducto} as nombre_producto"),
+                DB::raw("COALESCE(NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), '') as nombre_producto_agile"),
                 'notasdetalle.cantidad',
                 'notasdetalle.prod_valor as valor',
                 DB::raw('(notasdetalle.prod_valor * notasdetalle.cantidad) as total'),
