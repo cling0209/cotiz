@@ -2405,16 +2405,11 @@ class NotaMpResultadosService
     }
 
     /**
-     * Descripción Agile/MP vía joins (sin subconsultas ni agilemaeprod):
-     * línea → oferta misma cotización (código Agile).
+     * Descripción Agile/MP solo desde el detalle de la nota (sin joins extra).
      */
     private function sqlNombreProductoAgileReporte(): string
     {
-        return "COALESCE("
-            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
-            ."NULLIF(TRIM(ol.descripcion), ''), "
-            ."NULLIF(TRIM(ol.nombre_producto), ''), "
-            ."'')";
+        return "COALESCE(NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), '')";
     }
 
     /**
@@ -2452,21 +2447,7 @@ class NotaMpResultadosService
         $nombreProducto = $this->sqlNombreProductoReporte();
         $nombreProductoAgile = $this->sqlNombreProductoAgileReporte();
 
-        // Una fila por (oferta, código) para no duplicar líneas del detalle.
-        $ofertaLineas = DB::table('nota_mp_oferta_lineas')
-            ->select([
-                'oferta_id',
-                'codigo_producto',
-                DB::raw('MAX(descripcion) as descripcion'),
-                DB::raw('MAX(nombre_producto) as nombre_producto'),
-            ])
-            ->groupBy('oferta_id', 'codigo_producto');
-
         return $this->buildProductosGanadosBaseQuery($filtros)
-            ->leftJoinSub($ofertaLineas, 'ol', function ($join): void {
-                $join->on('ol.oferta_id', '=', 'o.id')
-                    ->on('ol.codigo_producto', '=', 'notasdetalle.prod_item_agile');
-            })
             ->select([
                 'notasdetalle.nronota',
                 'n.encargado as numero_cotizacion',

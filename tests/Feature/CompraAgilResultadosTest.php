@@ -2812,7 +2812,7 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('6000', $csvResumen->getContent());
     }
 
-    public function test_reporte_productos_ganados_toma_agile_desde_oferta_misma_cotizacion(): void
+    public function test_reporte_productos_ganados_detalle_usa_solo_descripcion_agile_de_la_nota(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -2828,7 +2828,7 @@ class CompraAgilResultadosTest extends TestCase
 
         Nota::query()->create([
             'nronota' => 920,
-            'descripcion' => 'Test agile desde oferta',
+            'descripcion' => 'Test agile solo desde nota',
             'fecha' => now()->toDateString(),
             'usuario' => 'admin',
             'empresa' => 'Cliente',
@@ -2848,7 +2848,6 @@ class CompraAgilResultadosTest extends TestCase
             'finalizado' => true,
         ]);
 
-        // Línea sin prod_descripcion_agile (caso real histórico).
         NotaDetalle::query()->create([
             'nronota' => 920,
             'prod_item' => 'FUNDA01',
@@ -2857,7 +2856,7 @@ class CompraAgilResultadosTest extends TestCase
             'fechahora' => now(),
             'orden' => 1,
             'prod_item_agile' => '44122000',
-            'prod_descripcion_agile' => null,
+            'prod_descripcion_agile' => 'FUNDA DESDE NOTADETALLE',
         ]);
 
         $oferta = NotaMpOferta::query()->create([
@@ -2872,7 +2871,7 @@ class CompraAgilResultadosTest extends TestCase
             'oferta_id' => $oferta->id,
             'codigo_producto' => '44122000',
             'nombre_producto' => 'Fundas plásticas',
-            'descripcion' => 'FUNDA PLASTICA TAMAÑO CARTA TRANSPARENTE MP',
+            'descripcion' => 'FUNDA SOLO EN OFERTA NO DEBE SALIR',
             'cantidad' => 10,
             'precio_unitario' => 150,
             'monto_total' => 1500,
@@ -2898,7 +2897,8 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertStringContainsString('FUNDA01', $csv);
         $this->assertStringContainsString('FUNDA PLASTICA ADIX CARTA', $csv);
-        $this->assertStringContainsString('FUNDA PLASTICA TAMAÑO CARTA TRANSPARENTE MP', $csv);
+        $this->assertStringContainsString('FUNDA DESDE NOTADETALLE', $csv);
+        $this->assertStringNotContainsString('FUNDA SOLO EN OFERTA NO DEBE SALIR', $csv);
         $this->assertStringContainsString('Producto Agile (MP)', $csv);
     }
 
