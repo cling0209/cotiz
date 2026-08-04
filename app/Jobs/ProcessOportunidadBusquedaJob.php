@@ -15,7 +15,8 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 43200;
+    /** Una página MP; si se cuelga, Laravel mata el job y el loop relanza queue:work. */
+    public int $timeout = 120;
 
     public int $tries = 5;
 
@@ -86,7 +87,7 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
             ])->save();
         }
 
-        // Nuevo job con contador de intentos limpio. El índice persistido evita repetir pasos completos.
-        self::dispatch($corrida->id)->delay(now()->addMinute());
+        // Reencolar pronto; el checkpoint de página evita rehacer regiones enteras.
+        self::dispatch($corrida->id)->delay(now()->addSeconds(15));
     }
 }

@@ -62,10 +62,12 @@ if [ "$QUEUE_WORKER_FLAG" = "true" ] || [ "$QUEUE_WORKER_FLAG" = "1" ] || [ "$QU
     set +e
     while true; do
       echo "[$(date)] queue:work database arrancando..." >&2
-      run_as_www 'php artisan queue:work database --sleep=3 --tries=1 --timeout=43200 --max-time=43200 -v'
+      # --max-jobs=1: tras cada job el proceso sale y el loop lo relanza.
+      # Evita quedar con un PHP colgado que ya no toma jobs (web OK, cola muerta).
+      run_as_www 'php artisan queue:work database --sleep=2 --tries=1 --timeout=43200 --max-jobs=1 -v'
       code=$?
-      echo "[$(date)] Queue worker terminó (exit ${code}). Reiniciando en 5s..." >&2
-      sleep 5
+      echo "[$(date)] Queue worker terminó (exit ${code}). Reiniciando en 2s..." >&2
+      sleep 2
     done
   ) &
   echo "Queue worker loop PID: $!" >&2
