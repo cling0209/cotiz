@@ -621,7 +621,70 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
             ->timezone('America/Santiago');
-        $this->assertSame('2026-07-17 10:17:00', $cambioDesde->format('Y-m-d H:i:s'));
+        // Última Pub. 10:17 → cambio_desde = minuto siguiente.
+        $this->assertSame('2026-07-17 10:18:00', $cambioDesde->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_cambio_desde_incremental_usa_ultima_pub_de_dia_anterior_mas_un_minuto(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-31',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-08-03 19:03:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'escritorio',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '517-999-COT26',
+            'nombre' => 'Mesas',
+            'organismo' => 'SAG',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 100000,
+            'fecha_publicacion' => Carbon::parse('2026-07-31 17:35:00', 'America/Santiago'),
+            'fecha_cierre' => Carbon::parse('2026-08-10 11:00:00', 'America/Santiago'),
+            'palabras_coinciden' => ['escritorio'],
+            'fecha_busqueda' => '2026-07-31',
+            'indice_region_config' => 0,
+        ]);
+
+        $servicio = $this->app->make(OportunidadParaCotizarService::class);
+        $ventana = $servicio->ventanaCambioParaDia(
+            '2026-08-03',
+            Carbon::parse('2026-07-31 17:36:00', 'America/Santiago')->toIso8601String(),
+        );
+        $this->assertNotNull($ventana);
+        $this->assertSame(
+            Carbon::parse('2026-07-31 17:36:00', 'America/Santiago')->toIso8601String(),
+            $ventana['desde'],
+        );
+        $this->assertSame(
+            Carbon::parse('2026-08-03', 'America/Santiago')->endOfDay()->toIso8601String(),
+            $ventana['hasta'],
+        );
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('sistema', '2026-08-03');
+
+        $this->assertSame('2026-08-03', $corrida->fecha_busqueda->toDateString());
+        $this->assertTrue((bool) ($corrida->plan_json[0]['incremental'] ?? false));
+
+        $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
+            ->timezone('America/Santiago');
+        $this->assertSame('2026-07-31 17:36:00', $cambioDesde->format('Y-m-d H:i:s'));
 
         Carbon::setTestNow();
     }

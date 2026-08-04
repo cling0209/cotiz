@@ -63,7 +63,12 @@ class OportunidadBusquedaService
         return OportunidadBusquedaCorrida::query()->latest('id')->first();
     }
 
-    public function iniciar(string $usuario = 'sistema', mixed $fechaBusqueda = null): OportunidadBusquedaCorrida
+    public function iniciar(
+        string $usuario = 'sistema',
+        mixed $fechaBusqueda = null,
+        bool $ventanaCompleta = false,
+        mixed $cambioDesdeForzado = null,
+    ): OportunidadBusquedaCorrida
     {
         if (! $this->habilitada()) {
             throw new RuntimeException('La búsqueda automática de oportunidades no está habilitada en este sitio.');
@@ -108,7 +113,7 @@ class OportunidadBusquedaService
         }
 
         $pasos = $this->enriquecerPlan($pasos);
-        $cambioDesdeIso = $this->resolverCambioDesdeIncremental($dia);
+        $cambioDesdeIso = $this->resolverCambioDesdeParaInicio($dia, $ventanaCompleta, $cambioDesdeForzado);
         $regionesReintento = $this->regionesFallidasDefinitivasUltimaCorrida($dia);
         if ($cambioDesdeIso !== null) {
             $pasos = array_map(static function (array $paso) use ($cambioDesdeIso, $regionesReintento): array {
@@ -128,9 +133,16 @@ class OportunidadBusquedaService
             $pasos = $this->priorizarPasosReintentoFallidos($pasos);
         }
 
-        $mensajeInicio = $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento);
+        $mensajeInicio = $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento, $ventanaCompleta);
         $eventos = [];
-        $this->pushEvento($eventos, 'encolada', 'Búsqueda encolada ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…');
+        $eventoTxt = 'Búsqueda encolada ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
+        if ($ventanaCompleta) {
+            $eventoTxt = 'Búsqueda encolada con ventana completa del día ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
+        } elseif ($cambioDesdeIso !== null) {
+            $eventoTxt = 'Búsqueda incremental encolada desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso)
+                .' ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
+        }
+        $this->pushEvento($eventos, 'encolada', $eventoTxt);
 
         $payload = [
             'usuario' => trim($usuario) ?: 'sistema',
@@ -157,21 +169,71 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Si el día (hoy) ya tiene corrida completa, retoma desde la última publicación conocida.
+     * Resuelve cambio_desde al iniciar:
+     * - ventana completa → null (00:00 del día)
+     * - forzado → timestamp indicado (p. ej. recuperar un salto)
+     * - default → última pub. conocida + 1 min
+     */
+    private function resolverCambioDesdeParaInicio(
+        string $dia,
+        bool $ventanaCompleta,
+        mixed $cambioDesdeForzado = null,
+    ): ?string {
+        if ($ventanaCompleta) {
+            return null;
+        }
+
+        $forzado = trim((string) ($cambioDesdeForzado ?? ''));
+        if ($forzado !== '') {
+            try {
+                $desde = Carbon::parse($forzado)->timezone((string) config('app.timezone'));
+                $finDia = Carbon::parse($dia, (string) config('app.timezone'))->endOfDay();
+                if ($desde->greaterThan($finDia)) {
+                    throw new RuntimeException(
+                        'cambio_desde no puede ser posterior al fin del día de búsqueda.'
+                    );
+                }
+
+                return $desde->toIso8601String();
+            } catch (RuntimeException $e) {
+                throw $e;
+            } catch (\Throwable) {
+                throw new RuntimeException('cambio_desde inválido. Use una fecha/hora reconocible.');
+            }
+        }
+
+        return $this->resolverCambioDesdeIncremental($dia);
+    }
+
+    /**
+     * Para el día vigente (hoy): retoma desde la última publicación conocida + 1 minuto
+     * (aunque esa pub. sea de un día anterior). Catch-up histórico (días pasados) usa el día completo.
      */
     private function resolverCambioDesdeIncremental(string $dia): ?string
     {
         $hoy = $this->oportunidades->fechaBusquedaHoy();
-        if ($dia !== $hoy || ! $this->fechaTieneCorridaCompleta($dia)) {
+        if ($dia !== $hoy) {
             return null;
         }
 
-        $ultima = $this->oportunidades->ultimaFechaPublicacionEn($dia);
+        $ultima = $this->oportunidades->ultimaFechaPublicacionConocida();
         if ($ultima === null) {
             return null;
         }
 
-        return $ultima->toIso8601String();
+        try {
+            $finDia = Carbon::parse($dia, (string) config('app.timezone'))->endOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        // Minuto siguiente a la última Pub. (ej. 31/07 17:35 → 17:36).
+        $desde = $ultima->copy()->addMinute();
+        if ($desde->greaterThan($finDia)) {
+            return null;
+        }
+
+        return $desde->toIso8601String();
     }
 
     private function formatearFechaHoraMensaje(string $iso): string
@@ -242,10 +304,24 @@ class OportunidadBusquedaService
     /**
      * @param  list<int>  $regionesReintento
      */
-    private function mensajeInicioCorrida(string $dia, ?string $cambioDesdeIso, array $regionesReintento): string
-    {
+    private function mensajeInicioCorrida(
+        string $dia,
+        ?string $cambioDesdeIso,
+        array $regionesReintento,
+        bool $ventanaCompleta = false,
+    ): string {
         $fecha = $this->formatearFechaMensaje($dia);
         $nReintento = count($regionesReintento);
+
+        if ($ventanaCompleta) {
+            $msg = 'Búsqueda con ventana completa encolada para '.$fecha.'.';
+            if ($nReintento > 0) {
+                $msg .= ' Reintento completo de '.$nReintento
+                    .' región(es) fallida(s) en la corrida previa.';
+            }
+
+            return $msg;
+        }
 
         if ($cambioDesdeIso !== null) {
             $msg = 'Búsqueda incremental encolada para '.$fecha

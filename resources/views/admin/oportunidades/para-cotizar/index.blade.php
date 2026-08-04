@@ -28,12 +28,27 @@
             </a>
             @endif
             @if($puedeBuscar)
-            <button type="button" id="btn-buscar-oportunidades" class="btn btn-primary btn-sm" @disabled($palabras===[])>
-                <i class="bi bi-search"></i> Buscar cotizaciones
-            </button>
-            <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
-                <i class="bi bi-x-circle"></i> Cancelar
-            </button>
+            <div class="d-flex flex-column align-items-end gap-1">
+                <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
+                    <button type="button" id="btn-buscar-oportunidades" class="btn btn-primary btn-sm" @disabled($palabras===[])>
+                        <i class="bi bi-search"></i> Buscar cotizaciones
+                    </button>
+                    <button type="button" id="btn-cancelar-oportunidades" class="btn btn-outline-danger btn-sm d-none">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                </div>
+                <div class="form-check form-check-inline m-0">
+                    <input class="form-check-input" type="checkbox" id="chk-ventana-completa" value="1">
+                    <label class="form-check-label small text-muted" for="chk-ventana-completa" title="Ignora el incremental y consulta desde las 00:00 del día (útil si se saltó un tramo)">
+                        Ventana completa del día
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-1 justify-content-end">
+                    <label class="small text-muted mb-0" for="inp-cambio-desde" title="Opcional: forzar inicio (ej. 2026-07-31 17:36)">Desde</label>
+                    <input type="datetime-local" id="inp-cambio-desde" class="form-control form-control-sm" style="width: 13rem;"
+                        title="Si se completa, fuerza cambio_desde (tiene prioridad sobre incremental)">
+                </div>
+            </div>
             @endif
         </div>
     </div>
@@ -2575,7 +2590,10 @@
                 if (Number.isFinite(pagina) && pagina > 0) {
                     const maxTxt = Number.isFinite(paginasMax) && paginasMax > 0 ? `/${paginasMax}` : '';
                     let paginaTxt = `${pagina}${maxTxt}`;
-                    if (Number.isFinite(itemsLeidos) && itemsLeidos >= 0 && paso.resultado === 'en_curso') {
+                    const itemsPagina = Number(paso.items_pagina);
+                    if (Number.isFinite(itemsPagina) && itemsPagina >= 0) {
+                        paginaTxt += ` · ${itemsPagina} ítems`;
+                    } else if (Number.isFinite(itemsLeidos) && itemsLeidos >= 0 && paso.resultado === 'en_curso') {
                         paginaTxt += ` · ${itemsLeidos} ítems`;
                     }
                     tdPagina.textContent = paginaTxt;
@@ -3543,7 +3561,18 @@
             renderTabla();
 
             try {
-                const data = await postJson(urls.iniciar, {});
+                const payload = {};
+                const chkVentana = document.getElementById('chk-ventana-completa');
+                const inpDesde = document.getElementById('inp-cambio-desde');
+                if (chkVentana?.checked) {
+                    payload.ventana_completa = true;
+                }
+                const desdeRaw = String(inpDesde?.value || '').trim();
+                if (desdeRaw !== '' && !payload.ventana_completa) {
+                    // datetime-local → ISO local sin Z (backend parsea en APP_TIMEZONE).
+                    payload.cambio_desde = desdeRaw.length === 16 ? `${desdeRaw}:00` : desdeRaw;
+                }
+                const data = await postJson(urls.iniciar, payload);
                 aplicarEstadoCorrida(data.corrida);
             } catch (e) {
                 relBar.classList.remove('progress-bar-animated');

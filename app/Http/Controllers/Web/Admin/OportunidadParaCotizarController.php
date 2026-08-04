@@ -111,8 +111,18 @@ class OportunidadParaCotizarController extends Controller
 
     public function iniciar(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'ventana_completa' => ['sometimes', 'boolean'],
+            'cambio_desde' => ['nullable', 'string', 'max:64'],
+        ]);
+
         try {
-            $corrida = $this->busqueda->iniciar((string) ($request->user()?->username ?? 'sistema'));
+            $corrida = $this->busqueda->iniciar(
+                (string) ($request->user()?->username ?? 'sistema'),
+                null,
+                (bool) ($data['ventana_completa'] ?? false),
+                $data['cambio_desde'] ?? null,
+            );
         } catch (RuntimeException $e) {
             return response()->json([
                 'ok' => false,

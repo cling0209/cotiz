@@ -820,7 +820,8 @@ class OportunidadParaCotizarService
 
     /**
      * Ventana ISO8601 del día de búsqueda (timezone app) para filtro API cambio_*.
-     * Si $cambioDesde está dentro del día, acota el inicio (corrida incremental).
+     * Si $cambioDesde viene informado (p. ej. última pub. + 1 min, aunque sea de otro día),
+     * acota el inicio de la ventana hasta cambio_hasta = fin del día buscado.
      *
      * @return array{desde: string, hasta: string}|null
      */
@@ -837,12 +838,17 @@ class OportunidadParaCotizarService
         if ($cambioDesde !== null && trim((string) $cambioDesde) !== '') {
             try {
                 $desde = Carbon::parse($cambioDesde)->timezone((string) config('app.timezone'));
-                if ($desde->toDateString() === $dia && $desde->greaterThan($inicio) && $desde->lessThanOrEqualTo($fin)) {
+                // Permitir inicio en días anteriores (última Pub. previa al día buscado).
+                if ($desde->lessThanOrEqualTo($fin)) {
                     $inicio = $desde->copy();
                 }
             } catch (\Throwable) {
                 // Mantener ventana completa del día.
             }
+        }
+
+        if ($inicio->greaterThan($fin)) {
+            $inicio = $fin->copy();
         }
 
         return [
@@ -859,6 +865,26 @@ class OportunidadParaCotizarService
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $valor = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', $dia)
+            ->whereNotNull('fecha_publicacion')
+            ->max('fecha_publicacion');
+
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($valor)->timezone((string) config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Última fecha_publicacion guardada (cualquier día). Base del cambio_desde incremental.
+     */
+    public function ultimaFechaPublicacionConocida(): ?Carbon
+    {
+        $valor = OportunidadEncontrada::query()
             ->whereNotNull('fecha_publicacion')
             ->max('fecha_publicacion');
 
@@ -1122,9 +1148,38 @@ class OportunidadParaCotizarService
 
         $items = [];
         $todasAnterioresAlDia = true;
+        $algunaFechaParseable = false;
 
         foreach ($lote as $item) {
-            if (! is_array($item) || CompraAgilRegionScope::debeExcluirItem($item)) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            // Evaluar fecha de publicación sobre el ítem crudo (antes de excluir) para el corte de páginas.
+            $fechaPubCruda = '';
+            $fechasCrudas = is_array($item['fechas'] ?? null) ? $item['fechas'] : [];
+            if (isset($fechasCrudas['fecha_publicacion'])) {
+                $fechaPubCruda = trim((string) $fechasCrudas['fecha_publicacion']);
+            } elseif (isset($item['fechaPublicacion'])) {
+                $fechaPubCruda = trim((string) $item['fechaPublicacion']);
+            } elseif (isset($item['fecha_publicacion'])) {
+                $fechaPubCruda = trim((string) $item['fecha_publicacion']);
+            }
+            if ($fechaPubCruda !== '') {
+                try {
+                    $fechaPubDia = Carbon::parse($fechaPubCruda)
+                        ->timezone(config('app.timezone'))
+                        ->toDateString();
+                    $algunaFechaParseable = true;
+                    if ($fechaPubDia >= $dia) {
+                        $todasAnterioresAlDia = false;
+                    }
+                } catch (\Throwable) {
+                    // Sin fecha usable para el corte.
+                }
+            }
+
+            if (CompraAgilRegionScope::debeExcluirItem($item)) {
                 continue;
             }
 
@@ -1136,22 +1191,6 @@ class OportunidadParaCotizarService
             $resumen = $this->oportunidad->enriquecerResumen(
                 $this->mapper->resumenListadoItem($item),
             );
-
-            $fechaPub = trim((string) ($resumen['fecha_publicacion'] ?? ''));
-            $fechaPubDia = null;
-            if ($fechaPub !== '') {
-                try {
-                    $fechaPubDia = Carbon::parse($fechaPub)
-                        ->timezone(config('app.timezone'))
-                        ->toDateString();
-                } catch (\Throwable) {
-                    $fechaPubDia = null;
-                }
-            }
-
-            if ($fechaPubDia !== null && $fechaPubDia >= $dia) {
-                $todasAnterioresAlDia = false;
-            }
 
             if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
                 continue;
@@ -1187,9 +1226,14 @@ class OportunidadParaCotizarService
         }
 
         $guardadas = $this->guardarEncontradas($items, $userId, $dia);
-        $continuar = ! $todasAnterioresAlDia
-            && count($lote) >= self::REGION_TAMANO_PAGINA
-            && $pagina < $maxPaginas;
+        $paginaLlena = count($lote) >= self::REGION_TAMANO_PAGINA;
+        $ventanaCambio = $this->ventanaCambioParaDia($dia, $cambioDesde);
+        // Con ventana cambio_*: el API filtra por cambio, no por publicación. No cortar
+        // porque la página traiga ítems publicados antes del día (antes se quedaba en 1/N).
+        // Sin ventana: si toda la página es anterior al día (orden FechaPublicacion), parar.
+        $continuar = $paginaLlena
+            && $pagina < $maxPaginas
+            && ($ventanaCambio !== null || ! $algunaFechaParseable || ! $todasAnterioresAlDia);
 
         return [
             'items' => $items,
