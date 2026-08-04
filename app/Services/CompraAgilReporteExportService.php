@@ -14,6 +14,8 @@ class CompraAgilReporteExportService
 
     public const TYPE_PRODUCTOS_GANADOS_DETALLE = 'productos_ganados_detalle';
 
+    public const TYPE_MATCH_AGILE_MAESTRO = 'match_agile_maestro';
+
     public const STATUS_QUEUED = 'queued';
 
     public const STATUS_PROCESSING = 'processing';
@@ -130,6 +132,8 @@ class CompraAgilReporteExportService
                 $rowCount = $this->generarCsvProductosGanados($jobId, $path, $filtros);
             } elseif ($type === self::TYPE_PRODUCTOS_GANADOS_DETALLE) {
                 $rowCount = $this->generarCsvProductosGanadosDetalle($jobId, $path, $filtros);
+            } elseif ($type === self::TYPE_MATCH_AGILE_MAESTRO) {
+                $rowCount = $this->generarCsvMatchAgileMaestro($jobId, $path, $filtros);
             } else {
                 throw new RuntimeException('Tipo de reporte no soportado.');
             }
@@ -217,8 +221,10 @@ class CompraAgilReporteExportService
 
             if ($type === self::TYPE_PRODUCTOS_GANADOS) {
                 $this->escribirCsvProductosGanadosResumen($out, $filtros);
-            } else {
+            } elseif ($type === self::TYPE_PRODUCTOS_GANADOS_DETALLE) {
                 $this->escribirCsvProductosGanadosDetalle($out, $filtros);
+            } else {
+                $this->escribirCsvMatchAgileMaestro($out, $filtros);
             }
 
             fclose($out);
@@ -380,9 +386,79 @@ class CompraAgilReporteExportService
     /**
      * @param  array<string, mixed>  $filtros
      */
+    private function generarCsvMatchAgileMaestro(string $jobId, string $path, array $filtros): int
+    {
+        $this->patch($jobId, [
+            'percent' => 35,
+            'detail' => 'Consultando match Agile ↔ maestro…',
+        ]);
+
+        $out = fopen($path, 'w');
+        if ($out === false) {
+            throw new RuntimeException('No se pudo crear el archivo CSV.');
+        }
+
+        $total = $this->escribirCsvMatchAgileMaestro($out, $filtros, $jobId);
+        fclose($out);
+
+        return $total;
+    }
+
+    /**
+     * @param  resource  $out
+     * @param  array<string, mixed>  $filtros
+     */
+    private function escribirCsvMatchAgileMaestro($out, array $filtros, ?string $jobId = null): int
+    {
+        $filas = $this->resultados->matchAgileMaestroExportar($filtros);
+        $total = $filas->count();
+
+        if ($jobId !== null) {
+            $this->patch($jobId, [
+                'percent' => 55,
+                'detail' => $total > 0
+                    ? sprintf('Escribiendo CSV (%s filas)…', number_format($total, 0, '', '.'))
+                    : 'Escribiendo CSV…',
+            ]);
+        }
+
+        fprintf($out, "\xEF\xBB\xBF");
+        fputcsv($out, [
+            'Producto Agile (MP)',
+            'Código producto maestro',
+            'Descripción maestro',
+        ], ';');
+
+        $written = 0;
+        foreach ($filas as $f) {
+            fputcsv($out, [
+                $f->prod_descripcion_agile,
+                $f->prod_item,
+                $f->prod_descripcion_maestro,
+            ], ';');
+            $written++;
+            if ($jobId !== null && $total > 0 && ($written % 50 === 0 || $written === $total)) {
+                $percent = 55 + (int) round(($written / $total) * 40);
+                $this->patch($jobId, [
+                    'percent' => min(95, $percent),
+                    'detail' => sprintf('Escribiendo CSV (%s / %s)…', number_format($written, 0, '', '.'), number_format($total, 0, '', '.')),
+                ]);
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     */
     private function validarFiltrosProductosGanados(string $type, array $filtros): void
     {
-        if (! in_array($type, [self::TYPE_PRODUCTOS_GANADOS, self::TYPE_PRODUCTOS_GANADOS_DETALLE], true)) {
+        if (! in_array($type, [
+            self::TYPE_PRODUCTOS_GANADOS,
+            self::TYPE_PRODUCTOS_GANADOS_DETALLE,
+            self::TYPE_MATCH_AGILE_MAESTRO,
+        ], true)) {
             return;
         }
 
@@ -398,7 +474,11 @@ class CompraAgilReporteExportService
 
     private function assertSupportedType(string $type): void
     {
-        if (! in_array($type, [self::TYPE_PRODUCTOS_GANADOS, self::TYPE_PRODUCTOS_GANADOS_DETALLE], true)) {
+        if (! in_array($type, [
+            self::TYPE_PRODUCTOS_GANADOS,
+            self::TYPE_PRODUCTOS_GANADOS_DETALLE,
+            self::TYPE_MATCH_AGILE_MAESTRO,
+        ], true)) {
             throw new RuntimeException('Tipo de reporte no soportado.');
         }
     }
@@ -408,6 +488,7 @@ class CompraAgilReporteExportService
         return match ($type) {
             self::TYPE_PRODUCTOS_GANADOS => 'productos_proveedor_seleccionado_resumen_'.now()->format('Ymd_His').'.csv',
             self::TYPE_PRODUCTOS_GANADOS_DETALLE => 'productos_proveedor_seleccionado_detalle_'.now()->format('Ymd_His').'.csv',
+            self::TYPE_MATCH_AGILE_MAESTRO => 'match_agile_maestro_'.now()->format('Ymd_His').'.csv',
             default => 'reporte_'.now()->format('Ymd_His').'.csv',
         };
     }

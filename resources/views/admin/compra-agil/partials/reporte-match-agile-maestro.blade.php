@@ -1,84 +1,71 @@
-<div class="card shadow-sm" id="reporte-productos-ganados">
+<div class="card shadow-sm" id="reporte-match-agile-maestro">
     <div class="card-header py-2">
         <h2 class="h6 mb-0">
-            <span class="badge text-bg-secondary me-1">1</span>
-            Productos proveedor seleccionado Reicol / Romulo
+            <span class="badge text-bg-secondary me-1">2</span>
+            Match Agile ↔ producto maestro
         </h2>
     </div>
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
-            Productos de procesos con seguimiento <strong>Cerrada</strong> y proveedor Reicol/Romulo.
-            Código, cantidad y monto desde el detalle de la cotización; nombre desde el maestro de productos.
-            En formato <strong>Detalle</strong> también incluye el producto Agile (MP)
-            (línea u oferta de la misma cotización).
-            Filtre por fecha de publicación o de cierre del proceso.
+            Pares distintos de <strong>descripción Agile (MP)</strong>, <strong>código maestro</strong> (<code>prod_item</code>)
+            y <strong>descripción del maestro</strong>, con los mismos filtros del reporte 1
+            (procesos <strong>Cerrada</strong>, proveedor Reicol/Romulo, fechas).
         </p>
-        <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>
+        <form id="form-reporte-match-agile" class="row g-2 align-items-end" data-no-loader>
             <div class="col-12 col-md-auto">
                 <span class="form-label small mb-1 d-block">Filtrar por</span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de fecha">
-                    <input type="radio" class="btn-check" name="tipo_fecha" id="pg-tipo-cierre" value="cierre" checked>
-                    <label class="btn btn-outline-secondary" for="pg-tipo-cierre">Cierre</label>
-                    <input type="radio" class="btn-check" name="tipo_fecha" id="pg-tipo-publicacion" value="publicacion">
-                    <label class="btn btn-outline-secondary" for="pg-tipo-publicacion">Publicación</label>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de fecha match">
+                    <input type="radio" class="btn-check" name="tipo_fecha" id="ma-tipo-cierre" value="cierre" checked>
+                    <label class="btn btn-outline-secondary" for="ma-tipo-cierre">Cierre</label>
+                    <input type="radio" class="btn-check" name="tipo_fecha" id="ma-tipo-publicacion" value="publicacion">
+                    <label class="btn btn-outline-secondary" for="ma-tipo-publicacion">Publicación</label>
                 </div>
             </div>
             <div class="col-auto">
-                <label for="pg-fecha-desde" class="form-label small mb-0" id="pg-label-desde">Cierre desde</label>
-                <input type="date" class="form-control form-control-sm" id="pg-fecha-desde" name="fecha_desde" required>
+                <label for="ma-fecha-desde" class="form-label small mb-0" id="ma-label-desde">Cierre desde</label>
+                <input type="date" class="form-control form-control-sm" id="ma-fecha-desde" name="fecha_desde" required>
             </div>
             <div class="col-auto">
-                <label for="pg-fecha-hasta" class="form-label small mb-0" id="pg-label-hasta">Cierre hasta</label>
-                <input type="date" class="form-control form-control-sm" id="pg-fecha-hasta" name="fecha_hasta" required>
+                <label for="ma-fecha-hasta" class="form-label small mb-0" id="ma-label-hasta">Cierre hasta</label>
+                <input type="date" class="form-control form-control-sm" id="ma-fecha-hasta" name="fecha_hasta" required>
             </div>
             <div class="col-auto">
-                <label for="pg-ganador" class="form-label small mb-0">Proveedor seleccionado</label>
-                <select class="form-select form-select-sm" id="pg-ganador" name="ganador" style="width:9rem">
+                <label for="ma-ganador" class="form-label small mb-0">Proveedor seleccionado</label>
+                <select class="form-select form-select-sm" id="ma-ganador" name="ganador" style="width:9rem">
                     <option value="ambos" selected>Ambos</option>
                     <option value="reicol">Reicol</option>
                     <option value="romulo">Romulo</option>
                 </select>
             </div>
-            <div class="col-12 col-md-auto">
-                <span class="form-label small mb-1 d-block">Formato</span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Formato del reporte">
-                    <input type="radio" class="btn-check" name="formato" id="pg-formato-resumen" value="resumen" checked>
-                    <label class="btn btn-outline-secondary" for="pg-formato-resumen">Resumen</label>
-                    <input type="radio" class="btn-check" name="formato" id="pg-formato-detalle" value="detalle">
-                    <label class="btn btn-outline-secondary" for="pg-formato-detalle">Detalle</label>
-                </div>
-            </div>
             <div class="col-auto">
-                <button type="submit" class="btn btn-success btn-sm" id="btn-reporte-pg-generar">
+                <button type="submit" class="btn btn-success btn-sm" id="btn-reporte-ma-generar">
                     <i class="bi bi-file-earmark-spreadsheet"></i> Generar CSV
                 </button>
             </div>
         </form>
-        <p class="small text-muted mb-0 mt-2" id="pg-columnas-desc">
-            <strong>Resumen:</strong> código y nombre del maestro, proveedor, cantidad y monto acumulados por producto.
-            <strong>Detalle:</strong> número de nota, cotización, orden de compra (O.Compra), producto maestro, producto Agile (MP), cantidad, valor y total por línea.
+        <p class="small text-muted mb-0 mt-2">
+            Columnas: Producto Agile (MP), Código producto maestro, Descripción maestro.
         </p>
 
-        <div class="d-none mt-3" id="reporte-pg-progreso-wrap">
+        <div class="d-none mt-3" id="reporte-ma-progreso-wrap">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
-                <span class="small fw-semibold" id="reporte-pg-progreso-texto">Preparando…</span>
-                <span class="small text-muted tabular-nums" id="reporte-pg-progreso-pct">0%</span>
+                <span class="small fw-semibold" id="reporte-ma-progreso-texto">Preparando…</span>
+                <span class="small text-muted tabular-nums" id="reporte-ma-progreso-pct">0%</span>
             </div>
             <div class="progress" style="height: 1rem;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" id="reporte-pg-progreso-bar" role="progressbar" style="width: 0%">0%</div>
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="reporte-ma-progreso-bar" role="progressbar" style="width: 0%">0%</div>
             </div>
         </div>
 
-        <div class="d-none alert alert-success small py-2 mt-3 mb-0" id="reporte-pg-listo">
+        <div class="d-none alert alert-success small py-2 mt-3 mb-0" id="reporte-ma-listo">
             <i class="bi bi-check-circle"></i>
-            <span id="reporte-pg-listo-texto">Reporte listo:</span>
-            <a href="#" id="reporte-pg-download-link" class="fw-semibold" download>Descargar CSV</a>
+            <span id="reporte-ma-listo-texto">Reporte listo:</span>
+            <a href="#" id="reporte-ma-download-link" class="fw-semibold" download>Descargar CSV</a>
             <span class="text-muted"> (el enlace desaparece tras descargar)</span>
         </div>
 
-        <div class="d-none alert alert-warning small py-2 mt-3 mb-0" id="reporte-pg-vacio"></div>
-
-        <div class="d-none alert alert-danger small py-2 mt-3 mb-0" id="reporte-pg-error"></div>
+        <div class="d-none alert alert-warning small py-2 mt-3 mb-0" id="reporte-ma-vacio"></div>
+        <div class="d-none alert alert-danger small py-2 mt-3 mb-0" id="reporte-ma-error"></div>
     </div>
 </div>
 
@@ -87,21 +74,17 @@
 (function () {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const urls = {
-        generar: @json(route('admin.compra-agil.resultados.reportes.productos-ganados.generar')),
+        generar: @json(route('admin.compra-agil.resultados.reportes.match-agile-maestro.generar')),
         estado: @json(route('admin.compra-agil.resultados.reportes.exportaciones.estado', ['jobId' => '__JOB__'])),
     };
 
-    const form = document.getElementById('form-reporte-productos-ganados');
-    const btnGenerar = document.getElementById('btn-reporte-pg-generar');
-    const labelDesde = document.getElementById('pg-label-desde');
-    const labelHasta = document.getElementById('pg-label-hasta');
+    const form = document.getElementById('form-reporte-match-agile');
+    const btnGenerar = document.getElementById('btn-reporte-ma-generar');
+    const labelDesde = document.getElementById('ma-label-desde');
+    const labelHasta = document.getElementById('ma-label-hasta');
 
     function tipoFechaSeleccionado() {
         return form?.querySelector('input[name="tipo_fecha"]:checked')?.value || 'cierre';
-    }
-
-    function formatoSeleccionado() {
-        return form?.querySelector('input[name="formato"]:checked')?.value || 'resumen';
     }
 
     function actualizarEtiquetasFecha() {
@@ -115,15 +98,16 @@
         radio.addEventListener('change', actualizarEtiquetasFecha);
     });
     actualizarEtiquetasFecha();
-    const wrapProgreso = document.getElementById('reporte-pg-progreso-wrap');
-    const bar = document.getElementById('reporte-pg-progreso-bar');
-    const texto = document.getElementById('reporte-pg-progreso-texto');
-    const pctLabel = document.getElementById('reporte-pg-progreso-pct');
-    const listo = document.getElementById('reporte-pg-listo');
-    const listoTexto = document.getElementById('reporte-pg-listo-texto');
-    const vacio = document.getElementById('reporte-pg-vacio');
-    const downloadLink = document.getElementById('reporte-pg-download-link');
-    const errorBox = document.getElementById('reporte-pg-error');
+
+    const wrapProgreso = document.getElementById('reporte-ma-progreso-wrap');
+    const bar = document.getElementById('reporte-ma-progreso-bar');
+    const texto = document.getElementById('reporte-ma-progreso-texto');
+    const pctLabel = document.getElementById('reporte-ma-progreso-pct');
+    const listo = document.getElementById('reporte-ma-listo');
+    const listoTexto = document.getElementById('reporte-ma-listo-texto');
+    const vacio = document.getElementById('reporte-ma-vacio');
+    const downloadLink = document.getElementById('reporte-ma-download-link');
+    const errorBox = document.getElementById('reporte-ma-error');
 
     let pollTimer = null;
     let currentJobId = null;
@@ -190,7 +174,7 @@
                 downloadLink.textContent = data.filename || 'Descargar CSV';
                 listo.classList.remove('d-none');
                 if ((data.row_count ?? 0) === 0) {
-                    vacio.textContent = 'No hay productos para los filtros aplicados (seguimiento Cerrada y proveedor Reicol/Romulo).';
+                    vacio.textContent = 'No hay pares Agile ↔ maestro para los filtros aplicados.';
                     vacio.classList.remove('d-none');
                     if (listoTexto) listoTexto.textContent = 'CSV generado (sin filas):';
                 } else if (listoTexto) {
@@ -242,7 +226,6 @@
             fecha_hasta: form.fecha_hasta.value,
             tipo_fecha: tipoFechaSeleccionado(),
             ganador: form.ganador.value,
-            formato: formatoSeleccionado(),
         };
 
         try {

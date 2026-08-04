@@ -2405,8 +2405,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Descripción Agile/MP vía joins (sin subconsultas correlacionadas):
-     * línea → oferta misma cotización (código Agile) → agilemaeprod.
+     * Descripción Agile/MP vía joins (sin subconsultas ni agilemaeprod):
+     * línea → oferta misma cotización (código Agile).
      */
     private function sqlNombreProductoAgileReporte(): string
     {
@@ -2414,7 +2414,6 @@ class NotaMpResultadosService
             ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
             ."NULLIF(TRIM(ol.descripcion), ''), "
             ."NULLIF(TRIM(ol.nombre_producto), ''), "
-            ."NULLIF(TRIM(am.prod_descripcion_agile), ''), "
             ."'')";
     }
 
@@ -2468,7 +2467,6 @@ class NotaMpResultadosService
                 $join->on('ol.oferta_id', '=', 'o.id')
                     ->on('ol.codigo_producto', '=', 'notasdetalle.prod_item_agile');
             })
-            ->leftJoin('agilemaeprod as am', 'am.prod_item_agile', '=', 'notasdetalle.prod_item_agile')
             ->select([
                 'notasdetalle.nronota',
                 'n.encargado as numero_cotizacion',
@@ -2484,6 +2482,40 @@ class NotaMpResultadosService
             ])
             ->orderBy('notasdetalle.nronota')
             ->orderBy('notasdetalle.orden');
+    }
+
+    /**
+     * Pares descripción Agile ↔ producto maestro (distintos), mismos filtros de productos ganados.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return Collection<int, object>
+     */
+    public function matchAgileMaestroExportar(array $filtros = []): Collection
+    {
+        $descripcionAgile = "COALESCE("
+            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
+            ."'')";
+        $descripcionMaestro = "COALESCE("
+            ."NULLIF(TRIM(mp.prod_nombre), ''), "
+            ."NULLIF(TRIM(notasdetalle.prod_descripcion_maestro), ''), "
+            ."'')";
+
+        return $this->buildProductosGanadosBaseQuery($filtros)
+            ->whereRaw("NULLIF(TRIM(notasdetalle.prod_descripcion_agile), '') IS NOT NULL")
+            ->select([
+                DB::raw("{$descripcionAgile} as prod_descripcion_agile"),
+                'notasdetalle.prod_item',
+                DB::raw("{$descripcionMaestro} as prod_descripcion_maestro"),
+            ])
+            ->groupBy(
+                DB::raw($descripcionAgile),
+                'notasdetalle.prod_item',
+                DB::raw($descripcionMaestro),
+            )
+            ->orderBy('notasdetalle.prod_item')
+            ->orderBy(DB::raw($descripcionAgile))
+            ->limit(50000)
+            ->get();
     }
 
     /**

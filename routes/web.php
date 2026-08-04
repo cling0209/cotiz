@@ -136,6 +136,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('compra-agil/resultados/analisis-precios/exportar', [CompraAgilResultadosController::class, 'analisisPreciosExportar'])->name('compra-agil.resultados.analisis-precios.exportar');
             Route::get('compra-agil/resultados/reportes', [CompraAgilResultadosController::class, 'reportes'])->name('compra-agil.resultados.reportes');
             Route::post('compra-agil/resultados/reportes/productos-ganados/generar', [CompraAgilResultadosController::class, 'productosGanadosGenerar'])->name('compra-agil.resultados.reportes.productos-ganados.generar');
+            Route::post('compra-agil/resultados/reportes/match-agile-maestro/generar', [CompraAgilResultadosController::class, 'matchAgileMaestroGenerar'])->name('compra-agil.resultados.reportes.match-agile-maestro.generar');
             Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/estado', [CompraAgilResultadosController::class, 'reporteExportEstado'])->name('compra-agil.resultados.reportes.exportaciones.estado');
             Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/descargar', [CompraAgilResultadosController::class, 'reporteExportDescargar'])->name('compra-agil.resultados.reportes.exportaciones.descargar');
         });

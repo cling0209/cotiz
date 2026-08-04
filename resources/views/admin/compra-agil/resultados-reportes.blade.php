@@ -17,6 +17,7 @@
 
     <div class="d-flex flex-column gap-3">
         @include('admin.compra-agil.partials.reporte-productos-ganados')
+        @include('admin.compra-agil.partials.reporte-match-agile-maestro')
     </div>
 </div>
 @endsection
