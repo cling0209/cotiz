@@ -1150,6 +1150,8 @@ class OportunidadParaCotizarService
         }
 
         $items = [];
+        $itemsPendientesGuardar = [];
+        $porFrase = [];
         $todasAnterioresAlDia = true;
         $algunaFechaParseable = false;
         $inicioMatch = microtime(true);
@@ -1212,7 +1214,15 @@ class OportunidadParaCotizarService
                             $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
                             $resumen['guardada'] = true;
                             $items[] = $resumen;
+                            $itemsPendientesGuardar[] = $resumen;
                             $yaVistos[$codigo] = true;
+                            foreach ($coinciden as $fraseOk) {
+                                $clave = trim((string) $fraseOk);
+                                if ($clave === '') {
+                                    continue;
+                                }
+                                $porFrase[$clave] = ($porFrase[$clave] ?? 0) + 1;
+                            }
                         }
                     }
                 }
@@ -1221,6 +1231,11 @@ class OportunidadParaCotizarService
             $revisados = $idx + 1;
             if ($onProgreso && ($revisados === $totalLote || $revisados - $ultimoTickMatch >= 10)) {
                 $ultimoTickMatch = $revisados;
+                if ($itemsPendientesGuardar !== []) {
+                    $this->guardarEncontradas($itemsPendientesGuardar, $userId, $dia);
+                    $itemsPendientesGuardar = [];
+                }
+                ksort($porFrase);
                 $consultaMatch = $this->metaConsultaPaso(
                     '(todas)',
                     $region,
@@ -1240,12 +1255,35 @@ class OportunidadParaCotizarService
                         0,
                         (int) round(microtime(true) - $inicioMatch),
                     );
+                    $consultaMatch['respuesta']['encontradas_pagina'] = count($items);
+                    $consultaMatch['respuesta']['encontradas_por_frase'] = $porFrase;
+                    $consultaMatch['respuesta']['encontradas_muestra'] = array_map(
+                        static function (array $row): array {
+                            return [
+                                'codigo' => (string) ($row['codigo'] ?? ''),
+                                'nombre' => mb_substr((string) ($row['nombre'] ?? ''), 0, 80),
+                                'palabras_coinciden' => is_array($row['palabras_coinciden'] ?? null)
+                                    ? array_values($row['palabras_coinciden'])
+                                    : [],
+                            ];
+                        },
+                        array_slice($items, 0, 15),
+                    );
                 }
                 $onProgreso($pagina, $totalLote, $itemsLeidos, $consultaMatch);
             }
         }
 
-        $guardadas = $this->guardarEncontradas($items, $userId, $dia);
+        if ($itemsPendientesGuardar !== []) {
+            $this->guardarEncontradas($itemsPendientesGuardar, $userId, $dia);
+            $itemsPendientesGuardar = [];
+        }
+
+        $guardadas = count($items);
+        // Re-guardar al cierre asegura sync/atributos finales (upsert idempotente).
+        if ($items !== []) {
+            $guardadas = $this->guardarEncontradas($items, $userId, $dia);
+        }
         $paginaLlena = count($lote) >= self::REGION_TAMANO_PAGINA;
         $ventanaCambio = $this->ventanaCambioParaDia($dia, $cambioDesde);
         // Con ventana cambio_*: el API filtra por cambio, no por publicación. No cortar
@@ -1255,19 +1293,43 @@ class OportunidadParaCotizarService
             && $pagina < $maxPaginas
             && ($ventanaCambio !== null || ! $algunaFechaParseable || ! $todasAnterioresAlDia);
 
+        ksort($porFrase);
+        $consultaFinal = $this->metaConsultaPaso(
+            '(todas)',
+            $region,
+            $itemsLeidos,
+            count($items),
+            $dia,
+            $this->muestraRespuestaCruda($lote),
+            $cambioDesde,
+            $pagina,
+            count($lote),
+        );
+        if (is_array($consultaFinal['respuesta'] ?? null)) {
+            $consultaFinal['respuesta']['encontradas_pagina'] = count($items);
+            $consultaFinal['respuesta']['encontradas_por_frase'] = $porFrase;
+            $consultaFinal['respuesta']['encontradas_muestra'] = array_map(
+                static function (array $row): array {
+                    return [
+                        'codigo' => (string) ($row['codigo'] ?? ''),
+                        'nombre' => mb_substr((string) ($row['nombre'] ?? ''), 0, 80),
+                        'palabras_coinciden' => is_array($row['palabras_coinciden'] ?? null)
+                            ? array_values($row['palabras_coinciden'])
+                            : [],
+                    ];
+                },
+                array_slice($items, 0, 15),
+            );
+            $consultaFinal['respuesta_json'] = json_encode(
+                $consultaFinal['respuesta'],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            ) ?: '{}';
+        }
+
         return [
             'items' => $items,
-            'consulta' => $this->metaConsultaPaso(
-                '(todas)',
-                $region,
-                $itemsLeidos,
-                count($items),
-                $dia,
-                $this->muestraRespuestaCruda($lote),
-                $cambioDesde,
-                $pagina,
-                count($lote),
-            ),
+            'consulta' => $consultaFinal,
+            'encontradas_por_frase' => $porFrase,
             'guardadas' => $guardadas,
             'pagina' => $pagina,
             'items_pagina' => count($lote),

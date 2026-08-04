@@ -401,6 +401,12 @@ class OportunidadBusquedaService
 
         $itemsLeidosPrevios = $esInicioRegion ? 0 : max(0, (int) ($paso['items_leidos'] ?? 0));
         $encontradasPrevias = $esInicioRegion ? 0 : max(0, (int) ($paso['encontradas'] ?? 0));
+        // Base = frases ya comprometidas de páginas anteriores de esta región.
+        $porFraseBase = $esInicioRegion
+            ? []
+            : (is_array($paso['encontradas_por_frase_base'] ?? null)
+                ? $paso['encontradas_por_frase_base']
+                : (is_array($paso['encontradas_por_frase'] ?? null) ? $paso['encontradas_por_frase'] : []));
 
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
         $pasos[$indice]['pagina'] = $pagina;
@@ -408,6 +414,10 @@ class OportunidadBusquedaService
         $pasos[$indice]['siguiente_pagina'] = $pagina;
         $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
         $pasos[$indice]['items_pagina'] = 0;
+        $pasos[$indice]['encontradas'] = $encontradasPrevias;
+        $pasos[$indice]['encontradas_por_frase_base'] = $porFraseBase;
+        $pasos[$indice]['encontradas_por_frase'] = $porFraseBase;
+        $pasos[$indice]['encontradas_por_frase_pagina'] = [];
         $pasos[$indice]['duracion_segundos'] = $duracionPrevia;
         $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
             $frase !== '' ? $frase : '(todas)',
@@ -470,6 +480,8 @@ class OportunidadBusquedaService
             $inicioPaso,
             $duracionPrevia,
             $maxPaginasPaso,
+            $encontradasPrevias,
+            $porFraseBase,
         ): void {
             $assertCorridaActiva();
             $resp = is_array($consulta['respuesta'] ?? null) ? $consulta['respuesta'] : [];
@@ -490,17 +502,46 @@ class OportunidadBusquedaService
                 $matchRevisados = max(0, (int) ($resp['match_revisados'] ?? 0));
                 $matchTotal = max(0, (int) ($resp['match_total'] ?? $itemsPagina));
                 $matchSegundos = max(0, (int) ($resp['match_segundos'] ?? 0));
+                $encontradasPagina = max(0, (int) ($resp['encontradas_pagina'] ?? $resp['coinciden_hoy'] ?? 0));
+                $porFrasePagina = is_array($resp['encontradas_por_frase'] ?? null)
+                    ? $resp['encontradas_por_frase']
+                    : [];
+                $porFrase = $porFraseBase;
+                foreach ($porFrasePagina as $fraseMatch => $nMatch) {
+                    $clave = trim((string) $fraseMatch);
+                    if ($clave === '') {
+                        continue;
+                    }
+                    $porFrase[$clave] = (int) ($porFrase[$clave] ?? 0) + (int) $nMatch;
+                }
+                ksort($porFrase);
                 $pasos[$indice]['fase'] = 'match';
                 $pasos[$indice]['match_revisados'] = $matchRevisados;
                 $pasos[$indice]['match_total'] = $matchTotal;
                 $pasos[$indice]['match_segundos'] = $matchSegundos;
+                $pasos[$indice]['encontradas'] = $encontradasPrevias + $encontradasPagina;
+                $pasos[$indice]['encontradas_por_frase_pagina'] = $porFrasePagina;
+                $pasos[$indice]['encontradas_por_frase'] = $porFrase;
+                $pasos[$indice]['encontradas_muestra'] = is_array($resp['encontradas_muestra'] ?? null)
+                    ? array_values($resp['encontradas_muestra'])
+                    : [];
+                $frasesTxt = '';
+                if ($porFrase !== []) {
+                    $partes = [];
+                    foreach ($porFrase as $fraseMatch => $nMatch) {
+                        $partes[] = $fraseMatch.'×'.$nMatch;
+                    }
+                    $frasesTxt = ' · '.implode(', ', array_slice($partes, 0, 6));
+                }
                 $mensaje = sprintf(
-                    'Procesando match %s — pág %d/%d · %d/%d ítems (%ds)…',
+                    'Procesando match %s — pág %d/%d · %d/%d ítems · %d cotiz.%s (%ds)…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaActual,
                     $maxPaginasPaso,
                     $matchRevisados > 0 ? $matchRevisados : $itemsPagina,
                     $matchTotal > 0 ? $matchTotal : max(1, $itemsPagina),
+                    $encontradasPrevias + $encontradasPagina,
+                    $frasesTxt,
                     $matchSegundos,
                 );
             } else {
@@ -587,6 +628,31 @@ class OportunidadBusquedaService
             $pasos[$indice]['encontradas'] = $encontradas;
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = is_array($resultado['consulta'] ?? null) ? $resultado['consulta'] : null;
+
+            $porFrasePagina = is_array($resultado['encontradas_por_frase'] ?? null)
+                ? $resultado['encontradas_por_frase']
+                : (is_array($resultado['consulta']['respuesta']['encontradas_por_frase'] ?? null)
+                    ? $resultado['consulta']['respuesta']['encontradas_por_frase']
+                    : []);
+            $porFraseTotal = $porFraseBase;
+            foreach ($porFrasePagina as $fraseMatch => $nMatch) {
+                $clave = trim((string) $fraseMatch);
+                if ($clave === '') {
+                    continue;
+                }
+                $porFraseTotal[$clave] = (int) ($porFraseTotal[$clave] ?? 0) + (int) $nMatch;
+            }
+            ksort($porFraseTotal);
+            $pasos[$indice]['encontradas_por_frase_pagina'] = [];
+            $pasos[$indice]['encontradas_por_frase'] = $porFraseTotal;
+            $pasos[$indice]['encontradas_por_frase_base'] = $porFraseTotal;
+            if (is_array($resultado['consulta']['respuesta'] ?? null)) {
+                $pasos[$indice]['encontradas_muestra'] = is_array(
+                    $resultado['consulta']['respuesta']['encontradas_muestra'] ?? null
+                )
+                    ? array_values($resultado['consulta']['respuesta']['encontradas_muestra'])
+                    : ($pasos[$indice]['encontradas_muestra'] ?? []);
+            }
 
             if ($continuarPaginas) {
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
@@ -1428,6 +1494,12 @@ class OportunidadBusquedaService
             $matchSegundos = array_key_exists('match_segundos', $paso) && $paso['match_segundos'] !== null
                 ? max(0, (int) $paso['match_segundos'])
                 : null;
+            $encontradasPorFrase = is_array($paso['encontradas_por_frase'] ?? null)
+                ? $paso['encontradas_por_frase']
+                : null;
+            $encontradasMuestra = is_array($paso['encontradas_muestra'] ?? null)
+                ? array_values($paso['encontradas_muestra'])
+                : null;
 
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
             if ($consulta === null) {
@@ -1451,6 +1523,8 @@ class OportunidadBusquedaService
                 'frase' => (string) ($paso['frase'] ?? ''),
                 'intentos' => $intentos,
                 'encontradas' => $encontradas,
+                'encontradas_por_frase' => $encontradasPorFrase,
+                'encontradas_muestra' => $encontradasMuestra,
                 'pagina' => $pagina,
                 'paginas_max' => $paginasMax,
                 'items_pagina' => $itemsPagina,

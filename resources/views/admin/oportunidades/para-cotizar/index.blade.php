@@ -2265,15 +2265,38 @@
                         debugRespuestaLine.textContent = `${tipoTxt}${pagTxt} — se continúa con la siguiente página si aplica.`;
                     }
                 } else if (hayRespuestaMp && resp) {
-                    debugRespuestaJson.textContent = data.respuesta_json || JSON.stringify(resp, null, 2);
+                    const porFraseDbg = (paso?.encontradas_por_frase && typeof paso.encontradas_por_frase === 'object')
+                        ? paso.encontradas_por_frase
+                        : (resp.encontradas_por_frase && typeof resp.encontradas_por_frase === 'object'
+                            ? resp.encontradas_por_frase
+                            : null);
+                    const muestraMatch = Array.isArray(paso?.encontradas_muestra)
+                        ? paso.encontradas_muestra
+                        : (Array.isArray(resp.encontradas_muestra) ? resp.encontradas_muestra : []);
+                    const payloadDbg = { ...resp };
+                    if (porFraseDbg && Object.keys(porFraseDbg).length > 0) {
+                        payloadDbg.encontradas_por_frase = porFraseDbg;
+                    }
+                    if (muestraMatch.length > 0) {
+                        payloadDbg.encontradas_muestra = muestraMatch;
+                    }
+                    debugRespuestaJson.textContent = JSON.stringify(payloadDbg, null, 2);
                     if (debugRespuestaLine) {
                         const partes = [];
                         if (paginaMp != null) partes.push(`página ${paginaMp}`);
                         if (itemsPagina != null) partes.push(`${itemsPagina} ítem(s) en esta página`);
                         if (itemsAcum != null) partes.push(`${itemsAcum} acumulados`);
-                        const coinciden = resp.coinciden_hoy;
-                        if (coinciden != null && terminado) partes.push(`coinciden hoy: ${coinciden}`);
-                        if (muestra.length > 0) partes.push(`muestra ${muestra.length}`);
+                        const coinciden = resp.coinciden_hoy ?? resp.encontradas_pagina ?? paso?.encontradas;
+                        if (coinciden != null) partes.push(`cotiz. ${coinciden}`);
+                        if (porFraseDbg && Object.keys(porFraseDbg).length > 0) {
+                            const top = Object.entries(porFraseDbg)
+                                .sort((a, b) => Number(b[1]) - Number(a[1]))
+                                .slice(0, 4)
+                                .map(([f, n]) => `${f}×${n}`);
+                            partes.push(top.join(', '));
+                        }
+                        if (muestra.length > 0) partes.push(`muestra MP ${muestra.length}`);
+                        if (muestraMatch.length > 0) partes.push(`muestra match ${muestraMatch.length}`);
                         debugRespuestaLine.textContent = partes.length ?
                             (terminado ? `MP — ${partes.join(' · ')}.` : `Respuesta MP — ${partes.join(' · ')}.`) :
                             'Respuesta de Mercado Público recibida.';
@@ -2523,6 +2546,10 @@
                     } else if (Number.isFinite(itemsPagina) && itemsPagina > 0) {
                         texto += ` · ${itemsPagina} ítems`;
                     }
+                    const cotiz = Number(paso.encontradas);
+                    if (Number.isFinite(cotiz) && cotiz > 0) {
+                        texto += ` · ${cotiz} cotiz.`;
+                    }
                     if (Number.isFinite(matchSeg) && matchSeg > 0) {
                         texto += ` · ${matchSeg}s`;
                     }
@@ -2590,17 +2617,35 @@
 
                 const tdFrase = document.createElement('td');
                 const frasePaso = paso.frase || '';
-                tdFrase.textContent = (!frasePaso || frasePaso === '(todas)') ?
+                const etiquetaFrase = (!frasePaso || frasePaso === '(todas)') ?
                     'todas las frases' :
                     frasePaso;
+                const porFrase = (paso.encontradas_por_frase && typeof paso.encontradas_por_frase === 'object')
+                    ? paso.encontradas_por_frase
+                    : null;
+                if (porFrase && Object.keys(porFrase).length > 0) {
+                    const partes = Object.entries(porFrase)
+                        .sort((a, b) => Number(b[1]) - Number(a[1]))
+                        .slice(0, 5)
+                        .map(([f, n]) => `${escapeHtml(String(f))}×${Number(n) || 0}`);
+                    tdFrase.innerHTML =
+                        `<div class="small">${escapeHtml(etiquetaFrase)}</div>` +
+                        `<div class="text-muted" style="font-size:0.7rem;line-height:1.25;">${partes.join(' · ')}</div>`;
+                } else {
+                    tdFrase.textContent = etiquetaFrase;
+                }
 
                 const tdEncontradas = document.createElement('td');
                 tdEncontradas.className = 'text-end tabular-nums';
-                if (['pendiente', 'en_curso', 'cancelado'].includes(paso.resultado) || paso.encontradas === null || paso.encontradas === undefined) {
+                if (paso.resultado === 'pendiente' || paso.resultado === 'cancelado' ||
+                    paso.encontradas === null || paso.encontradas === undefined) {
                     tdEncontradas.textContent = '—';
                     tdEncontradas.classList.add('text-muted');
                 } else {
                     tdEncontradas.textContent = String(Number(paso.encontradas) || 0);
+                    if (paso.resultado === 'en_curso') {
+                        tdEncontradas.classList.add('fw-semibold', 'text-primary');
+                    }
                 }
 
                 const tdPagina = document.createElement('td');
