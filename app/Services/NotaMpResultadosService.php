@@ -2458,13 +2458,11 @@ class NotaMpResultadosService
     private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
         $nombreProducto = $this->sqlNombreProductoReporte();
-        $nombreProductoAgile = $this->sqlNombreProductoAgileReporte();
 
         return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
                 'notasdetalle.prod_item as codigo_producto',
                 DB::raw("{$nombreProducto} as nombre_producto"),
-                DB::raw("MAX({$nombreProductoAgile}) as nombre_producto_agile"),
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
