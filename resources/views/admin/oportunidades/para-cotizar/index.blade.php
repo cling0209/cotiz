@@ -3366,9 +3366,12 @@
             }
             relDetalle.textContent = mensajeConTiempo(corrida.mensaje, !corrida.estado || corrida.estado === 'running' ? null : duracionTexto);
 
-            porCodigo = new Map();
-            cargarItems(corrida.items || []);
-            sincronizarVisitasLocalesEnMapa();
+            // Solo reemplazar listado cuando el backend envía items (poll liviano no los trae).
+            if (Array.isArray(corrida.items)) {
+                porCodigo = new Map();
+                cargarItems(corrida.items);
+                sincronizarVisitasLocalesEnMapa();
+            }
             aplicarEstadoVinculo(corrida.vinculo || null);
             actualizarBotonProcesarVinculo(corrida.vinculo || null, corrida.vinculo_aviso || null, corrida.vinculo_pendientes);
             if (corrida.sync_par) {
@@ -3660,10 +3663,41 @@
             }
         }
 
-        async function consultarEstado() {
+        let pollEstadoCount = 0;
+        let ultimaEncontradasPoll = -1;
+
+        function urlEstado(opts) {
+            const params = new URLSearchParams();
+            if (opts?.items) params.set('items', '1');
+            if (opts?.syncPar) params.set('sync_par', '1');
+            const q = params.toString();
+            return q ? `${urls.estado}?${q}` : urls.estado;
+        }
+
+        async function consultarEstado(opts = {}) {
             if (!urls.estado) return;
             try {
-                const data = await getJson(urls.estado);
+                pollEstadoCount += 1;
+                const forzarItems = Boolean(opts.items);
+                // Items: forzado, 1.er poll, o cada 5 ticks (~10s en búsqueda).
+                const pedirItems = forzarItems ||
+                    pollEstadoCount === 1 ||
+                    pollEstadoCount % 5 === 0;
+                const data = await getJson(urlEstado({
+                    items: pedirItems,
+                    syncPar: Boolean(opts.syncPar),
+                }));
+                const encontradas = Number(data?.corrida?.oportunidades_encontradas ?? -1);
+                if (!pedirItems && encontradas >= 0 && encontradas !== ultimaEncontradasPoll && urls.estado) {
+                    ultimaEncontradasPoll = encontradas;
+                    const conItems = await getJson(urlEstado({ items: true }));
+                    aplicarEstadoCorrida(conItems.corrida);
+                    if (conItems.sync_par) aplicarSyncPar(conItems.sync_par);
+                    return;
+                }
+                if (encontradas >= 0) {
+                    ultimaEncontradasPoll = encontradas;
+                }
                 aplicarEstadoCorrida(data.corrida);
                 if (data.sync_par) {
                     aplicarSyncPar(data.sync_par);
@@ -3722,7 +3756,7 @@
             }
         }
 
-        // Al abrir: restaura filtros del usuario y muestra lo ya grabado.
+        // Al abrir: UI liviana; listado/items se piden por AJAX (no bloquean el HTML).
         restaurarFiltros();
         if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
             cargarItems(guardadasIniciales);
@@ -3751,8 +3785,17 @@
             actualizarBotonProcesarVinculo(null, null, vinculoPendientesInicial);
         }
 
+        // Carga diferida del listado (+ sync opcional) tras pintar la página.
+        if (urls.estado) {
+            if (estado && relDetalle && porCodigo.size === 0) {
+                estado.classList.remove('d-none');
+                relDetalle.textContent = 'Cargando oportunidades…';
+            }
+            consultarEstado({ items: true, syncPar: puedeBuscar }).catch(() => {});
+        }
+
         if (puedeBuscar) {
-            aplicarSyncPar(syncParInicial);
+            if (syncParInicial) aplicarSyncPar(syncParInicial);
             btn?.addEventListener('click', buscar);
             btnCancelar?.addEventListener('click', cancelarBusqueda);
             btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);

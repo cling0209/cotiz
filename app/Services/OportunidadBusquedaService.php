@@ -1437,10 +1437,14 @@ class OportunidadBusquedaService
     }
 
     /**
+     * @param  array{incluir_items?: bool, retomar_vinculo?: bool}  $opciones
      * @return array<string, mixed>|null
      */
-    public function estado(?OportunidadBusquedaCorrida $corrida = null): ?array
+    public function estado(?OportunidadBusquedaCorrida $corrida = null, array $opciones = []): ?array
     {
+        $incluirItems = (bool) ($opciones['incluir_items'] ?? false);
+        $retomarVinculo = (bool) ($opciones['retomar_vinculo'] ?? false);
+
         $corrida ??= $this->ultimaCorrida();
         if ($corrida === null) {
             return null;
@@ -1452,8 +1456,9 @@ class OportunidadBusquedaService
             $corrida = $corrida->fresh() ?? $corrida;
         }
 
-        // Recuperación: búsqueda ya terminada y aún hay pendientes sin vincular.
-        if ($corrida->estado === self::ESTADO_COMPLETED) {
+        // Recuperación solo bajo demanda (no en cada poll liviano).
+        // No arranca vínculo si hay otra búsqueda running (lo bloquea VinculoService).
+        if ($retomarVinculo && $corrida->estado === self::ESTADO_COMPLETED) {
             try {
                 $this->vinculos->asegurarTrasBusquedaCompletada(
                     $corrida->fecha_busqueda,
@@ -1490,7 +1495,7 @@ class OportunidadBusquedaService
             ? $this->proximaFechaPendienteDespues($fechaBusqueda)
             : null;
 
-        return [
+        $payload = [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
             'usuario' => $this->etiquetaUsuarioCorrida($corrida->usuario ?? null),
@@ -1514,14 +1519,22 @@ class OportunidadBusquedaService
             'reanudada_auto' => $reanudadaAuto,
             'eventos' => $this->eventosParaUi($corrida),
             'pasos_resumen' => $pasosResumen,
-            // Listado acumulado (catch-up): vigentes desde fecha de inicio, no solo el día de la corrida.
-            'items' => $this->oportunidades->listarGuardadasVigentesDesde(),
             'vinculo' => $vinculoEstado,
-            'vinculo_pendientes' => $this->vinculos->contarPendientesSafe($fechaBusqueda),
-            'vinculo_aviso' => (($vinculoEstado['estado'] ?? null) === OportunidadVinculoService::ESTADO_RUNNING)
+            'vinculo_pendientes' => $corrida->estado === self::ESTADO_RUNNING
+                ? 0
+                : $this->vinculos->contarPendientesSafe($fechaBusqueda),
+            'vinculo_aviso' => ($corrida->estado === self::ESTADO_RUNNING
+                || ($vinculoEstado['estado'] ?? null) === OportunidadVinculoService::ESTADO_RUNNING)
                 ? null
                 : $this->vinculos->avisoPendientes($fechaBusqueda),
         ];
+
+        if ($incluirItems) {
+            // Listado acumulado (catch-up): vigentes desde fecha de inicio.
+            $payload['items'] = $this->oportunidades->listarGuardadasVigentesDesde();
+        }
+
+        return $payload;
     }
 
     private function etiquetaUsuarioCorrida(mixed $usuario): string

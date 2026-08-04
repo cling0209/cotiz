@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadVinculoCorrida;
+use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadVinculoService;
 use App\Support\RenderKeepAlive;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -48,6 +50,15 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
 
         $corrida = OportunidadVinculoCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== OportunidadVinculoService::ESTADO_RUNNING) {
+            return;
+        }
+
+        // No competir con la búsqueda de cotizaciones por la cola/DB.
+        if (OportunidadBusquedaCorrida::query()
+            ->where('estado', OportunidadBusquedaService::ESTADO_RUNNING)
+            ->exists()) {
+            self::dispatch($this->corridaId)->delay(now()->addSeconds(45));
+
             return;
         }
 

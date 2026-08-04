@@ -28,8 +28,14 @@ class OportunidadParaCotizarController extends Controller
         $puedePalabras = (bool) $request->user()?->canAccessPalabrasClave();
         $palabras = ($puedeBuscar || $puedePalabras) ? $this->servicio->palabrasClave() : [];
         $userId = (int) ($request->user()?->id ?? 0);
-        $guardadas = $this->servicio->listarGuardadasVigentesDesde(null, $userId > 0 ? $userId : null);
-        $corridaEstado = $puedeBuscar ? $this->busqueda->estado() : null;
+        // Carga liviana (admin búsqueda): listado/sync/items van por AJAX tras pintar.
+        // Vista solo-lectura: aún necesita el listado en el HTML (no tiene endpoint estado).
+        $corridaEstado = $puedeBuscar
+            ? $this->busqueda->estado(null, ['incluir_items' => false, 'retomar_vinculo' => false])
+            : null;
+        $guardadas = (! $puedeBuscar && (bool) $request->user()?->canVerOportunidades())
+            ? $this->servicio->listarGuardadasVigentesDesde(null, $userId > 0 ? $userId : null)
+            : [];
 
         $regionesFiltro = [];
         foreach (CompraAgilRegionScope::regionesIncluidas() as $codigoRegion) {
@@ -49,10 +55,10 @@ class OportunidadParaCotizarController extends Controller
             'mpBaseUrl' => rtrim((string) config('cotiz.mercadopublico.base_url'), '/'),
             'mpPath' => '/v2/compra-agil',
             'corridaEstado' => $corridaEstado,
-            'vinculoPendientes' => $puedeBuscar ? $this->vinculos->contarPendientesSafe() : 0,
+            'vinculoPendientes' => 0,
             'regionesFiltro' => $regionesFiltro,
             'filtrosUserId' => $userId,
-            'syncPar' => $puedeBuscar ? $this->encontradaRelay->resumenSyncPar() : null,
+            'syncPar' => null,
         ]);
     }
 
@@ -136,12 +142,19 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
-    public function estado(): JsonResponse
+    public function estado(Request $request): JsonResponse
     {
+        $incluirItems = $request->boolean('items');
+        $incluirSync = $request->boolean('sync_par');
+
         return response()->json([
             'ok' => true,
-            'corrida' => $this->busqueda->estado(),
-            'sync_par' => $this->encontradaRelay->resumenSyncPar(),
+            'corrida' => $this->busqueda->estado(null, [
+                'incluir_items' => $incluirItems,
+                // Solo retomar vínculo en polls “completos” (con items), no en cada tick liviano.
+                'retomar_vinculo' => $incluirItems,
+            ]),
+            'sync_par' => $incluirSync ? $this->encontradaRelay->resumenSyncPar() : null,
         ]);
     }
 

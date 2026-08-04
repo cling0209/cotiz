@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\ProcessOportunidadVinculoJob;
+use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
 use Illuminate\Support\Carbon;
@@ -80,6 +81,15 @@ class OportunidadVinculoService
                 'ok' => false,
                 'corrida' => null,
                 'motivo' => 'API Mercado Público no configurada (falta ticket).',
+                'pendientes' => 0,
+            ];
+        }
+
+        if ($this->busquedaCotizacionesEnCurso()) {
+            return [
+                'ok' => false,
+                'corrida' => null,
+                'motivo' => 'Espere a que termine la búsqueda de cotizaciones antes de vincular.',
                 'pendientes' => 0,
             ];
         }
@@ -1701,5 +1711,13 @@ class OportunidadVinculoService
         } catch (Throwable) {
             return $dia;
         }
+    }
+
+    /** True si hay una búsqueda de cotizaciones (1.er proceso) en curso. */
+    public function busquedaCotizacionesEnCurso(): bool
+    {
+        return OportunidadBusquedaCorrida::query()
+            ->where('estado', OportunidadBusquedaService::ESTADO_RUNNING)
+            ->exists();
     }
 }
