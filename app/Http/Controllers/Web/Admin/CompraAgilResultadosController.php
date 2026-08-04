@@ -478,19 +478,11 @@ class CompraAgilResultadosController extends Controller
 
     public function matchAgileMaestroGenerar(Request $request): JsonResponse
     {
-        $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador', 'tipo_fecha']);
-        if (! $request->has('ganador')) {
-            $filtros['ganador'] = 'ambos';
-        }
-        if (! $request->filled('tipo_fecha')) {
-            $filtros['tipo_fecha'] = 'cierre';
-        }
-
         try {
             $jobId = $this->reporteExports->encolar(
                 CompraAgilReporteExportService::TYPE_MATCH_AGILE_MAESTRO,
                 (int) $request->user()->id,
-                $filtros,
+                [],
             );
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 422);

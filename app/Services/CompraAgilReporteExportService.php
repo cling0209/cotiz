@@ -36,7 +36,9 @@ class CompraAgilReporteExportService
     public function encolar(string $type, int $userId, array $filtros): string
     {
         $this->assertSupportedType($type);
-        $this->validarFiltrosProductosGanados($type, $filtros);
+        if ($type !== self::TYPE_MATCH_AGILE_MAESTRO) {
+            $this->validarFiltrosProductosGanados($type, $filtros);
+        }
 
         $jobId = (string) Str::uuid();
         $filename = $this->buildFilename($type);
@@ -224,7 +226,7 @@ class CompraAgilReporteExportService
             } elseif ($type === self::TYPE_PRODUCTOS_GANADOS_DETALLE) {
                 $this->escribirCsvProductosGanadosDetalle($out, $filtros);
             } else {
-                $this->escribirCsvMatchAgileMaestro($out, $filtros);
+                $this->escribirCsvMatchAgileMaestro($out);
             }
 
             fclose($out);
@@ -390,7 +392,7 @@ class CompraAgilReporteExportService
     {
         $this->patch($jobId, [
             'percent' => 35,
-            'detail' => 'Consultando match Agile ↔ maestro…',
+            'detail' => 'Consultando agilemaeprod…',
         ]);
 
         $out = fopen($path, 'w');
@@ -398,7 +400,7 @@ class CompraAgilReporteExportService
             throw new RuntimeException('No se pudo crear el archivo CSV.');
         }
 
-        $total = $this->escribirCsvMatchAgileMaestro($out, $filtros, $jobId);
+        $total = $this->escribirCsvMatchAgileMaestro($out, $jobId);
         fclose($out);
 
         return $total;
@@ -406,11 +408,10 @@ class CompraAgilReporteExportService
 
     /**
      * @param  resource  $out
-     * @param  array<string, mixed>  $filtros
      */
-    private function escribirCsvMatchAgileMaestro($out, array $filtros, ?string $jobId = null): int
+    private function escribirCsvMatchAgileMaestro($out, ?string $jobId = null): int
     {
-        $filas = $this->resultados->matchAgileMaestroExportar($filtros);
+        $filas = $this->resultados->matchAgileMaestroExportar();
         $total = $filas->count();
 
         if ($jobId !== null) {
@@ -433,11 +434,11 @@ class CompraAgilReporteExportService
         foreach ($filas as $f) {
             fputcsv($out, [
                 $f->prod_descripcion_agile,
-                $f->prod_item,
-                $f->prod_descripcion_maestro,
+                $f->prod_item ?? '',
+                $f->prod_descripcion_maestro ?? '',
             ], ';');
             $written++;
-            if ($jobId !== null && $total > 0 && ($written % 50 === 0 || $written === $total)) {
+            if ($jobId !== null && $total > 0 && ($written % 200 === 0 || $written === $total)) {
                 $percent = 55 + (int) round(($written / $total) * 40);
                 $this->patch($jobId, [
                     'percent' => min(95, $percent),
@@ -457,7 +458,6 @@ class CompraAgilReporteExportService
         if (! in_array($type, [
             self::TYPE_PRODUCTOS_GANADOS,
             self::TYPE_PRODUCTOS_GANADOS_DETALLE,
-            self::TYPE_MATCH_AGILE_MAESTRO,
         ], true)) {
             return;
         }

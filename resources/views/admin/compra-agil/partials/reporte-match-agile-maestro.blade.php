@@ -7,39 +7,13 @@
     </div>
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
-            Pares distintos de <strong>descripción Agile (MP)</strong>, <strong>código maestro</strong> (<code>prod_item</code>)
-            y <strong>descripción del maestro</strong>, con los mismos filtros del reporte 1
-            (procesos <strong>Cerrada</strong>, proveedor Reicol/Romulo, fechas).
+            Descarga completa de <code>agilemaeprod</code>: descripción Agile (MP), código maestro
+            (<code>prod_item</code>) y descripción del maestro (<code>maeprod</code>). Sin filtros.
         </p>
         <form id="form-reporte-match-agile" class="row g-2 align-items-end" data-no-loader>
-            <div class="col-12 col-md-auto">
-                <span class="form-label small mb-1 d-block">Filtrar por</span>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de fecha match">
-                    <input type="radio" class="btn-check" name="tipo_fecha" id="ma-tipo-cierre" value="cierre" checked>
-                    <label class="btn btn-outline-secondary" for="ma-tipo-cierre">Cierre</label>
-                    <input type="radio" class="btn-check" name="tipo_fecha" id="ma-tipo-publicacion" value="publicacion">
-                    <label class="btn btn-outline-secondary" for="ma-tipo-publicacion">Publicación</label>
-                </div>
-            </div>
-            <div class="col-auto">
-                <label for="ma-fecha-desde" class="form-label small mb-0" id="ma-label-desde">Cierre desde</label>
-                <input type="date" class="form-control form-control-sm" id="ma-fecha-desde" name="fecha_desde" required>
-            </div>
-            <div class="col-auto">
-                <label for="ma-fecha-hasta" class="form-label small mb-0" id="ma-label-hasta">Cierre hasta</label>
-                <input type="date" class="form-control form-control-sm" id="ma-fecha-hasta" name="fecha_hasta" required>
-            </div>
-            <div class="col-auto">
-                <label for="ma-ganador" class="form-label small mb-0">Proveedor seleccionado</label>
-                <select class="form-select form-select-sm" id="ma-ganador" name="ganador" style="width:9rem">
-                    <option value="ambos" selected>Ambos</option>
-                    <option value="reicol">Reicol</option>
-                    <option value="romulo">Romulo</option>
-                </select>
-            </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-success btn-sm" id="btn-reporte-ma-generar">
-                    <i class="bi bi-file-earmark-spreadsheet"></i> Generar CSV
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar CSV
                 </button>
             </div>
         </form>
@@ -80,25 +54,6 @@
 
     const form = document.getElementById('form-reporte-match-agile');
     const btnGenerar = document.getElementById('btn-reporte-ma-generar');
-    const labelDesde = document.getElementById('ma-label-desde');
-    const labelHasta = document.getElementById('ma-label-hasta');
-
-    function tipoFechaSeleccionado() {
-        return form?.querySelector('input[name="tipo_fecha"]:checked')?.value || 'cierre';
-    }
-
-    function actualizarEtiquetasFecha() {
-        const esCierre = tipoFechaSeleccionado() === 'cierre';
-        const prefijo = esCierre ? 'Cierre' : 'Publicación';
-        if (labelDesde) labelDesde.textContent = prefijo + ' desde';
-        if (labelHasta) labelHasta.textContent = prefijo + ' hasta';
-    }
-
-    form?.querySelectorAll('input[name="tipo_fecha"]').forEach(function (radio) {
-        radio.addEventListener('change', actualizarEtiquetasFecha);
-    });
-    actualizarEtiquetasFecha();
-
     const wrapProgreso = document.getElementById('reporte-ma-progreso-wrap');
     const bar = document.getElementById('reporte-ma-progreso-bar');
     const texto = document.getElementById('reporte-ma-progreso-texto');
@@ -174,7 +129,7 @@
                 downloadLink.textContent = data.filename || 'Descargar CSV';
                 listo.classList.remove('d-none');
                 if ((data.row_count ?? 0) === 0) {
-                    vacio.textContent = 'No hay pares Agile ↔ maestro para los filtros aplicados.';
+                    vacio.textContent = 'No hay registros en agilemaeprod.';
                     vacio.classList.remove('d-none');
                     if (listoTexto) listoTexto.textContent = 'CSV generado (sin filas):';
                 } else if (listoTexto) {
@@ -221,13 +176,6 @@
             window.CotizRenderKeepAlive.start();
         }
 
-        const body = {
-            fecha_desde: form.fecha_desde.value,
-            fecha_hasta: form.fecha_hasta.value,
-            tipo_fecha: tipoFechaSeleccionado(),
-            ganador: form.ganador.value,
-        };
-
         try {
             const res = await fetch(urls.generar, {
                 method: 'POST',
@@ -237,7 +185,7 @@
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrf,
                 },
-                body: JSON.stringify(body),
+                body: JSON.stringify({}),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {

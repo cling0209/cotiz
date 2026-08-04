@@ -2485,36 +2485,23 @@ class NotaMpResultadosService
     }
 
     /**
-     * Pares descripción Agile ↔ producto maestro (distintos), mismos filtros de productos ganados.
+     * Dump de agilemaeprod: descripción Agile, prod_item maestro y nombre del maestro.
      *
-     * @param  array<string, mixed>  $filtros
      * @return Collection<int, object>
      */
-    public function matchAgileMaestroExportar(array $filtros = []): Collection
+    public function matchAgileMaestroExportar(): Collection
     {
-        $descripcionAgile = "COALESCE("
-            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
-            ."'')";
-        $descripcionMaestro = "COALESCE("
-            ."NULLIF(TRIM(mp.prod_nombre), ''), "
-            ."NULLIF(TRIM(notasdetalle.prod_descripcion_maestro), ''), "
-            ."'')";
-
-        return $this->buildProductosGanadosBaseQuery($filtros)
-            ->whereRaw("NULLIF(TRIM(notasdetalle.prod_descripcion_agile), '') IS NOT NULL")
+        return DB::table('agilemaeprod as am')
+            ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'am.prod_item')
+            ->whereRaw("NULLIF(TRIM(am.prod_descripcion_agile), '') IS NOT NULL")
             ->select([
-                DB::raw("{$descripcionAgile} as prod_descripcion_agile"),
-                'notasdetalle.prod_item',
-                DB::raw("{$descripcionMaestro} as prod_descripcion_maestro"),
+                DB::raw('TRIM(am.prod_descripcion_agile) as prod_descripcion_agile'),
+                'am.prod_item',
+                DB::raw("COALESCE(NULLIF(TRIM(mp.prod_nombre), ''), '') as prod_descripcion_maestro"),
             ])
-            ->groupBy(
-                DB::raw($descripcionAgile),
-                'notasdetalle.prod_item',
-                DB::raw($descripcionMaestro),
-            )
-            ->orderBy('notasdetalle.prod_item')
-            ->orderBy(DB::raw($descripcionAgile))
-            ->limit(50000)
+            ->orderBy('am.prod_item')
+            ->orderBy('am.prod_descripcion_agile')
+            ->limit(100000)
             ->get();
     }
 

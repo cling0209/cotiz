@@ -2902,13 +2902,8 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('Producto Agile (MP)', $csv);
     }
 
-    public function test_reporte_match_agile_maestro_exporta_pares_distintos(): void
+    public function test_reporte_match_agile_maestro_exporta_desde_agilemaeprod(): void
     {
-        config([
-            'cotiz.reicol_rut' => '76.356.855-5',
-            'cotiz.romulo_rut' => '76.779.675-7',
-        ]);
-
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
 
         Maeprod::query()->create([
@@ -2916,76 +2911,14 @@ class CompraAgilResultadosTest extends TestCase
             'prod_nombre' => 'CALCULADORA BASICA OFICINA',
         ]);
 
-        Nota::query()->create([
-            'nronota' => 930,
-            'descripcion' => 'Test match agile maestro',
-            'fecha' => now()->toDateString(),
-            'usuario' => 'admin',
-            'empresa' => 'Cliente',
-            'encargado' => '930-1-COT26',
-            'ocompra' => '930-1-AG26',
-            'nota_softland' => 90930,
-            'enviadoapi' => 0,
-            'factor_precio_venta' => 1.22,
-        ]);
-
-        NotaMpSeguimiento::query()->create([
-            'nronota' => 930,
-            'codigo_proceso' => '930-1-COT26',
-            'fecha_publicacion' => '2026-03-01 10:00:00',
-            'fecha_cierre' => '2026-03-20 18:00:00',
-            'resultado_propio' => 'cerrada',
-            'finalizado' => true,
-        ]);
-
-        NotaDetalle::query()->create([
-            'nronota' => 930,
-            'prod_item' => 'CALC01',
-            'prod_valor' => 5000,
-            'cantidad' => 2,
-            'fechahora' => now(),
-            'orden' => 1,
+        DB::table('agilemaeprod')->insert([
             'prod_item_agile' => '44101800',
             'prod_descripcion_agile' => 'CALCULADORA ELECTRONICA 12 DIGITOS MP',
-        ]);
-
-        // Segunda línea mismo par: no debe duplicar en el CSV.
-        NotaDetalle::query()->create([
-            'nronota' => 930,
             'prod_item' => 'CALC01',
-            'prod_valor' => 5000,
-            'cantidad' => 1,
-            'fechahora' => now(),
-            'orden' => 2,
-            'prod_item_agile' => '44101800',
-            'prod_descripcion_agile' => 'CALCULADORA ELECTRONICA 12 DIGITOS MP',
-        ]);
-
-        $oferta = NotaMpOferta::query()->create([
-            'nronota' => 930,
-            'rut_proveedor' => '76356855-5',
-            'razon_social' => 'REICOL SPA',
-            'proveedor_seleccionado' => true,
-            'monto_total' => 15000,
-            'es_propio' => true,
-        ]);
-        NotaMpOfertaLinea::query()->create([
-            'oferta_id' => $oferta->id,
-            'codigo_producto' => '44101800',
-            'nombre_producto' => 'Calculadoras',
-            'descripcion' => 'CALCULADORA ELECTRONICA 12 DIGITOS MP',
-            'cantidad' => 2,
-            'precio_unitario' => 5000,
-            'monto_total' => 10000,
         ]);
 
         $encolar = $this->actingAs($admin)
-            ->postJson(route('admin.compra-agil.resultados.reportes.match-agile-maestro.generar'), [
-                'fecha_desde' => '2026-03-01',
-                'fecha_hasta' => '2026-03-31',
-                'tipo_fecha' => 'cierre',
-                'ganador' => 'reicol',
-            ])
+            ->postJson(route('admin.compra-agil.resultados.reportes.match-agile-maestro.generar'))
             ->assertOk()
             ->assertJsonPath('ok', true);
 
@@ -3002,6 +2935,5 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('CALCULADORA ELECTRONICA 12 DIGITOS MP', $csv);
         $this->assertStringContainsString('CALC01', $csv);
         $this->assertStringContainsString('CALCULADORA BASICA OFICINA', $csv);
-        $this->assertSame(1, substr_count($csv, 'CALCULADORA ELECTRONICA 12 DIGITOS MP'));
     }
 }
