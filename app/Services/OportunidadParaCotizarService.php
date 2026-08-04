@@ -1152,6 +1152,7 @@ class OportunidadParaCotizarService
         $items = [];
         $itemsPendientesGuardar = [];
         $porFrase = [];
+        $codigosMatchPagina = [];
         $todasAnterioresAlDia = true;
         $algunaFechaParseable = false;
         $inicioMatch = microtime(true);
@@ -1202,6 +1203,15 @@ class OportunidadParaCotizarService
                         && $this->estaVigente($resumen['fecha_cierre'] ?? null)
                         && ! $this->estaTomada($codigo)
                     ) {
+                        $codigosMatchPagina[$codigo] = true;
+                        foreach ($coinciden as $fraseOk) {
+                            $clave = trim((string) $fraseOk);
+                            if ($clave === '') {
+                                continue;
+                            }
+                            $porFrase[$clave] = ($porFrase[$clave] ?? 0) + 1;
+                        }
+
                         if (isset($yaVistos[$codigo])) {
                             foreach ($coinciden as $fraseOk) {
                                 $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
@@ -1216,13 +1226,6 @@ class OportunidadParaCotizarService
                             $items[] = $resumen;
                             $itemsPendientesGuardar[] = $resumen;
                             $yaVistos[$codigo] = true;
-                            foreach ($coinciden as $fraseOk) {
-                                $clave = trim((string) $fraseOk);
-                                if ($clave === '') {
-                                    continue;
-                                }
-                                $porFrase[$clave] = ($porFrase[$clave] ?? 0) + 1;
-                            }
                         }
                     }
                 }
@@ -1255,7 +1258,10 @@ class OportunidadParaCotizarService
                         0,
                         (int) round(microtime(true) - $inicioMatch),
                     );
+                    // Nuevas de esta página + todas las que coincidieron (incluye ya guardadas).
                     $consultaMatch['respuesta']['encontradas_pagina'] = count($items);
+                    $consultaMatch['respuesta']['encontradas_match_pagina'] = count($codigosMatchPagina);
+                    $consultaMatch['respuesta']['encontradas_codigos'] = array_keys($codigosMatchPagina);
                     $consultaMatch['respuesta']['encontradas_por_frase'] = $porFrase;
                     $consultaMatch['respuesta']['encontradas_muestra'] = array_map(
                         static function (array $row): array {
@@ -1307,6 +1313,8 @@ class OportunidadParaCotizarService
         );
         if (is_array($consultaFinal['respuesta'] ?? null)) {
             $consultaFinal['respuesta']['encontradas_pagina'] = count($items);
+            $consultaFinal['respuesta']['encontradas_match_pagina'] = count($codigosMatchPagina);
+            $consultaFinal['respuesta']['encontradas_codigos'] = array_keys($codigosMatchPagina);
             $consultaFinal['respuesta']['encontradas_por_frase'] = $porFrase;
             $consultaFinal['respuesta']['encontradas_muestra'] = array_map(
                 static function (array $row): array {
@@ -1330,6 +1338,7 @@ class OportunidadParaCotizarService
             'items' => $items,
             'consulta' => $consultaFinal,
             'encontradas_por_frase' => $porFrase,
+            'encontradas_codigos' => array_keys($codigosMatchPagina),
             'guardadas' => $guardadas,
             'pagina' => $pagina,
             'items_pagina' => count($lote),

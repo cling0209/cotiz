@@ -409,6 +409,15 @@ class OportunidadBusquedaService
             : (is_array($paso['encontradas_por_frase_base'] ?? null)
                 ? $paso['encontradas_por_frase_base']
                 : (is_array($paso['encontradas_por_frase'] ?? null) ? $paso['encontradas_por_frase'] : []));
+        $codigosEncontradosBase = [];
+        if (! $esInicioRegion && is_array($paso['codigos_encontrados'] ?? null)) {
+            foreach ($paso['codigos_encontrados'] as $codigoPrev) {
+                $norm = strtoupper(trim((string) $codigoPrev));
+                if ($norm !== '') {
+                    $codigosEncontradosBase[$norm] = true;
+                }
+            }
+        }
 
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
         $pasos[$indice]['pagina'] = $pagina;
@@ -416,7 +425,8 @@ class OportunidadBusquedaService
         $pasos[$indice]['siguiente_pagina'] = $pagina;
         $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
         $pasos[$indice]['items_pagina'] = 0;
-        $pasos[$indice]['encontradas'] = $encontradasPrevias;
+        $pasos[$indice]['encontradas'] = max($encontradasPrevias, count($codigosEncontradosBase));
+        $pasos[$indice]['codigos_encontrados'] = array_keys($codigosEncontradosBase);
         $pasos[$indice]['encontradas_por_frase_base'] = $porFraseBase;
         $pasos[$indice]['encontradas_por_frase'] = $porFraseBase;
         $pasos[$indice]['encontradas_por_frase_pagina'] = [];
@@ -484,6 +494,7 @@ class OportunidadBusquedaService
             $maxPaginasPaso,
             $encontradasPrevias,
             $porFraseBase,
+            $codigosEncontradosBase,
         ): void {
             $assertCorridaActiva();
             $resp = is_array($consulta['respuesta'] ?? null) ? $consulta['respuesta'] : [];
@@ -505,6 +516,10 @@ class OportunidadBusquedaService
                 $matchTotal = max(0, (int) ($resp['match_total'] ?? $itemsPagina));
                 $matchSegundos = max(0, (int) ($resp['match_segundos'] ?? 0));
                 $encontradasPagina = max(0, (int) ($resp['encontradas_pagina'] ?? $resp['coinciden_hoy'] ?? 0));
+                $encontradasMatchPagina = max(
+                    $encontradasPagina,
+                    (int) ($resp['encontradas_match_pagina'] ?? 0),
+                );
                 $porFrasePagina = is_array($resp['encontradas_por_frase'] ?? null)
                     ? $resp['encontradas_por_frase']
                     : [];
@@ -517,11 +532,26 @@ class OportunidadBusquedaService
                     $porFrase[$clave] = (int) ($porFrase[$clave] ?? 0) + (int) $nMatch;
                 }
                 ksort($porFrase);
+                $codigosRegion = $codigosEncontradosBase;
+                $codigosPagina = is_array($resp['encontradas_codigos'] ?? null)
+                    ? $resp['encontradas_codigos']
+                    : [];
+                foreach ($codigosPagina as $codigoMatch) {
+                    $norm = strtoupper(trim((string) $codigoMatch));
+                    if ($norm !== '') {
+                        $codigosRegion[$norm] = true;
+                    }
+                }
                 $pasos[$indice]['fase'] = 'match';
                 $pasos[$indice]['match_revisados'] = $matchRevisados;
                 $pasos[$indice]['match_total'] = $matchTotal;
                 $pasos[$indice]['match_segundos'] = $matchSegundos;
-                $pasos[$indice]['encontradas'] = $encontradasPrevias + $encontradasPagina;
+                $pasos[$indice]['codigos_encontrados'] = array_keys($codigosRegion);
+                $pasos[$indice]['encontradas'] = max(
+                    $encontradasPrevias + $encontradasPagina,
+                    count($codigosRegion),
+                    $encontradasPrevias + $encontradasMatchPagina,
+                );
                 $pasos[$indice]['encontradas_por_frase_pagina'] = $porFrasePagina;
                 $pasos[$indice]['encontradas_por_frase'] = $porFrase;
                 $pasos[$indice]['encontradas_muestra'] = is_array($resp['encontradas_muestra'] ?? null)
@@ -542,7 +572,7 @@ class OportunidadBusquedaService
                     $maxPaginasPaso,
                     $matchRevisados > 0 ? $matchRevisados : $itemsPagina,
                     $matchTotal > 0 ? $matchTotal : max(1, $itemsPagina),
-                    $encontradasPrevias + $encontradasPagina,
+                    (int) $pasos[$indice]['encontradas'],
                     $frasesTxt,
                     $matchSegundos,
                 );
@@ -645,9 +675,35 @@ class OportunidadBusquedaService
                 $porFraseTotal[$clave] = (int) ($porFraseTotal[$clave] ?? 0) + (int) $nMatch;
             }
             ksort($porFraseTotal);
+            $codigosRegion = $codigosEncontradosBase;
+            $codigosPagina = is_array($resultado['encontradas_codigos'] ?? null)
+                ? $resultado['encontradas_codigos']
+                : (is_array($resultado['consulta']['respuesta']['encontradas_codigos'] ?? null)
+                    ? $resultado['consulta']['respuesta']['encontradas_codigos']
+                    : []);
+            foreach ($codigosPagina as $codigoMatch) {
+                $norm = strtoupper(trim((string) $codigoMatch));
+                if ($norm !== '') {
+                    $codigosRegion[$norm] = true;
+                }
+            }
+            // También sumar códigos nuevos de items por si no vino el listado.
+            if (is_array($resultado['items'] ?? null)) {
+                foreach ($resultado['items'] as $itemOk) {
+                    if (! is_array($itemOk)) {
+                        continue;
+                    }
+                    $norm = strtoupper(trim((string) ($itemOk['codigo'] ?? '')));
+                    if ($norm !== '') {
+                        $codigosRegion[$norm] = true;
+                    }
+                }
+            }
             $pasos[$indice]['encontradas_por_frase_pagina'] = [];
             $pasos[$indice]['encontradas_por_frase'] = $porFraseTotal;
             $pasos[$indice]['encontradas_por_frase_base'] = $porFraseTotal;
+            $pasos[$indice]['codigos_encontrados'] = array_keys($codigosRegion);
+            $pasos[$indice]['encontradas'] = max($encontradas, count($codigosRegion));
             if (is_array($resultado['consulta']['respuesta'] ?? null)) {
                 $pasos[$indice]['encontradas_muestra'] = is_array(
                     $resultado['consulta']['respuesta']['encontradas_muestra'] ?? null
