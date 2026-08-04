@@ -2184,7 +2184,12 @@
                 const frase = (!fraseRaw || fraseRaw === '(todas)') ? 'todas las frases' : fraseRaw;
                 const regionNombre = paso?.region_nombre || data.region_nombre || (`Región ${paso?.region ?? data.parametros?.region ?? ''}`);
                 const pasoTxt = indice != null && total != null ? `Paso ${indice + 1}/${total}` : '';
-                let linea = [pasoTxt, `«${frase}»`, regionNombre].filter(Boolean).join(' · ');
+                const paginaMp = Number(paso?.pagina ?? data.respuesta?.pagina ?? data.parametros?.numero_pagina);
+                const paginasMax = Number(paso?.paginas_max);
+                const paginaTxt = Number.isFinite(paginaMp) && paginaMp > 0 ?
+                    (Number.isFinite(paginasMax) && paginasMax > 0 ? `pág ${paginaMp}/${paginasMax}` : `pág ${paginaMp}`) :
+                    '';
+                let linea = [pasoTxt, `«${frase}»`, regionNombre, paginaTxt].filter(Boolean).join(' · ');
                 if (nota) linea += ` — ${nota}`;
                 const terminado = paso?.resultado && !['pendiente', 'en_curso'].includes(paso.resultado);
                 if (terminado && data.total_api != null) {
@@ -2206,29 +2211,73 @@
                 const resp = data.respuesta && typeof data.respuesta === 'object' ? data.respuesta : null;
                 const terminado = paso?.resultado && !['pendiente', 'en_curso'].includes(paso.resultado);
                 const cancelado = paso?.resultado === 'cancelado';
+                const muestra = Array.isArray(resp?.muestra) ? resp.muestra : [];
+                const hayPaginaMp = resp?.items_pagina != null;
+                const hayRespuestaMp = hayPaginaMp || muestra.length > 0;
+                const paginaMp = resp?.pagina != null ? Number(resp.pagina) : null;
+                const itemsPagina = hayPaginaMp ? Number(resp.items_pagina) : null;
+                const itemsAcum = resp?.items_recibidos ?? resp?.items_acumulados;
+                const esperandoWorker = typeof nota === 'string' && /esperando worker|en cola/i.test(nota);
+                const errorMsg = String(resp?.error_mensaje || paso?.error || '').trim();
+                const errorTipo = String(resp?.error_tipo || '').trim();
+                const hayError = Boolean(resp?.error) || errorMsg !== '';
+
                 if (cancelado) {
                     debugRespuestaJson.textContent = 'Búsqueda cancelada; se detuvo la espera a Mercado Público.';
                     if (debugRespuestaLine) {
                         debugRespuestaLine.textContent = 'Cancelado — la consulta en curso no se completó.';
                     }
-                } else if (!terminado) {
-                    const items = resp?.items_recibidos;
-                    debugRespuestaJson.textContent = (items != null && Number(items) > 0) ?
-                        (data.respuesta_json || JSON.stringify(resp, null, 2)) :
-                        'Esperando respuesta de Mercado Público…';
+                } else if (hayError) {
+                    const payload = {
+                        error: true,
+                        error_tipo: errorTipo || 'error',
+                        error_mensaje: errorMsg || 'Error sin detalle',
+                        pagina: paginaMp,
+                        items_pagina: itemsPagina,
+                        items_acumulados: itemsAcum,
+                        muestra,
+                    };
+                    debugRespuestaJson.textContent = data.respuesta_json && resp?.error
+                        ? data.respuesta_json
+                        : JSON.stringify(payload, null, 2);
                     if (debugRespuestaLine) {
-                        debugRespuestaLine.textContent = items != null ?
-                            `En curso — ${items} ítem(s) leídos hasta ahora.` :
-                            '';
+                        const tipoTxt = errorTipo === 'base_datos'
+                            ? 'Error de base de datos'
+                            : (errorTipo === 'timeout_mp' || errorTipo === 'timeout_worker'
+                                ? 'Timeout / página lenta'
+                                : (errorTipo === 'http_mp' ? 'Error HTTP Mercado Público' : 'Error'));
+                        const pagTxt = paginaMp != null ? ` (pág ${paginaMp})` : '';
+                        debugRespuestaLine.textContent = `${tipoTxt}${pagTxt} — se continúa con la siguiente página si aplica.`;
                     }
-                } else if (resp) {
+                } else if (hayRespuestaMp && resp) {
                     debugRespuestaJson.textContent = data.respuesta_json || JSON.stringify(resp, null, 2);
                     if (debugRespuestaLine) {
-                        const recibidos = resp.items_recibidos ?? 0;
-                        const coinciden = resp.coinciden_hoy ?? 0;
-                        debugRespuestaLine.textContent = recibidos === 0 ?
-                            'MP no devolvió ítems para esta región/fecha.' :
-                            `MP devolvió ${recibidos} ítem(s); coinciden hoy: ${coinciden}.`;
+                        const partes = [];
+                        if (paginaMp != null) partes.push(`página ${paginaMp}`);
+                        if (itemsPagina != null) partes.push(`${itemsPagina} ítem(s) en esta página`);
+                        if (itemsAcum != null) partes.push(`${itemsAcum} acumulados`);
+                        const coinciden = resp.coinciden_hoy;
+                        if (coinciden != null && terminado) partes.push(`coinciden hoy: ${coinciden}`);
+                        if (muestra.length > 0) partes.push(`muestra ${muestra.length}`);
+                        debugRespuestaLine.textContent = partes.length ?
+                            (terminado ? `MP — ${partes.join(' · ')}.` : `Respuesta MP — ${partes.join(' · ')}.`) :
+                            'Respuesta de Mercado Público recibida.';
+                    }
+                } else if (!terminado) {
+                    if (esperandoWorker) {
+                        debugRespuestaJson.textContent =
+                            'Job en cola sin tomar. Aún no se consultó Mercado Público — verifique el worker (RUN_QUEUE_WORKER=true).';
+                        if (debugRespuestaLine) {
+                            debugRespuestaLine.textContent = 'Esperando worker — sin respuesta MP todavía.';
+                        }
+                    } else {
+                        debugRespuestaJson.textContent = 'Esperando respuesta de Mercado Público…';
+                        if (debugRespuestaLine) {
+                            const pagTxt = paginaMp != null ? ` (página ${paginaMp})` : '';
+                            debugRespuestaLine.textContent = itemsAcum != null ?
+                                `En curso${pagTxt} — ${itemsAcum} ítem(s) leídos hasta ahora.` :
+                                `En curso${pagTxt} — consultando API…`;
+                        }
                     }
                 } else {
                     debugRespuestaJson.textContent = 'Sin respuesta registrada para este paso.';
@@ -2268,13 +2317,29 @@
             }
 
             const paso = pasos[idx];
-            const nota = paso?.error ?
-                `${paso.error} — la búsqueda continúa con la siguiente región o reintento.` :
-                (corrida.estado === 'cancelled' ?
-                    'búsqueda cancelada' :
-                    (corrida.estado === 'running' && (paso?.resultado === 'pendiente' || paso?.resultado === 'en_curso') ?
-                        'consulta en curso…' :
-                        null));
+            const hayEnCurso = pasos.some((p) => p?.resultado === 'en_curso');
+            const mensajeLower = String(corrida?.mensaje || '').toLowerCase();
+            const esperandoWorker = corrida?.estado === 'running' &&
+                !hayEnCurso &&
+                (
+                    Boolean(corrida.worker_stalled) ||
+                    mensajeLower.includes('esperando worker') ||
+                    mensajeLower.includes('encolada') ||
+                    mensajeLower.includes('en cola')
+                );
+            let nota = null;
+            if (paso?.error) {
+                nota = `${paso.error} — la búsqueda continúa con la siguiente región o reintento.`;
+            } else if (corrida.estado === 'cancelled') {
+                nota = 'búsqueda cancelada';
+            } else if (esperandoWorker && (paso?.resultado === 'pendiente' || !paso?.resultado)) {
+                nota = 'esperando worker (job en cola)';
+            } else if (corrida.estado === 'running' && (paso?.resultado === 'pendiente' || paso?.resultado === 'en_curso')) {
+                const pag = Number(paso?.pagina);
+                nota = Number.isFinite(pag) && pag > 0 ?
+                    `consulta página ${pag} en curso…` :
+                    'consulta en curso…';
+            }
             mostrarDebugConsulta(paso?.consulta || null, paso, idx, total, nota);
         }
 
@@ -2723,10 +2788,13 @@
             switch (String(tipo || '')) {
                 case 'esperando_worker':
                 case 'worker_error':
+                case 'mp_pagina_timeout':
+                case 'mp_pagina_error':
                     return 'text-bg-warning';
                 case 'region_error':
                     return 'text-bg-danger';
                 case 'region_ok':
+                case 'mp_pagina_ok':
                 case 'completada':
                     return 'text-bg-success';
                 case 'mp_pagina':
@@ -3195,8 +3263,21 @@
                     reanudarBusquedaSilencioso();
                 }
             } else if (activo && ultimoError) {
-                if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
-                    mostrarAvisoPaso('Un paso falló en Mercado Público; la búsqueda sigue con la siguiente región o reintento.');
+                const tipoErr = String(ultimoError.tipo || '').trim();
+                const msgErr = String(ultimoError.mensaje || '').trim();
+                const pagErr = ultimoError.pagina != null ? ` pág ${ultimoError.pagina}` : '';
+                if (tipoErr === 'base_datos' || /sqlstate|postgres|database|pgsql|mysql/i.test(msgErr)) {
+                    mostrarErrorFatal(
+                        `Error de base de datos${pagErr}: ${msgErr || 'sin detalle'}. ` +
+                        'La búsqueda intenta seguir con la siguiente página/región.',
+                    );
+                } else if (msgErr) {
+                    mostrarAvisoPaso(
+                        `Error${pagErr}${tipoErr ? ` (${tipoErr})` : ''}: ${msgErr}. ` +
+                        'Se continúa con la siguiente página o región.',
+                    );
+                } else if (String(corrida.mensaje || '').toLowerCase().includes('fallido')) {
+                    mostrarAvisoPaso('Un paso falló; la búsqueda sigue con la siguiente región o reintento.');
                 } else {
                     relError.classList.add('d-none');
                 }

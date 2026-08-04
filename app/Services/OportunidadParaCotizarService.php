@@ -967,7 +967,7 @@ class OportunidadParaCotizarService
         $items = [];
         $crudosTotal = 0;
         $guardadas = 0;
-        $consulta = $this->metaConsultaPaso('(todas)', $region, 0, 0, $fechaBusqueda, null, $cambioDesde);
+        $consulta = $this->metaConsultaPaso('(todas)', $region, 0, 0, $fechaBusqueda, null, $cambioDesde, 1);
 
         for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
             $resultado = $this->ejecutarPasoRegionPagina(
@@ -1030,7 +1030,7 @@ class OportunidadParaCotizarService
         $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
         $vacio = [
             'items' => [],
-            'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+            'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde, $pagina),
             'guardadas' => 0,
             'pagina' => $pagina,
             'items_pagina' => 0,
@@ -1067,7 +1067,7 @@ class OportunidadParaCotizarService
                 $pagina,
                 0,
                 $itemsLeidosPrevios,
-                $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+                $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde, $pagina),
             );
         }
 
@@ -1092,6 +1092,8 @@ class OportunidadParaCotizarService
                     $dia,
                     $this->muestraRespuestaCruda($lote),
                     $cambioDesde,
+                    $pagina,
+                    count($lote),
                 ),
             );
         }
@@ -1099,7 +1101,17 @@ class OportunidadParaCotizarService
         if ($lote === []) {
             return [
                 'items' => [],
-                'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde),
+                'consulta' => $this->metaConsultaPaso(
+                    '(todas)',
+                    $region,
+                    $itemsLeidosPrevios,
+                    0,
+                    $dia,
+                    [],
+                    $cambioDesde,
+                    $pagina,
+                    0,
+                ),
                 'guardadas' => 0,
                 'pagina' => $pagina,
                 'items_pagina' => 0,
@@ -1189,6 +1201,8 @@ class OportunidadParaCotizarService
                 $dia,
                 $this->muestraRespuestaCruda($lote),
                 $cambioDesde,
+                $pagina,
+                count($lote),
             ),
             'guardadas' => $guardadas,
             'pagina' => $pagina,
@@ -1313,6 +1327,8 @@ class OportunidadParaCotizarService
                 $dia,
                 $this->muestraRespuestaCruda(is_array($crudos) ? $crudos : []),
                 $cambioDesde,
+                1,
+                is_array($crudos) ? count($crudos) : 0,
             ),
             'guardadas' => $guardadas,
         ];
@@ -1352,8 +1368,11 @@ class OportunidadParaCotizarService
         ?int $totalHoy = null,
         mixed $fechaBusqueda = null,
         mixed $cambioDesde = null,
+        ?int $numeroPagina = null,
+        ?string $errorMensaje = null,
+        ?string $errorTipo = null,
     ): array {
-        return $this->metaConsultaPaso(
+        $meta = $this->metaConsultaPaso(
             $frase,
             $region,
             $totalApi ?? 0,
@@ -1361,10 +1380,30 @@ class OportunidadParaCotizarService
             $fechaBusqueda,
             null,
             $cambioDesde,
+            $numeroPagina,
+            null,
         );
+
+        $mensaje = trim((string) ($errorMensaje ?? ''));
+        if ($mensaje === '') {
+            return $meta;
+        }
+
+        $respuesta = is_array($meta['respuesta'] ?? null) ? $meta['respuesta'] : [];
+        $respuesta['error'] = true;
+        $respuesta['error_tipo'] = trim((string) ($errorTipo ?? 'error')) ?: 'error';
+        $respuesta['error_mensaje'] = mb_substr($mensaje, 0, 800);
+        $meta['respuesta'] = $respuesta;
+        $meta['respuesta_json'] = json_encode(
+            $respuesta,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        ) ?: '{}';
+
+        return $meta;
     }
 
     /**
+     * @param  list<array<string, mixed>>|null  $muestraRespuesta
      * @return array<string, mixed>
      */
     private function metaConsultaPaso(
@@ -1375,14 +1414,30 @@ class OportunidadParaCotizarService
         mixed $fechaBusqueda = null,
         ?array $muestraRespuesta = null,
         mixed $cambioDesde = null,
+        ?int $numeroPagina = null,
+        ?int $itemsPaginaActual = null,
     ): array {
-        $params = $this->parametrosConsultaPaso($frase, $region, $fechaBusqueda, $cambioDesde);
+        $fraseNorm = trim($frase);
+        $pagina = max(1, (int) ($numeroPagina ?? 1));
+        if ($fraseNorm === '' || $fraseNorm === '(todas)') {
+            $params = $this->parametrosConsultaRegion($region, $pagina, $fechaBusqueda, $cambioDesde);
+        } else {
+            $params = $this->parametrosConsultaPaso($fraseNorm, $region, $fechaBusqueda, $cambioDesde);
+        }
         ksort($params);
 
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         $path = '/v2/compra-agil';
         $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
+        $muestra = is_array($muestraRespuesta) ? array_values($muestraRespuesta) : [];
+        // Solo informar items_pagina cuando ya hubo respuesta MP (muestra o conteo explícito).
+        $itemsPagina = null;
+        if ($itemsPaginaActual !== null) {
+            $itemsPagina = max(0, $itemsPaginaActual);
+        } elseif ($muestraRespuesta !== null) {
+            $itemsPagina = count($muestra);
+        }
 
         $paraJson = [
             'endpoint' => $baseUrl.$path,
@@ -1397,9 +1452,12 @@ class OportunidadParaCotizarService
         ksort($paraJson);
 
         $respuesta = [
+            'pagina' => (int) ($params['numero_pagina'] ?? $pagina),
+            'items_pagina' => $itemsPagina,
+            'items_acumulados' => $totalApi,
             'items_recibidos' => $totalApi,
             'coinciden_hoy' => $totalHoy,
-            'muestra' => is_array($muestraRespuesta) ? array_values($muestraRespuesta) : [],
+            'muestra' => $muestra,
         ];
 
         return array_merge($paraJson, [
@@ -1416,7 +1474,7 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Muestra compacta de la respuesta cruda de MP para depuración (máx. 3 ítems).
+     * Muestra compacta de la respuesta cruda de MP para depuración (máx. 15 ítems de la página).
      *
      * @param  list<mixed>  $crudos
      * @return list<array<string, mixed>>
@@ -1424,7 +1482,7 @@ class OportunidadParaCotizarService
     private function muestraRespuestaCruda(array $crudos): array
     {
         $muestra = [];
-        foreach (array_slice(array_values($crudos), 0, 3) as $item) {
+        foreach (array_slice(array_values($crudos), 0, 15) as $item) {
             if (! is_array($item)) {
                 continue;
             }

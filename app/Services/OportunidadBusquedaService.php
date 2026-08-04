@@ -4,11 +4,16 @@ namespace App\Services;
 
 use App\Jobs\ProcessOportunidadBusquedaJob;
 use App\Models\OportunidadBusquedaCorrida;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use PDOException;
 use RuntimeException;
+use Throwable;
 
 class OportunidadBusquedaService
 {
@@ -335,6 +340,7 @@ class OportunidadBusquedaService
             null,
             $fechaBusqueda,
             $cambioDesde,
+            $pagina,
         );
 
         $mensajeInicio = sprintf(
@@ -526,63 +532,110 @@ class OportunidadBusquedaService
                     ),
                 );
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $corrida->refresh();
             if ($corrida->estado === self::ESTADO_CANCELLED
                 || str_contains($e->getMessage(), self::MENSAJE_CANCELADA)) {
                 return false;
             }
 
-            $regionTerminada = true;
-            $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
-            $pasos[$indice]['intentos'] = $intentos;
-            $pasos[$indice]['estado'] = $intentos >= 2
-                ? self::PASO_RETRY_FAILED
-                : self::PASO_FAILED;
-            unset($pasos[$indice]['siguiente_pagina']);
-            $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
-            $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+            $tipoError = $this->clasificarErrorPaso($e);
+            $mensajeError = mb_substr($e->getMessage(), 0, 500);
+            $consultaError = $this->oportunidades->consultaDebugPaso(
                 $frase !== '' ? $frase : '(todas)',
                 $region,
-                null,
+                $itemsLeidosPrevios,
                 null,
                 $fechaBusqueda,
                 $cambioDesde,
+                $pagina,
+                $mensajeError,
+                $tipoError,
             );
+            $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
+            $pasos[$indice]['consulta'] = $consultaError;
+            $pasos[$indice]['pagina'] = $pagina;
+            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+
+            $esRegionPaginada = $frase === '' || $frase === '(todas)';
+            $puedeSeguirPagina = $esRegionPaginada && $pagina < $maxPaginasPaso;
 
             $errores[] = [
                 'indice' => $indice,
                 'frase' => $frase !== '' ? $frase : '(todas)',
                 'region' => $region,
                 'fase' => $fase,
-                'intento' => $intentos,
+                'intento' => (int) ($pasos[$indice]['intentos'] ?? 0) + ($puedeSeguirPagina ? 0 : 1),
                 'pagina' => $pagina,
-                'mensaje' => mb_substr($e->getMessage(), 0, 500),
+                'tipo' => $tipoError,
+                'mensaje' => $mensajeError,
                 'fecha' => now()->toIso8601String(),
             ];
-            $fallidos = $this->contarFallidosDefinitivos($pasos);
-            $mensaje = $fase === 'reintento'
-                ? sprintf(
-                    'Reintento fallido región %d; se sigue con la siguiente. %s',
-                    $region,
-                    mb_substr($e->getMessage(), 0, 200),
-                )
-                : sprintf(
-                    'Paso fallido región %d (pág %d); al cerrar la región se reintentará. %s',
-                    $region,
-                    $pagina,
-                    mb_substr($e->getMessage(), 0, 200),
-                );
-            $this->pushEvento(
-                $eventos,
-                'region_error',
-                sprintf(
-                    '%s falló (pág %d): %s',
+
+            if ($puedeSeguirPagina) {
+                // Timeout/lento/BD/HTTP en una página: no tumbar la región; seguir con la siguiente.
+                $regionTerminada = false;
+                $pasos[$indice]['estado'] = self::PASO_RUNNING;
+                $pasos[$indice]['siguiente_pagina'] = $pagina + 1;
+                $pasos[$indice]['items_pagina'] = 0;
+                $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
+                $pasos[$indice]['encontradas'] = $encontradasPrevias;
+                $mensaje = sprintf(
+                    '%s — pág %d/%d con error (%s); se sigue con pág %d. %s',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $pagina,
-                    mb_substr($e->getMessage(), 0, 180),
-                ),
-            );
+                    $maxPaginasPaso,
+                    $tipoError,
+                    $pagina + 1,
+                    mb_substr($mensajeError, 0, 180),
+                );
+                $this->pushEvento(
+                    $eventos,
+                    'mp_pagina_error',
+                    sprintf(
+                        '%s · pág %d/%d error (%s) → siguiente %d: %s',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $pagina,
+                        $maxPaginasPaso,
+                        $tipoError,
+                        $pagina + 1,
+                        mb_substr($mensajeError, 0, 160),
+                    ),
+                );
+            } else {
+                $regionTerminada = true;
+                $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+                $pasos[$indice]['intentos'] = $intentos;
+                $pasos[$indice]['estado'] = $intentos >= 2
+                    ? self::PASO_RETRY_FAILED
+                    : self::PASO_FAILED;
+                unset($pasos[$indice]['siguiente_pagina']);
+                $fallidos = $this->contarFallidosDefinitivos($pasos);
+                $mensaje = $fase === 'reintento'
+                    ? sprintf(
+                        'Reintento fallido región %d; se sigue con la siguiente. %s',
+                        $region,
+                        mb_substr($mensajeError, 0, 200),
+                    )
+                    : sprintf(
+                        'Paso fallido región %d (pág %d, %s); al cerrar la región se reintentará. %s',
+                        $region,
+                        $pagina,
+                        $tipoError,
+                        mb_substr($mensajeError, 0, 200),
+                    );
+                $this->pushEvento(
+                    $eventos,
+                    'region_error',
+                    sprintf(
+                        '%s falló (pág %d, %s): %s',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $pagina,
+                        $tipoError,
+                        mb_substr($mensajeError, 0, 180),
+                    ),
+                );
+            }
         }
 
         $nuevoCursor = $regionTerminada ? $cursor + 1 : $cursor;
@@ -761,16 +814,182 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Registra evento cuando el job del worker falla a nivel Laravel.
+     * Registra evento cuando el job del worker falla a nivel Laravel (timeout, OOM, etc.).
+     * Si hay más páginas en la región, avanza el checkpoint para no reintentar la misma página colgada.
      */
     public function registrarInterrupcionWorker(OportunidadBusquedaCorrida $corrida, ?string $detalle = null): void
     {
+        if ($corrida->estado !== self::ESTADO_RUNNING) {
+            return;
+        }
+
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        $eventos = $this->eventosDeCorrida($corrida);
+        $seleccion = $this->seleccionarSiguiente($pasos);
+        $detalleTxt = $detalle !== null ? trim($detalle) : '';
+        $tipoError = $detalleTxt !== ''
+            ? $this->clasificarErrorPaso(new RuntimeException($detalleTxt))
+            : 'timeout_worker';
+
+        if ($seleccion !== null) {
+            $indice = (int) $seleccion['indice'];
+            $paso = is_array($pasos[$indice] ?? null) ? $pasos[$indice] : [];
+            $frase = trim((string) ($paso['frase'] ?? ''));
+            $region = (int) ($paso['region'] ?? 0);
+            $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
+            $maxPaginas = max(1, min(20, (int) ($paso['paginas_max']
+                ?? config('cotiz.mercadopublico.oportunidad_max_paginas', 8))));
+            $pagina = max(1, (int) ($paso['pagina'] ?? $paso['siguiente_pagina'] ?? 1));
+            $esRegionPaginada = $frase === '' || $frase === '(todas)';
+            $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+            $cambioDesde = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
+            $cambioDesde = $cambioDesde !== '' ? $cambioDesde : null;
+
+            $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+                $frase !== '' ? $frase : '(todas)',
+                $region,
+                max(0, (int) ($paso['items_leidos'] ?? 0)),
+                null,
+                $fechaBusqueda,
+                $cambioDesde,
+                $pagina,
+                $detalleTxt !== '' ? $detalleTxt : 'Worker interrumpido (timeout o kill del proceso).',
+                $tipoError,
+            );
+
+            $errores[] = [
+                'indice' => $indice,
+                'frase' => $frase !== '' ? $frase : '(todas)',
+                'region' => $region,
+                'fase' => (string) ($seleccion['fase'] ?? 'principal'),
+                'intento' => (int) ($paso['intentos'] ?? 0),
+                'pagina' => $pagina,
+                'tipo' => $tipoError,
+                'mensaje' => mb_substr(
+                    $detalleTxt !== '' ? $detalleTxt : 'Worker interrumpido',
+                    0,
+                    500,
+                ),
+                'fecha' => now()->toIso8601String(),
+            ];
+
+            if ($esRegionPaginada && $pagina < $maxPaginas) {
+                $pasos[$indice]['estado'] = self::PASO_RUNNING;
+                $pasos[$indice]['siguiente_pagina'] = $pagina + 1;
+                $pasos[$indice]['pagina'] = $pagina;
+                $pasos[$indice]['paginas_max'] = $maxPaginas;
+                $texto = sprintf(
+                    'Worker timeout en %s pág %d/%d; se sigue con pág %d.',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $pagina,
+                    $maxPaginas,
+                    $pagina + 1,
+                );
+                if ($detalleTxt !== '') {
+                    $texto .= ' '.mb_substr($detalleTxt, 0, 120);
+                }
+                $this->pushEvento($eventos, 'mp_pagina_timeout', $texto);
+                try {
+                    $this->persistirPlan(
+                        $corrida,
+                        $pasos,
+                        $errores,
+                        $this->contarFallidosDefinitivos($pasos),
+                        $texto,
+                        $eventos,
+                    );
+                } catch (Throwable $persistError) {
+                    Log::warning('OportunidadBusqueda: no se pudo persistir salto de página tras timeout worker', [
+                        'corrida_id' => $corrida->id,
+                        'message' => $persistError->getMessage(),
+                    ]);
+                    $this->guardarMensajeYEvento($corrida, $texto, 'mp_pagina_timeout', $texto);
+                }
+
+                return;
+            }
+
+            // Última página o paso con frase: marcar fallo de región y dejar que el job reencole el siguiente paso.
+            $intentos = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
+            $pasos[$indice]['intentos'] = $intentos;
+            $pasos[$indice]['estado'] = $intentos >= 2 ? self::PASO_RETRY_FAILED : self::PASO_FAILED;
+            unset($pasos[$indice]['siguiente_pagina']);
+            $fallidos = $this->contarFallidosDefinitivos($pasos);
+            $texto = sprintf(
+                'Worker interrumpido en %s (pág %d); se reintentará o seguirá con otra región.',
+                $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                $pagina,
+            );
+            if ($detalleTxt !== '') {
+                $texto .= ' '.mb_substr($detalleTxt, 0, 120);
+            }
+            $this->pushEvento($eventos, 'worker_error', $texto);
+            try {
+                $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $texto, $eventos);
+            } catch (Throwable $persistError) {
+                Log::warning('OportunidadBusqueda: no se pudo persistir fallo tras interrupción worker', [
+                    'corrida_id' => $corrida->id,
+                    'message' => $persistError->getMessage(),
+                ]);
+                $this->guardarMensajeYEvento($corrida, $texto, 'worker_error', $texto);
+            }
+
+            return;
+        }
+
         $paso = ((int) $corrida->pasos_procesados) + 1;
         $texto = 'Worker interrumpido; se reintentará desde el paso '.$paso.'.';
-        if ($detalle !== null && trim($detalle) !== '') {
-            $texto .= ' '.mb_substr(trim($detalle), 0, 160);
+        if ($detalleTxt !== '') {
+            $texto .= ' '.mb_substr($detalleTxt, 0, 160);
         }
         $this->guardarMensajeYEvento($corrida, $texto, 'worker_error', $texto);
+    }
+
+    /**
+     * @return 'base_datos'|'timeout_mp'|'http_mp'|'timeout_worker'|'otro'
+     */
+    private function clasificarErrorPaso(Throwable $e): string
+    {
+        if ($e instanceof QueryException || $e instanceof PDOException) {
+            return 'base_datos';
+        }
+
+        $msg = strtolower($e->getMessage());
+        if (str_contains($msg, 'sqlstate')
+            || str_contains($msg, 'postgres')
+            || str_contains($msg, 'mysql')
+            || str_contains($msg, 'connection: pgsql')
+            || str_contains($msg, 'connection: mysql')
+            || str_contains($msg, 'deadlock')
+            || str_contains($msg, 'could not connect to the database')) {
+            return 'base_datos';
+        }
+
+        if ($e instanceof ConnectionException
+            || str_contains($msg, 'cURL error 28')
+            || str_contains($msg, 'timed out')
+            || str_contains($msg, 'timeout')
+            || str_contains($msg, 'operation timed out')) {
+            return 'timeout_mp';
+        }
+
+        if ($e instanceof RequestException
+            || str_contains($msg, 'http ')
+            || str_contains($msg, '502')
+            || str_contains($msg, '503')
+            || str_contains($msg, '504')) {
+            return 'http_mp';
+        }
+
+        if (str_contains($msg, 'maximum execution')
+            || str_contains($msg, 'has been attempted too many times')
+            || str_contains($msg, 'killed')
+            || str_contains($msg, 'worker')) {
+            return 'timeout_worker';
+        }
+
+        return 'otro';
     }
 
     public function jobOportunidadEncolado(int $corridaId): bool
