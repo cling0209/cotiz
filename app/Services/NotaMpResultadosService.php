@@ -2405,6 +2405,51 @@ class NotaMpResultadosService
     }
 
     /**
+     * Descripción Agile/MP: la de la línea; si falta, la de la oferta de la misma cotización
+     * (por código Agile o por orden de línea); si falta, agilemaeprod.
+     */
+    private function sqlNombreProductoAgileReporte(): string
+    {
+        $textoOferta = 'COALESCE(NULLIF(TRIM(ol.descripcion), \'\'), NULLIF(TRIM(ol.nombre_producto), \'\'))';
+
+        $desdeOfertaPorCodigo = '('
+            .'SELECT '.$textoOferta.' '
+            .'FROM nota_mp_oferta_lineas ol '
+            .'WHERE ol.oferta_id = o.id '
+            .'AND NULLIF(TRIM(notasdetalle.prod_item_agile), \'\') IS NOT NULL '
+            .'AND TRIM(ol.codigo_producto) = TRIM(notasdetalle.prod_item_agile) '
+            .'LIMIT 1'
+            .')';
+
+        $desdeOfertaPorOrden = '('
+            .'SELECT '.$textoOferta.' '
+            .'FROM ('
+            .'SELECT ol2.descripcion, ol2.nombre_producto, '
+            .'ROW_NUMBER() OVER (ORDER BY ol2.id) AS rn '
+            .'FROM nota_mp_oferta_lineas ol2 '
+            .'WHERE ol2.oferta_id = o.id'
+            .') ol '
+            .'WHERE ol.rn = notasdetalle.orden '
+            .'LIMIT 1'
+            .')';
+
+        $desdeAgileMaeprod = '('
+            .'SELECT NULLIF(TRIM(am.prod_descripcion_agile), \'\') '
+            .'FROM agilemaeprod am '
+            .'WHERE NULLIF(TRIM(notasdetalle.prod_item_agile), \'\') IS NOT NULL '
+            .'AND TRIM(am.prod_item_agile) = TRIM(notasdetalle.prod_item_agile) '
+            .'LIMIT 1'
+            .')';
+
+        return "COALESCE("
+            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
+            ."{$desdeOfertaPorCodigo}, "
+            ."{$desdeOfertaPorOrden}, "
+            ."{$desdeAgileMaeprod}, "
+            ."'')";
+    }
+
+    /**
      * Resumen agrupado por producto maestro y proveedor.
      *
      * @param  array<string, mixed>  $filtros
@@ -2413,12 +2458,13 @@ class NotaMpResultadosService
     private function buildProductosGanadosQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
         $nombreProducto = $this->sqlNombreProductoReporte();
+        $nombreProductoAgile = $this->sqlNombreProductoAgileReporte();
 
         return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
                 'notasdetalle.prod_item as codigo_producto',
                 DB::raw("{$nombreProducto} as nombre_producto"),
-                DB::raw('MAX(NULLIF(TRIM(notasdetalle.prod_descripcion_agile), \'\')) as nombre_producto_agile'),
+                DB::raw("MAX({$nombreProductoAgile}) as nombre_producto_agile"),
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
@@ -2438,6 +2484,7 @@ class NotaMpResultadosService
     private function buildProductosGanadosDetalleQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
         $nombreProducto = $this->sqlNombreProductoReporte();
+        $nombreProductoAgile = $this->sqlNombreProductoAgileReporte();
 
         return $this->buildProductosGanadosBaseQuery($filtros)
             ->select([
@@ -2446,7 +2493,7 @@ class NotaMpResultadosService
                 'n.ocompra as orden_compra',
                 'notasdetalle.prod_item as codigo_producto',
                 DB::raw("{$nombreProducto} as nombre_producto"),
-                DB::raw("COALESCE(NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), '') as nombre_producto_agile"),
+                DB::raw("{$nombreProductoAgile} as nombre_producto_agile"),
                 'notasdetalle.cantidad',
                 'notasdetalle.prod_valor as valor',
                 DB::raw('(notasdetalle.prod_valor * notasdetalle.cantidad) as total'),

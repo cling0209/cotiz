@@ -8,7 +8,8 @@
     <div class="card-body py-3">
         <p class="small text-muted mb-3">
             Productos de procesos con seguimiento <strong>Cerrada</strong> y proveedor Reicol/Romulo.
-            Código, cantidad y monto desde el detalle de la cotización; nombre del maestro y descripción Agile (MP) de la línea.
+            Código, cantidad y monto desde el detalle de la cotización; nombre del maestro y descripción Agile (MP)
+            (desde la línea o, si falta, desde la oferta de la misma cotización).
             Filtre por fecha de publicación o de cierre del proceso.
         </p>
         <form id="form-reporte-productos-ganados" class="row g-2 align-items-end" data-no-loader>

@@ -2809,4 +2809,94 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertStringContainsString('Desc agile fallback', $csvResumen->getContent());
         $this->assertStringContainsString('6000', $csvResumen->getContent());
     }
+
+    public function test_reporte_productos_ganados_toma_agile_desde_oferta_misma_cotizacion(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.779.675-7',
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'FUNDA01',
+            'prod_nombre' => 'FUNDA PLASTICA ADIX CARTA',
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 920,
+            'descripcion' => 'Test agile desde oferta',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '920-1-COT26',
+            'ocompra' => '920-1-AG26',
+            'nota_softland' => 90920,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 920,
+            'codigo_proceso' => '920-1-COT26',
+            'fecha_publicacion' => '2026-03-01 10:00:00',
+            'fecha_cierre' => '2026-03-20 18:00:00',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        // Línea sin prod_descripcion_agile (caso real histórico).
+        NotaDetalle::query()->create([
+            'nronota' => 920,
+            'prod_item' => 'FUNDA01',
+            'prod_valor' => 150,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '44122000',
+            'prod_descripcion_agile' => null,
+        ]);
+
+        $oferta = NotaMpOferta::query()->create([
+            'nronota' => 920,
+            'rut_proveedor' => '99999999-9',
+            'razon_social' => 'COMERCIALIZADORA ROMULO LIMITADA',
+            'proveedor_seleccionado' => true,
+            'monto_total' => 1500,
+            'es_propio' => false,
+        ]);
+        NotaMpOfertaLinea::query()->create([
+            'oferta_id' => $oferta->id,
+            'codigo_producto' => '44122000',
+            'nombre_producto' => 'Fundas plásticas',
+            'descripcion' => 'FUNDA PLASTICA TAMAÑO CARTA TRANSPARENTE MP',
+            'cantidad' => 10,
+            'precio_unitario' => 150,
+            'monto_total' => 1500,
+        ]);
+
+        $encolar = $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.reportes.productos-ganados.generar'), [
+                'fecha_desde' => '2026-03-01',
+                'fecha_hasta' => '2026-03-31',
+                'tipo_fecha' => 'cierre',
+                'ganador' => 'romulo',
+                'formato' => 'detalle',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.compra-agil.resultados.reportes.exportaciones.descargar', [
+                'jobId' => $encolar->json('job_id'),
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('FUNDA01', $csv);
+        $this->assertStringContainsString('FUNDA PLASTICA ADIX CARTA', $csv);
+        $this->assertStringContainsString('FUNDA PLASTICA TAMAÑO CARTA TRANSPARENTE MP', $csv);
+        $this->assertStringContainsString('Producto Agile (MP)', $csv);
+    }
 }
