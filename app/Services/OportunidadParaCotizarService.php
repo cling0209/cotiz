@@ -16,7 +16,7 @@ class OportunidadParaCotizarService
 {
     private const CACHE_SEGUNDOS = 60;
 
-    private const REGION_TAMANO_PAGINA = 50;
+    public const REGION_TAMANO_PAGINA = 50;
 
     /** Tope de páginas por región (evita colgarse 10+ min en Metropolitana). */
     private const REGION_MAX_PAGINAS = 8;
@@ -1229,7 +1229,7 @@ class OportunidadParaCotizarService
             }
 
             $revisados = $idx + 1;
-            if ($onProgreso && ($revisados === $totalLote || $revisados - $ultimoTickMatch >= 10)) {
+            if ($onProgreso && ($revisados === 1 || $revisados === $totalLote || $revisados - $ultimoTickMatch >= 5)) {
                 $ultimoTickMatch = $revisados;
                 if ($itemsPendientesGuardar !== []) {
                     $this->guardarEncontradas($itemsPendientesGuardar, $userId, $dia);

@@ -394,12 +394,14 @@ class OportunidadBusquedaService
         $maxPaginasPaso = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', 8)));
 
         // Checkpoint: retomar la página pendiente; no reiniciar Metropolitana desde 1.
+        $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
         $siguienteGuardada = (int) ($paso['siguiente_pagina'] ?? 0);
         $pagina = $esInicioRegion || $siguienteGuardada < 1
             ? 1
             : max(1, $siguienteGuardada);
 
-        $itemsLeidosPrevios = $esInicioRegion ? 0 : max(0, (int) ($paso['items_leidos'] ?? 0));
+        // Baseline canónico por número de página (evita acumular 50×N al reintentar la misma pág).
+        $itemsLeidosPrevios = ($pagina - 1) * $tamanoPagina;
         $encontradasPrevias = $esInicioRegion ? 0 : max(0, (int) ($paso['encontradas'] ?? 0));
         // Base = frases ya comprometidas de páginas anteriores de esta región.
         $porFraseBase = $esInicioRegion
@@ -783,13 +785,14 @@ class OportunidadBusquedaService
             if ($puedeSeguirPagina) {
                 // Timeout/lento/BD/HTTP en una página: no tumbar la región; seguir con la siguiente.
                 $siguiente = $pagina + 1;
+                $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
                 $regionTerminada = false;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
                 $pasos[$indice]['siguiente_pagina'] = $siguiente;
                 $pasos[$indice]['pagina'] = $siguiente;
                 $pasos[$indice]['fase'] = 'esperando_mp';
                 $pasos[$indice]['items_pagina'] = 0;
-                $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
+                $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
                 $pasos[$indice]['encontradas'] = $encontradasPrevias;
                 $pasos[$indice]['match_revisados'] = 0;
                 $pasos[$indice]['match_total'] = 0;
@@ -797,7 +800,7 @@ class OportunidadBusquedaService
                 $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
                     $frase !== '' ? $frase : '(todas)',
                     $region,
-                    $itemsLeidosPrevios,
+                    $pagina * $tamanoPagina,
                     $encontradasPrevias,
                     $fechaBusqueda,
                     $cambioDesde,
@@ -976,13 +979,23 @@ class OportunidadBusquedaService
             return true;
         }
 
-        // Job reservado demasiado tiempo o sin job: liberar y reencolar desde el checkpoint del plan.
+        // Job reservado demasiado tiempo o sin job: liberar, saltar página colgada y reencolar.
         if ($reservados > 0) {
             $this->eliminarJobsOportunidad($corrida->id);
         }
 
         if ($this->jobOportunidadEncolado($corrida->id)) {
             return false;
+        }
+
+        // Si el proceso murió sin failed(), el checkpoint puede quedar en la misma página.
+        $this->registrarInterrupcionWorker(
+            $corrida,
+            'Worker colgado sin progreso; se continúa con la siguiente página.',
+        );
+        $corrida->refresh();
+        if ($corrida->estado !== self::ESTADO_RUNNING) {
+            return true;
         }
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
@@ -1100,16 +1113,35 @@ class OportunidadBusquedaService
             ];
 
             if ($esRegionPaginada && $pagina < $maxPaginas) {
+                $siguiente = $pagina + 1;
+                $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
-                $pasos[$indice]['siguiente_pagina'] = $pagina + 1;
-                $pasos[$indice]['pagina'] = $pagina;
+                $pasos[$indice]['siguiente_pagina'] = $siguiente;
+                $pasos[$indice]['pagina'] = $siguiente;
                 $pasos[$indice]['paginas_max'] = $maxPaginas;
+                $pasos[$indice]['items_pagina'] = 0;
+                $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
+                $pasos[$indice]['fase'] = 'esperando_mp';
+                $pasos[$indice]['match_revisados'] = 0;
+                $pasos[$indice]['match_total'] = 0;
+                $pasos[$indice]['match_segundos'] = 0;
+                $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+                    $frase !== '' ? $frase : '(todas)',
+                    $region,
+                    $pagina * $tamanoPagina,
+                    max(0, (int) ($paso['encontradas'] ?? 0)),
+                    $fechaBusqueda,
+                    $cambioDesde,
+                    $siguiente,
+                    $detalleTxt !== '' ? $detalleTxt : 'Worker interrumpido (timeout o kill del proceso).',
+                    $tipoError,
+                );
                 $texto = sprintf(
                     'Worker timeout en %s pág %d/%d; se sigue con pág %d.',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $pagina,
                     $maxPaginas,
-                    $pagina + 1,
+                    $siguiente,
                 );
                 if ($detalleTxt !== '') {
                     $texto .= ' '.mb_substr($detalleTxt, 0, 120);
