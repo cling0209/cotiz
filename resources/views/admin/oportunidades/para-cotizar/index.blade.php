@@ -2484,6 +2484,7 @@
             cancelado: 'text-bg-dark',
             esperando_worker: 'text-bg-warning',
             esperando_mp: 'text-bg-info',
+            procesando_match: 'text-bg-primary',
         };
 
         function formatearDia(fecha) {
@@ -2501,16 +2502,36 @@
             if (resultado === 'en_curso') {
                 const pagina = Number(paso.pagina);
                 const paginasMax = Number(paso.paginas_max);
-                if (Number.isFinite(pagina) && pagina > 0) {
-                    const maxTxt = Number.isFinite(paginasMax) && paginasMax > 0 ? `/${paginasMax}` : '';
-                    return {
-                        clave: 'esperando_mp',
-                        texto: `Esperando Mercado Público · pág ${pagina}${maxTxt}`,
-                    };
+                const maxTxt = (Number.isFinite(pagina) && pagina > 0)
+                    ? (Number.isFinite(paginasMax) && paginasMax > 0 ? ` · pág ${pagina}/${paginasMax}` : ` · pág ${pagina}`)
+                    : '';
+                const itemsPagina = Number(paso.items_pagina);
+                const matchRev = Number(paso.match_revisados);
+                const matchTot = Number(paso.match_total);
+                const matchSeg = Number(paso.match_segundos);
+                const fase = String(paso.fase || '');
+
+                const enMatch = fase === 'match'
+                    || (Number.isFinite(matchRev) && matchRev > 0)
+                    || (Number.isFinite(itemsPagina) && itemsPagina > 0);
+
+                if (enMatch) {
+                    let texto = 'Procesando match' + maxTxt;
+                    if (Number.isFinite(matchTot) && matchTot > 0) {
+                        const rev = Number.isFinite(matchRev) && matchRev > 0 ? matchRev : 0;
+                        texto += ` · ${rev}/${matchTot}`;
+                    } else if (Number.isFinite(itemsPagina) && itemsPagina > 0) {
+                        texto += ` · ${itemsPagina} ítems`;
+                    }
+                    if (Number.isFinite(matchSeg) && matchSeg > 0) {
+                        texto += ` · ${matchSeg}s`;
+                    }
+                    return { clave: 'procesando_match', texto };
                 }
+
                 return {
                     clave: 'esperando_mp',
-                    texto: 'Esperando Mercado Público',
+                    texto: 'Esperando Mercado Público' + maxTxt,
                 };
             }
 
@@ -2591,10 +2612,16 @@
                     const maxTxt = Number.isFinite(paginasMax) && paginasMax > 0 ? `/${paginasMax}` : '';
                     let paginaTxt = `${pagina}${maxTxt}`;
                     const itemsPagina = Number(paso.items_pagina);
-                    if (Number.isFinite(itemsPagina) && itemsPagina >= 0) {
-                        paginaTxt += ` · ${itemsPagina} ítems`;
-                    } else if (Number.isFinite(itemsLeidos) && itemsLeidos >= 0 && paso.resultado === 'en_curso') {
-                        paginaTxt += ` · ${itemsLeidos} ítems`;
+                    const matchRev = Number(paso.match_revisados);
+                    const matchTot = Number(paso.match_total);
+                    if (Number.isFinite(matchTot) && matchTot > 0 && paso.resultado === 'en_curso') {
+                        const rev = Number.isFinite(matchRev) ? matchRev : 0;
+                        paginaTxt += ` · match ${rev}/${matchTot}`;
+                    } else if (Number.isFinite(itemsPagina) && itemsPagina > 0) {
+                        paginaTxt += ` · ${itemsPagina}/pág`;
+                    }
+                    if (Number.isFinite(itemsLeidos) && itemsLeidos > 0) {
+                        paginaTxt += ` · acum ${itemsLeidos}`;
                     }
                     tdPagina.textContent = paginaTxt;
                 } else {

@@ -1106,21 +1106,24 @@ class OportunidadParaCotizarService
 
         $itemsLeidos = $itemsLeidosPrevios + count($lote);
         if ($onProgreso) {
+            $consultaRecibida = $this->metaConsultaPaso(
+                '(todas)',
+                $region,
+                $itemsLeidos,
+                0,
+                $dia,
+                $this->muestraRespuestaCruda($lote),
+                $cambioDesde,
+                $pagina,
+                count($lote),
+            );
+            // Página MP recibida; el match arranca a continuación.
+            $consultaRecibida['fase'] = 'mp_recibida';
             $onProgreso(
                 $pagina,
                 count($lote),
                 $itemsLeidos,
-                $this->metaConsultaPaso(
-                    '(todas)',
-                    $region,
-                    $itemsLeidos,
-                    0,
-                    $dia,
-                    $this->muestraRespuestaCruda($lote),
-                    $cambioDesde,
-                    $pagina,
-                    count($lote),
-                ),
+                $consultaRecibida,
             );
         }
 
@@ -1149,8 +1152,11 @@ class OportunidadParaCotizarService
         $items = [];
         $todasAnterioresAlDia = true;
         $algunaFechaParseable = false;
+        $inicioMatch = microtime(true);
+        $totalLote = count($lote);
+        $ultimoTickMatch = 0;
 
-        foreach ($lote as $item) {
+        foreach ($lote as $idx => $item) {
             if (! is_array($item)) {
                 continue;
             }
@@ -1180,49 +1186,63 @@ class OportunidadParaCotizarService
             }
 
             if (CompraAgilRegionScope::debeExcluirItem($item)) {
-                continue;
-            }
+                // sigue el tick de match más abajo
+            } elseif (($codigo = strtoupper(trim((string) ($item['codigo'] ?? '')))) === '') {
+                // sin código
+            } else {
+                $resumen = $this->oportunidad->enriquecerResumen(
+                    $this->mapper->resumenListadoItem($item),
+                );
 
-            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-            if ($codigo === '') {
-                continue;
-            }
-
-            $resumen = $this->oportunidad->enriquecerResumen(
-                $this->mapper->resumenListadoItem($item),
-            );
-
-            if (! $this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
-                continue;
-            }
-
-            $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
-            if ($coinciden === []) {
-                continue;
-            }
-
-            if (! $this->estaVigente($resumen['fecha_cierre'] ?? null) || $this->estaTomada($codigo)) {
-                continue;
-            }
-
-            if (isset($yaVistos[$codigo])) {
-                foreach ($coinciden as $fraseOk) {
-                    $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
+                if ($this->esPublicadaEnFecha($resumen['fecha_publicacion'] ?? null, $dia)) {
+                    $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
+                    if ($coinciden !== []
+                        && $this->estaVigente($resumen['fecha_cierre'] ?? null)
+                        && ! $this->estaTomada($codigo)
+                    ) {
+                        if (isset($yaVistos[$codigo])) {
+                            foreach ($coinciden as $fraseOk) {
+                                $this->agregarPalabraAGuardada($codigo, $fraseOk, $dia);
+                            }
+                        } else {
+                            $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
+                            $resumen['palabras_coinciden'] = $coinciden;
+                            $resumen['cantidad_productos'] = null;
+                            $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
+                            $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
+                            $resumen['guardada'] = true;
+                            $items[] = $resumen;
+                            $yaVistos[$codigo] = true;
+                        }
+                    }
                 }
-                // No llamar detalle MP aquí: bloqueaba el worker minutos tras la pág 1.
-
-                continue;
             }
 
-            $regionItem = isset($resumen['region']) ? (int) $resumen['region'] : null;
-            $resumen['palabras_coinciden'] = $coinciden;
-            // Diferir detalle MP (cantidad): el listado no debe colgar el job.
-            $resumen['cantidad_productos'] = null;
-            $resumen['indice_region_config'] = CompraAgilRegionScope::indiceEnConfig($regionItem);
-            $resumen['distancia_santiago'] = CompraAgilRegionScope::distanciaASantiago($regionItem);
-            $resumen['guardada'] = true;
-            $items[] = $resumen;
-            $yaVistos[$codigo] = true;
+            $revisados = $idx + 1;
+            if ($onProgreso && ($revisados === $totalLote || $revisados - $ultimoTickMatch >= 10)) {
+                $ultimoTickMatch = $revisados;
+                $consultaMatch = $this->metaConsultaPaso(
+                    '(todas)',
+                    $region,
+                    $itemsLeidos,
+                    count($items),
+                    $dia,
+                    $this->muestraRespuestaCruda($lote),
+                    $cambioDesde,
+                    $pagina,
+                    $totalLote,
+                );
+                $consultaMatch['fase'] = 'match';
+                if (is_array($consultaMatch['respuesta'] ?? null)) {
+                    $consultaMatch['respuesta']['match_revisados'] = $revisados;
+                    $consultaMatch['respuesta']['match_total'] = $totalLote;
+                    $consultaMatch['respuesta']['match_segundos'] = max(
+                        0,
+                        (int) round(microtime(true) - $inicioMatch),
+                    );
+                }
+                $onProgreso($pagina, $totalLote, $itemsLeidos, $consultaMatch);
+            }
         }
 
         $guardadas = $this->guardarEncontradas($items, $userId, $dia);

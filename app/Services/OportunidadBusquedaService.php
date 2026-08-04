@@ -472,6 +472,12 @@ class OportunidadBusquedaService
             $maxPaginasPaso,
         ): void {
             $assertCorridaActiva();
+            $resp = is_array($consulta['respuesta'] ?? null) ? $consulta['respuesta'] : [];
+            $fase = trim((string) ($consulta['fase'] ?? ''));
+            if ($fase === '') {
+                $fase = $itemsPagina > 0 ? 'mp_recibida' : 'esperando_mp';
+            }
+
             $pasos[$indice]['estado'] = self::PASO_RUNNING;
             $pasos[$indice]['consulta'] = $consulta;
             $pasos[$indice]['pagina'] = max(1, $paginaActual);
@@ -479,24 +485,51 @@ class OportunidadBusquedaService
             $pasos[$indice]['items_pagina'] = max(0, $itemsPagina);
             $pasos[$indice]['items_leidos'] = max(0, $itemsAcumulados);
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
-            $mensaje = sprintf(
-                'Consultando %s — página %d/%d (%d ítems leídos)…',
-                $regionNombre !== '' ? $regionNombre : ('región '.$region),
-                $paginaActual,
-                $maxPaginasPaso,
-                $itemsAcumulados,
-            );
-            $this->pushEvento(
-                $eventos,
-                'mp_pagina',
-                sprintf(
-                    '%s · pág %d/%d · %d ítems (Mercado Público)',
+
+            if ($fase === 'match') {
+                $matchRevisados = max(0, (int) ($resp['match_revisados'] ?? 0));
+                $matchTotal = max(0, (int) ($resp['match_total'] ?? $itemsPagina));
+                $matchSegundos = max(0, (int) ($resp['match_segundos'] ?? 0));
+                $pasos[$indice]['fase'] = 'match';
+                $pasos[$indice]['match_revisados'] = $matchRevisados;
+                $pasos[$indice]['match_total'] = $matchTotal;
+                $pasos[$indice]['match_segundos'] = $matchSegundos;
+                $mensaje = sprintf(
+                    'Procesando match %s — pág %d/%d · %d/%d ítems (%ds)…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaActual,
                     $maxPaginasPaso,
+                    $matchRevisados > 0 ? $matchRevisados : $itemsPagina,
+                    $matchTotal > 0 ? $matchTotal : max(1, $itemsPagina),
+                    $matchSegundos,
+                );
+            } else {
+                $pasos[$indice]['fase'] = $fase === 'mp_recibida' ? 'match' : 'esperando_mp';
+                $pasos[$indice]['match_revisados'] = 0;
+                $pasos[$indice]['match_total'] = $itemsPagina > 0 ? $itemsPagina : 0;
+                $pasos[$indice]['match_segundos'] = 0;
+                $mensaje = sprintf(
+                    'Consultando %s — página %d/%d (%d en página, %d acumulados)…',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $paginaActual,
+                    $maxPaginasPaso,
+                    $itemsPagina,
                     $itemsAcumulados,
-                ),
-            );
+                );
+                $this->pushEvento(
+                    $eventos,
+                    'mp_pagina',
+                    sprintf(
+                        '%s · pág %d/%d · %d en página · %d acum. (Mercado Público)',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $paginaActual,
+                        $maxPaginasPaso,
+                        $itemsPagina,
+                        $itemsAcumulados,
+                    ),
+                );
+            }
+
             $this->persistirPlan($corrida, $pasos, $errores, $fallidos, $mensaje, $eventos);
         };
 
@@ -1382,6 +1415,19 @@ class OportunidadBusquedaService
             $itemsLeidos = array_key_exists('items_leidos', $paso) && $paso['items_leidos'] !== null
                 ? max(0, (int) $paso['items_leidos'])
                 : null;
+            $itemsPagina = array_key_exists('items_pagina', $paso) && $paso['items_pagina'] !== null
+                ? max(0, (int) $paso['items_pagina'])
+                : null;
+            $fase = trim((string) ($paso['fase'] ?? ''));
+            $matchRevisados = array_key_exists('match_revisados', $paso) && $paso['match_revisados'] !== null
+                ? max(0, (int) $paso['match_revisados'])
+                : null;
+            $matchTotal = array_key_exists('match_total', $paso) && $paso['match_total'] !== null
+                ? max(0, (int) $paso['match_total'])
+                : null;
+            $matchSegundos = array_key_exists('match_segundos', $paso) && $paso['match_segundos'] !== null
+                ? max(0, (int) $paso['match_segundos'])
+                : null;
 
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
             if ($consulta === null) {
@@ -1393,6 +1439,7 @@ class OportunidadBusquedaService
                     $encontradas,
                     $fechaBusqueda,
                     $cambioDesdePaso !== '' ? $cambioDesdePaso : null,
+                    $pagina,
                 );
             }
 
@@ -1406,7 +1453,12 @@ class OportunidadBusquedaService
                 'encontradas' => $encontradas,
                 'pagina' => $pagina,
                 'paginas_max' => $paginasMax,
+                'items_pagina' => $itemsPagina,
                 'items_leidos' => $itemsLeidos,
+                'fase' => $fase !== '' ? $fase : null,
+                'match_revisados' => $matchRevisados,
+                'match_total' => $matchTotal,
+                'match_segundos' => $matchSegundos,
                 'duracion_segundos' => $duracionSegundos,
                 'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
                 'consulta' => $consulta,
