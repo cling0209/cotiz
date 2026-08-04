@@ -2125,9 +2125,10 @@
 
         function parametrosConsultaPaso(paso) {
             const frase = String(paso?.frase ?? '').trim();
+            const paginaPaso = Number(paso?.pagina);
             const params = {
                 estado: 'publicada',
-                numero_pagina: 1,
+                numero_pagina: (Number.isFinite(paginaPaso) && paginaPaso > 0) ? paginaPaso : 1,
                 ordenar_por: 'FechaPublicacion',
                 region: Number(paso?.region) || 1,
                 tamano_pagina: 50,
@@ -2136,6 +2137,48 @@
                 params.q = frase;
             }
             return Object.fromEntries(Object.keys(params).sort().map((k) => [k, params[k]]));
+        }
+
+        function sincronizarConsultaConPaginaPaso(consulta, paso) {
+            if (!consulta || typeof consulta !== 'object' || !paso) {
+                return consulta;
+            }
+            const paginaPaso = Number(paso.pagina);
+            if (!Number.isFinite(paginaPaso) || paginaPaso < 1) {
+                return consulta;
+            }
+            const data = { ...consulta };
+            const params = (data.parametros && typeof data.parametros === 'object')
+                ? { ...data.parametros }
+                : {};
+            const paginaConsulta = Number(params.numero_pagina ?? data.respuesta?.pagina);
+            if (paginaConsulta === paginaPaso) {
+                return data;
+            }
+            params.numero_pagina = paginaPaso;
+            data.parametros = Object.fromEntries(
+                Object.keys(params).sort().map((k) => [k, params[k]]),
+            );
+            const endpoint = data.endpoint || `${mpApi.baseUrl}${mpApi.path}`;
+            const qs = new URLSearchParams();
+            Object.entries(data.parametros).forEach(([k, v]) => qs.set(k, String(v)));
+            data.endpoint = endpoint;
+            data.url_completa = `${endpoint}?${qs.toString()}`;
+            if (data.respuesta && typeof data.respuesta === 'object') {
+                data.respuesta = { ...data.respuesta, pagina: paginaPaso };
+            }
+            const {
+                json: _j,
+                respuesta_json: _rj,
+                respuesta: _r,
+                ...paraJson
+            } = data;
+            data.json = JSON.stringify(
+                Object.fromEntries(Object.keys(paraJson).sort().map((k) => [k, paraJson[k]])),
+                null,
+                2,
+            );
+            return data;
         }
 
         function buildConsultaPreview(paso, indice, total) {
@@ -2181,9 +2224,10 @@
         function mostrarDebugConsulta(consulta, paso, indice, total, nota) {
             if (!debugPanel || !debugConsultaJson) return;
 
-            const data = consulta && typeof consulta === 'object' ?
+            let data = consulta && typeof consulta === 'object' ?
                 consulta :
                 buildConsultaPreview(paso, indice, total);
+            data = sincronizarConsultaConPaginaPaso(data, paso);
 
             const url = data.url_completa ||
                 (data.endpoint && data.parametros ?

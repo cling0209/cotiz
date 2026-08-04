@@ -655,15 +655,48 @@ class OportunidadBusquedaService
             }
 
             if ($continuarPaginas) {
+                $siguiente = $paginaHecha + 1;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
-                $pasos[$indice]['siguiente_pagina'] = $paginaHecha + 1;
+                $pasos[$indice]['siguiente_pagina'] = $siguiente;
+                // Anticipar UI/debug a la próxima página (antes quedaba pegado en la consulta de pág N).
+                $pasos[$indice]['pagina'] = $siguiente;
+                $pasos[$indice]['fase'] = 'esperando_mp';
+                $pasos[$indice]['items_pagina'] = 0;
+                $pasos[$indice]['match_revisados'] = 0;
+                $pasos[$indice]['match_total'] = 0;
+                $pasos[$indice]['match_segundos'] = 0;
+                $consultaSiguiente = $this->oportunidades->consultaDebugPaso(
+                    $frase !== '' ? $frase : '(todas)',
+                    $region,
+                    $itemsLeidos,
+                    $encontradas,
+                    $fechaBusqueda,
+                    $cambioDesde,
+                    $siguiente,
+                );
+                $respHecha = is_array($resultado['consulta']['respuesta'] ?? null)
+                    ? $resultado['consulta']['respuesta']
+                    : null;
+                if ($respHecha !== null && is_array($consultaSiguiente['respuesta'] ?? null)) {
+                    $consultaSiguiente['respuesta']['pagina_anterior_ok'] = $paginaHecha;
+                    $consultaSiguiente['respuesta']['items_pagina_anterior'] = (int) ($respHecha['items_pagina'] ?? 0);
+                    $consultaSiguiente['respuesta']['muestra_pagina_anterior'] = is_array($respHecha['muestra'] ?? null)
+                        ? array_values($respHecha['muestra'])
+                        : [];
+                    $consultaSiguiente['respuesta_json'] = json_encode(
+                        $consultaSiguiente['respuesta'],
+                        JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+                    ) ?: '{}';
+                }
+                $pasos[$indice]['consulta'] = $consultaSiguiente;
                 $mensaje = sprintf(
-                    'Consultando %s — página %d/%d hecha (%d ítems; %d cotiz.). Siguiente página…',
+                    'Consultando %s — página %d/%d hecha (%d ítems; %d cotiz.). Siguiente página %d…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaHecha,
                     $maxPaginasPaso,
                     $itemsLeidos,
                     $encontradas,
+                    $siguiente,
                 );
                 $this->pushEvento(
                     $eventos,
@@ -673,7 +706,7 @@ class OportunidadBusquedaService
                         $regionNombre !== '' ? $regionNombre : ('región '.$region),
                         $paginaHecha,
                         $maxPaginasPaso,
-                        $paginaHecha + 1,
+                        $siguiente,
                     ),
                 );
             } else {
@@ -749,19 +782,36 @@ class OportunidadBusquedaService
 
             if ($puedeSeguirPagina) {
                 // Timeout/lento/BD/HTTP en una página: no tumbar la región; seguir con la siguiente.
+                $siguiente = $pagina + 1;
                 $regionTerminada = false;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
-                $pasos[$indice]['siguiente_pagina'] = $pagina + 1;
+                $pasos[$indice]['siguiente_pagina'] = $siguiente;
+                $pasos[$indice]['pagina'] = $siguiente;
+                $pasos[$indice]['fase'] = 'esperando_mp';
                 $pasos[$indice]['items_pagina'] = 0;
                 $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
                 $pasos[$indice]['encontradas'] = $encontradasPrevias;
+                $pasos[$indice]['match_revisados'] = 0;
+                $pasos[$indice]['match_total'] = 0;
+                $pasos[$indice]['match_segundos'] = 0;
+                $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
+                    $frase !== '' ? $frase : '(todas)',
+                    $region,
+                    $itemsLeidosPrevios,
+                    $encontradasPrevias,
+                    $fechaBusqueda,
+                    $cambioDesde,
+                    $siguiente,
+                    $mensajeError,
+                    $tipoError,
+                );
                 $mensaje = sprintf(
                     '%s — pág %d/%d con error (%s); se sigue con pág %d. %s',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $pagina,
                     $maxPaginasPaso,
                     $tipoError,
-                    $pagina + 1,
+                    $siguiente,
                     mb_substr($mensajeError, 0, 180),
                 );
                 $this->pushEvento(
@@ -773,7 +823,7 @@ class OportunidadBusquedaService
                         $pagina,
                         $maxPaginasPaso,
                         $tipoError,
-                        $pagina + 1,
+                        $siguiente,
                         mb_substr($mensajeError, 0, 160),
                     ),
                 );
