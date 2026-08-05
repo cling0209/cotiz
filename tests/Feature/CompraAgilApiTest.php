@@ -518,6 +518,42 @@ class CompraAgilApiTest extends TestCase
         $this->assertSame('2200-50-COT26', trim((string) $nota->encargado));
     }
 
+    public function test_existe_local_codigo_cuando_esta_en_oportunidades(): void
+    {
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1161-172-COT26',
+            'nombre' => 'Compra desde oportunidades',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => true,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota), [
+                'codigo' => '1161-172-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('codigo', '1161-172-COT26')
+            ->assertJsonPath('existe_local', true);
+    }
+
+    public function test_existe_local_codigo_cuando_no_esta_registrado(): void
+    {
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota), [
+                'codigo' => '9999-999-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('codigo', '9999-999-COT26')
+            ->assertJsonPath('existe_local', false);
+    }
+
     public function test_analisis_admin_solo_usuario_admin(): void
     {
         config(['cotiz.mercadopublico.analisis_admin_habilitado' => true]);

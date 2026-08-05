@@ -496,6 +496,10 @@
                         <i class="bi bi-cloud-check me-1"></i>
                         <span id="importar-compra-agil-consulta-par-texto"></span>
                     </div>
+                    <div id="importar-compra-agil-aviso-mp" class="alert alert-warning py-2 px-3 small mb-2 d-none mt-2" role="status">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <span id="importar-compra-agil-aviso-mp-texto"></span>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span id="importar-compra-agil-estado" class="small text-muted"></span>
                     </div>
@@ -2581,8 +2585,10 @@
         excelPreview: @json(route('admin.cotizaciones.importar-excel.preview', $nota->nronota)),
         excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota->nronota)),
         apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
+        apiExisteLocal: @json(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota)),
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
+        oportunidadesIndex: @json(route('admin.oportunidades.para-cotizar.index')),
     };
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
@@ -2606,6 +2612,8 @@
     const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
     const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
     const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
+    const importarAvisoMp = document.getElementById('importar-compra-agil-aviso-mp');
+    const importarAvisoMpTexto = document.getElementById('importar-compra-agil-aviso-mp-texto');
     const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
     const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
     const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
@@ -2666,6 +2674,7 @@
         if (importarAlertaTexto) importarAlertaTexto.textContent = '';
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
         if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+        ocultarAvisoMpLocal();
     }
 
     function mostrarImportAviso(msg) {
@@ -2708,6 +2717,7 @@
 
     function mostrarImportError(msg) {
         if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        ocultarAvisoMpLocal();
         if (importarAlerta && importarAlertaTexto) {
             importarAlerta.classList.remove('d-none', 'alert-warning');
             importarAlerta.classList.add('alert-danger');
@@ -3277,8 +3287,31 @@
         if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
     }
 
+    function ocultarAvisoMpLocal() {
+        if (importarAvisoMp) importarAvisoMp.classList.add('d-none');
+        if (importarAvisoMpTexto) importarAvisoMpTexto.innerHTML = '';
+    }
+
+    function htmlAvisoCodigoNoRegistradoLocal() {
+        const url = escHtml(String(importarMpUrls.oportunidadesIndex || ''));
+        return '<strong>Código de cotización no registrado internamente.</strong> '
+            + 'Se obtendrá desde Mercado Público; la demora dependerá del tráfico de Mercado Público.<br>'
+            + 'Para cotizaciones <strong>ya vinculadas</strong> a productos, use '
+            + '<a href="' + url + '" class="alert-link fw-semibold">Oportunidades</a> '
+            + 'en lugar de cargar un código manualmente.';
+    }
+
+    function mostrarAvisoMpLocal() {
+        ocultarSoloAlertaConsultaPar();
+        if (importarAvisoMp && importarAvisoMpTexto) {
+            importarAvisoMp.classList.remove('d-none');
+            importarAvisoMpTexto.innerHTML = htmlAvisoCodigoNoRegistradoLocal();
+        }
+    }
+
     function ocultarProgresoConsultaPar() {
         ocultarSoloAlertaConsultaPar();
+        ocultarAvisoMpLocal();
         ocultarProgresoImportar();
         if (importarEstado) importarEstado.textContent = '';
     }
@@ -3335,10 +3368,36 @@
                 onProgress: mostrarProgresoConsultaPar,
             });
 
-            ocultarSoloAlertaConsultaPar();
             ocultarProgresoImportar();
+
+            let existeLocal = true;
+            try {
+                const bodyLocal = new FormData();
+                bodyLocal.append('_token', csrf);
+                bodyLocal.append('codigo', codigo);
+                const resLocal = await fetch(importarMpUrls.apiExisteLocal, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: bodyLocal,
+                });
+                const jsonLocal = await resLocal.json().catch(() => ({}));
+                if (resLocal.ok) {
+                    existeLocal = jsonLocal.existe_local === true;
+                }
+            } catch (_err) {
+                existeLocal = true;
+            }
+
+            if (existeLocal) {
+                ocultarAvisoMpLocal();
+            } else {
+                mostrarAvisoMpLocal();
+            }
+
             if (importarEstado) {
-                importarEstado.textContent = 'Sitio par verificado. Cargando Mercado Público…';
+                importarEstado.textContent = existeLocal
+                    ? 'Sitio par verificado. Cargando Mercado Público…'
+                    : 'Consultando Mercado Público…';
             }
 
             if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
@@ -3349,7 +3408,7 @@
                 importarProgresoBar.classList.add('progress-bar-animated');
             }
             if (importarProgresoTexto) {
-                importarProgresoTexto.textContent = 'Cargando detalle Mercado Público…';
+                importarProgresoTexto.textContent = 'Consultando Mercado Público…';
             }
 
             let todasLineas = [];

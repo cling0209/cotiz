@@ -200,6 +200,22 @@ class CompraAgilBusquedaController extends Controller
         return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
 
+    public function existeLocalCodigo(Request $request, int $nronota): JsonResponse
+    {
+        $this->notaAutorizada($request, $nronota, false);
+
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        $codigo = strtoupper(trim($datos['codigo']));
+
+        return response()->json([
+            'codigo' => $codigo,
+            'existe_local' => $this->oportunidad->existeEnBaseLocal($codigo),
+        ]);
+    }
+
     public function validarCodigo(Request $request, int $nronota): JsonResponse
     {
         [$nota] = $this->notaAutorizada($request, $nronota, false);
