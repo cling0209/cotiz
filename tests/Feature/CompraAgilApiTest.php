@@ -611,7 +611,59 @@ class CompraAgilApiTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('codigo', '2328-858-COT26')
-            ->assertJsonPath('preview', null);
+            ->assertJsonPath('preview', null)
+            ->assertJsonPath('existe_local', true)
+            ->assertJsonPath('motivo', fn ($msg) => str_contains((string) $msg, 'Oportunidades'));
+    }
+
+    public function test_preview_oportunidades_usa_detalle_local_sin_reprocesar(): void
+    {
+        config(['cotiz.mercadopublico.ticket' => 'test-ticket']);
+
+        Http::fake([
+            'api2.mercadopublico.cl/*' => Http::response([], 500),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2328-858-COT26',
+            'nombre' => 'Compra con detalle local',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+            'vinculo_preview_json' => [
+                'cabecera' => [
+                    'codigo_cotizacion' => '2328-858-COT26',
+                    'empresa' => 'Hospital Test',
+                    'rutempresa' => '61303000-7',
+                    'nombre' => 'Compra con detalle local',
+                ],
+                'lineas' => [
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'Producto local',
+                        'cantidad' => 2,
+                        'categoria' => '',
+                        'estado' => 'pendiente',
+                    ],
+                ],
+            ],
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota), [
+                'codigo' => '2328-858-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('codigo', '2328-858-COT26')
+            ->assertJsonPath('preview.desde_cache', true)
+            ->assertJsonCount(1, 'preview.lineas')
+            ->assertJsonPath('preview.lineas.0.estado', 'pendiente');
+
+        Http::assertNothingSent();
     }
 
     public function test_analisis_admin_solo_usuario_admin(): void

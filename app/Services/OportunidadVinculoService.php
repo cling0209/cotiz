@@ -684,6 +684,30 @@ class OportunidadVinculoService
     }
 
     /**
+     * Preview para importar en cotización: devuelve el cache de Oportunidades tal cual.
+     * No reprocesa vínculos ni consulta Mercado Público. Retorna null si no hay detalle local.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function previewParaImportacion(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        if (! OportunidadEncontrada::query()->where('codigo', $codigo)->exists()) {
+            return null;
+        }
+
+        if ($this->previewGuardado($codigo) === null) {
+            $this->encontradaRelay->importarVinculoDesdePar($codigo);
+        }
+
+        return $this->previewGuardado($codigo);
+    }
+
+    /**
      * @param  mixed  $previewRaw
      * @return array{
      *   cabecera: array<string, mixed>,

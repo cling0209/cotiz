@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Nota;
+use App\Models\OportunidadEncontrada;
 use App\Models\User;
 use App\Services\CompraAgilApiService;
 use App\Services\CompraAgilImportService;
@@ -227,11 +228,19 @@ class CompraAgilBusquedaController extends Controller
         ]);
 
         $codigo = strtoupper(trim($datos['codigo']));
-        $preview = $this->oportunidadVinculo->previewCacheado($codigo);
+        $preview = $this->oportunidadVinculo->previewParaImportacion($codigo);
         if ($preview === null) {
+            $existeLocal = $this->oportunidad->existeEnBaseLocal($codigo);
+            $motivo = null;
+            if (OportunidadEncontrada::query()->where('codigo', $codigo)->exists()) {
+                $motivo = 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.';
+            }
+
             return response()->json([
                 'codigo' => $codigo,
                 'preview' => null,
+                'existe_local' => $existeLocal,
+                'motivo' => $motivo,
             ]);
         }
 

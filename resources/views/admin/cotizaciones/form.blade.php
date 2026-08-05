@@ -3320,10 +3320,14 @@
             body,
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.preview || !Array.isArray(json.preview.lineas)) {
-            return false;
+        if (res.ok && json.preview && Array.isArray(json.preview.lineas)) {
+            aplicarPreviewCacheado(codigo, json.preview);
+            return { ok: true };
         }
-        return aplicarPreviewCacheado(codigo, json.preview);
+        if (res.ok && json.existe_local && !json.preview) {
+            return { ok: false, motivo: json.motivo || 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.' };
+        }
+        return { ok: false };
     }
 
     function ocultarProgresoConsultaPar() {
@@ -3408,17 +3412,22 @@
 
             if (existeLocal) {
                 ocultarAvisoMpLocal();
-                if (await intentarPreviewOportunidadesCache(codigo)) {
+                const previewLocal = await intentarPreviewOportunidadesCache(codigo);
+                if (previewLocal.ok) {
                     return;
                 }
+                if (previewLocal.motivo) {
+                    mostrarImportError(previewLocal.motivo);
+                    return;
+                }
+                mostrarImportError('No se pudo cargar el detalle desde Oportunidades.');
+                return;
             } else {
                 mostrarAvisoMpLocal();
             }
 
             if (importarEstado) {
-                importarEstado.textContent = existeLocal
-                    ? 'Sitio par verificado. Cargando Mercado Público…'
-                    : 'Consultando Mercado Público…';
+                importarEstado.textContent = 'Consultando Mercado Público…';
             }
 
             if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
