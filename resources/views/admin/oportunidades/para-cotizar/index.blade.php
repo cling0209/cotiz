@@ -923,10 +923,14 @@
             } else {
                 html = '<div class="mt-1"><span class="badge text-bg-warning">Vinculación pendiente</span></div>';
             }
-            return html + htmlEstadoSyncParListado(item);
+            // Sync al par solo aplica en el sitio ANALISIS_ADMIN (origen del relay).
+            return html + (puedeBuscar ? htmlEstadoSyncParListado(item) : '');
         }
 
         function htmlEstadoSyncParListado(item) {
+            if (!puedeBuscar) {
+                return '';
+            }
             const syncEstado = String(item?.sync_par_estado || '').trim();
             if (!syncEstado) {
                 return '';
