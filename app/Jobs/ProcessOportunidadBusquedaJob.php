@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\NotaMpCorrida;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Services\OportunidadBusquedaService;
 use App\Support\RenderKeepAlive;
@@ -50,6 +51,16 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
 
         $corrida = OportunidadBusquedaCorrida::query()->find($this->corridaId);
         if ($corrida === null || $corrida->estado !== OportunidadBusquedaService::ESTADO_RUNNING) {
+            return;
+        }
+
+        // Pipeline: no competir con la consulta masiva de resultados MP.
+        if (NotaMpCorrida::query()
+            ->masivas()
+            ->where('estado', 'running')
+            ->exists()) {
+            self::dispatch($this->corridaId)->delay(now()->addSeconds(45));
+
             return;
         }
 

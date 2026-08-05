@@ -1444,7 +1444,45 @@ class NotaMpResultadosService
             'stats_json' => null,
         ]);
 
-        return $corrida->fresh() ?? $corrida;
+        $fresh = $corrida->fresh() ?? $corrida;
+
+        // Pipeline secuencial: al cerrar una corrida masiva (ok/error) → búsqueda cotizaciones.
+        if ($estado !== 'cancelled' && $fresh->esMasiva()) {
+            $this->continuarPipelineOportunidadesTrasResultados(
+                trim((string) ($fresh->usuario ?? '')) ?: 'sistema',
+            );
+        }
+
+        return $fresh;
+    }
+
+    /**
+     * Etapa 2 del pipeline: encola búsqueda de oportunidades (solo ANALISIS_ADMIN).
+     *
+     * @return array{accion: string, mensaje: string, corrida_id: int|null}
+     */
+    public function continuarPipelineOportunidadesTrasResultados(string $usuario = 'sistema'): array
+    {
+        try {
+            /** @var OportunidadBusquedaService $busqueda */
+            $busqueda = app(OportunidadBusquedaService::class);
+            $resultado = $busqueda->iniciarTrasResultados($usuario);
+            if (in_array($resultado['accion'] ?? '', ['encolada', 'en_curso'], true)) {
+                Log::info('Pipeline tras resultados MP: búsqueda de oportunidades', $resultado);
+            }
+
+            return $resultado;
+        } catch (\Throwable $e) {
+            Log::warning('Pipeline tras resultados MP: no se pudo encolar búsqueda', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'accion' => 'error',
+                'mensaje' => $e->getMessage(),
+                'corrida_id' => null,
+            ];
+        }
     }
 
     public function finalizarCorridaDesdeJob(

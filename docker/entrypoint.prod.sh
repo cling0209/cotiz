@@ -75,18 +75,14 @@ else
   echo "RUN_QUEUE_WORKER no activo (valor='${RUN_QUEUE_WORKER:-}'). Jobs en cola no se procesarán." >&2
 fi
 
-# Catch-up de consultas MP y sync de oportunidades con el sitio par.
+# Catch-up de consulta MP (etapa 1). Al finalizar → búsqueda → vinculación → sync al par.
 if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   echo "Catch-up consulta MP programada (si el slot se perdió por sleep)..." >&2
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true
-  echo "Catch-up búsqueda de oportunidades (solo ANALISIS_ADMIN)..." >&2
-  run_as_www 'php artisan oportunidad:buscar --catch-up --no-interaction 2>&1' || true
 fi
 
-echo "Sync oportunidades encontradas pendientes con sitio par (wake /up)..." >&2
-run_as_www 'php artisan oportunidad:sync-encontradas-par --no-interaction 2>&1' || true
-
 # Scheduler Laravel (consulta MP a las 10 y 19, u horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
+# La búsqueda/vinculación/sync se encadenan al terminar resultados (no en paralelo).
 if [ "${RUN_SCHEDULER:-true}" = "true" ]; then
   echo "Iniciando Laravel scheduler (cada 60s)..." >&2
   (

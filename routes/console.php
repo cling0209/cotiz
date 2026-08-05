@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
 
 $tz = config('app.timezone', 'America/Santiago');
 
-// Reintento periódico si el par estaba dormido al sincronizar encontradas/vinculaciones.
+// Reintento periódico de sync al par solo como red de seguridad (no mientras corre el pipeline).
 Schedule::command('oportunidad:sync-encontradas-par')
     ->everyThirtyMinutes()
     ->timezone($tz)
@@ -25,12 +25,8 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
         ->values();
 
     if ($horas->isNotEmpty()) {
+        // Solo etapa 1: resultados. Al finalizar → buscar → vincular → sync cotizaciones → sync vinculaciones.
         Schedule::command('compra-agil:consultar-resultados')
-            ->cron('0 '.$horas->implode(',').' * * *')
-            ->timezone($tz)
-            ->withoutOverlapping(120);
-
-        Schedule::command('oportunidad:buscar')
             ->cron('0 '.$horas->implode(',').' * * *')
             ->timezone($tz)
             ->withoutOverlapping(120);

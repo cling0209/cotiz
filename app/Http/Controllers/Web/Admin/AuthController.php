@@ -55,8 +55,7 @@ class AuthController extends Controller
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
-        $this->dispararCatchUpMpSiCorresponde($resultadosMp);
-        $this->dispararCatchUpOportunidades($oportunidades);
+        $this->dispararCatchUpMpSiCorresponde($resultadosMp, $oportunidades);
 
         return redirect()->intended(route('admin.cotizaciones.index'));
     }
@@ -94,10 +93,13 @@ class AuthController extends Controller
     }
 
     /**
-     * Si el horario programado de consulta MP ya pasó sin corrida, encola catch-up al login.
+     * Catch-up secuencial al login: resultados MP primero; si no encola corrida,
+     * continúa el pipeline (búsqueda). Si encola, la búsqueda arranca al finalizar resultados.
      */
-    private function dispararCatchUpMpSiCorresponde(NotaMpResultadosService $resultadosMp): void
-    {
+    private function dispararCatchUpMpSiCorresponde(
+        NotaMpResultadosService $resultadosMp,
+        OportunidadBusquedaService $oportunidades,
+    ): void {
         try {
             $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde(
                 'sistema',
@@ -105,23 +107,22 @@ class AuthController extends Controller
             );
             if (($resultado['accion'] ?? '') === 'encolada') {
                 Log::info('Catch-up MP encolado al login admin', $resultado);
-            }
-        } catch (Throwable $e) {
-            Log::warning('Catch-up MP al login falló', [
-                'message' => $e->getMessage(),
-            ]);
-        }
-    }
 
-    private function dispararCatchUpOportunidades(OportunidadBusquedaService $oportunidades): void
-    {
-        try {
-            $resultado = $oportunidades->catchUp('sistema', true);
-            if (in_array($resultado['accion'] ?? '', ['encolada', 'reanudada'], true)) {
-                Log::info('Catch-up de oportunidades encolado al login admin', $resultado);
+                return;
+            }
+
+            $mensaje = (string) ($resultado['mensaje'] ?? '');
+            if (str_contains($mensaje, 'en curso')) {
+                return;
+            }
+
+            // Sin corrida de resultados pendiente: retoma búsqueda omitida (no en paralelo con MP).
+            $busqueda = $oportunidades->catchUp('sistema', true);
+            if (in_array($busqueda['accion'] ?? '', ['encolada', 'reanudada'], true)) {
+                Log::info('Catch-up de oportunidades encolado al login admin (tras omitir MP)', $busqueda);
             }
         } catch (Throwable $e) {
-            Log::warning('Catch-up de oportunidades al login falló', [
+            Log::warning('Catch-up MP/oportunidades al login falló', [
                 'message' => $e->getMessage(),
             ]);
         }

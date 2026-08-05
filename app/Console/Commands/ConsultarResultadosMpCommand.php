@@ -44,6 +44,10 @@ class ConsultarResultadosMpCommand extends Command
                 || str_contains($msg, 'Ya hay una consulta en curso')
             ) {
                 $this->info($msg);
+                // Sin corrida de resultados: continúa el pipeline (búsqueda → …).
+                if (str_contains($msg, 'No hay cotizaciones pendientes')) {
+                    $this->continuarPipeline($resultados, $usuario);
+                }
 
                 return self::SUCCESS;
             }
@@ -67,6 +71,18 @@ class ConsultarResultadosMpCommand extends Command
         return self::SUCCESS;
     }
 
+    private function continuarPipeline(NotaMpResultadosService $resultados, string $usuario): void
+    {
+        $pipeline = $resultados->continuarPipelineOportunidadesTrasResultados($usuario);
+        $accion = (string) ($pipeline['accion'] ?? '');
+        $mensaje = (string) ($pipeline['mensaje'] ?? '');
+        if ($accion === 'encolada') {
+            $this->info('Pipeline: '.$mensaje.' (corrida #'.($pipeline['corrida_id'] ?? '?').').');
+        } elseif ($mensaje !== '') {
+            $this->info('Pipeline: '.$mensaje);
+        }
+    }
+
     private function handleCatchUp(NotaMpResultadosService $resultados, string $usuario): int
     {
         try {
@@ -81,10 +97,15 @@ class ConsultarResultadosMpCommand extends Command
         }
 
         $mensaje = (string) ($resultado['mensaje'] ?? $resultado['accion']);
-        if (($resultado['accion'] ?? '') === 'encolada') {
+        $accion = (string) ($resultado['accion'] ?? '');
+        if ($accion === 'encolada') {
             $this->info($mensaje.' (corrida #'.($resultado['corrida_id'] ?? '?').').');
         } else {
             $this->info($mensaje);
+            // Si no hay corrida de resultados en curso/encolada, sigue con búsqueda.
+            if (! str_contains($mensaje, 'en curso')) {
+                $this->continuarPipeline($resultados, $usuario);
+            }
         }
 
         return self::SUCCESS;

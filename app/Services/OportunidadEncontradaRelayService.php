@@ -292,12 +292,22 @@ class OportunidadEncontradaRelayService
     }
 
     /**
-     * Tras terminar búsqueda o vinculación: si hay pendientes, despierta el par,
-     * espera el cold start y reenvía (encontradas + resultados de vinculación).
+     * Tras terminar vinculación: despierta el par y sincroniza en orden estricto
+     * (1) cotizaciones/graba, (2) vinculaciones + reenvío local.
      *
      * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, mensaje: string}
      */
     public function sincronizarPendientesTrasProceso(string $origen = ''): array
+    {
+        return $this->sincronizarPipelineTrasVinculacion($origen);
+    }
+
+    /**
+     * Pipeline de sync al par: cotizaciones primero, luego vinculaciones.
+     *
+     * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, mensaje: string}
+     */
+    public function sincronizarPipelineTrasVinculacion(string $origen = ''): array
     {
         if ($this->urlDestino() === '') {
             return [
@@ -308,17 +318,8 @@ class OportunidadEncontradaRelayService
             ];
         }
 
-        if (! OportunidadEncontradaSyncPendiente::query()->exists()) {
-            return [
-                'ok' => true,
-                'pendientes_ok' => 0,
-                'pendientes_fail' => 0,
-                'mensaje' => 'Sin pendientes de sync al par.',
-            ];
-        }
-
-        $etiqueta = trim($origen) !== '' ? trim($origen) : 'proceso';
-        Log::info('Sync oportunidades al par tras '.$etiqueta.': despertando sitio par…');
+        $etiqueta = trim($origen) !== '' ? trim($origen) : 'vinculación';
+        Log::info('Pipeline sync al par tras '.$etiqueta.': despertando sitio par…');
 
         $this->despertarSitioPar();
 
@@ -327,14 +328,34 @@ class OportunidadEncontradaRelayService
             sleep($espera);
         }
 
-        $resultado = $this->sincronizarPendientes(despertar: false);
-        Log::info('Sync oportunidades al par tras '.$etiqueta, [
-            'ok' => $resultado['ok'],
-            'pendientes_ok' => $resultado['pendientes_ok'],
-            'pendientes_fail' => $resultado['pendientes_fail'],
+        $cotizaciones = $this->sincronizarPendientesPorTipo('cotizaciones', despertar: false);
+        Log::info('Pipeline sync al par: cotizaciones', [
+            'ok' => $cotizaciones['ok'],
+            'pendientes_ok' => $cotizaciones['pendientes_ok'],
+            'pendientes_fail' => $cotizaciones['pendientes_fail'],
         ]);
 
-        return $resultado;
+        $vinculaciones = $this->sincronizarPendientesPorTipo('vinculaciones', despertar: false);
+        Log::info('Pipeline sync al par: vinculaciones', [
+            'ok' => $vinculaciones['ok'],
+            'pendientes_ok' => $vinculaciones['pendientes_ok'],
+            'pendientes_fail' => $vinculaciones['pendientes_fail'],
+        ]);
+
+        $pendientesOk = (int) ($cotizaciones['pendientes_ok'] ?? 0) + (int) ($vinculaciones['pendientes_ok'] ?? 0);
+        $pendientesFail = (int) ($cotizaciones['pendientes_fail'] ?? 0) + (int) ($vinculaciones['pendientes_fail'] ?? 0);
+        $ok = (bool) ($cotizaciones['ok'] ?? false) && (bool) ($vinculaciones['ok'] ?? false);
+
+        $mensaje = 'Pipeline sync tras '.$etiqueta
+            .': cotizaciones ('.($cotizaciones['mensaje'] ?? '').'); '
+            .'vinculaciones ('.($vinculaciones['mensaje'] ?? '').').';
+
+        return [
+            'ok' => $ok,
+            'pendientes_ok' => $pendientesOk,
+            'pendientes_fail' => $pendientesFail,
+            'mensaje' => $mensaje,
+        ];
     }
 
     /**

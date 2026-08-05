@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\NotaMpCorrida;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadVinculoCorrida;
 use App\Services\OportunidadBusquedaService;
@@ -53,7 +54,16 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
             return;
         }
 
-        // No competir con la búsqueda de cotizaciones por la cola/DB.
+        // No competir con la consulta de resultados MP ni con la búsqueda.
+        if (NotaMpCorrida::query()
+            ->masivas()
+            ->where('estado', 'running')
+            ->exists()) {
+            self::dispatch($this->corridaId)->delay(now()->addSeconds(45));
+
+            return;
+        }
+
         if (OportunidadBusquedaCorrida::query()
             ->where('estado', OportunidadBusquedaService::ESTADO_RUNNING)
             ->exists()) {

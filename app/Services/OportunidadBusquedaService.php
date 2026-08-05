@@ -1377,6 +1377,52 @@ class OportunidadBusquedaService
     }
 
     /**
+     * Continúa el pipeline tras terminar (o omitir) la consulta de resultados MP:
+     * encola la búsqueda de cotizaciones si este sitio es ANALISIS_ADMIN.
+     *
+     * @return array{accion: string, mensaje: string, corrida_id: int|null}
+     */
+    public function iniciarTrasResultados(string $usuario = 'sistema'): array
+    {
+        if (! $this->habilitada()) {
+            return [
+                'accion' => 'omitido',
+                'mensaje' => 'Búsqueda automática deshabilitada en este sitio.',
+                'corrida_id' => null,
+            ];
+        }
+
+        $activa = $this->corridaEnCurso();
+        if ($activa !== null) {
+            if (! $this->jobOportunidadEncolado($activa->id)) {
+                ProcessOportunidadBusquedaJob::dispatch($activa->id);
+            }
+
+            return [
+                'accion' => 'en_curso',
+                'mensaje' => 'Ya hay una corrida de oportunidades en curso.',
+                'corrida_id' => $activa->id,
+            ];
+        }
+
+        try {
+            $corrida = $this->iniciar($usuario);
+
+            return [
+                'accion' => 'encolada',
+                'mensaje' => 'Búsqueda de oportunidades encolada tras resultados MP.',
+                'corrida_id' => $corrida->id,
+            ];
+        } catch (RuntimeException $e) {
+            return [
+                'accion' => 'omitido',
+                'mensaje' => $e->getMessage(),
+                'corrida_id' => null,
+            ];
+        }
+    }
+
+    /**
      * @return array{accion: string, mensaje: string, corrida_id: int|null}
      */
     public function catchUp(string $usuario = 'sistema', bool $reanudarActiva = true): array
@@ -2145,32 +2191,49 @@ class OportunidadBusquedaService
         }
         $corrida->fill($payload)->save();
 
-        // Si el par dormía durante la búsqueda, reintenta sync (wake + pendientes) antes de vincular.
+        // Pipeline: tras búsqueda → vinculación. Si no hay pendientes de vincular,
+        // igual corre sync al par y el catch-up del día siguiente.
         try {
-            $this->encontradaRelay->sincronizarPendientesTrasProceso('búsqueda');
-        } catch (\Throwable $e) {
-            Log::warning('Sync oportunidades al par tras búsqueda falló', [
-                'fecha_busqueda' => (string) $corrida->fecha_busqueda,
-                'message' => $e->getMessage(),
-            ]);
-        }
-
-        // Primero el 2.º proceso (vinculación), luego catch-up del día siguiente si corresponde.
-        try {
-            $this->vinculos->iniciarTrasBusqueda(
+            $vinculo = $this->vinculos->iniciarTrasBusqueda(
                 $corrida->fecha_busqueda,
                 (string) ($corrida->usuario ?? 'sistema'),
             );
+            if ($vinculo === null) {
+                try {
+                    $this->encontradaRelay->sincronizarPipelineTrasVinculacion('búsqueda-sin-vinculo');
+                } catch (\Throwable $e) {
+                    Log::warning('Pipeline sync al par tras búsqueda (sin vinculación) falló', [
+                        'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+                $this->continuarCatchUpTrasVinculacion(
+                    $corrida->fecha_busqueda,
+                    (string) ($corrida->usuario ?? 'sistema'),
+                );
+            }
         } catch (\Throwable $e) {
             Log::warning('No se pudo encolar vinculación de oportunidades', [
                 'fecha_busqueda' => (string) $corrida->fecha_busqueda,
                 'message' => $e->getMessage(),
             ]);
         }
+    }
 
-        $siguienteFecha = $this->proximaFechaPendienteDespues($corrida->fecha_busqueda);
-        if ($siguienteFecha !== null && $this->corridaEnCurso() === null) {
-            $this->iniciar((string) ($corrida->usuario ?? 'sistema'), $siguienteFecha);
+    /**
+     * Tras vincular+sync del día D, encola la búsqueda del día D+1 si el catch-up lo requiere.
+     */
+    public function continuarCatchUpTrasVinculacion(mixed $fechaBusqueda, string $usuario = 'sistema'): void
+    {
+        if (! $this->habilitada()) {
+            return;
         }
+
+        $siguienteFecha = $this->proximaFechaPendienteDespues($fechaBusqueda);
+        if ($siguienteFecha === null || $this->corridaEnCurso() !== null) {
+            return;
+        }
+
+        $this->iniciar(trim($usuario) ?: 'sistema', $siguienteFecha);
     }
 }

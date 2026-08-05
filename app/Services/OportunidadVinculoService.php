@@ -1175,12 +1175,26 @@ class OportunidadVinculoService
                 : 'Vinculación terminada correctamente. Tiempo: '.$tiempo,
         ])->save();
 
-        // Despierta el par y reenvía vinculaciones que fallaron al sync en vivo.
+        // Pipeline: sync cotizaciones al par, luego sync vinculaciones (+ reenvío).
         try {
-            $this->encontradaRelay->sincronizarPendientesTrasProceso('vinculación');
+            $this->encontradaRelay->sincronizarPipelineTrasVinculacion('vinculación');
         } catch (Throwable $e) {
-            Log::warning('Sync oportunidades al par tras vinculación falló', [
+            Log::warning('Pipeline sync al par tras vinculación falló', [
                 'corrida_id' => $corrida->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        // Catch-up multi-día: recién ahora el siguiente día de búsqueda.
+        try {
+            app(OportunidadBusquedaService::class)->continuarCatchUpTrasVinculacion(
+                $corrida->fecha_busqueda,
+                (string) ($corrida->usuario ?? 'sistema'),
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo encolar búsqueda del día siguiente tras vinculación', [
+                'corrida_id' => $corrida->id,
+                'fecha_busqueda' => (string) $corrida->fecha_busqueda,
                 'message' => $e->getMessage(),
             ]);
         }
