@@ -3368,6 +3368,7 @@
                 onProgress: mostrarProgresoConsultaPar,
             });
 
+            ocultarSoloAlertaConsultaPar();
             ocultarProgresoImportar();
 
             let existeLocal = true;
