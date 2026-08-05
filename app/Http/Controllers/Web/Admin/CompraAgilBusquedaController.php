@@ -11,6 +11,7 @@ use App\Services\CompraAgilOportunidadService;
 use App\Services\CompraAgilPayloadMapper;
 use App\Services\NotaConsultaRemotaService;
 use App\Services\NotaService;
+use App\Services\OportunidadVinculoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -23,6 +24,7 @@ class CompraAgilBusquedaController extends Controller
         protected CompraAgilPayloadMapper $mapper,
         protected CompraAgilImportService $importService,
         protected NotaService $notaService,
+        protected OportunidadVinculoService $oportunidadVinculo,
     ) {}
 
     public function buscar(Request $request, int $nronota): JsonResponse
@@ -213,6 +215,35 @@ class CompraAgilBusquedaController extends Controller
         return response()->json([
             'codigo' => $codigo,
             'existe_local' => $this->oportunidad->existeEnBaseLocal($codigo),
+        ]);
+    }
+
+    public function previewOportunidades(Request $request, int $nronota): JsonResponse
+    {
+        [$nota] = $this->notaAutorizada($request, $nronota, false);
+
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        $codigo = strtoupper(trim($datos['codigo']));
+        $preview = $this->oportunidadVinculo->previewCacheado($codigo);
+        if ($preview === null) {
+            return response()->json([
+                'codigo' => $codigo,
+                'preview' => null,
+            ]);
+        }
+
+        $errorLocal = $this->notaService->validarNumeroCotizacion($nota, $codigo);
+        if ($errorLocal !== null) {
+            $preview['error_cabecera'] = $errorLocal;
+            $preview['puede_importar'] = false;
+        }
+
+        return response()->json([
+            'codigo' => $codigo,
+            'preview' => $preview,
         ]);
     }
 

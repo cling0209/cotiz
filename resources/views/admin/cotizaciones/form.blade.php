@@ -2586,6 +2586,7 @@
         excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota->nronota)),
         apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
         apiExisteLocal: @json(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota)),
+        apiPreviewOportunidades: @json(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota)),
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
         oportunidadesIndex: @json(route('admin.oportunidades.para-cotizar.index')),
@@ -3309,6 +3310,22 @@
         }
     }
 
+    async function intentarPreviewOportunidadesCache(codigo) {
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('codigo', codigo);
+        const res = await fetch(importarMpUrls.apiPreviewOportunidades, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.preview || !Array.isArray(json.preview.lineas)) {
+            return false;
+        }
+        return aplicarPreviewCacheado(codigo, json.preview);
+    }
+
     function ocultarProgresoConsultaPar() {
         ocultarSoloAlertaConsultaPar();
         ocultarAvisoMpLocal();
@@ -3391,6 +3408,9 @@
 
             if (existeLocal) {
                 ocultarAvisoMpLocal();
+                if (await intentarPreviewOportunidadesCache(codigo)) {
+                    return;
+                }
             } else {
                 mostrarAvisoMpLocal();
             }

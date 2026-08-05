@@ -554,6 +554,66 @@ class CompraAgilApiTest extends TestCase
             ->assertJsonPath('existe_local', false);
     }
 
+    public function test_preview_oportunidades_devuelve_cache_vinculado(): void
+    {
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2328-858-COT26',
+            'nombre' => 'Compra vinculada',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => true,
+            'fecha_cierre' => now()->addDays(3),
+            'vinculo_preview_json' => [
+                'cabecera' => [
+                    'codigo_cotizacion' => '2328-858-COT26',
+                    'empresa' => 'Hospital Test',
+                ],
+                'lineas' => [
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'Producto vinculado',
+                        'cantidad' => 2,
+                    ],
+                ],
+            ],
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota), [
+                'codigo' => '2328-858-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('codigo', '2328-858-COT26')
+            ->assertJsonPath('preview.desde_cache', true)
+            ->assertJsonCount(1, 'preview.lineas');
+    }
+
+    public function test_preview_oportunidades_sin_vinculo_devuelve_null(): void
+    {
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2328-858-COT26',
+            'nombre' => 'Compra sin vincular',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => now()->toDateString(),
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        $nota = $this->crearNota(['encargado' => '']);
+
+        $this->actingAs($this->ejecutivo)
+            ->postJson(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota), [
+                'codigo' => '2328-858-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('codigo', '2328-858-COT26')
+            ->assertJsonPath('preview', null);
+    }
+
     public function test_analisis_admin_solo_usuario_admin(): void
     {
         config(['cotiz.mercadopublico.analisis_admin_habilitado' => true]);
