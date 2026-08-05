@@ -200,6 +200,7 @@ class OportunidadEncontradaRelayService
             $this->enviar($items, true, $colaAccion);
             $this->registrarUltimoOk($colaAccion, count($items));
         } catch (\Throwable $e) {
+            // enviar() ya marca sync_par_ok=false para ACCION_VINCULO.
             Log::warning('Sync oportunidad encontrada al par falló (queda pendiente)', [
                 'error' => $e->getMessage(),
                 'count' => count($items),
@@ -634,6 +635,12 @@ class OportunidadEncontradaRelayService
             'cotizaciones' => $this->resumenColaSync(self::ACCION_GRABA),
             'vinculaciones' => $this->resumenColaSync(self::ACCION_VINCULO) + [
                 'locales_procesadas' => $this->contarVinculosLocalesProcesados(),
+                'locales_con_preview' => $this->contarVinculosLocalesConPreview(),
+                'locales_sin_preview' => $this->contarVinculosLocalesSinPreview(),
+                'locales_sync_ok' => $this->contarVinculosSyncPar(true),
+                'locales_sync_error' => $this->contarVinculosSyncParError(),
+                'locales_sync_omitidos' => $this->contarVinculosSyncParOmitidos(),
+                'locales_sync_pendientes' => $this->contarVinculosSyncParPendientes(),
             ],
         ];
     }
@@ -786,26 +793,26 @@ class OportunidadEncontradaRelayService
     public function reenviarVinculosLocalesAlPar(bool $despertar = true): array
     {
         if ($this->urlDestino() === '') {
-            return ['enviados' => 0, 'fallidos' => 0, 'locales' => 0];
+            return ['enviados' => 0, 'fallidos' => 0, 'omitidos' => 0, 'locales' => 0];
         }
 
         if ($despertar) {
             $this->esperarSitioParDespierto();
         }
 
-        $rows = OportunidadEncontrada::query()
-            ->whereRaw('vinculo_completo IS TRUE')
-            ->where(function ($q) {
-                $q->whereNull('fecha_cierre')
-                    ->orWhere('fecha_cierre', '>=', now());
-            })
-            ->orderByDesc('fecha_busqueda')
-            ->orderBy('id')
+        $omitidos = $this->marcarVinculosLocalesSinPreviewOmitidos();
+
+        $rows = $this->queryVinculosLocalesConPreview()
             ->limit(400)
             ->get();
 
         if ($rows->isEmpty()) {
-            return ['enviados' => 0, 'fallidos' => 0, 'locales' => 0];
+            return [
+                'enviados' => 0,
+                'fallidos' => 0,
+                'omitidos' => $omitidos,
+                'locales' => $this->contarVinculosLocalesProcesados(),
+            ];
         }
 
         $enviados = 0;
@@ -852,19 +859,119 @@ class OportunidadEncontradaRelayService
         return [
             'enviados' => $enviados,
             'fallidos' => $fallidos,
-            'locales' => $rows->count(),
+            'omitidos' => $omitidos,
+            'locales' => $rows->count() + $omitidos,
         ];
     }
 
     public function contarVinculosLocalesProcesados(): int
     {
-        return (int) OportunidadEncontrada::query()
+        return (int) $this->queryVinculosLocalesBase()->count();
+    }
+
+    public function contarVinculosLocalesConPreview(): int
+    {
+        return (int) $this->queryVinculosLocalesConPreview()->count();
+    }
+
+    public function contarVinculosLocalesSinPreview(): int
+    {
+        return (int) $this->queryVinculosLocalesSinPreview()->count();
+    }
+
+    public function contarVinculosSyncPar(?bool $ok): int
+    {
+        $q = $this->queryVinculosLocalesBase();
+        if ($ok === true) {
+            $q->whereRaw('sync_par_ok IS TRUE');
+        } elseif ($ok === false) {
+            $q->whereRaw('sync_par_ok IS FALSE');
+        }
+
+        return (int) $q->count();
+    }
+
+    public function contarVinculosSyncParOmitidos(): int
+    {
+        return (int) $this->queryVinculosLocalesBase()
+            ->whereRaw('sync_par_ok IS FALSE')
+            ->where(function ($q) {
+                $q->where('sync_par_error', 'like', '%Sin preview%')
+                    ->orWhere('sync_par_error', 'like', '%omitid%');
+            })
+            ->count();
+    }
+
+    public function contarVinculosSyncParError(): int
+    {
+        return max(0, $this->contarVinculosSyncPar(false) - $this->contarVinculosSyncParOmitidos());
+    }
+
+    public function contarVinculosSyncParPendientes(): int
+    {
+        return (int) $this->queryVinculosLocalesConPreview()
+            ->where(function ($q) {
+                $q->whereNull('sync_par_ok')
+                    ->orWhereRaw('sync_par_ok IS FALSE');
+            })
+            // Los omitidos sin preview no entran en conPreview; errores de envío sí cuentan como pendientes de reintento.
+            ->where(function ($q) {
+                $q->whereNull('sync_par_error')
+                    ->orWhere(function ($q2) {
+                        $q2->where('sync_par_error', 'not like', '%Sin preview%')
+                            ->where('sync_par_error', 'not like', '%omitid%');
+                    });
+            })
+            ->count();
+    }
+
+    /**
+     * Marca como omitidas las vinculaciones locales sin preview (no replicables como procesadas).
+     */
+    public function marcarVinculosLocalesSinPreviewOmitidos(): int
+    {
+        $rows = $this->queryVinculosLocalesSinPreview()->limit(2000)->get();
+        $msg = 'Sin preview de productos; no se puede replicar al par como vinculación procesada.';
+        foreach ($rows as $row) {
+            $this->marcarSyncParFila($row, false, $msg);
+        }
+
+        return $rows->count();
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\OportunidadEncontrada>
+     */
+    private function queryVinculosLocalesBase()
+    {
+        return OportunidadEncontrada::query()
             ->whereRaw('vinculo_completo IS TRUE')
             ->where(function ($q) {
                 $q->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>=', now());
-            })
-            ->count();
+            });
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\OportunidadEncontrada>
+     */
+    private function queryVinculosLocalesConPreview()
+    {
+        return $this->queryVinculosLocalesBase()
+            ->whereNotNull('vinculo_preview_json')
+            ->orderByDesc('fecha_busqueda')
+            ->orderBy('id');
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\OportunidadEncontrada>
+     */
+    private function queryVinculosLocalesSinPreview()
+    {
+        return $this->queryVinculosLocalesBase()
+            ->whereNull('vinculo_preview_json')
+            ->orderByDesc('fecha_busqueda')
+            ->orderBy('id');
     }
 
     /**
@@ -911,6 +1018,9 @@ class OportunidadEncontradaRelayService
                     ->post($destino, $payload);
             } catch (\Throwable $e) {
                 $mensaje = 'No se pudo conectar con '.$peer.' ('.$destino.'): '.$e->getMessage();
+                if ($colaAccion === self::ACCION_VINCULO) {
+                    $this->marcarSyncParItems($items, false, $mensaje);
+                }
                 if ($encolarSiFalla) {
                     $this->encolarPendiente($items, $mensaje, $colaAccion);
                 }
@@ -938,6 +1048,9 @@ class OportunidadEncontradaRelayService
 
         if (! $response->successful()) {
             $mensaje = $this->mensajeErrorHttp($response, $destino, $peer);
+            if ($colaAccion === self::ACCION_VINCULO) {
+                $this->marcarSyncParItems($items, false, $mensaje);
+            }
             if ($encolarSiFalla) {
                 $this->encolarPendiente($items, $mensaje, $colaAccion);
             }
@@ -950,10 +1063,17 @@ class OportunidadEncontradaRelayService
             $mensaje = $detalle !== ''
                 ? $peer.': '.$detalle
                 : 'Respuesta inválida de '.$peer.'.';
+            if ($colaAccion === self::ACCION_VINCULO) {
+                $this->marcarSyncParItems($items, false, $mensaje);
+            }
             if ($encolarSiFalla) {
                 $this->encolarPendiente($items, $mensaje, $colaAccion);
             }
             throw new RuntimeException($mensaje);
+        }
+
+        if ($colaAccion === self::ACCION_VINCULO) {
+            $this->marcarSyncParItems($items, true, null);
         }
     }
 
@@ -1620,8 +1740,13 @@ class OportunidadEncontradaRelayService
 
         $colaTotal = $this->iniciarColaPlan($colaTipo);
         $reenvioTotal = $colaTipo === self::ACCION_VINCULO
-            ? $this->contarVinculosLocalesProcesados()
+            ? $this->contarVinculosLocalesConPreview()
             : 0;
+
+        // Marca explícita: locales “completas” sin preview no se pueden replicar como procesadas.
+        if ($colaTipo === self::ACCION_VINCULO) {
+            $this->marcarVinculosLocalesSinPreviewOmitidos();
+        }
 
         return ['cola_total' => $colaTotal, 'reenvio_total' => $reenvioTotal];
     }
@@ -1696,10 +1821,10 @@ class OportunidadEncontradaRelayService
     }
 
     /**
-     * Reenvía al par un lote (offset/limit) de vinculaciones locales ya procesadas.
+     * Reenvía al par un lote (offset/limit) de vinculaciones locales ya procesadas CON preview.
      * Devuelve los códigos del lote para mostrar progreso en el frontend.
      *
-     * @return array{total: int, offset: int, limit: int, enviados: int, fallidos: int, codigos: list<string>, hay_mas: bool}
+     * @return array{total: int, offset: int, limit: int, enviados: int, fallidos: int, omitidos: int, codigos: list<string>, hay_mas: bool}
      */
     public function reenviarLocalesLote(int $offset, int $limit): array
     {
@@ -1707,22 +1832,33 @@ class OportunidadEncontradaRelayService
         $limit = max(1, min(50, $limit));
 
         if ($this->urlDestino() === '') {
-            return ['total' => 0, 'offset' => $offset, 'limit' => $limit, 'enviados' => 0, 'fallidos' => 0, 'codigos' => [], 'hay_mas' => false];
+            return [
+                'total' => 0,
+                'offset' => $offset,
+                'limit' => $limit,
+                'enviados' => 0,
+                'fallidos' => 0,
+                'omitidos' => 0,
+                'codigos' => [],
+                'hay_mas' => false,
+            ];
         }
 
-        $total = $this->contarVinculosLocalesProcesados();
+        $total = $this->contarVinculosLocalesConPreview();
         if ($offset >= $total) {
-            return ['total' => $total, 'offset' => $offset, 'limit' => $limit, 'enviados' => 0, 'fallidos' => 0, 'codigos' => [], 'hay_mas' => false];
+            return [
+                'total' => $total,
+                'offset' => $offset,
+                'limit' => $limit,
+                'enviados' => 0,
+                'fallidos' => 0,
+                'omitidos' => 0,
+                'codigos' => [],
+                'hay_mas' => false,
+            ];
         }
 
-        $rows = OportunidadEncontrada::query()
-            ->whereRaw('vinculo_completo IS TRUE')
-            ->where(function ($q) {
-                $q->whereNull('fecha_cierre')
-                    ->orWhere('fecha_cierre', '>=', now());
-            })
-            ->orderByDesc('fecha_busqueda')
-            ->orderBy('id')
+        $rows = $this->queryVinculosLocalesConPreview()
             ->offset($offset)
             ->limit($limit)
             ->get();
@@ -1755,6 +1891,7 @@ class OportunidadEncontradaRelayService
                     'error' => $e->getMessage(),
                 ]);
                 $fallidos = count($chunk);
+                // enviar() ya marcó sync_par_error en las filas.
             }
         }
 
@@ -1764,6 +1901,7 @@ class OportunidadEncontradaRelayService
             'limit' => $limit,
             'enviados' => $enviados,
             'fallidos' => $fallidos,
+            'omitidos' => 0,
             'codigos' => $codigos,
             'hay_mas' => ($offset + $limit) < $total,
         ];
@@ -2070,6 +2208,71 @@ class OportunidadEncontradaRelayService
             return Carbon::parse($valor);
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Persiste resultado de sync al par en las filas locales de cada item (solo origen).
+     *
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function marcarSyncParItems(array $items, bool $ok, ?string $error): void
+    {
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $codigo = $this->normalizarCodigo((string) ($item['codigo'] ?? ''));
+            if ($codigo === '') {
+                continue;
+            }
+            $dia = $this->fechaBusquedaItem($item);
+            $row = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->whereDate('fecha_busqueda', $dia)
+                ->first();
+            if ($row === null) {
+                $row = OportunidadEncontrada::query()
+                    ->where('codigo', $codigo)
+                    ->orderByDesc('fecha_busqueda')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+            if ($row === null) {
+                continue;
+            }
+            $this->marcarSyncParFila($row, $ok, $error);
+        }
+    }
+
+    private function marcarSyncParFila(OportunidadEncontrada $row, bool $ok, ?string $error): void
+    {
+        $mensaje = $error !== null ? mb_substr(trim($error), 0, 500) : '';
+        $errorActual = trim((string) ($row->sync_par_error ?? ''));
+        $okActual = $row->sync_par_ok;
+        // Evitar reescrituras inútiles si ya está en el mismo estado.
+        if (
+            $okActual !== null
+            && (bool) $okActual === $ok
+            && $errorActual === ($ok ? '' : $mensaje)
+            && $row->sync_par_at !== null
+            && $row->sync_par_at->gt(now()->subMinutes(2))
+        ) {
+            return;
+        }
+
+        try {
+            $row->fill([
+                'sync_par_ok' => $ok,
+                'sync_par_error' => $ok || $mensaje === '' ? null : $mensaje,
+                'sync_par_at' => now(),
+            ])->save();
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo marcar sync_par en oportunidad_encontradas', [
+                'id' => $row->id,
+                'codigo' => $row->codigo,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 

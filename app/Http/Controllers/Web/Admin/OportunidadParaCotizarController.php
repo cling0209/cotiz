@@ -294,7 +294,7 @@ class OportunidadParaCotizarController extends Controller
             $cerrar = ! $hayMas;
         } else {
             // vinculaciones: la fase cola cierra solo si no hay reenvío posterior.
-            $cerrar = ! $hayMas && $this->encontradaRelay->contarVinculosLocalesProcesados() === 0;
+            $cerrar = ! $hayMas && $this->encontradaRelay->contarVinculosLocalesConPreview() === 0;
         }
 
         $this->encontradaRelay->registrarLoteProcesado(

@@ -771,4 +771,134 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertJsonPath('encontrado', false)
             ->assertJsonPath('item', null);
     }
+
+    public function test_reenvio_vinculo_marca_sync_par_ok(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+            'cotiz.api_oportunidad_encontrada.sync_wake_poll_max_seg' => 0,
+        ]);
+
+        $row = OportunidadEncontrada::query()->create([
+            'codigo' => '9001-1-COT26',
+            'nombre' => 'Con preview',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'cantidad_productos' => 1,
+            'productos_vinculados' => 1,
+            'porcentaje_vinculo' => 100,
+            'vinculo_preview_json' => [
+                'cabecera' => [],
+                'lineas' => [['id_agile' => '1', 'estado' => 'vinculado']],
+                'resumen' => ['total' => 1, 'vinculados' => 1],
+            ],
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::sequence()
+                ->push('ok', 200) // /up wake
+                ->push(['resultado' => 'OK', 'recibidos' => 1], 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $lote = $relay->reenviarLocalesLote(0, 5);
+
+        $this->assertSame(1, $lote['enviados']);
+        $this->assertSame(0, $lote['fallidos']);
+
+        $row->refresh();
+        $this->assertTrue((bool) $row->sync_par_ok);
+        $this->assertNull($row->sync_par_error);
+        $this->assertNotNull($row->sync_par_at);
+        $this->assertSame('ok', $row->estadoSyncParUi());
+        $this->assertSame('ok', $row->toResumen()['sync_par_estado']);
+    }
+
+    public function test_reenvio_vinculo_marca_sync_par_error_si_par_falla(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+            'cotiz.api_oportunidad_encontrada.sync_wake_poll_max_seg' => 0,
+        ]);
+
+        $row = OportunidadEncontrada::query()->create([
+            'codigo' => '9001-2-COT26',
+            'nombre' => 'Falla sync',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'cantidad_productos' => 1,
+            'productos_vinculados' => 1,
+            'porcentaje_vinculo' => 100,
+            'vinculo_preview_json' => [
+                'lineas' => [['id_agile' => '1']],
+            ],
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response(['resultado' => 'ERROR', 'mensaje' => 'Auth inválida'], 401),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $lote = $relay->reenviarLocalesLote(0, 5);
+
+        $this->assertSame(0, $lote['enviados']);
+        $this->assertSame(1, $lote['fallidos']);
+
+        $row->refresh();
+        $this->assertFalse((bool) $row->sync_par_ok);
+        $this->assertNotEmpty($row->sync_par_error);
+        $this->assertSame('error', $row->estadoSyncParUi());
+    }
+
+    public function test_sin_preview_se_marca_omitido_y_no_cuenta_en_reenvio(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+            'cotiz.api_oportunidad_encontrada.sync_wake_poll_max_seg' => 0,
+        ]);
+
+        $sinPreview = OportunidadEncontrada::query()->create([
+            'codigo' => '9001-3-COT26',
+            'nombre' => 'Sin preview',
+            'region' => 13,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'vinculo_preview_json' => null,
+            'fecha_cierre' => now()->addDays(3),
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response('ok', 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $prep = $relay->prepararSyncPorLotes('vinculaciones');
+
+        $this->assertSame(0, $prep['reenvio_total']);
+        $this->assertSame(1, $relay->contarVinculosLocalesSinPreview());
+
+        $sinPreview->refresh();
+        $this->assertFalse((bool) $sinPreview->sync_par_ok);
+        $this->assertStringContainsString('Sin preview', (string) $sinPreview->sync_par_error);
+        $this->assertSame('omitido', $sinPreview->estadoSyncParUi());
+    }
 }

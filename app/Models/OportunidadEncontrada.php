@@ -33,6 +33,9 @@ class OportunidadEncontrada extends Model
         'vinculo_at',
         'vinculo_preview_json',
         'vinculo_error',
+        'sync_par_at',
+        'sync_par_ok',
+        'sync_par_error',
         'fecha_busqueda',
         'indice_region_config',
         'found_by',
@@ -53,6 +56,8 @@ class OportunidadEncontrada extends Model
             'porcentaje_vinculo' => 'integer',
             'vinculo_at' => 'datetime',
             'vinculo_preview_json' => 'array',
+            'sync_par_at' => 'datetime',
+            'sync_par_ok' => PgBoolean::class,
             'fecha_busqueda' => 'date',
             'indice_region_config' => 'integer',
         ];
@@ -89,6 +94,10 @@ class OportunidadEncontrada extends Model
             'tiene_vinculo_preview' => $this->tieneVinculoPreview(),
             'vinculo_error' => ($err = trim((string) ($this->vinculo_error ?? ''))) !== '' ? $err : null,
             'vinculo_estado' => $this->estadoVinculoUi(),
+            'sync_par_ok' => $this->sync_par_ok === null ? null : (bool) $this->sync_par_ok,
+            'sync_par_error' => ($syncErr = trim((string) ($this->sync_par_error ?? ''))) !== '' ? $syncErr : null,
+            'sync_par_at' => $this->sync_par_at?->toIso8601String(),
+            'sync_par_estado' => $this->estadoSyncParUi(),
             'productos_vinculados' => $this->productos_vinculados,
             'porcentaje_vinculo' => $this->porcentaje_vinculo,
             'indice_region_config' => (int) $this->indice_region_config,
@@ -114,6 +123,40 @@ class OportunidadEncontrada extends Model
 
         if (trim((string) ($this->vinculo_error ?? '')) !== '') {
             return 'fallida';
+        }
+
+        return 'pendiente';
+    }
+
+    /**
+     * Estado de réplica al sitio par: ok | error | omitido | pendiente | null.
+     * null = aún no aplica (p. ej. vínculo no procesado).
+     */
+    public function estadoSyncParUi(): ?string
+    {
+        if ($this->estadoVinculoUi() !== 'procesada' && ! (bool) $this->vinculo_completo) {
+            return null;
+        }
+
+        if ($this->sync_par_ok === true) {
+            return 'ok';
+        }
+
+        $err = trim((string) ($this->sync_par_error ?? ''));
+        if ($this->sync_par_ok === false) {
+            if ($err !== '' && (
+                str_contains(mb_strtolower($err), 'sin preview')
+                || str_contains(mb_strtolower($err), 'omitid')
+            )) {
+                return 'omitido';
+            }
+
+            return 'error';
+        }
+
+        // Completo sin preview: no se puede replicar como procesada.
+        if ((bool) $this->vinculo_completo && ! $this->tieneVinculoPreview()) {
+            return 'omitido';
         }
 
         return 'pendiente';

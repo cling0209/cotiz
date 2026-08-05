@@ -12,19 +12,27 @@ use Illuminate\Support\Facades\DB;
  * With ATTR_EMULATE_PREPARES (required by Neon pooler), PHP true/false
  * are interpolated as 1/0 which PostgreSQL rejects for boolean columns.
  * This cast writes DB::raw('true'/'false') literals and reads back
- * as native PHP booleans.
+ * as native PHP booleans. Null stays null (nullable columns).
  *
- * @implements CastsAttributes<bool, bool>
+ * @implements CastsAttributes<?bool, ?bool>
  */
 class PgBoolean implements CastsAttributes
 {
-    public function get(Model $model, string $key, mixed $value, array $attributes): bool
+    public function get(Model $model, string $key, mixed $value, array $attributes): ?bool
     {
+        if ($value === null) {
+            return null;
+        }
+
         return filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
     public function set(Model $model, string $key, mixed $value, array $attributes): mixed
     {
+        if ($value === null) {
+            return null;
+        }
+
         return DB::raw((bool) $value ? 'true' : 'false');
     }
 }

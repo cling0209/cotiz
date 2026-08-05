@@ -320,7 +320,7 @@
                     <div id="sync-vin-ultimo-proceso" class="small mb-2 d-none"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <button type="button" id="btn-sync-vinculaciones" class="btn btn-outline-success btn-sm" data-no-loader
-                            title="Reintenta cola pendiente y reenvía al par las vinculaciones ya procesadas en este sitio">
+                            title="Reintenta cola pendiente y reenvía al par las vinculaciones con preview. Marca OK/error/omitido por cotización.">
                             <i class="bi bi-arrow-repeat"></i> Sincronizar vinculaciones
                         </button>
                         <button type="button" id="sync-vin-detalle-toggle" class="btn btn-sm btn-outline-secondary"
@@ -908,20 +908,54 @@
 
         function htmlEstadoVinculoListado(item) {
             const estado = String(item?.vinculo_estado || '').trim();
+            let html = '';
             if (itemVinculoProcesado(item)) {
                 const vinc = Number(item.productos_vinculados) || 0;
                 const tot = Number(item.cantidad_productos) || 0;
                 const pct = porcentajeVinculoItem(item) ?? 0;
-                return `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
-            }
-            if (estado === 'fallida' || (item?.vinculo_error && String(item.vinculo_error).trim() !== '')) {
+                html = `<div class="opc-meta mt-1">Vinculados: <strong class="tabular-nums">${escapeHtml(String(vinc))}/${escapeHtml(String(tot))}</strong> (${escapeHtml(String(pct))}%)</div>`;
+            } else if (estado === 'fallida' || (item?.vinculo_error && String(item.vinculo_error).trim() !== '')) {
                 const msg = String(item.vinculo_error || 'Error al vincular').trim();
-                return `<div class="mt-1">
+                html = `<div class="mt-1">
                     <span class="badge text-bg-danger">Vinculación fallida</span>
                     <div class="opc-meta text-danger mt-1" title="${escapeHtml(msg)}">${escapeHtml(msg)}</div>
                 </div>`;
+            } else {
+                html = '<div class="mt-1"><span class="badge text-bg-warning">Vinculación pendiente</span></div>';
             }
-            return '<div class="mt-1"><span class="badge text-bg-warning">Vinculación pendiente</span></div>';
+            return html + htmlEstadoSyncParListado(item);
+        }
+
+        function htmlEstadoSyncParListado(item) {
+            const syncEstado = String(item?.sync_par_estado || '').trim();
+            if (!syncEstado) {
+                return '';
+            }
+            const cuando = item?.sync_par_at ? formatearFechaSync(item.sync_par_at) : '';
+            const err = String(item?.sync_par_error || '').trim();
+            if (syncEstado === 'ok') {
+                return `<div class="opc-meta mt-1 text-success" title="Réplica al sitio par OK">
+                    <i class="bi bi-cloud-check"></i> Par: OK${cuando ? ' · ' + escapeHtml(cuando) : ''}
+                </div>`;
+            }
+            if (syncEstado === 'error') {
+                const msg = err || 'Error al sincronizar al par';
+                return `<div class="mt-1">
+                    <span class="badge text-bg-danger">Sync par falló</span>
+                    <div class="opc-meta text-danger mt-1" title="${escapeHtml(msg)}">${escapeHtml(msg)}</div>
+                </div>`;
+            }
+            if (syncEstado === 'omitido') {
+                const msg = err || 'Sin preview; no se puede replicar como procesada';
+                return `<div class="mt-1">
+                    <span class="badge text-bg-secondary">Sync par omitido</span>
+                    <div class="opc-meta text-muted mt-1" title="${escapeHtml(msg)}">${escapeHtml(msg)}</div>
+                </div>`;
+            }
+            // pendiente
+            return `<div class="mt-1">
+                <span class="badge text-bg-warning">Sync par pendiente</span>
+            </div>`;
         }
 
         function porcentajeVinculoItem(item) {
@@ -3064,8 +3098,23 @@
             }
             if (prefijo === 'vin') {
                 const locales = Number(bloque.locales_procesadas) || 0;
+                const conPreview = Number(bloque.locales_con_preview) || 0;
+                const sinPreview = Number(bloque.locales_sin_preview) || 0;
+                const syncOk = Number(bloque.locales_sync_ok) || 0;
+                const syncErr = Number(bloque.locales_sync_error) || 0;
+                const syncOmit = Number(bloque.locales_sync_omitidos) || 0;
+                const syncPend = Number(bloque.locales_sync_pendientes) || 0;
                 if (locales > 0) {
-                    partesResumen.push(`${locales} locales procesadas`);
+                    partesResumen.push(`${locales} locales`);
+                    if (conPreview > 0 || sinPreview > 0) {
+                        partesResumen.push(`${conPreview} con preview` + (sinPreview > 0 ? ` · ${sinPreview} sin preview` : ''));
+                    }
+                    if (syncOk > 0 || syncErr > 0 || syncOmit > 0 || syncPend > 0) {
+                        partesResumen.push(`par: ${syncOk} ok` +
+                            (syncOmit > 0 ? ` · ${syncOmit} omit.` : '') +
+                            (syncErr > 0 ? ` · ${syncErr} error` : '') +
+                            (syncPend > 0 ? ` · ${syncPend} pend.` : ''));
+                    }
                 } else {
                     partesResumen.push('0 locales procesadas (hay que vincular aquí primero)');
                 }
