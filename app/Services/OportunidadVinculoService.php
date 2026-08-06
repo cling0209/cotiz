@@ -23,6 +23,8 @@ class OportunidadVinculoService
 
     public const ESTADO_ERROR = 'error';
 
+    public const MOTIVO_SIN_PENDIENTES = 'No hay cotizaciones vigentes pendientes de vincular.';
+
     private const PASO_PENDING = 'pending';
 
     private const PASO_RUNNING = 'running';
@@ -115,7 +117,7 @@ class OportunidadVinculoService
             return [
                 'ok' => false,
                 'corrida' => null,
-                'motivo' => 'No hay cotizaciones vigentes pendientes de vincular.',
+                'motivo' => self::MOTIVO_SIN_PENDIENTES,
                 'pendientes' => 0,
             ];
         }

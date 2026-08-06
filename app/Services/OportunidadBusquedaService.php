@@ -2192,26 +2192,41 @@ class OportunidadBusquedaService
         $corrida->fill($payload)->save();
 
         // Pipeline: tras búsqueda → vinculación. Si no hay pendientes de vincular,
-        // igual corre sync al par y el catch-up del día siguiente.
+        // sync solo cotizaciones al par (vinculaciones quedan para post-vinculación o schedule).
         try {
-            $vinculo = $this->vinculos->iniciarTrasBusqueda(
+            $detalle = $this->vinculos->iniciarConDetalle(
                 $corrida->fecha_busqueda,
                 (string) ($corrida->usuario ?? 'sistema'),
             );
-            if ($vinculo === null) {
-                try {
-                    $this->encontradaRelay->sincronizarPipelineTrasVinculacion('búsqueda-sin-vinculo');
-                } catch (\Throwable $e) {
-                    Log::warning('Pipeline sync al par tras búsqueda (sin vinculación) falló', [
-                        'fecha_busqueda' => (string) $corrida->fecha_busqueda,
-                        'message' => $e->getMessage(),
-                    ]);
-                }
-                $this->continuarCatchUpTrasVinculacion(
-                    $corrida->fecha_busqueda,
-                    (string) ($corrida->usuario ?? 'sistema'),
-                );
+            if ($detalle['ok'] && $detalle['corrida'] !== null) {
+                return;
             }
+
+            if (($detalle['motivo'] ?? '') !== OportunidadVinculoService::MOTIVO_SIN_PENDIENTES) {
+                Log::warning('No se encoló vinculación tras búsqueda', [
+                    'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                    'motivo' => $detalle['motivo'] ?? null,
+                    'pendientes' => $detalle['pendientes'] ?? 0,
+                ]);
+
+                return;
+            }
+
+            try {
+                $this->encontradaRelay->sincronizarPipelineTrasVinculacion(
+                    'búsqueda-sin-vinculo',
+                    incluirVinculaciones: false,
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Pipeline sync al par tras búsqueda (sin vinculación) falló', [
+                    'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+            $this->continuarCatchUpTrasVinculacion(
+                $corrida->fecha_busqueda,
+                (string) ($corrida->usuario ?? 'sistema'),
+            );
         } catch (\Throwable $e) {
             Log::warning('No se pudo encolar vinculación de oportunidades', [
                 'fecha_busqueda' => (string) $corrida->fecha_busqueda,

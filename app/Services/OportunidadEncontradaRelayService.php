@@ -307,7 +307,7 @@ class OportunidadEncontradaRelayService
      *
      * @return array{ok: bool, pendientes_ok: int, pendientes_fail: int, mensaje: string}
      */
-    public function sincronizarPipelineTrasVinculacion(string $origen = ''): array
+    public function sincronizarPipelineTrasVinculacion(string $origen = '', bool $incluirVinculaciones = true): array
     {
         if ($this->urlDestino() === '') {
             return [
@@ -319,7 +319,9 @@ class OportunidadEncontradaRelayService
         }
 
         $etiqueta = trim($origen) !== '' ? trim($origen) : 'vinculación';
-        Log::info('Pipeline sync al par tras '.$etiqueta.': despertando sitio par…');
+        Log::info('Pipeline sync al par tras '.$etiqueta.': despertando sitio par…', [
+            'incluir_vinculaciones' => $incluirVinculaciones,
+        ]);
 
         $this->despertarSitioPar();
 
@@ -334,6 +336,22 @@ class OportunidadEncontradaRelayService
             'pendientes_ok' => $cotizaciones['pendientes_ok'],
             'pendientes_fail' => $cotizaciones['pendientes_fail'],
         ]);
+
+        if (! $incluirVinculaciones) {
+            $pendientesOk = (int) ($cotizaciones['pendientes_ok'] ?? 0);
+            $pendientesFail = (int) ($cotizaciones['pendientes_fail'] ?? 0);
+            $ok = (bool) ($cotizaciones['ok'] ?? false);
+            $mensaje = 'Pipeline sync tras '.$etiqueta
+                .': cotizaciones ('.($cotizaciones['mensaje'] ?? '').'); '
+                .'vinculaciones omitidas (sin vinculación interna pendiente).';
+
+            return [
+                'ok' => $ok,
+                'pendientes_ok' => $pendientesOk,
+                'pendientes_fail' => $pendientesFail,
+                'mensaje' => $mensaje,
+            ];
+        }
 
         $vinculaciones = $this->sincronizarPendientesPorTipo('vinculaciones', despertar: false);
         Log::info('Pipeline sync al par: vinculaciones', [

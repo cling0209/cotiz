@@ -901,4 +901,57 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertStringContainsString('Sin preview', (string) $sinPreview->sync_par_error);
         $this->assertSame('omitido', $sinPreview->estadoSyncParUi());
     }
+
+    public function test_pipeline_sin_vinculacion_interna_omite_sync_vinculaciones(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.api_usuario.url' => 'https://cotiza.reicol.cl/api/v1/usuario',
+            'cotiz.api_nota.user' => 'api',
+            'cotiz.api_nota.password' => 'secret',
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/up' => Http::response('ok', 200),
+            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
+                'resultado' => 'OK',
+                'recibidos' => 1,
+            ], 200),
+        ]);
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '5000-1-COT26',
+                'nombre' => 'Solo cotiz',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['papel'],
+                'vinculo_completo' => false,
+            ],
+        ], 'peer down', OportunidadEncontradaRelayService::ACCION_GRABA);
+        $relay->encolarPendiente([
+            [
+                'codigo' => '5000-2-COT26',
+                'nombre' => 'Con vinculo',
+                'fecha_busqueda' => '2026-07-16',
+                'palabras_coinciden' => ['papel'],
+                'vinculo_completo' => true,
+                'productos_vinculados' => 2,
+                'porcentaje_vinculo' => 100,
+            ],
+        ], 'peer down', OportunidadEncontradaRelayService::ACCION_VINCULO);
+
+        $resultado = $relay->sincronizarPipelineTrasVinculacion('búsqueda-sin-vinculo', incluirVinculaciones: false);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertStringContainsString('vinculaciones omitidas', $resultado['mensaje']);
+        $this->assertDatabaseMissing('oportunidad_encontrada_sync_pendientes', [
+            'accion' => OportunidadEncontradaRelayService::ACCION_GRABA,
+        ]);
+        $this->assertDatabaseHas('oportunidad_encontrada_sync_pendientes', [
+            'accion' => OportunidadEncontradaRelayService::ACCION_VINCULO,
+        ]);
+    }
 }
