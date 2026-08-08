@@ -302,7 +302,7 @@ class NotaService
             $encargadoNuevo !== $encargadoAnterior
             && preg_match('/^\d+-\d+-COT\d+$/', $encargadoNuevo) === 1
         ) {
-            // Reserva atómica local + par ANTES de grabar la nota.
+            // Reserva local (oportunidad_tomadas); no replica tomada al sitio par.
             $this->oportunidadRelay->reservarExclusivo(
                 $encargadoNuevo,
                 trim((string) $nota->usuario),

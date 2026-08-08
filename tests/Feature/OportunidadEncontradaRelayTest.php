@@ -342,7 +342,7 @@ class OportunidadEncontradaRelayTest extends TestCase
         $this->assertSame(['1000-1-COT26'], array_column($items, 'codigo'));
     }
 
-    public function test_asignar_codigo_reserva_antes_en_el_par(): void
+    public function test_asignar_codigo_reserva_solo_local_sin_sync_par(): void
     {
         config([
             'cotiz.sistema' => 'Romulo',
@@ -352,11 +352,7 @@ class OportunidadEncontradaRelayTest extends TestCase
         ]);
 
         Http::fake([
-            'cotiza.reicol.cl/api/v1/oportunidad-encontrada' => Http::response([
-                'resultado' => 'OK',
-                'codigo' => '2000-1-COT26',
-                'created' => true,
-            ], 200),
+            'cotiza.reicol.cl/*' => Http::response(['resultado' => 'ERROR'], 500),
         ]);
 
         $notaService = $this->app->make(NotaService::class);
@@ -370,14 +366,10 @@ class OportunidadEncontradaRelayTest extends TestCase
         ]);
         $this->assertSame('2000-1-COT26', strtoupper(trim((string) $nota->fresh()->encargado)));
 
-        Http::assertSent(function ($request) {
-            return $request->url() === 'https://cotiza.reicol.cl/api/v1/oportunidad-encontrada'
-                && ($request['accion'] ?? null) === 'tomada'
-                && ($request['codigo'] ?? null) === '2000-1-COT26';
-        });
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'oportunidad-encontrada'));
     }
 
-    public function test_si_par_rechaza_reserva_no_graba_encargado_ni_queda_tomada_local(): void
+    public function test_asignar_codigo_local_no_depends_on_par(): void
     {
         config([
             'cotiz.sistema' => 'Romulo',
@@ -395,18 +387,14 @@ class OportunidadEncontradaRelayTest extends TestCase
 
         $notaService = $this->app->make(NotaService::class);
         $nota = $notaService->crear('ejecutivo');
+        $notaService->modificarCabecera($nota, ['encargado' => '2000-2-COT26']);
 
-        try {
-            $notaService->modificarCabecera($nota, ['encargado' => '2000-2-COT26']);
-            $this->fail('Debía lanzar RuntimeException');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('2000-2-COT26', $e->getMessage());
-        }
-
-        $this->assertSame('', trim((string) $nota->fresh()->encargado));
-        $this->assertDatabaseMissing('oportunidad_tomadas', [
+        $this->assertSame('2000-2-COT26', strtoupper(trim((string) $nota->fresh()->encargado)));
+        $this->assertDatabaseHas('oportunidad_tomadas', [
             'codigo' => '2000-2-COT26',
+            'sistema' => 'Romulo',
         ]);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'oportunidad-encontrada'));
     }
 
     public function test_api_recibe_reserva_atomica_y_rechaza_conflicto(): void

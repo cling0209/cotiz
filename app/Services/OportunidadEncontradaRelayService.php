@@ -457,8 +457,8 @@ class OportunidadEncontradaRelayService
     }
 
     /**
-     * Reserva exclusiva del código CA: candado local + peer.
-     * Si el par no responde o ya está tomado, lanza y no deja continuar.
+     * Reserva exclusiva del código CA en este sitio (oportunidad_tomadas).
+     * No replica al sitio par: importar/cotizar aquí no oculta la oportunidad allá.
      */
     public function reservarExclusivo(string $codigo, ?string $usuario = null): void
     {
@@ -476,7 +476,6 @@ class OportunidadEncontradaRelayService
             );
         }
 
-        $creadaLocal = false;
         $existente = OportunidadTomada::query()->where('codigo', $codigo)->first();
 
         if ($existente !== null) {
@@ -488,7 +487,6 @@ class OportunidadEncontradaRelayService
                 );
             }
 
-            // Ya reservado por este sitio: reconfirmar en el par (idempotente).
             $existente->fill([
                 'sistema' => $sistema,
                 'usuario' => $usuarioNorm !== '' ? $usuarioNorm : $existente->usuario,
@@ -503,29 +501,11 @@ class OportunidadEncontradaRelayService
                     'usuario' => $usuarioNorm !== '' ? $usuarioNorm : null,
                     'tomada_at' => now(),
                 ]);
-                $creadaLocal = true;
             } catch (QueryException) {
                 throw new RuntimeException(
                     'La cotización «'.$codigo.'» ya está tomada.'
                 );
             }
-        }
-
-        if ($this->urlDestino() === '') {
-            return;
-        }
-
-        try {
-            // Bloqueante: no encolar. Si el par falla, no se permite tomar.
-            $this->enviarTomada($codigo, $usuarioNorm, $sistema, false);
-        } catch (\Throwable $e) {
-            if ($creadaLocal) {
-                OportunidadTomada::query()->where('codigo', $codigo)->delete();
-            }
-
-            throw new RuntimeException(
-                'No se pudo reservar «'.$codigo.'» en el sitio par. '.$e->getMessage()
-            );
         }
     }
 
