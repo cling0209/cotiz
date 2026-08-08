@@ -94,19 +94,18 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 Render **sigue sirviendo** mientras haces esto; el dump es lectura.
 
-### Nginx en el host (ejemplo)
+### Nginx en el host
 
-```nginx
-# cotiza.romulo.cl
-server_name cotiza.romulo.cl;
-location / { proxy_pass http://127.0.0.1:8001; ... }
+Configs listas en **`deploy/nginx/`** (las 3 apps):
 
-# cotiza.reicol.cl
-server_name cotiza.reicol.cl;
-location / { proxy_pass http://127.0.0.1:8002; ... }
+```bash
+cd /opt/cotiz-romulo
+bash deploy/nginx/install-on-vps.sh
+certbot --nginx -d cotiza.romulo.cl -d cotiza.reicol.cl
+# carro si falta TLS: certbot --nginx -d tienda.romulo.cl
 ```
 
-TLS con Certbot o Caddy.
+Ver **`deploy/nginx/README.md`**.
 
 ### Probar antes del corte DNS
 
