@@ -1,0 +1,36 @@
+# Producción Hetzner: Postgres + app (Dockerfile raíz)
+# Uso: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# APP_PORT / POSTGRES_PORT en .env.prod (Romulo: 8001/5433, Reicol: 8002/5434)
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    env_file: .env.prod
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+    ports:
+      - "127.0.0.1:${APP_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

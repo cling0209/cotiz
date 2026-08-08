@@ -3,6 +3,9 @@
 .env
 .env.backup
 .env.production
+.env.prod
+cotiz-*.env
+*.env.local
 .phpactor.json
 .phpunit.result.cache
 /.codex

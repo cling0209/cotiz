@@ -79,8 +79,16 @@ config/cotiz.php                   → factor precio, empresa
 
 ## Puertos (no chocan con carro)
 
-| Servicio | carro | cotiz |
-|----------|-------|-------|
-| Web | 8081 | **8082** |
-| Postgres | 5433 | **5434** |
-| Mailpit | 8026 | **8027** |
+| Servicio | carro (local) | cotiz (local) | Hetzner VPS |
+|----------|---------------|---------------|-------------|
+| Web | 8081 | **8082** | carro `8000`, cotiz Rómulo `8001`, Reicol `8002` |
+| Postgres | 5433 | **5434** | carro `5432`, cotiz Rómulo `5433`, Reicol `5434` |
+| Mailpit | 8026 | **8027** | — |
+
+## Despliegue producción
+
+| Plataforma | Documentación |
+|------------|---------------|
+| **Hetzner VPS** (Docker + CI/CD, Rómulo + Reicol) | **[HETZNER.md](HETZNER.md)** |
+| **Render** + Postgres + Resend | **[RENDER.md](RENDER.md)** |
+| **Koyeb** + Neon | **[KOYEB.md](KOYEB.md)** |

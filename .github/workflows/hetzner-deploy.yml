@@ -1,0 +1,82 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: hetzner-deploy-cotiz
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare SSH key
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "::error::Faltan secrets VPS_HOST, VPS_USER o VPS_SSH_KEY. Ver HETZNER.md"
+            exit 1
+          fi
+          mkdir -p .ssh
+          chmod 700 .ssh
+          printf '%s\n' "$VPS_SSH_KEY" > .ssh/deploy_key
+          chmod 600 .ssh/deploy_key
+          if ! ssh-keygen -y -f .ssh/deploy_key > /dev/null 2>&1; then
+            echo "::error::VPS_SSH_KEY no es una clave privada valida (ssh: no key found)."
+            exit 1
+          fi
+
+      - name: Deploy Rómulo + Reicol via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key_path: .ssh/deploy_key
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 45m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            deploy_instance() {
+              local dir="$1"
+              if [ ! -d "$dir" ]; then
+                echo "::warning::$dir no existe — omitiendo (bootstrap pendiente)"
+                return 0
+              fi
+              git config --global --add safe.directory "$dir"
+              cd "$dir"
+              if [ ! -f .env.prod ]; then
+                echo "::error::Falta $dir/.env.prod"
+                exit 1
+              fi
+              git fetch origin main
+              git reset --hard origin/main
+              docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build app
+              local port
+              port=$(grep -E '^APP_PORT=' .env.prod | cut -d= -f2- | tr -d ' "' || true)
+              port="${port:-8001}"
+              echo "Esperando health check en $dir (puerto $port)..."
+              for i in $(seq 1 60); do
+                if curl -sf "http://127.0.0.1:${port}/up" > /dev/null; then
+                  echo "Deploy OK: $dir"
+                  return 0
+                fi
+                sleep 5
+              done
+              echo "::error::App no respondio en /up tras 5 minutos ($dir)"
+              docker compose --env-file .env.prod -f docker-compose.prod.yml logs app --tail 50
+              exit 1
+            }
+
+            deploy_instance /opt/cotiz-romulo
+            deploy_instance /opt/cotiz-reicol
+            docker image prune -f
+            echo "Deploy cotiz completo"
