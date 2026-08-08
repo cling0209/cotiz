@@ -222,12 +222,21 @@
                                     @endif
 
                                     @if((int) $nota->enviadoapi === 0 && ! $nota->fueRecibidaPorApi())
+                                        @php
+                                            $parEnvio = $parEnvioPorNota[$nota->nronota] ?? null;
+                                        @endphp
+                                        @if(($parEnvio['existe'] ?? false) === true)
+                                            <span class="small text-danger" title="{{ $parEnvio['mensaje'] ?? '' }}">
+                                                Ya existe en el otro sitio
+                                            </span>
+                                        @else
                                         <form method="post" action="{{ route('admin.cotizaciones.enviar', $nota->nronota) }}" class="d-inline"
                                               data-confirm="¿Enviar la cotización #{{ $nota->nronota }}{{ trim((string) $nota->encargado) !== '' ? ' («'.trim((string) $nota->encargado).'»)' : '' }} al otro sitio (Romulo ↔ Reicol)? En el otro sitio queda registrada a nombre de {{ trim((string) $nota->usuario) !== '' ? $nota->usuario : 'su ejecutivo' }}. Solo se puede enviar una vez.">
                                             @csrf
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Enviar</button>
                                         </form>
+                                        @endif
                                     @endif
 
                                     @if($puedeGestionar)

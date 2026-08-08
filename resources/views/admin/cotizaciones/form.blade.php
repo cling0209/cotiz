@@ -767,11 +767,6 @@
 
         try {
             mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Verificando cotización en el otro sitio…');
-            await validarEncargadoParConEspera(numero, {
-                onProgress: (intento, max, msg) => mostrarProgresoConsultaPar(intento, max, msg),
-            });
-
             actualizarProgresoImportar(0, 0, 'Guardando número de cotización…');
             const cabecera = collectCabeceraFromForm();
             cabecera.encargado = numero;
@@ -1303,13 +1298,6 @@
 
         try {
             const cabecera = collectCabeceraFromForm();
-
-            if (necesitaConsultaParEncargado(cabecera.encargado)) {
-                setLoaderMensaje('Verificando cotización en el otro sitio…');
-                await validarEncargadoParConEspera(cabecera.encargado, {
-                    onProgress: (intento, max, msg) => setLoaderConsultaParProgreso(intento, max, msg),
-                });
-            }
 
             setLoaderMensaje('Guardando cabecera…');
             const { res: resCab, json: jsonCab } = await postJson(cabeceraUrl, cabecera);
@@ -3384,11 +3372,6 @@
         if (btnBuscar) btnBuscar.disabled = true;
 
         try {
-            await validarEncargadoParConEspera(codigo, {
-                csrf,
-                onProgress: mostrarProgresoConsultaPar,
-            });
-
             ocultarSoloAlertaConsultaPar();
             ocultarProgresoImportar();
 

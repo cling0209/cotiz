@@ -532,7 +532,7 @@ TXT;
             ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '1161-172-COT26'));
     }
 
-    public function test_preview_texto_rechaza_duplicado_en_par(): void
+    public function test_preview_texto_no_consulta_par_si_duplicado_alli(): void
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
@@ -556,11 +556,12 @@ TXT;
             ['texto' => $this->textoMp],
         )
             ->assertOk()
-            ->assertJsonPath('puede_importar', false)
-            ->assertJsonPath('error_cabecera', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+            ->assertJsonPath('puede_importar', true);
+
+        Http::assertNothingSent();
     }
 
-    public function test_importar_texto_rechaza_duplicado_en_par(): void
+    public function test_importar_texto_no_consulta_par_si_duplicado_alli(): void
     {
         config([
             'app.url' => 'https://cotiza.romulo.cl',
@@ -583,8 +584,9 @@ TXT;
             route('admin.cotizaciones.importar-compra-agil', $nota->nronota),
             ['texto' => $this->textoMp],
         )
-            ->assertStatus(422)
-            ->assertJsonPath('error', fn ($msg) => str_contains($msg, '1161-172-COT26'));
+            ->assertOk();
+
+        Http::assertNothingSent();
     }
 
     public function test_preview_texto_rechaza_si_no_existe_en_mp(): void

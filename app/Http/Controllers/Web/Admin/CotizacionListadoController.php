@@ -41,6 +41,7 @@ class CotizacionListadoController extends Controller
             'estadosMpFiltro' => NotaListadoService::ESTADOS_MP_FILTRO,
             'segundoLlamadoParaPostular' => $segundoLlamado,
             'nronotasSegundoLlamado' => $segundoLlamado->pluck('nronota')->all(),
+            'parEnvioPorNota' => $this->notaService->consultaParEnvioPorNotas($cotizaciones),
         ]);
     }
 
@@ -59,6 +60,10 @@ class CotizacionListadoController extends Controller
 
         if ((int) $nota->enviadoapi !== 0) {
             return $this->volverListado($request)->with('error', 'La cotización ya fue enviada.');
+        }
+
+        if ($errorPar = $this->notaService->errorSiEncargadoExisteEnParParaEnvio($nota)) {
+            return $this->volverListado($request)->with('error', $errorPar);
         }
 
         $this->notaService->marcarEnviadoApi($nota, 1);

@@ -10,7 +10,6 @@ use App\Services\CompraAgilApiService;
 use App\Services\CompraAgilImportService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CompraAgilPayloadMapper;
-use App\Services\NotaConsultaRemotaService;
 use App\Services\NotaService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Http\JsonResponse;
@@ -269,32 +268,17 @@ class CompraAgilBusquedaController extends Controller
             return response()->json(['error' => 'Indique el número de cotización Compra Ágil.'], 422);
         }
 
-        $validacion = $this->notaService->validarNumeroCotizacionDisponibleConDetalle($nota, $codigo, true);
-
-        if ($validacion['cold_start'] ?? false) {
-            $consultaPar = $validacion['consulta_par'] ?? [];
-
+        $error = $this->notaService->validarNumeroCotizacion($nota, $codigo);
+        if ($error !== null) {
             return response()->json([
-                'cold_start' => true,
-                'message' => NotaConsultaRemotaService::mensajeIniciandoConsulta(),
-                'intento' => $consultaPar['intento'] ?? 1,
-                'max_intentos' => $consultaPar['max_intentos'] ?? (int) config('cotiz.api_nota.consulta_par_max_intentos', 15),
-                'consulta_par' => $consultaPar,
-            ], 503);
-        }
-
-        if ($validacion['error'] !== null) {
-            return response()->json([
-                'error' => $validacion['error'],
-                'origen' => $validacion['origen'],
-                'consulta_par' => $validacion['consulta_par'],
+                'error' => $error,
+                'origen' => 'local',
             ], 422);
         }
 
         return response()->json([
             'ok' => true,
             'codigo' => $codigo,
-            'consulta_par' => $validacion['consulta_par'],
         ]);
     }
 
@@ -345,17 +329,7 @@ class CompraAgilBusquedaController extends Controller
             return 'Indique el número de cotización Compra Ágil.';
         }
 
-        if ($omitirConsultaParSiVerificado
-            && $this->notaService->encargadoVerificadoRecientementeEnPar($nota->nronota, $codigo)) {
-            return $this->notaService->validarNumeroCotizacion($nota, $codigo);
-        }
-
-        return $this->notaService->validarNumeroCotizacionDisponible(
-            $nota,
-            $codigo,
-            true,
-            $omitirConsultaParSiVerificado,
-        );
+        return $this->notaService->validarNumeroCotizacion($nota, $codigo);
     }
 
     private function notaAutorizada(Request $request, int $nronota, bool $persistir = false): array

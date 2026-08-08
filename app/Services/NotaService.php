@@ -421,7 +421,7 @@ class NotaService
     }
 
     /**
-     * Valida número de cotización en esta instancia y en el sitio par (Reicol/Romulo).
+     * Valida número de cotización solo en esta instancia (sin consultar el sitio par).
      */
     public function validarNumeroCotizacionDisponible(
         Nota $nota,
@@ -429,39 +429,11 @@ class NotaService
         bool $forzarConsultaPar = false,
         bool $omitirConsultaParSiVerificado = false,
     ): ?string {
-        $error = $this->validarNumeroCotizacion($nota, $encargado);
-        if ($error !== null) {
-            return $error;
-        }
-
-        $numero = trim($encargado ?? (string) $nota->encargado);
-        $actual = trim((string) $nota->encargado);
-
-        if (! $forzarConsultaPar && $actual !== '' && strcasecmp($actual, $numero) === 0) {
-            return null;
-        }
-
-        if ($omitirConsultaParSiVerificado && $this->encargadoVerificadoRecientementeEnPar($nota->nronota, $numero)) {
-            return null;
-        }
-
-        $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
-            $numero,
-            sprintf(
-                'La cotización «%s» ya existe registrada en el otro sitio, favor verificar.',
-                $numero,
-            ),
-        );
-
-        if ($remoto === '' || str_contains($remoto, 'ya existe')) {
-            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
-        }
-
-        return $remoto !== '' ? $remoto : null;
+        return $this->validarNumeroCotizacion($nota, $encargado);
     }
 
     /**
-     * @return array{error: string|null, origen: string|null, cold_start?: bool, consulta_par: array<string, mixed>|null}
+     * @return array{error: string|null, origen: string|null, consulta_par: null}
      */
     public function validarNumeroCotizacionDisponibleConDetalle(
         Nota $nota,
@@ -469,8 +441,6 @@ class NotaService
         bool $forzarConsultaPar = false,
         bool $omitirConsultaParSiVerificado = false,
     ): array {
-        $numero = trim($encargado ?? (string) $nota->encargado);
-
         $local = $this->validarNumeroCotizacion($nota, $encargado);
         if ($local !== null) {
             return [
@@ -480,74 +450,69 @@ class NotaService
             ];
         }
 
-        $actual = trim((string) $nota->encargado);
-
-        if (! $forzarConsultaPar && $actual !== '' && strcasecmp($actual, $numero) === 0) {
-            return [
-                'error' => null,
-                'origen' => null,
-                'consulta_par' => null,
-            ];
-        }
-
-        if ($omitirConsultaParSiVerificado && $this->encargadoVerificadoRecientementeEnPar($nota->nronota, $numero)) {
-            return [
-                'error' => null,
-                'origen' => null,
-                'consulta_par' => null,
-                'par_ya_verificado' => true,
-            ];
-        }
-
-        if ($numero === '') {
-            return [
-                'error' => null,
-                'origen' => null,
-                'consulta_par' => null,
-            ];
-        }
-
-        $consultaPar = app(NotaConsultaRemotaService::class)->consultarEncargadoEnPar($numero);
-
-        if (($consultaPar['cold_start'] ?? false) === true) {
-            return [
-                'error' => null,
-                'cold_start' => true,
-                'origen' => 'par',
-                'consulta_par' => $consultaPar,
-            ];
-        }
-
-        if ($consultaPar['error'] !== null && $consultaPar['error'] !== '') {
-            return [
-                'error' => $consultaPar['error'],
-                'origen' => 'par',
-                'consulta_par' => $consultaPar,
-            ];
-        }
-
-        if ($consultaPar['existe'] === true) {
-            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
-
-            return [
-                'error' => $consultaPar['mensaje'] ?? sprintf(
-                    'La cotización «%s» ya existe registrada en el otro sitio, favor verificar.',
-                    $numero,
-                ),
-                'origen' => 'par',
-                'consulta_par' => $consultaPar,
-            ];
-        }
-
-        if ($consultaPar !== null && $consultaPar['existe'] === false) {
-            $this->marcarEncargadoVerificadoEnPar($nota->nronota, $numero);
-        }
-
         return [
             'error' => null,
             'origen' => null,
-            'consulta_par' => $consultaPar,
+            'consulta_par' => null,
         ];
+    }
+
+    /**
+     * Valida duplicado en el otro sitio antes de enviar la cotización.
+     */
+    public function errorSiEncargadoExisteEnParParaEnvio(Nota $nota): ?string
+    {
+        $numero = trim((string) $nota->encargado);
+        if ($numero === '') {
+            return 'La cotización no tiene número de cotización.';
+        }
+
+        $remoto = app(NotaConsultaRemotaService::class)->errorSiEncargadoExisteEnPar(
+            $numero,
+            sprintf('La cotización «%s» ya existe en el otro sitio.', $numero),
+        );
+
+        return $remoto !== '' ? $remoto : null;
+    }
+
+    /**
+     * Consulta el sitio par para ocultar «Enviar» en el listado cuando el código ya existe allí.
+     *
+     * @param  iterable<int, Nota>  $notas
+     * @return array<int, array{existe: bool, mensaje: string}>
+     */
+    public function consultaParEnvioPorNotas(iterable $notas): array
+    {
+        if (! \App\Support\CotizInstanciaPar::debeConsultarPar()) {
+            return [];
+        }
+
+        $consulta = app(NotaConsultaRemotaService::class);
+        $estados = [];
+
+        foreach ($notas as $nota) {
+            if ((int) $nota->enviadoapi !== 0 || $nota->fueRecibidaPorApi()) {
+                continue;
+            }
+
+            $numero = trim((string) $nota->encargado);
+            if ($numero === '') {
+                continue;
+            }
+
+            $resultado = $consulta->consultarEncargadoEnPar($numero);
+            if (($resultado['existe'] ?? null) === true) {
+                $estados[(int) $nota->nronota] = [
+                    'existe' => true,
+                    'mensaje' => $resultado['mensaje'] ?? sprintf(
+                        'La cotización «%s» ya existe en el otro sitio.',
+                        $numero,
+                    ),
+                ];
+            }
+        }
+
+        return $estados;
     }
 
     private function claveParVerificado(int $nronota): string

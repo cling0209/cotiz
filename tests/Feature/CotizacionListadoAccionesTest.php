@@ -203,6 +203,42 @@ class CotizacionListadoAccionesTest extends TestCase
         ]);
     }
 
+    public function test_enviar_rechaza_si_codigo_ya_existe_en_par(): void
+    {
+        config([
+            'app.url' => 'https://cotiza.romulo.cl',
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.api_nota.consulta_nro_cotizacion' => 'https://cotiza.reicol.cl/api/v1/nota-consulta',
+            'cotiz.api_nota.user' => 'api_user',
+            'cotiz.api_nota.password' => 'api_pass',
+            'cotiz.api_nota.url' => '',
+            'cotiz.api_nota_envio.url' => '',
+        ]);
+
+        Http::fake([
+            'cotiza.reicol.cl/*' => Http::response([
+                'resultado' => 'OK',
+                'mensaje' => 'La cotización «2294-1487-COT26» ya existe (nota #99).',
+                'nronota' => 99,
+            ], 200),
+        ]);
+
+        $nota = $this->crearNota([
+            'usuario' => 'ejecutivo',
+            'encargado' => '2294-1487-COT26',
+            'enviadoapi' => 0,
+        ]);
+
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.enviar', $nota->nronota));
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+        $response->assertSessionHas('error', 'La cotización «2294-1487-COT26» ya existe (nota #99).');
+        $this->assertDatabaseHas('notas', [
+            'nronota' => $nota->nronota,
+            'enviadoapi' => 0,
+        ]);
+    }
+
     public function test_export_aceptadas_requiere_superadmin(): void
     {
         $this->actingAs($this->ejecutivo)
