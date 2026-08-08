@@ -33,9 +33,11 @@ class PdfOcrService
     }
 
     /**
+     * @param  array{crop_left_percent?: int}  $opciones
+     *
      * @throws RuntimeException
      */
-    public function extraerTexto(string $pdfPath): string
+    public function extraerTexto(string $pdfPath, array $opciones = []): string
     {
         if (! is_readable($pdfPath)) {
             throw new RuntimeException('No se pudo leer el PDF para OCR.');
@@ -82,12 +84,16 @@ class PdfOcrService
 
             $idioma = $this->idiomaRapido($tesseract);
             $psm = (string) $this->resolverPsm();
+            $cropPercent = max(0, min(90, (int) ($opciones['crop_left_percent'] ?? 0)));
             $textos = [];
             foreach ($imagenes as $imagen) {
-                $salida = $imagen.'.ocr';
+                $imagenParaOcr = $cropPercent > 0
+                    ? $this->recortarLadoIzquierdo($imagen, $cropPercent)
+                    : $imagen;
+                $salida = $imagenParaOcr.'.ocr';
                 $this->ejecutar([
                     $tesseract,
-                    $imagen,
+                    $imagenParaOcr,
                     $salida,
                     '-l',
                     $idioma,
@@ -287,5 +293,41 @@ class PdfOcrService
             @unlink($archivo);
         }
         @rmdir($dir);
+    }
+
+    /**
+     * Elimina la columna de imágenes (derecha) en tablas PRODUCTO | CANTIDAD | IMAGEN.
+     */
+    private function recortarLadoIzquierdo(string $pngPath, int $porcentajeAncho): string
+    {
+        if (! function_exists('imagecreatefrompng') || ! function_exists('imagecrop')) {
+            return $pngPath;
+        }
+
+        $imagen = @imagecreatefrompng($pngPath);
+        if ($imagen === false) {
+            return $pngPath;
+        }
+
+        $ancho = imagesx($imagen);
+        $alto = imagesy($imagen);
+        $anchoRecorte = max(1, (int) round($ancho * ($porcentajeAncho / 100)));
+        $recortada = imagecrop($imagen, [
+            'x' => 0,
+            'y' => 0,
+            'width' => $anchoRecorte,
+            'height' => $alto,
+        ]);
+        imagedestroy($imagen);
+
+        if ($recortada === false) {
+            return $pngPath;
+        }
+
+        $destino = $pngPath.'.crop.png';
+        imagepng($recortada, $destino);
+        imagedestroy($recortada);
+
+        return is_readable($destino) ? $destino : $pngPath;
     }
 }

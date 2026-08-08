@@ -106,6 +106,8 @@ return [
         'dpi' => max(100, min(600, (int) env('COTIZ_OCR_DPI', 300))),
         'max_pages' => max(1, min(50, (int) env('COTIZ_OCR_MAX_PAGES', 15))),
         'psm' => max(0, min(13, (int) env('COTIZ_OCR_PSM', 4))),
+        // Recorte columna izquierda (producto+cantidad) en tablas solicitud de pedido.
+        'crop_left_percent_tabla' => max(40, min(75, (int) env('COTIZ_OCR_CROP_LEFT_TABLA', 58))),
     ],
 
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.

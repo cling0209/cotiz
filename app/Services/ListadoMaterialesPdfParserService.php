@@ -720,14 +720,12 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($textoNativo === '') {
-            return $this->extraerTextoPdfMedianteOcr($path);
+            return $this->resolverTextoPdfMedianteOcr($path, null);
         }
 
         if ($this->debeComplementarTextoPdfConOcr($path, $textoNativo)) {
             try {
-                $textoOcr = $this->extraerTextoPdfMedianteOcr($path);
-
-                return $this->elegirMejorTextoPdfTablaProducto($textoNativo, $textoOcr);
+                return $this->resolverTextoPdfMedianteOcr($path, $textoNativo);
             } catch (RuntimeException) {
                 return $textoNativo;
             }
@@ -736,11 +734,47 @@ class ListadoMaterialesPdfParserService
         return $textoNativo;
     }
 
-    private function extraerTextoPdfMedianteOcr(string $path): string
+    private function resolverTextoPdfMedianteOcr(string $path, ?string $textoNativo): string
+    {
+        $textoOcr = $this->extraerTextoPdfMedianteOcr($path, false);
+        $elegido = $textoNativo !== null
+            ? $this->elegirMejorTextoPdfTablaProducto($textoNativo, $textoOcr)
+            : $textoOcr;
+
+        $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($elegido));
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($elegido));
+        if (! $this->esFormatoTablaProductoCantidad($upper)) {
+            return $elegido;
+        }
+
+        $lineas = count($this->parseTablaProductoCantidad($elegido));
+        if ($lineas >= max(12, (int) floor($paginas * 6))) {
+            return $elegido;
+        }
+
+        try {
+            $textoCrop = $this->extraerTextoPdfMedianteOcr($path, true);
+            $mejor = $this->elegirMejorTextoPdfTablaProducto($elegido, $textoCrop);
+            if ($textoNativo !== null && $textoNativo !== $elegido) {
+                return $this->elegirMejorTextoPdfTablaProducto($textoNativo, $mejor);
+            }
+
+            return $mejor;
+        } catch (RuntimeException) {
+            return $elegido;
+        }
+    }
+
+    private function extraerTextoPdfMedianteOcr(string $path, bool $recortarColumnaProducto): string
     {
         $ocr = $this->ocr ?? new PdfOcrService;
+        $opciones = [];
+        if ($recortarColumnaProducto) {
+            $opciones['crop_left_percent'] = $this->porcentajeRecorteColumnaProducto();
+        }
+
         try {
-            return $ocr->extraerTexto($path);
+            return $ocr->extraerTexto($path, $opciones);
         } catch (RuntimeException $e) {
             if (str_contains($e->getMessage(), 'OCR no disponible')) {
                 throw new RuntimeException(
@@ -758,6 +792,27 @@ class ListadoMaterialesPdfParserService
         }
     }
 
+    private function porcentajeRecorteColumnaProducto(): int
+    {
+        try {
+            $valor = config('cotiz.ocr.crop_left_percent_tabla');
+        } catch (\Throwable) {
+            return 58;
+        }
+
+        return is_numeric($valor) ? max(40, min(75, (int) $valor)) : 58;
+    }
+
+    private function inferirPaginasDesdeTexto(string $texto): int
+    {
+        if (preg_match_all('/P[AÁ]GINA\s+\d+\s+DE\s+(\d+)/iu', $texto, $coincidencias) !== false
+            && ($coincidencias[1] ?? []) !== []) {
+            return max(array_map(static fn (string $n): int => (int) $n, $coincidencias[1]));
+        }
+
+        return 1;
+    }
+
     private function debeComplementarTextoPdfConOcr(string $path, string $textoNativo): bool
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($textoNativo));
@@ -770,7 +825,10 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
-        $paginas = $this->contarPaginasPdf($path);
+        $paginas = max(
+            $this->contarPaginasPdf($path),
+            $this->inferirPaginasDesdeTexto($textoNativo),
+        );
         if ($paginas < 2) {
             return false;
         }
@@ -994,7 +1052,7 @@ class ListadoMaterialesPdfParserService
 
         if ($this->esFragmentoContinuacionDescripcion($descripcion)) {
             $buffer = $buffer !== null ? trim($buffer.' '.$descripcion) : $descripcion;
-            $cantidadPendiente ??= $fila['cantidad'];
+            $cantidadPendiente = $fila['cantidad'];
 
             if ($buffer !== null && $cantidadPendiente !== null && ! $this->esFragmentoContinuacionDescripcion($buffer)) {
                 $resultado[] = [
@@ -1011,8 +1069,9 @@ class ListadoMaterialesPdfParserService
         if ($buffer !== null) {
             $descripcion = trim($buffer.' '.$descripcion);
             $buffer = null;
-            $cantidadPendiente = null;
         }
+
+        $cantidadPendiente = null;
 
         $resultado[] = [
             'cantidad' => $fila['cantidad'],

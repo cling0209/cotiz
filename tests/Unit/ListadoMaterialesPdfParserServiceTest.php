@@ -479,6 +479,16 @@ TXT;
         $this->assertSame($textoOcr, $elegido);
     }
 
+    public function test_inferir_paginas_desde_marcadores_en_texto(): void
+    {
+        $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'inferirPaginasDesdeTexto');
+        $metodo->setAccessible(true);
+
+        $texto = "ESPECIFICACIONES SOLICITUD DE PEDIDO\nPágina 2 de 11\nPágina 5 de 11";
+
+        $this->assertSame(11, $metodo->invoke($this->parser, $texto));
+    }
+
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
         $ocr = new PdfOcrService;
