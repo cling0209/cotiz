@@ -356,6 +356,44 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('BANDA', $lineas[1]['descripcion']);
     }
 
+    public function test_detecta_formato_tabla_producto_cantidad(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_tabla.txt');
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+    }
+
+    public function test_parse_tabla_producto_cantidad_solicitud_pedido(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_tabla.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(11, count($lineas));
+        $this->assertSame(8, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPICES DE CERA', $lineas[0]['descripcion']);
+        $this->assertSame(10, $lineas[3]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA OFICIO', $lineas[3]['descripcion']);
+        $this->assertSame(1, $lineas[8]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO', $lineas[8]['descripcion']);
+        $this->assertSame(5, $lineas[9]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[9]['descripcion']);
+        $this->assertSame(2, $lineas[10]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CLIP METALICO', $lineas[10]['descripcion']);
+    }
+
+    public function test_listado_cantidad_no_se_confunde_con_tabla_producto(): void
+    {
+        $texto = <<<'TXT'
+Cantidad    NOMBRE DEL PRODUCTO
+40          ACUARELAS DE 12 COLORES C/U
+5           LIMPIADOR DE PISOS CON AROMAS 5 LTS. CADA UNO
+TXT;
+
+        $this->assertSame('listado_cantidad', $this->parser->detectarFormato($texto));
+        $this->assertCount(2, $this->parser->parseTexto($texto));
+    }
+
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
         $ocr = new PdfOcrService;

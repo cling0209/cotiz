@@ -23,6 +23,8 @@ class ListadoMaterialesPdfParserService
 
     private const FORMATO_EETT = 'eett_especificaciones';
 
+    private const FORMATO_TABLA_PRODUCTO_CANTIDAD = 'tabla_producto_cantidad';
+
     public function __construct(
         protected ?PdfOcrService $ocr = null,
     ) {}
@@ -87,6 +89,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_DETALLE => $this->parseDetalleUnidades($texto),
             self::FORMATO_LICITACION => $this->parseLicitacionPedido($texto),
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
+            self::FORMATO_TABLA_PRODUCTO_CANTIDAD => $this->parseTablaProductoCantidad($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
             default => $this->parseListadoCantidad($texto),
         };
@@ -163,6 +166,10 @@ class ListadoMaterialesPdfParserService
 
         if (str_contains($upper, 'DETALLE PRODUCTO') && str_contains($upper, 'UNIDADES')) {
             return self::FORMATO_DETALLE;
+        }
+
+        if ($this->esFormatoTablaProductoCantidad($upper)) {
+            return self::FORMATO_TABLA_PRODUCTO_CANTIDAD;
         }
 
         if (
@@ -734,6 +741,235 @@ class ListadoMaterialesPdfParserService
                 $e,
             );
         }
+    }
+
+    private function esFormatoTablaProductoCantidad(string $upper): bool
+    {
+        if (str_contains($upper, 'DETALLE PRODUCTO')) {
+            return false;
+        }
+
+        if (preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) !== 1) {
+            return false;
+        }
+
+        if (
+            str_contains($upper, 'ESPECIFICACIONES TECNICAS')
+            || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
+            || str_contains($upper, 'CANTIDAD DETALLE DEL REQUERIMIENTO')
+        ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Tabla PDF/Word: PRODUCTO | CANTIDAD | IMAGEN REFERENCIA (p. ej. solicitud de pedido).
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseTablaProductoCantidad(string $texto): array
+    {
+        $resultado = [];
+        $enTabla = false;
+        $buffer = null;
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim(preg_replace('/[ \t]+/u', ' ', $lineaCruda) ?? $lineaCruda);
+            if ($linea === '') {
+                continue;
+            }
+
+            if ($this->esEncabezadoTablaProductoCantidad($linea)) {
+                $enTabla = true;
+
+                continue;
+            }
+
+            if (! $enTabla) {
+                continue;
+            }
+
+            if ($this->esRuidoTablaProductoCantidad($linea)) {
+                continue;
+            }
+
+            $desdeColumnas = $this->extraerDesdeColumnasTabuladas($lineaCruda);
+            if ($desdeColumnas !== null) {
+                $buffer = null;
+                $resultado[] = $desdeColumnas;
+
+                continue;
+            }
+
+            $parsed = $this->extraerProductoCantidadDeLinea($linea);
+            if ($parsed !== null) {
+                $buffer = null;
+                $resultado[] = $parsed;
+
+                continue;
+            }
+
+            if ($buffer !== null) {
+                $cantidad = $this->parseCantidadCeldaTabla($linea);
+                if ($cantidad !== null && mb_strlen($buffer) >= 3) {
+                    $resultado[] = [
+                        'cantidad' => $cantidad,
+                        'descripcion' => $buffer,
+                    ];
+                    $buffer = null;
+
+                    continue;
+                }
+            }
+
+            if ($this->pareceLineaDescripcionTabla($linea)) {
+                $buffer = $buffer === null ? $linea : trim($buffer.' '.$linea);
+            }
+        }
+
+        return $resultado;
+    }
+
+    private function esEncabezadoTablaProductoCantidad(string $linea): bool
+    {
+        $upper = mb_strtoupper($linea);
+
+        return preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1;
+    }
+
+    private function esRuidoTablaProductoCantidad(string $linea): bool
+    {
+        $upper = mb_strtoupper(trim($linea));
+
+        if ($upper === '') {
+            return true;
+        }
+
+        foreach ([
+            'PÁGINA',
+            'PAGINA',
+            'ESPECIFICACIONES SOLICITUD',
+            'SOLICITUD DE PEDIDO',
+            'IMAGEN REFERENCIA',
+            'IMAGEN DE REFERENCIA',
+        ] as $marcador) {
+            if ($upper === $marcador || str_starts_with($upper, $marcador.' ')) {
+                return true;
+            }
+        }
+
+        return preg_match('/^P[AÁ]GINA\s+\d+/u', $upper) === 1;
+    }
+
+    private function pareceLineaDescripcionTabla(string $linea): bool
+    {
+        if ($this->parseCantidadCeldaTabla($linea) !== null && mb_strlen(trim($linea)) <= 24) {
+            return false;
+        }
+
+        return preg_match('/[A-ZÁÉÍÓÚÑa-záéíóúñ]/u', $linea) === 1
+            && mb_strlen(trim($linea)) >= 3;
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerDesdeColumnasTabuladas(string $lineaCruda): ?array
+    {
+        if (! str_contains($lineaCruda, "\t")) {
+            return null;
+        }
+
+        $partes = array_values(array_filter(
+            array_map(static fn (string $p) => trim($p), explode("\t", $lineaCruda)),
+            static fn (string $p) => $p !== '',
+        ));
+
+        if (count($partes) < 2) {
+            return null;
+        }
+
+        $descripcion = trim($partes[0]);
+        $cantidadRaw = trim($partes[1]);
+        $cantidad = $this->parseCantidadCeldaTabla($cantidadRaw);
+
+        if ($cantidad === null || mb_strlen($descripcion) < 3) {
+            return null;
+        }
+
+        if ($this->esEncabezadoTablaProductoCantidad($descripcion)) {
+            return null;
+        }
+
+        return [
+            'cantidad' => $cantidad,
+            'descripcion' => $descripcion,
+        ];
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerProductoCantidadDeLinea(string $linea): ?array
+    {
+        $linea = trim($linea);
+        if ($linea === '' || $this->esEncabezadoTablaProductoCantidad($linea)) {
+            return null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+unidades?\.?\s*$/u', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.+?)\s+(\d+)\s*pack\.?\s*$/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.{3,}?)\s+(\d{1,5})\s*$/u', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+            if ($this->esRuidoTablaProductoCantidad($descripcion)) {
+                return null;
+            }
+
+            return [
+                'cantidad' => max(1, (int) $coincidencia[2]),
+                'descripcion' => $descripcion,
+            ];
+        }
+
+        return null;
+    }
+
+    private function parseCantidadCeldaTabla(string $raw): ?int
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/^(\d+)\s*unidades?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*pack\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d{1,5})$/u', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        return null;
     }
 
     /**
