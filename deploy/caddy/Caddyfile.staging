@@ -1,0 +1,13 @@
+# Staging / pruebas — DNS cotiza-vps.* → VPS (Render sigue en cotiza.*)
+
+tienda.romulo.cl {
+	reverse_proxy 127.0.0.1:8000
+}
+
+cotiza-vps.romulo.cl {
+	reverse_proxy 127.0.0.1:8001
+}
+
+cotiza-vps.reicol.cl {
+	reverse_proxy 127.0.0.1:8002
+}
