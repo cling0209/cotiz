@@ -394,6 +394,32 @@ TXT;
         $this->assertCount(2, $this->parser->parseTexto($texto));
     }
 
+    public function test_parse_solicitud_pedido_con_cabeceras_ocr_separadas(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_ocr.txt');
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(6, count($lineas));
+        $this->assertSame(10, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('bolsas COLORES SURTIDOS', $lineas[0]['descripcion']);
+        $this->assertSame(8, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPICES DE CERA', $lineas[1]['descripcion']);
+
+        foreach ($lineas as $linea) {
+            $this->assertFalse(
+                (bool) preg_match('/^\d+\s*\|\s*\d+\s*unidades?\.?\s*$/iu', $linea['descripcion']),
+                'No debe importar fragmentos EETT: '.$linea['descripcion'],
+            );
+            $this->assertFalse(
+                (bool) preg_match('/^\d+\s+unidades?\.?\s*$/iu', $linea['descripcion']),
+                'No debe importar solo cantidad: '.$linea['descripcion'],
+            );
+        }
+    }
+
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
         $ocr = new PdfOcrService;

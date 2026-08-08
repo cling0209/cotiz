@@ -749,10 +749,6 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
-        if (preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) !== 1) {
-            return false;
-        }
-
         if (
             str_contains($upper, 'ESPECIFICACIONES TECNICAS')
             || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
@@ -761,7 +757,17 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
-        return true;
+        if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1) {
+            return true;
+        }
+
+        if (preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1) {
+            return true;
+        }
+
+        return preg_match('/\bPRODUCTO\b/u', $upper) === 1
+            && preg_match('/\bCANTIDAD\b/u', $upper) === 1
+            && preg_match('/IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1;
     }
 
     /**
@@ -771,6 +777,9 @@ class ListadoMaterialesPdfParserService
      */
     private function parseTablaProductoCantidad(string $texto): array
     {
+        $upperDoc = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        $esSolicitudPedido = preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upperDoc) === 1;
+
         $resultado = [];
         $enTabla = false;
         $buffer = null;
@@ -781,10 +790,22 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            if ($this->esEncabezadoTablaProductoCantidad($linea)) {
+            if ($this->esEncabezadoTablaProductoCantidad($linea) || $this->esLineaCabeceraColumnaSolicitud($linea)) {
                 $enTabla = true;
 
                 continue;
+            }
+
+            if (! $enTabla && $esSolicitudPedido) {
+                if ($this->esTituloSolicitudPedido($linea)) {
+                    continue;
+                }
+
+                if ($this->intentarFilaTablaProducto($linea, $lineaCruda) === null) {
+                    continue;
+                }
+
+                $enTabla = true;
             }
 
             if (! $enTabla) {
@@ -795,18 +816,10 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            $desdeColumnas = $this->extraerDesdeColumnasTabuladas($lineaCruda);
-            if ($desdeColumnas !== null) {
+            $fila = $this->intentarFilaTablaProducto($linea, $lineaCruda);
+            if ($fila !== null) {
                 $buffer = null;
-                $resultado[] = $desdeColumnas;
-
-                continue;
-            }
-
-            $parsed = $this->extraerProductoCantidadDeLinea($linea);
-            if ($parsed !== null) {
-                $buffer = null;
-                $resultado[] = $parsed;
+                $resultado[] = $fila;
 
                 continue;
             }
@@ -829,7 +842,99 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        return $resultado;
+        return array_values(array_filter(
+            $resultado,
+            fn (array $linea): bool => ! $this->esDescripcionBasuraTabla($linea['descripcion']),
+        ));
+    }
+
+    private function esTituloSolicitudPedido(string $linea): bool
+    {
+        $upper = mb_strtoupper(trim($linea));
+
+        return str_contains($upper, 'SOLICITUD DE PEDIDO')
+            || str_contains($upper, 'ESPECIFICACIONES SOLICITUD');
+    }
+
+    private function esLineaCabeceraColumnaSolicitud(string $linea): bool
+    {
+        $upper = mb_strtoupper(trim($linea));
+
+        if (in_array($upper, ['PRODUCTO', 'CANTIDAD'], true)) {
+            return true;
+        }
+
+        return preg_match('/^IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1;
+    }
+
+    private function esDescripcionBasuraTabla(string $descripcion): bool
+    {
+        $descripcion = trim($descripcion);
+        if ($descripcion === '' || mb_strlen($descripcion) < 4) {
+            return true;
+        }
+
+        if (preg_match('/^\d+\s*\|\s*\d+\s*unidades?\.?\s*$/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        return preg_match('/^\d+\s+unidades?\.?\s*$/iu', $descripcion) === 1;
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function intentarFilaTablaProducto(string $linea, string $lineaCruda): ?array
+    {
+        $desdeColumnas = $this->extraerDesdeColumnasTabuladas($lineaCruda);
+        if ($desdeColumnas !== null && ! $this->esDescripcionBasuraTabla($desdeColumnas['descripcion'])) {
+            return $desdeColumnas;
+        }
+
+        $desdeEspacios = $this->extraerDesdeColumnasEspaciadas($linea);
+        if ($desdeEspacios !== null && ! $this->esDescripcionBasuraTabla($desdeEspacios['descripcion'])) {
+            return $desdeEspacios;
+        }
+
+        $parsed = $this->extraerProductoCantidadDeLinea($linea);
+        if ($parsed !== null && ! $this->esDescripcionBasuraTabla($parsed['descripcion'])) {
+            return $parsed;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerDesdeColumnasEspaciadas(string $linea): ?array
+    {
+        if (! preg_match('/\s{2,}/u', $linea)) {
+            return null;
+        }
+
+        $partes = preg_split('/\s{2,}/u', trim($linea)) ?: [];
+        $partes = array_values(array_filter(array_map('trim', $partes), static fn (string $p) => $p !== ''));
+
+        if (count($partes) < 2) {
+            return null;
+        }
+
+        $descripcion = $partes[0];
+        $cantidad = $this->parseCantidadCeldaTabla($partes[1]);
+
+        if ($cantidad === null || mb_strlen($descripcion) < 3) {
+            return null;
+        }
+
+        if ($this->esLineaCabeceraColumnaSolicitud($descripcion) || $this->esEncabezadoTablaProductoCantidad($descripcion)) {
+            return null;
+        }
+
+        return [
+            'cantidad' => $cantidad,
+            'descripcion' => $descripcion,
+        ];
     }
 
     private function esEncabezadoTablaProductoCantidad(string $linea): bool
@@ -917,6 +1022,14 @@ class ListadoMaterialesPdfParserService
         $linea = trim($linea);
         if ($linea === '' || $this->esEncabezadoTablaProductoCantidad($linea)) {
             return null;
+        }
+
+        if (preg_match('/^UNIDADES?\s+(\d+)\s+(.+)$/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[2]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[1]), 'descripcion' => $descripcion]
+                : null;
         }
 
         if (preg_match('/^(.+)\s+(\d+)\s+unidades?\.?\s*$/u', $linea, $coincidencia) === 1) {
