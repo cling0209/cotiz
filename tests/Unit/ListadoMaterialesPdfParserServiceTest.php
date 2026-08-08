@@ -451,6 +451,34 @@ TXT;
         }
     }
 
+    public function test_parse_solicitud_pedido_cantidad_en_linea_sola(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_cantidad_sola.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(5, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[0]['descripcion']);
+        $this->assertSame(2, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CLIP METALICO', $lineas[1]['descripcion']);
+        $this->assertSame(3, $lineas[2]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('PERFORADORA', $lineas[2]['descripcion']);
+    }
+
+    public function test_elegir_mejor_texto_pdf_prefiere_ocr_con_mas_filas(): void
+    {
+        $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'elegirMejorTextoPdfTablaProducto');
+        $metodo->setAccessible(true);
+
+        $textoNativo = $this->cargarFixture('solicitud_pedido_ocr.txt');
+        $textoOcr = $this->cargarFixture('solicitud_pedido_tabla.txt');
+
+        $elegido = $metodo->invoke($this->parser, $textoNativo, $textoOcr);
+
+        $this->assertSame($textoOcr, $elegido);
+    }
+
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
         $ocr = new PdfOcrService;

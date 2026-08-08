@@ -714,15 +714,30 @@ class ListadoMaterialesPdfParserService
         try {
             $parser = new Parser;
             $pdf = $parser->parseFile($path);
-            $texto = trim((string) $pdf->getText());
+            $textoNativo = trim((string) $pdf->getText());
         } catch (\Throwable $e) {
             throw new RuntimeException('No se pudo extraer texto del PDF. Verifique que no sea un documento escaneado.', 0, $e);
         }
 
-        if ($texto !== '') {
-            return $texto;
+        if ($textoNativo === '') {
+            return $this->extraerTextoPdfMedianteOcr($path);
         }
 
+        if ($this->debeComplementarTextoPdfConOcr($path, $textoNativo)) {
+            try {
+                $textoOcr = $this->extraerTextoPdfMedianteOcr($path);
+
+                return $this->elegirMejorTextoPdfTablaProducto($textoNativo, $textoOcr);
+            } catch (RuntimeException) {
+                return $textoNativo;
+            }
+        }
+
+        return $textoNativo;
+    }
+
+    private function extraerTextoPdfMedianteOcr(string $path): string
+    {
         $ocr = $this->ocr ?? new PdfOcrService;
         try {
             return $ocr->extraerTexto($path);
@@ -740,6 +755,61 @@ class ListadoMaterialesPdfParserService
                 0,
                 $e,
             );
+        }
+    }
+
+    private function debeComplementarTextoPdfConOcr(string $path, string $textoNativo): bool
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($textoNativo));
+        if (! $this->esFormatoTablaProductoCantidad($upper)) {
+            return false;
+        }
+
+        $ocr = $this->ocr ?? new PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            return false;
+        }
+
+        $paginas = $this->contarPaginasPdf($path);
+        if ($paginas < 2) {
+            return false;
+        }
+
+        $lineas = count($this->parseTablaProductoCantidad($textoNativo));
+        $minEsperadas = max(12, (int) floor($paginas * 6));
+
+        return $lineas < $minEsperadas;
+    }
+
+    private function elegirMejorTextoPdfTablaProducto(string $textoNativo, string $textoOcr): string
+    {
+        $lineasNativo = count($this->parseTablaProductoCantidad($textoNativo));
+        $lineasOcr = count($this->parseTablaProductoCantidad($textoOcr));
+
+        if ($lineasOcr > $lineasNativo) {
+            return $textoOcr;
+        }
+
+        if ($lineasOcr > 0 && $lineasNativo > 0) {
+            $combinado = trim($textoNativo."\n".$textoOcr);
+            $lineasCombinado = count($this->parseTablaProductoCantidad($combinado));
+            if ($lineasCombinado > max($lineasNativo, $lineasOcr)) {
+                return $combinado;
+            }
+        }
+
+        return $textoNativo;
+    }
+
+    private function contarPaginasPdf(string $path): int
+    {
+        try {
+            $parser = new Parser;
+            $pdf = $parser->parseFile($path);
+
+            return max(1, count($pdf->getPages()));
+        } catch (\Throwable) {
+            return 1;
         }
     }
 
@@ -817,6 +887,12 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
+            if (preg_match('/^\d{1,5}$/u', $linea) === 1 && $buffer === null) {
+                $cantidadPendiente = max(1, (int) $linea);
+
+                continue;
+            }
+
             $fila = $this->intentarFilaTablaProducto($linea, $lineaCruda);
             if ($fila !== null) {
                 $this->incorporarFilaTablaProducto($resultado, $buffer, $cantidadPendiente, $fila);
@@ -839,22 +915,69 @@ class ListadoMaterialesPdfParserService
             }
 
             if ($this->pareceLineaDescripcionTabla($linea) && $this->extraerProductoCantidadDeLinea($linea) === null) {
+                if ($buffer === null && $cantidadPendiente !== null) {
+                    $resultado[] = [
+                        'cantidad' => $cantidadPendiente,
+                        'descripcion' => $linea,
+                    ];
+                    $cantidadPendiente = null;
+
+                    continue;
+                }
+
                 $buffer = $buffer === null ? $linea : trim($buffer.' '.$linea);
+
+                if ($cantidadPendiente !== null && $buffer !== null && mb_strlen($buffer) >= 5) {
+                    $resultado[] = [
+                        'cantidad' => $cantidadPendiente,
+                        'descripcion' => $buffer,
+                    ];
+                    $buffer = null;
+                    $cantidadPendiente = null;
+                }
             }
         }
 
-        if ($buffer !== null && $cantidadPendiente !== null && mb_strlen($buffer) >= 5) {
-            $resultado[] = [
-                'cantidad' => $cantidadPendiente,
-                'descripcion' => $buffer,
-            ];
+        if ($buffer !== null) {
+            $desdeBuffer = $this->extraerProductoCantidadDeLinea($buffer);
+            if ($desdeBuffer !== null && ! $this->esFragmentoContinuacionDescripcion($desdeBuffer['descripcion'])) {
+                $resultado[] = $desdeBuffer;
+            } elseif ($cantidadPendiente !== null && mb_strlen($buffer) >= 5) {
+                $resultado[] = [
+                    'cantidad' => $cantidadPendiente,
+                    'descripcion' => $buffer,
+                ];
+            }
+        } elseif ($cantidadPendiente !== null) {
+            // cantidad huérfana al final — se descarta
         }
 
-        return array_values(array_filter(
+        return $this->deduplicarLineasTabla(array_values(array_filter(
             $resultado,
             fn (array $linea): bool => ! $this->esFragmentoContinuacionDescripcion($linea['descripcion'])
                 && ! $this->esDescripcionBasuraTabla($linea['descripcion']),
-        ));
+        )));
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function deduplicarLineasTabla(array $resultado): array
+    {
+        $vistas = [];
+        $unicas = [];
+
+        foreach ($resultado as $linea) {
+            $clave = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $linea['descripcion']) ?? $linea['descripcion']));
+            if ($clave === '' || isset($vistas[$clave])) {
+                continue;
+            }
+            $vistas[$clave] = true;
+            $unicas[] = $linea;
+        }
+
+        return $unicas;
     }
 
     /**
