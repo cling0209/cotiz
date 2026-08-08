@@ -783,6 +783,7 @@ class ListadoMaterialesPdfParserService
         $resultado = [];
         $enTabla = false;
         $buffer = null;
+        $cantidadPendiente = null;
 
         foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
             $linea = trim(preg_replace('/[ \t]+/u', ' ', $lineaCruda) ?? $lineaCruda);
@@ -818,8 +819,7 @@ class ListadoMaterialesPdfParserService
 
             $fila = $this->intentarFilaTablaProducto($linea, $lineaCruda);
             if ($fila !== null) {
-                $buffer = null;
-                $resultado[] = $fila;
+                $this->incorporarFilaTablaProducto($resultado, $buffer, $cantidadPendiente, $fila);
 
                 continue;
             }
@@ -832,20 +832,109 @@ class ListadoMaterialesPdfParserService
                         'descripcion' => $buffer,
                     ];
                     $buffer = null;
+                    $cantidadPendiente = null;
 
                     continue;
                 }
             }
 
-            if ($this->pareceLineaDescripcionTabla($linea)) {
+            if ($this->pareceLineaDescripcionTabla($linea) && $this->extraerProductoCantidadDeLinea($linea) === null) {
                 $buffer = $buffer === null ? $linea : trim($buffer.' '.$linea);
             }
         }
 
+        if ($buffer !== null && $cantidadPendiente !== null && mb_strlen($buffer) >= 5) {
+            $resultado[] = [
+                'cantidad' => $cantidadPendiente,
+                'descripcion' => $buffer,
+            ];
+        }
+
         return array_values(array_filter(
             $resultado,
-            fn (array $linea): bool => ! $this->esDescripcionBasuraTabla($linea['descripcion']),
+            fn (array $linea): bool => ! $this->esFragmentoContinuacionDescripcion($linea['descripcion'])
+                && ! $this->esDescripcionBasuraTabla($linea['descripcion']),
         ));
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     * @param  array{cantidad: int, descripcion: string}  $fila
+     */
+    private function incorporarFilaTablaProducto(
+        array &$resultado,
+        ?string &$buffer,
+        ?int &$cantidadPendiente,
+        array $fila,
+    ): void {
+        $descripcion = trim($fila['descripcion']);
+
+        if ($this->esFragmentoContinuacionDescripcion($descripcion)) {
+            $buffer = $buffer !== null ? trim($buffer.' '.$descripcion) : $descripcion;
+            $cantidadPendiente ??= $fila['cantidad'];
+
+            if ($buffer !== null && $cantidadPendiente !== null && ! $this->esFragmentoContinuacionDescripcion($buffer)) {
+                $resultado[] = [
+                    'cantidad' => $cantidadPendiente,
+                    'descripcion' => $buffer,
+                ];
+                $buffer = null;
+                $cantidadPendiente = null;
+            }
+
+            return;
+        }
+
+        if ($buffer !== null) {
+            $descripcion = trim($buffer.' '.$descripcion);
+            $buffer = null;
+            $cantidadPendiente = null;
+        }
+
+        $resultado[] = [
+            'cantidad' => $fila['cantidad'],
+            'descripcion' => $descripcion,
+        ];
+    }
+
+    private function esFragmentoContinuacionDescripcion(string $descripcion): bool
+    {
+        $descripcion = trim($descripcion);
+        if ($descripcion === '') {
+            return true;
+        }
+
+        $upper = mb_strtoupper($descripcion);
+
+        if (preg_match('/^[\d,\.]+\s*(MTS|MT|MM|CM|KG|GR|G)\b/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^[\d,\.]+\s*(MTS|MT|MM|CM)\.?$/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        foreach ([
+            'UNIDADES PTA',
+            'PTA FINA',
+            'HOJAS PACK',
+            'MM PACK',
+            'MM X',
+            'X 13',
+            'X 18',
+        ] as $prefijo) {
+            if (str_starts_with($upper, $prefijo)) {
+                return true;
+            }
+        }
+
+        if (mb_strlen($descripcion) < 22 && preg_match('/\b(UNIDADES|PACK|HOJAS|PTA FINA|MM|MTS)\b/iu', $descripcion) === 1) {
+            if (! preg_match('/^(LAPICES|LAPIZ|RESMA|CORCHETERA|PERFORADORA|CINTA|CUADERNO|GOMA|CLIP|BOLIGRAFO|TIJERA|PEGAMENTO|ACUARELA|LÁMINA|LAMINA|BLOCK|CARPETA|ARCHIVADOR|REGLA)/iu', $descripcion)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function esTituloSolicitudPedido(string $linea): bool
@@ -897,8 +986,14 @@ class ListadoMaterialesPdfParserService
         }
 
         $parsed = $this->extraerProductoCantidadDeLinea($linea);
-        if ($parsed !== null && ! $this->esDescripcionBasuraTabla($parsed['descripcion'])) {
-            return $parsed;
+        if ($parsed !== null) {
+            if ($this->esFragmentoContinuacionDescripcion($parsed['descripcion'])) {
+                return $parsed;
+            }
+
+            if (! $this->esDescripcionBasuraTabla($parsed['descripcion'])) {
+                return $parsed;
+            }
         }
 
         return null;
@@ -1040,7 +1135,7 @@ class ListadoMaterialesPdfParserService
                 : null;
         }
 
-        if (preg_match('/^(.+?)\s+(\d+)\s*pack\.?\s*$/iu', $linea, $coincidencia) === 1) {
+        if (preg_match('/^(.+)\s+(\d+)\s*pack\.?\s*$/iu', $linea, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[1]);
 
             return mb_strlen($descripcion) >= 3
@@ -1048,7 +1143,7 @@ class ListadoMaterialesPdfParserService
                 : null;
         }
 
-        if (preg_match('/^(.{3,}?)\s+(\d{1,5})\s*$/u', $linea, $coincidencia) === 1) {
+        if (preg_match('/^(.+)\s+(\d{1,5})\s*$/u', $linea, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[1]);
             if ($this->esRuidoTablaProductoCantidad($descripcion)) {
                 return null;

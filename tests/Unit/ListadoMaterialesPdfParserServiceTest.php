@@ -420,6 +420,37 @@ TXT;
         }
     }
 
+    public function test_parse_solicitud_pedido_fusiona_lineas_ocr_partidas(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_ocr_splits.txt');
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(9, $lineas);
+
+        $this->assertSame(8, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPICES DE CERA', $lineas[0]['descripcion']);
+
+        $this->assertSame(1, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPIZ PASTA ARTEL PTA AZUL', $lineas[1]['descripcion']);
+        $this->assertStringContainsStringIgnoringCase('PTA FINA 0,7', $lineas[1]['descripcion']);
+
+        $this->assertSame(15, $lineas[7]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CINTA DOBLE CONTACTO 18MM X 13,7MTS', $lineas[7]['descripcion']);
+
+        $this->assertSame(1, $lineas[8]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO', $lineas[8]['descripcion']);
+
+        foreach ($lineas as $linea) {
+            $this->assertFalse(
+                preg_match('/^(PTA FINA|13,7MTS|UNIDADES PTA)/iu', $linea['descripcion']) === 1,
+                'No debe quedar fragmento suelto: '.$linea['descripcion'],
+            );
+        }
+    }
+
     public function test_ocr_pdf_escaneado_eett_si_herramientas_disponibles(): void
     {
         $ocr = new PdfOcrService;
