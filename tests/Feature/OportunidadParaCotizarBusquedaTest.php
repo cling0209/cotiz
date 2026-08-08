@@ -512,6 +512,49 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_estado_expone_esperando_worker_con_job_en_cola_sin_reservar(): void
+    {
+        config([
+            'queue.default' => 'database',
+            'cotiz.mercadopublico.oportunidad_corrida_stalled_segundos' => 60,
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $corrida = OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(10),
+            'estado' => OportunidadBusquedaService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 0,
+            'plan_json' => [
+                ['frase' => '(todas)', 'region' => 13, 'estado' => 'pending', 'intentos' => 0],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda encolada. Esperando worker…',
+        ]);
+        OportunidadBusquedaCorrida::query()->whereKey($corrida->id)->update([
+            'updated_at' => now()->subMinutes(3),
+        ]);
+
+        ProcessOportunidadBusquedaJob::dispatch($corrida->id);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.id', $corrida->id)
+            ->assertJsonPath('corrida.esperando_worker', true);
+
+        $servicio = $this->app->make(OportunidadBusquedaService::class);
+        $this->assertTrue($servicio->corridaEsperandoWorker($corrida->fresh()));
+    }
+
     public function test_reanudar_endpoint_encola_si_no_hay_job(): void
     {
         config([

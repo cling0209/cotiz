@@ -3431,6 +3431,7 @@
                 aplicarSyncPar(corrida.sync_par);
             }
             const activo = corrida.estado === 'running';
+            const esperandoWorker = corridaEsperandoWorker(corrida);
             const cambiandoDia = corrida.estado === 'completed' &&
                 Boolean(corrida.fecha_siguiente_pendiente) &&
                 intentosCambioDia < 30;
@@ -3451,10 +3452,32 @@
             }
 
             cancelado = corrida.estado === 'cancelled';
-            setModoBusqueda(activo || cambiandoDia);
-            relBar.classList.toggle('progress-bar-animated', activo || cambiandoDia);
+            // Sin worker: no bloquear la pantalla; el listado guardado sigue usable.
+            setModoBusqueda((activo && !esperandoWorker) || cambiandoDia);
+            if (btnCancelar && activo) {
+                btnCancelar.classList.remove('d-none');
+                btnCancelar.disabled = false;
+            }
+            relBar.classList.toggle('progress-bar-animated', (activo && !esperandoWorker) || cambiandoDia);
             if (relProgresoWrap) {
-                relProgresoWrap.classList.toggle('d-none', !(activo || cambiandoDia));
+                relProgresoWrap.classList.toggle('d-none', esperandoWorker || !(activo || cambiandoDia));
+            }
+
+            if (esperandoWorker && porCodigo.size === 0 && !itemsCargadosEsperaWorker && urls.estado) {
+                itemsCargadosEsperaWorker = true;
+                getJson(urlEstado({ items: true }))
+                    .then((data) => {
+                        if (data?.corrida) {
+                            aplicarEstadoCorrida(data.corrida);
+                        }
+                    })
+                    .catch(() => {});
+            }
+            if (!esperandoWorker) {
+                itemsCargadosEsperaWorker = false;
+            }
+            if (esperandoWorker && window.PageLoader) {
+                window.PageLoader.hide();
             }
 
             const fallidos = Number(corrida.pasos_fallidos) || 0;
@@ -3465,6 +3488,12 @@
                 mostrarAvisoPaso(
                     corrida.mensaje ||
                     'La búsqueda se retomó automáticamente desde el último paso guardado.',
+                );
+            } else if (esperandoWorker) {
+                mostrarAvisoPaso(
+                    corrida.mensaje ||
+                    'Búsqueda en cola esperando worker (RUN_QUEUE_WORKER=true en Render). ' +
+                    'Puede cancelar la búsqueda o seguir cotizando con el listado ya guardado.',
                 );
             } else if (corrida.worker_stalled) {
                 mostrarAvisoPaso(
@@ -3501,14 +3530,16 @@
                 relError.classList.add('d-none');
             }
 
-            if (activo || cambiandoDia || vinculoActivo) {
-                setRenderKeepAliveProceso(true);
+            const pollActivo = activo || cambiandoDia || vinculoActivo;
+            if (pollActivo) {
+                setRenderKeepAliveProceso(!esperandoWorker);
                 detenerPolling();
                 if (cambiandoDia) {
                     intentosCambioDia++;
                     relDetalle.textContent = `Día ${formatearDia(corrida.fecha_busqueda)} terminado. Iniciando búsqueda del ${formatearDia(corrida.fecha_siguiente_pendiente)}…`;
                 }
-                pollTimer = setTimeout(consultarEstado, 2000);
+                const pollMs = esperandoWorker ? 30000 : 2000;
+                pollTimer = setTimeout(consultarEstado, pollMs);
             } else {
                 setRenderKeepAliveProceso(false);
                 detenerPolling();
@@ -3718,6 +3749,19 @@
 
         let pollEstadoCount = 0;
         let ultimaEncontradasPoll = -1;
+        let itemsCargadosEsperaWorker = false;
+
+        function corridaEsperandoWorker(corrida) {
+            if (!corrida || corrida.estado !== 'running') {
+                return false;
+            }
+            if (corrida.esperando_worker === true) {
+                return true;
+            }
+            const mensaje = String(corrida.mensaje || '').toLowerCase();
+            return mensaje.includes('esperando worker')
+                || (mensaje.includes('job en cola sin tomar'));
+        }
 
         function urlEstado(opts) {
             const params = new URLSearchParams();
@@ -3838,13 +3882,25 @@
             actualizarBotonProcesarVinculo(null, null, vinculoPendientesInicial);
         }
 
-        // Carga diferida del listado (+ sync opcional) tras pintar la página.
+        // Carga diferida del listado; sync al par en segundo plano (no bloquea el listado).
         if (urls.estado) {
             if (estado && relDetalle && porCodigo.size === 0) {
                 estado.classList.remove('d-none');
                 relDetalle.textContent = 'Cargando oportunidades…';
             }
-            consultarEstado({ items: true, syncPar: puedeBuscar }).catch(() => {});
+            (async () => {
+                try {
+                    await consultarEstado({ items: true, syncPar: false });
+                    if (puedeBuscar) {
+                        const data = await getJson(urlEstado({ syncPar: true }));
+                        if (data.sync_par) {
+                            aplicarSyncPar(data.sync_par);
+                        }
+                    }
+                } catch (_e) {
+                    // consultarEstado ya reintenta polling
+                }
+            })();
         }
 
         if (puedeBuscar) {

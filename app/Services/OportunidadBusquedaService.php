@@ -1319,6 +1319,19 @@ class OportunidadBusquedaService
             || $this->contarJobsOportunidadReservados($corridaId) > 0;
     }
 
+    /**
+     * Job en cola sin reservar: el worker de Laravel no está procesando la cola.
+     */
+    public function corridaEsperandoWorker(OportunidadBusquedaCorrida $corrida): bool
+    {
+        if ($corrida->estado !== self::ESTADO_RUNNING) {
+            return false;
+        }
+
+        return $this->contarJobsOportunidadPendientes($corrida->id) > 0
+            && $this->contarJobsOportunidadReservados($corrida->id) === 0;
+    }
+
     public function contarJobsOportunidadPendientes(?int $corridaId = null): int
     {
         if (! Schema::hasTable('jobs')) {
@@ -1537,6 +1550,7 @@ class OportunidadBusquedaService
         }
 
         $workerStalled = $this->corridaEstaStalled($corrida);
+        $esperandoWorker = $this->corridaEsperandoWorker($corrida);
         $siguienteFecha = $corrida->estado === self::ESTADO_COMPLETED
             ? $this->proximaFechaPendienteDespues($fechaBusqueda)
             : null;
@@ -1562,6 +1576,7 @@ class OportunidadBusquedaService
             'ultimo_error' => is_array($ultimoError) ? $ultimoError : null,
             'ultima_consulta' => $ultimaConsulta,
             'worker_stalled' => $workerStalled,
+            'esperando_worker' => $esperandoWorker,
             'reanudada_auto' => $reanudadaAuto,
             'eventos' => $this->eventosParaUi($corrida),
             'pasos_resumen' => $pasosResumen,

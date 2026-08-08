@@ -115,7 +115,7 @@ Las **palabras clave no se sincronizan** entre sitios. Lo que se replica al par 
 
 En el sitio con `MERCADOPUBLICO_ANALISIS_ADMIN=true` (Rómulo), la pantalla **Oportunidades** muestra dos paneles: **Sync cotizaciones al par** y **Sync vinculaciones al par**, con pendientes, último error y botón para reintentar cada cola por separado.
 
-Al **tomar** un código CA (`*-COT*`), se reserva de forma atómica en este sitio y en el par (`accion=tomada`) **antes** de grabar la nota. Si el par no responde o ya está tomado, se bloquea (no se permite duplicar entre ejecutivos/sitios).
+Al **tomar** un código CA (`*-COT*`), se reserva en este sitio (`oportunidad_tomadas`) **antes** de grabar la nota. No se replica `tomada` al par (importar aquí no oculta la oportunidad allá).
 | `COTIZ_API_NOTA_USER` / `COTIZ_API_NOTA_PASSWORD` | Basic Auth compartida (cotizaciones y usuarios) | **Obligatorias** — mismas credenciales en Romulo y Reicol |
 | `COTIZ_API_CONSULTA_NRO_COTIZACION` | URL consulta duplicados (opcional) | Si vacío y `APP_URL` es `cotiza.reicol.cl` o `cotiza.romulo.cl`, se usa el par automáticamente |
 
