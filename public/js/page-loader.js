@@ -267,10 +267,8 @@
         showLoader();
     });
 
-    window.addEventListener('pageshow', (event) => {
-        if (event.persisted) {
-            hideLoader();
-        }
+    window.addEventListener('pageshow', () => {
+        hideLoader();
     });
 
     window.addEventListener('focus', () => {
@@ -280,4 +278,9 @@
     });
 
     window.addEventListener('load', hideLoader);
+    document.addEventListener('DOMContentLoaded', hideLoader);
+
+    if (document.readyState === 'complete') {
+        hideLoader();
+    }
 })();

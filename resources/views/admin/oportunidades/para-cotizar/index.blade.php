@@ -581,6 +581,20 @@
 
 @push('scripts')
 <script>
+    function ocultarPageLoaderOportunidades() {
+        try {
+            sessionStorage.removeItem('page-loader-pending');
+        } catch (_e) {
+            // sessionStorage no disponible
+        }
+        if (window.PageLoader?.hide) {
+            window.PageLoader.hide();
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ocultarPageLoaderOportunidades);
+    window.addEventListener('load', ocultarPageLoaderOportunidades);
+</script>
+<script>
     (function() {
         const puedeBuscar = @json((bool) $puedeBuscar);
         const puedeEliminar = @json((bool) ($puedeEliminar ?? false));
@@ -3386,6 +3400,8 @@
         function aplicarEstadoCorrida(corrida) {
             if (!corrida) return;
 
+            ocultarPageLoaderOportunidades();
+
             if (ultimaCorridaId !== corrida.id) {
                 ultimaCorridaId = corrida.id;
                 intentosCambioDia = 0;
@@ -3452,11 +3468,16 @@
             }
 
             cancelado = corrida.estado === 'cancelled';
-            // Sin worker: no bloquear la pantalla; el listado guardado sigue usable.
-            setModoBusqueda((activo && !esperandoWorker) || cambiandoDia);
-            if (btnCancelar && activo) {
-                btnCancelar.classList.remove('d-none');
-                btnCancelar.disabled = false;
+            // La búsqueda en curso no bloquea el listado; solo deshabilita «Buscar» y muestra «Cancelar».
+            buscando = activo || cambiandoDia;
+            if (btn) {
+                btn.disabled = @json($palabras === []) ||
+                    ((activo && !esperandoWorker) || cambiandoDia);
+            }
+            if (btnCancelar) {
+                const mostrarCancelar = activo || cambiandoDia;
+                btnCancelar.classList.toggle('d-none', !mostrarCancelar);
+                btnCancelar.disabled = !mostrarCancelar;
             }
             relBar.classList.toggle('progress-bar-animated', (activo && !esperandoWorker) || cambiandoDia);
             if (relProgresoWrap) {
@@ -3475,9 +3496,6 @@
             }
             if (!esperandoWorker) {
                 itemsCargadosEsperaWorker = false;
-            }
-            if (esperandoWorker && window.PageLoader) {
-                window.PageLoader.hide();
             }
 
             const fallidos = Number(corrida.pasos_fallidos) || 0;
