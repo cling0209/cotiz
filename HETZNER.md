@@ -94,18 +94,18 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 Render **sigue sirviendo** mientras haces esto; el dump es lectura.
 
-### Nginx en el host
+### Proxy en el host (Caddy)
 
-Configs listas en **`deploy/nginx/`** (las 3 apps):
+En este VPS **carro ya usa Caddy** (`/etc/caddy/Caddyfile`), no Nginx.
 
 ```bash
 cd /opt/cotiz-romulo
-bash deploy/nginx/install-on-vps.sh
-certbot --nginx -d cotiza.romulo.cl -d cotiza.reicol.cl
-# carro si falta TLS: certbot --nginx -d tienda.romulo.cl
+cp deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
 ```
 
-Ver **`deploy/nginx/README.md`**.
+Ver **`deploy/caddy/README.md`**. Alternativa Nginx: **`deploy/nginx/`** (solo si no hay Caddy).
 
 ### Probar antes del corte DNS
 

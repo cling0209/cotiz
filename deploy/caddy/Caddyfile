@@ -1,0 +1,14 @@
+# Caddy en el VPS (mismo patrón que carro — TLS automático)
+# Copiar a /etc/caddy/Caddyfile y: systemctl reload caddy
+
+tienda.romulo.cl {
+	reverse_proxy 127.0.0.1:8000
+}
+
+cotiza.romulo.cl {
+	reverse_proxy 127.0.0.1:8001
+}
+
+cotiza.reicol.cl {
+	reverse_proxy 127.0.0.1:8002
+}
