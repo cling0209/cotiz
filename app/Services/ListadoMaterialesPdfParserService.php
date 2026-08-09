@@ -1131,14 +1131,22 @@ class ListadoMaterialesPdfParserService
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
 
-        // Extracción por celdas (Paddle): prioridad cuando aporta filas suficientes.
-        // No re-parsear filas Paddle como texto plano (evita heurísticas por nombre de producto).
+        // Extracción por celdas (Paddle): si aporta filas suficientes, usar solo Paddle.
+        // Mezclar texto OCR encima duplica filas (p. ej. 97 + 121 → 191).
         $paddlePrimario = $countPaddle >= $minEsperadas
-            || ($esSolicitudPedido && $countPaddle >= max($minEsperadas, $countTexto));
+            || ($esSolicitudPedido && $countPaddle >= max($minEsperadas, (int) floor($countTexto * 0.85)));
 
-        $fusionadas = $paddlePrimario
-            ? $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto))
-            : $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
+        if ($paddlePrimario) {
+            $fusionadas = $this->deduplicarLineasTabla($lineasPaddle);
+            if ($countPaddle < $minEsperadas) {
+                $fusionadas = $this->complementarLineasTablaSinDuplicar($fusionadas, $lineasTexto);
+            }
+        } else {
+            $fusionadas = $this->complementarLineasTablaSinDuplicar(
+                $this->deduplicarLineasTabla($lineasTexto),
+                $lineasPaddle,
+            );
+        }
 
         Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
             'texto' => $countTexto,
@@ -1148,43 +1156,123 @@ class ListadoMaterialesPdfParserService
             'paddle_primario' => $paddlePrimario,
         ]);
 
-        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas);
+        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario);
     }
 
     /**
-     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * Añade filas candidatas solo si no están ya representadas (evita duplicar Paddle + OCR).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $base
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $candidatas
+     * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function textoDesdeLineasTabla(array $lineas, string $textoBase): string
+    private function complementarLineasTablaSinDuplicar(array $base, array $candidatas): array
     {
-        $cabecera = 'ESPECIFICACIONES SOLICITUD DE PEDIDO';
-        if ($this->esSolicitudPedidoDocumento($textoBase)) {
-            if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO[^\n]*/iu', $textoBase, $coincidencia) === 1) {
-                $cabecera = trim($coincidencia[0]);
+        $resultado = $this->deduplicarLineasTabla($base);
+
+        foreach ($candidatas as $fila) {
+            if ($this->filaYaRepresentadaEnTabla($fila, $resultado)) {
+                continue;
+            }
+
+            $resultado[] = $fila;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array{cantidad: int, descripcion: string}  $fila
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $existentes
+     */
+    private function filaYaRepresentadaEnTabla(array $fila, array $existentes): bool
+    {
+        $clave = $this->claveDeduplicacionTabla($fila['descripcion']);
+        if ($clave === '') {
+            return true;
+        }
+
+        foreach ($existentes as $ex) {
+            $exClave = $this->claveDeduplicacionTabla($ex['descripcion']);
+            if ($exClave === '' || $exClave === $clave) {
+                return true;
+            }
+
+            $minLen = min(mb_strlen($clave), mb_strlen($exClave));
+            $maxLen = max(mb_strlen($clave), mb_strlen($exClave));
+            if ($minLen < 8 || $maxLen === 0) {
+                continue;
+            }
+
+            if (str_contains($exClave, $clave) || str_contains($clave, $exClave)) {
+                if ($minLen / $maxLen >= 0.55) {
+                    return true;
+                }
             }
         }
 
-        $filas = array_map(
-            static fn (array $fila): string => trim($fila['descripcion'].' '.$fila['cantidad']),
-            $lineas,
-        );
+        return false;
+    }
 
-        return trim($cabecera."\nPRODUCTO CANTIDAD IMAGEN REFERENCIA\n".implode("\n", $filas));
+    private function claveDeduplicacionTabla(string $descripcion): string
+    {
+        $normalizada = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion));
+        $normalizada = preg_replace('/[^\p{L}\p{N}\s]/u', '', $normalizada) ?? $normalizada;
+
+        return trim($normalizada);
     }
 
     /**
      * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas): array
+    private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false): array
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) !== 1) {
             return $lineas;
         }
 
+        if ($desdeCeldasPaddle) {
+            return $this->sanearFilasTablaSolicitud($lineas);
+        }
+
         $lineas = $this->repararFilasTablaSolicitudOcr($lineas);
 
         return $this->completarFilasSolicitudPedidoDesdeTexto($texto, $lineas);
+    }
+
+    /**
+     * Limpieza mínima para filas ya extraídas por celdas (Paddle): no re-parsear ni partir fusiones OCR.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function sanearFilasTablaSolicitud(array $resultado): array
+    {
+        $reparado = [];
+
+        foreach ($resultado as $fila) {
+            $descripcion = $this->sanearDescripcionTablaOcr($fila['descripcion']);
+            if ($descripcion === '') {
+                continue;
+            }
+
+            $reparado[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $descripcion,
+            ];
+        }
+
+        for ($i = 0; $i < count($reparado); $i++) {
+            $reparado[$i] = $this->limpiarCantidadDuplicadaEnDescripcion($reparado[$i]);
+        }
+
+        $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
+        $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
+        $reparado = $this->filtrarFilasRuidoEvidenteSolicitudPedido($reparado);
+
+        return $this->deduplicarLineasTabla($reparado);
     }
 
     private function esFormatoTablaProductoCantidad(string $upper): bool
@@ -1615,8 +1703,90 @@ class ListadoMaterialesPdfParserService
         }
 
         $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
+        $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
+        $reparado = $this->filtrarFilasRuidoEvidenteSolicitudPedido($reparado);
 
         return $this->partirFilasFusionadasOcr($reparado);
+    }
+
+    /**
+     * Elimina filas cuya descripción ya está contenida en otra (p. ej. "UNIDADES IMAGIA TRIANGULAR" tras el lápiz completo).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function eliminarFilasSubcadenaContenida(array $filas): array
+    {
+        if (count($filas) < 2) {
+            return $filas;
+        }
+
+        $normalizadas = [];
+        foreach ($filas as $indice => $fila) {
+            $normalizadas[$indice] = [
+                'fila' => $fila,
+                'upper' => mb_strtoupper(trim($fila['descripcion'])),
+            ];
+        }
+
+        $resultado = [];
+        foreach ($normalizadas as $indice => $item) {
+            $desc = $item['upper'];
+            if ($desc === '' || mb_strlen($desc) < 5) {
+                continue;
+            }
+
+            $contenida = false;
+            foreach ($normalizadas as $otroIndice => $otro) {
+                if ($indice === $otroIndice) {
+                    continue;
+                }
+
+                $otraDesc = $otro['upper'];
+                if ($desc === $otraDesc) {
+                    if ($otroIndice < $indice) {
+                        $contenida = true;
+                    }
+
+                    break;
+                }
+
+                if (mb_strlen($desc) >= 8 && mb_strlen($desc) < mb_strlen($otraDesc) && str_contains($otraDesc, $desc)) {
+                    $contenida = true;
+                    break;
+                }
+            }
+
+            if (! $contenida) {
+                $resultado[] = $item['fila'];
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function filtrarFilasRuidoEvidenteSolicitudPedido(array $filas): array
+    {
+        return array_values(array_filter($filas, function (array $fila): bool {
+            $desc = mb_strtoupper(trim($fila['descripcion']));
+            if ($desc === '') {
+                return false;
+            }
+
+            if (preg_match('/^(?:EM\s*<\s*A|UNID\s*;?|M\s+TESA\s+ENGOMADA|M\s+T)$/iu', $desc) === 1) {
+                return false;
+            }
+
+            if ($fila['cantidad'] === 1 && mb_strlen($desc) <= 4) {
+                return false;
+            }
+
+            return true;
+        }));
     }
 
     /**
