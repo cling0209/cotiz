@@ -46,4 +46,34 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         $this->assertSame(97, count($fusionadas));
         $this->assertLessThan(count($lineasTexto), count($fusionadas));
     }
+
+    public function test_sanear_148_filas_exceso_poda_a_97(): void
+    {
+        $fixturePath = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.'vps_ocr_real.txt';
+        $texto = (string) file_get_contents($fixturePath);
+        $texto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $texto, 1) ?? $texto;
+        $texto .= str_repeat("\nPRODUCTO CANTIDAD IMAGEN REFERENCIA", 9);
+
+        $parser = new ListadoMaterialesPdfParserService;
+        $base = $parser->parseTexto($texto);
+        $lineas = $base;
+
+        foreach (array_slice($base, 0, 19) as $fila) {
+            $partes = preg_split('/\s+/u', $fila['descripcion']) ?: [];
+            if (count($partes) >= 3) {
+                $lineas[] = [
+                    'cantidad' => 1,
+                    'descripcion' => implode(' ', array_slice($partes, -2)),
+                ];
+            }
+        }
+
+        $this->assertSame(148, count($lineas));
+
+        $sanear = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'sanearFilasTablaSolicitud');
+        $sanear->setAccessible(true);
+        $out = $sanear->invoke($parser, $lineas, $texto, 11);
+
+        $this->assertSame(97, count($out));
+    }
 }

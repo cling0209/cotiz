@@ -1007,6 +1007,123 @@ class ListadoMaterialesPdfParserService
         return 1;
     }
 
+    private function contarCabecerasTablaProducto(string $texto): int
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        $n = preg_match_all('/PRODUCTO\s+CANTIDAD/iu', $upper);
+
+        return is_int($n) ? max(0, $n) : 0;
+    }
+
+    private function estimarFilasEsperadasTablaMateriales(string $texto, int $paginas): int
+    {
+        $paginas = max(1, $paginas);
+        $cabeceras = $this->contarCabecerasTablaProducto($texto);
+
+        if ($cabeceras >= max(3, (int) floor($paginas * 0.5))) {
+            return max(9, (int) round($cabeceras * 8.8));
+        }
+
+        return max(9, (int) round($paginas * 8.82));
+    }
+
+    private function estimacionFilasEsperadasEsFiable(string $texto, int $paginas): bool
+    {
+        $paginas = max(1, $paginas);
+        $cabeceras = $this->contarCabecerasTablaProducto($texto);
+
+        if ($paginas >= 8) {
+            return true;
+        }
+
+        return $cabeceras >= max(3, (int) floor($paginas * 0.5));
+    }
+
+    private function debePodarFilasTablaMateriales(string $texto, int $paginas, array $filas): bool
+    {
+        $n = count($filas);
+
+        if (! $this->estimacionFilasEsperadasEsFiable($texto, $paginas)) {
+            return false;
+        }
+
+        $esperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
+
+        return $n > (int) ceil($esperadas * 1.05);
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function podarFilasTablaMaterialesSiExceso(string $texto, int $paginas, array $filas): array
+    {
+        if (! $this->debePodarFilasTablaMateriales($texto, $paginas, $filas)) {
+            return $filas;
+        }
+
+        $esperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
+        $limite = $esperadas;
+
+        while (count($filas) > $limite) {
+            $reducidas = $this->eliminarFilasSubcadenaContenida($filas);
+            if (count($reducidas) < count($filas)) {
+                $filas = $reducidas;
+
+                continue;
+            }
+
+            $podadas = $this->eliminarFilaRedundanteMasCorta($filas);
+            if (count($podadas) >= count($filas)) {
+                break;
+            }
+
+            $filas = $podadas;
+        }
+
+        return $filas;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function eliminarFilaRedundanteMasCorta(array $filas): array
+    {
+        foreach ($filas as $indice => $candidata) {
+            $otras = [];
+            foreach ($filas as $i => $fila) {
+                if ($i !== $indice) {
+                    $otras[] = $fila;
+                }
+            }
+
+            if ($this->filaYaRepresentadaEnTabla($candidata, $otras)) {
+                unset($filas[$indice]);
+
+                return array_values($filas);
+            }
+        }
+
+        $indiceCorto = null;
+        $longitudMin = PHP_INT_MAX;
+        foreach ($filas as $indice => $fila) {
+            $longitud = mb_strlen(trim($fila['descripcion']));
+            if ($longitud < $longitudMin) {
+                $longitudMin = $longitud;
+                $indiceCorto = $indice;
+            }
+        }
+
+        if ($indiceCorto === null) {
+            return $filas;
+        }
+
+        unset($filas[$indiceCorto]);
+
+        return array_values($filas);
+    }
+
     private function esSolicitudPedidoDocumento(string $texto): bool
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
@@ -1129,7 +1246,7 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
         }
 
         try {
@@ -1140,11 +1257,11 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
         }
 
         if ($lineasPaddle === []) {
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
         }
 
         $countPaddle = count($lineasPaddle);
@@ -1157,8 +1274,9 @@ class ListadoMaterialesPdfParserService
 
         if ($paddlePrimario) {
             $fusionadas = $this->deduplicarLineasTabla($lineasPaddle, true);
-            if ($countPaddle < max(10, (int) floor($paginas * 2))) {
-                $fusionadas = $this->complementarLineasTablaSinDuplicar($fusionadas, $lineasTexto);
+            $fusionadas = $this->compactarFilasTablaMateriales($fusionadas);
+            if ($this->debePodarFilasTablaMateriales($texto, $paginas, $fusionadas)) {
+                $fusionadas = $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $fusionadas);
             }
         } elseif ($countPaddle > 0 && $esTablaMateriales) {
             $fusionadas = $this->complementarLineasTablaSinDuplicar(
@@ -1180,7 +1298,7 @@ class ListadoMaterialesPdfParserService
             'paddle_primario' => $paddlePrimario,
         ]);
 
-        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario && $esTablaMateriales);
+        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario && $esTablaMateriales, $paginas);
     }
 
     /**
@@ -1224,7 +1342,7 @@ class ListadoMaterialesPdfParserService
 
             $minLen = min(mb_strlen($clave), mb_strlen($exClave));
             $maxLen = max(mb_strlen($clave), mb_strlen($exClave));
-            if ($minLen < 8 || $maxLen === 0) {
+            if ($minLen < 5 || $maxLen === 0) {
                 continue;
             }
 
@@ -1250,19 +1368,20 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false): array
+    private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false, int $paginas = 1): array
     {
         if (! $this->esDocumentoTablaMaterialesPdf($texto)) {
             return $lineas;
         }
 
         if ($desdeCeldasPaddle) {
-            return $this->sanearFilasTablaSolicitud($lineas);
+            return $this->sanearFilasTablaSolicitud($lineas, $texto, $paginas);
         }
 
         $lineas = $this->repararFilasTablaSolicitudOcr($lineas);
+        $lineas = $this->completarFilasSolicitudPedidoDesdeTexto($texto, $lineas);
 
-        return $this->completarFilasSolicitudPedidoDesdeTexto($texto, $lineas);
+        return $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $lineas);
     }
 
     /**
@@ -1271,7 +1390,7 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function sanearFilasTablaSolicitud(array $resultado): array
+    private function sanearFilasTablaSolicitud(array $resultado, string $texto = '', int $paginas = 1): array
     {
         $reparado = [];
 
@@ -1291,11 +1410,135 @@ class ListadoMaterialesPdfParserService
             $reparado[$i] = $this->limpiarCantidadDuplicadaEnDescripcion($reparado[$i]);
         }
 
-        $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
-        $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
-        $reparado = $this->filtrarFilasRuidoEvidenteSolicitudPedido($reparado);
+        $reparado = $this->compactarFilasTablaMateriales($reparado);
+
+        if ($texto !== '' && $this->debePodarFilasTablaMateriales($texto, $paginas, $reparado)) {
+            $reparado = $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $reparado);
+        }
 
         return $this->deduplicarLineasTabla($reparado, true);
+    }
+
+    /**
+     * Reduce filas OCR fragmentadas (148→~97) fusionando continuaciones y duplicados parciales.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function compactarFilasTablaMateriales(array $filas): array
+    {
+        $filas = $this->fusionarSufijosCeldaMultilineaOcr($filas);
+        $filas = $this->fusionarFragmentosContinuacionTablaOcr($filas);
+        $filas = $this->eliminarFilasSubcadenaContenida($filas);
+        $filas = $this->filtrarFilasRuidoEvidenteSolicitudPedido($filas);
+
+        return $this->deduplicarLineasTabla($filas, true);
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function fusionarFragmentosContinuacionTablaOcr(array $filas): array
+    {
+        if (count($filas) < 2) {
+            return $filas;
+        }
+
+        $resultado = [];
+
+        foreach ($filas as $fila) {
+            if ($resultado === []) {
+                $resultado[] = $fila;
+
+                continue;
+            }
+
+            $indice = count($resultado) - 1;
+            $previa = $resultado[$indice];
+
+            if ($this->debeFusionarFragmentoEnFilaAnterior($previa, $fila)) {
+                $resultado[$indice] = [
+                    'cantidad' => $this->elegirCantidadFusionFragmentos($previa, $fila),
+                    'descripcion' => trim($previa['descripcion'].' '.$fila['descripcion']),
+                ];
+
+                continue;
+            }
+
+            $resultado[] = $fila;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array{cantidad: int, descripcion: string}  $previa
+     * @param  array{cantidad: int, descripcion: string}  $actual
+     */
+    private function debeFusionarFragmentoEnFilaAnterior(array $previa, array $actual): bool
+    {
+        $actDesc = trim($actual['descripcion']);
+        $prevDesc = trim($previa['descripcion']);
+
+        if ($actDesc === '' || $prevDesc === '') {
+            return false;
+        }
+
+        $actUpper = mb_strtoupper($actDesc);
+        if (preg_match(
+            '/^(?:CUADERNO|LAPIZ|LAPICES|LÁPIZ|RESMA|CORCHETERA|PERFORADORA|CINTA|MARCADOR|TEMPERA|TÉMPERA|BLOCK|PLIEGO|GOMA|CLIP|CORRECTOR|SACAPUNTAS|COLA|PLASTICINA|ACUARELA|FINELINER|PLUMON|SET|BROCHA|SOBRE|GLOBOS|POST-IT|POST-1T|TIJERA|ALARGADOR|BASTIDOR|PILA|PACK|MARCATEXTOS|PINCEL|LANA|ARPILLERA|HILO|BOTON|LAMINAS|PIZARRA|CARTULINA|TERMO|PLASTIFICADORA|PAPEL|ROLLO|GREDA|ARCILLA|POMPON|LIMPIA|FUNDA|ESPONJA|PAÑOLENCI|MICRÓFONO)\b/iu',
+            $actUpper,
+        ) === 1) {
+            return false;
+        }
+
+        if ($this->esFragmentoContinuacionDescripcion($actDesc)) {
+            return true;
+        }
+
+        $prevUpper = mb_strtoupper($prevDesc);
+
+        if (str_contains($prevUpper, $actUpper) || str_contains($actUpper, $prevUpper)) {
+            return mb_strlen($actDesc) <= 35;
+        }
+
+        if ($actual['cantidad'] === 1 && mb_strlen($actDesc) <= 32) {
+            if (preg_match(
+                '/^(?:FINA\b|UNIDADES\b|MEDIUM\b|MADERA\b|MT\b|ORIFICIO\b|POSICIONES\b|BATER|PAÑO\b|PLIEGO\b|VARIEDAD\b|COLORES\b|PACK\b|GRAMOS\b|TRANSPARENTE\b|UNI\b|DEPOSITO\b|CAJA\b|HOJAS\b|METROS\b|SOBRES\b)/iu',
+                $actUpper,
+            ) === 1) {
+                return true;
+            }
+        }
+
+        if (preg_match('/(?:X|PACK|CAJA|CON|DE|GR|MM|CM|MTS?|ANCHO|METROS?)\s*$/iu', $prevDesc) === 1
+            && mb_strlen($actDesc) <= 40) {
+            return true;
+        }
+
+        if (preg_match('/^\d+\s+(?:papel|paquetes?|bolsas?|cajas?|pliegos?|hilos?|tiras?|set|sets)\b/iu', $actDesc) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array{cantidad: int, descripcion: string}  $previa
+     * @param  array{cantidad: int, descripcion: string}  $actual
+     */
+    private function elegirCantidadFusionFragmentos(array $previa, array $actual): int
+    {
+        if ($actual['cantidad'] > 1 && $previa['cantidad'] === 1) {
+            return $actual['cantidad'];
+        }
+
+        if ($previa['cantidad'] > 1) {
+            return $previa['cantidad'];
+        }
+
+        return max($previa['cantidad'], $actual['cantidad']);
     }
 
     private function esFormatoTablaProductoCantidad(string $upper): bool
@@ -1726,8 +1969,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
-        $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
-        $reparado = $this->filtrarFilasRuidoEvidenteSolicitudPedido($reparado);
+        $reparado = $this->compactarFilasTablaMateriales($reparado);
 
         return $this->partirFilasFusionadasOcr($reparado);
     }
@@ -1774,7 +2016,7 @@ class ListadoMaterialesPdfParserService
                     break;
                 }
 
-                if (mb_strlen($desc) >= 8 && mb_strlen($desc) < mb_strlen($otraDesc) && str_contains($otraDesc, $desc)) {
+                if (mb_strlen($desc) >= 5 && mb_strlen($desc) < mb_strlen($otraDesc) && str_contains($otraDesc, $desc)) {
                     $contenida = true;
                     break;
                 }
