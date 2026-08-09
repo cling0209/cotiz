@@ -2612,6 +2612,24 @@
     let importModo = 'texto';
     let importPdfFile = null;
     let importExcelFile = null;
+    let importSimTimer = null;
+
+    const MENSAJES_PROGRESO_PDF = [
+        'Leyendo archivo PDF o Word…',
+        'Extrayendo texto del documento…',
+        'Reconociendo texto (OCR)… puede tardar varios minutos',
+        'Detectando tabla de productos…',
+        'Identificando cantidades y descripciones…',
+    ];
+    const MENSAJES_PROGRESO_EXCEL = [
+        'Leyendo archivo Excel…',
+        'Detectando columnas…',
+        'Extrayendo productos del archivo…',
+    ];
+    const MENSAJES_PROGRESO_TEXTO = [
+        'Analizando texto pegado…',
+        'Detectando productos en el texto…',
+    ];
 
     function escHtml(s) {
         return String(s ?? '')
@@ -2716,20 +2734,66 @@
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
     }
 
-    function actualizarProgresoImportar(actual, total, textoExtra) {
+    function detenerProgresoSimuladoImportar() {
+        if (importSimTimer !== null) {
+            clearInterval(importSimTimer);
+            importSimTimer = null;
+        }
+    }
+
+    function iniciarProgresoSimuladoImportar(mensajes) {
+        detenerProgresoSimuladoImportar();
+        const msgs = Array.isArray(mensajes) && mensajes.length ? mensajes : ['Procesando…'];
+        let pct = 8;
+        let msgIdx = 0;
+
+        function tick() {
+            if (pct < 88) {
+                pct += 0.35 + Math.random() * 1.1;
+                pct = Math.min(88, pct);
+            }
+            actualizarProgresoImportar(Math.round(pct), 100, msgs[msgIdx], { estimado: true });
+            msgIdx = (msgIdx + 1) % msgs.length;
+        }
+
+        tick();
+        importSimTimer = setInterval(tick, 1100);
+    }
+
+    async function fetchConProgresoSimulado(fetchFn, mensajes) {
+        iniciarProgresoSimuladoImportar(mensajes);
+        try {
+            return await fetchFn();
+        } finally {
+            detenerProgresoSimuladoImportar();
+        }
+    }
+
+    function actualizarProgresoImportar(actual, total, textoExtra, opts) {
+        const options = opts || {};
         const totalLineas = Math.max(0, Number(total) || 0);
         const actualNum = Math.max(0, Number(actual) || 0);
         const procesadas = totalLineas > 0 ? Math.min(actualNum, totalLineas) : actualNum;
-        const indeterminado = totalLineas === 0 && !!textoExtra;
-        const pct = totalLineas > 0
-            ? Math.round((procesadas / totalLineas) * 100)
-            : (indeterminado ? 100 : (actualNum > 0 ? 100 : 0));
+        let pct;
+        let mostrarPctEnBarra = true;
+
+        if (options.estimado) {
+            pct = Math.min(92, Math.max(5, Math.round(actualNum)));
+            mostrarPctEnBarra = false;
+        } else if (totalLineas > 0) {
+            pct = Math.round((procesadas / totalLineas) * 100);
+        } else if (textoExtra) {
+            pct = Math.min(18, Math.max(8, actualNum || 8));
+            mostrarPctEnBarra = false;
+        } else {
+            pct = actualNum > 0 ? 100 : 0;
+        }
 
         if (importarProgresoBar) {
             importarProgresoBar.style.width = pct + '%';
             importarProgresoBar.setAttribute('aria-valuenow', String(pct));
             importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-            importarProgresoBar.textContent = indeterminado ? '' : (pct + '%');
+            importarProgresoBar.textContent = mostrarPctEnBarra ? (pct + '%') : '';
         }
 
         if (importarProgresoTexto) {
@@ -2945,11 +3009,9 @@
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
 
-                actualizarProgresoImportar(
-                    desde,
-                    total || hasta,
-                    total > 0 ? 'Analizando productos...' : 'Detectando productos...',
-                );
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, 'Analizando productos...');
+                }
 
                 const body = new FormData();
                 body.append('_token', csrf);
@@ -2957,11 +3019,20 @@
                 body.append('desde', String(desde));
                 body.append('hasta', String(hasta));
 
-                const res = await fetch(importarMpUrls.preview, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body,
-                });
+                const res = total > 0
+                    ? await fetch(importarMpUrls.preview, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    })
+                    : await fetchConProgresoSimulado(
+                        () => fetch(importarMpUrls.preview, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body,
+                        }),
+                        MENSAJES_PROGRESO_TEXTO,
+                    );
 
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
@@ -3041,7 +3112,6 @@
             if (!okPrep) return;
 
             mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Analizando archivo...');
 
             let todasLineas = [];
             let cabeceraPdf = {};
@@ -3051,7 +3121,9 @@
             while (desde === 0 || desde < total) {
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                actualizarProgresoImportar(desde, total || hasta, 'Analizando archivo...');
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
+                }
 
                 const body = new FormData();
                 body.append('_token', csrf);
@@ -3059,11 +3131,20 @@
                 body.append('desde', String(desde));
                 body.append('hasta', String(hasta));
 
-                const res = await fetch(importarMpUrls.pdfPreview, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body,
-                });
+                const res = total > 0
+                    ? await fetch(importarMpUrls.pdfPreview, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    })
+                    : await fetchConProgresoSimulado(
+                        () => fetch(importarMpUrls.pdfPreview, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body,
+                        }),
+                        MENSAJES_PROGRESO_PDF,
+                    );
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
@@ -3078,6 +3159,9 @@
                 total = json.total ?? total;
                 todasLineas = todasLineas.concat(json.lineas || []);
                 desde = json.procesadas ?? hasta;
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
+                }
                 if (json.completado || (total > 0 && desde >= total)) break;
                 if (total === 0 && (json.lineas || []).length === 0) break;
             }
@@ -3139,7 +3223,6 @@
             if (!okPrep) return;
 
             mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Analizando Excel...');
 
             let todasLineas = [];
             let cabeceraExcel = {};
@@ -3150,7 +3233,9 @@
             while (desde === 0 || desde < total) {
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                actualizarProgresoImportar(desde, total || hasta, 'Analizando Excel...');
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
+                }
 
                 const body = new FormData();
                 body.append('_token', csrf);
@@ -3160,11 +3245,20 @@
                 body.append('desde', String(desde));
                 body.append('hasta', String(hasta));
 
-                const res = await fetch(importarMpUrls.excelPreview, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body,
-                });
+                const res = total > 0
+                    ? await fetch(importarMpUrls.excelPreview, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    })
+                    : await fetchConProgresoSimulado(
+                        () => fetch(importarMpUrls.excelPreview, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body,
+                        }),
+                        MENSAJES_PROGRESO_EXCEL,
+                    );
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
@@ -3182,6 +3276,9 @@
                 total = json.total ?? total;
                 todasLineas = todasLineas.concat(json.lineas || []);
                 desde = json.procesadas ?? hasta;
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
+                }
                 if (json.completado || (total > 0 && desde >= total)) break;
                 if (total === 0 && (json.lineas || []).length === 0) break;
             }
@@ -3538,6 +3635,7 @@
     }
 
     function ocultarProgresoImportar() {
+        detenerProgresoSimuladoImportar();
         if (importarProgresoWrap) importarProgresoWrap.classList.add('d-none');
         if (importarProgresoBar) {
             importarProgresoBar.style.width = '0%';
