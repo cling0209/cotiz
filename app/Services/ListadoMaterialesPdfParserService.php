@@ -63,12 +63,18 @@ class ListadoMaterialesPdfParserService
             ];
         }
 
-        $texto = $this->extraerTextoPdf($path);
+        $fragmentos = $this->recolectarFragmentosTextoPdf($path);
+        if ($fragmentos === []) {
+            throw new RuntimeException('No se pudo extraer texto del PDF.');
+        }
+
+        $texto = $this->elegirMejorTextoTablaProductoDesdeFragmentos($fragmentos);
+        $textoBusqueda = trim(implode("\n", $fragmentos));
         $lineasDesdeTexto = $this->parseTexto($texto);
 
         return [
             'cabecera' => $this->extraerCabeceraDocumento($texto),
-            'lineas' => $this->fusionarLineasConPaddle($path, $lineasDesdeTexto, $texto),
+            'lineas' => $this->fusionarLineasConPaddle($path, $lineasDesdeTexto, $textoBusqueda),
         ];
     }
 
@@ -813,27 +819,104 @@ class ListadoMaterialesPdfParserService
             throw new RuntimeException('No se pudo leer el archivo.');
         }
 
+        $fragmentos = $this->recolectarFragmentosTextoPdf($path);
+        if ($fragmentos === []) {
+            throw new RuntimeException('No se pudo extraer texto del PDF. Verifique que no sea un documento escaneado.');
+        }
+
+        return $this->elegirMejorTextoTablaProductoDesdeFragmentos($fragmentos);
+    }
+
+    /**
+     * Nativo + Tesseract (página y recorte). Replica en VPS lo que los tests simulan
+     * al combinar fixtures distintos (p. ej. native_parcial + ocr_vps).
+     *
+     * @return array<string, string>
+     */
+    private function recolectarFragmentosTextoPdf(string $path): array
+    {
+        $fragmentos = [];
+        $textoNativo = '';
+
         try {
             $parser = new Parser;
-            $pdf = $parser->parseFile($path);
-            $textoNativo = trim((string) $pdf->getText());
+            $textoNativo = trim((string) $parser->parseFile($path)->getText());
+            if ($textoNativo !== '') {
+                $fragmentos['nativo'] = $textoNativo;
+            }
         } catch (\Throwable $e) {
-            throw new RuntimeException('No se pudo extraer texto del PDF. Verifique que no sea un documento escaneado.', 0, $e);
+            Log::warning('Import PDF: texto nativo no disponible', ['error' => $e->getMessage()]);
         }
 
-        if ($textoNativo === '') {
-            return $this->resolverTextoPdfMedianteOcr($path, null);
+        $necesitaOcr = $textoNativo === ''
+            || $this->debeComplementarTextoPdfConOcr($path, $textoNativo);
+
+        if (! $necesitaOcr) {
+            return $fragmentos;
         }
 
-        if ($this->debeComplementarTextoPdfConOcr($path, $textoNativo)) {
+        $ocr = $this->ocr ?? new PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            if ($textoNativo === '') {
+                throw new RuntimeException(
+                    'El PDF no contiene texto legible (posible escaneo) y OCR no está disponible en este entorno.',
+                );
+            }
+
+            return $fragmentos;
+        }
+
+        foreach ([['ocr', false], ['ocr_crop', true]] as [$clave, $recortar]) {
             try {
-                return $this->resolverTextoPdfMedianteOcr($path, $textoNativo);
-            } catch (RuntimeException) {
-                return $textoNativo;
+                $texto = trim($this->extraerTextoPdfMedianteOcr($path, $recortar));
+                if ($texto !== '') {
+                    $fragmentos[$clave] = $texto;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Import PDF: OCR '.$clave.' falló', ['error' => $e->getMessage()]);
             }
         }
 
-        return $textoNativo;
+        return $fragmentos;
+    }
+
+    /**
+     * @param  array<string, string>  $fragmentos
+     */
+    private function elegirMejorTextoTablaProductoDesdeFragmentos(array $fragmentos): string
+    {
+        $fragmentos = array_values(array_filter(
+            array_map(static fn (string $t): string => trim($t), $fragmentos),
+            static fn (string $t): bool => $t !== '',
+        ));
+
+        if ($fragmentos === []) {
+            return '';
+        }
+
+        if (count($fragmentos) === 1) {
+            return $fragmentos[0];
+        }
+
+        $mejor = $fragmentos[0];
+        $maxLineas = count($this->parseTablaProductoCantidad($mejor));
+
+        for ($i = 1; $i < count($fragmentos); $i++) {
+            $candidato = $this->elegirMejorTextoPdfTablaProducto($mejor, $fragmentos[$i]);
+            $lineas = count($this->parseTablaProductoCantidad($candidato));
+            if ($lineas >= $maxLineas) {
+                $maxLineas = $lineas;
+                $mejor = $candidato;
+            }
+        }
+
+        $combinado = trim(implode("\n", $fragmentos));
+        $lineasCombinado = count($this->parseTablaProductoCantidad($combinado));
+        if ($lineasCombinado >= $maxLineas) {
+            return $combinado;
+        }
+
+        return $mejor;
     }
 
     private function resolverTextoPdfMedianteOcr(string $path, ?string $textoNativo): string

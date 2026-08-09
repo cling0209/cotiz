@@ -629,6 +629,36 @@ TXT;
         $this->assertTrue($debe);
     }
 
+    public function test_combinar_nativo_parcial_y_ocr_vps_recupera_nueve_filas(): void
+    {
+        $metodo = new \ReflectionMethod(
+            ListadoMaterialesPdfParserService::class,
+            'elegirMejorTextoTablaProductoDesdeFragmentos',
+        );
+        $metodo->setAccessible(true);
+
+        $nativo = $this->cargarFixture('solicitud_pedido_native_parcial.txt');
+        $ocr = $this->cargarFixture('solicitud_pedido_ocr_vps.txt');
+
+        $elegido = $metodo->invoke($this->parser, [
+            'nativo' => $nativo,
+            'ocr' => $ocr,
+        ]);
+
+        $lineas = $this->parser->parseTexto($elegido);
+
+        $this->assertGreaterThanOrEqual(9, count($lineas));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'LAPIZ PASTA ARTEL PTA ROJO'),
+        ));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'RESMA OFICIO'),
+        ));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'CUADERNO UNIVERSITARIO'),
+        ));
+    }
+
     public function test_limpia_cantidad_duplicada_en_descripcion_perforadora(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'limpiarCantidadDuplicadaEnDescripcion');
