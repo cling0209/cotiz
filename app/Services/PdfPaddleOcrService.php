@@ -85,8 +85,6 @@ class PdfPaddleOcrService
     }
 
     /**
-     * Extrae celdas página a página (mismo flujo que scripts/procesar_cuadrar_por_hoja.php).
-     *
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
      */
     public function extraerLineasTablaPorPagina(string $pdfPath, string $nombreArchivo = ''): array
@@ -125,9 +123,13 @@ class PdfPaddleOcrService
         string $nombre,
         int $timeout,
         int $maxPaginas,
+        int $concurrency = 0,
     ): array {
         $maxPaginas = max(1, min(30, $maxPaginas));
-        $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 2)));
+        if ($concurrency <= 0) {
+            $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 2)));
+        }
+
         /** @var array<int, array<int, array{cantidad: int, descripcion: string, pagina?: int}>> $porPagina */
         $porPagina = [];
 
@@ -194,7 +196,29 @@ class PdfPaddleOcrService
             'paginas_doc' => $maxPaginas,
             'paginas_con_datos' => count($porPagina),
             'filas_total' => count($todas),
+            'concurrency' => $concurrency,
         ]);
+
+        $promedioFilas = count($todas) / max(1, count($porPagina));
+        if (
+            $concurrency > 1
+            && $this->esNombreEspecificacionesTecnicas($nombre)
+            && ($promedioFilas < 6 || count($porPagina) < $maxPaginas)
+        ) {
+            Log::info('Import PDF: Paddle paralelo incompleto; reintento secuencial por hoja', [
+                'filas_total' => count($todas),
+                'paginas_con_datos' => count($porPagina),
+            ]);
+
+            return $this->extraerLineasTablaPorPaginaDesdeBytes(
+                $url,
+                $pdfBytes,
+                $nombre,
+                $timeout,
+                $maxPaginas,
+                1,
+            );
+        }
 
         return $todas;
     }

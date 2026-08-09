@@ -1494,14 +1494,14 @@ class ListadoMaterialesPdfParserService
         }
 
         $countPaddle = count($lineasPaddle);
-        if ($countPaddle < $minEsperadas && $esTablaEscaneada) {
+        if ($this->paddleResultadoIncompleto($countPaddle, $minEsperadas, $filasEsperadas, $paginas) && $esTablaEscaneada) {
             $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
             if ($lineasOcrPorPagina !== []) {
-                $countOcr = count($lineasOcrPorPagina);
                 Log::info('Import PDF: Paddle incompleto; complementando con OCR por página', [
                     'paddle' => $countPaddle,
-                    'ocr_pagina' => $countOcr,
+                    'ocr_pagina' => count($lineasOcrPorPagina),
                     'min_esperadas' => $minEsperadas,
+                    'esperadas' => $filasEsperadas,
                 ]);
                 $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
                     $texto,
@@ -1509,13 +1509,6 @@ class ListadoMaterialesPdfParserService
                     false,
                     $paginas,
                 );
-                if ($countOcr > $countPaddle) {
-                    $lineasPaddle = $this->complementarLineasTablaSinDuplicar(
-                        $this->deduplicarLineasTabla($lineasPaddle, true),
-                        $lineasOcrPorPagina,
-                    );
-                    $countPaddle = count($lineasPaddle);
-                }
             }
         }
 
@@ -1671,6 +1664,27 @@ class ListadoMaterialesPdfParserService
         $paginas = $this->resolverPaginasPdf($path, $nombreArchivo);
 
         return $this->esProbableTablaMaterialesEscaneada('', $paginas, $path, $nombreArchivo);
+    }
+
+    private function paddleResultadoIncompleto(
+        int $countPaddle,
+        int $minEsperadas,
+        int $filasEsperadas,
+        int $paginas,
+    ): bool {
+        if ($countPaddle < $minEsperadas) {
+            return true;
+        }
+
+        if ($filasEsperadas >= 40 && $countPaddle < (int) floor($filasEsperadas * 0.85)) {
+            return true;
+        }
+
+        if ($paginas >= 8 && $countPaddle < (int) floor($paginas * 6)) {
+            return true;
+        }
+
+        return false;
     }
 
     private function textoHintTablaMaterialesEscaneada(string $nombreArchivo, int $paginas): string

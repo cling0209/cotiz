@@ -559,4 +559,46 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         $this->assertNotEmpty($documento['lineas']);
         Solicitud83965Golden::assertLineasMatchGolden($this, $documento['lineas']);
     }
+
+    public function test_paddle_39_incompleto_usa_ocr_por_pagina(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle39 = array_map(
+            static fn (array $fila): array => [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $fila['descripcion'],
+            ],
+            array_slice($golden['lineas'], 0, 39),
+        );
+
+        $vpsPath = dirname(__DIR__).'/Fixtures/pdf_materiales/vps_ocr_real.txt';
+        $vpsTexto = (string) file_get_contents($vpsPath);
+        $vpsTexto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $vpsTexto, 1) ?? $vpsTexto;
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle39);
+
+        $ocr = $this->createMock(\App\Services\PdfOcrService::class);
+        $ocr->method('estaDisponible')->willReturn(true);
+        $ocr->method('extraerTextoPagina')->willReturn($vpsTexto);
+
+        $parser = new ListadoMaterialesPdfParserService($ocr, $paddle);
+        $hint = "ESPECIFICACIONES TECNICAS\nPRODUCTO CANTIDAD\nPÁGINA 1 DE 11\n";
+
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke($parser, $tmp, [], $hint, 'ESPECIFICACIONES TECNICAS2 .pdf');
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertGreaterThanOrEqual(90, count($fusionadas));
+        $this->assertGreaterThan(39, count($fusionadas));
+    }
 }
