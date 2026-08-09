@@ -1073,6 +1073,13 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
+            $reducidas = $this->eliminarFilaDuplicadaRepresentada($filas);
+            if (count($reducidas) < count($filas)) {
+                $filas = $reducidas;
+
+                continue;
+            }
+
             break;
         }
 
@@ -1083,7 +1090,7 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function eliminarFilaRedundanteMasCorta(array $filas): array
+    private function eliminarFilaDuplicadaRepresentada(array $filas): array
     {
         foreach ($filas as $indice => $candidata) {
             $otras = [];
@@ -1098,6 +1105,21 @@ class ListadoMaterialesPdfParserService
 
                 return array_values($filas);
             }
+        }
+
+        return $filas;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function eliminarFilaRedundanteMasCorta(array $filas): array
+    {
+        $original = count($filas);
+        $filas = $this->eliminarFilaDuplicadaRepresentada($filas);
+        if (count($filas) < $original) {
+            return $filas;
         }
 
         $indiceCorto = null;
@@ -1402,7 +1424,11 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($desdeCeldasPaddle) {
-            $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
+            $reparado = $this->compactarFilasPaddleCeldas($reparado);
+
+            if ($texto !== '' && $this->debePodarFilasTablaMateriales($texto, $paginas, $reparado)) {
+                $reparado = $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $reparado);
+            }
 
             return $this->deduplicarLineasTabla($reparado, false);
         }
@@ -1414,6 +1440,22 @@ class ListadoMaterialesPdfParserService
         }
 
         return $this->deduplicarLineasTabla($reparado, true);
+    }
+
+    /**
+     * Compactación segura para filas Paddle (celdas): une sufijos multilínea y duplicados parciales
+     * sin fusionar fragmentos OCR que mezclan cantidades entre filas.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function compactarFilasPaddleCeldas(array $filas): array
+    {
+        $filas = $this->fusionarSufijosCeldaMultilineaOcr($filas);
+        $filas = $this->eliminarFilasSubcadenaContenida($filas);
+        $filas = $this->filtrarFilasRuidoEvidenteSolicitudPedido($filas);
+
+        return $this->deduplicarLineasTabla($filas, true);
     }
 
     /**

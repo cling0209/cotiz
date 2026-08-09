@@ -98,4 +98,88 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
             );
         }
     }
+
+    public function test_sanear_paddle_142_fragmentos_poda_a_97_golden(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $fragmentadas = $this->simularPaddle142DesdeGolden($golden['lineas']);
+        $this->assertGreaterThanOrEqual(135, count($fragmentadas));
+        $this->assertLessThanOrEqual(150, count($fragmentadas));
+
+        $fixturePath = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.'vps_ocr_real.txt';
+        $texto = (string) file_get_contents($fixturePath);
+        $texto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $texto, 1) ?? $texto;
+
+        $parser = new ListadoMaterialesPdfParserService;
+        $sanear = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'sanearFilasTablaSolicitud');
+        $sanear->setAccessible(true);
+
+        $out = $sanear->invoke($parser, $fragmentadas, $texto, 11, true);
+
+        Solicitud83965Golden::assertLineasMatchGolden($this, $out);
+    }
+
+    public function test_fusion_paddle_142_fragmentos_poda_a_97_golden(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle = $this->simularPaddle142DesdeGolden($golden['lineas']);
+
+        $fixturePath = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.'vps_ocr_real.txt';
+        $texto = (string) file_get_contents($fixturePath);
+        $texto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $texto, 1) ?? $texto;
+
+        $parserBase = new ListadoMaterialesPdfParserService;
+        $lineasTexto = $parserBase->parseTexto($texto);
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke($parser, $tmp, $lineasTexto, $texto);
+        } finally {
+            @unlink($tmp);
+        }
+
+        Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
+    }
+
+    /**
+     * @param  array<int, array{needle: string, cantidad: int, descripcion: string}>  $goldenLineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function simularPaddle142DesdeGolden(array $goldenLineas): array
+    {
+        $out = [];
+
+        foreach ($goldenLineas as $i => $fila) {
+            $out[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $fila['descripcion'],
+            ];
+
+            if ($i % 2 !== 0) {
+                continue;
+            }
+
+            $words = preg_split('/\s+/u', trim($fila['descripcion'])) ?: [];
+            if (count($words) < 3) {
+                continue;
+            }
+
+            $out[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => implode(' ', array_slice($words, 0, 2)),
+            ];
+        }
+
+        return $out;
+    }
 }

@@ -98,6 +98,20 @@ class TestInferenciaColumnas(unittest.TestCase):
         self.assertEqual(10, fila["cantidad"])
         self.assertIn("RESMA", fila["descripcion"])
 
+    def test_celda_multilinea_sin_cantidad_en_primera_fila(self) -> None:
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>LAPICES DE CERA JUMBO 12</td><td></td><td></td></tr>
+        <tr><td>UNIDADES IMAGIA TRIANGULAR</td><td>8 unidades</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(1, len(filas))
+        self.assertEqual(8, filas[0]["cantidad"])
+        self.assertIn("LAPICES DE CERA JUMBO", filas[0]["descripcion"])
+        self.assertIn("UNIDADES IMAGIA", filas[0]["descripcion"])
+
 
 if __name__ == "__main__":
     unittest.main()

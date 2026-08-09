@@ -267,6 +267,61 @@ def _parse_fila_con_mapeo(row: list[str], mapeo: dict[str, int | None]) -> dict[
     return _parse_celdas_fila(celdas)
 
 
+def _fusionar_filas_tabla_html_partidas(
+    rows: list[list[str]],
+    mapeo: dict[str, int | None],
+) -> list[list[str]]:
+    """Une filas HTML donde el producto multilínea quedó partido sin cantidad en la primera."""
+    idx_producto = mapeo.get("producto")
+    idx_cantidad = mapeo.get("cantidad")
+    if (
+        idx_producto is None
+        or idx_cantidad is None
+        or idx_producto == idx_cantidad
+        or not rows
+    ):
+        return rows
+
+    merged: list[list[str]] = []
+    buffer: list[str] | None = None
+
+    for row in rows:
+        celdas = _normalizar_celdas(row)
+        max_idx = max(idx_producto, idx_cantidad)
+        while len(celdas) <= max_idx:
+            celdas.append("")
+
+        prod = celdas[idx_producto].strip()
+        qty_cell = celdas[idx_cantidad].strip()
+        qty = _parse_cantidad(qty_cell)
+
+        if qty is None and prod and not _es_ruido(prod) and not _es_celda_imagen(prod):
+            if buffer is None:
+                buffer = celdas.copy()
+            else:
+                buffer[idx_producto] = f"{buffer[idx_producto]} {prod}".strip()
+            continue
+
+        if qty is not None and buffer is not None:
+            if prod:
+                buffer[idx_producto] = f"{buffer[idx_producto]} {prod}".strip()
+            buffer[idx_cantidad] = qty_cell
+            merged.append(buffer)
+            buffer = None
+            continue
+
+        if buffer is not None:
+            merged.append(buffer)
+            buffer = None
+
+        merged.append(celdas)
+
+    if buffer is not None:
+        merged.append(buffer)
+
+    return merged
+
+
 def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
     parser = _TableHtmlParser()
     parser.feed(html)
@@ -291,6 +346,8 @@ def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
             mapeo["producto"] = inferido["producto"]
         if mapeo["cantidad"] is None:
             mapeo["cantidad"] = inferido["cantidad"]
+
+    filas_datos = _fusionar_filas_tabla_html_partidas(filas_datos, mapeo)
 
     filas: list[dict[str, Any]] = []
     for row in filas_datos:
@@ -369,7 +426,7 @@ def _deduplicar(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 break
             min_len = min(len(clave), len(ex_clave))
             max_len = max(len(clave), len(ex_clave))
-            if min_len >= 8 and max_len > 0:
+            if min_len >= 5 and max_len > 0:
                 if (clave in ex_clave or ex_clave in clave) and (min_len / max_len) >= 0.55:
                     duplicada = True
                     break
