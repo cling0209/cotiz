@@ -1812,7 +1812,10 @@ class ListadoMaterialesPdfParserService
             return $desdeColumnas;
         }
 
-        $desdeEspacios = $this->extraerDesdeColumnasEspaciadas($linea);
+        $desdeEspacios = $this->extraerDesdeColumnasEspaciadas($lineaCruda);
+        if ($desdeEspacios === null) {
+            $desdeEspacios = $this->extraerDesdeColumnasEspaciadas($linea);
+        }
         if ($desdeEspacios !== null && ! $this->esDescripcionBasuraTabla($desdeEspacios['descripcion'])) {
             return $desdeEspacios;
         }
@@ -1843,25 +1846,7 @@ class ListadoMaterialesPdfParserService
         $partes = preg_split('/\s{2,}/u', trim($linea)) ?: [];
         $partes = array_values(array_filter(array_map('trim', $partes), static fn (string $p) => $p !== ''));
 
-        if (count($partes) < 2) {
-            return null;
-        }
-
-        $descripcion = $partes[0];
-        $cantidad = $this->parseCantidadCeldaTabla($partes[1]);
-
-        if ($cantidad === null || mb_strlen($descripcion) < 3) {
-            return null;
-        }
-
-        if ($this->esLineaCabeceraColumnaSolicitud($descripcion) || $this->esEncabezadoTablaProductoCantidad($descripcion)) {
-            return null;
-        }
-
-        return [
-            'cantidad' => $cantidad,
-            'descripcion' => $descripcion,
-        ];
+        return $this->extraerDesdePartesColumna($partes);
     }
 
     private function esEncabezadoTablaProductoCantidad(string $linea): bool
@@ -1927,19 +1912,103 @@ class ListadoMaterialesPdfParserService
             static fn (string $p) => $p !== '',
         ));
 
+        return $this->extraerDesdePartesColumna($partes);
+    }
+
+    /**
+     * Resuelve producto/cantidad desde columnas separadas (tabs o espacios).
+     * Prueba producto|cantiad y cantidad|producto; con 3+ columnas infiere por contenido.
+     *
+     * @param  list<string>  $partes
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerDesdePartesColumna(array $partes): ?array
+    {
+        $partes = array_values(array_filter(
+            array_map(static fn (string $p) => trim($p), $partes),
+            static fn (string $p) => $p !== '',
+        ));
+
+        $partes = array_values(array_filter(
+            $partes,
+            static fn (string $p) => preg_match('/^IMAGEN\b/iu', $p) !== 1,
+        ));
+
         if (count($partes) < 2) {
             return null;
         }
 
-        $descripcion = trim($partes[0]);
-        $cantidadRaw = trim($partes[1]);
+        if (count($partes) === 2) {
+            foreach ([[0, 1], [1, 0]] as [$indiceDescripcion, $indiceCantidad]) {
+                $fila = $this->intentarParColumnaProductoCantidad(
+                    $partes[$indiceDescripcion],
+                    $partes[$indiceCantidad],
+                );
+                if ($fila !== null) {
+                    return $fila;
+                }
+            }
+
+            return null;
+        }
+
+        $indiceCantidad = null;
+
+        foreach ($partes as $indice => $celda) {
+            if ($this->parseCantidadCeldaTabla($celda) !== null && mb_strlen($celda) <= 16) {
+                $indiceCantidad = $indice;
+
+                break;
+            }
+        }
+
+        $partesDescripcion = [];
+        foreach ($partes as $indice => $celda) {
+            if ($indice === $indiceCantidad) {
+                continue;
+            }
+            if ($this->esRuidoTablaProductoCantidad($celda) || $this->esLineaCabeceraColumnaSolicitud($celda)) {
+                continue;
+            }
+            $partesDescripcion[] = $celda;
+        }
+
+        $descripcion = trim(implode(' ', $partesDescripcion));
+        if ($indiceCantidad === null || mb_strlen($descripcion) < 3) {
+            return null;
+        }
+
+        $cantidad = $this->parseCantidadCeldaTabla($partes[$indiceCantidad]);
+        if ($cantidad === null) {
+            return null;
+        }
+
+        if ($this->esEncabezadoTablaProductoCantidad($descripcion)) {
+            return null;
+        }
+
+        return [
+            'cantidad' => $cantidad,
+            'descripcion' => $descripcion,
+        ];
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function intentarParColumnaProductoCantidad(string $descripcion, string $cantidadRaw): ?array
+    {
+        $descripcion = trim($descripcion);
         $cantidad = $this->parseCantidadCeldaTabla($cantidadRaw);
 
         if ($cantidad === null || mb_strlen($descripcion) < 3) {
             return null;
         }
 
-        if ($this->esEncabezadoTablaProductoCantidad($descripcion)) {
+        if (
+            $this->esEncabezadoTablaProductoCantidad($descripcion)
+            || $this->esLineaCabeceraColumnaSolicitud($descripcion)
+        ) {
             return null;
         }
 
@@ -1971,10 +2040,8 @@ class ListadoMaterialesPdfParserService
         if (preg_match('/^(\d{1,5})\s+(.{3,})$/u', $linea, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[2]);
             $cantidadInicio = (int) $coincidencia[1];
-            $tieneEmpaqueUnidades = preg_match('/\b\d+\s+UNIDADES\b/iu', $linea) === 1;
             if (
                 ! preg_match('/^(?:unidades?|pack)\b/iu', $descripcion)
-                && ! $tieneEmpaqueUnidades
                 && $this->pareceCantidadPedidoAlInicio($cantidadInicio, $descripcion)
             ) {
                 return [

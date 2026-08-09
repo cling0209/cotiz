@@ -479,6 +479,40 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[1]['descripcion']);
     }
 
+    public function test_parse_solicitud_pedido_sin_cabecera_columnas_cantidad_primero(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_sin_cabecera_columnas.txt');
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(10, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA OFICIO', $lineas[0]['descripcion']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[1]['descripcion']);
+        $this->assertSame(8, $lineas[2]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPICES DE CERA', $lineas[2]['descripcion']);
+    }
+
+    public function test_parse_columnas_tabuladas_cantidad_antes_producto(): void
+    {
+        $texto = <<<'TXT'
+ESPECIFICACIONES SOLICITUD DE PEDIDO N° 1
+10	RESMA OFICIO 500 HOJAS
+5	GOMA EVA HOJA 50X70 CM
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(10, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA OFICIO', $lineas[0]['descripcion']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[1]['descripcion']);
+    }
+
     public function test_parse_solicitud_pedido_pagina1_nueve_productos(): void
     {
         $texto = $this->cargarFixture('solicitud_pedido_pagina1.txt');

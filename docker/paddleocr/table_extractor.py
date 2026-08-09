@@ -8,8 +8,6 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from pdf2image import convert_from_path
-
 CANTIDAD_RE = re.compile(
     r"^(?:(\d{1,5})\s*(?:unidades?|pack)\.?|\s*(\d{1,5}))$",
     re.IGNORECASE,
@@ -26,6 +24,8 @@ RUido_RE = re.compile(
     r"^(PRODUCTO|CANTIDAD|IMAGEN|P[AÁ]GINA|ESPECIFICACIONES|SOLICITUD|REFERENCIA)",
     re.IGNORECASE,
 )
+ETIQUETAS_PRODUCTO = ("PRODUCTO", "DESCRIPCION", "DESCRIPCIÓN", "DETALLE", "NOMBRE")
+ETIQUETAS_CANTIDAD = ("CANTIDAD", "UNIDADES", "QTY", "CANT")
 
 
 class _TableHtmlParser(HTMLParser):
@@ -58,6 +58,10 @@ class _TableHtmlParser(HTMLParser):
             self._current_row = None
 
 
+def _normalizar_celdas(celdas: list[str]) -> list[str]:
+    return [re.sub(r"\s+", " ", c.strip()) for c in celdas if c and c.strip()]
+
+
 def _parse_cantidad(raw: str) -> int | None:
     raw = raw.strip()
     if not raw:
@@ -76,6 +80,107 @@ def _es_ruido(texto: str) -> bool:
     if not t or len(t) < 2:
         return True
     return RUido_RE.match(t) is not None
+
+
+def _es_celda_imagen(celda: str) -> bool:
+    return re.match(r"^IMAGEN\b", celda, re.I) is not None
+
+
+def _es_celda_cantidad(celda: str) -> bool:
+    return _parse_cantidad(celda) is not None and len(celda.strip()) <= 16
+
+
+def _es_celda_producto(celda: str) -> bool:
+    if not celda or _es_ruido(celda) or _es_celda_imagen(celda):
+        return False
+    if _es_celda_cantidad(celda):
+        return False
+    return len(celda.strip()) >= 3
+
+
+def _es_fila_cabecera_completa(row: list[str]) -> bool:
+    upper = " ".join(row).upper()
+    return "PRODUCTO" in upper and "CANTIDAD" in upper
+
+
+def _es_fila_cabecera_parcial(row: list[str]) -> bool:
+    if len(row) > 2:
+        return False
+    upper = " ".join(row).upper()
+    return any(
+        etiqueta in upper
+        for etiqueta in (*ETIQUETAS_PRODUCTO, *ETIQUETAS_CANTIDAD, "IMAGEN", "REFERENCIA")
+    )
+
+
+def _indice_columna_por_etiquetas(row: list[str], etiquetas: tuple[str, ...]) -> int | None:
+    for indice, celda in enumerate(row):
+        upper = celda.upper().strip()
+        for etiqueta in etiquetas:
+            if etiqueta in upper or upper == etiqueta:
+                return indice
+    return None
+
+
+def _mapear_columnas_desde_cabecera(header_row: list[str]) -> dict[str, int | None]:
+    return {
+        "producto": _indice_columna_por_etiquetas(header_row, ETIQUETAS_PRODUCTO),
+        "cantidad": _indice_columna_por_etiquetas(header_row, ETIQUETAS_CANTIDAD),
+    }
+
+
+def _actualizar_mapeo_desde_fila_parcial(
+    row: list[str],
+    mapeo: dict[str, int | None],
+) -> dict[str, int | None]:
+    for indice, celda in enumerate(row):
+        upper = celda.upper().strip()
+        if mapeo["producto"] is None and any(e in upper for e in ETIQUETAS_PRODUCTO):
+            mapeo["producto"] = indice
+        if mapeo["cantidad"] is None and any(e in upper for e in ETIQUETAS_CANTIDAD):
+            mapeo["cantidad"] = indice
+    return mapeo
+
+
+def _inferir_columnas_por_contenido(
+    rows: list[list[str]],
+    max_filas: int = 8,
+) -> dict[str, int | None]:
+    if not rows:
+        return {"producto": None, "cantidad": None}
+
+    num_cols = max(len(r) for r in rows)
+    if num_cols < 2:
+        return {"producto": None, "cantidad": None}
+
+    scores_qty = [0] * num_cols
+    scores_prod = [0] * num_cols
+
+    for row in rows[:max_filas]:
+        for indice in range(num_cols):
+            celda = row[indice].strip() if indice < len(row) else ""
+            if not celda or _es_celda_imagen(celda):
+                continue
+            if _es_celda_cantidad(celda):
+                scores_qty[indice] += 1
+            elif _es_celda_producto(celda):
+                scores_prod[indice] += 1
+
+    idx_cantidad: int | None = None
+    idx_producto: int | None = None
+
+    if max(scores_qty, default=0) > 0:
+        idx_cantidad = scores_qty.index(max(scores_qty))
+
+    candidatos_prod = [
+        (indice, puntaje)
+        for indice, puntaje in enumerate(scores_prod)
+        if indice != idx_cantidad and puntaje > 0
+    ]
+    if candidatos_prod:
+        idx_producto = max(candidatos_prod, key=lambda par: par[1])[0]
+
+    return {"producto": idx_producto, "cantidad": idx_cantidad}
 
 
 def _parse_texto_linea(linea: str) -> dict[str, Any] | None:
@@ -97,7 +202,7 @@ def _parse_texto_linea(linea: str) -> dict[str, Any] | None:
 
 
 def _parse_celdas_fila(celdas: list[str]) -> dict[str, Any] | None:
-    celdas = [re.sub(r"\s+", " ", c.strip()) for c in celdas if c and c.strip()]
+    celdas = _normalizar_celdas(celdas)
     if not celdas:
         return None
 
@@ -108,7 +213,7 @@ def _parse_celdas_fila(celdas: list[str]) -> dict[str, Any] | None:
     partes_desc: list[str] = []
 
     for celda in celdas:
-        if re.match(r"^IMAGEN\b", celda, re.I):
+        if _es_celda_imagen(celda):
             continue
         qty = _parse_cantidad(celda)
         if qty is not None and cantidad is None and len(celda) <= 16:
@@ -134,18 +239,62 @@ def _parse_celdas_fila(celdas: list[str]) -> dict[str, Any] | None:
     return {"cantidad": cantidad, "descripcion": descripcion}
 
 
+def _parse_fila_con_mapeo(row: list[str], mapeo: dict[str, int | None]) -> dict[str, Any] | None:
+    celdas = _normalizar_celdas(row)
+    if not celdas:
+        return None
+
+    idx_producto = mapeo.get("producto")
+    idx_cantidad = mapeo.get("cantidad")
+
+    if (
+        idx_producto is not None
+        and idx_cantidad is not None
+        and idx_producto < len(celdas)
+        and idx_cantidad < len(celdas)
+        and idx_producto != idx_cantidad
+    ):
+        descripcion = celdas[idx_producto].strip()
+        cantidad = _parse_cantidad(celdas[idx_cantidad])
+        if (
+            cantidad is not None
+            and len(descripcion) >= 3
+            and not _es_ruido(descripcion)
+            and not _es_celda_imagen(descripcion)
+        ):
+            return {"cantidad": cantidad, "descripcion": descripcion}
+
+    return _parse_celdas_fila(celdas)
+
+
 def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
     parser = _TableHtmlParser()
     parser.feed(html)
-    filas: list[dict[str, Any]] = []
-    cabecera_vista = False
+
+    mapeo: dict[str, int | None] = {"producto": None, "cantidad": None}
+    filas_datos: list[list[str]] = []
 
     for row in parser.rows:
-        upper = " ".join(row).upper()
-        if not cabecera_vista and "PRODUCTO" in upper and "CANTIDAD" in upper:
-            cabecera_vista = True
+        if _es_fila_cabecera_completa(row):
+            mapeo = _mapear_columnas_desde_cabecera(row)
             continue
-        parsed = _parse_celdas_fila(row)
+
+        if _es_fila_cabecera_parcial(row) and not _parse_celdas_fila(row):
+            mapeo = _actualizar_mapeo_desde_fila_parcial(row, mapeo)
+            continue
+
+        filas_datos.append(row)
+
+    if mapeo["producto"] is None or mapeo["cantidad"] is None:
+        inferido = _inferir_columnas_por_contenido(filas_datos)
+        if mapeo["producto"] is None:
+            mapeo["producto"] = inferido["producto"]
+        if mapeo["cantidad"] is None:
+            mapeo["cantidad"] = inferido["cantidad"]
+
+    filas: list[dict[str, Any]] = []
+    for row in filas_datos:
+        parsed = _parse_fila_con_mapeo(row, mapeo)
         if parsed:
             filas.append(parsed)
 
@@ -204,12 +353,12 @@ def _filas_desde_ocr_lineas(texto: str) -> list[dict[str, Any]]:
 def _deduplicar(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     vistas: set[str] = set()
     out: list[dict[str, Any]] = []
-    for f in filas:
-        clave = re.sub(r"\s+", " ", f["descripcion"].strip().lower())
+    for fila in filas:
+        clave = re.sub(r"\s+", " ", fila["descripcion"].strip().lower())
         if not clave or clave in vistas:
             continue
         vistas.add(clave)
-        out.append({"cantidad": int(f["cantidad"]), "descripcion": f["descripcion"].strip()})
+        out.append({"cantidad": int(fila["cantidad"]), "descripcion": fila["descripcion"].strip()})
     return out
 
 
@@ -228,6 +377,8 @@ def get_ppstructure_engine() -> Any:
 
 def extraer_lineas_pdf(pdf_path: str, dpi: int = 200, max_pages: int = 15) -> list[dict[str, Any]]:
     """Convierte PDF a imágenes y extrae filas producto/cantidad."""
+    from pdf2image import convert_from_path
+
     engine = get_ppstructure_engine()
 
     images = convert_from_path(
