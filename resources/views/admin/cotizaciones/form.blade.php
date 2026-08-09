@@ -2617,17 +2617,17 @@
     let importSimTimer = null;
     let importMaterialesLockId = null;
 
-    const MENSAJES_PROGRESO_PDF = [
-        'Leyendo archivo PDF o Word…',
-        'Extrayendo texto del documento…',
-        'Reconociendo texto (OCR)… puede tardar varios minutos',
-        'Detectando tabla de productos…',
-        'Identificando cantidades y descripciones…',
+    const DETALLE_ANALISIS_PDF = [
+        'leyendo archivo',
+        'extrayendo texto del documento',
+        'reconociendo texto (OCR) — puede tardar varios minutos',
+        'detectando tabla de productos',
+        'identificando cantidades y descripciones',
     ];
-    const MENSAJES_PROGRESO_EXCEL = [
-        'Leyendo archivo Excel…',
-        'Detectando columnas…',
-        'Extrayendo productos del archivo…',
+    const DETALLE_ANALISIS_EXCEL = [
+        'leyendo archivo Excel',
+        'detectando columnas',
+        'extrayendo productos del archivo',
     ];
     const MENSAJES_PROGRESO_TEXTO = [
         'Analizando texto pegado…',
@@ -2744,6 +2744,30 @@
         }
     }
 
+    function iniciarProgresoAnalisisDocumento(detalles) {
+        detenerProgresoSimuladoImportar();
+        const partes = Array.isArray(detalles) && detalles.length ? detalles : DETALLE_ANALISIS_PDF;
+        let pct = 5;
+        let detIdx = 0;
+
+        function textoAnalisis() {
+            const detalle = partes[detIdx % partes.length];
+            return 'Analizando documento… (' + detalle + ')';
+        }
+
+        function tick() {
+            if (pct < 94) {
+                pct += 0.35 + Math.random() * 0.85;
+                pct = Math.min(94, pct);
+            }
+            actualizarProgresoImportar(Math.round(pct), 100, textoAnalisis(), { faseAnalisis: true });
+            detIdx = (detIdx + 1) % partes.length;
+        }
+
+        tick();
+        importSimTimer = setInterval(tick, 1300);
+    }
+
     function iniciarProgresoSimuladoImportar(mensajes) {
         detenerProgresoSimuladoImportar();
         const msgs = Array.isArray(mensajes) && mensajes.length ? mensajes : ['Procesando…'];
@@ -2763,8 +2787,8 @@
         importSimTimer = setInterval(tick, 1100);
     }
 
-    async function fetchConProgresoSimulado(fetchFn, mensajes) {
-        iniciarProgresoSimuladoImportar(mensajes);
+    async function fetchConProgresoAnalisisDocumento(fetchFn, detalles) {
+        iniciarProgresoAnalisisDocumento(detalles);
         try {
             return await fetchFn();
         } finally {
@@ -2824,7 +2848,16 @@
         }
     }
 
-    async function enviarPreviewMateriales(url, bodyBuilder, mensajesSimulado, usarProgresoSimulado) {
+    async function fetchConProgresoSimulado(fetchFn, mensajes) {
+        iniciarProgresoSimuladoImportar(mensajes);
+        try {
+            return await fetchFn();
+        } finally {
+            detenerProgresoSimuladoImportar();
+        }
+    }
+
+    async function enviarPreviewMateriales(url, bodyBuilder, detallesAnalisis, usarProgresoAnalisis) {
         for (;;) {
             const body = bodyBuilder();
             body.append('lock_id', importMaterialesLockId || nuevoImportMaterialesLockId());
@@ -2835,8 +2868,8 @@
                 body,
             });
 
-            const res = usarProgresoSimulado
-                ? await fetchConProgresoSimulado(ejecutarFetch, mensajesSimulado)
+            const res = usarProgresoAnalisis
+                ? await fetchConProgresoAnalisisDocumento(ejecutarFetch, detallesAnalisis)
                 : await ejecutarFetch();
 
             const json = await res.json().catch(() => ({}));
@@ -2858,7 +2891,10 @@
         let pct;
         let mostrarPctEnBarra = true;
 
-        if (options.estimado) {
+        if (options.faseAnalisis) {
+            pct = Math.min(95, Math.max(5, Math.round(actualNum)));
+            mostrarPctEnBarra = true;
+        } else if (options.estimado) {
             pct = Math.min(92, Math.max(5, Math.round(actualNum)));
             mostrarPctEnBarra = false;
         } else if (totalLineas > 0) {
@@ -2879,7 +2915,11 @@
 
         if (importarProgresoTexto) {
             if (textoExtra) {
-                importarProgresoTexto.textContent = textoExtra;
+                if (totalLineas > 0 && !options.faseAnalisis && !options.estimado) {
+                    importarProgresoTexto.textContent = textoExtra + ' — ' + procesadas + ' de ' + totalLineas + ' (' + pct + '%)';
+                } else {
+                    importarProgresoTexto.textContent = textoExtra;
+                }
             } else if (totalLineas > 0) {
                 importarProgresoTexto.textContent = procesadas + ' de ' + totalLineas + ' líneas (' + pct + '%)';
             } else {
@@ -3197,6 +3237,7 @@
             }
 
             mostrarProgresoImportar();
+            actualizarProgresoImportar(5, 100, 'Analizando documento… (preparando)', { faseAnalisis: true });
 
             let todasLineas = [];
             let cabeceraPdf = {};
@@ -3220,7 +3261,7 @@
                         body.append('hasta', String(hasta));
                         return body;
                     },
-                    MENSAJES_PROGRESO_PDF,
+                    DETALLE_ANALISIS_PDF,
                     total === 0,
                 );
 
@@ -3306,6 +3347,7 @@
             }
 
             mostrarProgresoImportar();
+            actualizarProgresoImportar(5, 100, 'Analizando documento… (preparando)', { faseAnalisis: true });
 
             let todasLineas = [];
             let cabeceraExcel = {};
@@ -3332,7 +3374,7 @@
                         body.append('hasta', String(hasta));
                         return body;
                     },
-                    MENSAJES_PROGRESO_EXCEL,
+                    DETALLE_ANALISIS_EXCEL,
                     total === 0,
                 );
 
