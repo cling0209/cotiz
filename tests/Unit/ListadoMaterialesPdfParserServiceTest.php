@@ -415,6 +415,66 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[0]['descripcion']);
     }
 
+    public function test_detecta_formato_oferta_precio_enami(): void
+    {
+        $texto = $this->cargarFixture('enami_oferta_dual_column_sim.txt');
+
+        $this->assertSame('oferta_precio', $this->parser->detectarFormato($texto));
+    }
+
+    public function test_parse_oferta_precio_dual_column_cantidad_default_uno(): void
+    {
+        $texto = $this->cargarFixture('enami_oferta_dual_column_sim.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(6, $lineas);
+
+        foreach ($lineas as $linea) {
+            $this->assertSame(1, $linea['cantidad']);
+        }
+
+        $this->assertStringContainsStringIgnoringCase('ACCOCLIP METALICO CAJA 50U DORADO RHEIN', $lineas[0]['descripcion']);
+        $this->assertStringContainsStringIgnoringCase('LAPIZ PASTA P/MEDIA BPS GP 1.0 AZUL PILOT', $lineas[1]['descripcion']);
+        $this->assertStringNotContainsString('391', $lineas[0]['descripcion']);
+    }
+
+    public function test_parse_oferta_precio_columna_unica_sin_dual(): void
+    {
+        $texto = <<<'TXT'
+ANEXO N 2 OFERTA ECONOMICA
+N item	Descripcion	Unidad	Precio Neto Unitario ($)
+1	ACCOCLIP METALICO CAJA 50U DORADO RHEIN	CJA	-
+2	ADH. EN BARRA 10GR PRITT STICK FIX HENKEL	UNI	-
+TXT;
+
+        $this->assertSame('oferta_precio', $this->parser->detectarFormato($texto));
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(1, $lineas[0]['cantidad']);
+        $this->assertSame(1, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('ACCOCLIP', $lineas[0]['descripcion']);
+        $this->assertStringContainsStringIgnoringCase('PRITT STICK', $lineas[1]['descripcion']);
+    }
+
+    public function test_parse_oferta_precio_multilinea_por_celdas(): void
+    {
+        $texto = <<<'TXT'
+ANEXO N 2 OFERTA ECONOMICA
+N item	Descripcion	Unidad	Precio Neto Unitario ($)
+1	ACCOCLIP METALICO CAJA 50U
+DORADO RHEIN	CJA	-
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(1, $lineas);
+        $this->assertSame(1, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('ACCOCLIP', $lineas[0]['descripcion']);
+        $this->assertStringContainsStringIgnoringCase('DORADO RHEIN', $lineas[0]['descripcion']);
+    }
+
     public function test_parse_tabla_producto_cantidad_solicitud_pedido(): void
     {
         $texto = $this->cargarFixture('solicitud_pedido_tabla.txt');

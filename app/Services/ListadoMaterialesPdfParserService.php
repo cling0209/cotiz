@@ -29,6 +29,9 @@ class ListadoMaterialesPdfParserService
     /** Tabla multi-columna: producto y cantidad en columnas distintas (p. ej. cotización proveedor). */
     private const FORMATO_TABLA_COLUMNAS = 'tabla_columnas';
 
+    /** Catálogo/oferta con descripción + unidad + precio, sin columna cantidad (p. ej. ANEXO ENAMI). */
+    private const FORMATO_OFERTA_PRECIO = 'oferta_precio';
+
     public function __construct(
         protected ?PdfOcrService $ocr = null,
         protected ?PdfPaddleOcrService $paddle = null,
@@ -202,6 +205,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
             self::FORMATO_TABLA_PRODUCTO_CANTIDAD => $this->parseTablaProductoCantidad($texto),
             self::FORMATO_TABLA_COLUMNAS => $this->parseTablaColumnas($texto),
+            self::FORMATO_OFERTA_PRECIO => $this->parseOfertaPrecio($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
             default => $this->parseListadoCantidad($texto),
         };
@@ -297,6 +301,10 @@ class ListadoMaterialesPdfParserService
             return self::FORMATO_TABLA_COLUMNAS;
         }
 
+        if ($this->esFormatoOfertaPrecio($upper)) {
+            return self::FORMATO_OFERTA_PRECIO;
+        }
+
         if (
             ! $this->tieneCabeceraTablaProductoCantidad($upper)
             && (
@@ -315,8 +323,8 @@ class ListadoMaterialesPdfParserService
     private function normalizarEspaciosDocumento(string $texto): string
     {
         $texto = str_replace(["\r\n", "\r"], "\n", $texto);
-        $texto = str_replace("\t", ' ', $texto);
 
+        // Preservar tabulaciones: separador de celdas en PDF/OCR exportado.
         return preg_replace('/[ ]{2,}/u', ' ', $texto) ?? $texto;
     }
 
@@ -1345,10 +1353,27 @@ class ListadoMaterialesPdfParserService
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
         $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
+        $esTablaEscaneada = $this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path);
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
+        $filasEsperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
 
-        if (! $esTabla && ! $esTablaMateriales && count($lineasTexto) >= $minEsperadas) {
+        if (! $esTabla && ! $esTablaMateriales && ! $esTablaEscaneada && count($lineasTexto) >= $minEsperadas) {
             return $lineasTexto;
+        }
+
+        /** @var array<string, array<int, array{cantidad: int, descripcion: string}>> $candidatos */
+        $candidatos = [];
+
+        if ($esTablaEscaneada) {
+            $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
+            if ($lineasOcrPorPagina !== []) {
+                $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
+                    $texto,
+                    $lineasOcrPorPagina,
+                    false,
+                    $paginas,
+                );
+            }
         }
 
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
@@ -1357,7 +1382,13 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+            $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+
+            return $this->elegirMejorLineasTablaMateriales(
+                array_merge($candidatos, ['texto' => $fallback]),
+                $filasEsperadas,
+                $minEsperadas,
+            );
         }
 
         try {
@@ -1368,18 +1399,48 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+            $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+
+            return $this->elegirMejorLineasTablaMateriales(
+                array_merge($candidatos, ['texto' => $fallback]),
+                $filasEsperadas,
+                $minEsperadas,
+            );
         }
 
         if ($lineasPaddle === []) {
-            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+            $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+
+            return $this->elegirMejorLineasTablaMateriales(
+                array_merge($candidatos, ['texto' => $fallback]),
+                $filasEsperadas,
+                $minEsperadas,
+            );
         }
 
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
-        $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle);
 
-        // Tabla materiales: Paddle (celdas) es la fuente de verdad; OCR solo si Paddle no alcanza.
+        if ($esTablaEscaneada && $countPaddle > (int) ceil($filasEsperadas * 1.08)) {
+            try {
+                $lineasPaddlePagina = $paddle->extraerLineasTablaPorPagina($path);
+                if ($lineasPaddlePagina !== []) {
+                    $lineasPaddle = $lineasPaddlePagina;
+                    $countPaddle = count($lineasPaddle);
+                    Log::info('Import PDF: Paddle documento completo fragmentado; se usa extracción por página', [
+                        'filas_por_pagina' => $countPaddle,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Import PDF: Paddle por página falló; se mantiene extracción completa', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle)
+            || $esTablaEscaneada;
+
         $paddlePrimario = ($esTablaMateriales && $countPaddle >= 10)
             || ($esTablaMateriales && $countPaddle >= max(1, (int) floor($countTexto * 0.5)))
             || $countPaddle >= $minEsperadas
@@ -1399,20 +1460,148 @@ class ListadoMaterialesPdfParserService
             );
         }
 
-        Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
-            'texto' => $countTexto,
-            'paddle' => $countPaddle,
-            'fusion' => count($fusionadas),
-            'min_esperadas' => $minEsperadas,
-            'paddle_primario' => $paddlePrimario,
-        ]);
-
-        return $this->finalizarLineasTablaSolicitudPedido(
+        $finalPaddle = $this->finalizarLineasTablaSolicitudPedido(
             $texto,
             $fusionadas,
             $paddlePrimario && $esTablaMateriales,
             $paginas,
         );
+
+        $candidatos['paddle'] = $finalPaddle;
+        if (! $paddlePrimario) {
+            $candidatos['texto'] = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
+        }
+
+        Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
+            'texto' => $countTexto,
+            'paddle' => $countPaddle,
+            'fusion' => count($finalPaddle),
+            'ocr_pagina' => count($candidatos['ocr_pagina'] ?? []),
+            'min_esperadas' => $minEsperadas,
+            'esperadas' => $filasEsperadas,
+            'paddle_primario' => $paddlePrimario,
+        ]);
+
+        return $this->elegirMejorLineasTablaMateriales($candidatos, $filasEsperadas, $minEsperadas);
+    }
+
+    /**
+     * OCR + parser por hoja (misma idea que scripts/cuadrar_celdas_por_hoja.php).
+     *
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
+     */
+    private function parseLineasTablaPorPaginaOcr(string $path, int $paginas): array
+    {
+        $ocr = $this->ocr ?? new PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            return [];
+        }
+
+        $paginas = max(1, min(30, $paginas));
+        $opciones = ['crop_left_percent' => $this->porcentajeRecorteColumnaProducto()];
+        $lineas = [];
+
+        for ($pagina = 1; $pagina <= $paginas; $pagina++) {
+            try {
+                $textoPagina = $ocr->extraerTextoPagina($path, $pagina, $opciones);
+            } catch (\Throwable $e) {
+                Log::warning('Import PDF: OCR por página falló', [
+                    'pagina' => $pagina,
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            if ($textoPagina === '') {
+                continue;
+            }
+
+            foreach ($this->parseTexto($textoPagina) as $fila) {
+                $fila['pagina'] = $pagina;
+                $lineas[] = $fila;
+            }
+        }
+
+        return $lineas;
+    }
+
+    private function esProbableTablaMaterialesEscaneada(string $texto, int $paginas, string $path = ''): bool
+    {
+        if ($this->esDocumentoTablaMaterialesPdf($texto)) {
+            return true;
+        }
+
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        if ($this->esEspecificacionesTecnicasTablaProducto($upper)) {
+            return true;
+        }
+
+        if ($paginas >= 8 && preg_match('/8396[0-9]/u', $upper) === 1) {
+            return true;
+        }
+
+        $nombre = basename($path);
+
+        return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
+            || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1;
+    }
+
+    /**
+     * Prefiere el candidato más cercano al total esperado (p. ej. 97 productos).
+     *
+     * @param  array<string, array<int, array{cantidad: int, descripcion: string}>>  $candidatos
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function elegirMejorLineasTablaMateriales(array $candidatos, int $filasEsperadas, int $minEsperadas): array
+    {
+        $mejor = [];
+        $mejorDistancia = PHP_INT_MAX;
+        $mejorPrioridad = PHP_INT_MAX;
+        $mejorClave = '';
+
+        foreach ($candidatos as $clave => $lineas) {
+            if ($lineas === []) {
+                continue;
+            }
+
+            $count = count($lineas);
+            if ($count < max(9, (int) floor($minEsperadas * 0.5))) {
+                continue;
+            }
+
+            $prioridad = match ($clave) {
+                'ocr_pagina' => 0,
+                'paddle' => 1,
+                default => 2,
+            };
+            $distancia = abs($count - $filasEsperadas);
+
+            if ($distancia < $mejorDistancia || ($distancia === $mejorDistancia && $prioridad < $mejorPrioridad)) {
+                $mejorDistancia = $distancia;
+                $mejorPrioridad = $prioridad;
+                $mejor = $lineas;
+                $mejorClave = $clave;
+            }
+        }
+
+        if ($mejor !== []) {
+            Log::info('Import PDF: candidato elegido para tabla materiales', [
+                'origen' => $mejorClave,
+                'filas' => count($mejor),
+                'esperadas' => $filasEsperadas,
+            ]);
+
+            return $mejor;
+        }
+
+        foreach ($candidatos as $lineas) {
+            if ($lineas !== []) {
+                return $lineas;
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -1484,7 +1673,9 @@ class ListadoMaterialesPdfParserService
      */
     private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false, int $paginas = 1): array
     {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esDocumentoTablaMaterialesPdf($texto)
+            || ($this->esEspecificacionesTecnicasTablaProducto($upper) && count($lineas) >= 20)
             || ($desdeCeldasPaddle && count($lineas) >= 40 && ($paginas >= 8 || count($lineas) >= 90));
 
         if (! $esTabla) {
@@ -1721,6 +1912,470 @@ class ListadoMaterialesPdfParserService
         return preg_match('/\bPRODUCTO\b/u', $upper) === 1
             && preg_match('/\bCANTIDAD\b/u', $upper) === 1
             && preg_match('/IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1;
+    }
+
+    /**
+     * Oferta económica / catálogo: Nº item, descripción, unidad de medida y precio (sin cantidad pedida).
+     */
+    private function esFormatoOfertaPrecio(string $upper): bool
+    {
+        if (preg_match('/\bCANTIDAD\b/u', $upper)) {
+            return false;
+        }
+
+        if (
+            preg_match('/\bDESCRIPCION\b/u', $upper) !== 1
+            || preg_match('/\bUNIDAD\b/u', $upper) !== 1
+        ) {
+            return false;
+        }
+
+        $tienePrecio = preg_match('/\bPRECIO\s+(?:NETO|UNIT)/u', $upper) === 1
+            || preg_match('/PRECIO\s+NETO\s+UNITARIO/u', $upper) === 1;
+
+        if (! $tienePrecio) {
+            return false;
+        }
+
+        return preg_match('/OFERTA\s+ECONOM/u', $upper) === 1
+            || preg_match('/ANEXO\s+N/u', $upper) === 1
+            || preg_match('/\bN\s*\.?\s*O?\s*ITEM\b/u', $upper) === 1
+            || preg_match('/\bN[°º]\s*ITEM\b/u', $upper) === 1;
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseOfertaPrecio(string $texto): array
+    {
+        $resultado = [];
+        /** @var list<array{item: int|null, descripcion: int, unidad: int, precio: int}>|null $bloques */
+        $bloques = null;
+        $columnasPorBloque = null;
+        $bufferLineaCruda = null;
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim($lineaCruda);
+            if ($linea === '' || $this->esRuidoOfertaPrecio($linea)) {
+                continue;
+            }
+
+            if ($bufferLineaCruda !== null) {
+                $lineaCruda = trim($bufferLineaCruda.' '.trim($lineaCruda));
+                $bufferLineaCruda = null;
+                $linea = trim($lineaCruda);
+            }
+
+            $partes = $this->partirLineaEnColumnas($lineaCruda);
+
+            if ($bloques === null) {
+                $resuelto = $this->resolverBloquesColumnasOfertaPrecio($partes);
+                if ($resuelto !== null) {
+                    $bloques = $resuelto['bloques'];
+                    $columnasPorBloque = $resuelto['columnas_por_bloque'];
+
+                    continue;
+                }
+            }
+
+            if ($bloques !== null) {
+                $filas = $this->extraerFilasOfertaPrecioDesdePartes($partes, $bloques, $columnasPorBloque);
+                if ($filas === []) {
+                    $filas = $this->extraerFilasOfertaPrecioPorSeparadores($lineaCruda, $bloques, $columnasPorBloque);
+                }
+
+                if ($filas !== []) {
+                    array_push($resultado, ...$filas);
+
+                    continue;
+                }
+
+                if ($this->pareceInicioFilaOfertaPrecio($partes, $bloques)) {
+                    $bufferLineaCruda = $lineaCruda;
+
+                    continue;
+                }
+            }
+        }
+
+        if ($bufferLineaCruda !== null && $bloques !== null) {
+            $partes = $this->partirLineaEnColumnas($bufferLineaCruda);
+            $filas = $this->extraerFilasOfertaPrecioDesdePartes($partes, $bloques, $columnasPorBloque);
+            if ($filas === []) {
+                $filas = $this->extraerFilasOfertaPrecioPorSeparadores($bufferLineaCruda, $bloques, $columnasPorBloque);
+            }
+            if ($filas !== []) {
+                array_push($resultado, ...$filas);
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array{bloques: list<array{item: int|null, descripcion: int, unidad: int, precio: int}>, columnas_por_bloque: int}|null
+     */
+    private function resolverBloquesColumnasOfertaPrecio(array $celdas): ?array
+    {
+        if ($celdas === []) {
+            return null;
+        }
+
+        $normalizadas = array_map(
+            fn (string $celda): string => $this->normalizarEncabezadoCelda($celda),
+            $celdas,
+        );
+
+        $indicesDescripcion = [];
+        foreach ($normalizadas as $indice => $celda) {
+            if (preg_match('/\bDESCRIPCION\b/u', $celda) === 1) {
+                $indicesDescripcion[] = $indice;
+            }
+        }
+
+        if ($indicesDescripcion === []) {
+            return null;
+        }
+
+        $bloques = [];
+        foreach ($indicesDescripcion as $indiceDescripcion) {
+            $indiceUnidad = $this->indiceColumnaDesdeOffset($normalizadas, $indiceDescripcion, ['UNIDAD', 'UNIDADES', 'UN']);
+            $indicePrecio = $this->indiceColumnaDesdeOffset($normalizadas, $indiceDescripcion, ['PRECIO', 'PRECIO NETO', 'NETO', 'VALOR']);
+
+            if ($indiceUnidad === null || $indicePrecio === null) {
+                continue;
+            }
+
+            $indiceItem = null;
+            if ($indiceDescripcion > 0) {
+                $celdaItem = $normalizadas[$indiceDescripcion - 1] ?? '';
+                if (preg_match('/\bITEM\b/u', $celdaItem) === 1 || preg_match('/^N\s*\.?\s*O?\s*ITEM$/u', $celdaItem) === 1) {
+                    $indiceItem = $indiceDescripcion - 1;
+                }
+            }
+
+            $bloques[] = [
+                'item' => $indiceItem,
+                'descripcion' => $indiceDescripcion,
+                'unidad' => $indiceUnidad,
+                'precio' => $indicePrecio,
+            ];
+        }
+
+        if ($bloques === []) {
+            return null;
+        }
+
+        $primerBloque = $bloques[0];
+        $columnasPorBloque = max(
+            $primerBloque['descripcion'],
+            $primerBloque['unidad'],
+            $primerBloque['precio'],
+        ) + 1;
+        if ($primerBloque['item'] !== null) {
+            $columnasPorBloque = max($columnasPorBloque, $primerBloque['item'] + 1);
+        }
+
+        if (count($bloques) > 1) {
+            $columnasPorBloque = max(
+                $columnasPorBloque,
+                $bloques[1]['descripcion'] - $bloques[0]['descripcion'],
+            );
+        }
+
+        return [
+            'bloques' => $bloques,
+            'columnas_por_bloque' => $columnasPorBloque,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $partes
+     * @param  list<array{item: int|null, descripcion: int, unidad: int, precio: int}>  $bloques
+     * @return list<array{cantidad: int, descripcion: string}>
+     */
+    private function extraerFilasOfertaPrecioDesdePartes(array $partes, array $bloques, ?int $columnasPorBloque): array
+    {
+        $filas = [];
+        $subFilas = $this->partirSubFilasOfertaPrecioPorCeldas($partes, count($bloques), $columnasPorBloque);
+
+        if (count($subFilas) === 1 && count($bloques) > 1) {
+            foreach ($bloques as $bloque) {
+                $fila = $this->extraerFilaOfertaPrecioPorBloque($partes, $bloque);
+                if ($fila !== null) {
+                    $filas[] = $fila;
+                }
+            }
+
+            return $filas;
+        }
+
+        foreach ($subFilas as $indiceSub => $subPartes) {
+            $bloque = $bloques[$indiceSub] ?? $bloques[0];
+            $bloqueUsar = $this->bloqueARelativoOfertaPrecio($bloque, $columnasPorBloque);
+            $fila = $this->extraerFilaOfertaPrecioPorBloque($subPartes, $bloqueUsar);
+            if ($fila !== null) {
+                $filas[] = $fila;
+            }
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Dos tablas lado a lado: partir por cantidad de celdas o por segunda columna Nº item.
+     *
+     * @param  list<string>  $partes
+     * @return list<list<string>>
+     */
+    private function partirSubFilasOfertaPrecioPorCeldas(array $partes, int $cantidadBloques, ?int $columnasPorBloque): array
+    {
+        if ($cantidadBloques <= 1 || $columnasPorBloque === null || $columnasPorBloque < 2) {
+            return [$partes];
+        }
+
+        $esperadas = $columnasPorBloque * $cantidadBloques;
+        if (count($partes) >= $esperadas) {
+            $subFilas = [];
+            for ($i = 0; $i < $cantidadBloques; $i++) {
+                $subFilas[] = array_values(array_slice($partes, $i * $columnasPorBloque, $columnasPorBloque));
+            }
+
+            return $subFilas;
+        }
+
+        if (
+            count($partes) > $columnasPorBloque
+            && preg_match('/^\d{1,4}$/u', trim($partes[$columnasPorBloque] ?? '')) === 1
+        ) {
+            return [
+                array_values(array_slice($partes, 0, $columnasPorBloque)),
+                array_values(array_slice($partes, $columnasPorBloque)),
+            ];
+        }
+
+        return [$partes];
+    }
+
+    /**
+     * @param  array{item: int|null, descripcion: int, unidad: int, precio: int}  $bloque
+     * @return array{item: int|null, descripcion: int, unidad: int, precio: int}
+     */
+    private function bloqueARelativoOfertaPrecio(array $bloque, ?int $columnasPorBloque): array
+    {
+        if ($columnasPorBloque === null || $columnasPorBloque < 2) {
+            return $bloque;
+        }
+
+        return [
+            'item' => $bloque['item'] !== null ? $bloque['item'] % $columnasPorBloque : null,
+            'descripcion' => $bloque['descripcion'] % $columnasPorBloque,
+            'unidad' => $bloque['unidad'] % $columnasPorBloque,
+            'precio' => $bloque['precio'] % $columnasPorBloque,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $partes
+     * @param  array{item: int|null, descripcion: int, unidad: int, precio: int}  $bloque
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaOfertaPrecioPorBloque(array $partes, array $bloque): ?array
+    {
+        $maxIndice = max($bloque['descripcion'], $bloque['unidad'], $bloque['precio']);
+
+        if (count($partes) <= $maxIndice) {
+            return null;
+        }
+
+        if ($bloque['item'] !== null && ! $this->esCeldaNumeroItem($partes[$bloque['item']] ?? '')) {
+            return null;
+        }
+
+        $descripcion = trim($partes[$bloque['descripcion']] ?? '');
+        $unidad = trim($partes[$bloque['unidad']] ?? '');
+        $precio = trim($partes[$bloque['precio']] ?? '');
+
+        if (
+            mb_strlen($descripcion) < 3
+            || ! $this->esCeldaUnidadMedidaOferta($unidad)
+            || ! $this->esCeldaPrecioOferta($precio)
+        ) {
+            return null;
+        }
+
+        if ($this->esEncabezadoOfertaPrecioCeldas($partes)) {
+            return null;
+        }
+
+        return ['cantidad' => 1, 'descripcion' => $descripcion];
+    }
+
+    /**
+     * @param  list<string>  $partes
+     * @param  list<array{item: int|null, descripcion: int, unidad: int, precio: int}>|null  $bloques
+     */
+    private function pareceInicioFilaOfertaPrecio(array $partes, ?array $bloques): bool
+    {
+        if ($partes === [] || $bloques === null) {
+            return false;
+        }
+
+        $bloque = $bloques[0];
+        $indiceItem = $bloque['item'] ?? max(0, $bloque['descripcion'] - 1);
+        $columnasMinimas = $bloque['precio'] + 1;
+
+        if (isset($partes[$indiceItem]) && $this->esCeldaNumeroItem($partes[$indiceItem])) {
+            return count($partes) < $columnasMinimas;
+        }
+
+        return preg_match('/^\d{1,4}$/u', trim($partes[0] ?? '')) === 1
+            && count($partes) < $columnasMinimas;
+    }
+
+    /**
+     * Fallback: re-partir la línea solo con separadores del PDF (tab / espacios múltiples).
+     *
+     * @param  list<array{item: int|null, descripcion: int, unidad: int, precio: int}>|null  $bloques
+     * @return list<array{cantidad: int, descripcion: string}>
+     */
+    private function extraerFilasOfertaPrecioPorSeparadores(string $lineaCruda, ?array $bloques, ?int $columnasPorBloque): array
+    {
+        if ($bloques === null) {
+            return [];
+        }
+
+        $partes = $this->partirLineaEnColumnasAgresivo($lineaCruda);
+
+        return $this->extraerFilasOfertaPrecioDesdePartes($partes, $bloques, $columnasPorBloque);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function partirLineaEnColumnasAgresivo(string $lineaCruda): array
+    {
+        if (str_contains($lineaCruda, "\t")) {
+            return $this->partirLineaEnColumnas($lineaCruda);
+        }
+
+        $linea = trim($lineaCruda);
+        if ($linea === '') {
+            return [];
+        }
+
+        if (preg_match('/\s{2,}/u', $linea) === 1) {
+            return $this->partirLineaEnColumnas($lineaCruda);
+        }
+
+        $tokens = preg_split('/\s+/u', $linea) ?: [];
+        if (count($tokens) < 4) {
+            return $tokens;
+        }
+
+        $precio = array_pop($tokens);
+        $unidad = array_pop($tokens);
+        $item = array_shift($tokens);
+
+        return array_merge(
+            [$item],
+            [trim(implode(' ', $tokens))],
+            [$unidad, $precio],
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function esEncabezadoOfertaPrecioCeldas(array $celdas): bool
+    {
+        $normalizadas = array_map(
+            fn (string $celda): string => $this->normalizarEncabezadoCelda($celda),
+            $celdas,
+        );
+
+        $tieneDescripcion = false;
+        $tieneUnidad = false;
+        $tienePrecio = false;
+
+        foreach ($normalizadas as $celda) {
+            if (preg_match('/\bDESCRIPCION\b/u', $celda) === 1) {
+                $tieneDescripcion = true;
+            }
+            if (preg_match('/\bUNIDAD\b/u', $celda) === 1) {
+                $tieneUnidad = true;
+            }
+            if (preg_match('/\bPRECIO\b/u', $celda) === 1) {
+                $tienePrecio = true;
+            }
+        }
+
+        return $tieneDescripcion && $tieneUnidad && $tienePrecio;
+    }
+
+    private function esEncabezadoOfertaPrecio(string $linea): bool
+    {
+        return $this->esEncabezadoOfertaPrecioCeldas($this->partirLineaEnColumnas($linea));
+    }
+
+    private function esCeldaNumeroItem(string $celda): bool
+    {
+        return preg_match('/^\d{1,4}$/u', trim($celda)) === 1;
+    }
+
+    private function esCeldaUnidadMedidaOferta(string $celda): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($celda);
+
+        return preg_match('/^(?:UNI|CJA|PQT|UN|UND|UNIDAD|UNIDADES)\b/u', $normalizada) === 1;
+    }
+
+    private function esCeldaPrecioOferta(string $celda): bool
+    {
+        $celda = trim($celda);
+
+        return $celda === '-'
+            || preg_match('/^[\$]?\s*[\d.,]+$/u', $celda) === 1;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @param  array<int, string>  $candidatos
+     */
+    private function indiceColumnaDesdeOffset(array $celdas, int $desde, array $candidatos): ?int
+    {
+        $total = count($celdas);
+        for ($i = $desde + 1; $i < $total; $i++) {
+            foreach ($candidatos as $candidato) {
+                $celda = $celdas[$i] ?? '';
+                if ($celda === $candidato || str_contains($celda, $candidato)) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function esRuidoOfertaPrecio(string $linea): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
+
+        foreach ([
+            'ANEXO',
+            'OFERTA ECONOM',
+            'PROVISION DE ARTICULOS',
+            'CUADRO N',
+            'ARTICULOS DE ESCRITORIO',
+            'PARA ENAMI',
+        ] as $marcador) {
+            if (str_contains($normalizada, $marcador)) {
+                return true;
+            }
+        }
+
+        return preg_match('/^P[AÁ]GINA\s+\d+/u', $normalizada) === 1;
     }
 
     /**

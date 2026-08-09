@@ -166,6 +166,7 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         $paddle = $this->createMock(PdfPaddleOcrService::class);
         $paddle->method('estaDisponible')->willReturn(true);
         $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+        $paddle->method('extraerLineasTablaPorPagina')->willReturn($lineasPaddle);
 
         $parser = new ListadoMaterialesPdfParserService(null, $paddle);
         $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
@@ -181,6 +182,20 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         }
 
         Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
+    }
+
+    public function test_detecta_tabla_escaneada_por_nombre_archivo(): void
+    {
+        $parser = new ListadoMaterialesPdfParserService;
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'esProbableTablaMaterialesEscaneada');
+        $metodo->setAccessible(true);
+
+        $this->assertTrue($metodo->invoke(
+            $parser,
+            'texto minimo',
+            1,
+            'C:/tmp/ESPECIFICACIONES TECNICAS .pdf',
+        ));
     }
 
     public function test_golden_hoja_2_tiene_diez_productos_como_pdf(): void

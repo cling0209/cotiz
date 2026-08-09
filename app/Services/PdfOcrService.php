@@ -33,6 +33,87 @@ class PdfOcrService
     }
 
     /**
+     * OCR de una sola página (mismo pipeline que el listado completo, p. ej. cuadre por hoja).
+     *
+     * @param  array{crop_left_percent?: int}  $opciones
+     *
+     * @throws RuntimeException
+     */
+    public function extraerTextoPagina(string $pdfPath, int $pagina, array $opciones = []): string
+    {
+        if ($pagina < 1) {
+            throw new RuntimeException('Número de página inválido para OCR.');
+        }
+
+        if (! is_readable($pdfPath)) {
+            throw new RuntimeException('No se pudo leer el PDF para OCR.');
+        }
+
+        $pdftoppm = $this->resolverBinario('pdftoppm');
+        $tesseract = $this->resolverBinario('tesseract');
+        if ($pdftoppm === null || $tesseract === null) {
+            throw new RuntimeException(
+                'OCR no disponible en este servidor (faltan tesseract/pdftoppm).',
+            );
+        }
+
+        $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'cotiz-ocr-p'.bin2hex(random_bytes(6));
+        if (! mkdir($dir, 0700, true) && ! is_dir($dir)) {
+            throw new RuntimeException('No se pudo crear directorio temporal para OCR.');
+        }
+
+        try {
+            $prefijo = $dir.DIRECTORY_SEPARATOR.'page';
+            $this->ejecutar([
+                $pdftoppm,
+                '-png',
+                '-gray',
+                '-r',
+                (string) $this->ajuste('dpi', self::DPI),
+                '-f',
+                (string) $pagina,
+                '-l',
+                (string) $pagina,
+                $pdfPath,
+                $prefijo,
+            ], self::TIMEOUT_PDFTOPPM);
+
+            $imagenes = glob($prefijo.'-*.png') ?: [];
+            if ($imagenes === []) {
+                return '';
+            }
+
+            sort($imagenes, SORT_NATURAL);
+            $imagen = $imagenes[0];
+            $cropPercent = max(0, min(90, (int) ($opciones['crop_left_percent'] ?? 0)));
+            $imagenParaOcr = $cropPercent > 0
+                ? $this->recortarLadoIzquierdo($imagen, $cropPercent)
+                : $imagen;
+
+            $salida = $imagenParaOcr.'.ocr';
+            $this->ejecutar([
+                $tesseract,
+                $imagenParaOcr,
+                $salida,
+                '-l',
+                $this->idiomaRapido($tesseract),
+                '--oem',
+                '1',
+                '--psm',
+                (string) $this->resolverPsm(),
+            ], self::TIMEOUT_TESSERACT, [
+                'OMP_THREAD_LIMIT' => '1',
+            ]);
+
+            $archivo = $salida.'.txt';
+
+            return is_readable($archivo) ? trim((string) file_get_contents($archivo)) : '';
+        } finally {
+            $this->limpiarDirectorio($dir);
+        }
+    }
+
+    /**
      * @param  array{crop_left_percent?: int}  $opciones
      *
      * @throws RuntimeException

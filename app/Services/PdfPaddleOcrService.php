@@ -61,13 +61,37 @@ class PdfPaddleOcrService
             // Fallback página a página (menor RAM en sidecar).
         }
 
-        return $this->extraerLineasTablaPorPagina($url, $pdfBytes, $nombre, $timeout, $maxPaginas);
+        return $this->extraerLineasTablaPorPagina($pdfPath);
+    }
+
+    /**
+     * Extrae celdas página a página (mismo flujo que scripts/procesar_cuadrar_por_hoja.php).
+     *
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
+     */
+    public function extraerLineasTablaPorPagina(string $pdfPath): array
+    {
+        if (! is_readable($pdfPath)) {
+            throw new RuntimeException('No se pudo leer el PDF para PaddleOCR.');
+        }
+
+        $url = $this->baseUrl();
+        if ($url === '') {
+            throw new RuntimeException('PaddleOCR no configurado (COTIZ_PADDLEOCR_URL).');
+        }
+
+        $pdfBytes = (string) file_get_contents($pdfPath);
+        $nombre = basename($pdfPath) !== '' ? basename($pdfPath) : 'documento.pdf';
+        $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
+        $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
+
+        return $this->extraerLineasTablaPorPaginaDesdeBytes($url, $pdfBytes, $nombre, $timeout, $maxPaginas);
     }
 
     /**
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
      */
-    private function extraerLineasTablaPorPagina(
+    private function extraerLineasTablaPorPaginaDesdeBytes(
         string $url,
         string $pdfBytes,
         string $nombre,
