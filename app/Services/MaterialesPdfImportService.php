@@ -146,7 +146,7 @@ class MaterialesPdfImportService
         $cacheKey = null;
         if (is_string($path) && is_readable($path)) {
             // v4: invalida cachés que pegaban "3" + "Termolaminadoras" a la fila anterior.
-            $cacheKey = 'cotiz.pdf_import.v26.'.hash_file('sha1', $path);
+            $cacheKey = 'cotiz.pdf_import.v27.'.hash_file('sha1', $path);
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['cabecera'], $cached['lineas'])) {
                 return $cached;

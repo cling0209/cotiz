@@ -1017,6 +1017,11 @@ class ListadoMaterialesPdfParserService
 
     private function estimarFilasEsperadasTablaMateriales(string $texto, int $paginas): int
     {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        if ($this->esEspecificacionesTecnicasTablaProducto($upper) && $paginas < 8) {
+            $paginas = 11;
+        }
+
         $paginas = max(1, $paginas);
         $cabeceras = $this->contarCabecerasTablaProducto($texto);
 
@@ -1042,6 +1047,11 @@ class ListadoMaterialesPdfParserService
     private function debePodarFilasTablaMateriales(string $texto, int $paginas, array $filas): bool
     {
         $n = count($filas);
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+
+        if ($this->esEspecificacionesTecnicasTablaProducto($upper) && $n >= 90 && $n <= 180) {
+            return true;
+        }
 
         if (! $this->estimacionFilasEsperadasEsFiable($texto, $paginas)) {
             return false;
@@ -1080,6 +1090,13 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
+            $reducidas = $this->eliminarFilasPrefijoDeDescripcionMasLarga($filas);
+            if (count($reducidas) < count($filas)) {
+                $filas = $reducidas;
+
+                continue;
+            }
+
             break;
         }
 
@@ -1104,6 +1121,41 @@ class ListadoMaterialesPdfParserService
                 unset($filas[$indice]);
 
                 return array_values($filas);
+            }
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Elimina filas cuya descripción es prefijo de otra más completa (celdas Paddle partidas).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function eliminarFilasPrefijoDeDescripcionMasLarga(array $filas): array
+    {
+        foreach ($filas as $indice => $candidata) {
+            $desc = mb_strtoupper(trim($candidata['descripcion']));
+            if ($desc === '' || mb_strlen($desc) < 5) {
+                continue;
+            }
+
+            foreach ($filas as $otroIndice => $otra) {
+                if ($indice === $otroIndice) {
+                    continue;
+                }
+
+                $otraDesc = mb_strtoupper(trim($otra['descripcion']));
+                if (mb_strlen($otraDesc) <= mb_strlen($desc)) {
+                    continue;
+                }
+
+                if (str_starts_with($otraDesc, $desc.' ') || str_starts_with($otraDesc, $desc)) {
+                    unset($filas[$indice]);
+
+                    return array_values($filas);
+                }
             }
         }
 
@@ -1157,8 +1209,57 @@ class ListadoMaterialesPdfParserService
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
 
-        return $this->esSolicitudPedidoDocumento($texto)
-            || $this->tieneCabeceraTablaProductoCantidad($upper);
+        if ($this->esSolicitudPedidoDocumento($texto)) {
+            return true;
+        }
+
+        if ($this->tieneCabeceraTablaProductoCantidad($upper)) {
+            return true;
+        }
+
+        if ($this->esEspecificacionesTecnicasTablaProducto($upper)) {
+            return true;
+        }
+
+        return preg_match('/\bPRODUCTO\b/u', $upper) === 1
+            && preg_match('/\bCANTIDAD\b/u', $upper) === 1
+            && preg_match('/IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1;
+    }
+
+    private function esEspecificacionesTecnicasTablaProducto(string $upper): bool
+    {
+        if (! str_contains($upper, 'ESPECIFICACIONES TECNICAS') && ! str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')) {
+            return false;
+        }
+
+        return preg_match('/\bPRODUCTO\b/u', $upper) === 1
+            || preg_match('/IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1
+            || preg_match('/\d+\s+UNIDADES/u', $upper) === 1
+            || preg_match('/\bCANTIDAD\b/u', $upper) === 1;
+    }
+
+    private function esTablaMaterialesPorFilasPaddle(string $texto, int $paginas, int $countPaddle): bool
+    {
+        if ($this->esDocumentoTablaMaterialesPdf($texto)) {
+            return true;
+        }
+
+        if ($countPaddle < 40) {
+            return false;
+        }
+
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+
+        $esProbableSolicitud = str_contains($upper, 'ESPECIFICACIONES TECNICAS')
+            || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
+            || str_contains($upper, 'SOLICITUD DE PEDIDO')
+            || preg_match('/8396[0-9]/u', $upper) === 1;
+
+        if (! $esProbableSolicitud) {
+            return false;
+        }
+
+        return $paginas >= 8 || ($countPaddle >= 90 && $countPaddle <= 180);
     }
 
     private function minLineasEsperadasTablaProducto(string $texto, int $paginas): int
@@ -1248,9 +1349,9 @@ class ListadoMaterialesPdfParserService
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esFormatoTablaProductoCantidad($upper);
-        $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
+        $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
 
         if (! $esTabla && ! $esTablaMateriales && count($lineasTexto) >= $minEsperadas) {
@@ -1283,6 +1384,7 @@ class ListadoMaterialesPdfParserService
 
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
+        $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle);
 
         // Tabla materiales + Paddle: confiar en celdas (evita 97+148 mezclados).
         $paddlePrimario = ($esTablaMateriales && $countPaddle >= 10)
@@ -1311,7 +1413,12 @@ class ListadoMaterialesPdfParserService
             'paddle_primario' => $paddlePrimario,
         ]);
 
-        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario && $esTablaMateriales, $paginas);
+        return $this->finalizarLineasTablaSolicitudPedido(
+            $texto,
+            $fusionadas,
+            $paddlePrimario && $esTablaMateriales,
+            $paginas,
+        );
     }
 
     /**
@@ -1383,7 +1490,10 @@ class ListadoMaterialesPdfParserService
      */
     private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false, int $paginas = 1): array
     {
-        if (! $this->esDocumentoTablaMaterialesPdf($texto)) {
+        $esTabla = $this->esDocumentoTablaMaterialesPdf($texto)
+            || ($desdeCeldasPaddle && count($lineas) >= 40 && ($paginas >= 8 || count($lineas) >= 90));
+
+        if (! $esTabla) {
             return $lineas;
         }
 
@@ -1452,8 +1562,16 @@ class ListadoMaterialesPdfParserService
     private function compactarFilasPaddleCeldas(array $filas): array
     {
         $filas = $this->fusionarSufijosCeldaMultilineaOcr($filas);
-        $filas = $this->eliminarFilasSubcadenaContenida($filas);
-        $filas = $this->filtrarFilasRuidoEvidenteSolicitudPedido($filas);
+
+        for ($i = 0; $i < 8; $i++) {
+            $antes = count($filas);
+            $filas = $this->eliminarFilasSubcadenaContenida($filas);
+            $filas = $this->eliminarFilasPrefijoDeDescripcionMasLarga($filas);
+            $filas = $this->filtrarFilasRuidoEvidenteSolicitudPedido($filas);
+            if (count($filas) === $antes) {
+                break;
+            }
+        }
 
         return $this->deduplicarLineasTabla($filas, true);
     }
@@ -2082,6 +2200,14 @@ class ListadoMaterialesPdfParserService
             }
 
             if (preg_match('/^(?:EM\s*<\s*A|UNID\s*;?|M\s+TESA\s+ENGOMADA|M\s+T)$/iu', $desc) === 1) {
+                return false;
+            }
+
+            if (preg_match('/^(?:PRODUCTO|CANTIDAD|IMAGEN(?:\s+REFERENCIA)?|PRODUCTO\s+CANTIDAD(?:\s+IMAGEN)?(?:\s+REFERENCIA)?)$/iu', $desc) === 1) {
+                return false;
+            }
+
+            if (preg_match('/^(?:CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?|IMAGEN\s+REFERENCIA)$/iu', $desc) === 1) {
                 return false;
             }
 

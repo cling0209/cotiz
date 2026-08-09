@@ -407,6 +407,19 @@ def _filas_desde_ocr_lineas(texto: str) -> list[dict[str, Any]]:
     return filas
 
 
+def _filtrar_filas_cabecera(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for fila in filas:
+        desc = fila["descripcion"].strip().upper()
+        if re.match(
+            r"^(?:PRODUCTO|CANTIDAD|IMAGEN(?:\s+REFERENCIA)?|PRODUCTO\s+CANTIDAD(?:\s+IMAGEN)?(?:\s+REFERENCIA)?|CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?)$",
+            desc,
+        ):
+            continue
+        out.append(fila)
+    return out
+
+
 def _deduplicar(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalizadas: list[tuple[str, dict[str, Any]]] = []
     for fila in filas:
@@ -482,7 +495,8 @@ def extraer_lineas_pdf(pdf_path: str, dpi: int = 200, max_pages: int = 15) -> li
                 res = bloque.get("res") or {}
                 html = res.get("html") if isinstance(res, dict) else None
                 if html:
-                    filas.extend(_filas_desde_html_tabla(html))
+                    pagina_filas = _filas_desde_html_tabla(html)
+                    filas.extend(_filtrar_filas_cabecera(pagina_filas))
 
             # Fallback: OCR de líneas en bloques de texto si la tabla no se detectó
             if not any(b.get("type") == "table" for b in (resultados or [])):

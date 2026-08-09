@@ -151,6 +151,79 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
     }
 
+    public function test_fusion_tecnicas_sin_cabecera_texto_paddle_142_poda_a_97(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle = $this->simularPaddle142Realista($golden['lineas']);
+        $this->assertGreaterThanOrEqual(135, count($lineasPaddle));
+
+        $texto = "CURICÓ DAEM\nESPECIFICACIONES TECNICAS\n83965\n8 unidades\nLAPICES DE CERA JUMBO\n";
+
+        $parserBase = new ListadoMaterialesPdfParserService;
+        $lineasTexto = $parserBase->parseTexto($texto);
+        $this->assertLessThan(10, count($lineasTexto));
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke($parser, $tmp, $lineasTexto, $texto);
+        } finally {
+            @unlink($tmp);
+        }
+
+        Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
+    }
+
+    /**
+     * @param  array<int, array{needle: string, cantidad: int, descripcion: string}>  $goldenLineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function simularPaddle142Realista(array $goldenLineas): array
+    {
+        $out = [];
+        $porPagina = 0;
+
+        foreach ($goldenLineas as $fila) {
+            if ($porPagina === 0) {
+                $out[] = ['cantidad' => 1, 'descripcion' => 'PRODUCTO'];
+                $out[] = ['cantidad' => 1, 'descripcion' => 'CANTIDAD IMAGEN REFERENCIA'];
+            }
+
+            $out[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $fila['descripcion'],
+            ];
+
+            $words = preg_split('/\s+/u', trim($fila['descripcion'])) ?: [];
+            if (count($words) >= 4) {
+                $out[] = [
+                    'cantidad' => $fila['cantidad'],
+                    'descripcion' => implode(' ', array_slice($words, 0, 2)),
+                ];
+            }
+
+            if (preg_match('/\b(?:JUMBO|12|COLORES)\b/u', mb_strtoupper($fila['descripcion'])) === 1) {
+                $out[] = ['cantidad' => 1, 'descripcion' => 'COLORES'];
+            }
+
+            $porPagina++;
+            if ($porPagina >= 9) {
+                $porPagina = 0;
+            }
+        }
+
+        return $out;
+    }
+
     /**
      * @param  array<int, array{needle: string, cantidad: int, descripcion: string}>  $goldenLineas
      * @return array<int, array{cantidad: int, descripcion: string}>
