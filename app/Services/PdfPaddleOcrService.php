@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Smalot\PdfParser\Parser;
 
 /**
  * Cliente del sidecar PaddleOCR (tablas producto/cantidad en PDF escaneados).
@@ -50,6 +53,18 @@ class PdfPaddleOcrService
         $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
         $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
         $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
+        $paginasDoc = min($maxPaginas, $this->contarPaginasPdf($pdfPath));
+        $umbralPorPagina = max(2, (int) $this->config('paddleocr.per_page_min_pages', 6));
+
+        if ($paginasDoc >= $umbralPorPagina || $this->esNombreEspecificacionesTecnicas($nombre)) {
+            return $this->extraerLineasTablaPorPaginaDesdeBytes(
+                $url,
+                $pdfBytes,
+                $nombre,
+                $timeout,
+                $paginasDoc,
+            );
+        }
 
         try {
             $lineas = $this->solicitarLineasPaddle($url, $pdfBytes, $nombre, $timeout);
@@ -61,7 +76,13 @@ class PdfPaddleOcrService
             // Fallback página a página (menor RAM en sidecar).
         }
 
-        return $this->extraerLineasTablaPorPagina($pdfPath, $nombreArchivo);
+        return $this->extraerLineasTablaPorPaginaDesdeBytes(
+            $url,
+            $pdfBytes,
+            $nombre,
+            $timeout,
+            $paginasDoc,
+        );
     }
 
     /**
@@ -84,8 +105,15 @@ class PdfPaddleOcrService
         $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
         $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
         $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
+        $paginasDoc = min($maxPaginas, $this->contarPaginasPdf($pdfPath));
 
-        return $this->extraerLineasTablaPorPaginaDesdeBytes($url, $pdfBytes, $nombre, $timeout, $maxPaginas);
+        return $this->extraerLineasTablaPorPaginaDesdeBytes(
+            $url,
+            $pdfBytes,
+            $nombre,
+            $timeout,
+            $paginasDoc,
+        );
     }
 
     /**
@@ -98,29 +126,65 @@ class PdfPaddleOcrService
         int $timeout,
         int $maxPaginas,
     ): array {
+        $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 4)));
         $todas = [];
 
-        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
-            $lineas = $this->solicitarLineasPaddle(
-                $url,
-                $pdfBytes,
-                $nombre,
-                $timeout,
-                $pagina,
-                $pagina,
-            );
+        for ($batchStart = 1; $batchStart <= $maxPaginas; $batchStart += $concurrency) {
+            $batchEnd = min($maxPaginas, $batchStart + $concurrency - 1);
+            $paginasBatch = range($batchStart, $batchEnd);
 
-            if ($lineas === []) {
-                if ($pagina === 1) {
-                    break;
+            $responses = Http::pool(function (Pool $pool) use ($url, $pdfBytes, $nombre, $timeout, $paginasBatch) {
+                foreach ($paginasBatch as $pagina) {
+                    $pool->as("p{$pagina}")
+                        ->timeout($timeout)
+                        ->attach('pdf', $pdfBytes, $nombre)
+                        ->post($url.'/extract-tabla', [
+                            'first_page' => $pagina,
+                            'last_page' => $pagina,
+                        ]);
+                }
+            }, count($paginasBatch));
+
+            $batchConDatos = false;
+
+            foreach ($paginasBatch as $pagina) {
+                $response = $responses["p{$pagina}"] ?? null;
+
+                if ($response instanceof \Throwable) {
+                    Log::warning('Import PDF: Paddle por página falló', [
+                        'pagina' => $pagina,
+                        'error' => $response->getMessage(),
+                    ]);
+
+                    continue;
                 }
 
-                break;
+                if (! $response instanceof \Illuminate\Http\Client\Response || ! $response->successful()) {
+                    if ($pagina === 1) {
+                        break 2;
+                    }
+
+                    continue;
+                }
+
+                $lineas = $this->normalizarLineasPaddle(is_array($response->json('lineas')) ? $response->json('lineas') : []);
+                if ($lineas === []) {
+                    if ($pagina === 1) {
+                        break 2;
+                    }
+
+                    continue;
+                }
+
+                $batchConDatos = true;
+                foreach ($lineas as $fila) {
+                    $fila['pagina'] = $pagina;
+                    $todas[] = $fila;
+                }
             }
 
-            foreach ($lineas as $fila) {
-                $fila['pagina'] = $pagina;
-                $todas[] = $fila;
+            if (! $batchConDatos && $batchStart > 1) {
+                break;
             }
         }
 
@@ -197,6 +261,24 @@ class PdfPaddleOcrService
         }
 
         return $normalizadas;
+    }
+
+    private function contarPaginasPdf(string $pdfPath): int
+    {
+        try {
+            $parser = new Parser;
+            $pdf = $parser->parseFile($pdfPath);
+
+            return max(1, count($pdf->getPages()));
+        } catch (\Throwable) {
+            return max(1, (int) $this->config('paddleocr.max_pages', 15));
+        }
+    }
+
+    private function esNombreEspecificacionesTecnicas(string $nombre): bool
+    {
+        return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
+            || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1;
     }
 
     private function nombreArchivoParaPaddle(string $pdfPath, string $nombreArchivo): string

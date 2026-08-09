@@ -69,7 +69,10 @@ class ListadoMaterialesPdfParserService
             ];
         }
 
-        $fragmentos = $this->recolectarFragmentosTextoPdf($path);
+        $fragmentos = $this->recolectarFragmentosTextoPdf(
+            $path,
+            trim((string) $file->getClientOriginalName()),
+        );
         if ($fragmentos === []) {
             throw new RuntimeException('No se pudo extraer texto del PDF.');
         }
@@ -844,7 +847,7 @@ class ListadoMaterialesPdfParserService
      *
      * @return array<string, string>
      */
-    private function recolectarFragmentosTextoPdf(string $path): array
+    private function recolectarFragmentosTextoPdf(string $path, string $nombreArchivo = ''): array
     {
         $fragmentos = [];
         $textoNativo = '';
@@ -866,6 +869,15 @@ class ListadoMaterialesPdfParserService
             return $fragmentos;
         }
 
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+        $paginas = $this->contarPaginasPdf($path);
+        if ($paddle->estaDisponible()
+            && $this->esProbableTablaMaterialesEscaneada($textoNativo, $paginas, $path, $nombreArchivo)) {
+            Log::info('Import PDF: omitiendo OCR Tesseract; PaddleOCR procesará la tabla escaneada');
+
+            return $fragmentos;
+        }
+
         $ocr = $this->ocr ?? new PdfOcrService;
         if (! $ocr->estaDisponible()) {
             if ($textoNativo === '') {
@@ -877,18 +889,44 @@ class ListadoMaterialesPdfParserService
             return $fragmentos;
         }
 
-        foreach ([['ocr', false], ['ocr_crop', true]] as [$clave, $recortar]) {
+        try {
+            $texto = trim($this->extraerTextoPdfMedianteOcr($path, false));
+            if ($texto !== '') {
+                $fragmentos['ocr'] = $texto;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Import PDF: OCR falló', ['error' => $e->getMessage()]);
+        }
+
+        $textoEval = $this->elegirMejorTextoTablaProductoDesdeFragmentos($fragmentos);
+        if ($textoEval !== '' && $this->necesitaOcrRecortado($path, $textoEval)) {
             try {
-                $texto = trim($this->extraerTextoPdfMedianteOcr($path, $recortar));
-                if ($texto !== '') {
-                    $fragmentos[$clave] = $texto;
+                $textoCrop = trim($this->extraerTextoPdfMedianteOcr($path, true));
+                if ($textoCrop !== '') {
+                    $fragmentos['ocr_crop'] = $textoCrop;
                 }
             } catch (\Throwable $e) {
-                Log::warning('Import PDF: OCR '.$clave.' falló', ['error' => $e->getMessage()]);
+                Log::warning('Import PDF: OCR recortado falló', ['error' => $e->getMessage()]);
             }
         }
 
         return $fragmentos;
+    }
+
+    private function necesitaOcrRecortado(string $path, string $texto): bool
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
+
+        if (! $this->esFormatoTablaProductoCantidad($upper) && ! $esSolicitudPedido) {
+            return false;
+        }
+
+        $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
+        $lineas = count($this->parseTablaProductoCantidad($texto));
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
+
+        return $lineas < $minEsperadas;
     }
 
     /**
@@ -1373,7 +1411,10 @@ class ListadoMaterialesPdfParserService
         /** @var array<string, array<int, array{cantidad: int, descripcion: string}>> $candidatos */
         $candidatos = [];
 
-        if ($esTablaEscaneada) {
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+        $paddleDisponible = $paddle->estaDisponible();
+
+        if ($esTablaEscaneada && ! $paddleDisponible) {
             $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
             if ($lineasOcrPorPagina !== []) {
                 $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
@@ -1385,8 +1426,7 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        $paddle = $this->paddle ?? new PdfPaddleOcrService;
-        if (! $paddle->estaDisponible()) {
+        if (! $paddleDisponible) {
             Log::warning('Import PDF: PaddleOCR no disponible; se usa solo texto nativo/Tesseract', [
                 'lineas_texto' => count($lineasTexto),
             ]);
@@ -1435,26 +1475,6 @@ class ListadoMaterialesPdfParserService
 
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
-
-        $paddleExcedeEsperadas = $countPaddle > (int) ceil($filasEsperadas * 1.08);
-        $debePaddlePorPagina = ($esTablaEscaneada || ($paginas >= 8 && $esTablaMateriales)) && $paddleExcedeEsperadas;
-
-        if ($debePaddlePorPagina) {
-            try {
-                $lineasPaddlePagina = $paddle->extraerLineasTablaPorPagina($path, $nombreArchivo);
-                if ($lineasPaddlePagina !== []) {
-                    $lineasPaddle = $lineasPaddlePagina;
-                    $countPaddle = count($lineasPaddle);
-                    Log::info('Import PDF: Paddle documento completo fragmentado; se usa extracción por página', [
-                        'filas_por_pagina' => $countPaddle,
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Import PDF: Paddle por página falló; se mantiene extracción completa', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
 
         $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle)
             || $esTablaEscaneada;

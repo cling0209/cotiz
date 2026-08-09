@@ -116,6 +116,10 @@ return [
         'url' => rtrim((string) env('COTIZ_PADDLEOCR_URL', 'http://127.0.0.1:8010'), '/'),
         'timeout' => max(30, min(600, (int) env('COTIZ_PADDLEOCR_TIMEOUT', 300))),
         'max_pages' => max(1, min(30, (int) env('COTIZ_PADDLEOCR_MAX_PAGES', 15))),
+        // PDFs con ≥ N páginas van directo a extracción por hoja (más rápido que documento completo).
+        'per_page_min_pages' => max(2, min(30, (int) env('COTIZ_PADDLEOCR_PER_PAGE_MIN', 6))),
+        // Requests Paddle concurrentes por lote (4 ≈ 3 lotes para 11 páginas).
+        'parallel_pages' => max(1, min(8, (int) env('COTIZ_PADDLEOCR_PARALLEL_PAGES', 4))),
     ],
 
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.
