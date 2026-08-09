@@ -13,7 +13,7 @@ class MaterialesImportLockService
     public const TTL_SECONDS = 2700;
 
     /** Sin actividad durante este tiempo → lock huérfano liberable. */
-    public const ABANDON_MINUTES = 20;
+    public const ABANDON_MINUTES = 5;
 
     /**
      * @return array{

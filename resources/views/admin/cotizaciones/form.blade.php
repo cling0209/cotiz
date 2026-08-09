@@ -2616,6 +2616,8 @@
     let importExcelFile = null;
     let importSimTimer = null;
     let importMaterialesLockId = null;
+    let importMaterialesAnalisisActivo = false;
+    let importMaterialesAnalisisCancelado = false;
 
     const MENSAJES_PROGRESO_TEXTO = [
         'Analizando texto pegado…',
@@ -2784,6 +2786,25 @@
         return importMaterialesLockId;
     }
 
+    function liberarImportMaterialesLockBeacon() {
+        if (!importMaterialesLockId) return;
+        const lockId = importMaterialesLockId;
+        importMaterialesLockId = null;
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('lock_id', lockId);
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+            navigator.sendBeacon(importarMpUrls.materialesLockRelease, body);
+            return;
+        }
+        fetch(importarMpUrls.materialesLockRelease, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
+            keepalive: true,
+        }).catch(() => {});
+    }
+
     async function liberarImportMaterialesLock() {
         if (!importMaterialesLockId) return;
         const lockId = importMaterialesLockId;
@@ -2801,6 +2822,33 @@
             // ignorar error al liberar
         }
     }
+
+    function marcarAnalisisMaterialesIniciado() {
+        importMaterialesAnalisisActivo = true;
+        importMaterialesAnalisisCancelado = false;
+    }
+
+    function marcarAnalisisMaterialesTerminado() {
+        importMaterialesAnalisisActivo = false;
+        importMaterialesAnalisisCancelado = false;
+    }
+
+    function cancelarAnalisisMaterialesAlSalir() {
+        if (!importMaterialesAnalisisActivo && !importMaterialesLockId) return;
+        importMaterialesAnalisisCancelado = true;
+        importMaterialesAnalisisActivo = false;
+        liberarImportMaterialesLockBeacon();
+    }
+
+    function analisisMaterialesFueCancelado() {
+        return importMaterialesAnalisisCancelado;
+    }
+
+    window.addEventListener('pagehide', (event) => {
+        if (!event.persisted) {
+            cancelarAnalisisMaterialesAlSalir();
+        }
+    });
 
     async function consultarLockAnalisisMaterialesActivo() {
         const res = await fetch(importarMpUrls.materialesLockStatus, {
@@ -2916,6 +2964,7 @@
         importPdfFile = null;
         importExcelFile = null;
         importandoCompraAgil = false;
+        cancelarAnalisisMaterialesAlSalir();
         if (importarTexto) importarTexto.value = '';
         if (importarPdfInput) importarPdfInput.value = '';
         if (importarExcelInput) importarExcelInput.value = '';
@@ -3209,6 +3258,7 @@
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
         nuevoImportMaterialesLockId();
+        marcarAnalisisMaterialesIniciado();
 
         try {
             const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
@@ -3216,6 +3266,8 @@
                 await liberarImportMaterialesLock();
                 return;
             }
+
+            if (analisisMaterialesFueCancelado()) return;
 
             mostrarProgresoImportar();
             actualizarProgresoImportar(5, 100, TEXTO_ANALISIS_DOCUMENTO, { faseAnalisis: true });
@@ -3226,6 +3278,8 @@
             let desde = 0;
 
             while (desde === 0 || desde < total) {
+                if (analisisMaterialesFueCancelado()) return;
+
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
                 if (total > 0) {
@@ -3286,6 +3340,7 @@
             mostrarImportError('Error de conexión.');
         } finally {
             await liberarImportMaterialesLock();
+            marcarAnalisisMaterialesTerminado();
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
         }
     }
@@ -3318,6 +3373,7 @@
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
         nuevoImportMaterialesLockId();
+        marcarAnalisisMaterialesIniciado();
 
         try {
             const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
@@ -3325,6 +3381,8 @@
                 await liberarImportMaterialesLock();
                 return;
             }
+
+            if (analisisMaterialesFueCancelado()) return;
 
             mostrarProgresoImportar();
             actualizarProgresoImportar(5, 100, TEXTO_ANALISIS_DOCUMENTO, { faseAnalisis: true });
@@ -3336,6 +3394,8 @@
             let omitidas = 0;
 
             while (desde === 0 || desde < total) {
+                if (analisisMaterialesFueCancelado()) return;
+
                 const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
                 if (total > 0) {
@@ -3406,6 +3466,7 @@
             mostrarImportError('Error de conexión.');
         } finally {
             await liberarImportMaterialesLock();
+            marcarAnalisisMaterialesTerminado();
             if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
         }
     }
