@@ -213,11 +213,22 @@ def _deduplicar(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+_engine: Any | None = None
+
+
+def get_ppstructure_engine() -> Any:
+    """Inicializa PPStructure una sola vez (descarga modelos en runtime)."""
+    global _engine
+    if _engine is None:
+        from paddleocr import PPStructure
+
+        _engine = PPStructure(show_log=False, lang="en", layout=True, table=True, ocr=True)
+    return _engine
+
+
 def extraer_lineas_pdf(pdf_path: str, dpi: int = 200, max_pages: int = 15) -> list[dict[str, Any]]:
     """Convierte PDF a imágenes y extrae filas producto/cantidad."""
-    from paddleocr import PPStructure
-
-    engine = PPStructure(show_log=False, lang="en", layout=True, table=True, ocr=True)
+    engine = get_ppstructure_engine()
 
     images = convert_from_path(
         pdf_path,

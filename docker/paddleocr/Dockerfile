@@ -3,7 +3,9 @@ FROM python:3.10-slim-bookworm
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     OMP_NUM_THREADS=1 \
-    MKL_NUM_THREADS=1
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    FLAGS_use_mkldnn=0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
@@ -20,11 +22,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY table_extractor.py app.py ./
-
-# Precarga modelos PPStructure (evita descarga en runtime).
-RUN python -c "from paddleocr import PPStructure; PPStructure(show_log=False, lang='en', layout=True, table=True, ocr=True)"
+COPY table_extractor.py app.py entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+# Los modelos se descargan al arrancar (warmup) o en la primera petición.
+# Precargar en `docker build` provoca segfault en VPS con poca RAM.
+CMD ["./entrypoint.sh"]

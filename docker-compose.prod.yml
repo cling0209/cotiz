@@ -43,6 +43,7 @@ services:
     environment:
       PADDLEOCR_DPI: ${PADDLEOCR_DPI:-200}
       PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
+      PADDLEOCR_WARMUP: ${PADDLEOCR_WARMUP:-true}
     ports:
       - "127.0.0.1:${PADDLEOCR_PORT:-8010}:8080"
 
