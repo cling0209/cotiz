@@ -80,7 +80,12 @@ class ListadoMaterialesPdfParserService
 
         return [
             'cabecera' => $this->extraerCabeceraDocumento($texto),
-            'lineas' => $this->fusionarLineasConPaddle($path, $lineasDesdeTexto, $textoBusqueda),
+            'lineas' => $this->fusionarLineasConPaddle(
+                $path,
+                $lineasDesdeTexto,
+                $textoBusqueda,
+                trim((string) $file->getClientOriginalName()),
+            ),
         ];
     }
 
@@ -1346,14 +1351,18 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $lineasTexto
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function fusionarLineasConPaddle(string $path, array $lineasTexto, string $texto): array
-    {
+    private function fusionarLineasConPaddle(
+        string $path,
+        array $lineasTexto,
+        string $texto,
+        string $nombreArchivo = '',
+    ): array {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esFormatoTablaProductoCantidad($upper);
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
         $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
-        $esTablaEscaneada = $this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path);
+        $esTablaEscaneada = $this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path, $nombreArchivo);
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
         $filasEsperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
 
@@ -1421,7 +1430,10 @@ class ListadoMaterialesPdfParserService
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
 
-        if ($esTablaEscaneada && $countPaddle > (int) ceil($filasEsperadas * 1.08)) {
+        $paddleExcedeEsperadas = $countPaddle > (int) ceil($filasEsperadas * 1.08);
+        $debePaddlePorPagina = ($esTablaEscaneada || ($paginas >= 8 && $esTablaMateriales)) && $paddleExcedeEsperadas;
+
+        if ($debePaddlePorPagina) {
             try {
                 $lineasPaddlePagina = $paddle->extraerLineasTablaPorPagina($path);
                 if ($lineasPaddlePagina !== []) {
@@ -1468,9 +1480,7 @@ class ListadoMaterialesPdfParserService
         );
 
         $candidatos['paddle'] = $finalPaddle;
-        if (! $paddlePrimario) {
-            $candidatos['texto'] = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
-        }
+        $candidatos['texto'] = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
 
         Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
             'texto' => $countTexto,
@@ -1526,8 +1536,12 @@ class ListadoMaterialesPdfParserService
         return $lineas;
     }
 
-    private function esProbableTablaMaterialesEscaneada(string $texto, int $paginas, string $path = ''): bool
-    {
+    private function esProbableTablaMaterialesEscaneada(
+        string $texto,
+        int $paginas,
+        string $path = '',
+        string $nombreArchivo = '',
+    ): bool {
         if ($this->esDocumentoTablaMaterialesPdf($texto)) {
             return true;
         }
@@ -1541,8 +1555,13 @@ class ListadoMaterialesPdfParserService
             return true;
         }
 
-        $nombre = basename($path);
+        $nombre = trim($nombreArchivo) !== '' ? $nombreArchivo : basename($path);
 
+        return $this->esNombreArchivoEspecificacionesTecnicas($nombre);
+    }
+
+    private function esNombreArchivoEspecificacionesTecnicas(string $nombre): bool
+    {
         return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
             || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1;
     }

@@ -198,6 +198,105 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         ));
     }
 
+    public function test_detecta_tabla_escaneada_por_nombre_original_en_subida_web(): void
+    {
+        $parser = new ListadoMaterialesPdfParserService;
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'esProbableTablaMaterialesEscaneada');
+        $metodo->setAccessible(true);
+
+        $this->assertTrue($metodo->invoke(
+            $parser,
+            'texto minimo sin cabecera',
+            1,
+            '/tmp/phpAbCdEf',
+            'ESPECIFICACIONES TECNICAS2 .pdf',
+        ));
+    }
+
+    public function test_fusion_paddle_142_no_podable_elige_texto_sobre_paddle(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle = $golden['lineas'];
+        for ($i = 0; $i < 45; $i++) {
+            $lineasPaddle[] = [
+                'cantidad' => 1,
+                'descripcion' => 'ARTICULO UNICO SIN DUPLICADO NUMERO '.str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+            ];
+        }
+        $this->assertSame(142, count($lineasPaddle));
+
+        $fixturePath = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.'vps_ocr_real.txt';
+        $texto = (string) file_get_contents($fixturePath);
+        $texto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $texto, 1) ?? $texto;
+
+        $parserBase = new ListadoMaterialesPdfParserService;
+        $lineasTexto = $parserBase->parseTexto($texto);
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+        $paddle->method('extraerLineasTablaPorPagina')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke(
+                $parser,
+                $tmp,
+                $lineasTexto,
+                $texto,
+                'ESPECIFICACIONES TECNICAS2 .pdf',
+            );
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertSame(114, count($fusionadas));
+        $this->assertLessThan(count($lineasPaddle), count($fusionadas));
+    }
+
+    public function test_fusion_subida_web_nombre_original_activa_poda_paddle_97(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle = $this->simularPaddle142Realista($golden['lineas']);
+
+        $texto = "83965\n8 unidades\nLAPICES DE CERA JUMBO\n";
+
+        $parserBase = new ListadoMaterialesPdfParserService;
+        $lineasTexto = $parserBase->parseTexto($texto);
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+        $paddle->method('extraerLineasTablaPorPagina')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke(
+                $parser,
+                $tmp,
+                $lineasTexto,
+                $texto,
+                'ESPECIFICACIONES TECNICAS2 .pdf',
+            );
+        } finally {
+            @unlink($tmp);
+        }
+
+        Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
+    }
+
     public function test_golden_hoja_2_tiene_diez_productos_como_pdf(): void
     {
         $golden = Solicitud83965Golden::load();
