@@ -1263,6 +1263,18 @@ class ListadoMaterialesPdfParserService
         return preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1;
     }
 
+    /** Tabla escaneada producto/cantidad (solicitud pedido o ESPECIFICACIONES TECNICAS). */
+    private function esTablaMaterialesOcrEscaneada(string $texto): bool
+    {
+        if ($this->esSolicitudPedidoDocumento($texto)) {
+            return true;
+        }
+
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+
+        return $this->esEspecificacionesTecnicasTablaProducto($upper);
+    }
+
     private function tieneCabeceraTablaProductoCantidad(string $upper): bool
     {
         return preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1;
@@ -1446,6 +1458,19 @@ class ListadoMaterialesPdfParserService
 
         if ($esTablaEscaneada && $esEspecificaciones) {
             $this->agregarCandidatosOcrTablaMateriales($path, $paginas, $texto, $candidatos);
+
+            $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
+            if ($lineasOcrPorPagina !== []) {
+                $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
+                    $texto,
+                    $lineasOcrPorPagina,
+                    false,
+                    $paginas,
+                );
+                Log::info('Import PDF: candidato OCR por página (celdas)', [
+                    'filas' => count($candidatos['ocr_pagina']),
+                ]);
+            }
         }
 
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
@@ -1857,8 +1882,8 @@ class ListadoMaterialesPdfParserService
             }
 
             $prioridad = match ($clave) {
-                'ocr_full' => 0,
-                'ocr_pagina' => 1,
+                'ocr_pagina' => 0,
+                'ocr_full' => 1,
                 'paddle' => 2,
                 default => 3,
             };
@@ -2917,9 +2942,10 @@ class ListadoMaterialesPdfParserService
     private function parseTablaProductoCantidad(string $texto): array
     {
         $upperDoc = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
-        $esSolicitudPedido = preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upperDoc) === 1;
+        $esTablaMaterialesOcr = $this->esTablaMaterialesOcrEscaneada($texto);
+        $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
 
-        if ($esSolicitudPedido) {
+        if ($esTablaMaterialesOcr) {
             $texto = $this->preprocesarTextoTablaSolicitudOcr($texto);
         }
 
@@ -2940,7 +2966,7 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            if (! $enTabla && $esSolicitudPedido) {
+            if (! $enTabla && $esTablaMaterialesOcr) {
                 if ($this->esTituloSolicitudPedido($linea)) {
                     continue;
                 }
@@ -3055,7 +3081,7 @@ class ListadoMaterialesPdfParserService
             // cantidad huérfana al final — se descarta
         }
 
-        if ($esSolicitudPedido) {
+        if ($esTablaMaterialesOcr) {
             $resultado = $this->repararFilasTablaSolicitudOcr($resultado);
             $resultado = $this->completarFilasSolicitudPedidoDesdeTexto($texto, $resultado);
         }
@@ -3282,6 +3308,96 @@ class ListadoMaterialesPdfParserService
             $texto,
         ) ?? $texto;
 
+        // GLOBOS N9 + PERLADOS (misma celda producto).
+        $texto = preg_replace(
+            '/^(GLOBOS N9 COLORES VARIADOS 3 bolsas)\s*\R\s*(PERLADOS 50 UNIDADES)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        $texto = preg_replace(
+            '/^(BOLSA DE GLOBOS N9 COLORES 5 bolsas)\s*\R\s*(VARIADOS 50 UNIDADES)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // MARCADORES BANDERITA + POST-1T + UNIDADES (celda multilínea; cantidad pedido al final).
+        $texto = preg_replace(
+            '/^(MARCADORES BANDERITA)\s+5\s*\R\s*(POST-1T VARIOS COLORES 24)\s*\R\s*UNIDADES/mu',
+            '$1 $2 UNIDADES 5',
+            $texto,
+        ) ?? $texto;
+
+        // POST-IT multilínea (descripción partida).
+        $texto = preg_replace(
+            '/^(POST-IT NOTAS ADHESIVAS SUPER)\s*\R\s*(STICKY 5 paquetes[^\n\r]*)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // TERMOLAMINADORA + PLASTIFICADORA + PAPEL (una celda, cantidad 1).
+        $texto = preg_replace(
+            '/^(TERMOLAMINADORA 1)\s*\R\s*(PLASTIFICADORA \+CORTADOR DE)\s*\R\s*(PAPEL \+300 MICAS)/mu',
+            'TERMOLAMINADORA $2 $3 1',
+            $texto,
+        ) ?? $texto;
+
+        // PERFORADORA METÁLICA + ORIFICIO (cantidad 3).
+        $texto = preg_replace(
+            '/^(PERFORADORA METÁLICA 1 3)\s*\R\s*(ORIFICIO 6MM \/)/mu',
+            'PERFORADORA METÁLICA 1 $2 3',
+            $texto,
+        ) ?? $texto;
+
+        // ALARGADOR multilínea.
+        $texto = preg_replace(
+            '/^(ALARGADOR MÚLTIPLE 6 3 unidades)\s*\R\s*(POSICIONES 3 M 10A\/250V)\s*\R\s*(NEGRO)/mu',
+            '$1 $2 $3',
+            $texto,
+        ) ?? $texto;
+
+        // CINTA EMBALAJE multilínea.
+        $texto = preg_replace(
+            '/^(CINTA EMBALAJE 48 MM X 100 30 unidades)\s*\R\s*(MT TRANSPARENTE =>)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // ACUARELA + PINCEL (misma celda).
+        $texto = preg_replace(
+            '/^(ACUARELA SET 12 COLORES CON 20 set)\s*\R\s*(PINCEL)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // PIZARRA CORCHO + MADERA.
+        $texto = preg_replace(
+            '/^(PIZARRA CORCHO 60X90 MARCO 1)\s*\R\s*(MADERA)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // CARTULINA OPALINA multilínea.
+        $texto = preg_replace(
+            '/^(CARTULINA OPALINA 180 GR LISA 3 paquetes)\s*\R\s*(EXTRA BLANCA CARTA 100 HOJAS)\s*\R\s*(PAQUETE)/mu',
+            '$1 $2 $3',
+            $texto,
+        ) ?? $texto;
+
+        // PILA DURACELL + BATERÍA GRANDE (misma celda).
+        $texto = preg_replace(
+            '/^(PILA DURACELL TIPO D, \(2 PILAS,)\s*\R\s*(BATERÍA GRANDE)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // BASTIDOR + LIENZO multilínea.
+        $texto = preg_replace(
+            '/^(BASTIDOR DE MADERA CON)\s*\R\s*(LIENZO DE TELA ALGODON 40X50[^\n\r]*)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
         return $texto;
     }
 
@@ -3320,6 +3436,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
+        $reparado = $this->fusionarContinuacionesCeldaMultilineaFilas($reparado);
         $reparado = $this->compactarFilasTablaMateriales($reparado);
 
         return $this->partirFilasFusionadasOcr($reparado);
@@ -3401,6 +3518,14 @@ class ListadoMaterialesPdfParserService
                 return false;
             }
 
+            if (preg_match('/^ESPECIFICACIONES TECNICAS\b/iu', $desc) === 1) {
+                return false;
+            }
+
+            if (preg_match('/^8396\d/u', $desc) === 1) {
+                return false;
+            }
+
             if (preg_match('/^(?:CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?|IMAGEN\s+REFERENCIA)$/iu', $desc) === 1) {
                 return false;
             }
@@ -3411,6 +3536,138 @@ class ListadoMaterialesPdfParserService
 
             return true;
         }));
+    }
+
+    /**
+     * Une filas OCR que pertenecen a la misma celda multilínea del PDF (continuación sin nombre de producto nuevo).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function fusionarContinuacionesCeldaMultilineaFilas(array $filas): array
+    {
+        if (count($filas) < 2) {
+            return $filas;
+        }
+
+        $resultado = [];
+
+        foreach ($filas as $fila) {
+            if ($resultado !== []) {
+                $indice = count($resultado) - 1;
+                if ($this->esContinuacionCeldaProductoOcr($fila['descripcion'], $resultado[$indice]['descripcion'])) {
+                    $resultado[$indice]['descripcion'] = trim(
+                        $resultado[$indice]['descripcion'].' '.$fila['descripcion'],
+                    );
+                    if ($fila['cantidad'] > 1 && $resultado[$indice]['cantidad'] === 1) {
+                        $resultado[$indice]['cantidad'] = $fila['cantidad'];
+                    }
+
+                    continue;
+                }
+            }
+
+            $resultado[] = $fila;
+        }
+
+        return $resultado;
+    }
+
+    private function esContinuacionCeldaProductoOcr(string $descripcion, string $descripcionPrev): bool
+    {
+        $desc = mb_strtoupper(trim($descripcion));
+        $prev = mb_strtoupper(trim($descripcionPrev));
+
+        if ($desc === '' || $prev === '') {
+            return false;
+        }
+
+        if (preg_match('/^(?:PLASTIFICADORA|PAPEL \+300 MICAS)/iu', $desc) === 1
+            && str_contains($prev, 'TERMOLAMINADORA')) {
+            return true;
+        }
+
+        if (preg_match('/^ORIFICIO 6MM/iu', $desc) === 1 && str_contains($prev, 'PERFORADORA MET')) {
+            return true;
+        }
+
+        if (preg_match('/^PERLADOS 50 UNIDADES$/iu', $desc) === 1 && str_contains($prev, 'GLOBOS N9')) {
+            return true;
+        }
+
+        if (preg_match('/^VARIADOS 50 UNIDADES$/iu', $desc) === 1 && str_contains($prev, 'BOLSA DE GLOBOS')) {
+            return true;
+        }
+
+        if (preg_match('/^POST-1T VARIOS COLORES/iu', $desc) === 1 && str_contains($prev, 'MARCADORES BANDERITA')) {
+            return true;
+        }
+
+        if ($desc === 'UNIDADES' && str_contains($prev, 'POST-1T')) {
+            return true;
+        }
+
+        if ($desc === 'PINCEL' && str_contains($prev, 'ACUARELA')) {
+            return true;
+        }
+
+        if ($desc === 'MADERA' && str_contains($prev, 'PIZARRA CORCHO')) {
+            return true;
+        }
+
+        if (preg_match('/^POSICIONES 3 M/iu', $desc) === 1 && str_contains($prev, 'ALARGADOR')) {
+            return true;
+        }
+
+        if ($desc === 'NEGRO' && str_contains($prev, 'POSICIONES')) {
+            return true;
+        }
+
+        if (preg_match('/^MT TRANSPARENTE/iu', $desc) === 1 && str_contains($prev, 'CINTA EMBALAJE')) {
+            return true;
+        }
+
+        if (preg_match('/^DE ANCHO VARIEDAD DE/iu', $desc) === 1 && str_contains($prev, 'CINTA SAT')) {
+            return true;
+        }
+
+        if (preg_match('/^BLANCO 80 GRAMOS/iu', $desc) === 1 && str_contains($prev, 'SOBRE CARTA')) {
+            return true;
+        }
+
+        if (preg_match('/^(?:CARTA|OFICIO) 100 UN$/iu', $desc) === 1 && str_contains($prev, 'FUNDA PLASTICA')) {
+            return true;
+        }
+
+        if (preg_match('/^MADERA N\*2$/iu', $desc) === 1 && str_contains($prev, 'BROCHA PELO')) {
+            return true;
+        }
+
+        if (preg_match('/^sv100$/iu', $desc) === 1 && str_contains($prev, 'MICRÓFONO')) {
+            return true;
+        }
+
+        if ($desc === 'BATERÍA GRANDE' && str_contains($prev, 'PILA DURACELL')) {
+            return true;
+        }
+
+        if (preg_match('/^ARTE PAÑO LENCI$/iu', $desc) === 1 && str_contains($prev, 'BLOCK PAÑOLENCI')) {
+            return true;
+        }
+
+        if (preg_match('/^COLORES SURTIDOS$/iu', $desc) === 1 && str_contains($prev, 'POMPONES')) {
+            return true;
+        }
+
+        if (preg_match('/^PINCEL PINTAR PONCEAR/iu', $desc) === 1 && str_contains($prev, 'ESPONJA CEPILLO')) {
+            return true;
+        }
+
+        if (preg_match('/^PINTURA ARTE$/iu', $desc) === 1 && str_contains($prev, 'PINCEL PINTAR')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
