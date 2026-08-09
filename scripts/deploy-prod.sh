@@ -23,11 +23,15 @@ echo "Deteniendo contenedor app (${APP_CONTAINER})..."
 "${COMPOSE[@]}" stop app 2>/dev/null || true
 "${COMPOSE[@]}" rm -f -s app 2>/dev/null || true
 docker rm -f "$APP_CONTAINER" 2>/dev/null || true
-# Contenedores huérfanos de recreates fallidos (prefijo hash_)
 docker ps -aq --filter "name=${PROJECT_NAME}-app" | xargs -r docker rm -f 2>/dev/null || true
 
-echo "Levantando app..."
-"${COMPOSE[@]}" up -d --build --remove-orphans --no-deps app
+echo "Building imagen app..."
+"${COMPOSE[@]}" build app
+
+echo "Recreando contenedor (rm inmediato antes de up)..."
+docker rm -f "$APP_CONTAINER" 2>/dev/null || true
+docker ps -aq --filter "name=${PROJECT_NAME}-app" | xargs -r docker rm -f 2>/dev/null || true
+"${COMPOSE[@]}" up -d --force-recreate --no-deps app
 
 docker image prune -f
 APP_PORT="$(grep -E '^APP_PORT=' .env.prod | cut -d= -f2- | tr -d ' "' || true)"

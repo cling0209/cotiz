@@ -55,11 +55,15 @@ jobs:
                 echo "::error::Falta $dir/.env.prod"
                 exit 1
               fi
-              if [ ! -f "$dir/scripts/deploy-prod.sh" ]; then
+              git config --global --add safe.directory "$dir"
+              cd "$dir"
+              git fetch origin main
+              git reset --hard origin/main
+              if [ ! -f scripts/deploy-prod.sh ]; then
                 echo "::error::Falta $dir/scripts/deploy-prod.sh"
                 exit 1
               fi
-              bash "$dir/scripts/deploy-prod.sh"
+              bash scripts/deploy-prod.sh
             }
 
             deploy_instance /opt/cotiz-romulo
