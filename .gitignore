@@ -24,6 +24,8 @@ cotiz-*.env
 /storage/*.key
 /storage/pail
 /vendor
+__pycache__/
+*.py[cod]
 _ide_helper.php
 Homestead.json
 Homestead.yaml

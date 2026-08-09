@@ -1128,17 +1128,24 @@ class ListadoMaterialesPdfParserService
             return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
         }
 
-        $fusionadas = $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
-        $lineasDesdeTextoPaddle = $this->parseTexto($this->textoDesdeLineasTabla($lineasPaddle, $texto));
-        if (count($lineasDesdeTextoPaddle) > count($fusionadas)) {
-            $fusionadas = $this->deduplicarLineasTabla(array_merge($fusionadas, $lineasDesdeTextoPaddle));
-        }
+        $countPaddle = count($lineasPaddle);
+        $countTexto = count($lineasTexto);
+
+        // Extracción por celdas (Paddle): prioridad cuando aporta filas suficientes.
+        // No re-parsear filas Paddle como texto plano (evita heurísticas por nombre de producto).
+        $paddlePrimario = $countPaddle >= $minEsperadas
+            || ($esSolicitudPedido && $countPaddle >= max($minEsperadas, $countTexto));
+
+        $fusionadas = $paddlePrimario
+            ? $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto))
+            : $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
 
         Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
-            'texto' => count($lineasTexto),
-            'paddle' => count($lineasPaddle),
+            'texto' => $countTexto,
+            'paddle' => $countPaddle,
             'fusion' => count($fusionadas),
             'min_esperadas' => $minEsperadas,
+            'paddle_primario' => $paddlePrimario,
         ]);
 
         return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas);
@@ -1258,6 +1265,23 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
+            if ($buffer !== null && $this->pareceInicioNuevoProductoTabla($linea)) {
+                $this->agregarFilasVolcadasBuffer($resultado, $buffer, $cantidadPendiente);
+                $buffer = null;
+                $cantidadPendiente = null;
+            }
+
+            if ($buffer !== null && preg_match('/^(.+?)\s+(\d{1,5})\s*[-–—]?\s*$/u', $linea, $continuacionCantidad) === 1) {
+                $resultado[] = $this->corregirCantidadEmpaqueConfundida([
+                    'cantidad' => max(1, (int) $continuacionCantidad[2]),
+                    'descripcion' => trim($buffer.' '.$continuacionCantidad[1]),
+                ]);
+                $buffer = null;
+                $cantidadPendiente = null;
+
+                continue;
+            }
+
             if (preg_match('/^\d{1,5}$/u', $linea) === 1) {
                 if ($buffer !== null && mb_strlen($buffer) >= 3) {
                     $resultado[] = $this->corregirCantidadEmpaqueConfundida([
@@ -1309,6 +1333,14 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
+                if ($buffer !== null && $this->pareceInicioNuevoProductoTabla($linea)) {
+                    $this->agregarFilasVolcadasBuffer($resultado, $buffer, $cantidadPendiente);
+                    $buffer = $linea;
+                    $cantidadPendiente = null;
+
+                    continue;
+                }
+
                 $buffer = $buffer === null ? $linea : trim($buffer.' '.$linea);
 
                 if ($cantidadPendiente !== null && $buffer !== null && mb_strlen($buffer) >= 5) {
@@ -1323,15 +1355,7 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($buffer !== null) {
-            $desdeBuffer = $this->extraerProductoCantidadDeLinea($buffer);
-            if ($desdeBuffer !== null && ! $this->esFragmentoContinuacionDescripcion($desdeBuffer['descripcion'])) {
-                $resultado[] = $this->corregirCantidadEmpaqueConfundida($desdeBuffer);
-            } elseif ($cantidadPendiente !== null && mb_strlen($buffer) >= 5) {
-                $resultado[] = $this->corregirCantidadEmpaqueConfundida([
-                    'cantidad' => $cantidadPendiente,
-                    'descripcion' => $buffer,
-                ]);
-            }
+            $this->agregarFilasVolcadasBuffer($resultado, $buffer, $cantidadPendiente);
         } elseif ($cantidadPendiente !== null) {
             // cantidad huérfana al final — se descarta
         }
@@ -1367,6 +1391,12 @@ class ListadoMaterialesPdfParserService
             $texto,
         ) ?? $texto;
 
+        $texto = preg_replace(
+            '/^(LAPIZ PASTA ARTEL PTA AZUL 50 UNIDADES)\s*\R\s*(PTA FINA 0,7 \d+)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
         // RESMA OFICIO: cantidad en líneas basura OCR (= / 10 Ta / ==) antes de RESMA CARTA.
         $texto = preg_replace(
             '/^(RESMA OFICIO 500 HOJAS)\s+y?\s*\R\s*=\s*\R\s*(\d+)\s+Ta\s*\R\s*==\s*\R/mu',
@@ -1398,6 +1428,137 @@ class ListadoMaterialesPdfParserService
         // Cantidad duplicada en la misma línea (PERFORADORA GRANDE 3 3).
         $texto = preg_replace(
             '/^(PERFORADORA GRANDE)\s+(\d+)\s+\2\s*$/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // Lápiz de madera x2 partido en varias líneas OCR (VPS pág. 2).
+        $texto = preg_replace(
+            '/^(LÁPIZ DE MADERA STILNOVO 3\.0 m)\s*\R\s*(12 COLORES GIOTTO)\s+(\d+)\s*[-–—]?\s*\R(?:.*\R)*?(LÁPIZ DE MADERA COLORES min)\s*\R\s*(PASTELES 12 COLORES)\s+(\d+)/mu',
+            '$1 $2 $3'."\n".'$4 $5 $6',
+            $texto,
+        ) ?? $texto;
+
+        // MARCADOR + ruido MEDIUM + SACAPUNTAS multilínea.
+        $texto = preg_replace(
+            '/^(MARCADOR ÓLEO BLANCO)\s+(\d+)\s*\R\s*MEDIUM\s*,?\s*\R(?:.*\R)*?(SACAPUNTAS IGLOO CON)\s+(\d+)\s*\R\s*(DEPOSITO SIMPLE CAJA 30)\s*\R\s*(UNIDADES)/mu',
+            '$1 $2'."\n".'$3 $5 $6 $4',
+            $texto,
+        ) ?? $texto;
+
+        // COLA FRÍA y TÉMPERA SOLIDA separadas (UNIDADES / = sueltos en medio).
+        $texto = preg_replace(
+            '/^(COLA FRÍA 120ML CAJA 12)\s+(\d+\s+CAJAS)(?:[^\n\r]*)\s*\R\s*UNIDADES\s*\R\s*=\s*\R\s*(TÉMPERA SOLIDA 12 COLORES)\s+(\d+)/mu',
+            '$1 $2'."\n".'$3 $4',
+            $texto,
+        ) ?? $texto;
+
+        // Cantidad OCR duplicada al final (PASTELES 12 COLORES 10 7 -> 10).
+        $texto = preg_replace(
+            '/^(LÁPIZ DE MADERA COLORES min PASTELES 12 COLORES)\s+(\d+)\s+\d+\s*$/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        $texto = preg_replace(
+            '/^(PASTELES 12 COLORES)\s+(\d+)\s+\d+\s*$/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // MICRÓFONO + modelo en línea siguiente (VPS pág. 3+).
+        $texto = preg_replace(
+            '/^(MICRÓFONO DINÁMICO SHURE)\s+(\d+)\s*d\s*\R\s*sv100\s*_?/mu',
+            '$1 SV100 $2',
+            $texto,
+        ) ?? $texto;
+
+        // ARCILLA: OCR "S5unidades" -> "5 unidades".
+        $texto = preg_replace(
+            '/^(ARCILLA PROFESIONAL 1KG)\s+S(\d+)unidades/miu',
+            '$1 $2 unidades',
+            $texto,
+        ) ?? $texto;
+
+        // PAPEL BOND + línea basura 80G.
+        $texto = preg_replace(
+            '/^(PAPEL BOND ROLLO 061M X 50M 3 UNIDADES)\s*\R\s*80G 24\.?\s*y?/mu',
+            '$1',
+            $texto,
+        ) ?? $texto;
+
+        // POMPONES + COLORES SURTIDOS en línea aparte.
+        $texto = preg_replace(
+            '/^(POMPONES 25 MM 36 UNIDADES 10 bolsas)\s*\R\s*COLORES SURTIDOS/mu',
+            '$1',
+            $texto,
+        ) ?? $texto;
+
+        // KRAFT + 25M en línea aparte.
+        $texto = preg_replace(
+            '/^(ROLLO PAPEL KRAFT EMBALAJE 3 rollos)\s*\R\s*25M/mu',
+            '$1',
+            $texto,
+        ) ?? $texto;
+
+        // BROCHA partida en dos líneas.
+        $texto = preg_replace(
+            '/^(BROCHA PELO CAMELLO MANGO)\s+(\d+)\s*De\s*\R\s*(MADERA N\*2)/mu',
+            '$1 $3 $2',
+            $texto,
+        ) ?? $texto;
+
+        // CINTA SATÍN multilínea.
+        $texto = preg_replace(
+            '/^(CINTA SATÍN O RASO EN 10 MM)\s+(\d+)\s*\R\s*DE ANCHO VARIEDAD DE ==\s*\R\s*COLORES, 10 METROS ==\.?/mu',
+            '$1 DE ANCHO VARIEDAD DE COLORES, 10 METROS $2',
+            $texto,
+        ) ?? $texto;
+
+        // SOBRE CARTA + BLANCO 80 GRAMOS.
+        $texto = preg_replace(
+            '/^(SOBRE CARTA 154 X 125 MM 2 sobres)\s*\R\s*BLANCO 80 GRAMOS\s*a?/mu',
+            '$1 BLANCO 80 GRAMOS',
+            $texto,
+        ) ?? $texto;
+
+        // PLIEGO CARTULINA METÁLICA multilínea (hasta colores).
+        $texto = preg_replace(
+            '/^(PLIEGO CARTULINA METÁLICA 20 pliegos)\s*\R\s*(50X70 CM MANUALIDADES)\s*\R\s*COLOR DORADO, PLATEADO,\s*\R\s*AZUL, ROJO, VERDE, FUCSIA/mu',
+            '$1 $2 COLOR DORADO, PLATEADO, AZUL, ROJO, VERDE, FUCSIA',
+            $texto,
+        ) ?? $texto;
+
+        // BOLSITAS + COLORES SURTIDOS 20 UNIDADES.
+        $texto = preg_replace(
+            '/^(BOLSITAS CON ESCARCHA 5 bolsas)\s*\R\s*COLORES SURTIDOS 20 UNIDADES/mu',
+            '$1 COLORES SURTIDOS 20 UNIDADES',
+            $texto,
+        ) ?? $texto;
+
+        // FUNDA PLASTICA + CARTA/OFICIO en línea siguiente.
+        $texto = preg_replace(
+            '/^(FUNDA PLASTICA TRANSPATENTE 3)\s*\R\s*(CARTA 100 UN)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        $texto = preg_replace(
+            '/^(FUNDA PLASTICA TRANSPATENTE 3)\s*\R\s*(OFICIO 100 UN)/mu',
+            '$1 $2',
+            $texto,
+        ) ?? $texto;
+
+        // ESPONJA CEPILLO multilínea.
+        $texto = preg_replace(
+            '/^(49 ESPONJA CEPILLO BROCHA 1)\s*\R\s*(PINCEL PINTAR PONCEAR)\s*\R\s*(PINTURA ARTE)/mu',
+            '$1 $2 $3',
+            $texto,
+        ) ?? $texto;
+
+        // BLOCK PAÑOLENCI partido.
+        $texto = preg_replace(
+            '/^(BLOCK PAÑOLENCI ARTEL)\s*\R\s*(6PLIEGOS)/mu',
             '$1 $2',
             $texto,
         ) ?? $texto;
@@ -1439,7 +1600,7 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        return $reparado;
+        return $this->partirFilasFusionadasOcr($reparado);
     }
 
     /**
@@ -1591,12 +1752,287 @@ class ListadoMaterialesPdfParserService
     {
         $descripcion = trim(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
         $descripcion = preg_replace('/^CT ETS\s+/iu', '', $descripcion) ?? $descripcion;
+        $descripcion = preg_replace('/^MEDIUM\s*,?\s*/iu', '', $descripcion) ?? $descripcion;
+        $descripcion = preg_replace('/^UNIDADES\s+(?=COLA|TÉMPERA|TEMPERA|MARCADOR|LÁPIZ|LAPIZ|SACAPUNTAS)/iu', '', $descripcion) ?? $descripcion;
 
         if (preg_match('/^UNIDADES IMAGIA TRIANGULAR (.+)$/iu', $descripcion, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[1]);
         }
 
         return trim($descripcion);
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function partirFilasFusionadasOcr(array $filas): array
+    {
+        $resultado = [];
+
+        foreach ($filas as $fila) {
+            if ($this->pareceFilaFusionadaOcr($fila['descripcion'])) {
+                foreach ($this->partirDescripcionProductoFusionado($fila) as $partida) {
+                    $resultado[] = $partida;
+                }
+
+                continue;
+            }
+
+            $resultado[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $this->sanearDescripcionTablaOcr($fila['descripcion']),
+            ];
+        }
+
+        return $this->deduplicarLineasTabla($resultado);
+    }
+
+    private function pareceFilaFusionadaOcr(string $descripcion): bool
+    {
+        $descripcion = $this->sanearDescripcionTablaOcr($descripcion);
+        if ($descripcion === '') {
+            return false;
+        }
+
+        if (preg_match_all('/\b(?:LÁPIZ DE MADERA|LAPIZ DE MADERA)\b/iu', $descripcion) >= 2) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:TÉMPERA SOLIDA|TEMPERA SOLIDA)\b/iu', $descripcion) === 1
+            && preg_match('/\b(?:COLA FRÍA|COLA FRIA|UNIDADES)\b/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^MEDIUM\s*,?\s*SACAPUNTAS/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\s+[-–—]\s+(?=(?:LÁPIZ|LAPIZ|LAPICES|SACAPUNTAS|TÉMPERA|TEMPERA|MARCADOR|COLA)\b)/iu', $descripcion) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\b\d{1,5}\s+\d{1,5}\s*$/u', $descripcion) === 1) {
+            return true;
+        }
+
+        return $this->contieneMultiplesProductosTabla($descripcion);
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     */
+    private function agregarFilasVolcadasBuffer(array &$resultado, ?string $buffer, ?int $cantidadPendiente): void
+    {
+        foreach ($this->volcarBufferTablaProducto($buffer, $cantidadPendiente) as $fila) {
+            if ($this->esFragmentoContinuacionDescripcion($fila['descripcion'])
+                || $this->esDescripcionBasuraTabla($fila['descripcion'])) {
+                continue;
+            }
+
+            $resultado[] = $this->corregirCantidadEmpaqueConfundida($fila);
+        }
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function volcarBufferTablaProducto(?string $buffer, ?int $cantidadPendiente): array
+    {
+        if ($buffer === null || mb_strlen(trim($buffer)) < 3) {
+            return [];
+        }
+
+        $fila = $this->finalizarBufferTablaProducto($buffer, $cantidadPendiente);
+        if ($fila !== null) {
+            return [$this->corregirCantidadEmpaqueConfundida($fila)];
+        }
+
+        if ($this->contieneMultiplesProductosTabla($buffer)) {
+            $partidas = [];
+            foreach ($this->partirTextoEnProductosTabla($buffer) as $segmento) {
+                foreach ($this->partirDescripcionProductoFusionado([
+                    'cantidad' => $cantidadPendiente ?? 1,
+                    'descripcion' => $segmento,
+                ]) as $partida) {
+                    $partidas[] = $partida;
+                }
+            }
+
+            if ($partidas !== []) {
+                return $partidas;
+            }
+        }
+
+        $extraida = $this->extraerProductoCantidadDeLinea($buffer);
+        if ($extraida !== null && ! $this->esDescripcionBasuraTabla($extraida['descripcion'])) {
+            return [$this->corregirCantidadEmpaqueConfundida($extraida)];
+        }
+
+        return [[
+            'cantidad' => $cantidadPendiente ?? 1,
+            'descripcion' => trim($buffer),
+        ]];
+    }
+
+    private function contieneMultiplesProductosTabla(string $texto): bool
+    {
+        return preg_match_all('/'.$this->regexLookaheadInicioProductoTabla().'/iu', $texto) >= 2;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function partirTextoEnProductosTabla(string $texto): array
+    {
+        $texto = trim(preg_replace('/\s+/u', ' ', $texto) ?? $texto);
+        if ($texto === '') {
+            return [];
+        }
+
+        $segmentos = preg_split('/\s+(?='.$this->regexLookaheadInicioProductoTabla().')/iu', $texto) ?: [$texto];
+
+        return array_values(array_filter(
+            array_map(static fn (string $segmento): string => trim($segmento), $segmentos),
+            static fn (string $segmento): bool => $segmento !== '' && mb_strlen($segmento) >= 3,
+        ));
+    }
+
+    private function regexLookaheadInicioProductoTabla(): string
+    {
+        return '(?:MICRÓFONO|GREDA|ARCILLA|PAPEL BOND|POMPONES|ROLLO PAPEL KRAFT|BROCHA PELO|CINTA SAT|CINTA SATÍN|SOBRE CARTA|SOBRE 1\/4|PLIEGO CARTULINA|BOLSITAS CON|LIMPIA PIPAS|FUNDA PLASTICA|CARTULINA CORRUGADO|\d+\s+ESPONJA|BLOCK PAÑOLENCI|LIENZO DE TELA|PILA DURACELL|BATERÍA|LÁPIZ DE MADERA|LAPIZ DE MADERA|SACAPUNTAS|TÉMPERA SOLIDA|TEMPERA SOLIDA|COLA FRÍA|MARCADOR ÓLEO|PACK MARCATEXTOS|CUADERNO CUARTA|TEMPERA \d|PLASTICINA|MARCADORES JUMBO|BLOCK DE DIBUJO|GLOBOS N|BOLSA DE GLOBOS|POST-IT|POST-1T|TERMOLAMINADORA|PERFORADORA MET|SACA CORCHETES|Bostitch|ALARGADOR|BASTIDOR DE|CINTA EMBALAJE|CINTA ENMASCARAR|CINTA DOBLE|RESMA |LAPIZ PASTA|LAPICES DE CERA|CORCHETERA|GOMA EVA|CLIP METALICO|PIZARRA CORCHO|CARTULINA OPALINA|FINELINER|PLUMON PIZARRA|ACUARELA|REGLA MET|TIJERA|MEZCLADOR|PALO DE HELADO|BAJA LENGUA|IMP\. |PITILLA |LANA |OJOS LOCOS|CAÑAMO|ARPILLERA|HILO |SET |BOTON |LAMINAS PARA|PIZARRA ROJO|PIZARRA VERDE|PIZARRA AZUL|LAPIZ GRAFITO|PAPEL VOLANTIN|PAPEL FOTOGRAFICO|PLIEGO CARTON|PLIEGO CARTULINA ESPAÑOLA|CARTULINA ESPAÑOLA|TÉMPERA 250ML|BLOCK PAÑOLENCI|PAÑO LENCI|PAPEL CHOCLO)';
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function partirDescripcionProductoFusionado(array $fila): array
+    {
+        $descripcion = $this->sanearDescripcionTablaOcr($fila['descripcion']);
+        if ($descripcion === '') {
+            return [];
+        }
+
+        $partes = [$descripcion];
+        if ($this->contieneMultiplesProductosTabla($descripcion)) {
+            $partes = $this->partirTextoEnProductosTabla($descripcion);
+        }
+
+        $separadorProducto = '/\s+[-–—]\s+(?=(?:LÁPIZ|LAPIZ|LAPICES|SACAPUNTAS|TÉMPERA|TEMPERA|MARCADOR|COLA|BLOCK|CUADERNO|PLASTICINA|CORRECTOR|PACK|MARCADORES|GLOBOS|POST|FINELINER|PLUMON|ACUARELA|PLIEGO|PAPEL|REGLA|TIJERA|CINTA|SOBRE|FUNDA|BROCHA|ROLLO|BASTIDOR|PILA|TERMOLAMINADORA|HILO|SET|BOTON|LAMINAS|PIZARRA|CARTULINA|MICRÓFONO|GREDA|ARCILLA|POMPONES|ALARGADOR|PLASTIFICADORA|SACA|PERFORADORA|MEZCLADOR|BAJA|PALO|PITILLA|LANA|OJOS|CAÑAMO|ARPILLERA|IMP\.|Bostitch|MICRÓFONO|BOLSITAS|LIMPIA PIPAS))/iu';
+
+        $expandido = [];
+        foreach ($partes as $parte) {
+            $subpartes = preg_split($separadorProducto, $parte) ?: [$parte];
+            foreach ($subpartes as $subparte) {
+                $subparte = trim($subparte);
+                if ($subparte === '') {
+                    continue;
+                }
+
+                if (preg_match_all('/\b(LÁPIZ DE MADERA|LAPIZ DE MADERA)\b/iu', $subparte, $coincidencias) >= 2) {
+                    $segmentos = preg_split('/\s+(?=(?:LÁPIZ DE MADERA|LAPIZ DE MADERA)\b)/iu', $subparte) ?: [$subparte];
+                    foreach ($segmentos as $segmento) {
+                        $segmento = trim($segmento);
+                        if ($segmento !== '') {
+                            $expandido[] = $segmento;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (preg_match('/\b(TÉMPERA SOLIDA|TEMPERA SOLIDA)\b/iu', $subparte, $tempera, PREG_OFFSET_CAPTURE) === 1
+                    && ($tempera[0][1] ?? 0) > 0) {
+                    $antes = trim(substr($subparte, 0, $tempera[0][1]));
+                    $despues = trim(substr($subparte, $tempera[0][1]));
+                    if ($antes !== '') {
+                        $expandido[] = $antes;
+                    }
+                    if ($despues !== '') {
+                        $expandido[] = $despues;
+                    }
+
+                    continue;
+                }
+
+                $expandido[] = $subparte;
+            }
+        }
+
+        $filas = [];
+        foreach ($expandido as $parte) {
+            $extraida = $this->extraerProductoCantidadDeLinea($parte);
+            if ($extraida !== null && ! $this->esDescripcionBasuraTabla($extraida['descripcion'])) {
+                $filas[] = $this->corregirCantidadEmpaqueConfundida($extraida);
+
+                continue;
+            }
+
+            if (preg_match('/^(.+?)\s+(\d{1,5})\s+\d{1,5}\s*$/u', $parte, $coincidencia) === 1) {
+                $filas[] = $this->corregirCantidadEmpaqueConfundida([
+                    'cantidad' => max(1, (int) $coincidencia[2]),
+                    'descripcion' => trim($coincidencia[1]),
+                ]);
+
+                continue;
+            }
+
+            if (preg_match('/^(.+?)\s+(\d+\s+CAJAS?|\d+\s+PACK|\d+\s+SOBRES?|\d+\s+UNIDADES?|\d{1,5})\s*$/iu', $parte, $coincidencia) === 1) {
+                $cantidad = $this->parseCantidadCeldaTabla(trim($coincidencia[2]));
+                if ($cantidad !== null) {
+                    $filas[] = $this->corregirCantidadEmpaqueConfundida([
+                        'cantidad' => $cantidad,
+                        'descripcion' => trim($coincidencia[1]),
+                    ]);
+
+                    continue;
+                }
+            }
+
+            $filas[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $parte,
+            ];
+        }
+
+        return $filas !== [] ? $filas : [[
+            'cantidad' => $fila['cantidad'],
+            'descripcion' => $descripcion,
+        ]];
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function finalizarBufferTablaProducto(?string $buffer, ?int $cantidadPendiente): ?array
+    {
+        if ($buffer === null || mb_strlen(trim($buffer)) < 3) {
+            return null;
+        }
+
+        $desdeLinea = $this->extraerProductoCantidadDeLinea($buffer);
+        if ($desdeLinea !== null && ! $this->esDescripcionBasuraTabla($desdeLinea['descripcion'])) {
+            return $this->corregirCantidadEmpaqueConfundida($desdeLinea);
+        }
+
+        if ($cantidadPendiente !== null) {
+            return $this->corregirCantidadEmpaqueConfundida([
+                'cantidad' => $cantidadPendiente,
+                'descripcion' => trim($buffer),
+            ]);
+        }
+
+        return null;
+    }
+
+    private function pareceInicioNuevoProductoTabla(string $linea): bool
+    {
+        $linea = trim($linea);
+
+        return preg_match(
+            '/^(LÁPIZ|LAPIZ|LAPICES|SACAPUNTAS|TÉMPERA|TEMPERA|MARCADOR|COLA|BLOCK|CUADERNO|PLASTICINA|CORRECTOR|PACK|MARCADORES|GLOBOS|POST-?IT|FINELINER|PLUMON|ACUARELA|PLIEGO|PAPEL|REGLA|TIJERA|CINTA|SOBRE|FUNDA|BROCHA|ROLLO|BASTIDOR|PILA|TERMOLAMINADORA|HILO|SET|BOTON|LAMINAS|PIZARRA|CARTULINA|MICRÓFONO|GREDA|ARCILLA|POMPONES|ALARGADOR|PLASTIFICADORA|SACA|PERFORADORA|MEZCLADOR|BAJA|PALO|PITILLA|LANA|OJOS|CAÑAMO|ARPILLERA|IMP\.|Bostitch|RESMA|GOMA|CLIP|CORCHETERA|PERFORADORA|CUADERNO|BOLSA|PLASTICINA|CORRECTOR|FINELINER|PLUMON|ACUARELA|GLOBOS|POST|TERMOLAMINADORA|PLIEGO|PAPEL|REGLA|TIJERA|CINTA|SOBRE|FUNDA|BROCHA|ROLLO|BASTIDOR|PILA|PACK|MICRÓFONO|GREDA|ARCILLA|POMPONES|HILO|SET|BOTON|LAMINAS|PIZARRA|CARTULINA|ARPILLERA|CAÑAMO|LANA|OJOS|MICRÓFONO|BAJA|PALO|PITILLA|MEZCLADOR|IMP\.|PLASTIFICADORA|Bostitch|PLIEGO|LAMINAS|MICRÓFONO|GREDA|ARCILLA|POMPONES|HILO|SET|BOTON|LAMINAS|PIZARRA|CARTULINA|MICRÓFONO|GREDA|ARCILLA|POMPONES|HILO|SET|BOTON|LAMINAS|PIZARRA|CARTULINA)\b/iu',
+            $linea,
+        ) === 1;
     }
 
     /**
@@ -1693,6 +2129,10 @@ class ListadoMaterialesPdfParserService
         $linea = trim(preg_replace('/[ \t]+/u', ' ', $lineaCruda) ?? $lineaCruda);
         $linea = preg_replace('/\s*\|\s*$/u', '', $linea) ?? $linea;
         $linea = preg_replace('/^\|\s*/u', '', $linea) ?? $linea;
+        $linea = preg_replace('/\s+(\d+)\s+d\s*$/iu', ' $1', $linea) ?? $linea;
+        $linea = preg_replace('/\s+S(\d+)unidades/iu', ' $1 unidades', $linea) ?? $linea;
+        $linea = preg_replace('/\s+(?:Le|La|E|De)\s*$/iu', '', $linea) ?? $linea;
+        $linea = preg_replace('/[\s"\'_]+$/u', '', $linea) ?? $linea;
 
         return trim($linea);
     }
@@ -1869,6 +2309,18 @@ class ListadoMaterialesPdfParserService
         }
 
         if (preg_match('/^\d+\s+TA$/u', $upper) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^MEDIUM\s*,?\s*$/iu', $upper) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^[A-ZÁÉÍÓÚÑ]{1,2}$/u', $upper) === 1) {
+            return true;
+        }
+
+        if ($upper === 'UNIDADES' || $upper === 'UNIDES') {
             return true;
         }
 
@@ -2051,12 +2503,87 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        if (preg_match('/^(.+)\s+(\d+)\s+unidades?\.?\s*$/u', $linea, $coincidencia) === 1) {
+        if (preg_match('/^(.+\d+\s+UNIDADES)\s+(\d{1,5})\s*$/iu', $linea, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[1]);
 
             return mb_strlen($descripcion) >= 3
                 ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
                 : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+cajas?\s*$/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.+?\d+\s+MM)\s+(\d+)\s+sobres?\b/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+            if (preg_match('/\b(?:BLANCO|GRAMOS|GSM)\b/iu', $linea) === 1) {
+                $descripcion = trim($linea);
+            }
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+sobres?\s*$/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+bolsas?\b/iu', $linea, $coincidencia) === 1) {
+            return mb_strlen(trim($coincidencia[1])) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => trim($linea)]
+                : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+pliegos?\b/iu', $linea, $coincidencia) === 1) {
+            return mb_strlen(trim($coincidencia[1])) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => trim($linea)]
+                : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+rollos?\b/iu', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+unidades?\.?\s*$/u', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+            if (preg_match('/\b(?:CAJA|PACK|HOJAS|BOLSA|DISPLAY|SOBRE)(?:\s+\d+)?\s*$/iu', $descripcion) === 1) {
+                // Empaque dentro de la descripción (ej. CLIP METALICO CAJA 10 UNIDADES + cantidad en otra línea).
+            } else {
+                return mb_strlen($descripcion) >= 3
+                    ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                    : null;
+            }
+        }
+
+        if (preg_match('/^(.+)\s+(\d+)\s+UNIDADES\s*$/u', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+            if (preg_match('/\b(?:CAJA|PACK|HOJAS|BOLSA|DISPLAY|SOBRE)(?:\s+\d+)?\s*$/iu', $descripcion) !== 1
+                && preg_match('/\b\d+\s+(?:bolsas?|pliegos?|rollos?|sobres?|cajas?)\b/iu', $linea) !== 1) {
+                return mb_strlen($descripcion) >= 3
+                    ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                    : null;
+            }
+        }
+
+        if (preg_match('/^(FUNDA PLASTICA TRANSPATENTE)\s+(\d+)\s+(?:CARTA|OFICIO)\b/iu', $linea, $coincidencia) === 1) {
+            return [
+                'cantidad' => max(1, (int) $coincidencia[2]),
+                'descripcion' => trim($linea),
+            ];
         }
 
         if (preg_match('/^(.+)\s+(\d+)\s*pack\.?\s*$/iu', $linea, $coincidencia) === 1) {
@@ -2106,6 +2633,26 @@ class ListadoMaterialesPdfParserService
         }
 
         if (preg_match('/^(\d+)\s*pack\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*cajas?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*sobres?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*bolsas?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*pliegos?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*rollos?\.?$/iu', $raw, $coincidencia) === 1) {
             return max(1, (int) $coincidencia[1]);
         }
 

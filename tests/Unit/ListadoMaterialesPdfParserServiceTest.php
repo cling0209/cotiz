@@ -721,6 +721,80 @@ TXT;
         $this->assertSame(1, $buscar($lineas, 'CUADERNO UNIVERSITARIO')['cantidad'] ?? null);
     }
 
+    public function test_parse_vps_ocr_real_separa_productos_pagina_dos(): void
+    {
+        $texto = $this->cargarFixture('vps_ocr_real.txt');
+        $lineas = $this->parser->parseTexto($texto);
+
+        $buscar = static function (array $lineas, string $needle): ?array {
+            foreach ($lineas as $fila) {
+                if (str_contains(mb_strtoupper($fila['descripcion']), mb_strtoupper($needle))) {
+                    return $fila;
+                }
+            }
+
+            return null;
+        };
+
+        $lapizStilnovo = $buscar($lineas, 'LÁPIZ DE MADERA STILNOVO');
+        $lapizPasteles = $buscar($lineas, 'LÁPIZ DE MADERA COLORES min PASTELES');
+        $sacapuntas = $buscar($lineas, 'SACAPUNTAS IGLOO');
+        $cola = $buscar($lineas, 'COLA FRÍA');
+        $temperaSolida = $buscar($lineas, 'TÉMPERA SOLIDA');
+
+        $this->assertNotNull($lapizStilnovo);
+        $this->assertSame(10, $lapizStilnovo['cantidad']);
+        $this->assertNotNull($lapizPasteles);
+        $this->assertSame(10, $lapizPasteles['cantidad']);
+        $this->assertNotNull($sacapuntas);
+        $this->assertSame(1, $sacapuntas['cantidad']);
+        $this->assertStringNotContainsString('MEDIUM', mb_strtoupper($sacapuntas['descripcion']));
+        $this->assertNotNull($cola);
+        $this->assertSame(2, $cola['cantidad']);
+        $this->assertNotNull($temperaSolida);
+        $this->assertSame(15, $temperaSolida['cantidad']);
+        $this->assertFalse(
+            str_contains(mb_strtoupper($temperaSolida['descripcion']), 'COLA FR'),
+            'Témpera sólida no debe incluir cola fría',
+        );
+    }
+
+    public function test_parse_vps_ocr_real_recupera_productos_despues_cinta_satin(): void
+    {
+        $texto = $this->cargarFixture('vps_ocr_real.txt');
+        $lineas = $this->parser->parseTexto($texto);
+
+        $buscar = static function (array $lineas, string $needle): ?array {
+            foreach ($lineas as $fila) {
+                if (str_contains(mb_strtoupper($fila['descripcion']), mb_strtoupper($needle))) {
+                    return $fila;
+                }
+            }
+
+            return null;
+        };
+
+        $this->assertNotNull($buscar($lineas, 'MICRÓFONO DINÁMICO SHURE'));
+        $this->assertSame(10, $buscar($lineas, 'GREDA PROFESIONAL')['cantidad'] ?? null);
+        $this->assertSame(5, $buscar($lineas, 'ARCILLA PROFESIONAL')['cantidad'] ?? null);
+        $this->assertSame(3, $buscar($lineas, 'PAPEL BOND ROLLO')['cantidad'] ?? null);
+        $this->assertSame(10, $buscar($lineas, 'POMPONES 25 MM')['cantidad'] ?? null);
+        $this->assertSame(3, $buscar($lineas, 'ROLLO PAPEL KRAFT')['cantidad'] ?? null);
+        $this->assertSame(15, $buscar($lineas, 'BROCHA PELO CAMELLO')['cantidad'] ?? null);
+        $this->assertSame(10, $buscar($lineas, 'CINTA SATÍN O RASO')['cantidad'] ?? null);
+        $this->assertSame(2, $buscar($lineas, 'SOBRE CARTA 154')['cantidad'] ?? null);
+        $this->assertSame(2, $buscar($lineas, 'SOBRE 1/4 OFICIO')['cantidad'] ?? null);
+        $this->assertNotNull($buscar($lineas, 'PLIEGO CARTULINA METÁLICA'));
+        $this->assertNotNull($buscar($lineas, 'BOLSITAS CON ESCARCHA'));
+        $bolsitas = $buscar($lineas, 'BOLSITAS CON ESCARCHA');
+        $this->assertSame(5, $bolsitas['cantidad']);
+        $this->assertSame(10, $buscar($lineas, 'LIMPIA PIPAS COLORES FLUOR')['cantidad'] ?? null);
+        $this->assertSame(3, $buscar($lineas, 'FUNDA PLASTICA TRANSPATENTE')['cantidad'] ?? null);
+        $this->assertSame(10, $buscar($lineas, 'CARTULINA CORRUGADO 50X70')['cantidad'] ?? null);
+        $this->assertNotNull($buscar($lineas, 'ESPONJA CEPILLO BROCHA'));
+        $this->assertNotNull($buscar($lineas, 'BLOCK PAÑOLENCI ARTEL'));
+    }
+
     public function test_limpia_cantidad_duplicada_en_descripcion_perforadora(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'limpiarCantidadDuplicadaEnDescripcion');
