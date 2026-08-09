@@ -129,16 +129,73 @@ Cada **push a `main`** ejecuta `.github/workflows/hetzner-deploy.yml`:
 
 ### Secrets en GitHub (repo `cotiz`)
 
-Mismos que `carro` si es el mismo VPS:
+Los secrets **no se comparten entre repos**. Aunque `carro` ya despliegue bien, hay que crear los mismos en **github.com/cling0209/cotiz → Settings → Secrets and variables → Actions → New repository secret**.
 
-| Secret | Valor |
-|--------|-------|
-| `VPS_HOST` | IP del VPS |
-| `VPS_USER` | Usuario SSH |
-| `VPS_SSH_KEY` | Clave privada deploy |
-| `VPS_PORT` | `22` (opcional) |
+| Secret | Valor para pegar |
+|--------|------------------|
+| `VPS_HOST` | Misma IP que en `carro` (ej. `46.224.20.162`) |
+| `VPS_USER` | Mismo usuario que en `carro` (ej. `root`) |
+| `VPS_SSH_KEY` | Clave **privada** completa (ver abajo) |
+| `VPS_PORT` | `22` (opcional; solo si usas otro puerto) |
 
-Ver **carro/HETZNER.md** sección clave SSH si hay errores `no key found`.
+#### Copiar `VPS_SSH_KEY` para pegar en GitHub
+
+**Opción A — Reutilizar la clave que ya funciona en `carro`** (recomendado):
+
+La `.pub` correspondiente ya está en `~/.ssh/authorized_keys` del VPS. Solo copia la **privada** que usaste para `carro`.
+
+En PowerShell (Windows), desde la carpeta donde está la clave:
+
+```powershell
+Get-Content -Raw hetzner_deploy | Set-Clipboard
+```
+
+Luego en GitHub → repo **cotiz** → Settings → Secrets → **New repository secret** → Name: `VPS_SSH_KEY` → pegar (Ctrl+V) → Save.
+
+**Opción B — Generar clave nueva** (solo si no tienes la de carro):
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-hetzner" -f hetzner_deploy -N ""
+```
+
+1. En el VPS, añade `hetzner_deploy.pub` a `~/.ssh/authorized_keys` del usuario `VPS_USER`.
+2. Copia la **privada** (`hetzner_deploy`, sin `.pub`) a GitHub secret `VPS_SSH_KEY`.
+
+Formato correcto de la privada (debe verse así al pegar):
+
+```text
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB...
+(muchas líneas)
+...AAAAECw==
+-----END OPENSSH PRIVATE KEY-----
+```
+
+**No** pegues la `.pub` (empieza con `ssh-ed25519 AAAA...`).
+
+Verificar en tu PC antes de guardar en GitHub:
+
+```bash
+ssh-keygen -y -f hetzner_deploy
+```
+
+Si imprime una línea `ssh-ed25519 AAAA...`, la privada es válida.
+
+Probar SSH manual:
+
+```bash
+ssh -i hetzner_deploy VPS_USER@VPS_HOST
+```
+
+#### Checklist rápido (repo `cotiz`)
+
+1. `VPS_HOST` → IP del VPS
+2. `VPS_USER` → usuario SSH (ej. `root`)
+3. `VPS_SSH_KEY` → privada con `Get-Content -Raw hetzner_deploy | Set-Clipboard`
+4. (opcional) `VPS_PORT` → `22`
+5. Actions → **Deploy to Hetzner** → **Run workflow**
+
+Errores habituales: ver **carro/HETZNER.md** (`ssh: no key found`, clave en una sola línea, passphrase, `.pub` en lugar de privada).
 
 Deploy manual:
 
