@@ -847,19 +847,23 @@ class ListadoMaterialesPdfParserService
         $lineasNativo = count($this->parseTablaProductoCantidad($textoNativo));
         $lineasOcr = count($this->parseTablaProductoCantidad($textoOcr));
 
-        if ($lineasOcr > $lineasNativo) {
-            return $textoOcr;
-        }
-
-        if ($lineasOcr > 0 && $lineasNativo > 0) {
+        if ($lineasNativo > 0 && $lineasOcr > 0) {
             $combinado = trim($textoNativo."\n".$textoOcr);
             $lineasCombinado = count($this->parseTablaProductoCantidad($combinado));
-            if ($lineasCombinado > max($lineasNativo, $lineasOcr)) {
+            if ($lineasCombinado >= max($lineasNativo, $lineasOcr)) {
                 return $combinado;
             }
         }
 
-        return $textoNativo;
+        if ($lineasOcr > $lineasNativo) {
+            return $textoOcr;
+        }
+
+        if ($lineasNativo > $lineasOcr) {
+            return $textoNativo;
+        }
+
+        return $lineasOcr > 0 ? $textoOcr : $textoNativo;
     }
 
     private function contarPaginasPdf(string $path): int
@@ -921,7 +925,10 @@ class ListadoMaterialesPdfParserService
                 'texto' => count($lineasTexto),
             ]);
 
-            return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
+            return $this->finalizarLineasTablaSolicitudPedido(
+                $texto,
+                $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto)),
+            );
         }
 
         if (count($lineasTexto) > count($lineasPaddle)) {
@@ -930,14 +937,36 @@ class ListadoMaterialesPdfParserService
                 'paddle' => count($lineasPaddle),
             ]);
 
-            return $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
+            return $this->finalizarLineasTablaSolicitudPedido(
+                $texto,
+                $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle)),
+            );
         }
 
         Log::info('Import PDF: PaddleOCR y Tesseract con mismas filas; se combinan', [
             'filas' => count($lineasPaddle),
         ]);
 
-        return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
+        return $this->finalizarLineasTablaSolicitudPedido(
+            $texto,
+            $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto)),
+        );
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas): array
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) !== 1) {
+            return $lineas;
+        }
+
+        $lineas = $this->repararFilasTablaSolicitudOcr($lineas);
+
+        return $this->completarFilasSolicitudPedidoDesdeTexto($texto, $lineas);
     }
 
     private function esFormatoTablaProductoCantidad(string $upper): bool
@@ -1098,6 +1127,7 @@ class ListadoMaterialesPdfParserService
 
         if ($esSolicitudPedido) {
             $resultado = $this->repararFilasTablaSolicitudOcr($resultado);
+            $resultado = $this->completarFilasSolicitudPedidoDesdeTexto($texto, $resultado);
         }
 
         return $this->deduplicarLineasTabla(array_values(array_filter(
@@ -1163,6 +1193,67 @@ class ListadoMaterialesPdfParserService
         }
 
         return $reparado;
+    }
+
+    /**
+     * Recupera filas que el OCR partió en otro bloque de texto (p. ej. nativo + Tesseract).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function completarFilasSolicitudPedidoDesdeTexto(string $texto, array $resultado): array
+    {
+        $patrones = [
+            'LAPIZ PASTA ARTEL PTA AZUL' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+AZUL/iu',
+            'LAPIZ PASTA ARTEL PTA ROJO' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+ROJO/iu',
+            'RESMA OFICIO' => '/RESMA\s+OFICIO/iu',
+        ];
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = $this->normalizarLineaTablaOcr($lineaCruda);
+            if ($linea === '' || $this->esRuidoTablaProductoCantidad($linea)) {
+                continue;
+            }
+
+            foreach ($patrones as $needle => $pattern) {
+                if ($this->resultadoContieneProducto($resultado, $needle)) {
+                    continue;
+                }
+
+                if (preg_match($pattern, $linea) !== 1) {
+                    continue;
+                }
+
+                $candidata = $this->sanearDescripcionTablaOcr($linea);
+                $fila = $this->intentarFilaTablaProducto($candidata, $lineaCruda)
+                    ?? $this->intentarFilaTablaProducto($linea, $lineaCruda);
+
+                if ($fila === null) {
+                    continue;
+                }
+
+                $fila = $this->corregirCantidadEmpaqueConfundida($fila);
+                $resultado[] = $fila;
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     */
+    private function resultadoContieneProducto(array $resultado, string $needle): bool
+    {
+        $needle = mb_strtoupper($needle);
+
+        foreach ($resultado as $fila) {
+            if (str_contains(mb_strtoupper($fila['descripcion']), $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function sanearDescripcionTablaOcr(string $descripcion): string

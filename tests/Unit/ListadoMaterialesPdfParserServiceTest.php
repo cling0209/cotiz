@@ -567,7 +567,36 @@ TXT;
 
         $elegido = $metodo->invoke($this->parser, $textoNativo, $textoOcr);
 
-        $this->assertSame($textoOcr, $elegido);
+        $this->assertGreaterThanOrEqual(
+            count($this->parser->parseTexto($textoOcr)),
+            count($this->parser->parseTexto($elegido)),
+        );
+        $this->assertStringContainsString('LAPIZ PASTA ARTEL PTA ROJO', $elegido);
+    }
+
+    public function test_elegir_mejor_texto_pdf_combina_nativo_y_ocr_con_mismo_conteo(): void
+    {
+        $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'elegirMejorTextoPdfTablaProducto');
+        $metodo->setAccessible(true);
+
+        $textoNativo = $this->cargarFixture('solicitud_pedido_native_single.txt');
+        $textoOcr = $this->cargarFixture('solicitud_pedido_ocr_vps.txt');
+
+        $elegido = $metodo->invoke($this->parser, $textoNativo, $textoOcr);
+
+        $this->assertStringContainsString('LAPICES DE CERA JUMBO 12 UNIDADES IMAGIA TRIANGULAR 8 unidades', $elegido);
+        $this->assertStringContainsString('LAPIZ PASTA ARTEL PTA AZUL', $elegido);
+        $this->assertStringContainsString('LAPIZ PASTA ARTEL PTA ROJO', $elegido);
+        $this->assertStringContainsString('RESMA OFICIO 500 HOJAS 10', $elegido);
+
+        $lineas = $this->parser->parseTexto($elegido);
+        $this->assertGreaterThanOrEqual(9, count($lineas));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'LAPIZ PASTA ARTEL PTA AZUL'),
+        ));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'RESMA OFICIO'),
+        ));
     }
 
     public function test_inferir_paginas_desde_marcadores_en_texto(): void
