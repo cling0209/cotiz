@@ -479,6 +479,36 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[1]['descripcion']);
     }
 
+    public function test_parse_solicitud_pedido_pagina1_nueve_productos(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_pagina1.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(9, $lineas);
+
+        $this->assertSame(8, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPICES DE CERA', $lineas[0]['descripcion']);
+
+        $this->assertSame(1, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPIZ PASTA ARTEL PTA AZUL', $lineas[1]['descripcion']);
+
+        $this->assertSame(1, $lineas[2]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('LAPIZ PASTA ARTEL PTA ROJO', $lineas[2]['descripcion']);
+
+        $this->assertSame(10, $lineas[3]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA OFICIO', $lineas[3]['descripcion']);
+
+        $this->assertSame(10, $lineas[4]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA CARTA', $lineas[4]['descripcion']);
+
+        $this->assertSame(15, $lineas[7]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CINTA DOBLE CONTACTO 18MM X 13,7MTS', $lineas[7]['descripcion']);
+
+        $this->assertSame(1, $lineas[8]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO', $lineas[8]['descripcion']);
+    }
+
     public function test_elegir_mejor_texto_pdf_prefiere_ocr_con_mas_filas(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'elegirMejorTextoPdfTablaProducto');

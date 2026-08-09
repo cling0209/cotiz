@@ -959,7 +959,7 @@ class ListadoMaterialesPdfParserService
         $cantidadPendiente = null;
 
         foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
-            $linea = trim(preg_replace('/[ \t]+/u', ' ', $lineaCruda) ?? $lineaCruda);
+            $linea = $this->normalizarLineaTablaOcr($lineaCruda);
             if ($linea === '') {
                 continue;
             }
@@ -990,8 +990,21 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            if (preg_match('/^\d{1,5}$/u', $linea) === 1 && $buffer === null) {
-                $cantidadPendiente = max(1, (int) $linea);
+            if (preg_match('/^\d{1,5}$/u', $linea) === 1) {
+                if ($buffer !== null && mb_strlen($buffer) >= 3) {
+                    $resultado[] = $this->corregirCantidadEmpaqueConfundida([
+                        'cantidad' => max(1, (int) $linea),
+                        'descripcion' => $buffer,
+                    ]);
+                    $buffer = null;
+                    $cantidadPendiente = null;
+
+                    continue;
+                }
+
+                if ($buffer === null) {
+                    $cantidadPendiente = max(1, (int) $linea);
+                }
 
                 continue;
             }
@@ -1006,10 +1019,10 @@ class ListadoMaterialesPdfParserService
             if ($buffer !== null) {
                 $cantidad = $this->parseCantidadCeldaTabla($linea);
                 if ($cantidad !== null && mb_strlen($buffer) >= 3) {
-                    $resultado[] = [
+                    $resultado[] = $this->corregirCantidadEmpaqueConfundida([
                         'cantidad' => $cantidad,
                         'descripcion' => $buffer,
-                    ];
+                    ]);
                     $buffer = null;
                     $cantidadPendiente = null;
 
@@ -1019,10 +1032,10 @@ class ListadoMaterialesPdfParserService
 
             if ($this->pareceLineaDescripcionTabla($linea) && $this->extraerProductoCantidadDeLinea($linea) === null) {
                 if ($buffer === null && $cantidadPendiente !== null) {
-                    $resultado[] = [
+                    $resultado[] = $this->corregirCantidadEmpaqueConfundida([
                         'cantidad' => $cantidadPendiente,
                         'descripcion' => $linea,
-                    ];
+                    ]);
                     $cantidadPendiente = null;
 
                     continue;
@@ -1031,10 +1044,10 @@ class ListadoMaterialesPdfParserService
                 $buffer = $buffer === null ? $linea : trim($buffer.' '.$linea);
 
                 if ($cantidadPendiente !== null && $buffer !== null && mb_strlen($buffer) >= 5) {
-                    $resultado[] = [
+                    $resultado[] = $this->corregirCantidadEmpaqueConfundida([
                         'cantidad' => $cantidadPendiente,
                         'descripcion' => $buffer,
-                    ];
+                    ]);
                     $buffer = null;
                     $cantidadPendiente = null;
                 }
@@ -1044,12 +1057,12 @@ class ListadoMaterialesPdfParserService
         if ($buffer !== null) {
             $desdeBuffer = $this->extraerProductoCantidadDeLinea($buffer);
             if ($desdeBuffer !== null && ! $this->esFragmentoContinuacionDescripcion($desdeBuffer['descripcion'])) {
-                $resultado[] = $desdeBuffer;
+                $resultado[] = $this->corregirCantidadEmpaqueConfundida($desdeBuffer);
             } elseif ($cantidadPendiente !== null && mb_strlen($buffer) >= 5) {
-                $resultado[] = [
+                $resultado[] = $this->corregirCantidadEmpaqueConfundida([
                     'cantidad' => $cantidadPendiente,
                     'descripcion' => $buffer,
-                ];
+                ]);
             }
         } elseif ($cantidadPendiente !== null) {
             // cantidad huérfana al final — se descarta
@@ -1100,10 +1113,10 @@ class ListadoMaterialesPdfParserService
             $cantidadPendiente = $fila['cantidad'];
 
             if ($buffer !== null && $cantidadPendiente !== null && ! $this->esFragmentoContinuacionDescripcion($buffer)) {
-                $resultado[] = [
+                $resultado[] = $this->corregirCantidadEmpaqueConfundida([
                     'cantidad' => $cantidadPendiente,
                     'descripcion' => $buffer,
-                ];
+                ]);
                 $buffer = null;
                 $cantidadPendiente = null;
             }
@@ -1118,10 +1131,44 @@ class ListadoMaterialesPdfParserService
 
         $cantidadPendiente = null;
 
-        $resultado[] = [
+        $resultado[] = $this->corregirCantidadEmpaqueConfundida([
             'cantidad' => $fila['cantidad'],
             'descripcion' => $descripcion,
-        ];
+        ]);
+    }
+
+    private function normalizarLineaTablaOcr(string $lineaCruda): string
+    {
+        $linea = trim(preg_replace('/[ \t]+/u', ' ', $lineaCruda) ?? $lineaCruda);
+        $linea = preg_replace('/\s*\|\s*$/u', '', $linea) ?? $linea;
+        $linea = preg_replace('/^\|\s*/u', '', $linea) ?? $linea;
+
+        return trim($linea);
+    }
+
+    /**
+     * @param  array{cantidad: int, descripcion: string}  $fila
+     * @return array{cantidad: int, descripcion: string}
+     */
+    private function corregirCantidadEmpaqueConfundida(array $fila): array
+    {
+        $cantidad = $fila['cantidad'];
+        $descripcion = trim($fila['descripcion']);
+
+        if (preg_match('/\b(\d+)\s+UNIDADES\b/iu', $descripcion, $empaque) === 1
+            && (int) $empaque[1] === $cantidad
+            && preg_match('/\b(LAPIZ|LAPICES|PASTA|PTA|CERA|BOLIGRAFO|PLUMON|MARCADOR)\b/iu', $descripcion) === 1) {
+            $fila['cantidad'] = 1;
+        }
+
+        if (preg_match('/^\d+\s+(LAPIZ|LAPICES|BOLIGRAFO|PLUMON|MARCADOR)\b/iu', $descripcion) === 1
+            && preg_match('/\b\d+\s+UNIDADES\b/iu', $descripcion) === 1) {
+            $descripcion = trim(preg_replace('/^\d+\s+/u', '', $descripcion) ?? $descripcion);
+        }
+
+        $fila['descripcion'] = $descripcion;
+
+        return $fila;
     }
 
     private function esFragmentoContinuacionDescripcion(string $descripcion): bool
@@ -1356,9 +1403,15 @@ class ListadoMaterialesPdfParserService
 
         if (preg_match('/^(\d{1,5})\s+(.{3,})$/u', $linea, $coincidencia) === 1) {
             $descripcion = trim($coincidencia[2]);
-            if (! preg_match('/^(?:unidades?|pack)\b/iu', $descripcion)) {
+            $cantidadInicio = (int) $coincidencia[1];
+            $tieneEmpaqueUnidades = preg_match('/\b\d+\s+UNIDADES\b/iu', $linea) === 1;
+            if (
+                ! preg_match('/^(?:unidades?|pack)\b/iu', $descripcion)
+                && ! $tieneEmpaqueUnidades
+                && $this->pareceCantidadPedidoAlInicio($cantidadInicio, $descripcion)
+            ) {
                 return [
-                    'cantidad' => max(1, (int) $coincidencia[1]),
+                    'cantidad' => max(1, $cantidadInicio),
                     'descripcion' => $descripcion,
                 ];
             }
@@ -1386,13 +1439,25 @@ class ListadoMaterialesPdfParserService
                 return null;
             }
 
-            return [
+            return $this->corregirCantidadEmpaqueConfundida([
                 'cantidad' => max(1, (int) $coincidencia[2]),
                 'descripcion' => $descripcion,
-            ];
+            ]);
         }
 
         return null;
+    }
+
+    private function pareceCantidadPedidoAlInicio(int $cantidad, string $descripcion): bool
+    {
+        if ($cantidad <= 0 || $cantidad > 999) {
+            return false;
+        }
+
+        return preg_match(
+            '/^(?:RESMA|LAPIZ|LAPICES|GOMA|CINTA|CUADERNO|CORCHETERA|PERFORADORA|CLIP|BOLIGRAFO|TIJERA|PEGAMENTO|ACUARELA|BLOCK|CARPETA|REGLA)/iu',
+            $descripcion,
+        ) === 1;
     }
 
     private function parseCantidadCeldaTabla(string $raw): ?int
