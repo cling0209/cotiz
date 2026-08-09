@@ -2617,22 +2617,11 @@
     let importSimTimer = null;
     let importMaterialesLockId = null;
 
-    const DETALLE_ANALISIS_PDF = [
-        'leyendo archivo',
-        'extrayendo texto del documento',
-        'reconociendo texto (OCR) — puede tardar varios minutos',
-        'detectando tabla de productos',
-        'identificando cantidades y descripciones',
-    ];
-    const DETALLE_ANALISIS_EXCEL = [
-        'leyendo archivo Excel',
-        'detectando columnas',
-        'extrayendo productos del archivo',
-    ];
     const MENSAJES_PROGRESO_TEXTO = [
         'Analizando texto pegado…',
         'Detectando productos en el texto…',
     ];
+    const TEXTO_ANALISIS_DOCUMENTO = 'Analizando documento…';
 
     function escHtml(s) {
         return String(s ?? '')
@@ -2744,24 +2733,16 @@
         }
     }
 
-    function iniciarProgresoAnalisisDocumento(detalles) {
+    function iniciarProgresoAnalisisDocumento() {
         detenerProgresoSimuladoImportar();
-        const partes = Array.isArray(detalles) && detalles.length ? detalles : DETALLE_ANALISIS_PDF;
         let pct = 5;
-        let detIdx = 0;
-
-        function textoAnalisis() {
-            const detalle = partes[detIdx % partes.length];
-            return 'Analizando documento… (' + detalle + ')';
-        }
 
         function tick() {
             if (pct < 94) {
                 pct += 0.35 + Math.random() * 0.85;
                 pct = Math.min(94, pct);
             }
-            actualizarProgresoImportar(Math.round(pct), 100, textoAnalisis(), { faseAnalisis: true });
-            detIdx = (detIdx + 1) % partes.length;
+            actualizarProgresoImportar(Math.round(pct), 100, TEXTO_ANALISIS_DOCUMENTO, { faseAnalisis: true });
         }
 
         tick();
@@ -2787,8 +2768,8 @@
         importSimTimer = setInterval(tick, 1100);
     }
 
-    async function fetchConProgresoAnalisisDocumento(fetchFn, detalles) {
-        iniciarProgresoAnalisisDocumento(detalles);
+    async function fetchConProgresoAnalisisDocumento(fetchFn) {
+        iniciarProgresoAnalisisDocumento();
         try {
             return await fetchFn();
         } finally {
@@ -2857,7 +2838,7 @@
         }
     }
 
-    async function enviarPreviewMateriales(url, bodyBuilder, detallesAnalisis, usarProgresoAnalisis) {
+    async function enviarPreviewMateriales(url, bodyBuilder, usarProgresoAnalisis) {
         for (;;) {
             const body = bodyBuilder();
             body.append('lock_id', importMaterialesLockId || nuevoImportMaterialesLockId());
@@ -2869,7 +2850,7 @@
             });
 
             const res = usarProgresoAnalisis
-                ? await fetchConProgresoAnalisisDocumento(ejecutarFetch, detallesAnalisis)
+                ? await fetchConProgresoAnalisisDocumento(ejecutarFetch)
                 : await ejecutarFetch();
 
             const json = await res.json().catch(() => ({}));
@@ -3237,7 +3218,7 @@
             }
 
             mostrarProgresoImportar();
-            actualizarProgresoImportar(5, 100, 'Analizando documento… (preparando)', { faseAnalisis: true });
+            actualizarProgresoImportar(5, 100, TEXTO_ANALISIS_DOCUMENTO, { faseAnalisis: true });
 
             let todasLineas = [];
             let cabeceraPdf = {};
@@ -3261,7 +3242,6 @@
                         body.append('hasta', String(hasta));
                         return body;
                     },
-                    DETALLE_ANALISIS_PDF,
                     total === 0,
                 );
 
@@ -3347,7 +3327,7 @@
             }
 
             mostrarProgresoImportar();
-            actualizarProgresoImportar(5, 100, 'Analizando documento… (preparando)', { faseAnalisis: true });
+            actualizarProgresoImportar(5, 100, TEXTO_ANALISIS_DOCUMENTO, { faseAnalisis: true });
 
             let todasLineas = [];
             let cabeceraExcel = {};
@@ -3374,7 +3354,6 @@
                         body.append('hasta', String(hasta));
                         return body;
                     },
-                    DETALLE_ANALISIS_EXCEL,
                     total === 0,
                 );
 
