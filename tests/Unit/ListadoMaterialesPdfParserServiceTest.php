@@ -363,6 +363,58 @@ TXT;
         $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
     }
 
+    public function test_detecta_formato_tabla_columnas_cotizacion_proveedor(): void
+    {
+        $texto = $this->cargarFixture('cotizacion_ibf.txt');
+
+        $this->assertSame('tabla_columnas', $this->parser->detectarFormato($texto));
+    }
+
+    public function test_parse_tabla_columnas_cotizacion_ibf_dos_productos(): void
+    {
+        $texto = $this->cargarFixture('cotizacion_ibf.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO MATEMATICA 7 MM 100 HOJAS LISO', $lineas[0]['descripcion']);
+        $this->assertSame(30, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('REPUESTO CUCHILLO CARTONERO GRANDE 10 UN', $lineas[1]['descripcion']);
+    }
+
+    public function test_parse_tabla_columnas_con_tabs_descripcion_y_cantidad(): void
+    {
+        $texto = <<<'TXT'
+DESCRIPCION	UNIDAD	CANTIDAD	PRECIO
+CUADERNO UNIVERSITARIO MATEMATICA 7 MM 100 HOJAS LISO	UNIDAD	30	1652
+REPUESTO CUCHILLO CARTONERO GRANDE 10 UN	UNIDAD	30	1007
+TXT;
+
+        $this->assertSame('tabla_columnas', $this->parser->detectarFormato($texto));
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO', $lineas[0]['descripcion']);
+        $this->assertSame(30, $lineas[1]['cantidad']);
+    }
+
+    public function test_parse_tabla_columnas_producto_en_lugar_de_descripcion(): void
+    {
+        $texto = <<<'TXT'
+PRODUCTO	UNIDAD	CANTIDAD	PRECIO UNIT
+GOMA EVA 50X70 CM	UNIDAD	5	990
+TXT;
+
+        $this->assertSame('tabla_columnas', $this->parser->detectarFormato($texto));
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(1, $lineas);
+        $this->assertSame(5, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[0]['descripcion']);
+    }
+
     public function test_parse_tabla_producto_cantidad_solicitud_pedido(): void
     {
         $texto = $this->cargarFixture('solicitud_pedido_tabla.txt');

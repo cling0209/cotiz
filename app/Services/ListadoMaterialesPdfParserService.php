@@ -26,6 +26,9 @@ class ListadoMaterialesPdfParserService
 
     private const FORMATO_TABLA_PRODUCTO_CANTIDAD = 'tabla_producto_cantidad';
 
+    /** Tabla multi-columna: producto y cantidad en columnas distintas (p. ej. cotización proveedor). */
+    private const FORMATO_TABLA_COLUMNAS = 'tabla_columnas';
+
     public function __construct(
         protected ?PdfOcrService $ocr = null,
         protected ?PdfPaddleOcrService $paddle = null,
@@ -198,6 +201,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_LICITACION => $this->parseLicitacionPedido($texto),
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
             self::FORMATO_TABLA_PRODUCTO_CANTIDAD => $this->parseTablaProductoCantidad($texto),
+            self::FORMATO_TABLA_COLUMNAS => $this->parseTablaColumnas($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
             default => $this->parseListadoCantidad($texto),
         };
@@ -287,6 +291,10 @@ class ListadoMaterialesPdfParserService
             || (str_contains($upper, 'BASES ADMINISTRATIVAS') && str_contains($upper, 'DESCRIPCION TECNICA'))
         ) {
             return self::FORMATO_BASES;
+        }
+
+        if ($this->esFormatoTablaColumnas($upper)) {
+            return self::FORMATO_TABLA_COLUMNAS;
         }
 
         if (
@@ -782,37 +790,22 @@ class ListadoMaterialesPdfParserService
         }
 
         $resultado = [];
-        $idxCantidad = null;
-        $idxProducto = null;
+        $indices = null;
 
         foreach ($filas as $celdas) {
-            $normalizadas = [];
-            foreach ($celdas as $celda) {
-                $normalizadas[] = $this->normalizarEncabezadoCelda($celda);
-            }
-
-            if ($idxCantidad === null) {
-                $idxCantidad = $this->indiceColumna($normalizadas, ['CANTIDAD']);
-                $idxProducto = $this->indiceColumna($normalizadas, ['PRODUCTO', 'NOMBRE DEL PRODUCTO', 'NOMBRE', 'DESCRIPCION', 'DESCRIPCIÓN']);
-                if ($idxCantidad !== null && $idxProducto !== null) {
+            if ($indices === null) {
+                $indices = $this->resolverIndicesColumnasProductoCantidad($celdas);
+                if ($indices !== null) {
                     continue;
                 }
-                $idxCantidad = null;
-                $idxProducto = null;
 
                 continue;
             }
 
-            $cantidadRaw = trim($celdas[$idxCantidad] ?? '');
-            $descripcion = trim($celdas[$idxProducto] ?? '');
-            if ($descripcion === '' || ! preg_match('/^\d{1,6}$/u', $cantidadRaw)) {
-                continue;
+            $fila = $this->extraerFilaConIndicesColumnas($celdas, $indices);
+            if ($fila !== null) {
+                $resultado[] = $fila;
             }
-
-            $resultado[] = [
-                'cantidad' => max(1, (int) $cantidadRaw),
-                'descripcion' => $descripcion,
-            ];
         }
 
         return $resultado;
@@ -1728,6 +1721,255 @@ class ListadoMaterialesPdfParserService
         return preg_match('/\bPRODUCTO\b/u', $upper) === 1
             && preg_match('/\bCANTIDAD\b/u', $upper) === 1
             && preg_match('/IMAGEN\s+(?:DE\s+)?REFERENCIA/u', $upper) === 1;
+    }
+
+    /**
+     * Cotización / tablas con DESCRIPCION (o PRODUCTO) y CANTIDAD en columnas separadas.
+     */
+    private function esFormatoTablaColumnas(string $upper): bool
+    {
+        if (! preg_match('/\bCANTIDAD\b/u', $upper)) {
+            return false;
+        }
+
+        if (preg_match('/\bCANTIDAD\s+(?:NOMBRE(?:\s+DEL\s+PRODUCTO)?|PRODUCTO)\b/u', $upper)) {
+            return false;
+        }
+
+        $tieneColumnaProducto = preg_match(
+            '/\b(?:DESCRIPCION|DESCRIPCIÓN|DETALLE(?:\s+PRODUCTO)?|ARTICULO|ARTÍCULO|ITEM|ÍTEM)\b/u',
+            $upper,
+        ) === 1
+            || (
+                preg_match('/\bNOMBRE(?:\s+DEL\s+PRODUCTO)?\b/u', $upper) === 1
+                && preg_match('/\bDESCRIPCION\b/u', $upper) !== 1
+            )
+            || (
+                preg_match('/\bPRODUCTO\b/u', $upper) === 1
+                && preg_match('/\bUNIDAD\b/u', $upper) === 1
+                && ! $this->tieneCabeceraTablaProductoCantidad($upper)
+            );
+
+        if (! $tieneColumnaProducto) {
+            return false;
+        }
+
+        return preg_match('/\b(?:PRECIO\s+UNIT|SUB\s+TOTAL|P\.?\s*UNIT|VALOR\s+UNIT|NETO)\b/u', $upper) === 1
+            || (
+                preg_match('/\bDESCRIPCION\b/u', $upper) === 1
+                && preg_match('/\bUNIDAD\b/u', $upper) === 1
+            )
+            || (
+                preg_match('/\bUNIDAD\b/u', $upper) === 1
+                && preg_match('/\bPRODUCTO\b/u', $upper) !== 1
+            );
+    }
+
+    /**
+     * Resuelve columnas producto + cantidad a partir de una fila de encabezado.
+     *
+     * @param  array<int, string>  $celdas
+     * @return array{producto: int, cantidad: int}|null
+     */
+    private function resolverIndicesColumnasProductoCantidad(array $celdas): ?array
+    {
+        $normalizadas = array_map(
+            fn (string $celda): string => $this->normalizarEncabezadoCelda($celda),
+            $celdas,
+        );
+
+        $idxCantidad = $this->indiceColumna($normalizadas, ['CANTIDAD', 'UNIDADES', 'CANT', 'QTY']);
+
+        $idxProducto = null;
+        foreach ([
+            ['DESCRIPCION', 'DESCRIPCION TECNICA'],
+            ['PRODUCTO', 'NOMBRE DEL PRODUCTO', 'NOMBRE', 'DETALLE PRODUCTO', 'DETALLE'],
+            ['ARTICULO', 'ITEM', 'ÍTEM'],
+        ] as $candidatosProducto) {
+            $candidato = $this->indiceColumna($normalizadas, $candidatosProducto);
+            if ($candidato !== null && $candidato !== $idxCantidad) {
+                $idxProducto = $candidato;
+
+                break;
+            }
+        }
+
+        if ($idxCantidad === null || $idxProducto === null || $idxCantidad === $idxProducto) {
+            return null;
+        }
+
+        $celdaCantidad = $normalizadas[$idxCantidad] ?? '';
+        $celdaProducto = $normalizadas[$idxProducto] ?? '';
+
+        $esEncabezado = preg_match('/^(?:CANTIDAD|UNIDADES|CANT|QTY)\b/u', $celdaCantidad) === 1
+            || preg_match('/^(?:DESCRIPCION|PRODUCTO|NOMBRE|DETALLE|ARTICULO|ITEM)\b/u', $celdaProducto) === 1;
+
+        if (! $esEncabezado) {
+            return null;
+        }
+
+        return ['producto' => $idxProducto, 'cantidad' => $idxCantidad];
+    }
+
+    /**
+     * Tablas con columnas variables (cotización, listados con DESCRIPCION + CANTIDAD + precios).
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseTablaColumnas(string $texto): array
+    {
+        $resultado = [];
+        $indices = null;
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim($lineaCruda);
+            if ($linea === '' || $this->esRuidoLineaTablaColumnas($linea)) {
+                continue;
+            }
+
+            $partes = $this->partirLineaEnColumnas($lineaCruda);
+
+            if ($indices === null) {
+                $indices = $this->resolverIndicesColumnasProductoCantidad($partes);
+                if ($indices !== null) {
+                    continue;
+                }
+            }
+
+            $fila = null;
+            if ($indices !== null) {
+                $fila = $this->extraerFilaConIndicesColumnas($partes, $indices);
+            }
+
+            if ($fila === null) {
+                $fila = $this->extraerFilaTablaColumnasInline($linea);
+            }
+
+            if ($fila !== null) {
+                $resultado[] = $fila;
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $partes
+     * @param  array{producto: int, cantidad: int}  $indices
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaConIndicesColumnas(array $partes, array $indices): ?array
+    {
+        if (count($partes) <= max($indices['producto'], $indices['cantidad'])) {
+            return null;
+        }
+
+        $descripcion = trim($partes[$indices['producto']] ?? '');
+        $cantidadRaw = trim($partes[$indices['cantidad']] ?? '');
+
+        return $this->intentarParColumnaProductoCantidad($descripcion, $cantidadRaw);
+    }
+
+    /**
+     * Fila en una sola línea (PDF nativo): descripción + UNIDAD + cantidad + precios.
+     *
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaTablaColumnasInline(string $linea): ?array
+    {
+        $linea = trim($linea);
+        if ($linea === '' || $this->esEncabezadoTablaColumnas($linea)) {
+            return null;
+        }
+
+        if (preg_match(
+            '/^(.+?)\s+(?:UNIDAD|UNIDADES|UN)\s+(\d{1,6})(?:\s+[\$]?\s*[\d.,]+.*)?$/iu',
+            $linea,
+            $coincidencia,
+        ) === 1) {
+            $descripcion = trim($coincidencia[1]);
+
+            return mb_strlen($descripcion) >= 3
+                ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                : null;
+        }
+
+        $partes = $this->partirLineaEnColumnas($linea);
+        if (count($partes) >= 3) {
+            $desdePartes = $this->extraerDesdePartesColumna($partes);
+            if ($desdePartes !== null && ! $this->esCeldaPrecioOMoneda($desdePartes['descripcion'])) {
+                return $desdePartes;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function partirLineaEnColumnas(string $lineaCruda): array
+    {
+        if (str_contains($lineaCruda, "\t")) {
+            $partes = explode("\t", $lineaCruda);
+        } elseif (preg_match('/\s{2,}/u', $lineaCruda) === 1) {
+            $partes = preg_split('/\s{2,}/u', trim($lineaCruda)) ?: [];
+        } else {
+            $partes = [trim($lineaCruda)];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn (string $parte): string => trim($parte), $partes),
+            static fn (string $parte): bool => $parte !== '',
+        ));
+    }
+
+    private function esEncabezadoTablaColumnas(string $linea): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
+
+        if (str_contains($normalizada, 'DESCRIPCION') && str_contains($normalizada, 'CANTIDAD')) {
+            return true;
+        }
+
+        return preg_match('/^(?:DESCRIPCION|PRODUCTO|CANTIDAD|UNIDAD|PRECIO|SUB TOTAL|ITEM|ARTICULO)\b/u', $normalizada) === 1
+            || str_contains($normalizada, 'PRECIO UNIT');
+    }
+
+    private function esRuidoLineaTablaColumnas(string $linea): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
+
+        foreach ([
+            'COTIZACION',
+            'COTIZACIÓN',
+            'FECHA',
+            'CLIENTE',
+            'CONTACTO',
+            'FONO',
+            'EMAIL',
+            'RUT',
+            'TOTAL NETO',
+            'IVA',
+            'TOTAL',
+            'CONDICIONES',
+            'FORMA DE PAGO',
+            'VALIDEZ',
+        ] as $marcador) {
+            if (str_starts_with($normalizada, $marcador) || str_contains($normalizada, $marcador.' ')) {
+                return true;
+            }
+        }
+
+        return preg_match('/^P[AÁ]GINA\s+\d+/u', $normalizada) === 1;
+    }
+
+    private function esCeldaPrecioOMoneda(string $texto): bool
+    {
+        $texto = trim($texto);
+
+        return preg_match('/^[\$]?\s*[\d.,]+$/u', $texto) === 1
+            || preg_match('/^(?:PRECIO|SUB\s+TOTAL|NETO|IVA)\b/iu', $texto) === 1;
     }
 
     /**
@@ -3151,6 +3393,12 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
             if ($this->esRuidoTablaProductoCantidad($celda) || $this->esLineaCabeceraColumnaSolicitud($celda)) {
+                continue;
+            }
+            if (preg_match('/^(?:UNIDAD|UNIDADES|UN)$/iu', trim($celda)) === 1) {
+                continue;
+            }
+            if ($this->esCeldaPrecioOMoneda($celda)) {
                 continue;
             }
             $partesDescripcion[] = $celda;
