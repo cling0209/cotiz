@@ -7,6 +7,7 @@ use DOMElement;
 use DOMNode;
 use DOMXPath;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Smalot\PdfParser\Parser;
 use ZipArchive;
@@ -892,12 +893,21 @@ class ListadoMaterialesPdfParserService
 
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
         if (! $paddle->estaDisponible()) {
+            Log::warning('Import PDF: PaddleOCR no disponible; se usa solo texto nativo/Tesseract', [
+                'lineas_texto' => count($lineasTexto),
+            ]);
+
             return $lineasTexto;
         }
 
         try {
             $lineasPaddle = $paddle->extraerLineasTabla($path);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('Import PDF: PaddleOCR falló; se usa solo texto nativo/Tesseract', [
+                'error' => $e->getMessage(),
+                'lineas_texto' => count($lineasTexto),
+            ]);
+
             return $lineasTexto;
         }
 
@@ -906,12 +916,26 @@ class ListadoMaterialesPdfParserService
         }
 
         if (count($lineasPaddle) > count($lineasTexto)) {
+            Log::info('Import PDF: PaddleOCR aportó más filas que Tesseract', [
+                'paddle' => count($lineasPaddle),
+                'texto' => count($lineasTexto),
+            ]);
+
             return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
         }
 
         if (count($lineasTexto) > count($lineasPaddle)) {
+            Log::info('Import PDF: texto/Tesseract aportó más filas que PaddleOCR', [
+                'texto' => count($lineasTexto),
+                'paddle' => count($lineasPaddle),
+            ]);
+
             return $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
         }
+
+        Log::info('Import PDF: PaddleOCR y Tesseract con mismas filas; se combinan', [
+            'filas' => count($lineasPaddle),
+        ]);
 
         return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
     }
@@ -952,6 +976,10 @@ class ListadoMaterialesPdfParserService
     {
         $upperDoc = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esSolicitudPedido = preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upperDoc) === 1;
+
+        if ($esSolicitudPedido) {
+            $texto = $this->preprocesarTextoTablaSolicitudOcr($texto);
+        }
 
         $resultado = [];
         $enTabla = false;
@@ -1068,11 +1096,85 @@ class ListadoMaterialesPdfParserService
             // cantidad huérfana al final — se descarta
         }
 
+        if ($esSolicitudPedido) {
+            $resultado = $this->repararFilasTablaSolicitudOcr($resultado);
+        }
+
         return $this->deduplicarLineasTabla(array_values(array_filter(
             $resultado,
             fn (array $linea): bool => ! $this->esFragmentoContinuacionDescripcion($linea['descripcion'])
                 && ! $this->esDescripcionBasuraTabla($linea['descripcion']),
         )));
+    }
+
+    /**
+     * Corrige saltos de línea típicos del OCR en solicitudes de pedido escaneadas.
+     */
+    private function preprocesarTextoTablaSolicitudOcr(string $texto): string
+    {
+        // Producto partido + "N unidades" + resto pegado al siguiente ítem (VPS/Tesseract).
+        $texto = preg_replace(
+            '/^(.+? JUMBO 12)\s*\R\s*(\d+)\s+unidades?\s*\R\s*UNIDADES IMAGIA TRIANGULAR (LAPIZ PASTA .+)$/mu',
+            '$1 UNIDADES IMAGIA TRIANGULAR $2 unidades'."\n".'$3',
+            $texto,
+        ) ?? $texto;
+
+        // Cinta u otros productos partidos: descripción en una línea, medida+cantidad en la siguiente.
+        $texto = preg_replace(
+            '/^(CINTA DOBLE CONTACTO 18MM X)\s*\R\s*([\d,\.]+\s*MTS)\s+(\d+)\s*$/mu',
+            '$1 $2 $3',
+            $texto,
+        ) ?? $texto;
+
+        return $texto;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function repararFilasTablaSolicitudOcr(array $resultado): array
+    {
+        $reparado = [];
+
+        foreach ($resultado as $fila) {
+            $descripcion = $this->sanearDescripcionTablaOcr($fila['descripcion']);
+            if ($descripcion === '') {
+                continue;
+            }
+
+            $reparado[] = [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $descripcion,
+            ];
+        }
+
+        for ($i = 0; $i < count($reparado); $i++) {
+            $desc = $reparado[$i]['descripcion'];
+
+            if (preg_match('/^LAPICES DE CERA JUMBO 12$/iu', $desc) === 1) {
+                $reparado[$i]['descripcion'] = 'LAPICES DE CERA JUMBO 12 UNIDADES IMAGIA TRIANGULAR';
+            }
+
+            if ($i + 1 < count($reparado)
+                && preg_match('/^UNIDADES IMAGIA TRIANGULAR (.+)$/iu', $reparado[$i + 1]['descripcion'], $coincidencia) === 1) {
+                $reparado[$i + 1]['descripcion'] = $this->sanearDescripcionTablaOcr($coincidencia[1]);
+            }
+        }
+
+        return $reparado;
+    }
+
+    private function sanearDescripcionTablaOcr(string $descripcion): string
+    {
+        $descripcion = trim(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
+        $descripcion = preg_replace('/^CT ETS\s+/iu', '', $descripcion) ?? $descripcion;
+
+        if (preg_match('/^UNIDADES IMAGIA TRIANGULAR (.+)$/iu', $descripcion, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[1]);
+        }
+
+        return trim($descripcion);
     }
 
     /**
