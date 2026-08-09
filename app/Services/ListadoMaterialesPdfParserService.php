@@ -1453,6 +1453,20 @@ class ListadoMaterialesPdfParserService
             $texto,
         ) ?? $texto;
 
+        // MARCADORES JUMBO 12 COLORES: OCR parte la celda en descripción + cantidad y "COLORES" abajo.
+        $texto = preg_replace(
+            '/^(MARCADORES JUMBO \d+)\s+(\d+)\s*\R\s*COLORES\b[^\n\r]*/mu',
+            '$1 COLORES $2',
+            $texto,
+        ) ?? $texto;
+
+        // PLASTICINA TRIANGULAR 12 COLORES PASTELES partido en dos líneas.
+        $texto = preg_replace(
+            '/^(PLASTICINA TRIANGULAR \d+)\s+(\d+)\s+cajas?\s*\R\s*COLORES PASTELES\b/miu',
+            '$1 COLORES PASTELES $2 cajas',
+            $texto,
+        ) ?? $texto;
+
         // Cantidad OCR duplicada al final (PASTELES 12 COLORES 10 7 -> 10).
         $texto = preg_replace(
             '/^(LÁPIZ DE MADERA COLORES min PASTELES 12 COLORES)\s+(\d+)\s+\d+\s*$/mu',
@@ -1600,7 +1614,97 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        $reparado = $this->fusionarSufijosCeldaMultilineaOcr($reparado);
+
         return $this->partirFilasFusionadasOcr($reparado);
+    }
+
+    /**
+     * Une sufijos que el OCR dejó en otra línea pero pertenecen a la misma celda (ej. "COLORES" tras "MARCADORES JUMBO 12").
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function fusionarSufijosCeldaMultilineaOcr(array $filas): array
+    {
+        if ($filas === []) {
+            return [];
+        }
+
+        $fusionado = [];
+
+        foreach ($filas as $fila) {
+            $descripcion = trim($fila['descripcion']);
+
+            if ($fusionado !== [] && $this->esSufijoCeldaMultilineaOcr($descripcion)) {
+                $indice = count($fusionado) - 1;
+                if ($this->puedeAnexarSufijoCeldaMultilinea($fusionado[$indice]['descripcion'], $descripcion)) {
+                    $fusionado[$indice]['descripcion'] = trim(
+                        $fusionado[$indice]['descripcion'].' '.$this->normalizarSufijoCeldaMultilineaOcr($descripcion),
+                    );
+
+                    continue;
+                }
+            }
+
+            $fusionado[] = $fila;
+        }
+
+        return $fusionado;
+    }
+
+    private function esSufijoCeldaMultilineaOcr(string $descripcion): bool
+    {
+        $limpia = trim(preg_replace('/\s+[a-záéíóú]{1,2}$/u', '', trim($descripcion)) ?? trim($descripcion));
+        if ($limpia === '' || mb_strlen($limpia) > 32) {
+            return false;
+        }
+
+        $upper = mb_strtoupper($limpia);
+
+        return preg_match(
+            '/^(?:COLORES(?:\s+(?:SURTIDOS?|FLUOR|PASTELES?|NEON|BÁSICOS?|BASICOS?|VARIADOS?|MET[AÁ]LICOS?|PASTEL(?:ES)?|CRAFT))?|PASTELES?(?:\s+\d+\s+COLORES)?|UNIDADES(?:\s+IMAGIA(?:\s+TRIANGULAR)?)?|\d+\/\d+\s+\d+\s+HOJAS|\d+\s+HOJAS)$/iu',
+            $upper,
+        ) === 1;
+    }
+
+    private function puedeAnexarSufijoCeldaMultilinea(string $descripcionPrev, string $sufijo): bool
+    {
+        $prev = mb_strtoupper(trim($descripcionPrev));
+        $suf = mb_strtoupper(trim($this->normalizarSufijoCeldaMultilineaOcr($sufijo)));
+
+        if ($suf === '' || str_contains($prev, $suf)) {
+            return false;
+        }
+
+        if (str_starts_with($suf, 'COLORES') || $suf === 'PASTELES' || str_starts_with($suf, 'COLORES PASTELES')) {
+            if (str_contains($prev, 'COLORES')) {
+                return false;
+            }
+
+            return preg_match(
+                '/\b(?:JUMBO|SOLIDA|SOLIDO|NEON|PASTEL|TRIANGULAR|ACRILIC|\d+)\s*$/iu',
+                $descripcionPrev,
+            ) === 1;
+        }
+
+        if (preg_match('/^(?:\d+\/\d+\s+)?\d+\s+HOJAS$/iu', $suf)) {
+            return preg_match('/\b(?:BLOCK|CUADERNO|BLOCK DE DIBUJO|MEDIUM)\b/iu', $descripcionPrev) === 1
+                && ! preg_match('/\bHOJAS\b/iu', $descripcionPrev);
+        }
+
+        if ($suf === 'UNIDADES' || str_starts_with($suf, 'UNIDADES ')) {
+            return preg_match('/\b(?:CAJA|PACK|DISPLAY)\s+\d+\s*$/iu', $descripcionPrev) === 1;
+        }
+
+        return false;
+    }
+
+    private function normalizarSufijoCeldaMultilineaOcr(string $sufijo): string
+    {
+        $sufijo = trim(preg_replace('/\s+[a-záéíóú]{1,2}$/u', '', trim($sufijo)) ?? trim($sufijo));
+
+        return preg_replace('/\s+/u', ' ', $sufijo) ?? $sufijo;
     }
 
     /**

@@ -759,6 +759,30 @@ TXT;
         );
     }
 
+    public function test_parse_vps_ocr_real_fusiona_colores_misma_celda_marcadores_jumbo(): void
+    {
+        $texto = $this->cargarFixture('vps_ocr_real.txt');
+        $lineas = $this->parser->parseTexto($texto);
+
+        $marcadoresJumbo = null;
+        $coloresHuerfano = null;
+
+        foreach ($lineas as $fila) {
+            $upper = mb_strtoupper($fila['descripcion']);
+            if (str_contains($upper, 'MARCADORES JUMBO')) {
+                $marcadoresJumbo = $fila;
+            }
+            if ($upper === 'COLORES' || preg_match('/^COLORES\s+[A-ZÁÉÍÓÚ]{1,2}$/u', $upper) === 1) {
+                $coloresHuerfano = $fila;
+            }
+        }
+
+        $this->assertNotNull($marcadoresJumbo);
+        $this->assertSame(10, $marcadoresJumbo['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('COLORES', $marcadoresJumbo['descripcion']);
+        $this->assertNull($coloresHuerfano, 'COLORES suelto no debe quedar como fila aparte');
+    }
+
     public function test_parse_vps_ocr_real_recupera_productos_despues_cinta_satin(): void
     {
         $texto = $this->cargarFixture('vps_ocr_real.txt');
