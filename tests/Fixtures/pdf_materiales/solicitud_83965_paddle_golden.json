@@ -1,0 +1,490 @@
+{
+    "total": 97,
+    "lineas": [
+        {
+            "cantidad": 8,
+            "descripcion": "LAPICES DE CERA JUMBO 12 UNIDADES IMAGIA TRIANGULAR",
+            "needle": "LAPICES DE CERA JUMBO"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "LAPIZ PASTA ARTEL PTA AZUL 50 UNIDADES PTA FINA 0,7",
+            "needle": "LAPIZ PASTA ARTEL PTA AZUL"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "LAPIZ PASTA ARTEL PTA ROJO 50 UNIDADES PTA FINA 0,7",
+            "needle": "LAPIZ PASTA ARTEL PTA ROJO"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "RESMA OFICIO 500 HOJAS",
+            "needle": "RESMA OFICIO 500 HOJAS"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "RESMA CARTA 500 HOJAS",
+            "needle": "RESMA CARTA 500 HOJAS"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "CORCHETERA METÁLICA GRANDE",
+            "needle": "CORCHETERA METÁLICA GRANDE"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "PERFORADORA GRANDE",
+            "needle": "PERFORADORA GRANDE"
+        },
+        {
+            "cantidad": 15,
+            "descripcion": "CINTA DOBLE CONTACTO 18MM X 13,7MTS",
+            "needle": "CINTA DOBLE CONTACTO 18MM X 13,7MTS"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "CUADERNO UNIVERSITARIO 100 HOJAS PACK 10 UNIDADES",
+            "needle": "CUADERNO UNIVERSITARIO 100 HOJAS PACK"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "CUADERNO CUARTA 150 HOJAS 7MM PACK 6 UNIDADES",
+            "needle": "CUADERNO CUARTA 150 HOJAS"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "PACK MARCATEXTOS PUNTA BISELADA 6 COLORES PASTEL",
+            "needle": "PACK MARCATEXTOS PUNTA BISELADA"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "LÁPIZ DE MADERA STILNOVO 3.0 12 COLORES GIOTTO",
+            "needle": "LÁPIZ DE MADERA STILNOVO"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "LÁPIZ DE MADERA COLORES PASTELES 12 COLORES",
+            "needle": "LÁPIZ DE MADERA COLORES PASTELES"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "MARCADOR ÓLEO BLANCO MEDIUM",
+            "needle": "MARCADOR ÓLEO BLANCO MEDIUM"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "SACAPUNTAS IGLOO CON DEPOSITO SIMPLE CAJA 30 UNIDADES",
+            "needle": "SACAPUNTAS IGLOO CON DEPOSITO"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "COLA FRÍA 120ML CAJA 12 UNIDADES",
+            "needle": "COLA FRÍA 120ML CAJA 12"
+        },
+        {
+            "cantidad": 15,
+            "descripcion": "TÉMPERA SOLIDA 12 COLORES",
+            "needle": "TÉMPERA SOLIDA 12 COLORES"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "BLOCK DE DIBUJO MEDIUM N°99 1\/8 20 HOJAS",
+            "needle": "BLOCK DE DIBUJO MEDIUM N°99"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "MARCADORES JUMBO 12 COLORES",
+            "needle": "MARCADORES JUMBO 12 COLORES"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "MARCADORES 20 COLORES",
+            "needle": "MARCADORES 20 COLORES"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "TEMPERA 12 COLORES",
+            "needle": "TEMPERA 12 COLORES"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "TEMPERA 6 COLOR PASTEL",
+            "needle": "TEMPERA 6 COLOR PASTEL"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "PLASTICINA 12 COLORES NEON",
+            "needle": "PLASTICINA 12 COLORES NEON"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "PLASTICINA TRIANGULAR 12 COLORES PASTELES",
+            "needle": "PLASTICINA TRIANGULAR 12 COLORES PASTELES"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "CORRECTOR LÁPIZ 7ML CAJA 12 UNIDADES",
+            "needle": "CORRECTOR LÁPIZ 7ML CAJA 12"
+        },
+        {
+            "cantidad": 4,
+            "descripcion": "CUADERNO COLLEGE 7MM 80 HOJAS PACK 10 UNIDADES",
+            "needle": "CUADERNO COLLEGE 7MM 80 HOJAS"
+        },
+        {
+            "cantidad": 6,
+            "descripcion": "PORCELANA EN FRIO",
+            "needle": "PORCELANA EN FRIO"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "PINTURA ACRÍLICA DECORATIVA 6 COLORES",
+            "needle": "PINTURA ACRÍLICA DECORATIVA 6 COLORES"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "MARCADORES NEGRO PUNTA FINA PERMANENTE CAJA 14 UNIDADES",
+            "needle": "MARCADORES NEGRO PUNTA FINA PERMANENTE"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "FINELINER 12 COLORES DELI",
+            "needle": "FINELINER 12 COLORES DELI"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "ACUARELA SET 12 COLORES CON PINCEL",
+            "needle": "ACUARELA SET 12 COLORES CON PINCEL"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PLUMON PIZARRA NEGRO CAJA 12 UNIDADES",
+            "needle": "PLUMON PIZARRA NEGRO CAJA 12"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PLUMON PIZARRA ROJO CAJA 12 UNIDADES",
+            "needle": "PLUMON PIZARRA ROJO CAJA 12"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PLUMON PIZARRA VERDE CAJA 12 UNIDADES",
+            "needle": "PLUMON PIZARRA VERDE CAJA 12"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PLUMON PIZARRA AZUL CAJA 12 UNIDADES",
+            "needle": "PLUMON PIZARRA AZUL CAJA 12"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "TÉMPERA 250ML COLORES VARIOS",
+            "needle": "TÉMPERA 250ML COLORES VARIOS"
+        },
+        {
+            "cantidad": 30,
+            "descripcion": "PLIEGO CARTULINA ESPAÑOLA VARIEDAD DE COLORES",
+            "needle": "PLIEGO CARTULINA ESPAÑOLA VARIEDAD"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "LAPIZ GRAFITO 12 UNIDADES",
+            "needle": "LAPIZ GRAFITO 12 UNIDADES"
+        },
+        {
+            "cantidad": 4,
+            "descripcion": "REGLA METALICA 50CM",
+            "needle": "REGLA METALICA 50CM"
+        },
+        {
+            "cantidad": 30,
+            "descripcion": "MEZCLADOR GRANDES",
+            "needle": "MEZCLADOR GRANDES"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "PAPEL VOLANTIN VARIEDAD DE COLORES",
+            "needle": "PAPEL VOLANTIN VARIEDAD DE COLORES"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "PALO DE HELADO COLOR 50 UNID",
+            "needle": "PALO DE HELADO COLOR 50 UNID"
+        },
+        {
+            "cantidad": 30,
+            "descripcion": "PALO DE HELADO NATURAL 50 UNID",
+            "needle": "PALO DE HELADO NATURAL 50 UNID"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "BAJA LENGUA NATURAL X50 UND.",
+            "needle": "BAJA LENGUA NATURAL X50 UND."
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "PALOS DE MAQUETA PROARTE 50CM 4X10 4UDS",
+            "needle": "PALOS DE MAQUETA PROARTE 50CM"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "PALOS DE MAQUETA REDONDOS ESPESOR: 8 LARGO: 50CM",
+            "needle": "PALOS DE MAQUETA REDONDOS ESPESOR: 8"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "PITILLA OVILLO ALGODON 40 GRS",
+            "needle": "PITILLA OVILLO ALGODON 40 GRS"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "SET DE LENTEJUELA VARIEDAD DE COLORES CRAFT X20",
+            "needle": "SET DE LENTEJUELA VARIEDAD DE COLORES"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "LANA OVILLO 25GRS",
+            "needle": "LANA OVILLO 25GRS"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "OJOS LOCOS GRANDES IMP 1.5",
+            "needle": "OJOS LOCOS GRANDES IMP 1.5"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "OJOS LOCOS MEDIANOS IMP. 1.2 CM",
+            "needle": "OJOS LOCOS MEDIANOS IMP. 1.2 CM"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "OJOS LOCOS CHICOS IMP. 0.8 CM",
+            "needle": "OJOS LOCOS CHICOS IMP. 0.8 CM"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "PAPEL CHOCLO 5 METROS COLORES",
+            "needle": "PAPEL CHOCLO 5 METROS COLORES"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "CAÑAMO COLORES 13 METROS",
+            "needle": "CAÑAMO COLORES 13 METROS"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "ARPILLERA 30X50 COLOR",
+            "needle": "ARPILLERA 30X50 COLOR"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "HILO ELASTICO DE SILICONA 0.8",
+            "needle": "HILO ELASTICO DE SILICONA 0.8"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "SET 4 RODILLO DE ESPONJA CON DISEÑO IMP.",
+            "needle": "SET 4 RODILLO DE ESPONJA CON DISEÑO"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "BOTON REDONDO DE MADERA",
+            "needle": "BOTON REDONDO DE MADERA"
+        },
+        {
+            "cantidad": 30,
+            "descripcion": "PAPEL FOTOGRAFICO ADHESIVO A4 PAQUETE",
+            "needle": "PAPEL FOTOGRAFICO ADHESIVO A4 PAQUETE"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "PLIEGO CARTON FORRADO 190 GRS.",
+            "needle": "PLIEGO CARTON FORRADO 190 GRS."
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PIZARRA CORCHO 60X90 MARCO MADERA",
+            "needle": "PIZARRA CORCHO 60X90 MARCO MADERA"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "CARTULINA OPALINA 180 GR LISA EXTRA BLANCA CARTA 100 HOJAS PAQUETE",
+            "needle": "CARTULINA OPALINA 180 GR LISA EXTRA BLANCA"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "GLOBOS N9 COLORES VARIADOS PERLADOS 50 UNIDADES",
+            "needle": "GLOBOS N9 COLORES VARIADOS PERLADOS"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "BOLSA DE GLOBOS N9 COLORES VARIADOS 50 UNIDADES",
+            "needle": "BOLSA DE GLOBOS N9 COLORES VARIADOS"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "POST-IT NOTAS ADHESIVAS SUPER STICKY",
+            "needle": "POST-IT NOTAS ADHESIVAS SUPER STICKY"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "MARCADORES BANDERITA POST-IT VARIOS COLORES 24 UNIDADES",
+            "needle": "MARCADORES BANDERITA POST-IT VARIOS COLORES"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "TERMOLAMINADORA",
+            "needle": "TERMOLAMINADORA"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS",
+            "needle": "PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS"
+        },
+        {
+            "cantidad": 4,
+            "descripcion": "SACA CORCHETES",
+            "needle": "SACA CORCHETES"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "Bostitch Quitagrapas G2K",
+            "needle": "Bostitch Quitagrapas G2K"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "PERFORADORA METÁLICA 1 ORIFICIO 6MM",
+            "needle": "PERFORADORA METÁLICA 1 ORIFICIO 6MM"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "Tijera Oficina 7.5 Ergonómica",
+            "needle": "Tijera Oficina 7.5 Ergonómica"
+        },
+        {
+            "cantidad": 30,
+            "descripcion": "CINTA EMBALAJE 48 MM X 100 MT TRANSPARENTE",
+            "needle": "CINTA EMBALAJE 48 MM X 100 MT TRANSPARENTE"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "ALARGADOR MÚLTIPLE 6 POSICIONES 3 M 10A\/250V NEGRO",
+            "needle": "ALARGADOR MÚLTIPLE 6 POSICIONES 3 M 10A\/250V"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "CINTA ENMASCARAR 48 MM X 40 M TESA ENGOMADA",
+            "needle": "CINTA ENMASCARAR 48 MM X 40 M TESA ENGOMADA"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "BASTIDOR DE MADERA CON LIENZO DE TELA ALGODON 40X50 CMS",
+            "needle": "BASTIDOR DE MADERA CON LIENZO DE TELA ALGODON"
+        },
+        {
+            "cantidad": 4,
+            "descripcion": "PILA DURACELL TIPO D, (2 PILAS, BATERÍA GRANDE)",
+            "needle": "PILA DURACELL TIPO D, (2 PILAS, BATERÍA GRANDE)"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "Pack 12 Pilas Duracell AA Alcalina Tira",
+            "needle": "Pack 12 Pilas Duracell AA Alcalina Tira"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "Pack 16 Pilas Duracell AAA Alcalina Tira",
+            "needle": "Pack 16 Pilas Duracell AAA Alcalina Tira"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "MICRÓFONO DINÁMICO SHURE SV100",
+            "needle": "MICRÓFONO DINÁMICO SHURE SV100"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "GREDA PROFESIONAL 1 KL",
+            "needle": "GREDA PROFESIONAL 1 KL"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "ARCILLA PROFESIONAL 1KG",
+            "needle": "ARCILLA PROFESIONAL 1KG"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "PAPEL BOND ROLLO 0.61M X 50M 80G",
+            "needle": "PAPEL BOND ROLLO 0.61M X 50M 80G"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "POMPONES 25 MM 36 UNIDADES COLORES SURTIDOS",
+            "needle": "POMPONES 25 MM 36 UNIDADES COLORES SURTIDOS"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "ROLLO PAPEL KRAFT EMBALAJE 25M",
+            "needle": "ROLLO PAPEL KRAFT EMBALAJE 25M"
+        },
+        {
+            "cantidad": 15,
+            "descripcion": "BROCHA PELO CAMELLO MANGO MADERA N°2",
+            "needle": "BROCHA PELO CAMELLO MANGO MADERA N°2"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "CINTA SATÍN O RASO EN 10 MM DE ANCHO VARIEDAD DE COLORES, 10 METROS",
+            "needle": "CINTA SATÍN O RASO EN 10 MM DE ANCHO"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "SOBRE CARTA 154 X 125 MM BLANCO 80 GRAMOS",
+            "needle": "SOBRE CARTA 154 X 125 MM BLANCO 80 GRAMOS"
+        },
+        {
+            "cantidad": 2,
+            "descripcion": "SOBRE 1\/4 OFICIO BLANCO 90",
+            "needle": "SOBRE 1\/4 OFICIO BLANCO 90"
+        },
+        {
+            "cantidad": 20,
+            "descripcion": "PLIEGO CARTULINA METÁLICA 50X70 CM MANUALIDADES COLOR DORADO, PLATEADO, AZUL, ROJO, VERDE, FUCSIA",
+            "needle": "PLIEGO CARTULINA METÁLICA 50X70 CM MANUALIDADES"
+        },
+        {
+            "cantidad": 5,
+            "descripcion": "BOLSITAS CON ESCARCHA COLORES SURTIDOS 20 UNIDADES",
+            "needle": "BOLSITAS CON ESCARCHA COLORES SURTIDOS 20 UNIDADES"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "LIMPIA PIPAS COLORES FLUOR BOLSA 30 PCS",
+            "needle": "LIMPIA PIPAS COLORES FLUOR BOLSA 30 PCS"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "FUNDA PLASTICA TRANSPATENTE CARTA 100 UN",
+            "needle": "FUNDA PLASTICA TRANSPATENTE CARTA 100 UN"
+        },
+        {
+            "cantidad": 3,
+            "descripcion": "FUNDA PLASTICA TRANSPATENTE OFICIO 100 UN",
+            "needle": "FUNDA PLASTICA TRANSPATENTE OFICIO 100 UN"
+        },
+        {
+            "cantidad": 10,
+            "descripcion": "CARTULINA CORRUGADO 50X70",
+            "needle": "CARTULINA CORRUGADO 50X70"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "ESPONJA CEPILLO BROCHA PINCEL PINTAR PONCEAR PINTURA ARTE",
+            "needle": "ESPONJA CEPILLO BROCHA PINCEL PINTAR PONCEAR"
+        },
+        {
+            "cantidad": 1,
+            "descripcion": "BLOCK PAÑOLENCI ARTEL 6PLIEGOS",
+            "needle": "BLOCK PAÑOLENCI ARTEL 6PLIEGOS"
+        }
+    ]
+}

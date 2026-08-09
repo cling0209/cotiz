@@ -1063,7 +1063,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $esperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
-        $limite = $esperadas;
+        $limite = (int) ceil($esperadas * 1.05);
 
         while (count($filas) > $limite) {
             $reducidas = $this->eliminarFilasSubcadenaContenida($filas);
@@ -1073,12 +1073,7 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            $podadas = $this->eliminarFilaRedundanteMasCorta($filas);
-            if (count($podadas) >= count($filas)) {
-                break;
-            }
-
-            $filas = $podadas;
+            break;
         }
 
         return $filas;
@@ -1274,10 +1269,6 @@ class ListadoMaterialesPdfParserService
 
         if ($paddlePrimario) {
             $fusionadas = $this->deduplicarLineasTabla($lineasPaddle, true);
-            $fusionadas = $this->compactarFilasTablaMateriales($fusionadas);
-            if ($this->debePodarFilasTablaMateriales($texto, $paginas, $fusionadas)) {
-                $fusionadas = $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $fusionadas);
-            }
         } elseif ($countPaddle > 0 && $esTablaMateriales) {
             $fusionadas = $this->complementarLineasTablaSinDuplicar(
                 $this->deduplicarLineasTabla($lineasPaddle, true),
@@ -1375,7 +1366,7 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($desdeCeldasPaddle) {
-            return $this->sanearFilasTablaSolicitud($lineas, $texto, $paginas);
+            return $this->sanearFilasTablaSolicitud($lineas, $texto, $paginas, true);
         }
 
         $lineas = $this->repararFilasTablaSolicitudOcr($lineas);
@@ -1390,7 +1381,7 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function sanearFilasTablaSolicitud(array $resultado, string $texto = '', int $paginas = 1): array
+    private function sanearFilasTablaSolicitud(array $resultado, string $texto = '', int $paginas = 1, bool $desdeCeldasPaddle = false): array
     {
         $reparado = [];
 
@@ -1408,6 +1399,12 @@ class ListadoMaterialesPdfParserService
 
         for ($i = 0; $i < count($reparado); $i++) {
             $reparado[$i] = $this->limpiarCantidadDuplicadaEnDescripcion($reparado[$i]);
+        }
+
+        if ($desdeCeldasPaddle) {
+            $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
+
+            return $this->deduplicarLineasTabla($reparado, false);
         }
 
         $reparado = $this->compactarFilasTablaMateriales($reparado);
