@@ -2572,6 +2572,8 @@
         pdfImportar: @json(route('admin.cotizaciones.importar-pdf', $nota->nronota)),
         excelPreview: @json(route('admin.cotizaciones.importar-excel.preview', $nota->nronota)),
         excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota->nronota)),
+        materialesLockStatus: @json(route('admin.cotizaciones.importar-materiales.lock-status')),
+        materialesLockRelease: @json(route('admin.cotizaciones.importar-materiales.lock-release')),
         apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
         apiExisteLocal: @json(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota)),
         apiPreviewOportunidades: @json(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota)),
@@ -2613,6 +2615,7 @@
     let importPdfFile = null;
     let importExcelFile = null;
     let importSimTimer = null;
+    let importMaterialesLockId = null;
 
     const MENSAJES_PROGRESO_PDF = [
         'Leyendo archivo PDF o Word…',
@@ -2766,6 +2769,84 @@
             return await fetchFn();
         } finally {
             detenerProgresoSimuladoImportar();
+        }
+    }
+
+    function nuevoImportMaterialesLockId() {
+        importMaterialesLockId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : ('lock-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        return importMaterialesLockId;
+    }
+
+    async function liberarImportMaterialesLock() {
+        if (!importMaterialesLockId) return;
+        const lockId = importMaterialesLockId;
+        importMaterialesLockId = null;
+        try {
+            const body = new FormData();
+            body.append('_token', csrf);
+            body.append('lock_id', lockId);
+            await fetch(importarMpUrls.materialesLockRelease, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+        } catch (_err) {
+            // ignorar error al liberar
+        }
+    }
+
+    async function consultarLockAnalisisMaterialesActivo() {
+        const res = await fetch(importarMpUrls.materialesLockStatus, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const json = await res.json().catch(() => ({}));
+        return json?.active === true ? (json.lock || null) : null;
+    }
+
+    function textoEsperaTurnoAnalisisMateriales(lock) {
+        const usuario = String(lock?.username || 'otro usuario').trim();
+        const archivo = String(lock?.original_name || '').trim();
+        const tipo = String(lock?.tipo || '').trim().toUpperCase();
+        const detalle = [tipo, archivo ? '«' + archivo + '»' : ''].filter(Boolean).join(' ');
+        return detalle
+            ? `Esperando turno: ${usuario} está analizando ${detalle}…`
+            : `Esperando turno: ${usuario} está analizando un archivo…`;
+    }
+
+    async function esperarTurnoAnalisisMateriales(lockInicial) {
+        let lock = lockInicial || null;
+        while (lock) {
+            actualizarProgresoImportar(12, 100, textoEsperaTurnoAnalisisMateriales(lock), { estimado: true });
+            await new Promise((resolve) => setTimeout(resolve, 12000));
+            lock = await consultarLockAnalisisMaterialesActivo();
+        }
+    }
+
+    async function enviarPreviewMateriales(url, bodyBuilder, mensajesSimulado, usarProgresoSimulado) {
+        for (;;) {
+            const body = bodyBuilder();
+            body.append('lock_id', importMaterialesLockId || nuevoImportMaterialesLockId());
+
+            const ejecutarFetch = () => fetch(url, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+
+            const res = usarProgresoSimulado
+                ? await fetchConProgresoSimulado(ejecutarFetch, mensajesSimulado)
+                : await ejecutarFetch();
+
+            const json = await res.json().catch(() => ({}));
+
+            if (res.status === 409 && json.code === 'materiales_import_locked') {
+                await esperarTurnoAnalisisMateriales(json.lock || null);
+                continue;
+            }
+
+            return { res, json };
         }
     }
 
@@ -3106,10 +3187,14 @@
         renderImportPreview(null);
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        nuevoImportMaterialesLockId();
 
         try {
             const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
-            if (!okPrep) return;
+            if (!okPrep) {
+                await liberarImportMaterialesLock();
+                return;
+            }
 
             mostrarProgresoImportar();
 
@@ -3125,27 +3210,20 @@
                     actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
                 }
 
-                const body = new FormData();
-                body.append('_token', csrf);
-                body.append('pdf', importPdfFile);
-                body.append('desde', String(desde));
-                body.append('hasta', String(hasta));
+                const { res, json } = await enviarPreviewMateriales(
+                    importarMpUrls.pdfPreview,
+                    () => {
+                        const body = new FormData();
+                        body.append('_token', csrf);
+                        body.append('pdf', importPdfFile);
+                        body.append('desde', String(desde));
+                        body.append('hasta', String(hasta));
+                        return body;
+                    },
+                    MENSAJES_PROGRESO_PDF,
+                    total === 0,
+                );
 
-                const res = total > 0
-                    ? await fetch(importarMpUrls.pdfPreview, {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                        body,
-                    })
-                    : await fetchConProgresoSimulado(
-                        () => fetch(importarMpUrls.pdfPreview, {
-                            method: 'POST',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                            body,
-                        }),
-                        MENSAJES_PROGRESO_PDF,
-                    );
-                const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
                     mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el PDF o Word.'));
@@ -3186,6 +3264,7 @@
             ocultarProgresoImportar();
             mostrarImportError('Error de conexión.');
         } finally {
+            await liberarImportMaterialesLock();
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
         }
     }
@@ -3217,10 +3296,14 @@
         renderImportPreview(null);
         mostrarProgresoImportar();
         actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        nuevoImportMaterialesLockId();
 
         try {
             const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
-            if (!okPrep) return;
+            if (!okPrep) {
+                await liberarImportMaterialesLock();
+                return;
+            }
 
             mostrarProgresoImportar();
 
@@ -3237,29 +3320,22 @@
                     actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
                 }
 
-                const body = new FormData();
-                body.append('_token', csrf);
-                body.append('excel', importExcelFile);
-                body.append('columna_descripcion', colDesc);
-                body.append('columna_cantidad', colCant);
-                body.append('desde', String(desde));
-                body.append('hasta', String(hasta));
+                const { res, json } = await enviarPreviewMateriales(
+                    importarMpUrls.excelPreview,
+                    () => {
+                        const body = new FormData();
+                        body.append('_token', csrf);
+                        body.append('excel', importExcelFile);
+                        body.append('columna_descripcion', colDesc);
+                        body.append('columna_cantidad', colCant);
+                        body.append('desde', String(desde));
+                        body.append('hasta', String(hasta));
+                        return body;
+                    },
+                    MENSAJES_PROGRESO_EXCEL,
+                    total === 0,
+                );
 
-                const res = total > 0
-                    ? await fetch(importarMpUrls.excelPreview, {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                        body,
-                    })
-                    : await fetchConProgresoSimulado(
-                        () => fetch(importarMpUrls.excelPreview, {
-                            method: 'POST',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                            body,
-                        }),
-                        MENSAJES_PROGRESO_EXCEL,
-                    );
-                const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
                     mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el Excel.'));
@@ -3308,6 +3384,7 @@
             ocultarProgresoImportar();
             mostrarImportError('Error de conexión.');
         } finally {
+            await liberarImportMaterialesLock();
             if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
         }
     }

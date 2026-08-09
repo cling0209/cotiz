@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\CompraAgilImportService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\MaterialesExcelImportService;
+use App\Services\MaterialesImportLockService;
 use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
@@ -954,21 +955,34 @@ class CotizacionController extends Controller
             'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
+            'lock_id' => ['required', 'string', 'max:64'],
         ]);
 
+        $lockId = (string) $datos['lock_id'];
+        $desde = (int) ($datos['desde'] ?? 0);
+        $archivo = $request->file('pdf');
+        $nombreArchivo = $archivo?->getClientOriginalName() ?: 'archivo.pdf';
+
         try {
+            $this->gestionarLockAnalisisMateriales($request, $lockId, 'pdf', $nombreArchivo, $desde);
+
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->materialesPdfImport->previewLote(
-                    $request->file('pdf'),
+                    $archivo,
                     (int) $datos['desde'],
                     (int) $datos['hasta'],
                 );
             } else {
-                $resultado = $this->materialesPdfImport->preview($request->file('pdf'));
+                $resultado = $this->materialesPdfImport->preview($archivo);
             }
+        } catch (\InvalidArgumentException $e) {
+            return $this->respuestaLockAnalisisMateriales($e);
         } catch (RuntimeException $e) {
+            app(MaterialesImportLockService::class)->release($lockId);
+
             return response()->json(['error' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
+            app(MaterialesImportLockService::class)->release($lockId);
             report($e);
 
             return response()->json([
@@ -976,6 +990,14 @@ class CotizacionController extends Controller
                     ? $e->getMessage()
                     : 'Error al analizar el PDF o Word.',
             ], 500);
+        } finally {
+            if (isset($resultado) && is_array($resultado)) {
+                $this->liberarLockAnalisisMaterialesSiCorresponde(
+                    $lockId,
+                    $resultado,
+                    ! isset($datos['desde'], $datos['hasta']),
+                );
+            }
         }
 
         return response()->json(array_merge($resultado, [
@@ -1096,12 +1118,20 @@ class CotizacionController extends Controller
             'columna_cantidad' => ['required', 'string', 'max:10'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
+            'lock_id' => ['required', 'string', 'max:64'],
         ]);
 
+        $lockId = (string) $datos['lock_id'];
+        $desde = (int) ($datos['desde'] ?? 0);
+        $archivo = $request->file('excel');
+        $nombreArchivo = $archivo?->getClientOriginalName() ?: 'archivo.xlsx';
+
         try {
+            $this->gestionarLockAnalisisMateriales($request, $lockId, 'excel', $nombreArchivo, $desde);
+
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->materialesExcelImport->previewLote(
-                    $request->file('excel'),
+                    $archivo,
                     (string) $datos['columna_descripcion'],
                     (string) $datos['columna_cantidad'],
                     (int) $datos['desde'],
@@ -1109,14 +1139,19 @@ class CotizacionController extends Controller
                 );
             } else {
                 $resultado = $this->materialesExcelImport->preview(
-                    $request->file('excel'),
+                    $archivo,
                     (string) $datos['columna_descripcion'],
                     (string) $datos['columna_cantidad'],
                 );
             }
+        } catch (\InvalidArgumentException $e) {
+            return $this->respuestaLockAnalisisMateriales($e);
         } catch (RuntimeException $e) {
+            app(MaterialesImportLockService::class)->release($lockId);
+
             return response()->json(['error' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
+            app(MaterialesImportLockService::class)->release($lockId);
             report($e);
 
             return response()->json([
@@ -1124,12 +1159,42 @@ class CotizacionController extends Controller
                     ? $e->getMessage()
                     : 'Error al analizar el Excel.',
             ], 500);
+        } finally {
+            if (isset($resultado) && is_array($resultado)) {
+                $this->liberarLockAnalisisMaterialesSiCorresponde(
+                    $lockId,
+                    $resultado,
+                    ! isset($datos['desde'], $datos['hasta']),
+                );
+            }
         }
 
         return response()->json(array_merge($resultado, [
             'error_cabecera' => null,
             'puede_importar' => true,
         ]));
+    }
+
+    public function estadoLockAnalisisMateriales(): JsonResponse
+    {
+        $lock = app(MaterialesImportLockService::class);
+        $current = $lock->currentOrReleaseIfAbandoned();
+
+        return response()->json([
+            'active' => $current !== null,
+            'lock' => $current,
+        ]);
+    }
+
+    public function liberarLockAnalisisMateriales(Request $request): JsonResponse
+    {
+        $datos = $request->validate([
+            'lock_id' => ['required', 'string', 'max:64'],
+        ]);
+
+        app(MaterialesImportLockService::class)->release((string) $datos['lock_id']);
+
+        return response()->json(['ok' => true]);
     }
 
     public function importarExcel(Request $request, int $nronota): JsonResponse
@@ -1457,6 +1522,55 @@ class CotizacionController extends Controller
         }
 
         return $nota->usuario === $user->username;
+    }
+
+    private function gestionarLockAnalisisMateriales(
+        Request $request,
+        string $lockId,
+        string $tipo,
+        string $nombreArchivo,
+        int $desde,
+    ): void {
+        $usuario = $request->user();
+        $lock = app(MaterialesImportLockService::class);
+
+        if ($desde === 0) {
+            $lock->acquire(
+                (int) $usuario->id,
+                (string) $usuario->username,
+                $lockId,
+                $tipo,
+                $nombreArchivo,
+            );
+
+            return;
+        }
+
+        $lock->assertOwnerOrRenew($lockId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $resultado
+     */
+    private function liberarLockAnalisisMaterialesSiCorresponde(
+        string $lockId,
+        array $resultado,
+        bool $analisisEnUnaSolaPeticion,
+    ): void {
+        if ($analisisEnUnaSolaPeticion || ($resultado['completado'] ?? false) === true) {
+            app(MaterialesImportLockService::class)->release($lockId);
+        }
+    }
+
+    private function respuestaLockAnalisisMateriales(\InvalidArgumentException $e): JsonResponse
+    {
+        $lock = app(MaterialesImportLockService::class)->current();
+
+        return response()->json([
+            'error' => $e->getMessage(),
+            'code' => 'materiales_import_locked',
+            'lock' => $lock,
+        ], 409);
     }
 
     private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): RedirectResponse|JsonResponse|null

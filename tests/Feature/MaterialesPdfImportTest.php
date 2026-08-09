@@ -7,8 +7,11 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\ListadoMaterialesPdfParserService;
+use App\Services\MaterialesImportLockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
 
@@ -39,6 +42,8 @@ class MaterialesPdfImportTest extends TestCase
             'prod_valor_costo' => 2800,
             'prod_familia' => 'ART',
         ]);
+
+        Cache::forget(MaterialesImportLockService::CACHE_KEY);
     }
 
     protected function tearDown(): void
@@ -70,7 +75,7 @@ class MaterialesPdfImportTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
-            ['pdf' => $pdf],
+            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
         );
 
         $response->assertOk();
@@ -130,7 +135,7 @@ class MaterialesPdfImportTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
-            ['pdf' => $pdf],
+            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
         );
 
         $response->assertOk();
@@ -217,6 +222,39 @@ class MaterialesPdfImportTest extends TestCase
         $this->assertCount(1, $lineas);
         $this->assertSame('ART001', $lineas->first()->prod_item);
         $this->assertSame(40, (int) $lineas->first()->cantidad);
+    }
+
+    public function test_preview_pdf_bloqueado_si_otro_usuario_analiza(): void
+    {
+        $nota = $this->crearNota();
+        $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
+
+        $otro = User::factory()->create([
+            'username' => 'otro',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        app(MaterialesImportLockService::class)->acquire(
+            $otro->id,
+            'otro',
+            (string) Str::uuid(),
+            'pdf',
+            'ocupado.pdf',
+        );
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
+            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
+        );
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('code', 'materiales_import_locked');
+        $this->assertStringContainsString('Hay un análisis en curso', (string) $response->json('error'));
+    }
+
+    private function lockId(): string
+    {
+        return (string) Str::uuid();
     }
 
     private function crearNota(array $attrs = []): Nota

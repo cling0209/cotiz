@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ListadoMaterialesExcelParserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
 
@@ -75,6 +76,7 @@ class MaterialesExcelImportTest extends TestCase
                 'excel' => $excel,
                 'columna_descripcion' => 'A',
                 'columna_cantidad' => 'D',
+                'lock_id' => (string) Str::uuid(),
             ],
         );
 
@@ -140,6 +142,7 @@ class MaterialesExcelImportTest extends TestCase
                 'excel' => $excel,
                 'columna_descripcion' => 'A',
                 'columna_cantidad' => 'D',
+                'lock_id' => (string) Str::uuid(),
             ],
         );
 

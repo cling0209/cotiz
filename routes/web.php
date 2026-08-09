@@ -96,6 +96,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/importar-compra-agil/coincidencias', [CotizacionController::class, 'coincidenciasCompraAgil'])->name('cotizaciones.importar-compra-agil.coincidencias')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/limpiar-agile', [CotizacionController::class, 'limpiarLineasAgileCompraAgil'])->name('cotizaciones.importar-compra-agil.limpiar-agile')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil', [CotizacionController::class, 'importarCompraAgil'])->name('cotizaciones.importar-compra-agil')->whereNumber('nronota');
+        Route::get('cotizaciones/importar-materiales/estado-bloqueo', [CotizacionController::class, 'estadoLockAnalisisMateriales'])->name('cotizaciones.importar-materiales.lock-status');
+        Route::post('cotizaciones/importar-materiales/liberar-bloqueo', [CotizacionController::class, 'liberarLockAnalisisMateriales'])->name('cotizaciones.importar-materiales.lock-release');
         Route::post('cotizaciones/{nronota}/importar-pdf/preview', [CotizacionController::class, 'importarPdfPreview'])->name('cotizaciones.importar-pdf.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-pdf', [CotizacionController::class, 'importarPdf'])->name('cotizaciones.importar-pdf')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-excel/preview', [CotizacionController::class, 'importarExcelPreview'])->name('cotizaciones.importar-excel.preview')->whereNumber('nronota');
