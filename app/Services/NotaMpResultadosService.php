@@ -35,6 +35,7 @@ class NotaMpResultadosService
         protected CompraAgilGanadorResolver $ganador,
         protected CompraAgilTextoParserService $parser,
         protected OrganismoObservacionService $organismoObservacion,
+        protected MercadoPublicoOrdenCompraService $ordenCompraMp,
     ) {}
 
     public function ultimaCorrida(): ?NotaMpCorrida
@@ -1952,6 +1953,8 @@ class NotaMpResultadosService
 
         $corrida->refresh();
 
+        $ocompraResuelta = $this->sincronizarOcompraNotaSiCorresponde($nota, $codigo, $payload, $rutGanador);
+
         $msTotal = (int) round((microtime(true) - $inicio) * 1000);
         if ($msTotal >= 60000) {
             Log::info('NotaMpResultados: consulta lenta', [
@@ -1962,6 +1965,8 @@ class NotaMpResultadosService
                 'ms_guardado' => max(0, $msTotal - $msApi),
             ]);
         }
+
+        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
 
         return [
             'nronota' => $nronota,
@@ -1981,12 +1986,51 @@ class NotaMpResultadosService
             'rut_ganador' => $rutGanador,
             'razon_social_ganador' => $ganadorProv !== null ? trim((string) ($ganadorProv['razon_social'] ?? '')) : null,
             'monto_total_ganador' => $montoGanador,
-            'id_orden_compra' => isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null,
+            'id_orden_compra' => $idOrdenCompra,
+            'ocompra' => $ocompraResuelta,
             'organismo' => trim((string) ($institucion['organismo_comprador'] ?? '')),
             'ms_total' => $msTotal,
             'ms_api' => $msApi,
             'ms_guardado' => max(0, $msTotal - $msApi),
         ];
+    }
+
+    /**
+     * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function sincronizarOcompraNotaSiCorresponde(Nota $nota, string $codigoCot, array $payload, ?string $rutGanador): ?string
+    {
+        $actual = trim((string) ($nota->ocompra ?? ''));
+        if ($actual !== '') {
+            return $actual;
+        }
+
+        if ($this->ordenCompraMp->idOrdenCompraDesdePayload($payload) === null) {
+            return null;
+        }
+
+        try {
+            $codigoOc = $this->ordenCompraMp->resolverCodigoPorCotizacion($codigoCot, $payload, $rutGanador);
+        } catch (RuntimeException $e) {
+            Log::warning('NotaMpResultados: no se pudo resolver ocompra MP', [
+                'nronota' => $nota->nronota,
+                'codigo' => $codigoCot,
+                'error' => mb_substr($e->getMessage(), 0, 200),
+            ]);
+
+            return null;
+        }
+
+        if ($codigoOc === null || $codigoOc === '') {
+            return null;
+        }
+
+        Nota::query()->whereKey($nota->nronota)->update(['ocompra' => mb_substr($codigoOc, 0, 20)]);
+        $nota->ocompra = $codigoOc;
+
+        return $codigoOc;
     }
 
     private function marcarNoExisteEnMp(

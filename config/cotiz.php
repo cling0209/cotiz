@@ -146,7 +146,13 @@ return [
 
     'mercadopublico' => [
         'base_url' => env('MERCADOPUBLICO_BASE_URL', 'https://api2.mercadopublico.cl'),
+        'oc_v1_base_url' => env('MERCADOPUBLICO_OC_V1_BASE_URL', 'https://api.mercadopublico.cl/servicios/v1/publico'),
         'ticket' => env('MERCADOPUBLICO_TICKET', ''),
+        // Código proveedor MP (CodigoProveedor) para listar OC v1 por fecha — clave RUT normalizado.
+        'codigo_proveedor_por_rut' => [
+            '76185139K' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_ROMULO', '1276139'),
+            '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', ''),
+        ],
         'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(
