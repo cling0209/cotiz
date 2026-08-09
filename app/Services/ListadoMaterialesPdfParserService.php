@@ -27,6 +27,7 @@ class ListadoMaterialesPdfParserService
 
     public function __construct(
         protected ?PdfOcrService $ocr = null,
+        protected ?PdfPaddleOcrService $paddle = null,
     ) {}
 
     /**
@@ -62,10 +63,11 @@ class ListadoMaterialesPdfParserService
         }
 
         $texto = $this->extraerTextoPdf($path);
+        $lineasDesdeTexto = $this->parseTexto($texto);
 
         return [
             'cabecera' => $this->extraerCabeceraDocumento($texto),
-            'lineas' => $this->parseTexto($texto),
+            'lineas' => $this->fusionarLineasConPaddle($path, $lineasDesdeTexto, $texto),
         ];
     }
 
@@ -871,6 +873,49 @@ class ListadoMaterialesPdfParserService
         }
     }
 
+    /**
+     * Combina líneas del parser (nativo + Tesseract) con PaddleOCR sidecar si aporta más filas.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineasTexto
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function fusionarLineasConPaddle(string $path, array $lineasTexto, string $texto): array
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        $esTabla = $this->esFormatoTablaProductoCantidad($upper);
+        $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
+        $minEsperadas = max(12, (int) floor($paginas * 6));
+
+        if (! $esTabla && count($lineasTexto) >= $minEsperadas) {
+            return $lineasTexto;
+        }
+
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+        if (! $paddle->estaDisponible()) {
+            return $lineasTexto;
+        }
+
+        try {
+            $lineasPaddle = $paddle->extraerLineasTabla($path);
+        } catch (\Throwable) {
+            return $lineasTexto;
+        }
+
+        if ($lineasPaddle === []) {
+            return $lineasTexto;
+        }
+
+        if (count($lineasPaddle) > count($lineasTexto)) {
+            return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
+        }
+
+        if (count($lineasTexto) > count($lineasPaddle)) {
+            return $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
+        }
+
+        return $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto));
+    }
+
     private function esFormatoTablaProductoCantidad(string $upper): bool
     {
         if (str_contains($upper, 'DETALLE PRODUCTO')) {
@@ -1307,6 +1352,16 @@ class ListadoMaterialesPdfParserService
             return mb_strlen($descripcion) >= 3
                 ? ['cantidad' => max(1, (int) $coincidencia[1]), 'descripcion' => $descripcion]
                 : null;
+        }
+
+        if (preg_match('/^(\d{1,5})\s+(.{3,})$/u', $linea, $coincidencia) === 1) {
+            $descripcion = trim($coincidencia[2]);
+            if (! preg_match('/^(?:unidades?|pack)\b/iu', $descripcion)) {
+                return [
+                    'cantidad' => max(1, (int) $coincidencia[1]),
+                    'descripcion' => $descripcion,
+                ];
+            }
         }
 
         if (preg_match('/^(.+)\s+(\d+)\s+unidades?\.?\s*$/u', $linea, $coincidencia) === 1) {

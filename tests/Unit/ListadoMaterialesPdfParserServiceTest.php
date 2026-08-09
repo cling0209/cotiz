@@ -466,6 +466,19 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('PERFORADORA', $lineas[2]['descripcion']);
     }
 
+    public function test_parse_solicitud_pedido_cantidad_al_inicio_de_linea(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_cantidad_inicio.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(3, count($lineas));
+        $this->assertSame(10, $lineas[0]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('RESMA OFICIO', $lineas[0]['descripcion']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertStringContainsStringIgnoringCase('GOMA EVA', $lineas[1]['descripcion']);
+    }
+
     public function test_elegir_mejor_texto_pdf_prefiere_ocr_con_mas_filas(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'elegirMejorTextoPdfTablaProducto');

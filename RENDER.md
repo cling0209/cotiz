@@ -207,6 +207,12 @@ El importador PDF/Word puede leer listados escaneados (p. ej. EETT) con **pdftop
 
 Si el PDF ya trae texto nativo, no usa OCR. En local Windows hace falta Tesseract y Poppler en PATH (o las rutas habituales de instalación).
 
+### Tablas PRODUCTO | CANTIDAD (solicitud de pedido escaneada)
+
+En Hetzner/Docker Compose hay un sidecar **`paddleocr`** (`docker/paddleocr`, puerto interno 8080) con **PaddleOCR PP-Structure** para detectar filas de tabla. Laravel lo llama vía `COTIZ_PADDLEOCR_URL=http://paddleocr:8080` y combina el resultado con texto nativo + Tesseract.
+
+Primera importación puede tardar 2–5 min (11 páginas). Desactivar: `COTIZ_PADDLEOCR_ENABLED=false`.
+
 ## URLs
 
 | Recurso | URL |

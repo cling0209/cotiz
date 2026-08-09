@@ -110,6 +110,13 @@ return [
         'crop_left_percent_tabla' => max(40, min(75, (int) env('COTIZ_OCR_CROP_LEFT_TABLA', 58))),
     ],
 
+    // Sidecar PaddleOCR (tablas escaneadas producto/cantidad). En Docker: http://paddleocr:8080
+    'paddleocr' => [
+        'enabled' => filter_var(env('COTIZ_PADDLEOCR_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'url' => rtrim((string) env('COTIZ_PADDLEOCR_URL', ''), '/'),
+        'timeout' => max(30, min(600, (int) env('COTIZ_PADDLEOCR_TIMEOUT', 300))),
+    ],
+
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.
     // Solo activo con RENDER_KEEPALIVE=true (ver .env.render.example).
     // - Servidor: worker hace GET APP_URL/up (refuerzo; poco fiable solo).

@@ -26,11 +26,25 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
+      COTIZ_PADDLEOCR_URL: http://paddleocr:8080
     ports:
       - "127.0.0.1:${APP_PORT:-8001}:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      paddleocr:
+        condition: service_started
+
+  paddleocr:
+    build:
+      context: ./docker/paddleocr
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-200}
+      PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
+    ports:
+      - "127.0.0.1:${PADDLEOCR_PORT:-8010}:8080"
 
 volumes:
   postgres_data:
