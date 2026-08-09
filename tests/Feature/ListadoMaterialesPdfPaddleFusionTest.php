@@ -522,4 +522,41 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
 
         return $out;
     }
+
+    public function test_pdf_escaneado_sin_texto_nativo_no_falla_si_paddle_disponible(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $lineasPaddle = array_map(
+            static fn (array $fila): array => [
+                'cantidad' => $fila['cantidad'],
+                'descripcion' => $fila['descripcion'],
+            ],
+            $golden['lineas'],
+        );
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4 escaneado sin texto');
+
+        try {
+            $uploaded = new \Illuminate\Http\UploadedFile(
+                $tmp,
+                'ESPECIFICACIONES TECNICAS2 .pdf',
+                'application/pdf',
+                null,
+                true,
+            );
+            $documento = $parser->parseDocumentoCompleto($uploaded);
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertNotEmpty($documento['lineas']);
+        Solicitud83965Golden::assertLineasMatchGolden($this, $documento['lineas']);
+    }
 }

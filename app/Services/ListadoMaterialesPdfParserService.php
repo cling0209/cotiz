@@ -73,12 +73,17 @@ class ListadoMaterialesPdfParserService
             $path,
             trim((string) $file->getClientOriginalName()),
         );
-        if ($fragmentos === []) {
+        $nombreArchivo = trim((string) $file->getClientOriginalName());
+        if ($fragmentos === [] && ! $this->puedeImportarPdfSoloConPaddle($path, $nombreArchivo)) {
             throw new RuntimeException('No se pudo extraer texto del PDF.');
         }
 
-        $texto = $this->elegirMejorTextoTablaProductoDesdeFragmentos($fragmentos);
-        $textoBusqueda = trim(implode("\n", $fragmentos));
+        $texto = $fragmentos !== []
+            ? $this->elegirMejorTextoTablaProductoDesdeFragmentos($fragmentos)
+            : '';
+        $textoBusqueda = $fragmentos !== []
+            ? trim(implode("\n", $fragmentos))
+            : $this->textoHintTablaMaterialesEscaneada($nombreArchivo, $this->contarPaginasPdf($path));
         $lineasDesdeTexto = $this->parseTexto($texto);
 
         return [
@@ -833,7 +838,7 @@ class ListadoMaterialesPdfParserService
             throw new RuntimeException('No se pudo leer el archivo.');
         }
 
-        $fragmentos = $this->recolectarFragmentosTextoPdf($path);
+        $fragmentos = $this->recolectarFragmentosTextoPdf($path, basename($path));
         if ($fragmentos === []) {
             throw new RuntimeException('No se pudo extraer texto del PDF. Verifique que no sea un documento escaneado.');
         }
@@ -874,6 +879,10 @@ class ListadoMaterialesPdfParserService
         if ($paddle->estaDisponible()
             && $this->esProbableTablaMaterialesEscaneada($textoNativo, $paginas, $path, $nombreArchivo)) {
             Log::info('Import PDF: omitiendo OCR Tesseract; PaddleOCR procesará la tabla escaneada');
+
+            if ($fragmentos === []) {
+                $fragmentos['paddle_hint'] = $this->textoHintTablaMaterialesEscaneada($nombreArchivo, $paginas);
+            }
 
             return $fragmentos;
         }
@@ -1614,6 +1623,32 @@ class ListadoMaterialesPdfParserService
     {
         return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
             || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1;
+    }
+
+    private function puedeImportarPdfSoloConPaddle(string $path, string $nombreArchivo): bool
+    {
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+        if (! $paddle->estaDisponible()) {
+            return false;
+        }
+
+        $paginas = $this->contarPaginasPdf($path);
+
+        return $this->esProbableTablaMaterialesEscaneada('', $paginas, $path, $nombreArchivo);
+    }
+
+    private function textoHintTablaMaterialesEscaneada(string $nombreArchivo, int $paginas): string
+    {
+        $lineas = ['PRODUCTO CANTIDAD'];
+        if ($this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)) {
+            $lineas[] = 'ESPECIFICACIONES TECNICAS';
+        }
+        $paginas = max(1, $paginas);
+        if ($paginas > 1) {
+            $lineas[] = "PÁGINA 1 DE {$paginas}";
+        }
+
+        return implode("\n", $lineas);
     }
 
     /**
