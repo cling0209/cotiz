@@ -19,6 +19,7 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
             'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
             'cotiz.mercadopublico.codigo_proveedor_por_rut' => [
                 '76185139K' => '1276139',
+                '763568555' => '1417881',
             ],
         ]);
         $this->service = new MercadoPublicoOrdenCompraService(new CompraAgilTextoParserService);

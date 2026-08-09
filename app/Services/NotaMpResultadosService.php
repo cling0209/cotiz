@@ -724,9 +724,10 @@ class NotaMpResultadosService
      * Notas candidatas a consulta masiva MP:
      * - sin seguimiento aún, o
      * - pendientes de seguimiento (resultado_propio = pendiente), o
-     * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún).
+     * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún), o
+     * - OC emitida en MP pero falta notas.ocompra alfanumérica (ganador = empresa de esta instancia).
      * Opcionalmente omite las ya consultadas hoy con éxito (SKIP_MISMO_DIA),
-     * salvo si el último detalle de corrida fue fallo (reintento en corrida siguiente).
+     * salvo reintento por fallo o pendiente de ocompra.
      * El filtro por horario de último cambio se aplica en notasPendientesConsulta().
      *
      * @return \Illuminate\Database\Eloquent\Builder<Nota>
@@ -748,7 +749,10 @@ class NotaMpResultadosService
                 // aunque MP ya muestre cerrada sin adjudicación (resultado_propio=pendiente).
                 $q->whereNull('seg.nronota')
                     ->orWhere('seg.resultado_propio', 'pendiente')
-                    ->orWhereRaw('COALESCE(seg.finalizado, false) = false');
+                    ->orWhereRaw('COALESCE(seg.finalizado, false) = false')
+                    ->orWhere(function ($sub) {
+                        $this->aplicarFiltroPendienteOcompraAlfanumerica($sub);
+                    });
             });
 
         if (config('cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia', true)) {
@@ -767,11 +771,69 @@ class NotaMpResultadosService
                             ->whereRaw(
                                 'd.id = (SELECT MAX(d2.id) FROM nota_mp_corrida_detalle d2 WHERE d2.nronota = notas.nronota)',
                             );
+                    })
+                    ->orWhere(function ($sub) {
+                        $this->aplicarFiltroPendienteOcompraAlfanumerica($sub);
                     });
             });
         }
 
         return $query;
+    }
+
+    /**
+     * Sigue consultando mientras MP ya tiene id_orden_compra pero falta el código AG en notas.ocompra
+     * (solo cuando ganó la empresa de esta instancia).
+     */
+    public function pendienteOcompraAlfanumerica(
+        ?string $ocompraNota,
+        ?int $idOrdenCompra,
+        ?string $rutGanador,
+    ): bool {
+        if (trim((string) $ocompraNota) !== '') {
+            return false;
+        }
+        if ($idOrdenCompra === null || $idOrdenCompra <= 0) {
+            return false;
+        }
+
+        $rutPropio = $this->ganador->rutEmpresaPropia();
+        if ($rutPropio === '') {
+            return false;
+        }
+
+        return $this->ganador->rutsCoinciden($rutGanador, $rutPropio);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Nota>|\Illuminate\Database\Query\Builder  $query
+     */
+    private function aplicarFiltroPendienteOcompraAlfanumerica(
+        $query,
+        string $notasAlias = 'notas',
+        string $segAlias = 'seg',
+    ): void {
+        $rutNorm = strtoupper($this->rutEmpresaPropiaNormalizado());
+        if ($rutNorm === '') {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereNotNull("{$segAlias}.id_orden_compra")
+            ->where("{$segAlias}.id_orden_compra", '>', 0)
+            ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''")
+            ->whereRaw(
+                "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
+                [$rutNorm],
+            );
+    }
+
+    private function rutEmpresaPropiaNormalizado(): string
+    {
+        $rut = $this->ganador->rutEmpresaPropia();
+
+        return strtoupper(preg_replace('/[^0-9kK]/', '', $rut) ?? '');
     }
 
     /**
@@ -1955,6 +2017,25 @@ class NotaMpResultadosService
 
         $ocompraResuelta = $this->sincronizarOcompraNotaSiCorresponde($nota, $codigo, $payload, $rutGanador);
 
+        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
+        if ($finalizado && $this->pendienteOcompraAlfanumerica(
+            $ocompraResuelta ?? (string) ($nota->ocompra ?? ''),
+            $idOrdenCompra,
+            $rutGanador,
+        )) {
+            NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => false]);
+            $finalizado = false;
+        }
+
+        $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
+        $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
+        $ordenCompraVisible = '';
+        if ($esGanadorGrupo) {
+            $ordenCompraVisible = $ocompraNota !== ''
+                ? $ocompraNota
+                : ($idOrdenCompra ? 'Pendiente' : '');
+        }
+
         $msTotal = (int) round((microtime(true) - $inicio) * 1000);
         if ($msTotal >= 60000) {
             Log::info('NotaMpResultados: consulta lenta', [
@@ -1965,8 +2046,6 @@ class NotaMpResultadosService
                 'ms_guardado' => max(0, $msTotal - $msApi),
             ]);
         }
-
-        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
 
         return [
             'nronota' => $nronota,
@@ -1987,7 +2066,9 @@ class NotaMpResultadosService
             'razon_social_ganador' => $ganadorProv !== null ? trim((string) ($ganadorProv['razon_social'] ?? '')) : null,
             'monto_total_ganador' => $montoGanador,
             'id_orden_compra' => $idOrdenCompra,
-            'ocompra' => $ocompraResuelta,
+            'ocompra' => $ocompraNota !== '' ? $ocompraNota : null,
+            'orden_compra' => $ordenCompraVisible !== '' ? $ordenCompraVisible : null,
+            'es_ganador_grupo' => $esGanadorGrupo,
             'organismo' => trim((string) ($institucion['organismo_comprador'] ?? '')),
             'ms_total' => $msTotal,
             'ms_api' => $msApi,
@@ -2270,6 +2351,7 @@ class NotaMpResultadosService
         return $items->each(function (NotaMpSeguimiento $seg) use ($rutPropio): void {
             $seg->es_ganador_propio = $rutPropio !== ''
                 && $this->ganador->rutsCoinciden($seg->rut_ganador, $rutPropio);
+            $seg->es_ganador_grupo = $seg->esGanadorGrupo();
             $seg->tiene_proveedor_seleccionado = $this->segTieneProveedorSeleccionado($seg);
         });
     }
@@ -3137,7 +3219,7 @@ class NotaMpResultadosService
             ->selectRaw('MAX(nota_mp_corrida_cambios.id) as id');
 
         $items = NotaMpCorridaCambio::query()
-            ->with(['nota', 'seguimiento'])
+            ->with(['nota', 'seguimiento.nota'])
             ->join('nota_mp_seguimientos as seg', 'nota_mp_corrida_cambios.nronota', '=', 'seg.nronota')
             ->whereIn('nota_mp_corrida_cambios.id', $ultimoCambioPorNota)
             ->orderByDesc('seg.fecha_ultimo_cambio')

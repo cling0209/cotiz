@@ -87,6 +87,14 @@
         return glosa || codigo || '—';
     }
 
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     function destellarCambio(el) {
         if (!el) return;
         el.classList.remove('mp-cambio-destello');
@@ -269,6 +277,26 @@
         }
     }
 
+    function fmtOrdenCompraCell(r) {
+        if (r.orden_compra) {
+            if (r.orden_compra === 'Pendiente') {
+                const title = r.id_orden_compra ? 'OC emitida (ID ' + r.id_orden_compra + ')' : 'OC emitida';
+                return '<span class="text-warning" title="' + title + '">Pendiente</span>';
+            }
+            return '<span class="font-monospace">' + escapeHtml(String(r.orden_compra)) + '</span>';
+        }
+        if (r.ocompra && r.es_ganador_grupo) {
+            return '<span class="font-monospace">' + escapeHtml(String(r.ocompra)) + '</span>';
+        }
+        return '—';
+    }
+
+    function actualizarCeldaOrdenCompra(row, r) {
+        const ocCell = row.querySelector('.cell-oc');
+        if (!ocCell) return;
+        ocCell.innerHTML = fmtOrdenCompraCell(r);
+    }
+
     function actualizarFilaTablaComun(row, nronota, r) {
         if (!row) return;
 
@@ -309,6 +337,7 @@
         }
 
         actualizarAccionesFila(row, nronota, r);
+        actualizarCeldaOrdenCompra(row, r);
 
         if (r.cambio) {
             row.classList.add('table-info');
@@ -352,8 +381,8 @@
         }
 
         const ocCell = row.querySelector('.cell-oc');
-        if (ocCell && r.id_orden_compra) {
-            ocCell.textContent = String(r.id_orden_compra);
+        if (ocCell) {
+            ocCell.innerHTML = fmtOrdenCompraCell(r);
         }
 
         const consultadoCell = row.querySelector('.cell-consultado');
@@ -707,7 +736,7 @@
             const s = data.seguimiento;
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
-                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.id_orden_compra ? '<br>OC: <strong>' + s.id_orden_compra + '</strong>' : ''}</p>`;
+                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.orden_compra ? '<br>Orden compra: <strong class="font-monospace">' + escapeHtml(String(s.orden_compra)) + '</strong>' : ''}</p>`;
 
             const tieneFechas = s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion;
             if (tieneFechas) {

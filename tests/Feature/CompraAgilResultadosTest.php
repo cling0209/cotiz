@@ -1098,6 +1098,122 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_incluye_oc_emitida_sin_ocompra_aunque_finalizado_y_consultada_hoy(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.empresa_rut' => '76.356.855-5',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 15:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 705,
+            'descripcion' => 'OC emitida sin ocompra',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '705-1-COT26',
+            'ocompra' => '',
+            'nota_softland' => 70500,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 705,
+            'codigo_proceso' => '705-1-COT26',
+            'estado_mp_codigo' => 'oc_emitida',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'id_orden_compra' => 55258095,
+            'rut_ganador' => '76356855-5',
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 10:30:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(705, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_oc_emitida_no_finaliza_seguimiento_sin_ocompra_cuando_ganamos(): void
+    {
+        config([
+            'cotiz.empresa_rut' => '76.356.855-5',
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.mercadopublico.codigo_proveedor_por_rut' => [
+                '763568555' => '1417881',
+            ],
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+        $nota = Nota::query()->create([
+            'nronota' => 506,
+            'descripcion' => 'OC emitida Reicol sin AG',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente test',
+            'encargado' => '1411-882-COT26',
+            'ocompra' => '',
+            'nota_softland' => 50600,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/1411-882-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '1411-882-COT26',
+                    'estado' => ['codigo' => 'oc_emitida', 'glosa' => 'OC emitida'],
+                    'id_orden_compra' => 55258095,
+                    'institucion' => ['organismo_comprador' => 'Municipalidad'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-03-20 16:19',
+                        'fecha_cierre' => '2026-03-25 09:00',
+                        'fecha_ultimo_cambio' => '2026-03-25 11:00',
+                    ],
+                    'proveedores_cotizando' => [
+                        [
+                            'rut_proveedor' => '76.356.855-5',
+                            'razon_social' => 'COMERCIALIZADORA REICOL SPA',
+                            'proveedor_seleccionado' => 1,
+                            'activo' => 1,
+                            'id_oc' => 55258095,
+                            'monto_total' => 120000,
+                            'productos_cotizados' => [],
+                        ],
+                    ],
+                ],
+            ]),
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 0,
+                'Listado' => [],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.iniciar'))
+            ->assertOk();
+
+        $this->assertDatabaseHas('nota_mp_seguimientos', [
+            'nronota' => $nota->nronota,
+            'estado_mp_codigo' => 'oc_emitida',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => false,
+            'id_orden_compra' => 55258095,
+        ]);
+
+        $this->assertDatabaseHas('notas', [
+            'nronota' => $nota->nronota,
+            'ocompra' => '',
+        ]);
+    }
+
     public function test_pendientes_incluye_consultadas_hoy_si_skip_desactivado(): void
     {
         config([

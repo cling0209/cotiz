@@ -75,6 +75,52 @@ class NotaMpSeguimiento extends Model
         return $this->ultimo_consultado_en->format('d/m/Y H:i').' ('.$usuario.')';
     }
 
+    /** Ganador Reicol o Romulo (grupo), según RUTs configurados en cotiz.php. */
+    public function etiquetaGanadorGrupo(): ?string
+    {
+        $rut = trim((string) ($this->rut_ganador ?? ''));
+        if ($rut === '') {
+            return null;
+        }
+
+        return app(\App\Services\NotaMpResultadosService::class)->etiquetaGanadorPorRut($rut);
+    }
+
+    public function esGanadorGrupo(): bool
+    {
+        return $this->etiquetaGanadorGrupo() !== null;
+    }
+
+    /**
+     * Código AG en notas.ocompra (ej. 1411-2423-AG26) solo si ganó Reicol o Romulo.
+     * «Pendiente» si MP ya emitió OC numérica pero falta el código alfanumérico.
+     */
+    public function textoOrdenCompraMp(): string
+    {
+        if (! $this->esGanadorGrupo()) {
+            return '—';
+        }
+
+        $ocompra = trim((string) ($this->nota?->ocompra ?? ''));
+        if ($ocompra !== '') {
+            return $ocompra;
+        }
+
+        if ($this->id_orden_compra) {
+            return 'Pendiente';
+        }
+
+        return '—';
+    }
+
+    /** Valor para exportación CSV (vacío si no aplica). */
+    public function valorOrdenCompraExport(): string
+    {
+        $texto = $this->textoOrdenCompraMp();
+
+        return $texto === '—' ? '' : $texto;
+    }
+
     public function scopeWhereFinalizado(Builder $query): Builder
     {
         return $query->whereRaw('finalizado IS TRUE');

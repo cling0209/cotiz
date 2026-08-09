@@ -138,7 +138,7 @@ class CompraAgilResultadosController extends Controller
                 'Cliente',
                 'Consultado',
                 'Propio',
-                'OC',
+                'Orden compra',
             ], ';');
             foreach ($todas as $seg) {
                 fputcsv($out, [
@@ -161,7 +161,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->nota?->empresa,
                     $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
-                    $seg->id_orden_compra,
+                    $seg->valorOrdenCompraExport(),
                 ], ';');
             }
             fclose($out);
@@ -198,7 +198,7 @@ class CompraAgilResultadosController extends Controller
                 'Cliente',
                 'Consultado',
                 'Propio',
-                'OC',
+                'Orden compra',
             ], ';');
             foreach ($pendientes as $seg) {
                 fputcsv($out, [
@@ -220,7 +220,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->nota?->empresa,
                     $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
-                    $seg->id_orden_compra,
+                    $seg->valorOrdenCompraExport(),
                 ], ';');
             }
             fclose($out);
@@ -257,7 +257,7 @@ class CompraAgilResultadosController extends Controller
                 'Cliente',
                 'Consultado',
                 'Propio',
-                'OC',
+                'Orden compra',
             ], ';');
             foreach ($items as $seg) {
                 fputcsv($out, [
@@ -279,7 +279,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->nota?->empresa,
                     $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
-                    $seg->id_orden_compra,
+                    $seg->valorOrdenCompraExport(),
                 ], ';');
             }
             fclose($out);
@@ -342,7 +342,7 @@ class CompraAgilResultadosController extends Controller
                 'Cliente',
                 'Consultado',
                 'Propio',
-                'OC',
+                'Orden compra',
             ], ';');
             foreach ($cerradas as $seg) {
                 fputcsv($out, [
@@ -365,7 +365,7 @@ class CompraAgilResultadosController extends Controller
                     $seg->nota?->empresa,
                     $seg->textoConsultado(''),
                     ! empty($seg->es_ganador_propio) ? 'Sí' : 'No',
-                    $seg->id_orden_compra,
+                    $seg->valorOrdenCompraExport(),
                 ], ';');
             }
             fclose($out);
@@ -596,6 +596,9 @@ class CompraAgilResultadosController extends Controller
                 'finalizado' => $seg->finalizado,
                 'monto_total_ganador' => $seg->monto_total_ganador,
                 'id_orden_compra' => $seg->id_orden_compra,
+                'ocompra' => trim((string) ($seg->nota?->ocompra ?? '')) ?: null,
+                'orden_compra' => $seg->valorOrdenCompraExport() ?: null,
+                'es_ganador_grupo' => $seg->esGanadorGrupo(),
                 'fecha_publicacion' => $seg->fecha_publicacion?->toIso8601String(),
                 'fecha_cierre' => $seg->fecha_cierre?->toIso8601String(),
                 'fecha_ultimo_cambio' => $seg->fecha_ultimo_cambio?->toIso8601String(),

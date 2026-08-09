@@ -111,6 +111,7 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.cerradas'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'proveedor', 'label' => 'Prov. seleccionado', 'route' => 'admin.compra-agil.resultados.cerradas'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'monto', 'label' => 'Monto', 'route' => 'admin.compra-agil.resultados.cerradas', 'align' => 'text-end'])
+                        <th>Orden compra</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'consultado', 'label' => 'Consultado', 'route' => 'admin.compra-agil.resultados.cerradas'])
                         <th></th>
                     </tr>
@@ -151,6 +152,7 @@
                                     —
                                 @endif
                             </td>
+                            <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $seg])</td>
                             <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap">
                                 <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
@@ -158,7 +160,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="15" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
+                        <tr><td colspan="16" class="text-center text-muted py-4">Sin resultados para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>

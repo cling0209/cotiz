@@ -158,7 +158,7 @@
                         <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
-                        <th>OC</th>
+                        <th>Orden compra</th>
                         <th>Consultado</th>
                         <th></th>
                     </tr>
@@ -208,7 +208,7 @@
                                     —
                                 @endif
                             </td>
-                            <td class="small cell-oc">{{ $nov->seguimiento?->id_orden_compra ?: '—' }}</td>
+                            <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $nov->seguimiento])</td>
                             <td class="small text-muted cell-consultado">{{ $nov->seguimiento?->textoConsultado() ?? '—' }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)

@@ -113,6 +113,7 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'proveedor', 'label' => 'Prov. seleccionado', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'monto', 'label' => 'Monto', 'route' => 'admin.compra-agil.resultados.segundo-llamado', 'align' => 'text-end'])
+                        <th>Orden compra</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'consultado', 'label' => 'Consultado', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         <th></th>
                     </tr>
@@ -154,6 +155,7 @@
                                     —
                                 @endif
                             </td>
+                            <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $seg])</td>
                             <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if($apiConfigurada)
@@ -171,7 +173,7 @@
                             </td>
                         </tr>
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $seg->nronota }}">
-                            <td colspan="15" class="py-2 bg-light">
+                            <td colspan="16" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">
                                     <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
                                 </div>
@@ -179,7 +181,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="15" class="text-center text-muted py-4">No hay cotizaciones en segundo llamado para postular.</td></tr>
+                        <tr><td colspan="16" class="text-center text-muted py-4">No hay cotizaciones en segundo llamado para postular.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -133,6 +133,7 @@
                         <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
+                        <th>Orden compra</th>
                         <th>Consultado</th>
                         <th></th>
                     </tr>
@@ -174,6 +175,7 @@
                                     —
                                 @endif
                             </td>
+                            <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $seg])</td>
                             <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap cell-acciones">
                                 @if($apiConfigurada)
@@ -193,7 +195,7 @@
                             </td>
                         </tr>
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $seg->nronota }}">
-                            <td colspan="15" class="py-2 bg-light">
+                            <td colspan="16" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">
                                     <div class="progress-bar consulta-mp-progress-bar" role="progressbar" style="width: 0%"></div>
                                 </div>
@@ -201,7 +203,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="15" class="text-center text-muted py-4">No hay cotizaciones con código Compra Ágil para los filtros aplicados.</td></tr>
+                        <tr><td colspan="16" class="text-center text-muted py-4">No hay cotizaciones con código Compra Ágil para los filtros aplicados.</td></tr>
                     @endforelse
                 </tbody>
             </table>

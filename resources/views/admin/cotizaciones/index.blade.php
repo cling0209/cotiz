@@ -138,10 +138,10 @@
                         <th>Cotizaci&oacute;n</th>
                         <th>Usuario</th>
                         <th>Estado</th>
-                        @if($puedeVerEstadoMp ?? false)
-                            <th>Estado MP</th>
-                            <th>Ganador propio</th>
-                        @endif
+                            @if($puedeVerEstadoMp ?? false)
+                                <th>Estado MP</th>
+                                <th>Ganador / OC</th>
+                            @endif
                         <th class="text-end" style="min-width:18rem">Acciones</th>
                     </tr>
                 </thead>
@@ -156,6 +156,8 @@
                             $esSegundoLlamado = in_array((int) $nota->nronota, $nronotasSegundoLlamado, true);
                             $estadoMp = $nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar';
                             $esGanadorPropio = $estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio);
+                            $esGanadorGrupo = $nota->mpSeguimiento?->esGanadorGrupo() ?? false;
+                            $textoOcMp = $nota->mpSeguimiento?->textoOrdenCompraMp() ?? '—';
                         @endphp
                         <tr @class([
                             'table-warning fila-segundo-llamado' => $esSegundoLlamado,
@@ -201,8 +203,20 @@
                             @if($puedeVerEstadoMp ?? false)
                                 <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
                                 <td>
-                                    @if($esGanadorPropio)
-                                        <span class="badge text-bg-success badge-ganador-propio-destello">Ganador propio</span>
+                                    @if($esGanadorGrupo)
+                                        <span class="badge text-bg-success{{ $esGanadorPropio ? ' badge-ganador-propio-destello' : '' }}">
+                                            Ganador {{ $nota->mpSeguimiento->etiquetaGanadorGrupo() }}
+                                        </span>
+                                        @if($textoOcMp !== '—')
+                                            <div class="small mt-1">
+                                                OC:
+                                                @if($textoOcMp === 'Pendiente')
+                                                    <span class="text-warning">Pendiente</span>
+                                                @else
+                                                    <span class="font-monospace">{{ $textoOcMp }}</span>
+                                                @endif
+                                            </div>
+                                        @endif
                                     @else
                                         <span class="text-muted">&mdash;</span>
                                     @endif

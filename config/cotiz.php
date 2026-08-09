@@ -151,7 +151,7 @@ return [
         // Código proveedor MP (CodigoProveedor) para listar OC v1 por fecha — clave RUT normalizado.
         'codigo_proveedor_por_rut' => [
             '76185139K' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_ROMULO', '1276139'),
-            '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', ''),
+            '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', '1417881'),
         ],
         'regiones' => array_values(array_filter(array_map(
             'intval',
