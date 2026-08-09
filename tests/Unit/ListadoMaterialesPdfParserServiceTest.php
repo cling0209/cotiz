@@ -509,6 +509,20 @@ TXT;
         $this->assertStringContainsStringIgnoringCase('CUADERNO UNIVERSITARIO', $lineas[8]['descripcion']);
     }
 
+    public function test_parse_lapiz_pasta_cantidad_empaque_sin_unidades_en_descripcion(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_ocr_truncado.txt');
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $rojo = collect($lineas)->first(
+            fn (array $l) => str_contains(mb_strtoupper($l['descripcion']), 'LAPIZ PASTA ARTEL PTA ROJO'),
+        );
+
+        $this->assertNotNull($rojo);
+        $this->assertSame(1, $rojo['cantidad']);
+    }
+
     public function test_elegir_mejor_texto_pdf_prefiere_ocr_con_mas_filas(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'elegirMejorTextoPdfTablaProducto');

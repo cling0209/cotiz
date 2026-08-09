@@ -1166,6 +1166,13 @@ class ListadoMaterialesPdfParserService
             $descripcion = trim(preg_replace('/^\d+\s+/u', '', $descripcion) ?? $descripcion);
         }
 
+        // OCR truncado: cantidad del empaque (50) sin "50 UNIDADES" en la descripción.
+        if ($cantidad >= 10
+            && preg_match('/\bLAPIZ\s+PASTA\b/iu', $descripcion) === 1
+            && preg_match('/\bPTA\b/iu', $descripcion) === 1) {
+            $fila['cantidad'] = 1;
+        }
+
         $fila['descripcion'] = $descripcion;
 
         return $fila;
