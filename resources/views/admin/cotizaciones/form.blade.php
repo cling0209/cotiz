@@ -170,7 +170,7 @@
         @unless($desdeAdjudicadas)
             <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
-                    <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil
+                    <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil 2.0
                 </button>
                 <span class="small text-muted" id="cotiz-resumen-lineas-actual">
                     {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
@@ -391,7 +391,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h2 class="modal-title fs-6" id="modal-importar-compra-agil-label">Importar desde Compra &Aacute;gil</h2>
+                    <h2 class="modal-title fs-6" id="modal-importar-compra-agil-label">Importar desde Compra &Aacute;gil 2.0</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-2">
