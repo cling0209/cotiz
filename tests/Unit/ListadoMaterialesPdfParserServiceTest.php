@@ -599,6 +599,50 @@ TXT;
         ));
     }
 
+    public function test_detecta_solicitud_pedido_aunque_incluya_especificaciones_tecnicas(): void
+    {
+        $texto = $this->cargarFixture('solicitud_pedido_con_eett.txt');
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+        $this->assertGreaterThanOrEqual(3, count($this->parser->parseTexto($texto)));
+    }
+
+    public function test_debe_complementar_ocr_en_solicitud_pedido_pagina_unica_incompleta(): void
+    {
+        $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'debeComplementarTextoPdfConOcr');
+        $metodo->setAccessible(true);
+
+        $texto = $this->cargarFixture('solicitud_pedido_native_parcial.txt');
+        $pdf = sys_get_temp_dir().DIRECTORY_SEPARATOR.'cotiz-test-solicitud.pdf';
+        file_put_contents($pdf, '%PDF-1.4 test');
+
+        try {
+            $debe = $metodo->invoke($this->parser, $pdf, $texto);
+        } finally {
+            @unlink($pdf);
+        }
+
+        if (! (new PdfOcrService)->estaDisponible()) {
+            $this->markTestSkipped('tesseract/pdftoppm no disponibles.');
+        }
+
+        $this->assertTrue($debe);
+    }
+
+    public function test_limpia_cantidad_duplicada_en_descripcion_perforadora(): void
+    {
+        $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'limpiarCantidadDuplicadaEnDescripcion');
+        $metodo->setAccessible(true);
+
+        $fila = $metodo->invoke($this->parser, [
+            'cantidad' => 3,
+            'descripcion' => 'PERFORADORA GRANDE 3',
+        ]);
+
+        $this->assertSame('PERFORADORA GRANDE', $fila['descripcion']);
+        $this->assertSame(3, $fila['cantidad']);
+    }
+
     public function test_inferir_paginas_desde_marcadores_en_texto(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'inferirPaginasDesdeTexto');

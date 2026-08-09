@@ -746,20 +746,24 @@ class ListadoMaterialesPdfParserService
 
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($elegido));
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($elegido));
-        if (! $this->esFormatoTablaProductoCantidad($upper)) {
+        $esSolicitudPedido = $this->esSolicitudPedidoDocumento($elegido);
+        if (! $this->esFormatoTablaProductoCantidad($upper) && ! $esSolicitudPedido) {
             return $elegido;
         }
 
         $lineas = count($this->parseTablaProductoCantidad($elegido));
-        if ($lineas >= max(12, (int) floor($paginas * 6))) {
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($elegido, $paginas);
+        if ($lineas >= $minEsperadas) {
             return $elegido;
         }
 
         try {
             $textoCrop = $this->extraerTextoPdfMedianteOcr($path, true);
             $mejor = $this->elegirMejorTextoPdfTablaProducto($elegido, $textoCrop);
-            if ($textoNativo !== null && $textoNativo !== $elegido) {
-                return $this->elegirMejorTextoPdfTablaProducto($textoNativo, $mejor);
+            if ($textoNativo !== null) {
+                $combinadoNativo = $this->elegirMejorTextoPdfTablaProducto($textoNativo, $mejor);
+
+                return $this->elegirMejorTextoPdfTablaProducto($combinadoNativo, $textoOcr);
             }
 
             return $mejor;
@@ -816,10 +820,28 @@ class ListadoMaterialesPdfParserService
         return 1;
     }
 
+    private function esSolicitudPedidoDocumento(string $texto): bool
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+
+        return preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1;
+    }
+
+    private function minLineasEsperadasTablaProducto(string $texto, int $paginas): int
+    {
+        if ($this->esSolicitudPedidoDocumento($texto)) {
+            return 9;
+        }
+
+        return max(12, (int) floor($paginas * 6));
+    }
+
     private function debeComplementarTextoPdfConOcr(string $path, string $textoNativo): bool
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($textoNativo));
-        if (! $this->esFormatoTablaProductoCantidad($upper)) {
+        $esSolicitudPedido = $this->esSolicitudPedidoDocumento($textoNativo);
+
+        if (! $this->esFormatoTablaProductoCantidad($upper) && ! $esSolicitudPedido) {
             return false;
         }
 
@@ -828,16 +850,20 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
+        $lineas = count($this->parseTablaProductoCantidad($textoNativo));
         $paginas = max(
             $this->contarPaginasPdf($path),
             $this->inferirPaginasDesdeTexto($textoNativo),
         );
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($textoNativo, $paginas);
+
+        if ($esSolicitudPedido) {
+            return $lineas < $minEsperadas;
+        }
+
         if ($paginas < 2) {
             return false;
         }
-
-        $lineas = count($this->parseTablaProductoCantidad($textoNativo));
-        $minEsperadas = max(12, (int) floor($paginas * 6));
 
         return $lineas < $minEsperadas;
     }
@@ -888,10 +914,11 @@ class ListadoMaterialesPdfParserService
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esFormatoTablaProductoCantidad($upper);
+        $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
-        $minEsperadas = max(12, (int) floor($paginas * 6));
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
 
-        if (! $esTabla && count($lineasTexto) >= $minEsperadas) {
+        if (! $esTabla && ! $esSolicitudPedido && count($lineasTexto) >= $minEsperadas) {
             return $lineasTexto;
         }
 
@@ -901,7 +928,7 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $lineasTexto;
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
         }
 
         try {
@@ -912,45 +939,47 @@ class ListadoMaterialesPdfParserService
                 'lineas_texto' => count($lineasTexto),
             ]);
 
-            return $lineasTexto;
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
         }
 
         if ($lineasPaddle === []) {
-            return $lineasTexto;
+            return $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto);
         }
 
-        if (count($lineasPaddle) > count($lineasTexto)) {
-            Log::info('Import PDF: PaddleOCR aportó más filas que Tesseract', [
-                'paddle' => count($lineasPaddle),
-                'texto' => count($lineasTexto),
-            ]);
-
-            return $this->finalizarLineasTablaSolicitudPedido(
-                $texto,
-                $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto)),
-            );
+        $fusionadas = $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle));
+        $lineasDesdeTextoPaddle = $this->parseTexto($this->textoDesdeLineasTabla($lineasPaddle, $texto));
+        if (count($lineasDesdeTextoPaddle) > count($fusionadas)) {
+            $fusionadas = $this->deduplicarLineasTabla(array_merge($fusionadas, $lineasDesdeTextoPaddle));
         }
 
-        if (count($lineasTexto) > count($lineasPaddle)) {
-            Log::info('Import PDF: texto/Tesseract aportó más filas que PaddleOCR', [
-                'texto' => count($lineasTexto),
-                'paddle' => count($lineasPaddle),
-            ]);
-
-            return $this->finalizarLineasTablaSolicitudPedido(
-                $texto,
-                $this->deduplicarLineasTabla(array_merge($lineasTexto, $lineasPaddle)),
-            );
-        }
-
-        Log::info('Import PDF: PaddleOCR y Tesseract con mismas filas; se combinan', [
-            'filas' => count($lineasPaddle),
+        Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
+            'texto' => count($lineasTexto),
+            'paddle' => count($lineasPaddle),
+            'fusion' => count($fusionadas),
+            'min_esperadas' => $minEsperadas,
         ]);
 
-        return $this->finalizarLineasTablaSolicitudPedido(
-            $texto,
-            $this->deduplicarLineasTabla(array_merge($lineasPaddle, $lineasTexto)),
+        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas);
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     */
+    private function textoDesdeLineasTabla(array $lineas, string $textoBase): string
+    {
+        $cabecera = 'ESPECIFICACIONES SOLICITUD DE PEDIDO';
+        if ($this->esSolicitudPedidoDocumento($textoBase)) {
+            if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO[^\n]*/iu', $textoBase, $coincidencia) === 1) {
+                $cabecera = trim($coincidencia[0]);
+            }
+        }
+
+        $filas = array_map(
+            static fn (array $fila): string => trim($fila['descripcion'].' '.$fila['cantidad']),
+            $lineas,
         );
+
+        return trim($cabecera."\nPRODUCTO CANTIDAD IMAGEN REFERENCIA\n".implode("\n", $filas));
     }
 
     /**
@@ -975,16 +1004,16 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
+        if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1) {
+            return true;
+        }
+
         if (
             str_contains($upper, 'ESPECIFICACIONES TECNICAS')
             || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
             || str_contains($upper, 'CANTIDAD DETALLE DEL REQUERIMIENTO')
         ) {
             return false;
-        }
-
-        if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1) {
-            return true;
         }
 
         if (preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1) {
@@ -1180,6 +1209,7 @@ class ListadoMaterialesPdfParserService
         }
 
         for ($i = 0; $i < count($reparado); $i++) {
+            $reparado[$i] = $this->limpiarCantidadDuplicadaEnDescripcion($reparado[$i]);
             $desc = $reparado[$i]['descripcion'];
 
             if (preg_match('/^LAPICES DE CERA JUMBO 12$/iu', $desc) === 1) {
@@ -1207,6 +1237,11 @@ class ListadoMaterialesPdfParserService
             'LAPIZ PASTA ARTEL PTA AZUL' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+AZUL/iu',
             'LAPIZ PASTA ARTEL PTA ROJO' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+ROJO/iu',
             'RESMA OFICIO' => '/RESMA\s+OFICIO/iu',
+            'RESMA CARTA' => '/RESMA\s+CARTA/iu',
+            'CUADERNO UNIVERSITARIO' => '/CUADERNO\s+UNIVERSITARIO/iu',
+            'CORCHETERA' => '/CORCHETERA/iu',
+            'PERFORADORA' => '/PERFORADORA/iu',
+            'CINTA DOBLE CONTACTO' => '/CINTA\s+DOBLE\s+CONTACTO/iu',
         ];
 
         foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
@@ -1266,6 +1301,33 @@ class ListadoMaterialesPdfParserService
         }
 
         return trim($descripcion);
+    }
+
+    /**
+     * @param  array{cantidad: int, descripcion: string}  $fila
+     * @return array{cantidad: int, descripcion: string}
+     */
+    private function limpiarCantidadDuplicadaEnDescripcion(array $fila): array
+    {
+        $descripcion = trim($fila['descripcion']);
+        $cantidad = $fila['cantidad'];
+
+        if (preg_match('/^(.+?)\s+(\d{1,5})$/u', $descripcion, $coincidencia) !== 1) {
+            return $fila;
+        }
+
+        if ((int) $coincidencia[2] !== $cantidad) {
+            return $fila;
+        }
+
+        $base = trim($coincidencia[1]);
+        if ($base === '' || preg_match('/\b(\d+\s+UNIDADES|\d+\s+HOJAS|MM|MTS|PACK)\b/iu', $base) === 1) {
+            return $fila;
+        }
+
+        $fila['descripcion'] = $base;
+
+        return $fila;
     }
 
     /**
