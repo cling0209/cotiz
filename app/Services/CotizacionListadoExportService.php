@@ -361,11 +361,11 @@ class CotizacionListadoExportService
                     $row->celular,
                     $row->contacto,
                     $row->contactocorreo,
-                    $row->rutempresa,
+                    $this->rutEmpresaSinFormato($row->rutempresa),
                     $row->diashabiles,
                     $row->ocompra,
                     $row->fechaentrega ? date('d/m/Y', strtotime((string) $row->fechaentrega)) : '',
-                    $row->descripcion,
+                    $this->descripcionOrdenCompraExport($row->descripcion),
                     $row->usuario,
                     trim((string) $row->nombre_usuario),
                     $row->prod_item,
@@ -380,5 +380,29 @@ class CotizacionListadoExportService
         }, $nombre, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    private function rutEmpresaSinFormato(mixed $rut): string
+    {
+        $valor = trim((string) ($rut ?? ''));
+        if ($valor === '') {
+            return '';
+        }
+
+        return preg_replace('/[^0-9kK]/', '', str_replace('.', '', $valor)) ?? '';
+    }
+
+    private function descripcionOrdenCompraExport(mixed $descripcion): string
+    {
+        $valor = trim((string) ($descripcion ?? ''));
+        if ($valor === '') {
+            return '';
+        }
+
+        if (preg_match('/^O\/C\s*/i', $valor) === 1) {
+            return $valor;
+        }
+
+        return 'O/C '.$valor;
     }
 }

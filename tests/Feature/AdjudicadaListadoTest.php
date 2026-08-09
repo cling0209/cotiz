@@ -82,6 +82,8 @@ class AdjudicadaListadoTest extends TestCase
             'estado' => 'aceptada',
             'fechaentrega' => '2026-06-12',
             'encargado' => 'COT-301',
+            'descripcion' => '123-333-COT26',
+            'rutempresa' => '76.356.855-5',
         ]);
 
         NotaDetalle::query()->create([
@@ -99,7 +101,40 @@ class AdjudicadaListadoTest extends TestCase
 
         $response->assertOk();
         $this->assertStringContainsString('text/csv', (string) $response->headers->get('Content-Type'));
-        $this->assertStringContainsString('PROD301', $response->streamedContent());
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('PROD301', $content);
+        $this->assertStringContainsString('O/C 123-333-COT26', $content);
+        $this->assertStringContainsString('76356855', $content);
+        $this->assertStringNotContainsString('76.356.855-5', $content);
+    }
+
+    public function test_export_detalle_no_duplica_prefijo_oc_en_descripcion(): void
+    {
+        $nota = $this->crearNota([
+            'nronota' => 302,
+            'estado' => 'aceptada',
+            'fechaentrega' => '2026-06-12',
+            'encargado' => 'COT-302',
+            'descripcion' => 'O/C 999-888-COT26',
+        ]);
+
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'PROD302',
+            'prod_valor' => 500,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 400,
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.adjudicadas.export.detalle', ['nronota' => 302]));
+
+        $response->assertOk();
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('O/C 999-888-COT26', $content);
+        $this->assertStringNotContainsString('O/C O/C', $content);
     }
 
     public function test_ver_cotizacion_desde_adjudicadas_oculta_controles_edicion(): void
