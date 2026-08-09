@@ -757,6 +757,19 @@ TXT;
             str_contains(mb_strtoupper($temperaSolida['descripcion']), 'COLA FR'),
             'Témpera sólida no debe incluir cola fría',
         );
+
+        $cuadernoCuarta = $buscar($lineas, 'CUADERNO CUARTA');
+        $blockDibujo = $buscar($lineas, 'BLOCK DE DIBUJO MEDIUM');
+        $marcadoresJumbo = $buscar($lineas, 'MARCADORES JUMBO');
+
+        $this->assertNotNull($cuadernoCuarta);
+        $this->assertStringContainsString('7MM PACK 6 UNIDADES', mb_strtoupper($cuadernoCuarta['descripcion']));
+        // OCR sin celdas puede no leer la columna CANTIDAD; no tomar ruido imagen ("e. 3").
+        $this->assertNotSame(3, $cuadernoCuarta['cantidad']);
+        $this->assertNotNull($blockDibujo);
+        $this->assertSame(5, $blockDibujo['cantidad']);
+        $this->assertNotNull($marcadoresJumbo);
+        $this->assertSame(10, $marcadoresJumbo['cantidad']);
     }
 
     public function test_parse_vps_ocr_real_fusiona_colores_misma_celda_marcadores_jumbo(): void

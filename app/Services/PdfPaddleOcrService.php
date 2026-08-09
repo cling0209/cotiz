@@ -33,7 +33,7 @@ class PdfPaddleOcrService
     }
 
     /**
-     * @return array<int, array{cantidad: int, descripcion: string}>
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
      */
     public function extraerLineasTabla(string $pdfPath): array
     {
@@ -46,15 +46,92 @@ class PdfPaddleOcrService
             throw new RuntimeException('PaddleOCR no configurado (COTIZ_PADDLEOCR_URL).');
         }
 
+        $pdfBytes = (string) file_get_contents($pdfPath);
+        $nombre = basename($pdfPath) !== '' ? basename($pdfPath) : 'documento.pdf';
         $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
+        $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
 
-        $response = Http::timeout($timeout)
-            ->attach(
-                'pdf',
-                (string) file_get_contents($pdfPath),
-                basename($pdfPath) !== '' ? basename($pdfPath) : 'documento.pdf',
-            )
-            ->post($url.'/extract-tabla');
+        try {
+            $lineas = $this->solicitarLineasPaddle($url, $pdfBytes, $nombre, $timeout);
+
+            if ($lineas !== []) {
+                return $lineas;
+            }
+        } catch (\Throwable) {
+            // Fallback página a página (menor RAM en sidecar).
+        }
+
+        return $this->extraerLineasTablaPorPagina($url, $pdfBytes, $nombre, $timeout, $maxPaginas);
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
+     */
+    private function extraerLineasTablaPorPagina(
+        string $url,
+        string $pdfBytes,
+        string $nombre,
+        int $timeout,
+        int $maxPaginas,
+    ): array {
+        $todas = [];
+
+        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
+            $lineas = $this->solicitarLineasPaddle(
+                $url,
+                $pdfBytes,
+                $nombre,
+                $timeout,
+                $pagina,
+                $pagina,
+            );
+
+            if ($lineas === []) {
+                if ($pagina === 1) {
+                    break;
+                }
+
+                break;
+            }
+
+            foreach ($lineas as $fila) {
+                $fila['pagina'] = $pagina;
+                $todas[] = $fila;
+            }
+        }
+
+        if ($todas === []) {
+            throw new RuntimeException('PaddleOCR no pudo procesar el PDF.');
+        }
+
+        return $todas;
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
+     */
+    private function solicitarLineasPaddle(
+        string $url,
+        string $pdfBytes,
+        string $nombre,
+        int $timeout,
+        ?int $firstPage = null,
+        ?int $lastPage = null,
+    ): array {
+        $request = Http::timeout($timeout)
+            ->attach('pdf', $pdfBytes, $nombre);
+
+        $payload = [];
+        if ($firstPage !== null) {
+            $payload['first_page'] = $firstPage;
+        }
+        if ($lastPage !== null) {
+            $payload['last_page'] = $lastPage;
+        }
+
+        $response = $payload === []
+            ? $request->post($url.'/extract-tabla')
+            : $request->post($url.'/extract-tabla', $payload);
 
         if (! $response->successful()) {
             $detalle = trim((string) ($response->json('detail') ?? $response->body()));
@@ -69,7 +146,17 @@ class PdfPaddleOcrService
             throw new RuntimeException('PaddleOCR devolvió una respuesta inválida.');
         }
 
+        return $this->normalizarLineasPaddle($lineas);
+    }
+
+    /**
+     * @param  array<int, mixed>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
+     */
+    private function normalizarLineasPaddle(array $lineas): array
+    {
         $normalizadas = [];
+
         foreach ($lineas as $fila) {
             if (! is_array($fila)) {
                 continue;
@@ -81,6 +168,7 @@ class PdfPaddleOcrService
             $normalizadas[] = [
                 'cantidad' => max(1, (int) ($fila['cantidad'] ?? 1)),
                 'descripcion' => $descripcion,
+                ...(isset($fila['pagina']) ? ['pagina' => max(1, (int) $fila['pagina'])] : []),
             ];
         }
 

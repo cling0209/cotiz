@@ -1386,8 +1386,9 @@ class ListadoMaterialesPdfParserService
         $countTexto = count($lineasTexto);
         $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle);
 
-        // Tabla materiales + Paddle: confiar en celdas (evita 97+148 mezclados).
+        // Tabla materiales: Paddle (celdas) es la fuente de verdad; OCR solo si Paddle no alcanza.
         $paddlePrimario = ($esTablaMateriales && $countPaddle >= 10)
+            || ($esTablaMateriales && $countPaddle >= max(1, (int) floor($countTexto * 0.5)))
             || $countPaddle >= $minEsperadas
             || ($esSolicitudPedido && $countPaddle >= max($minEsperadas, (int) floor($countTexto * 0.85)));
 
@@ -1523,10 +1524,14 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            $reparado[] = [
+            $limpia = [
                 'cantidad' => $fila['cantidad'],
                 'descripcion' => $descripcion,
             ];
+            if (isset($fila['pagina'])) {
+                $limpia['pagina'] = max(1, (int) $fila['pagina']);
+            }
+            $reparado[] = $limpia;
         }
 
         for ($i = 0; $i < count($reparado); $i++) {
@@ -1926,6 +1931,16 @@ class ListadoMaterialesPdfParserService
         $texto = preg_replace(
             '/^(CINTA DOBLE CONTACTO 18MM X)\s+15\s*\R\s*(13,7MTS)\s+\d+\s*$/mu',
             '$1 $2 15',
+            $texto,
+        ) ?? $texto;
+
+        // Descartar ruido típico de columna imagen al final de línea OCR (ej. "e. 3").
+        $texto = preg_replace('/\s+e\.\s*\d+\s*$/mu', '', $texto) ?? $texto;
+
+        // Celda producto partida: cantidad al final de línea 1 + continuación en línea 2 (sin nombre de producto).
+        $texto = preg_replace(
+            '/^(.{12,}?)\s+(\d{1,4})\s*[—–-]\s*\R\s*((?:\d+\/\d+\s+)?\d*\s*HOJAS\b[^\n\r]*)/mu',
+            '$1 $3 $2',
             $texto,
         ) ?? $texto;
 
@@ -3123,7 +3138,7 @@ class ListadoMaterialesPdfParserService
         $indiceCantidad = null;
 
         foreach ($partes as $indice => $celda) {
-            if ($this->parseCantidadCeldaTabla($celda) !== null && mb_strlen($celda) <= 16) {
+            if ($this->parseCantidadCeldaTabla($celda) !== null && mb_strlen($celda) <= 40) {
                 $indiceCantidad = $indice;
 
                 break;
@@ -3316,6 +3331,10 @@ class ListadoMaterialesPdfParserService
                 return null;
             }
 
+            if ($this->esRuidoCantidadColumnaImagen($coincidencia[2], $linea)) {
+                return null;
+            }
+
             return $this->corregirCantidadEmpaqueConfundida([
                 'cantidad' => max(1, (int) $coincidencia[2]),
                 'descripcion' => $descripcion,
@@ -3337,10 +3356,31 @@ class ListadoMaterialesPdfParserService
         ) === 1;
     }
 
+    /**
+     * Ruido OCR de columna imagen (ej. "e. 3") — no es cantidad pedido.
+     */
+    private function esRuidoCantidadColumnaImagen(string $cantidadRaw, string $lineaContexto = ''): bool
+    {
+        $cantidadRaw = trim($cantidadRaw);
+        if ($cantidadRaw === '') {
+            return true;
+        }
+
+        if (preg_match('/^[a-záéíóú]{1,2}\.?\s*\d{1,5}\.?$/iu', $cantidadRaw) === 1) {
+            return true;
+        }
+
+        if ($lineaContexto !== '' && preg_match('/\s+[a-záéíóú]{1,2}\.\s*\d{1,5}\s*$/iu', $lineaContexto) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
     private function parseCantidadCeldaTabla(string $raw): ?int
     {
         $raw = trim($raw);
-        if ($raw === '') {
+        if ($raw === '' || $this->esRuidoCantidadColumnaImagen($raw, $raw)) {
             return null;
         }
 
@@ -3352,11 +3392,19 @@ class ListadoMaterialesPdfParserService
             return max(1, (int) $coincidencia[1]);
         }
 
+        if (preg_match('/^(\d+)\s+pack\s+de\s+\d+\s+unidades?\s*$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
         if (preg_match('/^(\d+)\s*cajas?\.?$/iu', $raw, $coincidencia) === 1) {
             return max(1, (int) $coincidencia[1]);
         }
 
         if (preg_match('/^(\d+)\s*sobres?\.?$/iu', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d+)\s*sets?\.?$/iu', $raw, $coincidencia) === 1) {
             return max(1, (int) $coincidencia[1]);
         }
 

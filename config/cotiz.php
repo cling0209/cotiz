@@ -113,8 +113,9 @@ return [
     // Sidecar PaddleOCR (tablas escaneadas producto/cantidad). En Docker: http://paddleocr:8080
     'paddleocr' => [
         'enabled' => filter_var(env('COTIZ_PADDLEOCR_ENABLED', true), FILTER_VALIDATE_BOOL),
-        'url' => rtrim((string) env('COTIZ_PADDLEOCR_URL', ''), '/'),
+        'url' => rtrim((string) env('COTIZ_PADDLEOCR_URL', 'http://127.0.0.1:8010'), '/'),
         'timeout' => max(30, min(600, (int) env('COTIZ_PADDLEOCR_TIMEOUT', 300))),
+        'max_pages' => max(1, min(30, (int) env('COTIZ_PADDLEOCR_MAX_PAGES', 15))),
     ],
 
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.

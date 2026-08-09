@@ -1,0 +1,32 @@
+{
+    "total": 97,
+    "hojas": 11,
+    "filas_por_hoja": [9, 10, 12, 10, 9, 9, 10, 10, 10, 7, 1],
+    "primera_fila_por_hoja": [
+        "LAPICES DE CERA JUMBO",
+        "CUADERNO CUARTA 150 HOJAS",
+        "MARCADORES 20 COLORES",
+        "PLUMON PIZARRA NEGRO CAJA 12",
+        "PALO DE HELADO COLOR 50 UNID",
+        "OJOS LOCOS MEDIANOS IMP. 1.2 CM",
+        "PLIEGO CARTON FORRADO 190 GRS.",
+        "Bostitch Quitagrapas G2K",
+        "MICRÓFONO DINÁMICO SHURE SV100",
+        "PLIEGO CARTULINA METÁLICA 50X70 CM MANUALIDADES",
+        "BLOCK PAÑOLENCI ARTEL 6PLIEGOS"
+    ],
+    "ultima_fila_por_hoja": [
+        "CUADERNO UNIVERSITARIO 100 HOJAS PACK",
+        "MARCADORES JUMBO 12 COLORES",
+        "ACUARELA SET 12 COLORES CON PINCEL",
+        "PAPEL VOLANTIN VARIEDAD DE COLORES",
+        "OJOS LOCOS GRANDES IMP 1.5",
+        "PAPEL FOTOGRAFICO ADHESIVO A4 PAQUETE",
+        "SACA CORCHETES",
+        "Pack 16 Pilas Duracell AAA Alcalina Tira",
+        "SOBRE 1/4 OFICIO BLANCO 90",
+        "ESPONJA CEPILLO BROCHA PINCEL PINTAR PONCEAR",
+        "BLOCK PAÑOLENCI ARTEL 6PLIEGOS"
+    ],
+    "notas": "Hoja 7: TERMOLAMINADORA+PLASTIFICADORA es una sola celda multilinea; LAMINAS PARA TERMOLAMINAR es fila aparte [3]."
+}

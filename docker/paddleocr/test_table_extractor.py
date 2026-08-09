@@ -112,6 +112,105 @@ class TestInferenciaColumnas(unittest.TestCase):
         self.assertIn("LAPICES DE CERA JUMBO", filas[0]["descripcion"])
         self.assertIn("UNIDADES IMAGIA", filas[0]["descripcion"])
 
+    def test_celda_producto_multilinea_cantidad_solo_en_columna(self) -> None:
+        """Cantidad pedido solo desde columna CANTIDAD, no desde texto del producto."""
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>CUADERNO CUARTA 150 HOJAS</td><td></td><td></td></tr>
+        <tr><td>7MM PACK 6 UNIDADES</td><td>2</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(1, len(filas))
+        self.assertEqual(2, filas[0]["cantidad"])
+        self.assertIn("CUADERNO CUARTA", filas[0]["descripcion"])
+        self.assertIn("7MM PACK 6 UNIDADES", filas[0]["descripcion"])
+
+    def test_celda_cantidad_ignora_ruido_columna_imagen(self) -> None:
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>7MM PACK 6 UNIDADES</td><td>e. 3</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(0, len(filas))
+
+    def test_celda_cantidad_pack_y_cajas(self) -> None:
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td></tr>
+        <tr><td>PACK MARCATEXTOS PUNTA BISELADA</td><td>2 PACK</td></tr>
+        <tr><td>COLA FRÍA 120ML CAJA 12 UNIDADES</td><td>2 CAJAS</td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(2, len(filas))
+        self.assertEqual(2, filas[0]["cantidad"])
+        self.assertEqual(2, filas[1]["cantidad"])
+
+    def test_celda_producto_partido_block_dibujo(self) -> None:
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>BLOCK DE DIBUJO MEDIUM N°99</td><td></td><td></td></tr>
+        <tr><td>1/8 20 HOJAS</td><td>5</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(1, len(filas))
+        self.assertEqual(5, filas[0]["cantidad"])
+        self.assertIn("1/8 20 HOJAS", filas[0]["descripcion"])
+
+    def test_celda_termolaminadora_plastificadora_una_fila_multilinea(self) -> None:
+        """PDF hoja 7: descripcion multilinea en una celda, qty en la primera sub-fila HTML."""
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>TERMOLAMINADORA</td><td>1</td><td></td></tr>
+        <tr><td>PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS</td><td></td><td></td></tr>
+        <tr><td>SACA CORCHETES</td><td>4</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(2, len(filas))
+        self.assertEqual(1, filas[0]["cantidad"])
+        self.assertIn("TERMOLAMINADORA", filas[0]["descripcion"])
+        self.assertIn("PLASTIFICADORA", filas[0]["descripcion"])
+        self.assertEqual(4, filas[1]["cantidad"])
+        self.assertIn("SACA CORCHETES", filas[1]["descripcion"])
+
+    def test_hoja_3_pdf_doce_filas_cantidad_desde_columna(self) -> None:
+        """12 productos hoja 3 del PDF solicitud 83965 — solo celdas, sin regex por nombre."""
+        html = """
+        <table>
+        <tr><td>PRODUCTO</td><td>CANTIDAD</td><td>IMAGEN REFERENCIA</td></tr>
+        <tr><td>MARCADORES 20 COLORES</td><td>10 sobres</td><td></td></tr>
+        <tr><td>TEMPERA 12 COLORES</td><td>10 cajas</td><td></td></tr>
+        <tr><td>TEMPERA 6 COLOR PASTEL</td><td>10 cajas</td><td></td></tr>
+        <tr><td>PLASTICINA 12 COLORES NEON</td><td>10 cajas</td><td></td></tr>
+        <tr><td>PLASTICINA TRIANGULAR 12 COLORES PASTELES</td><td>10 cajas</td><td></td></tr>
+        <tr><td>CORRECTOR LÁPIZ 7ML CAJA 12 UNIDADES</td><td>1 caja</td><td></td></tr>
+        <tr><td>CUADERNO COLLEGE 7MM 80 HOJAS PACK 10 UNI</td><td>4 pack de 10 unidades</td><td></td></tr>
+        <tr><td>PORCELANA EN FRIO</td><td>6</td><td></td></tr>
+        <tr><td>PINTURA ACRÍLICA DECORATIVA 6 COLORES</td><td>10</td><td></td></tr>
+        <tr><td>MARCADORES NEGRO PUNTA FINA PERMANENTE CAJA 14 UNI</td><td>1 caja</td><td></td></tr>
+        <tr><td>FINELINER 12 COLORES DELI</td><td>5 set</td><td></td></tr>
+        <tr><td>ACUARELA SET 12 COLORES CON PINCEL</td><td>20 set</td><td></td></tr>
+        </table>
+        """
+        filas = _filas_desde_html_tabla(html)
+        self.assertEqual(12, len(filas))
+        self.assertEqual(10, filas[0]["cantidad"])
+        self.assertIn("MARCADORES 20 COLORES", filas[0]["descripcion"])
+        self.assertEqual(4, filas[6]["cantidad"])
+        self.assertIn("CUADERNO COLLEGE", filas[6]["descripcion"])
+        self.assertEqual(1, filas[9]["cantidad"])
+        self.assertIn("MARCADORES NEGRO", filas[9]["descripcion"])
+        self.assertEqual(20, filas[11]["cantidad"])
+        self.assertIn("ACUARELA SET", filas[11]["descripcion"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import Any
 
 CANTIDAD_RE = re.compile(
-    r"^(?:(\d{1,5})\s*(?:unidades?|pack)\.?|\s*(\d{1,5}))$",
+    r"^(\d{1,5})\s*(?:unidades?|packs?|pack|cajas?|sobres?|sets?)\.?\s*$",
+    re.IGNORECASE,
+)
+CANTIDAD_PACK_DE_UNIDADES_RE = re.compile(
+    r"^(\d{1,5})\s+pack\s+de\s+\d+\s+unidades?\s*$",
+    re.IGNORECASE,
+)
+CANTIDAD_RUIDO_IMAGEN_RE = re.compile(
+    r"^[a-záéíóú]{1,2}\.?\s*\d{1,5}\s*$",
     re.IGNORECASE,
 )
 CANTIDAD_EN_TEXTO_FIN_RE = re.compile(
@@ -64,15 +72,22 @@ def _normalizar_celdas(celdas: list[str]) -> list[str]:
 
 def _parse_cantidad(raw: str) -> int | None:
     raw = raw.strip()
-    if not raw:
+    if not raw or _CANTIDAD_RUIDO_IMAGEN(raw):
         return None
+    m = CANTIDAD_PACK_DE_UNIDADES_RE.match(raw)
+    if m:
+        return max(1, int(m.group(1)))
     m = CANTIDAD_RE.match(raw)
     if m:
-        val = m.group(1) or m.group(2)
-        return max(1, int(val))
+        return max(1, int(m.group(1)))
     if raw.isdigit():
         return max(1, int(raw))
     return None
+
+
+def _CANTIDAD_RUIDO_IMAGEN(raw: str) -> bool:
+    """Ruido típico de la columna imagen (ej. 'e. 3', 'Ne'), no cantidad pedido."""
+    return CANTIDAD_RUIDO_IMAGEN_RE.match(raw.strip()) is not None
 
 
 def _es_ruido(texto: str) -> bool:
@@ -87,7 +102,7 @@ def _es_celda_imagen(celda: str) -> bool:
 
 
 def _es_celda_cantidad(celda: str) -> bool:
-    return _parse_cantidad(celda) is not None and len(celda.strip()) <= 16
+    return _parse_cantidad(celda) is not None and len(celda.strip()) <= 40
 
 
 def _es_celda_producto(celda: str) -> bool:
@@ -216,7 +231,7 @@ def _parse_celdas_fila(celdas: list[str]) -> dict[str, Any] | None:
         if _es_celda_imagen(celda):
             continue
         qty = _parse_cantidad(celda)
-        if qty is not None and cantidad is None and len(celda) <= 16:
+        if qty is not None and cantidad is None and len(celda.strip()) <= 40:
             cantidad = qty
             continue
         if _es_ruido(celda):
@@ -263,6 +278,10 @@ def _parse_fila_con_mapeo(row: list[str], mapeo: dict[str, int | None]) -> dict[
             and not _es_celda_imagen(descripcion)
         ):
             return {"cantidad": cantidad, "descripcion": descripcion}
+
+        # Con columnas mapeadas: no inferir cantidad desde el texto del producto.
+        if len(descripcion) >= 3 and not _es_ruido(descripcion):
+            return None
 
     return _parse_celdas_fila(celdas)
 
@@ -322,6 +341,57 @@ def _fusionar_filas_tabla_html_partidas(
     return merged
 
 
+def _fusionar_continuaciones_posteriores(
+    rows: list[list[str]],
+    mapeo: dict[str, int | None],
+) -> list[list[str]]:
+    """Une filas siguientes sin cantidad cuando el producto multilínea quedó partido tras una fila con qty."""
+    idx_producto = mapeo.get("producto")
+    idx_cantidad = mapeo.get("cantidad")
+    if (
+        idx_producto is None
+        or idx_cantidad is None
+        or idx_producto == idx_cantidad
+        or not rows
+    ):
+        return rows
+
+    max_idx = max(idx_producto, idx_cantidad)
+    merged: list[list[str]] = []
+    i = 0
+    while i < len(rows):
+        row = rows[i]
+        celdas = _normalizar_celdas(row)
+        while len(celdas) <= max_idx:
+            celdas.append("")
+
+        if _parse_cantidad(celdas[idx_cantidad]) is not None:
+            j = i + 1
+            while j < len(rows):
+                nxt = _normalizar_celdas(rows[j])
+                while len(nxt) <= max_idx:
+                    nxt.append("")
+                prod = nxt[idx_producto].strip()
+                qty = _parse_cantidad(nxt[idx_cantidad])
+                if (
+                    qty is None
+                    and prod
+                    and not _es_ruido(prod)
+                    and not _es_celda_imagen(prod)
+                ):
+                    celdas[idx_producto] = f"{celdas[idx_producto]} {prod}".strip()
+                    j += 1
+                else:
+                    break
+            merged.append(celdas)
+            i = j
+        else:
+            merged.append(celdas)
+            i += 1
+
+    return merged
+
+
 def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
     parser = _TableHtmlParser()
     parser.feed(html)
@@ -348,6 +418,7 @@ def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
             mapeo["cantidad"] = inferido["cantidad"]
 
     filas_datos = _fusionar_filas_tabla_html_partidas(filas_datos, mapeo)
+    filas_datos = _fusionar_continuaciones_posteriores(filas_datos, mapeo)
 
     filas: list[dict[str, Any]] = []
     for row in filas_datos:
@@ -466,23 +537,31 @@ def get_ppstructure_engine() -> Any:
     return _engine
 
 
-def extraer_lineas_pdf(pdf_path: str, dpi: int = 200, max_pages: int = 15) -> list[dict[str, Any]]:
+def extraer_lineas_pdf(
+    pdf_path: str,
+    dpi: int = 200,
+    first_page: int = 1,
+    last_page: int = 15,
+) -> list[dict[str, Any]]:
     """Convierte PDF a imágenes y extrae filas producto/cantidad."""
     from pdf2image import convert_from_path
 
     engine = get_ppstructure_engine()
+    first_page = max(1, int(first_page))
+    last_page = max(first_page, int(last_page))
 
     images = convert_from_path(
         pdf_path,
         dpi=dpi,
-        first_page=1,
-        last_page=max_pages,
+        first_page=first_page,
+        last_page=last_page,
         fmt="png",
     )
 
     filas: list[dict[str, Any]] = []
 
-    for image in images:
+    for offset, image in enumerate(images):
+        pagina_num = first_page + offset
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp_path = tmp.name
             image.save(tmp_path, format="PNG")
@@ -496,7 +575,9 @@ def extraer_lineas_pdf(pdf_path: str, dpi: int = 200, max_pages: int = 15) -> li
                 html = res.get("html") if isinstance(res, dict) else None
                 if html:
                     pagina_filas = _filas_desde_html_tabla(html)
-                    filas.extend(_filtrar_filas_cabecera(pagina_filas))
+                    for fila in _filtrar_filas_cabecera(pagina_filas):
+                        fila["pagina"] = pagina_num
+                        filas.append(fila)
 
             # Fallback: OCR de líneas en bloques de texto si la tabla no se detectó
             if not any(b.get("type") == "table" for b in (resultados or [])):

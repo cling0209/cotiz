@@ -60,8 +60,11 @@ services:
       context: ./docker/paddleocr
       dockerfile: Dockerfile
     environment:
-      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-200}
+      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-150}
       PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
+      PADDLEOCR_WARMUP: ${PADDLEOCR_WARMUP:-true}
+    volumes:
+      - paddleocr_models:/root/.paddleocr
     ports:
       - "8010:8080"
     networks:
@@ -154,6 +157,7 @@ services:
 volumes:
   postgres_data:
   cotiz_imports:
+  paddleocr_models:
 
 networks:
   cotiz:

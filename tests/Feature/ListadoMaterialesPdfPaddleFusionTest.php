@@ -183,6 +183,159 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
     }
 
+    public function test_golden_hoja_2_tiene_diez_productos_como_pdf(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $paginas = json_decode(
+            file_get_contents(__DIR__.'/../Fixtures/pdf_materiales/solicitud_83965_paginas.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $filasPorHoja = $paginas['filas_por_hoja'];
+        $this->assertSame(10, $filasPorHoja[1]);
+
+        $offset = array_sum(array_slice($filasPorHoja, 0, 1));
+        $hoja2 = array_slice($golden['lineas'], $offset, $filasPorHoja[1]);
+
+        $this->assertCount(10, $hoja2);
+        $this->assertSame(2, $hoja2[0]['cantidad']);
+        $this->assertStringContainsString('CUADERNO CUARTA', $hoja2[0]['descripcion']);
+        $this->assertSame(10, $hoja2[9]['cantidad']);
+        $this->assertStringContainsString('MARCADORES JUMBO', $hoja2[9]['descripcion']);
+    }
+
+    public function test_golden_hoja_3_tiene_doce_productos_como_pdf(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $paginas = json_decode(
+            file_get_contents(__DIR__.'/../Fixtures/pdf_materiales/solicitud_83965_paginas.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $filasPorHoja = $paginas['filas_por_hoja'];
+        $this->assertSame(12, $filasPorHoja[2]);
+
+        $offset = array_sum(array_slice($filasPorHoja, 0, 2));
+        $hoja3 = array_slice($golden['lineas'], $offset, $filasPorHoja[2]);
+
+        $this->assertCount(12, $hoja3);
+        $this->assertStringContainsString('MARCADORES 20 COLORES', $hoja3[0]['descripcion']);
+        $this->assertSame(10, $hoja3[0]['cantidad']);
+        $this->assertStringContainsString('MARCADORES NEGRO', $hoja3[9]['descripcion']);
+        $this->assertSame(1, $hoja3[9]['cantidad']);
+        $this->assertStringContainsString('FINELINER', $hoja3[10]['descripcion']);
+        $this->assertStringContainsString('ACUARELA SET', $hoja3[11]['descripcion']);
+        $this->assertSame(20, $hoja3[11]['cantidad']);
+    }
+
+    public function test_golden_hoja_4_tiene_diez_productos_como_pdf(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $paginas = json_decode(
+            file_get_contents(__DIR__.'/../Fixtures/pdf_materiales/solicitud_83965_paginas.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $filasPorHoja = $paginas['filas_por_hoja'];
+        $this->assertSame(10, $filasPorHoja[3]);
+
+        $offset = array_sum(array_slice($filasPorHoja, 0, 3));
+        $hoja4 = array_slice($golden['lineas'], $offset, $filasPorHoja[3]);
+
+        $this->assertCount(10, $hoja4);
+        $this->assertStringContainsString('PLUMON PIZARRA NEGRO', $hoja4[0]['descripcion']);
+        $this->assertSame(1, $hoja4[0]['cantidad']);
+        $this->assertStringContainsString('TÉMPERA 250ML', $hoja4[4]['descripcion']);
+        $this->assertSame(20, $hoja4[4]['cantidad']);
+        $this->assertStringContainsString('LAPIZ GRAFITO', $hoja4[6]['descripcion']);
+        $this->assertSame(2, $hoja4[6]['cantidad']);
+        $this->assertStringContainsString('MEZCLADOR GRANDES', $hoja4[8]['descripcion']);
+        $this->assertSame(30, $hoja4[8]['cantidad']);
+        $this->assertStringContainsString('PAPEL VOLANTIN', $hoja4[9]['descripcion']);
+        $this->assertSame(20, $hoja4[9]['cantidad']);
+    }
+
+    public function test_golden_todas_las_hojas_cuadran_con_pdf(): void
+    {
+        $golden = Solicitud83965Golden::load();
+        $paginas = json_decode(
+            file_get_contents(__DIR__.'/../Fixtures/pdf_materiales/solicitud_83965_paginas.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        $filasPorHoja = $paginas['filas_por_hoja'];
+        $this->assertSame(97, array_sum($filasPorHoja));
+        $this->assertCount(11, $filasPorHoja);
+
+        $offset = 0;
+        foreach ($filasPorHoja as $indice => $cantidad) {
+            $hoja = $indice + 1;
+            $slice = array_slice($golden['lineas'], $offset, $cantidad);
+            $this->assertCount($cantidad, $slice, "Hoja {$hoja} debe tener {$cantidad} productos");
+
+            $primera = $paginas['primera_fila_por_hoja'][$indice] ?? '';
+            $ultima = $paginas['ultima_fila_por_hoja'][$indice] ?? '';
+            $this->assertStringContainsString(
+                mb_strtoupper($primera),
+                mb_strtoupper($slice[0]['descripcion']),
+                "Primera fila hoja {$hoja}",
+            );
+            $this->assertStringContainsString(
+                mb_strtoupper($ultima),
+                mb_strtoupper($slice[$cantidad - 1]['descripcion']),
+                "Última fila hoja {$hoja}",
+            );
+
+            foreach ($slice as $fila) {
+                $this->assertSame($hoja, $fila['pagina'] ?? null, 'Campo pagina en golden');
+            }
+
+            $offset += $cantidad;
+        }
+
+        $this->assertSame(97, $offset);
+    }
+
+    public function test_paddle_celda_cantidad_desde_columna_no_texto_producto(): void
+    {
+        $lineasPaddle = [
+            ['cantidad' => 2, 'descripcion' => 'CUADERNO CUARTA 150 HOJAS 7MM PACK 6 UNIDADES', 'pagina' => 2],
+            ['cantidad' => 10, 'descripcion' => 'MARCADORES JUMBO 12 COLORES', 'pagina' => 2],
+        ];
+
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerLineasTabla')->willReturn($lineasPaddle);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $metodo = new ReflectionMethod(ListadoMaterialesPdfParserService::class, 'fusionarLineasConPaddle');
+        $metodo->setAccessible(true);
+
+        $texto = "ESPECIFICACIONES TECNICAS\nPRODUCTO CANTIDAD IMAGEN REFERENCIA\n";
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $fusionadas = $metodo->invoke($parser, $tmp, [], $texto);
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertCount(2, $fusionadas);
+        $this->assertSame(2, $fusionadas[0]['cantidad']);
+        $this->assertSame(10, $fusionadas[1]['cantidad']);
+        $this->assertArrayHasKey('pagina', $fusionadas[0]);
+        $this->assertSame(2, $fusionadas[0]['pagina']);
+    }
+
     /**
      * @param  array<int, array{needle: string, cantidad: int, descripcion: string}>  $goldenLineas
      * @return array<int, array{cantidad: int, descripcion: string}>
