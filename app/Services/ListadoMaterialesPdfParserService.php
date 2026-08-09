@@ -81,6 +81,105 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
+     * Misma ruta que el import web, con detalle por etapa (nativo / OCR / Paddle / parser).
+     * Útil en VPS: comparar qué texto sale del PDF vs fixtures .txt de tests.
+     *
+     * @return array<string, mixed>
+     */
+    public function diagnosticarPdf(string $path): array
+    {
+        if (! is_readable($path)) {
+            throw new RuntimeException('No se pudo leer el PDF: '.$path);
+        }
+
+        $ocr = $this->ocr ?? new PdfOcrService;
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+
+        $textoNativo = '';
+        $errorNativo = null;
+        try {
+            $parser = new Parser;
+            $textoNativo = trim((string) $parser->parseFile($path)->getText());
+        } catch (\Throwable $e) {
+            $errorNativo = $e->getMessage();
+        }
+
+        $textoOcr = '';
+        $textoOcrCrop = '';
+        $errorOcr = null;
+        $errorOcrCrop = null;
+        if ($ocr->estaDisponible()) {
+            try {
+                $textoOcr = $this->extraerTextoPdfMedianteOcr($path, false);
+            } catch (\Throwable $e) {
+                $errorOcr = $e->getMessage();
+            }
+            try {
+                $textoOcrCrop = $this->extraerTextoPdfMedianteOcr($path, true);
+            } catch (\Throwable $e) {
+                $errorOcrCrop = $e->getMessage();
+            }
+        }
+
+        $textoFinal = $this->extraerTextoPdf($path);
+        $lineasSoloTexto = $this->parseTexto($textoFinal);
+
+        $lineasPaddle = [];
+        $errorPaddle = null;
+        if ($paddle->estaDisponible()) {
+            try {
+                $lineasPaddle = $paddle->extraerLineasTabla($path);
+            } catch (\Throwable $e) {
+                $errorPaddle = $e->getMessage();
+            }
+        }
+
+        $uploaded = new UploadedFile($path, basename($path), 'application/pdf', null, true);
+        $documento = $this->parseDocumentoCompleto($uploaded);
+
+        $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($textoFinal));
+        $debeOcr = $textoNativo !== '' ? $this->debeComplementarTextoPdfConOcr($path, $textoNativo) : null;
+
+        return [
+            'archivo' => basename($path),
+            'paginas' => $paginas,
+            'herramientas' => [
+                'tesseract_pdftoppm' => $ocr->estaDisponible(),
+                'paddleocr' => $paddle->estaDisponible(),
+            ],
+            'formato_detectado' => $this->detectarFormato($textoFinal),
+            'es_solicitud_pedido' => $this->esSolicitudPedidoDocumento($textoFinal),
+            'debe_complementar_ocr' => $debeOcr,
+            'min_lineas_esperadas' => $this->minLineasEsperadasTablaProducto($textoFinal, $paginas),
+            'conteos' => [
+                'parse_nativo' => $textoNativo !== '' ? count($this->parseTexto($textoNativo)) : 0,
+                'parse_ocr' => $textoOcr !== '' ? count($this->parseTexto($textoOcr)) : 0,
+                'parse_ocr_crop' => $textoOcrCrop !== '' ? count($this->parseTexto($textoOcrCrop)) : 0,
+                'parse_texto_final' => count($lineasSoloTexto),
+                'paddle' => count($lineasPaddle),
+                'import_final' => count($documento['lineas']),
+            ],
+            'errores' => array_filter([
+                'nativo' => $errorNativo,
+                'ocr' => $errorOcr,
+                'ocr_crop' => $errorOcrCrop,
+                'paddle' => $errorPaddle,
+            ]),
+            'texto' => [
+                'nativo' => $textoNativo,
+                'ocr' => $textoOcr,
+                'ocr_crop' => $textoOcrCrop,
+                'final' => $textoFinal,
+            ],
+            'lineas' => [
+                'solo_texto' => $lineasSoloTexto,
+                'paddle' => $lineasPaddle,
+                'final' => $documento['lineas'],
+            ],
+        ];
+    }
+
+    /**
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
     public function parseTexto(string $texto): array
