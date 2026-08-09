@@ -351,14 +351,35 @@ def _filas_desde_ocr_lineas(texto: str) -> list[dict[str, Any]]:
 
 
 def _deduplicar(filas: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    vistas: set[str] = set()
-    out: list[dict[str, Any]] = []
+    normalizadas: list[tuple[str, dict[str, Any]]] = []
     for fila in filas:
-        clave = re.sub(r"\s+", " ", fila["descripcion"].strip().lower())
-        if not clave or clave in vistas:
+        clave = re.sub(r"[^\w\s]", "", re.sub(r"\s+", " ", fila["descripcion"].strip().lower()))
+        clave = clave.strip()
+        if not clave:
             continue
-        vistas.add(clave)
-        out.append({"cantidad": int(fila["cantidad"]), "descripcion": fila["descripcion"].strip()})
+        normalizadas.append((clave, fila))
+
+    out: list[dict[str, Any]] = []
+    out_claves: list[str] = []
+    for clave, fila in normalizadas:
+        duplicada = False
+        for ex_clave in out_claves:
+            if clave == ex_clave:
+                duplicada = True
+                break
+            min_len = min(len(clave), len(ex_clave))
+            max_len = max(len(clave), len(ex_clave))
+            if min_len >= 8 and max_len > 0:
+                if (clave in ex_clave or ex_clave in clave) and (min_len / max_len) >= 0.55:
+                    duplicada = True
+                    break
+        if duplicada:
+            continue
+        out_claves.append(clave)
+        out.append(
+            {"cantidad": int(fila["cantidad"]), "descripcion": fila["descripcion"].strip()}
+        )
+
     return out
 
 

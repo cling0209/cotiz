@@ -290,7 +290,12 @@ class ListadoMaterialesPdfParserService
         }
 
         if (
-            (str_contains($upper, 'DETALLE DEL REQUERIMIENTO') || str_contains($upper, 'ESPECIFICACIONES TECNICAS') || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS'))
+            ! $this->tieneCabeceraTablaProductoCantidad($upper)
+            && (
+                str_contains($upper, 'DETALLE DEL REQUERIMIENTO')
+                || str_contains($upper, 'ESPECIFICACIONES TECNICAS')
+                || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
+            )
             && (str_contains($upper, 'UNIDADES') || preg_match('/\d+\s*UNIDADES/u', $upper) === 1)
         ) {
             return self::FORMATO_EETT;
@@ -1009,10 +1014,23 @@ class ListadoMaterialesPdfParserService
         return preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) === 1;
     }
 
+    private function tieneCabeceraTablaProductoCantidad(string $upper): bool
+    {
+        return preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1;
+    }
+
+    private function esDocumentoTablaMaterialesPdf(string $texto): bool
+    {
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+
+        return $this->esSolicitudPedidoDocumento($texto)
+            || $this->tieneCabeceraTablaProductoCantidad($upper);
+    }
+
     private function minLineasEsperadasTablaProducto(string $texto, int $paginas): int
     {
-        if ($this->esSolicitudPedidoDocumento($texto)) {
-            return 9;
+        if ($this->esDocumentoTablaMaterialesPdf($texto)) {
+            return max(9, (int) floor($paginas * 3));
         }
 
         return max(12, (int) floor($paginas * 6));
@@ -1023,7 +1041,7 @@ class ListadoMaterialesPdfParserService
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($textoNativo));
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($textoNativo);
 
-        if (! $this->esFormatoTablaProductoCantidad($upper) && ! $esSolicitudPedido) {
+        if (! $this->esFormatoTablaProductoCantidad($upper) && ! $this->esDocumentoTablaMaterialesPdf($textoNativo)) {
             return false;
         }
 
@@ -1096,11 +1114,12 @@ class ListadoMaterialesPdfParserService
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esFormatoTablaProductoCantidad($upper);
+        $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
         $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
 
-        if (! $esTabla && ! $esSolicitudPedido && count($lineasTexto) >= $minEsperadas) {
+        if (! $esTabla && ! $esTablaMateriales && count($lineasTexto) >= $minEsperadas) {
             return $lineasTexto;
         }
 
@@ -1131,16 +1150,21 @@ class ListadoMaterialesPdfParserService
         $countPaddle = count($lineasPaddle);
         $countTexto = count($lineasTexto);
 
-        // Extracción por celdas (Paddle): si aporta filas suficientes, usar solo Paddle.
-        // Mezclar texto OCR encima duplica filas (p. ej. 97 + 121 → 191).
-        $paddlePrimario = $countPaddle >= $minEsperadas
+        // Tabla materiales + Paddle: confiar en celdas (evita 97+148 mezclados).
+        $paddlePrimario = ($esTablaMateriales && $countPaddle >= 10)
+            || $countPaddle >= $minEsperadas
             || ($esSolicitudPedido && $countPaddle >= max($minEsperadas, (int) floor($countTexto * 0.85)));
 
         if ($paddlePrimario) {
-            $fusionadas = $this->deduplicarLineasTabla($lineasPaddle);
-            if ($countPaddle < $minEsperadas) {
+            $fusionadas = $this->deduplicarLineasTabla($lineasPaddle, true);
+            if ($countPaddle < max(10, (int) floor($paginas * 2))) {
                 $fusionadas = $this->complementarLineasTablaSinDuplicar($fusionadas, $lineasTexto);
             }
+        } elseif ($countPaddle > 0 && $esTablaMateriales) {
+            $fusionadas = $this->complementarLineasTablaSinDuplicar(
+                $this->deduplicarLineasTabla($lineasPaddle, true),
+                $lineasTexto,
+            );
         } else {
             $fusionadas = $this->complementarLineasTablaSinDuplicar(
                 $this->deduplicarLineasTabla($lineasTexto),
@@ -1156,7 +1180,7 @@ class ListadoMaterialesPdfParserService
             'paddle_primario' => $paddlePrimario,
         ]);
 
-        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario);
+        return $this->finalizarLineasTablaSolicitudPedido($texto, $fusionadas, $paddlePrimario && $esTablaMateriales);
     }
 
     /**
@@ -1228,8 +1252,7 @@ class ListadoMaterialesPdfParserService
      */
     private function finalizarLineasTablaSolicitudPedido(string $texto, array $lineas, bool $desdeCeldasPaddle = false): array
     {
-        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
-        if (preg_match('/ESPECIFICACIONES\s+SOLICITUD\s+DE\s+PEDIDO/u', $upper) !== 1) {
+        if (! $this->esDocumentoTablaMaterialesPdf($texto)) {
             return $lineas;
         }
 
@@ -1272,7 +1295,7 @@ class ListadoMaterialesPdfParserService
         $reparado = $this->eliminarFilasSubcadenaContenida($reparado);
         $reparado = $this->filtrarFilasRuidoEvidenteSolicitudPedido($reparado);
 
-        return $this->deduplicarLineasTabla($reparado);
+        return $this->deduplicarLineasTabla($reparado, true);
     }
 
     private function esFormatoTablaProductoCantidad(string $upper): bool
@@ -1285,16 +1308,16 @@ class ListadoMaterialesPdfParserService
             return true;
         }
 
+        if ($this->tieneCabeceraTablaProductoCantidad($upper)) {
+            return true;
+        }
+
         if (
             str_contains($upper, 'ESPECIFICACIONES TECNICAS')
             || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS')
             || str_contains($upper, 'CANTIDAD DETALLE DEL REQUERIMIENTO')
         ) {
             return false;
-        }
-
-        if (preg_match('/PRODUCTO\s+CANTIDAD/u', $upper) === 1) {
-            return true;
         }
 
         return preg_match('/\bPRODUCTO\b/u', $upper) === 1
@@ -2340,8 +2363,20 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $resultado
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    private function deduplicarLineasTabla(array $resultado): array
+    private function deduplicarLineasTabla(array $resultado, bool $fuzzy = false): array
     {
+        if ($fuzzy) {
+            $unicas = [];
+            foreach ($resultado as $linea) {
+                if ($this->filaYaRepresentadaEnTabla($linea, $unicas)) {
+                    continue;
+                }
+                $unicas[] = $linea;
+            }
+
+            return $unicas;
+        }
+
         $vistas = [];
         $unicas = [];
 

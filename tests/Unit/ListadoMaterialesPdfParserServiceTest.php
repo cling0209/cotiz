@@ -819,6 +819,24 @@ TXT;
         $this->assertNotNull($buscar($lineas, 'BLOCK PAÑOLENCI ARTEL'));
     }
 
+    public function test_parse_vps_ocr_tecnicas_titulo_usa_tabla_producto_cantidad(): void
+    {
+        $texto = $this->cargarFixture('vps_ocr_real.txt');
+        $texto = preg_replace(
+            '/ESPECIFICACIONES SOLICITUD DE PEDIDO/u',
+            'ESPECIFICACIONES TECNICAS',
+            $texto,
+            1,
+        ) ?? $texto;
+
+        $this->assertSame('tabla_producto_cantidad', $this->parser->detectarFormato($texto));
+        $lineas = $this->parser->parseTexto($texto);
+        $this->assertGreaterThanOrEqual(90, count($lineas));
+        $this->assertTrue(collect($lineas)->contains(
+            fn (array $fila): bool => str_contains(mb_strtoupper($fila['descripcion']), 'LAPICES DE CERA JUMBO'),
+        ));
+    }
+
     public function test_limpia_cantidad_duplicada_en_descripcion_perforadora(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'limpiarCantidadDuplicadaEnDescripcion');
