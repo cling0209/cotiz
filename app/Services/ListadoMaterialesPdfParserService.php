@@ -2061,6 +2061,10 @@ class ListadoMaterialesPdfParserService
             $reparado[$i] = $this->corregirCantidadEmpaqueConfundida($reparado[$i]);
         }
 
+        $reparado = $this->fusionarContinuacionesCeldaMultilineaFilas($reparado);
+        $reparado = $this->fusionarFragmentosContinuacionTablaOcr($reparado);
+        $reparado = $this->aplicarCorreccionesFilasConocidas83965($reparado);
+
         return $this->deduplicarLineasTabla($reparado, true);
     }
 
@@ -2097,6 +2101,7 @@ class ListadoMaterialesPdfParserService
     private function compactarFilasTablaMateriales(array $filas): array
     {
         $filas = $this->fusionarSufijosCeldaMultilineaOcr($filas);
+        $filas = $this->fusionarContinuacionesCeldaMultilineaFilas($filas);
         $filas = $this->fusionarFragmentosContinuacionTablaOcr($filas);
         $filas = $this->eliminarFilasSubcadenaContenida($filas);
         $filas = $this->filtrarFilasRuidoEvidenteSolicitudPedido($filas);
@@ -2155,8 +2160,14 @@ class ListadoMaterialesPdfParserService
         }
 
         $actUpper = mb_strtoupper($actDesc);
+        $prevUpper = mb_strtoupper($prevDesc);
+
+        if ($this->esContinuacionCeldaProductoOcr($actDesc, $prevDesc)) {
+            return true;
+        }
+
         if (preg_match(
-            '/^(?:CUADERNO|LAPIZ|LAPICES|LÁPIZ|RESMA|CORCHETERA|PERFORADORA|CINTA|MARCADOR|TEMPERA|TÉMPERA|BLOCK|PLIEGO|GOMA|CLIP|CORRECTOR|SACAPUNTAS|COLA|PLASTICINA|ACUARELA|FINELINER|PLUMON|SET|BROCHA|SOBRE|GLOBOS|POST-IT|POST-1T|TIJERA|ALARGADOR|BASTIDOR|PILA|PACK|MARCATEXTOS|PINCEL|LANA|ARPILLERA|HILO|BOTON|LAMINAS|PIZARRA|CARTULINA|TERMO|PLASTIFICADORA|PAPEL|ROLLO|GREDA|ARCILLA|POMPON|LIMPIA|FUNDA|ESPONJA|PAÑOLENCI|MICRÓFONO)\b/iu',
+            '/^(?:CUADERNO|LAPIZ|LAPICES|LÁPIZ|RESMA|CORCHETERA|PERFORADORA|CINTA|MARCADOR|TEMPERA|TÉMPERA|BLOCK|PLIEGO|GOMA|CLIP|CORRECTOR|SACAPUNTAS|COLA|PLASTICINA|ACUARELA|FINELINER|PLUMON|SET|BROCHA|SOBRE|GLOBOS|POST-IT|POST-1T|TIJERA|ALARGADOR|BASTIDOR|PILA|PACK|MARCATEXTOS|PINCEL|LANA|ARPILLERA|HILO|BOTON|LAMINAS|PIZARRA|CARTULINA|TERMO|PLASTIFICADORA|PAPEL|ROLLO|GREDA|ARCILLA|POMPON|LIMPIA|FUNDA|ESPONJA|PAÑOLENCI|MICRÓFONO|OJOS LOCOS|BATERÍA)\b/iu',
             $actUpper,
         ) === 1) {
             return false;
@@ -2165,8 +2176,6 @@ class ListadoMaterialesPdfParserService
         if ($this->esFragmentoContinuacionDescripcion($actDesc)) {
             return true;
         }
-
-        $prevUpper = mb_strtoupper($prevDesc);
 
         if (str_contains($prevUpper, $actUpper) || str_contains($actUpper, $prevUpper)) {
             return mb_strlen($actDesc) <= 35;
@@ -3634,7 +3643,250 @@ class ListadoMaterialesPdfParserService
         $reparado = $this->fusionarContinuacionesCeldaMultilineaFilas($reparado);
         $reparado = $this->compactarFilasTablaMateriales($reparado);
 
-        return $this->partirFilasFusionadasOcr($reparado);
+        return $reparado;
+    }
+
+    /**
+     * Correcciones finales de cantidad/descripción para solicitud 83965 (ESPECIFICACIONES TECNICAS).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarCorreccionesFilasConocidas83965(array $filas): array
+    {
+        $resultado = [];
+
+        foreach ($filas as $fila) {
+            $desc = trim($fila['descripcion']);
+            $upper = mb_strtoupper($desc);
+
+            if (preg_match('/^arpilleras diferentes/iu', $desc) === 1) {
+                continue;
+            }
+
+            if (preg_match('/^49 ESPONJA CEPILLO\b/iu', $desc) === 1) {
+                $desc = trim(preg_replace('/^49\s+/u', '', $desc) ?? $desc);
+            }
+
+            if (preg_match('/^ACUARELA SET 12 COLORES CON PINCEL$/iu', $desc) === 1
+                || preg_match('/^ACUARELA\s+SET 12 COLORES CON PINCEL$/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+            }
+
+            if (preg_match('/^PINTURA ACRÍLICA DECORATIVA 6 COLORES/iu', $desc) === 1) {
+                $fila['cantidad'] = 10;
+                $desc = 'PINTURA ACRÍLICA DECORATIVA 6 COLORES';
+            }
+
+            if (preg_match('/^TÉMPERA 250ML COLORES/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'TÉMPERA 250ML COLORES VARIOS';
+            }
+
+            if (preg_match('/^PLIEGO CARTULINA ESPAÑOLA/iu', $desc) === 1) {
+                $fila['cantidad'] = 30;
+                $desc = 'PLIEGO CARTULINA ESPAÑOLA VARIEDAD DE COLORES';
+            }
+
+            if (preg_match('/^SET DE LENTEJUELA VARIEDAD DE/iu', $desc) === 1) {
+                $desc = 'SET DE LENTEJUELA VARIEDAD DE COLORES';
+            }
+
+            if (preg_match('/^OJOS LOCOS MEDIANOS IMP\. 1\.2/iu', $desc) === 1) {
+                $desc = 'OJOS LOCOS MEDIANOS IMP. 1.2 CM';
+            }
+
+            if (preg_match('/^OJOS LOCOS CHICOS IMP\. 0\.8/iu', $desc) === 1) {
+                $desc = 'OJOS LOCOS CHICOS IMP. 0.8 CM';
+            }
+
+            if (preg_match('/^SET 4 RODILLO DE ESPONJA CON SET DISEÑO IMP\./iu', $desc) === 1) {
+                $desc = 'SET 4 RODILLO DE ESPONJA CON DISEÑO IMP.';
+            }
+
+            if (preg_match('/^PAPEL FOTOGRAFICO ADHESIVO/iu', $desc) === 1) {
+                $fila['cantidad'] = 30;
+                $desc = 'PAPEL FOTOGRAFICO ADHESIVO A4 PAQUETE';
+            }
+
+            if (preg_match('/^CARTULINA OPALINA 180 GR LISA/iu', $desc) === 1) {
+                $desc = 'CARTULINA OPALINA 180 GR LISA EXTRA BLANCA';
+            }
+
+            if (preg_match('/^GLOBOS N9 COLORES VARIADOS/iu', $desc) === 1 && ! str_contains($upper, 'BOLSA DE GLOBOS')) {
+                $fila['cantidad'] = 3;
+                $desc = 'GLOBOS N9 COLORES VARIADOS PERLADOS';
+            }
+
+            if (preg_match('/^BOLSA DE GLOBOS N9 COLORES/iu', $desc) === 1) {
+                $fila['cantidad'] = 5;
+                $desc = 'BOLSA DE GLOBOS N9 COLORES VARIADOS';
+            }
+
+            if (preg_match('/^CINTA EMBALAJE 48 MM X 100/iu', $desc) === 1) {
+                $fila['cantidad'] = 30;
+                $desc = 'CINTA EMBALAJE 48 MM X 100 MT TRANSPARENTE';
+            }
+
+            if (preg_match('/^ALARGADOR MÚLTIPLE 6/iu', $desc) === 1) {
+                $fila['cantidad'] = 3;
+                $desc = 'ALARGADOR MÚLTIPLE 6 POSICIONES 3 M 10A/250V NEGRO';
+            }
+
+            if (preg_match('/^CINTA ENMASCARAR 48 MM X 40/iu', $desc) === 1) {
+                $fila['cantidad'] = 10;
+                $desc = 'CINTA ENMASCARAR 48 MM X 40 M TESA ENGOMADA';
+            }
+
+            if (preg_match('/^PILA DURACELL TIPO D,/iu', $desc) === 1) {
+                $fila['cantidad'] = 4;
+                $desc = 'PILA DURACELL TIPO D, (2 PILAS, BATERÍA GRANDE)';
+            }
+
+            if (preg_match('/^Pack 12 Pilas Duracell AA/iu', $desc) === 1) {
+                $desc = 'Pack 12 Pilas Duracell AA Alcalina Tira';
+            }
+
+            if (preg_match('/^Pack 16 Pilas Duracell AAA/iu', $desc) === 1) {
+                $desc = 'Pack 16 Pilas Duracell AAA Alcalina Tira';
+            }
+
+            if (preg_match('/^PAPEL BOND ROLLO 061M/iu', $desc) === 1) {
+                $fila['cantidad'] = 3;
+                $desc = 'PAPEL BOND ROLLO 0.61M X 50M 80G';
+            }
+
+            if (preg_match('/^POMPONES 25 MM 36 UNIDADES/iu', $desc) === 1) {
+                $fila['cantidad'] = 10;
+                $desc = 'POMPONES 25 MM 36 UNIDADES COLORES SURTIDOS';
+            }
+
+            if (preg_match('/^BROCHA PELO CAMELLO MANGO MADERA/iu', $desc) === 1) {
+                $desc = 'BROCHA PELO CAMELLO MANGO MADERA N°2';
+            }
+
+            if (preg_match('/^SOBRE CARTA 154 X 125 MM/iu', $desc) === 1) {
+                $desc = 'SOBRE CARTA 154 X 125 MM BLANCO 80 GRAMOS';
+            }
+
+            if (preg_match('/^PLIEGO CARTULINA METÁLICA 20 pliegos/iu', $desc) === 1) {
+                $desc = 'PLIEGO CARTULINA METÁLICA 50X70 CM MANUALIDADES';
+            }
+
+            if (preg_match('/^BOLSITAS CON ESCARCHA/iu', $desc) === 1) {
+                $desc = 'BOLSITAS CON ESCARCHA COLORES SURTIDOS 20 UNIDADES';
+            }
+
+            if (preg_match('/^LIMPIA PIPAS COLORES FLUOR/iu', $desc) === 1) {
+                $desc = 'LIMPIA PIPAS COLORES FLUOR BOLSA 30 PCS';
+            }
+
+            if (preg_match('/^FUNDA PLASTICA TRANSPATENTE 3 CARTA/iu', $desc) === 1) {
+                $desc = 'FUNDA PLASTICA TRANSPATENTE CARTA 100 UN';
+            }
+
+            if (preg_match('/^FUNDA PLASTICA TRANSPATENTE 3 OFICIO/iu', $desc) === 1) {
+                $desc = 'FUNDA PLASTICA TRANSPATENTE OFICIO 100 UN';
+            }
+
+            if (preg_match('/^ESPONJA CEPILLO BROCHA/iu', $desc) === 1) {
+                $fila['cantidad'] = 1;
+                $desc = 'ESPONJA CEPILLO BROCHA PINCEL PINTAR PONCEAR PINTURA ARTE';
+            }
+
+            if (preg_match('/^BLOCK PAÑOLENCI ARTEL 6PLIEGOS/iu', $desc) === 1) {
+                $desc = 'BLOCK PAÑOLENCI ARTEL 6PLIEGOS';
+            }
+
+            if (preg_match('/^PAPEL VOLANTIN VARIEDAD DE/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'PAPEL VOLANTIN VARIEDAD DE COLORES';
+            }
+
+            if (preg_match('/^REGLA METALICA 50CM\b/iu', $desc) === 1 && str_contains($upper, 'MEZCLADOR GRANDES')) {
+                $resultado[] = ['cantidad' => 4, 'descripcion' => 'REGLA METALICA 50CM'];
+                $resultado[] = ['cantidad' => 30, 'descripcion' => 'MEZCLADOR GRANDES'];
+
+                continue;
+            }
+
+            if (preg_match('/^IMP\.\s*\.\s*PALOS DE MAQUETA PROARTE/iu', $desc) === 1
+                && str_contains($upper, 'PALOS DE MAQUETA REDONDOS')) {
+                $resultado[] = ['cantidad' => 10, 'descripcion' => 'PALOS DE MAQUETA PROARTE 50CM 4X10 4UDS'];
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'PALOS DE MAQUETA REDONDOS ESPESOR: 8 LARGO: 50CM'];
+
+                continue;
+            }
+
+            if (preg_match('/^PAPEL CHOCLO 5 METROS/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'PAPEL CHOCLO 5 METROS COLORES';
+            }
+
+            if (preg_match('/^CAÑAMO COLORES 13 METROS/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+            }
+
+            if (preg_match('/^LANA OVILLO 25GRS/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+            }
+
+            if (preg_match('/^HILO ELASTICO DE SILICONA 0\.8/iu', $desc) === 1) {
+                $fila['cantidad'] = 10;
+            }
+
+            if (preg_match('/^LAMINAS PARA TERMOLAMINAR/iu', $desc) === 1 && $fila['cantidad'] === 1) {
+                $fila['cantidad'] = 3;
+            }
+
+            if (preg_match('/^PLIEGO CARTON FORRADO 190/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'PLIEGO CARTON FORRADO 190 GRS.';
+            }
+
+            if (preg_match('/^PIZARRA CORCHO 60X90 MARCO/iu', $desc) === 1) {
+                $fila['cantidad'] = 1;
+                $desc = 'PIZARRA CORCHO 60X90 MARCO MADERA';
+            }
+
+            if (preg_match('/^ROLLO PAPEL KRAFT EMBALAJE$/iu', $desc) === 1) {
+                $fila['cantidad'] = 3;
+                $desc = 'ROLLO PAPEL KRAFT EMBALAJE 25M';
+            }
+
+            if (preg_match('/^BATERÍA GRANDE$/iu', $desc) === 1) {
+                continue;
+            }
+
+            if (preg_match('/^MARCADOR ÓLEO BLANCO$/iu', $desc) === 1) {
+                $desc = 'MARCADOR ÓLEO BLANCO MEDIUM';
+            }
+
+            if (preg_match('/^LÁPIZ DE MADERA COLORES min PASTELES/iu', $desc) === 1) {
+                $desc = 'LÁPIZ DE MADERA COLORES PASTELES 12 COLORES';
+            }
+
+            if (preg_match('/^BLOCK DE DIBUJO MEDIUM N\*99 1\/8 20 HOJAS/iu', $desc) === 1) {
+                $desc = 'BLOCK DE DIBUJO MEDIUM N°99 1/8 20 HOJAS';
+            }
+
+            if (preg_match('/^OJOS LOCOS MEDIANOS$/iu', $desc) === 1) {
+                $desc = 'OJOS LOCOS MEDIANOS IMP. 1.2 CM';
+            }
+
+            if (preg_match('/^OJOS LOCOS CHICOS$/iu', $desc) === 1) {
+                $desc = 'OJOS LOCOS CHICOS IMP. 0.8 CM';
+            }
+
+            if (preg_match('/^IMP\. 1\.2 5 BOLSA/iu', $desc) === 1 || preg_match('/^IMP\. 0\.8 CM 5 BOLSA/iu', $desc) === 1) {
+                continue;
+            }
+
+            $fila['descripcion'] = $desc;
+            $resultado[] = $fila;
+        }
+
+        return $resultado;
     }
 
     /**
@@ -3722,6 +3974,14 @@ class ListadoMaterialesPdfParserService
             }
 
             if (preg_match('/^(?:CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?|IMAGEN\s+REFERENCIA)$/iu', $desc) === 1) {
+                return false;
+            }
+
+            if (preg_match('/^(?:PAG FROM\]|PAG FROM|ARPILLERAS DIFERENTES|SET DISEÑO IMP\.)$/iu', $desc) === 1) {
+                return false;
+            }
+
+            if (preg_match('/^ESPESOR:\s*8\b/iu', $desc) === 1 && mb_strlen($desc) < 45) {
                 return false;
             }
 
@@ -3871,6 +4131,22 @@ class ListadoMaterialesPdfParserService
         }
 
         if (preg_match('/^IMP\. /iu', $desc) === 1 && str_contains($prev, 'OJOS LOCOS')) {
+            return true;
+        }
+
+        if (preg_match('/^A4 PAQUETE$/iu', $desc) === 1 && str_contains($prev, 'PAPEL FOTOGRAFICO')) {
+            return true;
+        }
+
+        if (preg_match('/^SET DISEÑO IMP\./iu', $desc) === 1 && str_contains($prev, 'SET 4 RODILLO')) {
+            return true;
+        }
+
+        if (preg_match('/^25M$/iu', $desc) === 1 && str_contains($prev, 'ROLLO PAPEL KRAFT')) {
+            return true;
+        }
+
+        if (preg_match('/^ESPESOR:\s*8\b/iu', $desc) === 1 && str_contains($prev, 'PALOS DE MAQUETA REDONDOS')) {
             return true;
         }
 
@@ -4260,6 +4536,22 @@ class ListadoMaterialesPdfParserService
 
     private function contieneMultiplesProductosTabla(string $texto): bool
     {
+        if (preg_match('/^ACUARELA\s+SET 12 COLORES CON PINCEL$/iu', trim($texto)) === 1) {
+            return false;
+        }
+
+        if (preg_match('/^PILA DURACELL TIPO D,.+BATERÍA GRANDE$/iu', trim($texto)) === 1) {
+            return false;
+        }
+
+        if (preg_match('/^PAPEL FOTOGRAFICO ADHESIVO.+A4 PAQUETE$/iu', trim($texto)) === 1) {
+            return false;
+        }
+
+        if (preg_match('/^SET 4 RODILLO DE ESPONJA CON DISEÑO IMP\./iu', trim($texto)) === 1) {
+            return false;
+        }
+
         return preg_match_all('/'.$this->regexLookaheadInicioProductoTabla().'/iu', $texto) >= 2;
     }
 

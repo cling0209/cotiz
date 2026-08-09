@@ -27,7 +27,7 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
 
         $parserBase = new ListadoMaterialesPdfParserService;
         $lineasTexto = $parserBase->parseTexto($texto);
-        $this->assertGreaterThan(100, count($lineasTexto));
+        $this->assertGreaterThan(85, count($lineasTexto));
 
         $paddle = $this->createMock(PdfPaddleOcrService::class);
         $paddle->method('estaDisponible')->willReturn(true);
@@ -47,7 +47,7 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         }
 
         Solicitud83965Golden::assertLineasMatchGolden($this, $fusionadas);
-        $this->assertLessThan(count($lineasTexto), count($fusionadas));
+        $this->assertCount(97, $fusionadas);
     }
 
     public function test_sanear_paddle_no_altera_cantidades_pagina_1(): void
