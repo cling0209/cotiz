@@ -659,6 +659,34 @@ TXT;
         ));
     }
 
+    public function test_parse_vps_ocr_real_recupera_nueve_productos_solicitud_83965(): void
+    {
+        $texto = $this->cargarFixture('vps_ocr_real.txt');
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertGreaterThanOrEqual(9, count($lineas));
+
+        $buscar = static function (array $lineas, string $needle): ?array {
+            foreach ($lineas as $fila) {
+                if (str_contains(mb_strtoupper($fila['descripcion']), mb_strtoupper($needle))) {
+                    return $fila;
+                }
+            }
+
+            return null;
+        };
+
+        $this->assertSame(8, $buscar($lineas, 'LAPICES DE CERA JUMBO 12 UNIDADES IMAGIA TRIANGULAR')['cantidad'] ?? null);
+        $this->assertSame(1, $buscar($lineas, 'LAPIZ PASTA ARTEL PTA AZUL')['cantidad'] ?? null);
+        $this->assertSame(1, $buscar($lineas, 'LAPIZ PASTA ARTEL PTA ROJO')['cantidad'] ?? null);
+        $this->assertSame(10, $buscar($lineas, 'RESMA OFICIO')['cantidad'] ?? null);
+        $this->assertSame(10, $buscar($lineas, 'RESMA CARTA')['cantidad'] ?? null);
+        $this->assertSame(3, $buscar($lineas, 'CORCHETERA')['cantidad'] ?? null);
+        $this->assertSame(3, $buscar($lineas, 'PERFORADORA GRANDE')['cantidad'] ?? null);
+        $this->assertSame(15, $buscar($lineas, 'CINTA DOBLE CONTACTO 18MM X 13,7MTS')['cantidad'] ?? null);
+        $this->assertSame(1, $buscar($lineas, 'CUADERNO UNIVERSITARIO')['cantidad'] ?? null);
+    }
+
     public function test_limpia_cantidad_duplicada_en_descripcion_perforadora(): void
     {
         $metodo = new \ReflectionMethod(ListadoMaterialesPdfParserService::class, 'limpiarCantidadDuplicadaEnDescripcion');

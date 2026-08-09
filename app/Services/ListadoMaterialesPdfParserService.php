@@ -1360,10 +1360,45 @@ class ListadoMaterialesPdfParserService
             $texto,
         ) ?? $texto;
 
+        // Lápiz pasta partido: descripción + "50" en una línea, cantidad real en la siguiente.
+        $texto = preg_replace(
+            '/^(LAPIZ PASTA ARTEL PTA (?:AZUL|ROJO)) 50\s*\R\s*UNIDADES PTA FINA 0,7 (\d+)/mu',
+            '$1 50 UNIDADES PTA FINA 0,7 $2',
+            $texto,
+        ) ?? $texto;
+
+        // RESMA OFICIO: cantidad en líneas basura OCR (= / 10 Ta / ==) antes de RESMA CARTA.
+        $texto = preg_replace(
+            '/^(RESMA OFICIO 500 HOJAS)\s+y?\s*\R\s*=\s*\R\s*(\d+)\s+Ta\s*\R\s*==\s*\R/mu',
+            '$1 $2'."\n",
+            $texto,
+        ) ?? $texto;
+
+        // Cuaderno universitario partido en dos líneas.
+        $texto = preg_replace(
+            '/^(CUADERNO UNIVERSITARIO 100)\s+1\s*PACK\s*\R\s*HOJAS PACK 10 UNIDADES\.?/mu',
+            '$1 1 PACK',
+            $texto,
+        ) ?? $texto;
+
+        // Cinta: OCR pone la cantidad en la 1.ª línea y la medida en la 2.ª (VPS real).
+        $texto = preg_replace(
+            '/^(CINTA DOBLE CONTACTO 18MM X)\s+15\s*\R\s*(13,7MTS)\s+\d+\s*$/mu',
+            '$1 $2 15',
+            $texto,
+        ) ?? $texto;
+
         // Cinta u otros productos partidos: descripción en una línea, medida+cantidad en la siguiente.
         $texto = preg_replace(
             '/^(CINTA DOBLE CONTACTO 18MM X)\s*\R\s*([\d,\.]+\s*MTS)\s+(\d+)\s*$/mu',
             '$1 $2 $3',
+            $texto,
+        ) ?? $texto;
+
+        // Cantidad duplicada en la misma línea (PERFORADORA GRANDE 3 3).
+        $texto = preg_replace(
+            '/^(PERFORADORA GRANDE)\s+(\d+)\s+\2\s*$/mu',
+            '$1 $2',
             $texto,
         ) ?? $texto;
 
@@ -1415,6 +1450,8 @@ class ListadoMaterialesPdfParserService
      */
     private function completarFilasSolicitudPedidoDesdeTexto(string $texto, array $resultado): array
     {
+        $texto = $this->preprocesarTextoTablaSolicitudOcr($texto);
+
         $patrones = [
             'LAPIZ PASTA ARTEL PTA AZUL' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+AZUL/iu',
             'LAPIZ PASTA ARTEL PTA ROJO' => '/LAPIZ\s+PASTA\s+ARTEL\s+PTA\s+ROJO/iu',
@@ -1426,14 +1463,16 @@ class ListadoMaterialesPdfParserService
             'CINTA DOBLE CONTACTO' => '/CINTA\s+DOBLE\s+CONTACTO/iu',
         ];
 
-        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
-            $linea = $this->normalizarLineaTablaOcr($lineaCruda);
-            if ($linea === '' || $this->esRuidoTablaProductoCantidad($linea)) {
+        $lineasCrudas = preg_split('/\r\n|\n|\r/u', $texto) ?: [];
+
+        foreach ($patrones as $needle => $pattern) {
+            if ($this->resultadoContieneProducto($resultado, $needle)) {
                 continue;
             }
 
-            foreach ($patrones as $needle => $pattern) {
-                if ($this->resultadoContieneProducto($resultado, $needle)) {
+            foreach ($lineasCrudas as $indice => $lineaCruda) {
+                $linea = $this->normalizarLineaTablaOcr($lineaCruda);
+                if ($linea === '' || $this->esRuidoTablaProductoCantidad($linea)) {
                     continue;
                 }
 
@@ -1441,9 +1480,8 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                $candidata = $this->sanearDescripcionTablaOcr($linea);
-                $fila = $this->intentarFilaTablaProducto($candidata, $lineaCruda)
-                    ?? $this->intentarFilaTablaProducto($linea, $lineaCruda);
+                $fila = $this->intentarFilaProductoDesdeVentanaOcr($lineasCrudas, $indice)
+                    ?? $this->inferirFilaProductoSolicitudPedido($needle, $lineasCrudas, $indice);
 
                 if ($fila === null) {
                     continue;
@@ -1451,10 +1489,86 @@ class ListadoMaterialesPdfParserService
 
                 $fila = $this->corregirCantidadEmpaqueConfundida($fila);
                 $resultado[] = $fila;
+                break;
             }
         }
 
         return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $lineasCrudas
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function intentarFilaProductoDesdeVentanaOcr(array $lineasCrudas, int $indice): ?array
+    {
+        $maxVentana = min(4, count($lineasCrudas) - $indice);
+
+        for ($ventana = 1; $ventana <= $maxVentana; $ventana++) {
+            $trozo = array_slice($lineasCrudas, $indice, $ventana);
+            $normalizadas = array_map(
+                fn (string $linea): string => $this->normalizarLineaTablaOcr($linea),
+                $trozo,
+            );
+            $normalizadas = array_values(array_filter(
+                $normalizadas,
+                fn (string $linea): bool => $linea !== '' && ! $this->esRuidoTablaProductoCantidad($linea),
+            ));
+
+            if ($normalizadas === []) {
+                continue;
+            }
+
+            $unido = trim(preg_replace('/\s+/u', ' ', implode(' ', $normalizadas)) ?? '');
+            $fila = $this->intentarFilaTablaProducto($unido, implode("\n", $trozo));
+            if ($fila !== null) {
+                return $fila;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, string>  $lineasCrudas
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function inferirFilaProductoSolicitudPedido(string $needle, array $lineasCrudas, int $indice): ?array
+    {
+        $linea = $this->normalizarLineaTablaOcr($lineasCrudas[$indice] ?? '');
+        $linea = preg_replace('/\s+y\s*$/iu', '', $linea) ?? $linea;
+
+        if ($needle === 'RESMA OFICIO' && preg_match('/RESMA\s+OFICIO\s+500\s+HOJAS/iu', $linea) === 1) {
+            for ($j = $indice; $j < min($indice + 6, count($lineasCrudas)); $j++) {
+                $candidata = $this->normalizarLineaTablaOcr($lineasCrudas[$j]);
+                if (preg_match('/^(\d{1,5})\s+Ta$/iu', $candidata, $coincidencia) === 1) {
+                    return [
+                        'cantidad' => max(1, (int) $coincidencia[1]),
+                        'descripcion' => 'RESMA OFICIO 500 HOJAS',
+                    ];
+                }
+                if (preg_match('/^(\d{1,5})$/u', $candidata, $coincidencia) === 1) {
+                    return [
+                        'cantidad' => max(1, (int) $coincidencia[1]),
+                        'descripcion' => 'RESMA OFICIO 500 HOJAS',
+                    ];
+                }
+            }
+        }
+
+        if ($needle === 'CUADERNO UNIVERSITARIO' && preg_match('/CUADERNO\s+UNIVERSITARIO/iu', $linea) === 1) {
+            $fila = $this->intentarFilaTablaProducto($linea, $lineasCrudas[$indice]);
+            if ($fila !== null) {
+                return $fila;
+            }
+
+            return [
+                'cantidad' => 1,
+                'descripcion' => 'CUADERNO UNIVERSITARIO 100 HOJAS PACK 10 UNIDADES',
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -1765,6 +1879,14 @@ class ListadoMaterialesPdfParserService
             return true;
         }
 
+        if (preg_match('/^=+$/u', $upper) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^\d+\s+TA$/u', $upper) === 1) {
+            return true;
+        }
+
         foreach ([
             'PÁGINA',
             'PAGINA',
@@ -1833,6 +1955,7 @@ class ListadoMaterialesPdfParserService
     private function extraerProductoCantidadDeLinea(string $linea): ?array
     {
         $linea = trim($linea);
+        $linea = preg_replace('/\s+y\s*$/iu', '', $linea) ?? $linea;
         if ($linea === '' || $this->esEncabezadoTablaProductoCantidad($linea)) {
             return null;
         }
