@@ -68,6 +68,10 @@ class CompraAgilImportService
      */
     public function previewLoteDesdeDatos(array $datos, int $desde, int $hasta): array
     {
+        if ($desde === 0) {
+            $this->vinculoAprendizaje->precalentarParaImportacion();
+        }
+
         $total = count($datos['lineas']);
         $hasta = max($desde, min($hasta, $total));
 

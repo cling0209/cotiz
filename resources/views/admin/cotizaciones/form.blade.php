@@ -2634,8 +2634,7 @@
     }
 
     const IMPORT_LOTE_SIZE = 40;
-    const PREVIEW_LOTE_MIN = 5;
-    const PREVIEW_LOTE_MAX = 8;
+    const PREVIEW_LOTE_SIZE = 40;
 
     function tamanoLoteImportar(total) {
         const n = Math.max(0, Number(total) || 0);
@@ -2645,9 +2644,8 @@
 
     function tamanoLotePreview(total) {
         const n = Math.max(0, Number(total) || 0);
-        if (n <= PREVIEW_LOTE_MIN) return Math.max(n, 1);
-        if (n <= 40) return PREVIEW_LOTE_MIN;
-        return PREVIEW_LOTE_MAX;
+        if (n === 0) return PREVIEW_LOTE_SIZE;
+        return Math.min(PREVIEW_LOTE_SIZE, n);
     }
 
     function construirResumenPreview(lineas) {
@@ -3157,7 +3155,7 @@
             let desde = 0;
 
             while (desde === 0 || desde < total) {
-                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
 
                 if (total > 0) {
@@ -3280,7 +3278,7 @@
             while (desde === 0 || desde < total) {
                 if (analisisMaterialesFueCancelado()) return;
 
-                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
                 if (total > 0) {
                     actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
@@ -3396,7 +3394,7 @@
             while (desde === 0 || desde < total) {
                 if (analisisMaterialesFueCancelado()) return;
 
-                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
                 if (total > 0) {
                     actualizarProgresoImportar(desde, total, 'Vinculando productos con catálogo…');
@@ -3688,7 +3686,7 @@
             let desde = 0;
 
             while (desde === 0 || desde < total) {
-                const lote = tamanoLotePreview(total || PREVIEW_LOTE_MIN);
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
                 const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
                 actualizarProgresoImportar(desde, total || hasta, 'Analizando productos en Mercado Público…');
 

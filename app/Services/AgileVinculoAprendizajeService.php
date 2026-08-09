@@ -13,9 +13,23 @@ use App\Support\AgileDescripcion;
  */
 class AgileVinculoAprendizajeService
 {
+    /** @var list<object{prod_item: string, frase_norm: string}>|null */
+    private ?array $frasesMaestroCache = null;
+
+    /** @var array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}> */
+    private array $maeprodArrayCache = [];
+
     public function __construct(
         protected MaeprodBusquedaSimilitudService $busqueda,
     ) {}
+
+    /**
+     * Carga frases + maestro una vez por request (import PDF/Excel con muchas líneas).
+     */
+    public function precalentarParaImportacion(): void
+    {
+        $this->ensureFrasesMaestroCache();
+    }
 
     public function descripcionNormalizada(string $descripcion): string
     {
@@ -159,10 +173,10 @@ class AgileVinculoAprendizajeService
                 ->first();
 
             if ($exacto) {
-                $mae = Maeprod::query()->find($exacto->prod_item);
-                if ($mae) {
+                $producto = $this->maeprodDesdeCache((string) $exacto->prod_item);
+                if ($producto !== null) {
                     return [
-                        'producto' => $this->maeprodArray($mae),
+                        'producto' => $producto,
                         'origen' => 'aprendido_exacto',
                     ];
                 }
@@ -210,29 +224,76 @@ class AgileVinculoAprendizajeService
         }
         $setDesc = array_fill_keys($palabrasDesc, true);
 
+        foreach ($this->ensureFrasesMaestroCache() as $frase) {
+            $norm = (string) $frase->frase_norm;
+            if ($norm === '' || ! $this->frasePalabrasEnDescripcion($norm, $setDesc)) {
+                continue;
+            }
+
+            $producto = $this->maeprodArrayCache[(string) $frase->prod_item] ?? null;
+            if ($producto !== null) {
+                return $producto;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<object{prod_item: string, frase_norm: string}>
+     */
+    private function ensureFrasesMaestroCache(): array
+    {
+        if ($this->frasesMaestroCache !== null) {
+            return $this->frasesMaestroCache;
+        }
+
         $candidatas = MaeprodFrase::query()
             ->where('frase_norm', '!=', '')
             ->orderByRaw('LENGTH(frase_norm) DESC')
             ->orderBy('id')
             ->get(['prod_item', 'frase_norm']);
 
-        if ($candidatas->isEmpty()) {
+        $this->frasesMaestroCache = $candidatas->all();
+
+        $items = $candidatas->pluck('prod_item')
+            ->map(static fn ($item): string => trim((string) $item))
+            ->filter(static fn (string $item): bool => $item !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($items !== []) {
+            foreach (Maeprod::query()->whereIn('prod_item', $items)->get() as $mae) {
+                $this->maeprodArrayCache[(string) $mae->prod_item] = $this->maeprodArray($mae);
+            }
+        }
+
+        return $this->frasesMaestroCache;
+    }
+
+    /**
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function maeprodDesdeCache(string $prodItem): ?array
+    {
+        $prodItem = trim($prodItem);
+        if ($prodItem === '') {
             return null;
         }
 
-        foreach ($candidatas as $frase) {
-            $norm = (string) $frase->frase_norm;
-            if ($norm === '' || ! $this->frasePalabrasEnDescripcion($norm, $setDesc)) {
-                continue;
-            }
-
-            $mae = Maeprod::query()->find($frase->prod_item);
-            if ($mae) {
-                return $this->maeprodArray($mae);
-            }
+        if (isset($this->maeprodArrayCache[$prodItem])) {
+            return $this->maeprodArrayCache[$prodItem];
         }
 
-        return null;
+        $mae = Maeprod::query()->find($prodItem);
+        if (! $mae) {
+            return null;
+        }
+
+        $this->maeprodArrayCache[$prodItem] = $this->maeprodArray($mae);
+
+        return $this->maeprodArrayCache[$prodItem];
     }
 
     /**
@@ -317,17 +378,17 @@ class AgileVinculoAprendizajeService
             return null;
         }
 
-        $mae = Maeprod::query()->find($mejorProdItem);
-        if (! $mae) {
+        $producto = $this->maeprodDesdeCache($mejorProdItem);
+        if ($producto === null) {
             return null;
         }
 
         // Doble chequeo contra el nombre real del maestro (no solo la descripción aprendida).
-        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, (string) $mae->prod_nombre)) {
+        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, $producto['prod_nombre'])) {
             return null;
         }
 
-        return $this->maeprodArray($mae);
+        return $producto;
     }
 
     /**
