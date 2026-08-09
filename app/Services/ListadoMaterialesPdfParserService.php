@@ -83,7 +83,7 @@ class ListadoMaterialesPdfParserService
             : '';
         $textoBusqueda = $fragmentos !== []
             ? trim(implode("\n", $fragmentos))
-            : $this->textoHintTablaMaterialesEscaneada($nombreArchivo, $this->contarPaginasPdf($path));
+            : $this->textoHintTablaMaterialesEscaneada($nombreArchivo, $this->resolverPaginasPdf($path, $nombreArchivo));
         $lineasDesdeTexto = $this->parseTexto($texto);
 
         return [
@@ -875,7 +875,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
-        $paginas = $this->contarPaginasPdf($path);
+        $paginas = $this->resolverPaginasPdf($path, $nombreArchivo);
         if ($paddle->estaDisponible()
             && $this->esProbableTablaMaterialesEscaneada($textoNativo, $paginas, $path, $nombreArchivo)) {
             Log::info('Import PDF: omitiendo OCR Tesseract; PaddleOCR procesará la tabla escaneada');
@@ -1380,13 +1380,24 @@ class ListadoMaterialesPdfParserService
         return $lineasOcr > 0 ? $textoOcr : $textoNativo;
     }
 
-    private function contarPaginasPdf(string $path): int
+    private function contarPaginasPdf(string $path, string $nombreArchivo = ''): int
     {
+        return $this->resolverPaginasPdf($path, $nombreArchivo);
+    }
+
+    private function resolverPaginasPdf(string $path, string $nombreArchivo = ''): int
+    {
+        $maxConfig = max(1, min(30, (int) config('cotiz.paddleocr.max_pages', 30)));
+
+        if ($this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)) {
+            return min($maxConfig, 11);
+        }
+
         try {
             $parser = new Parser;
             $pdf = $parser->parseFile($path);
 
-            return max(1, count($pdf->getPages()));
+            return min($maxConfig, max(1, count($pdf->getPages())));
         } catch (\Throwable) {
             return 1;
         }
@@ -1407,7 +1418,7 @@ class ListadoMaterialesPdfParserService
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esFormatoTablaProductoCantidad($upper);
         $esSolicitudPedido = $this->esSolicitudPedidoDocumento($texto);
-        $paginas = max($this->contarPaginasPdf($path), $this->inferirPaginasDesdeTexto($texto));
+        $paginas = max($this->resolverPaginasPdf($path, $nombreArchivo), $this->inferirPaginasDesdeTexto($texto));
         $esTablaMateriales = $this->esDocumentoTablaMaterialesPdf($texto);
         $esTablaEscaneada = $this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path, $nombreArchivo);
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
@@ -1483,6 +1494,31 @@ class ListadoMaterialesPdfParserService
         }
 
         $countPaddle = count($lineasPaddle);
+        if ($countPaddle < $minEsperadas && $esTablaEscaneada) {
+            $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
+            if ($lineasOcrPorPagina !== []) {
+                $countOcr = count($lineasOcrPorPagina);
+                Log::info('Import PDF: Paddle incompleto; complementando con OCR por página', [
+                    'paddle' => $countPaddle,
+                    'ocr_pagina' => $countOcr,
+                    'min_esperadas' => $minEsperadas,
+                ]);
+                $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
+                    $texto,
+                    $lineasOcrPorPagina,
+                    false,
+                    $paginas,
+                );
+                if ($countOcr > $countPaddle) {
+                    $lineasPaddle = $this->complementarLineasTablaSinDuplicar(
+                        $this->deduplicarLineasTabla($lineasPaddle, true),
+                        $lineasOcrPorPagina,
+                    );
+                    $countPaddle = count($lineasPaddle);
+                }
+            }
+        }
+
         $countTexto = count($lineasTexto);
 
         $esTablaMateriales = $this->esTablaMaterialesPorFilasPaddle($texto, $paginas, $countPaddle)
@@ -1632,7 +1668,7 @@ class ListadoMaterialesPdfParserService
             return false;
         }
 
-        $paginas = $this->contarPaginasPdf($path);
+        $paginas = $this->resolverPaginasPdf($path, $nombreArchivo);
 
         return $this->esProbableTablaMaterialesEscaneada('', $paginas, $path, $nombreArchivo);
     }

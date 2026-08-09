@@ -87,7 +87,49 @@ class PdfPaddleOcrServiceTest extends TestCase
             @unlink($tmp);
         }
 
-        $this->assertGreaterThanOrEqual(1, count($lineas));
-        Http::assertSentCount(4);
+        $this->assertCount(4, $lineas);
+    }
+
+    public function test_reintenta_paginas_faltantes_tras_fallo_paralelo(): void
+    {
+        config([
+            'cotiz.paddleocr.per_page_min_pages' => 3,
+            'cotiz.paddleocr.parallel_pages' => 4,
+            'cotiz.paddleocr.max_pages' => 11,
+        ]);
+
+        $intentos = [];
+
+        Http::fake(function ($request) use (&$intentos) {
+            if (! str_ends_with($request->url(), '/extract-tabla')) {
+                return Http::response(['status' => 'ok']);
+            }
+
+            $pagina = (int) ($request->data()['first_page'] ?? 1);
+            $intentos[$pagina] = ($intentos[$pagina] ?? 0) + 1;
+
+            // Primer intento paralelo: fallan páginas 3 y 4; reintento secuencial OK.
+            if ($pagina >= 3 && $intentos[$pagina] === 1) {
+                return Http::response(['detail' => 'busy'], 503);
+            }
+
+            return Http::response([
+                'lineas' => [
+                    ['cantidad' => $pagina, 'descripcion' => "PRODUCTO PAGINA {$pagina}"],
+                ],
+                'total' => 1,
+            ]);
+        });
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4 fake');
+
+        try {
+            $lineas = (new PdfPaddleOcrService)->extraerLineasTabla($tmp, 'ESPECIFICACIONES TECNICAS2 .pdf');
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertCount(11, $lineas);
     }
 }
