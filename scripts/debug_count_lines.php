@@ -43,7 +43,7 @@ $paddle = new class($lineasPaddle) extends PdfPaddleOcrService {
         return true;
     }
 
-    public function extraerLineasTabla(string $path): array
+    public function extraerLineasTabla(string $path, string $nombreArchivo = ''): array
     {
         return $this->lineas;
     }

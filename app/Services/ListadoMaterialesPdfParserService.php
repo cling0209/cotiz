@@ -1393,15 +1393,17 @@ class ListadoMaterialesPdfParserService
 
             $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
 
-            return $this->elegirMejorLineasTablaMateriales(
+            return $this->elegirYPodarLineasTablaMateriales(
                 array_merge($candidatos, ['texto' => $fallback]),
+                $texto,
+                $paginas,
                 $filasEsperadas,
                 $minEsperadas,
             );
         }
 
         try {
-            $lineasPaddle = $paddle->extraerLineasTabla($path);
+            $lineasPaddle = $paddle->extraerLineasTabla($path, $nombreArchivo);
         } catch (\Throwable $e) {
             Log::warning('Import PDF: PaddleOCR falló; se usa solo texto nativo/Tesseract', [
                 'error' => $e->getMessage(),
@@ -1410,8 +1412,10 @@ class ListadoMaterialesPdfParserService
 
             $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
 
-            return $this->elegirMejorLineasTablaMateriales(
+            return $this->elegirYPodarLineasTablaMateriales(
                 array_merge($candidatos, ['texto' => $fallback]),
+                $texto,
+                $paginas,
                 $filasEsperadas,
                 $minEsperadas,
             );
@@ -1420,8 +1424,10 @@ class ListadoMaterialesPdfParserService
         if ($lineasPaddle === []) {
             $fallback = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
 
-            return $this->elegirMejorLineasTablaMateriales(
+            return $this->elegirYPodarLineasTablaMateriales(
                 array_merge($candidatos, ['texto' => $fallback]),
+                $texto,
+                $paginas,
                 $filasEsperadas,
                 $minEsperadas,
             );
@@ -1435,7 +1441,7 @@ class ListadoMaterialesPdfParserService
 
         if ($debePaddlePorPagina) {
             try {
-                $lineasPaddlePagina = $paddle->extraerLineasTablaPorPagina($path);
+                $lineasPaddlePagina = $paddle->extraerLineasTablaPorPagina($path, $nombreArchivo);
                 if ($lineasPaddlePagina !== []) {
                     $lineasPaddle = $lineasPaddlePagina;
                     $countPaddle = count($lineasPaddle);
@@ -1492,7 +1498,31 @@ class ListadoMaterialesPdfParserService
             'paddle_primario' => $paddlePrimario,
         ]);
 
-        return $this->elegirMejorLineasTablaMateriales($candidatos, $filasEsperadas, $minEsperadas);
+        return $this->elegirYPodarLineasTablaMateriales(
+            $candidatos,
+            $texto,
+            $paginas,
+            $filasEsperadas,
+            $minEsperadas,
+        );
+    }
+
+    /**
+     * @param  array<string, array<int, array{cantidad: int, descripcion: string}>>  $candidatos
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function elegirYPodarLineasTablaMateriales(
+        array $candidatos,
+        string $texto,
+        int $paginas,
+        int $filasEsperadas,
+        int $minEsperadas,
+    ): array {
+        return $this->podarFilasTablaMaterialesSiExceso(
+            $texto,
+            $paginas,
+            $this->elegirMejorLineasTablaMateriales($candidatos, $filasEsperadas, $minEsperadas),
+        );
     }
 
     /**
@@ -1574,6 +1604,24 @@ class ListadoMaterialesPdfParserService
      */
     private function elegirMejorLineasTablaMateriales(array $candidatos, int $filasEsperadas, int $minEsperadas): array
     {
+        $minCount = max(9, (int) floor($minEsperadas * 0.5));
+        $limiteExceso = (int) ceil($filasEsperadas * 1.2);
+
+        $dentroDeRango = [];
+        foreach ($candidatos as $clave => $lineas) {
+            if ($lineas === []) {
+                continue;
+            }
+            $count = count($lineas);
+            if ($count >= $minCount && $count <= $limiteExceso) {
+                $dentroDeRango[$clave] = $lineas;
+            }
+        }
+
+        if ($dentroDeRango !== []) {
+            $candidatos = $dentroDeRango;
+        }
+
         $mejor = [];
         $mejorDistancia = PHP_INT_MAX;
         $mejorPrioridad = PHP_INT_MAX;

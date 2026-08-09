@@ -971,9 +971,10 @@ class CotizacionController extends Controller
                     $archivo,
                     (int) $datos['desde'],
                     (int) $datos['hasta'],
+                    $lockId,
                 );
             } else {
-                $resultado = $this->materialesPdfImport->preview($archivo);
+                $resultado = $this->materialesPdfImport->preview($archivo, $lockId);
             }
         } catch (\InvalidArgumentException $e) {
             return $this->respuestaLockAnalisisMateriales($e);

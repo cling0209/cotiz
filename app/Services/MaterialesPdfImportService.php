@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Cache;
 
 class MaterialesPdfImportService
 {
+    private const CACHE_VERSION = 'v31';
+
     public function __construct(
         protected ListadoMaterialesPdfParserService $parser,
         protected CompraAgilImportService $compraAgilImport,
@@ -16,9 +18,9 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function preview(UploadedFile $file): array
+    public function preview(UploadedFile $file, ?string $lockId = null): array
     {
-        $datos = $this->datosDesdePdf($file);
+        $datos = $this->datosDesdePdf($file, $lockId);
         $total = count($datos['lineas']);
         $resultado = $this->compraAgilImport->previewLoteDesdeDatos($datos, 0, $total);
         unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
@@ -29,9 +31,9 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function previewLote(UploadedFile $file, int $desde, int $hasta): array
+    public function previewLote(UploadedFile $file, int $desde, int $hasta, ?string $lockId = null): array
     {
-        $datos = $this->datosDesdePdf($file);
+        $datos = $this->datosDesdePdf($file, $lockId);
 
         return $this->compraAgilImport->previewLoteDesdeDatos($datos, $desde, $hasta);
     }
@@ -39,9 +41,9 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function aplicar(Nota $nota, UploadedFile $file, string $usuario): array
+    public function aplicar(Nota $nota, UploadedFile $file, string $usuario, ?string $lockId = null): array
     {
-        $datos = $this->datosDesdePdf($file);
+        $datos = $this->datosDesdePdf($file, $lockId);
         $total = count($datos['lineas']);
         $resultado = $this->compraAgilImport->aplicarLoteDesdeDatos($nota, $datos, $usuario, 0, $total);
         unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
@@ -52,9 +54,9 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function aplicarLote(Nota $nota, UploadedFile $file, string $usuario, int $desde, int $hasta): array
+    public function aplicarLote(Nota $nota, UploadedFile $file, string $usuario, int $desde, int $hasta, ?string $lockId = null): array
     {
-        $datos = $this->datosDesdePdf($file);
+        $datos = $this->datosDesdePdf($file, $lockId);
 
         return $this->compraAgilImport->aplicarLoteDesdeDatos($nota, $datos, $usuario, $desde, $hasta);
     }
@@ -140,13 +142,12 @@ class MaterialesPdfImportService
      *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
      * }
      */
-    private function datosDesdePdf(UploadedFile $file): array
+    private function datosDesdePdf(UploadedFile $file, ?string $lockId = null): array
     {
         $path = $file->getRealPath() ?: $file->getPathname();
         $cacheKey = null;
         if (is_string($path) && is_readable($path)) {
-            // v4: invalida cachés que pegaban "3" + "Termolaminadoras" a la fila anterior.
-            $cacheKey = 'cotiz.pdf_import.v30.'.hash_file('sha1', $path);
+            $cacheKey = $this->cacheKeyPdfImport($path, $lockId);
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['cabecera'], $cached['lineas'])) {
                 return $cached;
@@ -180,6 +181,21 @@ class MaterialesPdfImportService
         }
 
         return $datos;
+    }
+
+    /**
+     * Clave por lock_id + hash: cada "Analizar PDF" (nuevo lock) re-parsea;
+     * los lotes del mismo análisis reutilizan el resultado sin repetir OCR/Paddle.
+     */
+    public function cacheKeyPdfImport(string $path, ?string $lockId = null): string
+    {
+        $hash = hash_file('sha1', $path) ?: 'unknown';
+        $lockId = trim((string) $lockId);
+        if ($lockId !== '') {
+            return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$lockId.'.'.$hash;
+        }
+
+        return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$hash;
     }
 
     private function idAgileParaDescripcion(string $descripcion): string

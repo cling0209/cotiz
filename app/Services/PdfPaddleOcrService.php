@@ -35,7 +35,7 @@ class PdfPaddleOcrService
     /**
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
      */
-    public function extraerLineasTabla(string $pdfPath): array
+    public function extraerLineasTabla(string $pdfPath, string $nombreArchivo = ''): array
     {
         if (! is_readable($pdfPath)) {
             throw new RuntimeException('No se pudo leer el PDF para PaddleOCR.');
@@ -47,7 +47,7 @@ class PdfPaddleOcrService
         }
 
         $pdfBytes = (string) file_get_contents($pdfPath);
-        $nombre = basename($pdfPath) !== '' ? basename($pdfPath) : 'documento.pdf';
+        $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
         $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
         $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
 
@@ -61,7 +61,7 @@ class PdfPaddleOcrService
             // Fallback página a página (menor RAM en sidecar).
         }
 
-        return $this->extraerLineasTablaPorPagina($pdfPath);
+        return $this->extraerLineasTablaPorPagina($pdfPath, $nombreArchivo);
     }
 
     /**
@@ -69,7 +69,7 @@ class PdfPaddleOcrService
      *
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
      */
-    public function extraerLineasTablaPorPagina(string $pdfPath): array
+    public function extraerLineasTablaPorPagina(string $pdfPath, string $nombreArchivo = ''): array
     {
         if (! is_readable($pdfPath)) {
             throw new RuntimeException('No se pudo leer el PDF para PaddleOCR.');
@@ -81,7 +81,7 @@ class PdfPaddleOcrService
         }
 
         $pdfBytes = (string) file_get_contents($pdfPath);
-        $nombre = basename($pdfPath) !== '' ? basename($pdfPath) : 'documento.pdf';
+        $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
         $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
         $maxPaginas = max(1, min(30, (int) $this->config('paddleocr.max_pages', 15)));
 
@@ -197,6 +197,18 @@ class PdfPaddleOcrService
         }
 
         return $normalizadas;
+    }
+
+    private function nombreArchivoParaPaddle(string $pdfPath, string $nombreArchivo): string
+    {
+        $nombre = trim($nombreArchivo);
+        if ($nombre !== '') {
+            return $nombre;
+        }
+
+        $base = basename($pdfPath);
+
+        return $base !== '' ? $base : 'documento.pdf';
     }
 
     private function baseUrl(): string

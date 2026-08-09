@@ -417,8 +417,8 @@ def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
         if mapeo["cantidad"] is None:
             mapeo["cantidad"] = inferido["cantidad"]
 
-    filas_datos = _fusionar_filas_tabla_html_partidas(filas_datos, mapeo)
     filas_datos = _fusionar_continuaciones_posteriores(filas_datos, mapeo)
+    filas_datos = _fusionar_filas_tabla_html_partidas(filas_datos, mapeo)
 
     filas: list[dict[str, Any]] = []
     for row in filas_datos:
