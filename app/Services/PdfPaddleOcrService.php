@@ -56,12 +56,15 @@ class PdfPaddleOcrService
         $umbralPorPagina = max(2, (int) $this->config('paddleocr.per_page_min_pages', 6));
 
         if ($paginasDoc >= $umbralPorPagina || $this->esNombreEspecificacionesTecnicas($nombre)) {
+            $concurrency = $this->esNombreEspecificacionesTecnicas($nombre) ? 1 : 0;
+
             return $this->extraerLineasTablaPorPaginaDesdeBytes(
                 $url,
                 $pdfBytes,
                 $nombre,
                 $timeout,
                 $paginasDoc,
+                $concurrency,
             );
         }
 

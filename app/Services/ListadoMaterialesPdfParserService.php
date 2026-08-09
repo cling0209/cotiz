@@ -876,8 +876,10 @@ class ListadoMaterialesPdfParserService
 
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
         $paginas = $this->resolverPaginasPdf($path, $nombreArchivo);
+        $esEspecificaciones = $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo);
         if ($paddle->estaDisponible()
-            && $this->esProbableTablaMaterialesEscaneada($textoNativo, $paginas, $path, $nombreArchivo)) {
+            && $this->esProbableTablaMaterialesEscaneada($textoNativo, $paginas, $path, $nombreArchivo)
+            && ! $esEspecificaciones) {
             Log::info('Import PDF: omitiendo OCR Tesseract; PaddleOCR procesará la tabla escaneada');
 
             if ($fragmentos === []) {
@@ -1106,6 +1108,10 @@ class ListadoMaterialesPdfParserService
             return true;
         }
 
+        if ($paginas >= 8 && $n >= 90 && $n <= 180) {
+            return true;
+        }
+
         if (! $this->estimacionFilasEsperadasEsFiable($texto, $paginas)) {
             return false;
         }
@@ -1127,6 +1133,10 @@ class ListadoMaterialesPdfParserService
 
         $esperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
         $limite = (int) ceil($esperadas * 1.05);
+        $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
+        if ($this->esEspecificacionesTecnicasTablaProducto($upper) || $paginas >= 8) {
+            $limite = max($esperadas, (int) floor($esperadas * 1.02));
+        }
 
         while (count($filas) > $limite) {
             $reducidas = $this->eliminarFilasSubcadenaContenida($filas);
@@ -1431,6 +1441,13 @@ class ListadoMaterialesPdfParserService
         /** @var array<string, array<int, array{cantidad: int, descripcion: string}>> $candidatos */
         $candidatos = [];
 
+        $esEspecificaciones = $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)
+            || $this->esNombreArchivoEspecificacionesTecnicas(basename($path));
+
+        if ($esTablaEscaneada && $esEspecificaciones) {
+            $this->agregarCandidatosOcrTablaMateriales($path, $paginas, $texto, $candidatos);
+        }
+
         $paddle = $this->paddle ?? new PdfPaddleOcrService;
         $paddleDisponible = $paddle->estaDisponible();
 
@@ -1494,7 +1511,10 @@ class ListadoMaterialesPdfParserService
         }
 
         $countPaddle = count($lineasPaddle);
-        if ($this->paddleResultadoIncompleto($countPaddle, $minEsperadas, $filasEsperadas, $paginas) && $esTablaEscaneada) {
+        $debeOcrPagina = $this->paddleResultadoIncompleto($countPaddle, $minEsperadas, $filasEsperadas, $paginas)
+            || ($esEspecificaciones && $countPaddle < (int) floor($filasEsperadas * 0.9));
+
+        if ($debeOcrPagina && $esTablaEscaneada && ! isset($candidatos['ocr_pagina'])) {
             $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
             if ($lineasOcrPorPagina !== []) {
                 Log::info('Import PDF: Paddle incompleto; complementando con OCR por página', [
@@ -1546,6 +1566,23 @@ class ListadoMaterialesPdfParserService
         $candidatos['paddle'] = $finalPaddle;
         $candidatos['texto'] = $this->finalizarLineasTablaSolicitudPedido($texto, $lineasTexto, false, $paginas);
 
+        if ($esEspecificaciones && $this->paddleResultadoIncompleto($countPaddle, $minEsperadas, $filasEsperadas, $paginas)) {
+            if (! isset($candidatos['ocr_full'])) {
+                $this->agregarCandidatosOcrTablaMateriales($path, $paginas, $texto, $candidatos);
+            }
+            if (! isset($candidatos['ocr_pagina'])) {
+                $lineasOcrPorPagina = $this->parseLineasTablaPorPaginaOcr($path, $paginas);
+                if ($lineasOcrPorPagina !== []) {
+                    $candidatos['ocr_pagina'] = $this->finalizarLineasTablaSolicitudPedido(
+                        $texto,
+                        $lineasOcrPorPagina,
+                        false,
+                        $paginas,
+                    );
+                }
+            }
+        }
+
         Log::info('Import PDF: fusión PaddleOCR + texto/Tesseract', [
             'texto' => $countTexto,
             'paddle' => $countPaddle,
@@ -1584,6 +1621,48 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
+     * OCR completo + por hoja para PDF ESPECIFICACIONES TECNICAS (multilínea en celdas).
+     *
+     * @param  array<string, array<int, array{cantidad: int, descripcion: string}>>  $candidatos
+     */
+    private function agregarCandidatosOcrTablaMateriales(
+        string $path,
+        int $paginas,
+        string $textoHint,
+        array &$candidatos,
+    ): void {
+        $ocr = $this->ocr ?? new PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            return;
+        }
+
+        try {
+            $textoCompleto = trim($this->extraerTextoPdfMedianteOcr($path, true));
+        } catch (\Throwable $e) {
+            Log::warning('Import PDF: OCR completo falló', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        if ($textoCompleto === '') {
+            return;
+        }
+
+        $lineasOcrFull = $this->parseTexto($textoCompleto);
+        if ($lineasOcrFull !== []) {
+            $candidatos['ocr_full'] = $this->finalizarLineasTablaSolicitudPedido(
+                $textoCompleto,
+                $lineasOcrFull,
+                false,
+                $paginas,
+            );
+            Log::info('Import PDF: candidato OCR completo', [
+                'filas' => count($candidatos['ocr_full']),
+            ]);
+        }
+    }
+
+    /**
      * OCR + parser por hoja (misma idea que scripts/cuadrar_celdas_por_hoja.php).
      *
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>
@@ -1615,13 +1694,31 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            foreach ($this->parseTexto($textoPagina) as $fila) {
+            foreach ($this->parseTextoPaginaTablaMateriales($textoPagina) as $fila) {
                 $fila['pagina'] = $pagina;
                 $lineas[] = $fila;
             }
         }
 
         return $lineas;
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseTextoPaginaTablaMateriales(string $textoPagina): array
+    {
+        $textoPagina = trim($textoPagina);
+        if ($textoPagina === '') {
+            return [];
+        }
+
+        $upper = mb_strtoupper($textoPagina);
+        if (! str_contains($upper, 'PRODUCTO') || ! str_contains($upper, 'CANTIDAD')) {
+            $textoPagina = "PRODUCTO CANTIDAD IMAGEN REFERENCIA\n".$textoPagina;
+        }
+
+        return $this->parseTexto($textoPagina);
     }
 
     private function esProbableTablaMaterialesEscaneada(
@@ -1711,6 +1808,23 @@ class ListadoMaterialesPdfParserService
     {
         $minCount = max(9, (int) floor($minEsperadas * 0.5));
         $limiteExceso = (int) ceil($filasEsperadas * 1.2);
+        $umbralPaddleDebil = (int) floor($filasEsperadas * 0.85);
+
+        $tieneAlternativaMejor = static function (array $candidatos, string $clave) use ($minCount): bool {
+            return isset($candidatos[$clave]) && count($candidatos[$clave]) >= $minCount;
+        };
+
+        if (
+            isset($candidatos['paddle'])
+            && count($candidatos['paddle']) < $umbralPaddleDebil
+            && (
+                $tieneAlternativaMejor($candidatos, 'ocr_full')
+                || $tieneAlternativaMejor($candidatos, 'ocr_pagina')
+                || $tieneAlternativaMejor($candidatos, 'texto')
+            )
+        ) {
+            unset($candidatos['paddle']);
+        }
 
         $dentroDeRango = [];
         foreach ($candidatos as $clave => $lineas) {
@@ -1743,9 +1857,10 @@ class ListadoMaterialesPdfParserService
             }
 
             $prioridad = match ($clave) {
-                'ocr_pagina' => 0,
-                'paddle' => 1,
-                default => 2,
+                'ocr_full' => 0,
+                'ocr_pagina' => 1,
+                'paddle' => 2,
+                default => 3,
             };
             $distancia = abs($count - $filasEsperadas);
 
@@ -1847,21 +1962,14 @@ class ListadoMaterialesPdfParserService
     {
         $upper = mb_strtoupper($this->normalizarEspaciosDocumento($texto));
         $esTabla = $this->esDocumentoTablaMaterialesPdf($texto)
-            || ($this->esEspecificacionesTecnicasTablaProducto($upper) && count($lineas) >= 20)
-            || ($desdeCeldasPaddle && count($lineas) >= 40 && ($paginas >= 8 || count($lineas) >= 90));
+            || ($this->esEspecificacionesTecnicasTablaProducto($upper) && count($lineas) >= 9)
+            || ($desdeCeldasPaddle && count($lineas) >= 9 && ($paginas >= 8 || count($lineas) >= 40));
 
         if (! $esTabla) {
             return $lineas;
         }
 
-        if ($desdeCeldasPaddle) {
-            return $this->sanearFilasTablaSolicitud($lineas, $texto, $paginas, true);
-        }
-
-        $lineas = $this->repararFilasTablaSolicitudOcr($lineas);
-        $lineas = $this->completarFilasSolicitudPedidoDesdeTexto($texto, $lineas);
-
-        return $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $lineas);
+        return $this->sanearFilasTablaSolicitud($lineas, $texto, $paginas, $desdeCeldasPaddle);
     }
 
     /**
@@ -1904,6 +2012,8 @@ class ListadoMaterialesPdfParserService
             return $this->deduplicarLineasTabla($reparado, false);
         }
 
+        $reparado = $this->repararFilasTablaSolicitudOcr($reparado);
+        $reparado = $this->completarFilasSolicitudPedidoDesdeTexto($texto, $reparado);
         $reparado = $this->compactarFilasTablaMateriales($reparado);
 
         if ($texto !== '' && $this->debePodarFilasTablaMateriales($texto, $paginas, $reparado)) {
@@ -3347,7 +3457,7 @@ class ListadoMaterialesPdfParserService
         $upper = mb_strtoupper($limpia);
 
         return preg_match(
-            '/^(?:COLORES(?:\s+(?:SURTIDOS?|FLUOR|PASTELES?|NEON|BÁSICOS?|BASICOS?|VARIADOS?|MET[AÁ]LICOS?|PASTEL(?:ES)?|CRAFT))?|PASTELES?(?:\s+\d+\s+COLORES)?|UNIDADES(?:\s+IMAGIA(?:\s+TRIANGULAR)?)?|\d+\/\d+\s+\d+\s+HOJAS|\d+\s+HOJAS)$/iu',
+            '/^(?:COLORES(?:\s+(?:SURTIDOS?|FLUOR|PASTELES?|NEON|BÁSICOS?|BASICOS?|VARIADOS?|MET[AÁ]LICOS?|PASTEL(?:ES)?|CRAFT))?|PASTELES?(?:\s+\d+\s+COLORES)?|UNIDADES(?:\s+IMAGIA(?:\s+TRIANGULAR)?|\s+PTA\s+FINA(?:\s+[\d,]+)?)?|\d+\/\d+\s+\d+\s+HOJAS|\d+\s+HOJAS|(?:\d+\s+)?(?:MM\s+)?PACK\s+\d+\s+UNIDADES|PTA\s+FINA(?:\s+[\d,]+)?|(?:\d+\s+)?COLORES(?:\s+(?:GIOTTO|PASTELES?|NEON|SURTIDOS?))?|DEPOSITO\s+SIMPLE\s+CAJA\s+\d+|HOJAS\s+PACK\s+\d+\s+UNI(?:DADES)?)$/iu',
             $upper,
         ) === 1;
     }
@@ -3378,7 +3488,16 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($suf === 'UNIDADES' || str_starts_with($suf, 'UNIDADES ')) {
-            return preg_match('/\b(?:CAJA|PACK|DISPLAY)\s+\d+\s*$/iu', $descripcionPrev) === 1;
+            return preg_match('/\b(?:CAJA|PACK|DISPLAY|JUMBO|\d+)\s+\d*\s*$/iu', $descripcionPrev) === 1
+                || preg_match('/\b(?:LAPIZ|PASTA|ARTEL|LAPICES)\b/iu', $descripcionPrev) === 1;
+        }
+
+        if (str_starts_with($suf, 'PTA FINA') || preg_match('/^\d+\s+COLORES\b/iu', $suf)) {
+            return preg_match('/\b(?:LAPIZ|PASTA|ARTEL|MADERA|MARCADOR|BLOCK|CUADERNO)\b/iu', $descripcionPrev) === 1;
+        }
+
+        if (preg_match('/^(?:\d+\s+)?PACK\s+\d+\s+UNIDADES$/iu', $suf)) {
+            return preg_match('/\b(?:CUADERNO|HOJAS)\b/iu', $descripcionPrev) === 1;
         }
 
         return false;

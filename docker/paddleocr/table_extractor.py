@@ -48,6 +48,8 @@ class _TableHtmlParser(HTMLParser):
             self._current_row = []
         elif tag in ("td", "th"):
             self._cell_parts = []
+        elif tag == "br" and self._cell_parts is not None:
+            self._cell_parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         if self._cell_parts is not None:
@@ -58,6 +60,7 @@ class _TableHtmlParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag in ("td", "th") and self._current_row is not None:
             cell = " ".join(self._cell_parts).strip()
+            cell = re.sub(r"\s*\n\s*", " / ", cell)
             self._current_row.append(cell)
             self._cell_parts = []
         elif tag == "tr" and self._current_row is not None:

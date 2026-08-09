@@ -50,6 +50,11 @@ $ocr = new class ($vpsTexto) extends PdfOcrService {
         return true;
     }
 
+    public function extraerTexto(string $pdfPath, array $opciones = []): string
+    {
+        return $this->textoCompleto;
+    }
+
     public function extraerTextoPagina(string $pdfPath, int $pagina, array $opciones = []): string
     {
         return $this->textoCompleto;
