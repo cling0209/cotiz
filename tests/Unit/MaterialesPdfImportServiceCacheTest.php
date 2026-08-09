@@ -134,7 +134,7 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
 
         try {
             $key = $service->cacheKeyPdfImport($tmp, 'lock-abc');
-            $this->assertStringContainsString('v38', $key);
+            $this->assertStringContainsString('v39', $key);
             $this->assertStringContainsString('lock-abc', $key);
         } finally {
             @unlink($tmp);

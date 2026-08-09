@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Compara parseTexto(vps_ocr_real) vs golden 97.
+ * Compara parseTextoTablaMaterialesFinalizado(vps_ocr_real) vs golden 97.
  * Uso: php scripts/validar_golden_ocr.php
  */
 
@@ -17,19 +17,18 @@ $texto = (string) file_get_contents(dirname(__DIR__).'/tests/Fixtures/pdf_materi
 $texto = preg_replace('/ESPECIFICACIONES SOLICITUD DE PEDIDO/u', 'ESPECIFICACIONES TECNICAS', $texto, 1) ?? $texto;
 
 $parser = new ListadoMaterialesPdfParserService;
-$lineas = $parser->parseTexto($texto);
+$lineas = $parser->parseTextoTablaMaterialesFinalizado($texto, 11);
 $golden = Solicitud83965Golden::load();
 
 echo 'Filas parseadas: '.count($lineas)."\n";
 echo 'Golden esperado: '.$golden['total']."\n\n";
 
 $faltan = [];
-$extras = [];
 $matched = 0;
 
 foreach ($golden['lineas'] as $i => $g) {
     $encontrada = null;
-    foreach ($lineas as $j => $l) {
+    foreach ($lineas as $l) {
         if (str_contains(mb_strtoupper($l['descripcion']), mb_strtoupper($g['needle']))) {
             $encontrada = $l;
             break;
