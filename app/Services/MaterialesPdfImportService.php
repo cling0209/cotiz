@@ -33,7 +33,9 @@ class MaterialesPdfImportService
      */
     public function previewLote(UploadedFile $file, int $desde, int $hasta, ?string $lockId = null): array
     {
+        $this->renovarLockImportacion($lockId);
         $datos = $this->datosDesdePdf($file, $lockId);
+        $this->renovarLockImportacion($lockId);
 
         return $this->compraAgilImport->previewLoteDesdeDatos($datos, $desde, $hasta);
     }
@@ -154,7 +156,9 @@ class MaterialesPdfImportService
             }
         }
 
+        $this->renovarLockImportacion($lockId);
         $documento = $this->parser->parseDocumentoCompleto($file);
+        $this->renovarLockImportacion($lockId);
         $lineas = [];
 
         foreach ($documento['lineas'] as $fila) {
@@ -196,6 +200,16 @@ class MaterialesPdfImportService
         }
 
         return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$hash;
+    }
+
+    private function renovarLockImportacion(?string $lockId): void
+    {
+        $lockId = trim((string) $lockId);
+        if ($lockId === '') {
+            return;
+        }
+
+        app(MaterialesImportLockService::class)->touch($lockId);
     }
 
     private function idAgileParaDescripcion(string $descripcion): string

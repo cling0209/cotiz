@@ -2913,6 +2913,10 @@
             const json = await res.json().catch(() => ({}));
 
             if (res.status === 409 && json.code === 'materiales_import_locked') {
+                const msgLock = String(json.error || '');
+                if (/expir[oó]|fue liberado|Analice el archivo de nuevo/i.test(msgLock)) {
+                    return { res, json };
+                }
                 await esperarTurnoAnalisisMateriales(json.lock || null);
                 continue;
             }

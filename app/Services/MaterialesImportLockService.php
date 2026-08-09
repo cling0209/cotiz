@@ -12,8 +12,11 @@ class MaterialesImportLockService
     /** Tiempo máximo de análisis (OCR largo). */
     public const TTL_SECONDS = 2700;
 
-    /** Sin actividad durante este tiempo → lock huérfano liberable. */
-    public const ABANDON_MINUTES = 5;
+    /**
+     * Sin actividad durante este tiempo → lock huérfano liberable.
+     * Debe ser >= duración típica de OCR/PDF (varios minutos); alineado con TTL (~45 min).
+     */
+    public const ABANDON_MINUTES = 45;
 
     /**
      * @return array{
