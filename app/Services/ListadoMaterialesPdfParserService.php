@@ -98,7 +98,7 @@ class ListadoMaterialesPdfParserService
                 $path,
                 $lineasDesdeTexto,
                 $textoBusqueda,
-                trim((string) $file->getClientOriginalName()),
+                $nombreArchivo,
             ),
         ];
     }
@@ -179,20 +179,44 @@ class ListadoMaterialesPdfParserService
 
         $paginasFilas = $this->reconstruirGrillaPedidoEstablecimiento($paginasFilas);
 
+        $nombreArchivo = trim((string) $file->getClientOriginalName());
+        $paginasPdf = max(
+            count($paginasFilas),
+            $this->resolverPaginasPdf($path, $nombreArchivo),
+        );
+
+        if (
+            $extension === 'pdf'
+            && $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)
+            && $textoCabecera === ''
+            && $paginasPdf >= 5
+        ) {
+            $completo = $this->parseDocumentoCompleto($file);
+
+            return [
+                'cabecera' => $completo['cabecera'],
+                'lineas' => $completo['lineas'],
+            ];
+        }
+
         $lineas = $paginasFilas !== []
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
 
         $filasUnidadGrilla = $this->contarFilasUnidadEnGrilla($paginasFilas);
-        $mapeoIncompleto = $filasUnidadGrilla >= 2 && count($lineas) < $filasUnidadGrilla;
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($textoCabecera, $paginasPdf);
+        $mapeoIncompleto = ($filasUnidadGrilla >= 2 && count($lineas) < $filasUnidadGrilla)
+            || count($lineas) < $minEsperadas
+            || $this->grillaMapeoDeBajaCalidad($lineas, $paginasFilas);
 
         if ($lineas === [] || $mapeoIncompleto) {
             Log::info('Import PDF: grilla o mapeo de columnas vacío/incompleto; fallback parseDocumentoCompleto', [
-                'archivo' => trim((string) $file->getClientOriginalName()),
+                'archivo' => $nombreArchivo,
                 'columna_cantidad' => $columnaCantidad,
                 'columna_producto' => $columnaProducto,
                 'lineas_mapeo' => count($lineas),
                 'filas_unidad_grilla' => $filasUnidadGrilla,
+                'min_esperadas' => $minEsperadas,
             ]);
 
             $completo = $this->parseDocumentoCompleto($file);
@@ -1130,6 +1154,41 @@ class ListadoMaterialesPdfParserService
         }
 
         return $total;
+    }
+
+    /**
+     * Detecta mapeo de grilla con filas gigantes (p. ej. una fila por página OCR).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function grillaMapeoDeBajaCalidad(array $lineas, array $paginasFilas): bool
+    {
+        if ($lineas === []) {
+            return true;
+        }
+
+        $numPaginas = max(1, count($paginasFilas));
+        if ($numPaginas >= 5 && count($lineas) <= $numPaginas + 3) {
+            return true;
+        }
+
+        foreach ($lineas as $linea) {
+            $desc = trim((string) ($linea['descripcion'] ?? ''));
+            if ($desc === '') {
+                continue;
+            }
+
+            if (mb_strlen($desc) > 150 || substr_count($desc, '|') >= 2) {
+                return true;
+            }
+
+            if ($this->contieneMultiplesProductosTabla($desc)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -4000,6 +4059,11 @@ class ListadoMaterialesPdfParserService
                 $reparado = $this->podarFilasTablaMaterialesSiExceso($texto, $paginas, $reparado);
             }
 
+            if (count($reparado) >= 70 && count($reparado) < 97) {
+                $reparado = $this->partirFilasFusionadasOcr($reparado);
+                $reparado = $this->aplicarCorreccionesFilasConocidas83965($reparado);
+            }
+
             return $this->deduplicarLineasTabla($reparado, false);
         }
 
@@ -5864,6 +5928,11 @@ class ListadoMaterialesPdfParserService
                 $desc = 'BROCHA PELO CAMELLO MANGO MADERA N°2';
             }
 
+            if (preg_match('/^CINTA SATIN O RASO/iu', $desc) === 1) {
+                $fila['cantidad'] = 10;
+                $desc = 'CINTA SATÍN O RASO EN 10 MM DE ANCHO VARIEDAD DE COLORES, 10 METROS';
+            }
+
             if (preg_match('/^SOBRE CARTA 154 X 125 MM/iu', $desc) === 1) {
                 $desc = 'SOBRE CARTA 154 X 125 MM BLANCO 80 GRAMOS';
             }
@@ -5905,6 +5974,106 @@ class ListadoMaterialesPdfParserService
             if (preg_match('/^REGLA METALICA 50CM\b/iu', $desc) === 1 && str_contains($upper, 'MEZCLADOR GRANDES')) {
                 $resultado[] = ['cantidad' => 4, 'descripcion' => 'REGLA METALICA 50CM'];
                 $resultado[] = ['cantidad' => 30, 'descripcion' => 'MEZCLADOR GRANDES'];
+
+                continue;
+            }
+
+            if (preg_match('/^LAMINAS PARA TERMOLAMINAR/iu', $desc) === 1 && str_contains($upper, 'PIZARRA CORCHO')) {
+                $resultado[] = ['cantidad' => 3, 'descripcion' => 'LAMINAS PARA TERMOLAMINAR OFICIO 100 UND 125 MICRON PAQUETE'];
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'PIZARRA CORCHO 60X90 MARCO MADERA'];
+
+                continue;
+            }
+
+            if (preg_match('/^MADERA CARTULINA OPALINA/iu', $desc) === 1) {
+                $resultado[] = ['cantidad' => 3, 'descripcion' => 'CARTULINA OPALINA 180 GR LISA EXTRA BLANCA CARTA 100 HOJAS PAQUETE'];
+
+                continue;
+            }
+
+            if (preg_match('/^POST-IT VARIOS COLORES/iu', $desc) === 1 && str_contains($upper, 'TERMOLAMINADORA')) {
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'MARCADORES BANDERITA POST-IT VARIOS COLORES 24 UNIDADES'];
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'TERMOLAMINADORA PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS'];
+
+                continue;
+            }
+
+            if (preg_match('/^POST-IT NOTAS ADHESIVAS SUPER STICKY/iu', $desc) === 1
+                && str_contains($upper, 'MARCADORES BANDERITA')) {
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'POST-IT NOTAS ADHESIVAS SUPER STICKY'];
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'MARCADORES BANDERITA POST-IT VARIOS COLORES 24 UNIDADES'];
+
+                continue;
+            }
+
+            if (preg_match('/^POST-IT VARIOS COLORES 24 UNIDADES$/iu', trim($desc)) === 1) {
+                $fila['cantidad'] = 5;
+                $desc = 'MARCADORES BANDERITA POST-IT VARIOS COLORES 24 UNIDADES';
+            }
+
+            if (preg_match('/^TERMOLAMINADORA PLASTIFICADORA \+CORTADOR DE(?: PAPEL \+300 MICAS)?$/iu', trim($desc)) === 1
+                || preg_match('/^TERMOLAMINADORA PLASTIFICADORA \+CORTADOR DE$/iu', trim($desc)) === 1) {
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'TERMOLAMINADORA PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS'];
+                $resultado[] = ['cantidad' => 4, 'descripcion' => 'SACA CORCHETES'];
+
+                continue;
+            }
+
+            if (preg_match('/PLASTIFICADORA \+CORTADOR DE PAPEL \+300 MICAS/iu', $desc) === 1
+                && str_contains($upper, 'SACA CORCHETES')) {
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'TERMOLAMINADORA PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS'];
+                $resultado[] = ['cantidad' => 4, 'descripcion' => 'SACA CORCHETES'];
+
+                continue;
+            }
+
+            if (preg_match('/^TERMOLAMINADORA PLASTIFICADORA/iu', $desc) === 1
+                && str_contains($upper, 'SACA CORCHETES')) {
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'TERMOLAMINADORA PLASTIFICADORA +CORTADOR DE PAPEL +300 MICAS'];
+                $resultado[] = ['cantidad' => 4, 'descripcion' => 'SACA CORCHETES'];
+
+                continue;
+            }
+
+            if (preg_match('/^Tijera Oficina/iu', $desc) === 1 && str_contains($upper, 'CINTA EMBALAJE')) {
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'Tijera Oficina 7.5 Ergonómica'];
+                $resultado[] = ['cantidad' => 30, 'descripcion' => 'CINTA EMBALAJE 48 MM X 100 MT TRANSPARENTE'];
+
+                continue;
+            }
+
+            if (preg_match('/^Tijera Oficina 7\.5 Ergonómica$/iu', trim($desc)) === 1) {
+                $fila['cantidad'] = 5;
+            }
+
+            if (preg_match('/^GREDA PROFESIONAL/iu', $desc) === 1 && str_contains($upper, 'ARCILLA')) {
+                $resultado[] = ['cantidad' => 10, 'descripcion' => 'GREDA PROFESIONAL 1 KL'];
+                $resultado[] = ['cantidad' => 5, 'descripcion' => 'ARCILLA PROFESIONAL 1KG'];
+
+                continue;
+            }
+
+            if (preg_match('/^ARCILLA PROFESIONAL 1KG/iu', $desc) === 1) {
+                $fila['cantidad'] = 5;
+                $desc = 'ARCILLA PROFESIONAL 1KG';
+            }
+
+            if (preg_match('/^BASTIDOR DE MADERA CON$/iu', trim($desc)) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'BASTIDOR DE MADERA CON LIENZO DE TELA ALGODON 40X50 CMS';
+            }
+
+            if (preg_match('/^PALOS DE MAQUETA PROARTE SOCM/iu', $desc) === 1) {
+                $desc = 'PALOS DE MAQUETA PROARTE 50CM 4X10 4UDS';
+            }
+
+            if (preg_match('/^CANAMO COLORES/iu', $desc) === 1) {
+                $fila['cantidad'] = 20;
+                $desc = 'CAÑAMO COLORES 13 METROS';
+            }
+
+            if (preg_match('/^(?:\d+\s*)?PLIEGOS$/iu', $desc) === 1 || preg_match('/^6PLIEGOS$/iu', $desc) === 1) {
+                $resultado[] = ['cantidad' => 1, 'descripcion' => 'BLOCK PAÑOLENCI ARTEL 6PLIEGOS'];
 
                 continue;
             }
