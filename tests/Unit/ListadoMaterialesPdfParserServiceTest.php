@@ -1118,6 +1118,34 @@ TXT;
         $this->assertSame('Cinta de embalaje', $lineas[1]['descripcion']);
     }
 
+    public function test_mapeo_columnas_fila_sin_unidad_no_toma_especificacion(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES TECNICAS'],
+                    ['300', 'Chapitas 58mm', 'Chapita de 58mm, NO ensamblado con filmina en bolsas de 100 unidades'],
+                    ['de 58mm, NO ensamblado con filmina en bolsas de 100'],
+                    ['300', 'Chapitas 37mm', 'Chapita de 37mm, NO ensamblado con filmina en bolsa de 100 unidades.'],
+                    ['600', 'Chapita llavero con espejo', 'Chapita llavero con espejo de 58mm con filmina.'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'BIEN O SERVICIO');
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame('Chapitas 58mm', $lineas[0]['descripcion']);
+        $this->assertSame(300, $lineas[0]['cantidad']);
+        $this->assertSame('Chapitas 37mm', $lineas[1]['descripcion']);
+        $this->assertSame('Chapita llavero con espejo', $lineas[2]['descripcion']);
+    }
+
     public function test_mapeo_columnas_multilinea_solo_celda_producto(): void
     {
         $paginasFilas = [
@@ -1125,8 +1153,8 @@ TXT;
                 'pagina' => 1,
                 'filas' => [
                     ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES TECNICAS'],
-                    ['Unidades', '4', 'Chapita de 58mm, NO', 'Chapita de 58mm con filmina'],
-                    ['', '', 'ensamblado en bolsas de 100', ''],
+                    ['Unidades', '4', 'Paquete de Papel', 'Papel adhesivo 1m x 45cm'],
+                    ['', '', 'adhesivo blanco', ''],
                 ],
             ],
         ];
@@ -1139,7 +1167,7 @@ TXT;
 
         $this->assertCount(1, $lineas);
         $this->assertSame(4, $lineas[0]['cantidad']);
-        $this->assertSame('Chapita de 58mm, NO ensamblado en bolsas de 100', $lineas[0]['descripcion']);
+        $this->assertSame('Paquete de Papel adhesivo blanco', $lineas[0]['descripcion']);
     }
 
     public function test_mapeo_columnas_hojas_titulo_repetido_y_continuacion_sin_encabezado(): void

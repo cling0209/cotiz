@@ -393,6 +393,10 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
+                if ($this->esFragmentoRuidoMultilinea($celdas)) {
+                    continue;
+                }
+
                 $indicesHeader = $this->resolverIndicesHeaderPorNombre($celdas, $nombreCantidad, $nombreProducto);
                 if ($indicesHeader !== null) {
                     $idxCantidad = $indicesHeader['cantidad'];
@@ -406,12 +410,16 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                while (count($celdas) <= max($idxCantidad, $idxProducto)) {
+                $indicesFila = $this->resolverIndicesFilaDatos($celdas, $idxCantidad, $idxProducto);
+                $idxCantidadFila = $indicesFila['cantidad'];
+                $idxProductoFila = $indicesFila['producto'];
+
+                while (count($celdas) <= max($idxCantidadFila, $idxProductoFila)) {
                     $celdas[] = '';
                 }
 
-                $cantRaw = trim($celdas[$idxCantidad] ?? '');
-                $prodRaw = trim($celdas[$idxProducto] ?? '');
+                $cantRaw = trim($celdas[$idxCantidadFila] ?? '');
+                $prodRaw = $this->resolverTextoCeldaProducto($celdas, $idxCantidadFila, $idxProductoFila);
                 $cantidad = $this->parseCantidadCeldaTabla($cantRaw);
 
                 if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
@@ -422,9 +430,9 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                if ($bufferDesc !== null && $cantidad === null) {
-                    $continuacion = $this->textoContinuacionCeldaProducto($celdas, $idxCantidad, $idxProducto);
-                    if ($continuacion !== '') {
+                if ($bufferDesc !== null && $cantidad === null && count($celdas) > 1) {
+                    $continuacion = trim($celdas[$idxProductoFila] ?? '');
+                    if ($continuacion !== '' && ! $this->esTextoProbableEspecificacion($continuacion)) {
                         $bufferDesc = trim($bufferDesc.' '.$continuacion);
                         continue;
                     }
@@ -450,44 +458,81 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
-     * Texto adicional de la celda producto en filas partidas por salto (multilínea OCR).
-     *
      * @param  array<int, string>  $celdas
+     * @return array{cantidad: int, producto: int}
      */
-    private function textoContinuacionCeldaProducto(array $celdas, int $idxCantidad, int $idxProducto): string
+    private function resolverIndicesFilaDatos(array $celdas, int $idxCantidadHeader, int $idxProductoHeader): array
     {
-        if (trim($celdas[$idxCantidad] ?? '') !== '') {
-            return '';
+        $idxCantidad = $idxCantidadHeader;
+        $idxProducto = $idxProductoHeader;
+
+        $cantEnIndiceHeader = $this->parseCantidadCeldaTabla(trim($celdas[$idxCantidadHeader] ?? ''));
+        $cantEnPrimeraColumna = $this->parseCantidadCeldaTabla(trim($celdas[0] ?? ''));
+
+        if ($cantEnPrimeraColumna !== null && $cantEnIndiceHeader === null && $idxCantidadHeader > 0) {
+            $desplazamiento = 0 - $idxCantidadHeader;
+            $idxCantidad = 0;
+            $idxProducto = max(0, $idxProductoHeader + $desplazamiento);
         }
 
-        $prod = trim($celdas[$idxProducto] ?? '');
-        if ($prod !== '') {
-            return $prod;
-        }
-
-        if (count($celdas) === 1) {
-            $unica = trim($celdas[0] ?? '');
-            if ($unica === '') {
-                return '';
-            }
-
-            $norm = $this->normalizarEncabezadoCelda($unica);
-            if ($this->esFilaInicioDatosTabular($norm)) {
-                return '';
-            }
-
-            return $unica;
-        }
-
-        return '';
+        return ['cantidad' => $idxCantidad, 'producto' => $idxProducto];
     }
 
-    private function esFilaInicioDatosTabular(string $lineaNormalizada): bool
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function resolverTextoCeldaProducto(array $celdas, int $idxCantidad, int $idxProducto): string
     {
-        return preg_match(
-            '/^(UNIDADES|CAJA|DISPLAY|PIEZA|PAQUETE|ROLLO|SET|KIT|METRO|LITRO|GLOBAL|PAR|BOTELLA|FRASCO)\s+\d+/u',
-            $lineaNormalizada,
-        ) === 1;
+        $producto = trim($celdas[$idxProducto] ?? '');
+        if ($producto !== '' && ! $this->esTextoProbableEspecificacion($producto)) {
+            return $producto;
+        }
+
+        if ($idxProducto > 0) {
+            $anterior = trim($celdas[$idxProducto - 1] ?? '');
+            if ($anterior !== ''
+                && $this->parseCantidadCeldaTabla($anterior) === null
+                && ! $this->esTextoProbableEspecificacion($anterior)) {
+                return $anterior;
+            }
+        }
+
+        return $producto;
+    }
+
+    private function esTextoProbableEspecificacion(string $texto): bool
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return false;
+        }
+
+        $lower = mb_strtolower($texto);
+        if (preg_match('/^de\s+\d+/u', $lower) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^(chapita|pack|bolsa|cinta|papel|aceite|sabanilla|resma|block)\s+de\s+/u', $lower) === 1) {
+            return true;
+        }
+
+        foreach (['ensamblado', 'filmina', 'no ensamblado', 'bolsas de', 'bolsa de', 'c/u', 'cada una'] as $marca) {
+            if (str_contains($lower, $marca)) {
+                return true;
+            }
+        }
+
+        return mb_strlen($texto) > 90;
+    }
+
+    private function esFragmentoRuidoMultilinea(array $celdas): bool
+    {
+        $noVacias = array_values(array_filter($celdas, static fn (string $c): bool => trim($c) !== ''));
+        if (count($noVacias) !== 1) {
+            return false;
+        }
+
+        return $this->esTextoProbableEspecificacion($noVacias[0]);
     }
 
     /**
@@ -670,7 +715,7 @@ class ListadoMaterialesPdfParserService
             if ($this->celdaCoincideNombreColumna($normalizada, $nombreCantidad)) {
                 $idxCantidad = $indice;
             }
-            if ($this->celdaCoincideNombreColumna($normalizada, $nombreProducto)) {
+            if ($this->celdaEsColumnaProducto($normalizada, $nombreProducto)) {
                 $idxProducto = $indice;
             }
         }
@@ -693,6 +738,35 @@ class ListadoMaterialesPdfParserService
         }
 
         return str_contains($nombreNormalizado, $celdaNormalizada) && mb_strlen($celdaNormalizada) >= 4;
+    }
+
+    private function celdaEsColumnaProducto(string $celdaNormalizada, string $nombreProducto): bool
+    {
+        if ($this->celdaCoincideNombreColumna($celdaNormalizada, $nombreProducto)) {
+            return true;
+        }
+
+        $etiquetasEquivalentes = [
+            'PRODUCTO',
+            'BIEN O SERVICIO',
+            'NOMBRE DEL PRODUCTO',
+            'DETALLE',
+            'DESCRIPCION',
+        ];
+
+        $nombreEsEquivalente = false;
+        $celdaEsEquivalente = false;
+
+        foreach ($etiquetasEquivalentes as $etiqueta) {
+            if ($this->celdaCoincideNombreColumna($nombreProducto, $etiqueta)) {
+                $nombreEsEquivalente = true;
+            }
+            if ($this->celdaCoincideNombreColumna($celdaNormalizada, $etiqueta)) {
+                $celdaEsEquivalente = true;
+            }
+        }
+
+        return $nombreEsEquivalente && $celdaEsEquivalente;
     }
 
     /**

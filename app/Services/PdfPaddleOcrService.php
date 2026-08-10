@@ -542,7 +542,7 @@ class PdfPaddleOcrService
 
             return min($maxConfig, max(1, count($pdf->getPages())));
         } catch (\Throwable) {
-            return 1;
+            return $maxConfig;
         }
     }
 
