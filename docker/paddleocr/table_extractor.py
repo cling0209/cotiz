@@ -32,8 +32,10 @@ RUido_RE = re.compile(
     r"^(PRODUCTO|CANTIDAD|IMAGEN|P[AÁ]GINA|ESPECIFICACIONES|SOLICITUD|REFERENCIA)",
     re.IGNORECASE,
 )
-ETIQUETAS_PRODUCTO = ("PRODUCTO", "DESCRIPCION", "DESCRIPCIÓN", "DETALLE", "NOMBRE")
+ETIQUETAS_PRODUCTO = ("PRODUCTO", "DESCRIPCION", "DESCRIPCIÓN", "DETALLE", "NOMBRE", "REQUERIMIENTO")
 ETIQUETAS_CANTIDAD = ("CANTIDAD", "UNIDADES", "QTY", "CANT")
+ETIQUETAS_LINEA = ("LINEA", "LÍNEA", "LINEA N", "N°")
+ETIQUETAS_MONTO = ("MONTO", "TOTAL", "PRECIO")
 
 
 class _TableHtmlParser(HTMLParser):
@@ -158,6 +160,90 @@ def _actualizar_mapeo_desde_fila_parcial(
         if mapeo["cantidad"] is None and any(e in upper for e in ETIQUETAS_CANTIDAD):
             mapeo["cantidad"] = indice
     return mapeo
+
+
+def _es_fila_cabecera_bases(row: list[str]) -> bool:
+    upper = " ".join(row).upper()
+    tiene_desc = any(e in upper for e in ("DESCRIPCION", "DESCRIPCIÓN", "REQUERIMIENTO"))
+    tiene_unidades = "UNIDADES" in upper
+    tiene_linea = any(e in upper for e in ETIQUETAS_LINEA)
+    tiene_monto = "MONTO" in upper or "TOTAL" in upper
+    return tiene_desc and tiene_unidades and (tiene_linea or tiene_monto)
+
+
+def _mapear_columnas_bases(header_row: list[str]) -> dict[str, int | None]:
+    producto = _indice_columna_por_etiquetas(header_row, ETIQUETAS_PRODUCTO)
+    cantidad = _indice_columna_por_etiquetas(header_row, ETIQUETAS_CANTIDAD)
+    linea = _indice_columna_por_etiquetas(header_row, ETIQUETAS_LINEA)
+    monto = _indice_columna_por_etiquetas(header_row, ETIQUETAS_MONTO)
+    if producto is None:
+        for indice, celda in enumerate(header_row):
+            upper = celda.upper()
+            if "DESCRIPCION" in upper or "REQUERIMIENTO" in upper:
+                producto = indice
+                break
+    return {"producto": producto, "cantidad": cantidad, "linea": linea, "monto": monto}
+
+
+def _es_celda_monto_bases(celda: str) -> bool:
+    celda = celda.strip()
+    return re.match(r"^\d{1,3}(?:\.\d{3})+$", celda) is not None
+
+
+def _inferir_columnas_bases(rows: list[list[str]], max_filas: int = 12) -> dict[str, int | None]:
+    if not rows:
+        return {"producto": None, "cantidad": None}
+
+    num_cols = max(len(r) for r in rows)
+    if num_cols < 3:
+        return _inferir_columnas_por_contenido(rows, max_filas)
+
+    scores_linea = [0] * num_cols
+    scores_monto = [0] * num_cols
+    scores_qty = [0] * num_cols
+    scores_prod = [0] * num_cols
+
+    for row in rows[:max_filas]:
+        for indice in range(num_cols):
+            celda = row[indice].strip() if indice < len(row) else ""
+            if not celda or _es_celda_imagen(celda):
+                continue
+            if re.match(r"^\d{1,3}$", celda):
+                scores_linea[indice] += 1
+            elif _es_celda_monto_bases(celda):
+                scores_monto[indice] += 1
+            elif _parse_cantidad(celda) is not None and len(celda) <= 8:
+                scores_qty[indice] += 1
+            elif _es_celda_producto(celda):
+                scores_prod[indice] += 1
+
+    idx_linea = scores_linea.index(max(scores_linea)) if max(scores_linea, default=0) > 0 else None
+    idx_monto = scores_monto.index(max(scores_monto)) if max(scores_monto, default=0) > 0 else None
+
+    excluir = {i for i in (idx_linea, idx_monto) if i is not None}
+
+    idx_cantidad: int | None = None
+    candidatos_qty = [(i, s) for i, s in enumerate(scores_qty) if i not in excluir and s > 0]
+    if candidatos_qty:
+        idx_cantidad = max(candidatos_qty, key=lambda par: par[1])[0]
+
+    idx_producto: int | None = None
+    candidatos_prod = [
+        (i, s)
+        for i, s in enumerate(scores_prod)
+        if i not in excluir and i != idx_cantidad and s > 0
+    ]
+    if candidatos_prod:
+        idx_producto = max(candidatos_prod, key=lambda par: par[1])[0]
+
+    if idx_producto is None or idx_cantidad is None:
+        inferido = _inferir_columnas_por_contenido(rows, max_filas)
+        if idx_producto is None:
+            idx_producto = inferido["producto"]
+        if idx_cantidad is None:
+            idx_cantidad = inferido["cantidad"]
+
+    return {"producto": idx_producto, "cantidad": idx_cantidad}
 
 
 def _inferir_columnas_por_contenido(
@@ -400,21 +486,35 @@ def _filas_desde_html_tabla(html: str) -> list[dict[str, Any]]:
     parser.feed(html)
 
     mapeo: dict[str, int | None] = {"producto": None, "cantidad": None}
+    es_bases = False
     filas_datos: list[list[str]] = []
 
     for row in parser.rows:
         if _es_fila_cabecera_completa(row):
             mapeo = _mapear_columnas_desde_cabecera(row)
+            es_bases = False
+            continue
+
+        if _es_fila_cabecera_bases(row):
+            bases_map = _mapear_columnas_bases(row)
+            mapeo = {
+                "producto": bases_map.get("producto"),
+                "cantidad": bases_map.get("cantidad"),
+            }
+            es_bases = True
             continue
 
         if _es_fila_cabecera_parcial(row) and not _parse_celdas_fila(row):
             mapeo = _actualizar_mapeo_desde_fila_parcial(row, mapeo)
+            upper = " ".join(row).upper()
+            if "UNIDADES" in upper and ("DESCRIPCION" in upper or "REQUERIMIENTO" in upper):
+                es_bases = True
             continue
 
         filas_datos.append(row)
 
     if mapeo["producto"] is None or mapeo["cantidad"] is None:
-        inferido = _inferir_columnas_por_contenido(filas_datos)
+        inferido = _inferir_columnas_bases(filas_datos) if es_bases else _inferir_columnas_por_contenido(filas_datos)
         if mapeo["producto"] is None:
             mapeo["producto"] = inferido["producto"]
         if mapeo["cantidad"] is None:
@@ -486,7 +586,7 @@ def _filtrar_filas_cabecera(filas: list[dict[str, Any]]) -> list[dict[str, Any]]
     for fila in filas:
         desc = fila["descripcion"].strip().upper()
         if re.match(
-            r"^(?:PRODUCTO|CANTIDAD|IMAGEN(?:\s+REFERENCIA)?|PRODUCTO\s+CANTIDAD(?:\s+IMAGEN)?(?:\s+REFERENCIA)?|CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?)$",
+            r"^(?:PRODUCTO|CANTIDAD|IMAGEN(?:\s+REFERENCIA)?|PRODUCTO\s+CANTIDAD(?:\s+IMAGEN)?(?:\s+REFERENCIA)?|CANTIDAD\s+IMAGEN(?:\s+REFERENCIA)?|LINEA(?:\s+DESCRIPCION)?(?:\s+REQUERIMIENTO)?|DESCRIPCION(?:\s+REQUERIMIENTO)?|UNIDADES(?:\s+POR\s+AÑO)?|MONTO(?:\s+TOTAL)?)$",
             desc,
         ):
             continue

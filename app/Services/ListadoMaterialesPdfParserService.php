@@ -693,23 +693,14 @@ class ListadoMaterialesPdfParserService
         $resultado = [];
         $orphan = '';
         $buffer = '';
-        $patronFin = '/^(\d{1,3})\s+(.+?)\s+(\d{1,3}(?:\.\d{3})+|\d+)\s+(\d{1,3}(?:\.\d{3})+)$/u';
 
-        $tryFlush = function (string $text) use (&$resultado, $patronFin): bool {
-            if (preg_match($patronFin, $text, $m) !== 1) {
+        $tryFlush = function (string $text) use (&$resultado): bool {
+            $fila = $this->parseFilaBasesLineaCompleta($text);
+            if ($fila === null) {
                 return false;
             }
 
-            $descripcion = trim($m[2]);
-            $unidades = str_replace('.', '', $m[3]);
-            if ($descripcion === '' || ! ctype_digit($unidades) || $this->esDescripcionAdministrativa($descripcion)) {
-                return false;
-            }
-
-            $resultado[] = [
-                'cantidad' => max(1, (int) $unidades),
-                'descripcion' => $descripcion,
-            ];
+            $resultado[] = $fila;
 
             return true;
         };
@@ -766,6 +757,53 @@ class ListadoMaterialesPdfParserService
         return $resultado;
     }
 
+    /**
+     * Una fila del catálogo bases: LÍNEA + DESCRIPCIÓN + UNIDADES (+ monto opcional).
+     *
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function parseFilaBasesLineaCompleta(string $text): ?array
+    {
+        $text = trim(preg_replace('/[ \t]+/u', ' ', $text) ?? $text);
+        if ($text === '') {
+            return null;
+        }
+
+        $patronCompleto = '/^(\d{1,3})\s+(.+)\s+(\d{1,3}(?:\.\d{3})+|\d+)\s+(\d{1,3}(?:\.\d{3})+|\d+)(?:[a-z]{0,2})?$/iu';
+        if (preg_match($patronCompleto, $text, $m) === 1) {
+            return $this->construirFilaBasesLinea(trim($m[2]), $m[3]);
+        }
+
+        $patronSinUnidades = '/^(\d{1,3})\s+(.+)\s+(\d{1,3}(?:\.\d{3})+)$/u';
+        if (preg_match($patronSinUnidades, $text, $m) === 1) {
+            return $this->construirFilaBasesLinea(trim($m[2]), '1');
+        }
+
+        $patronSoloReferencia = '/^(\d{1,3})\s+(.+)\s+(\d{1,4})$/u';
+        if (preg_match($patronSoloReferencia, $text, $m) === 1 && ! str_contains($m[3], '.')) {
+            return $this->construirFilaBasesLinea(trim($m[2]), $m[3]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function construirFilaBasesLinea(string $descripcion, string $unidadesRaw): ?array
+    {
+        $descripcion = trim(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
+        $unidades = str_replace('.', '', trim($unidadesRaw));
+        if ($descripcion === '' || ! ctype_digit($unidades) || $this->esDescripcionAdministrativa($descripcion)) {
+            return null;
+        }
+
+        return [
+            'cantidad' => max(1, (int) $unidades),
+            'descripcion' => $descripcion,
+        ];
+    }
+
     private function extraerSeccionCatalogoBases(string $texto): string
     {
         $texto = $this->normalizarEspaciosDocumento($texto);
@@ -813,6 +851,7 @@ class ListadoMaterialesPdfParserService
             "\n",
             $catalogo,
         ) ?? $catalogo;
+        $catalogo = preg_replace('/\bUND\.\s+/iu', 'UND. ', $catalogo) ?? $catalogo;
 
         return $catalogo;
     }
@@ -1471,6 +1510,16 @@ class ListadoMaterialesPdfParserService
             return $lineasTexto;
         }
 
+        if ($formatoDoc === self::FORMATO_BASES) {
+            return $this->fusionarLineasBasesConPaddle(
+                $path,
+                $lineasTexto,
+                $texto,
+                $nombreArchivo,
+                $paginas,
+            );
+        }
+
         if (! $esTabla && ! $esTablaMateriales && ! $esTablaEscaneada && count($lineasTexto) >= $minEsperadas) {
             return $lineasTexto;
         }
@@ -1650,6 +1699,72 @@ class ListadoMaterialesPdfParserService
             $filasEsperadas,
             $minEsperadas,
         );
+    }
+
+    /**
+     * Catálogo bases/licitación (LINEA / DESCRIPCIÓN / UNIDADES / MONTO): texto + Paddle por celdas.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineasTexto
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function fusionarLineasBasesConPaddle(
+        string $path,
+        array $lineasTexto,
+        string $texto,
+        string $nombreArchivo,
+        int $paginas,
+    ): array {
+        $minEsperadas = max(450, min(537, (int) floor($paginas * 11)));
+        $countTexto = count($lineasTexto);
+
+        if ($countTexto >= 520) {
+            return $lineasTexto;
+        }
+
+        $paddle = $this->paddle ?? new PdfPaddleOcrService;
+        if (! $paddle->estaDisponible()) {
+            Log::info('Import PDF: bases_linea sin Paddle; se usa parseo de texto', [
+                'filas_texto' => $countTexto,
+                'min_esperadas' => $minEsperadas,
+            ]);
+
+            return $lineasTexto;
+        }
+
+        try {
+            $lineasPaddle = $paddle->extraerLineasTabla($path, $nombreArchivo);
+        } catch (\Throwable $e) {
+            Log::warning('Import PDF: bases_linea Paddle falló; se usa texto', [
+                'error' => $e->getMessage(),
+                'filas_texto' => $countTexto,
+            ]);
+
+            return $lineasTexto;
+        }
+
+        $lineasPaddle = $this->deduplicarLineasTabla($lineasPaddle, true);
+        $countPaddle = count($lineasPaddle);
+
+        Log::info('Import PDF: bases_linea texto vs Paddle', [
+            'texto' => $countTexto,
+            'paddle' => $countPaddle,
+            'min_esperadas' => $minEsperadas,
+            'paginas' => $paginas,
+        ]);
+
+        if ($countPaddle === 0) {
+            return $lineasTexto;
+        }
+
+        if ($countPaddle >= $countTexto && $countPaddle >= (int) floor($minEsperadas * 0.85)) {
+            return $lineasPaddle;
+        }
+
+        if ($countTexto >= $countPaddle) {
+            return $this->complementarLineasTablaSinDuplicar($lineasTexto, $lineasPaddle);
+        }
+
+        return $this->complementarLineasTablaSinDuplicar($lineasPaddle, $lineasTexto);
     }
 
     /**

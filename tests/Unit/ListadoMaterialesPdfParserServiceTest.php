@@ -271,7 +271,7 @@ TXT;
         $lineas = $this->parser->parseTexto($texto);
 
         $this->assertSame('bases_linea', $this->parser->detectarFormato($texto));
-        $this->assertGreaterThanOrEqual(450, count($lineas));
+        $this->assertGreaterThanOrEqual(520, count($lineas));
         $this->assertSame(1, $lineas[0]['cantidad']);
         $this->assertStringContainsString('ACRÍLICO', $lineas[0]['descripcion']);
         $this->assertStringNotContainsStringIgnoringCase('BASES ADMINISTRATIVAS', $lineas[0]['descripcion']);
