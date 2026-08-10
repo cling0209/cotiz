@@ -355,6 +355,7 @@ class ListadoMaterialesPdfParserService
     ): array {
         $nombreCantidad = $this->normalizarEncabezadoCelda($columnaCantidad);
         $nombreProducto = $this->normalizarEncabezadoCelda($columnaProducto);
+        $productoEsSpecs = $this->columnaProductoEsEspecificaciones($columnaProducto);
         $idxCantidad = null;
         $idxProducto = null;
         $resultado = [];
@@ -387,13 +388,13 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                $celdas = $this->expandirCeldasFilaGrilla($celdas, $nombreCantidad, $nombreProducto);
+                $celdas = $this->preprocesarCeldasFilaGrilla($celdas, $nombreCantidad, $nombreProducto, $productoEsSpecs);
 
                 if ($this->filaEsRuidoIntercaladoTabla($celdas, $nombreCantidad, $nombreProducto)) {
                     continue;
                 }
 
-                if ($this->esFragmentoRuidoMultilinea($celdas)) {
+                if ($this->esFragmentoRuidoMultilinea($celdas, $productoEsSpecs, $bufferDesc !== null)) {
                     continue;
                 }
 
@@ -419,7 +420,12 @@ class ListadoMaterialesPdfParserService
                 }
 
                 $cantRaw = trim($celdas[$idxCantidadFila] ?? '');
-                $prodRaw = $this->resolverTextoCeldaProducto($celdas, $idxCantidadFila, $idxProductoFila);
+                $prodRaw = $this->resolverTextoCeldaProducto(
+                    $celdas,
+                    $idxCantidadFila,
+                    $idxProductoFila,
+                    $productoEsSpecs,
+                );
                 $cantidad = $this->parseCantidadCeldaTabla($cantRaw);
 
                 if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
@@ -430,9 +436,13 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                if ($bufferDesc !== null && $cantidad === null && count($celdas) > 1) {
-                    $continuacion = trim($celdas[$idxProductoFila] ?? '');
-                    if ($continuacion !== '' && ! $this->esTextoProbableEspecificacion($continuacion)) {
+                if ($bufferDesc !== null && $cantidad === null) {
+                    $continuacion = $this->resolverContinuacionMultilinea(
+                        $celdas,
+                        $idxProductoFila,
+                        $productoEsSpecs,
+                    );
+                    if ($continuacion !== '') {
                         $bufferDesc = trim($bufferDesc.' '.$continuacion);
                         continue;
                     }
@@ -481,9 +491,32 @@ class ListadoMaterialesPdfParserService
     /**
      * @param  array<int, string>  $celdas
      */
-    private function resolverTextoCeldaProducto(array $celdas, int $idxCantidad, int $idxProducto): string
-    {
+    private function resolverTextoCeldaProducto(
+        array $celdas,
+        int $idxCantidad,
+        int $idxProducto,
+        bool $productoEsSpecs = false,
+    ): string {
         $producto = trim($celdas[$idxProducto] ?? '');
+        if ($productoEsSpecs) {
+            if ($producto !== '') {
+                $bien = $idxProducto > 0 ? trim($celdas[$idxProducto - 1] ?? '') : '';
+                if ($bien !== ''
+                    && $this->parseCantidadCeldaTabla($bien) === null
+                    && preg_match('/^[a-záéíóú(]/u', $producto) === 1) {
+                    return trim($bien.' '.$producto);
+                }
+
+                return $producto;
+            }
+
+            if (count($celdas) === 2 && $this->lineaPareceFilaDatosUnidadMedida($celdas[0] ?? '')) {
+                return trim($celdas[1] ?? '');
+            }
+
+            return $producto;
+        }
+
         if ($producto !== '' && ! $this->esTextoProbableEspecificacion($producto)) {
             return $producto;
         }
@@ -498,6 +531,54 @@ class ListadoMaterialesPdfParserService
         }
 
         return $producto;
+    }
+
+    private function columnaProductoEsEspecificaciones(string $columnaProducto): bool
+    {
+        $norm = $this->normalizarEncabezadoCelda($columnaProducto);
+
+        return str_contains($norm, 'ESPECIFICACION')
+            || str_contains($norm, 'ESPECIFICACIONES TECNICAS')
+            || str_contains($norm, 'DETALLE TECNICO')
+            || str_contains($norm, 'SPECS');
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function resolverContinuacionMultilinea(
+        array $celdas,
+        int $idxProducto,
+        bool $productoEsSpecs,
+    ): string {
+        $noVacias = array_values(array_filter(
+            $celdas,
+            static fn (string $c): bool => trim($c) !== '',
+        ));
+
+        if (count($noVacias) === 1) {
+            $texto = trim($noVacias[0]);
+            if ($texto === '') {
+                return '';
+            }
+
+            if ($productoEsSpecs) {
+                return $texto;
+            }
+
+            return $this->esTextoProbableEspecificacion($texto) ? '' : $texto;
+        }
+
+        $continuacion = trim($celdas[$idxProducto] ?? '');
+        if ($continuacion === '') {
+            return '';
+        }
+
+        if ($productoEsSpecs || ! $this->esTextoProbableEspecificacion($continuacion)) {
+            return $continuacion;
+        }
+
+        return '';
     }
 
     private function esTextoProbableEspecificacion(string $texto): bool
@@ -525,10 +606,17 @@ class ListadoMaterialesPdfParserService
         return mb_strlen($texto) > 90;
     }
 
-    private function esFragmentoRuidoMultilinea(array $celdas): bool
-    {
+    private function esFragmentoRuidoMultilinea(
+        array $celdas,
+        bool $productoEsSpecs = false,
+        bool $hayBufferActivo = false,
+    ): bool {
         $noVacias = array_values(array_filter($celdas, static fn (string $c): bool => trim($c) !== ''));
         if (count($noVacias) !== 1) {
+            return false;
+        }
+
+        if ($productoEsSpecs && $hayBufferActivo) {
             return false;
         }
 
@@ -539,8 +627,178 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, string>  $celdas
      * @return array<int, string>
      */
-    private function expandirCeldasFilaGrilla(array $celdas, string $nombreCantidad, string $nombreProducto): array
+    private function preprocesarCeldasFilaGrilla(
+        array $celdas,
+        string $nombreCantidad,
+        string $nombreProducto,
+        bool $productoEsSpecs = false,
+    ): array {
+        $celdas = array_values(array_map(
+            static fn ($c): string => trim((string) $c),
+            $celdas,
+        ));
+
+        if (count($celdas) === 1) {
+            return $this->expandirCeldasFilaGrilla($celdas, $nombreCantidad, $nombreProducto, $productoEsSpecs);
+        }
+
+        if (count($celdas) === 2) {
+            [$col0, $col1] = $celdas;
+            $norm0 = $this->normalizarEncabezadoCelda($col0);
+            $norm1 = $this->normalizarEncabezadoCelda($col1);
+
+            if (str_contains($norm0, 'UNIDAD DE MEDIDA')
+                || (str_contains($norm0, 'CANTIDAD') && str_contains($norm1, 'ESPECIFICACION'))) {
+                $encabezado = $this->partirLineaEncabezadoTabla(trim($col0.' '.$col1));
+                if (count($encabezado) > 1) {
+                    return $encabezado;
+                }
+            }
+
+            if (preg_match('/^(Unidad(?:es)?|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?)$/iu', $col0) === 1) {
+                $expandida = $this->expandirColumnaCantidadProductoPegados($col1, $productoEsSpecs);
+                if ($expandida !== null) {
+                    return array_merge([$col0], $expandida);
+                }
+            }
+
+            if ($this->lineaPareceFilaDatosUnidadMedida($col0)) {
+                $partida = $this->partirFilaDatosTabular($col0, $productoEsSpecs);
+                if (count($partida) >= 3) {
+                    while (count($partida) < 4) {
+                        $partida[] = '';
+                    }
+                    if (trim($col1) !== '') {
+                        if ($productoEsSpecs
+                            && trim($partida[3] ?? '') !== ''
+                            && preg_match('/^[a-záéíóú(]/u', trim($col1)) === 1) {
+                            $partida[3] = trim($partida[3].' '.$col1);
+                        } else {
+                            $partida[3] = trim($col1);
+                        }
+                    }
+
+                    return $partida;
+                }
+            }
+        }
+
+        if (count($celdas) === 3
+            && preg_match('/^(Unidad(?:es)?|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?)$/iu', $celdas[0] ?? '') === 1) {
+            $expandida = $this->expandirFilaTresColumnasUnidadCantidad($celdas, $productoEsSpecs);
+
+            return $expandida ?? $celdas;
+        }
+
+        return $celdas;
+    }
+
+    private function lineaPareceFilaDatosUnidadMedida(string $linea): bool
     {
+        return preg_match(
+            '/^(Unidad(?:es)?|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?)\s+\d+/ui',
+            trim($linea),
+        ) === 1;
+    }
+
+    /**
+     * @return array<int, string>|null
+     */
+    private function expandirColumnaCantidadProductoPegados(string $columna, bool $productoEsSpecs = false): ?array
+    {
+        $columna = trim($columna);
+        if ($columna === '' || preg_match('/^(\d{1,5})(.*)$/u', $columna, $coincidencias) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/^\d+x\d+/iu', $columna) === 1) {
+            return null;
+        }
+
+        $resto = trim($coincidencias[2]);
+        if ($resto === '') {
+            return null;
+        }
+
+        if ($productoEsSpecs) {
+            return [$coincidencias[1], '', $resto];
+        }
+
+        [$producto, $specs] = $this->partirRestoEnProductoYSpecs($resto);
+
+        return [$coincidencias[1], $producto, $specs];
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array<int, string>|null
+     */
+    private function expandirFilaTresColumnasUnidadCantidad(array $celdas, bool $productoEsSpecs = false): ?array
+    {
+        $unidad = trim($celdas[0] ?? '');
+        $colCantidad = trim($celdas[1] ?? '');
+        $colResto = trim($celdas[2] ?? '');
+
+        if (preg_match('/^(\d{1,5})\s+(.+)$/u', $colCantidad, $coincidencias) === 1) {
+            if ($productoEsSpecs) {
+                return [$unidad, $coincidencias[1], '', trim($coincidencias[2].' '.$colResto)];
+            }
+
+            [$producto, $specsParcial] = $this->partirRestoEnProductoYSpecs(trim($coincidencias[2]));
+            $specs = trim($specsParcial.' '.$colResto);
+
+            return [$unidad, $coincidencias[1], $producto, $specs];
+        }
+
+        if (preg_match('/^(\d{1,5})(.+)$/u', $colCantidad, $coincidencias) === 1) {
+            if (preg_match('/^\d+x\d+/iu', $colCantidad) === 1) {
+                return null;
+            }
+
+            if ($productoEsSpecs) {
+                return [$unidad, $coincidencias[1], '', trim($coincidencias[2].' '.$colResto)];
+            }
+
+            [$producto, $specsParcial] = $this->partirRestoEnProductoYSpecs(trim($coincidencias[2]));
+            $specs = trim($specsParcial.' '.$colResto);
+
+            return [$unidad, $coincidencias[1], $producto, $specs];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function partirRestoEnProductoYSpecs(string $resto): array
+    {
+        $resto = trim($resto);
+        if ($resto === '') {
+            return ['', ''];
+        }
+
+        $palabras = preg_split('/\s+/u', $resto) ?: [];
+        if (count($palabras) <= 3) {
+            return [$resto, ''];
+        }
+
+        $producto = implode(' ', array_slice($palabras, 0, 3));
+        $specs = implode(' ', array_slice($palabras, 3));
+
+        return [$producto, $specs];
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array<int, string>
+     */
+    private function expandirCeldasFilaGrilla(
+        array $celdas,
+        string $nombreCantidad,
+        string $nombreProducto,
+        bool $productoEsSpecs = false,
+    ): array {
         if (count($celdas) !== 1) {
             return $celdas;
         }
@@ -563,7 +821,7 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        $partidaDatos = $this->partirFilaDatosTabular($unica);
+        $partidaDatos = $this->partirFilaDatosTabular($unica, $productoEsSpecs);
         if (count($partidaDatos) > 1) {
             return $partidaDatos;
         }
@@ -581,7 +839,7 @@ class ListadoMaterialesPdfParserService
             return $partida;
         }
 
-        $partida = $this->partirFilaDatosTabular($linea);
+        $partida = $this->partirFilaDatosTabular($linea, false);
         if (count($partida) > 1) {
             return $partida;
         }
@@ -626,29 +884,40 @@ class ListadoMaterialesPdfParserService
     /**
      * @return array<int, string>
      */
-    private function partirFilaDatosTabular(string $linea): array
+    private function partirFilaDatosTabular(string $linea, bool $productoEsSpecs = false): array
     {
         $linea = trim($linea);
         if ($linea === '') {
             return [];
         }
 
+        $unidades = 'Unidad(?:es)?|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?';
+        $coincidencias = null;
+
         if (preg_match(
-            '/^(Unidades|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?)\s+(\d+)\s+(.+)$/ui',
+            '/^('.$unidades.')\s+(\d+)\s+(.+)$/ui',
             $linea,
-            $coincidencias,
-        ) !== 1) {
+            $match,
+        ) === 1) {
+            $coincidencias = $match;
+        } elseif (preg_match(
+            '/^('.$unidades.')\s+(\d{1,5})([A-Za-zÁ-ú].+)$/u',
+            $linea,
+            $match,
+        ) === 1) {
+            $coincidencias = [$linea, $match[1], $match[2], $match[3]];
+        }
+
+        if ($coincidencias === null) {
             return [$linea];
         }
 
         $resto = trim($coincidencias[3]);
-        $palabras = preg_split('/\s+/u', $resto) ?: [];
-        if (count($palabras) <= 3) {
-            return [trim($coincidencias[1]), $coincidencias[2], $resto, ''];
+        if ($productoEsSpecs) {
+            return [trim($coincidencias[1]), $coincidencias[2], '', $resto];
         }
 
-        $producto = implode(' ', array_slice($palabras, 0, 3));
-        $specs = implode(' ', array_slice($palabras, 3));
+        [$producto, $specs] = $this->partirRestoEnProductoYSpecs($resto);
 
         return [trim($coincidencias[1]), $coincidencias[2], $producto, $specs];
     }
@@ -687,7 +956,7 @@ class ListadoMaterialesPdfParserService
             return true;
         }
 
-        if (preg_match('/^(PROMOCION|MUJER|GENERO|PROGRAMA)/u', $texto) === 1
+        if (preg_match('/^(PROMOCION|MUJER|GENERO|PROGRAMA|MESA ALIMENTACION|INCLUSION PERSONAS)/u', $texto) === 1
             && ! str_contains($texto, 'CANTIDAD')) {
             return true;
         }
@@ -6487,6 +6756,14 @@ class ListadoMaterialesPdfParserService
         }
 
         if (preg_match('/^(\d{1,5})$/u', $raw, $coincidencia) === 1) {
+            return max(1, (int) $coincidencia[1]);
+        }
+
+        if (preg_match('/^(\d{1,5})(?=[A-Za-zÁ-ú])/u', $raw, $coincidencia) === 1) {
+            if (preg_match('/^\d+x\d+/iu', $raw) === 1) {
+                return null;
+            }
+
             return max(1, (int) $coincidencia[1]);
         }
 

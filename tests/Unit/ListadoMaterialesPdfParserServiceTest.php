@@ -1216,6 +1216,39 @@ TXT;
         $this->assertStringContainsString('Lapiceras pasta', $lineas[3]['descripcion']);
     }
 
+    public function test_mapeo_columnas_especificaciones_tecnicas_como_producto(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES TECNICAS'],
+                    ['Unidades', '3', 'Block de cartulina', 'Bolson cartulina de colores 18 pliegos de 26.5x37cm'],
+                    ['Unidades', '6', 'Opalina (carta) Sobre', 'de 100 unidades Opalina 180 gr. Lisa blanca tamaño carta'],
+                    ['Unidades 20 Toallas húmedas Toallitas', 'húmedas de 70 unidades.'],
+                    ['Unidad', '50Cuaderno college Cuaderno college 80 HOJAS'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'ESPECIFICACIONES TECNICAS');
+
+        $this->assertCount(4, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Bolson cartulina de colores', $lineas[0]['descripcion']);
+        $this->assertSame(6, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('100 unidades Opalina', $lineas[1]['descripcion']);
+        $this->assertSame(20, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('húmedas de 70 unidades', $lineas[2]['descripcion']);
+        $this->assertSame(50, $lineas[3]['cantidad']);
+        $this->assertStringContainsString('Cuaderno college 80 HOJAS', $lineas[3]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
