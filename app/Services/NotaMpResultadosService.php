@@ -1937,7 +1937,7 @@ class NotaMpResultadosService
                     'razon_social_ganador' => $ganadorProv !== null
                         ? mb_substr(trim((string) ($ganadorProv['razon_social'] ?? '')), 0, 200)
                         : null,
-                    'id_orden_compra' => isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null,
+                    'id_orden_compra' => $this->ordenCompraMp->idOrdenCompraDesdePayload($payload),
                     'monto_total_ganador' => $montoGanador,
                     'resultado_propio' => $resultadoPropio,
                     'finalizado' => $finalizado,
@@ -2183,7 +2183,7 @@ class NotaMpResultadosService
         NotaMpOferta::query()->where('nronota', $nronota)->delete();
 
         $rutPropio = $this->ganador->rutEmpresaPropia();
-        $idOrdenCompra = isset($payload['id_orden_compra']) ? (int) $payload['id_orden_compra'] : null;
+        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
         $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
         $lineasBatch = [];
         $now = now();

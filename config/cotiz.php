@@ -153,6 +153,8 @@ return [
             '76185139K' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_ROMULO', '1276139'),
             '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', '1417881'),
         ],
+        // Días máximos (desde fecha cierre/último cambio −1 hasta hoy) al buscar código AG en OC v1.
+        'oc_busqueda_max_dias' => max(4, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS', 15))),
         'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(

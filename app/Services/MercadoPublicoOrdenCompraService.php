@@ -36,6 +36,21 @@ class MercadoPublicoOrdenCompraService
             return (int) $orden['id_orden_compra'];
         }
 
+        $proveedores = is_array($payload['proveedores_cotizando'] ?? null) ? $payload['proveedores_cotizando'] : [];
+        foreach ($proveedores as $prov) {
+            if (! is_array($prov)) {
+                continue;
+            }
+            $esGanador = ! empty($prov['seleccion']['proveedor_seleccionado'])
+                || (int) ($prov['proveedor_seleccionado'] ?? 0) === 1;
+            if (! $esGanador) {
+                continue;
+            }
+            if (isset($prov['id_oc']) && $prov['id_oc'] !== null && $prov['id_oc'] !== '') {
+                return (int) $prov['id_oc'];
+            }
+        }
+
         return null;
     }
 
@@ -56,13 +71,18 @@ class MercadoPublicoOrdenCompraService
         }
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
-        if ($codigoProveedor === null || $codigoProveedor === '') {
-            return null;
-        }
 
         foreach ($this->fechasBusquedaDesdePayload($payload) as $fechaDdmmaaaa) {
-            $listado = $this->listarOrdenesPorFechaYProveedor($fechaDdmmaaaa, $codigoProveedor);
-            $codigo = $this->buscarCodigoEnListado($listado, $codigoCot);
+            if ($codigoProveedor !== null && $codigoProveedor !== '') {
+                $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
+                $codigo = $this->buscarCodigoEnListado($listado, $codigoCot);
+                if ($codigo !== null) {
+                    return $codigo;
+                }
+            }
+
+            $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
+            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot);
             if ($codigo !== null) {
                 return $codigo;
             }
@@ -83,14 +103,24 @@ class MercadoPublicoOrdenCompraService
             (string) ($fechas['fecha_ultimo_cambio'] ?? $fechas['fecha_cierre'] ?? ''),
         );
 
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $hoy = now()->timezone($tz)->startOfDay();
+        $maxDias = max(4, min(31, (int) config('cotiz.mercadopublico.oc_busqueda_max_dias', 15)));
+
         if ($referencia === null) {
-            return [];
+            return [$hoy->format('dmY')];
         }
 
-        $tz = (string) config('app.timezone', 'America/Santiago');
+        $inicio = $referencia->copy()->timezone($tz)->startOfDay()->subDay();
+        if ($inicio->greaterThan($hoy)) {
+            $inicio = $hoy->copy();
+        }
+
         $out = [];
-        foreach ([0, -1, 1, 2] as $offsetDias) {
-            $out[] = $referencia->copy()->timezone($tz)->addDays($offsetDias)->format('dmY');
+        $cursor = $inicio->copy();
+        while ($cursor->lessThanOrEqualTo($hoy) && count($out) < $maxDias) {
+            $out[] = $cursor->format('dmY');
+            $cursor->addDay();
         }
 
         return array_values(array_unique($out));
@@ -151,20 +181,23 @@ class MercadoPublicoOrdenCompraService
     /**
      * @return list<array<string, mixed>>
      */
-    private function listarOrdenesPorFechaYProveedor(string $fechaDdmmaaaa, string $codigoProveedor): array
+    private function listarOrdenesPorFecha(string $fechaDdmmaaaa, ?string $codigoProveedor = null): array
     {
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.oc_v1_base_url'), '/');
+        $query = [
+            'fecha' => $fechaDdmmaaaa,
+            'ticket' => $ticket,
+        ];
+        if ($codigoProveedor !== null && $codigoProveedor !== '') {
+            $query['CodigoProveedor'] = $codigoProveedor;
+        }
 
         try {
             $response = Http::connectTimeout(10)
                 ->timeout(max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45)))
                 ->acceptJson()
-                ->get($baseUrl.'/ordenesdecompra.json', [
-                    'fecha' => $fechaDdmmaaaa,
-                    'CodigoProveedor' => $codigoProveedor,
-                    'ticket' => $ticket,
-                ]);
+                ->get($baseUrl.'/ordenesdecompra.json', $query);
         } catch (\Throwable $e) {
             Log::debug('MercadoPublicoOrdenCompra: error listando OC v1', [
                 'fecha' => $fechaDdmmaaaa,
