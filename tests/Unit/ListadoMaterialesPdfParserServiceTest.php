@@ -1079,10 +1079,9 @@ TXT;
 
         $this->assertCount(2, $lineas);
         $this->assertSame(3, $lineas[0]['cantidad']);
-        $this->assertStringContainsString('Block de cartulina', $lineas[0]['descripcion']);
-        $this->assertStringContainsString('Bolson cartulina', $lineas[0]['descripcion']);
+        $this->assertSame('Block de cartulina', $lineas[0]['descripcion']);
         $this->assertSame(5, $lineas[1]['cantidad']);
-        $this->assertStringContainsString('Cinta de embalaje', $lineas[1]['descripcion']);
+        $this->assertSame('Cinta de embalaje', $lineas[1]['descripcion']);
     }
 
     public function test_mapeo_columnas_multihoja_omite_headers_repetidos(): void
@@ -1114,9 +1113,33 @@ TXT;
 
         $this->assertCount(2, $lineas);
         $this->assertSame(3, $lineas[0]['cantidad']);
-        $this->assertSame('Block de cartulina Colores surtidos continuacion descripcion', $lineas[0]['descripcion']);
+        $this->assertSame('Block de cartulina continuacion descripcion', $lineas[0]['descripcion']);
         $this->assertSame(5, $lineas[1]['cantidad']);
-        $this->assertSame('Cinta de embalaje 48mm x 100mt', $lineas[1]['descripcion']);
+        $this->assertSame('Cinta de embalaje', $lineas[1]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_multilinea_solo_celda_producto(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES TECNICAS'],
+                    ['Unidades', '4', 'Chapita de 58mm, NO', 'Chapita de 58mm con filmina'],
+                    ['', '', 'ensamblado en bolsas de 100', ''],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'BIEN O SERVICIO');
+
+        $this->assertCount(1, $lineas);
+        $this->assertSame(4, $lineas[0]['cantidad']);
+        $this->assertSame('Chapita de 58mm, NO ensamblado en bolsas de 100', $lineas[0]['descripcion']);
     }
 
     public function test_mapeo_columnas_hojas_titulo_repetido_y_continuacion_sin_encabezado(): void

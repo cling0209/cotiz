@@ -248,11 +248,11 @@ class PdfPaddleOcrService
                 if (! is_array($fila)) {
                     continue;
                 }
-                $celdas = array_values(array_filter(
-                    array_map(static fn ($c): string => trim((string) $c), $fila),
-                    static fn (string $c): bool => $c !== '',
+                $celdas = array_values(array_map(
+                    static fn ($c): string => preg_replace('/\s+/u', ' ', trim((string) $c)) ?? trim((string) $c),
+                    $fila,
                 ));
-                if ($celdas !== []) {
+                if ($this->filaGrillaTieneContenido($celdas)) {
                     $filas[] = $celdas;
                 }
             }
@@ -263,6 +263,20 @@ class PdfPaddleOcrService
         }
 
         return ['pagina' => $pagina, 'filas' => $filas];
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function filaGrillaTieneContenido(array $celdas): bool
+    {
+        foreach ($celdas as $celda) {
+            if (trim($celda) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -510,6 +524,8 @@ class PdfPaddleOcrService
         }
 
         if ($this->esNombreEspecificacionesTecnicas($nombre)) {
+            $maxConfig = max($maxConfig, min(50, (int) $this->config('paddleocr.max_pages_bases', 50)));
+
             try {
                 $parser = new Parser;
                 $pdf = $parser->parseFile($pdfPath);

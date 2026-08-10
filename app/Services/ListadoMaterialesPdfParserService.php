@@ -379,7 +379,7 @@ class ListadoMaterialesPdfParserService
                 }
 
                 $celdas = array_values(array_map(
-                    static fn ($c): string => trim((string) $c),
+                    fn ($c): string => $this->normalizarTextoCeldaGrilla((string) $c),
                     $celdasRaw,
                 ));
 
@@ -416,21 +416,18 @@ class ListadoMaterialesPdfParserService
 
                 if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
                     $volcarBuffer();
-                    $specIdx = $idxProducto + 1;
-                    if (isset($celdas[$specIdx])) {
-                        $specRaw = trim($celdas[$specIdx]);
-                        if ($specRaw !== '' && ! str_contains(mb_strtolower($prodRaw), mb_strtolower($specRaw))) {
-                            $prodRaw = trim($prodRaw.' '.$specRaw);
-                        }
-                    }
                     $bufferDesc = $prodRaw;
                     $bufferCant = $cantidad;
 
                     continue;
                 }
 
-                if ($bufferDesc !== null && $prodRaw !== '' && $cantidad === null) {
-                    $bufferDesc = trim($bufferDesc.' '.$prodRaw);
+                if ($bufferDesc !== null && $cantidad === null) {
+                    $continuacion = $this->textoContinuacionCeldaProducto($celdas, $idxCantidad, $idxProducto);
+                    if ($continuacion !== '') {
+                        $bufferDesc = trim($bufferDesc.' '.$continuacion);
+                        continue;
+                    }
                 }
             }
         }
@@ -438,6 +435,59 @@ class ListadoMaterialesPdfParserService
         $volcarBuffer();
 
         return $resultado;
+    }
+
+    private function normalizarTextoCeldaGrilla(string $texto): string
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return '';
+        }
+
+        $texto = preg_replace('/\s*\R\s*/u', ' ', $texto) ?? $texto;
+
+        return preg_replace('/\s+/u', ' ', $texto) ?? $texto;
+    }
+
+    /**
+     * Texto adicional de la celda producto en filas partidas por salto (multilínea OCR).
+     *
+     * @param  array<int, string>  $celdas
+     */
+    private function textoContinuacionCeldaProducto(array $celdas, int $idxCantidad, int $idxProducto): string
+    {
+        if (trim($celdas[$idxCantidad] ?? '') !== '') {
+            return '';
+        }
+
+        $prod = trim($celdas[$idxProducto] ?? '');
+        if ($prod !== '') {
+            return $prod;
+        }
+
+        if (count($celdas) === 1) {
+            $unica = trim($celdas[0] ?? '');
+            if ($unica === '') {
+                return '';
+            }
+
+            $norm = $this->normalizarEncabezadoCelda($unica);
+            if ($this->esFilaInicioDatosTabular($norm)) {
+                return '';
+            }
+
+            return $unica;
+        }
+
+        return '';
+    }
+
+    private function esFilaInicioDatosTabular(string $lineaNormalizada): bool
+    {
+        return preg_match(
+            '/^(UNIDADES|CAJA|DISPLAY|PIEZA|PAQUETE|ROLLO|SET|KIT|METRO|LITRO|GLOBAL|PAR|BOTELLA|FRASCO)\s+\d+/u',
+            $lineaNormalizada,
+        ) === 1;
     }
 
     /**

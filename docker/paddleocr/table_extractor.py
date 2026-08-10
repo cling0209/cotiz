@@ -63,13 +63,19 @@ class _TableHtmlParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag in ("td", "th") and self._current_row is not None:
             cell = " ".join(self._cell_parts).strip()
-            cell = re.sub(r"\s*\n\s*", " / ", cell)
+            cell = re.sub(r"\s*\n\s*", " ", cell)
+            cell = re.sub(r"\s+", " ", cell)
             self._current_row.append(cell)
             self._cell_parts = []
         elif tag == "tr" and self._current_row is not None:
             if any(c.strip() for c in self._current_row):
                 self.rows.append(self._current_row)
             self._current_row = None
+
+
+def _normalizar_celdas_grilla(celdas: list[str]) -> list[str]:
+    """Conserva celdas vacías para mantener índices de columnas."""
+    return [re.sub(r"\s+", " ", (c or "").strip()) for c in celdas]
 
 
 def _normalizar_celdas(celdas: list[str]) -> list[str]:
@@ -663,8 +669,8 @@ def _filas_crudas_desde_html_tabla(html: str) -> list[list[str]]:
     parser.feed(html)
     filas: list[list[str]] = []
     for row in parser.rows:
-        celdas = _normalizar_celdas(row)
-        if celdas:
+        celdas = _normalizar_celdas_grilla(row)
+        if any(c.strip() for c in celdas):
             filas.append(celdas)
     return filas
 
