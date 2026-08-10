@@ -35,6 +35,9 @@ class ListadoMaterialesPdfParserService
     /** Catálogo/oferta con descripción + unidad + precio, sin columna cantidad (p. ej. ANEXO ENAMI). */
     private const FORMATO_OFERTA_PRECIO = 'oferta_precio';
 
+    /** Tabla municipal DIDECO: UNIDAD DE MEDIDA | CANTIDAD | BIEN O SERVICIO | ESPECIFICACIONES TÉCNICAS. */
+    private const FORMATO_TABLA_DIDECO = 'tabla_dideco_especificaciones';
+
     public function __construct(
         protected ?PdfOcrService $ocr = null,
         protected ?PdfPaddleOcrService $paddle = null,
@@ -223,6 +226,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_COTIZACION_MULTILINEA => $this->parseCotizacionMultilinea($texto),
             self::FORMATO_TABLA_COLUMNAS => $this->parseTablaColumnas($texto),
             self::FORMATO_OFERTA_PRECIO => $this->parseOfertaPrecio($texto),
+            self::FORMATO_TABLA_DIDECO => $this->parseTablaDideco($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
             default => $this->parseListadoCantidad($texto),
         };
@@ -328,6 +332,10 @@ class ListadoMaterialesPdfParserService
 
         if ($this->esFormatoCotizacionMultilinea($upper, $texto)) {
             return self::FORMATO_COTIZACION_MULTILINEA;
+        }
+
+        if ($this->esFormatoTablaDideco($upper)) {
+            return self::FORMATO_TABLA_DIDECO;
         }
 
         if ($this->esFormatoTablaColumnas($upper)) {
@@ -2923,6 +2931,7 @@ class ListadoMaterialesPdfParserService
         $idxProducto = null;
         foreach ([
             ['DESCRIPCION', 'DESCRIPCION TECNICA'],
+            ['BIEN O SERVICIO', 'BIEN O SERVICIO'],
             ['PRODUCTO', 'NOMBRE DEL PRODUCTO', 'NOMBRE', 'DETALLE PRODUCTO', 'DETALLE'],
             ['ARTICULO', 'ITEM', 'ÍTEM'],
         ] as $candidatosProducto) {
@@ -5809,6 +5818,112 @@ class ListadoMaterialesPdfParserService
      *
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
+    private function esFormatoTablaDideco(string $upper): bool
+    {
+        if (! str_contains($upper, 'BIEN O SERVICIO') || ! str_contains($upper, 'CANTIDAD')) {
+            return false;
+        }
+
+        return str_contains($upper, 'UNIDAD DE MEDIDA')
+            || (
+                (str_contains($upper, 'ESPECIFICACIONES TECNICAS') || str_contains($upper, 'ESPECIFICACIONES TÉCNICAS'))
+                && preg_match('/\b(?:UNIDAD(?:ES)?|CAJA|DISPLAY)\s+\d+\s+/u', $upper) === 1
+            );
+    }
+
+    /**
+     * Tabla DIDECO / municipal: UNIDAD DE MEDIDA | CANTIDAD | BIEN O SERVICIO | ESPECIFICACIONES TÉCNICAS.
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseTablaDideco(string $texto): array
+    {
+        $resultado = [];
+        $buffer = null;
+        $cantidadBuffer = null;
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim($lineaCruda);
+            if ($linea === '' || $this->esRuidoTablaDideco($linea)) {
+                continue;
+            }
+
+            if (preg_match('/^(?:Unidad(?:es)?|Caja|Display)\s+(\d+)\s+(.+)$/iu', $linea, $coincidencia) === 1) {
+                if ($buffer !== null && $cantidadBuffer !== null) {
+                    $resultado[] = [
+                        'cantidad' => $cantidadBuffer,
+                        'descripcion' => trim($buffer),
+                    ];
+                }
+
+                $cantidadBuffer = max(1, (int) $coincidencia[1]);
+                $buffer = trim($coincidencia[2]);
+
+                continue;
+            }
+
+            if ($buffer !== null && $this->pareceContinuacionTablaDideco($linea)) {
+                $buffer = trim($buffer.' '.$linea);
+            }
+        }
+
+        if ($buffer !== null && $cantidadBuffer !== null) {
+            $resultado[] = [
+                'cantidad' => $cantidadBuffer,
+                'descripcion' => trim($buffer),
+            ];
+        }
+
+        return $resultado;
+    }
+
+    private function esRuidoTablaDideco(string $linea): bool
+    {
+        $upper = mb_strtoupper(trim($linea));
+
+        if ($upper === '') {
+            return true;
+        }
+
+        if (preg_match('/^--\s*\d+\s+of\s+\d+\s+--$/u', $linea) === 1) {
+            return true;
+        }
+
+        foreach ([
+            'UNIDAD DE MEDIDA CANTIDAD BIEN O SERVICIO',
+            'UNIDAD DE MEDIDA',
+            'BIEN O SERVICIO',
+            'ESPECIFICACIONES TÉCNICAS',
+            'ESPECIFICACIONES TECNICAS',
+            'ÍTEM PRESUPUESTARIO',
+            'ITEM PRESUPUESTARIO',
+        ] as $marcador) {
+            if ($upper === $marcador || str_starts_with($upper, $marcador.' ')) {
+                return true;
+            }
+        }
+
+        if (preg_match('/^ESPECIFICACIONES\s+TECNICAS\s+-/u', $upper) === 1) {
+            return true;
+        }
+
+        if (preg_match('/^ÍTEM\s+PRESUPUESTARIO:/u', $upper) === 1 || preg_match('/^ITEM\s+PRESUPUESTARIO:/u', $upper) === 1) {
+            return true;
+        }
+
+        return preg_match('/^(?:INCLUSIÓN|MESA\s+ALIMENTACION|MESA\s+ALIMENTACIÓN)\b/u', $upper) === 1
+            && preg_match('/^(?:Unidad(?:es)?|Caja|Display)\s+\d+/iu', $linea) !== 1;
+    }
+
+    private function pareceContinuacionTablaDideco(string $linea): bool
+    {
+        if ($this->esRuidoTablaDideco($linea)) {
+            return false;
+        }
+
+        return preg_match('/^(?:Unidad(?:es)?|Caja|Display)\s+\d+\s+/iu', $linea) !== 1;
+    }
+
     private function parseEettEspecificaciones(string $texto): array
     {
         $texto = $this->normalizarEspaciosDocumento($texto);

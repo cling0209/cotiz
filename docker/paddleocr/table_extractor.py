@@ -32,8 +32,9 @@ RUido_RE = re.compile(
     r"^(PRODUCTO|CANTIDAD|IMAGEN|P[AÁ]GINA|ESPECIFICACIONES|SOLICITUD|REFERENCIA)",
     re.IGNORECASE,
 )
-ETIQUETAS_PRODUCTO = ("PRODUCTO", "DESCRIPCION", "DESCRIPCIÓN", "DETALLE", "NOMBRE", "REQUERIMIENTO")
+ETIQUETAS_PRODUCTO = ("PRODUCTO", "DESCRIPCION", "DESCRIPCIÓN", "DETALLE", "NOMBRE", "REQUERIMIENTO", "BIEN O SERVICIO", "SERVICIO")
 ETIQUETAS_CANTIDAD = ("CANTIDAD", "UNIDADES", "QTY", "CANT")
+ETIQUETAS_UNIDAD_MEDIDA = ("UNIDAD DE MEDIDA", "UNIDAD MEDIDA", "U.M.", "UM")
 ETIQUETAS_LINEA = ("LINEA", "LÍNEA", "LINEA N", "N°")
 ETIQUETAS_MONTO = ("MONTO", "TOTAL", "PRECIO")
 
@@ -146,6 +147,11 @@ def _mapear_columnas_desde_cabecera(header_row: list[str]) -> dict[str, int | No
     return {
         "producto": _indice_columna_por_etiquetas(header_row, ETIQUETAS_PRODUCTO),
         "cantidad": _indice_columna_por_etiquetas(header_row, ETIQUETAS_CANTIDAD),
+        "especificaciones": _indice_columna_por_etiquetas(
+            header_row,
+            ("ESPECIFICACIONES", "ESPECIFICACIONES TÉCNICAS", "ESPECIFICACIONES TECNICAS"),
+        ),
+        "unidad_medida": _indice_columna_por_etiquetas(header_row, ETIQUETAS_UNIDAD_MEDIDA),
     }
 
 
@@ -319,6 +325,8 @@ def _parse_celdas_fila(celdas: list[str]) -> dict[str, Any] | None:
     for celda in celdas:
         if _es_celda_imagen(celda):
             continue
+        if re.match(r"^(?:Unidad(?:es)?|Caja|Display)$", celda.strip(), re.I):
+            continue
         qty = _parse_cantidad(celda)
         if qty is not None and cantidad is None and len(celda.strip()) <= 40:
             cantidad = qty
@@ -359,6 +367,16 @@ def _parse_fila_con_mapeo(row: list[str], mapeo: dict[str, int | None]) -> dict[
         and idx_producto != idx_cantidad
     ):
         descripcion = celdas[idx_producto].strip()
+        idx_specs = mapeo.get("especificaciones")
+        if (
+            idx_specs is not None
+            and idx_specs < len(celdas)
+            and idx_specs != idx_producto
+            and idx_specs != idx_cantidad
+        ):
+            specs = celdas[idx_specs].strip()
+            if specs and specs not in descripcion:
+                descripcion = f"{descripcion} {specs}".strip()
         cantidad = _parse_cantidad(celdas[idx_cantidad])
         if (
             cantidad is not None

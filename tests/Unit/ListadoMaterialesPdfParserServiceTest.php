@@ -1032,6 +1032,31 @@ TXT;
         $this->assertSame('CUCHILLO CARTONERO GRANDE N18', $lineas[10]['descripcion']);
     }
 
+    public function test_detecta_y_parsea_formato_tabla_dideco(): void
+    {
+        $texto = $this->cargarFixture('dideco_programas.txt');
+
+        $this->assertSame('tabla_dideco_especificaciones', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(5, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertSame(
+            'Block de cartulina Bolson cartulina de colores 18 pliegos de 26.5x37cm',
+            $lineas[0]['descripcion'],
+        );
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertSame('Cinta de embalaje Cinta de embalaje transparente de 48mmx100mt.', $lineas[1]['descripcion']);
+        $this->assertSame(6, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('Cinta de tela raso satín', $lineas[2]['descripcion']);
+        $this->assertStringContainsString('rosado', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertStringContainsString('Lapiceras pasta', $lineas[3]['descripcion']);
+        $this->assertSame(10, $lineas[4]['cantidad']);
+        $this->assertStringContainsString('Resmas de papel oficio', $lineas[4]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
