@@ -159,6 +159,11 @@ class ListadoMaterialesPdfParserService
 
             if ($paginasFilas === []) {
                 $paginasFilas = $this->extraerGrillaNativaPdf($path);
+            } else {
+                $paginasNativas = $this->extraerGrillaNativaPdf($path);
+                if ($paginasNativas !== []) {
+                    $paginasFilas = $this->combinarGrillasPaginas($paginasFilas, $paginasNativas);
+                }
             }
 
             try {
@@ -189,6 +194,51 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $principal
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $complemento
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    private function combinarGrillasPaginas(array $principal, array $complemento): array
+    {
+        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>}> $porNumero */
+        $porNumero = [];
+
+        foreach ($principal as $pagina) {
+            $num = (int) ($pagina['pagina'] ?? 0);
+            if ($num > 0) {
+                $porNumero[$num] = $pagina;
+            }
+        }
+
+        foreach ($complemento as $pagina) {
+            $num = (int) ($pagina['pagina'] ?? 0);
+            if ($num <= 0) {
+                continue;
+            }
+
+            $filasComplemento = $pagina['filas'] ?? [];
+            if ($filasComplemento === []) {
+                continue;
+            }
+
+            if (! isset($porNumero[$num]) || ($porNumero[$num]['filas'] ?? []) === []) {
+                $porNumero[$num] = $pagina;
+
+                continue;
+            }
+
+            $filasPrincipal = $porNumero[$num]['filas'] ?? [];
+            if (count($filasComplemento) > count($filasPrincipal)) {
+                $porNumero[$num] = $pagina;
+            }
+        }
+
+        ksort($porNumero);
+
+        return array_values($porNumero);
+    }
+
+    /**
      * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
      */
     private function extraerGrillaNativaPdf(string $path): array
@@ -197,6 +247,44 @@ class ListadoMaterialesPdfParserService
             return [];
         }
 
+        try {
+            $pdf = (new Parser)->parseFile($path);
+            $paginasPdf = $pdf->getPages();
+        } catch (\Throwable) {
+            return $this->extraerGrillaNativaPdfTextoCompleto($path);
+        }
+
+        if ($paginasPdf === []) {
+            return $this->extraerGrillaNativaPdfTextoCompleto($path);
+        }
+
+        $paginas = [];
+        foreach ($paginasPdf as $indice => $paginaPdf) {
+            $numPagina = $indice + 1;
+            try {
+                $texto = trim((string) $paginaPdf->getText());
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $filas = $this->filasGrillaDesdeTextoPagina($texto);
+            if ($filas !== []) {
+                $paginas[] = ['pagina' => $numPagina, 'filas' => $filas];
+            }
+        }
+
+        if ($paginas !== []) {
+            return $paginas;
+        }
+
+        return $this->extraerGrillaNativaPdfTextoCompleto($path);
+    }
+
+    /**
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    private function extraerGrillaNativaPdfTextoCompleto(string $path): array
+    {
         try {
             $texto = trim((string) (new Parser)->parseFile($path)->getText());
         } catch (\Throwable) {
@@ -212,35 +300,48 @@ class ListadoMaterialesPdfParserService
         $numPagina = 1;
 
         foreach ($bloques as $bloque) {
-            $filas = [];
-            foreach (preg_split('/\r\n|\n|\r/u', $bloque) ?: [] as $lineaCruda) {
-                $linea = trim($lineaCruda);
-                if ($linea === '') {
-                    continue;
-                }
-
-                if (str_contains($linea, "\t")) {
-                    $celdas = array_values(array_filter(
-                        array_map(static fn (string $c): string => trim($c), explode("\t", $linea)),
-                        static fn (string $c): bool => $c !== '',
-                    ));
-                } else {
-                    $celdas = $this->expandirLineaNativaATabla($linea);
-                }
-
-                if ($celdas !== []) {
-                    $filas[] = $celdas;
-                }
-            }
-
+            $filas = $this->filasGrillaDesdeTextoPagina($bloque);
             if ($filas !== []) {
                 $paginas[] = ['pagina' => $numPagina, 'filas' => $filas];
             }
-
             $numPagina++;
         }
 
         return $paginas;
+    }
+
+    /**
+     * @return array<int, array<int, string>>
+     */
+    private function filasGrillaDesdeTextoPagina(string $texto): array
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return [];
+        }
+
+        $filas = [];
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim($lineaCruda);
+            if ($linea === '') {
+                continue;
+            }
+
+            if (str_contains($linea, "\t")) {
+                $celdas = array_values(array_filter(
+                    array_map(static fn (string $c): string => trim($c), explode("\t", $linea)),
+                    static fn (string $c): bool => $c !== '',
+                ));
+            } else {
+                $celdas = $this->expandirLineaNativaATabla($linea);
+            }
+
+            if ($celdas !== []) {
+                $filas[] = $celdas;
+            }
+        }
+
+        return $filas;
     }
 
     /**
@@ -287,6 +388,10 @@ class ListadoMaterialesPdfParserService
                 }
 
                 $celdas = $this->expandirCeldasFilaGrilla($celdas, $nombreCantidad, $nombreProducto);
+
+                if ($this->filaEsRuidoIntercaladoTabla($celdas, $nombreCantidad, $nombreProducto)) {
+                    continue;
+                }
 
                 $indicesHeader = $this->resolverIndicesHeaderPorNombre($celdas, $nombreCantidad, $nombreProducto);
                 if ($indicesHeader !== null) {
@@ -451,6 +556,48 @@ class ListadoMaterialesPdfParserService
         $specs = implode(' ', array_slice($palabras, 3));
 
         return [trim($coincidencias[1]), $coincidencias[2], $producto, $specs];
+    }
+
+    /**
+     * Títulos de sección, ítem presupuestario u otras filas que no son datos ni encabezado de columnas.
+     *
+     * @param  array<int, string>  $celdas
+     */
+    private function filaEsRuidoIntercaladoTabla(
+        array $celdas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): bool {
+        $texto = $this->normalizarEncabezadoCelda(implode(' ', array_filter($celdas, static fn (string $c): bool => trim($c) !== '')));
+        if ($texto === '') {
+            return true;
+        }
+
+        if ($this->resolverIndicesHeaderPorNombre($celdas, $nombreCantidad, $nombreProducto) !== null) {
+            return false;
+        }
+
+        if (str_contains($texto, 'ITEM PRESUPUESTARIO')) {
+            return true;
+        }
+
+        if (preg_match('/^ESPECIFICACIONES TECNICAS\s+-/u', $texto) === 1) {
+            return true;
+        }
+
+        if (str_contains($texto, 'ESPECIFICACIONES TECNICAS')
+            && ! str_contains($texto, 'CANTIDAD')
+            && ! str_contains($texto, 'BIEN O SERVICIO')
+            && ! str_contains($texto, 'UNIDAD DE MEDIDA')) {
+            return true;
+        }
+
+        if (preg_match('/^(PROMOCION|MUJER|GENERO|PROGRAMA)/u', $texto) === 1
+            && ! str_contains($texto, 'CANTIDAD')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -1119,6 +1119,52 @@ TXT;
         $this->assertSame('Cinta de embalaje 48mm x 100mt', $lineas[1]['descripcion']);
     }
 
+    public function test_mapeo_columnas_hojas_titulo_repetido_y_continuacion_sin_encabezado(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA CANTIDAD BIEN O SERVICIO ESPECIFICACIONES TÉCNICAS'],
+                    ['Unidades 3 Block de cartulina Bolson cartulina de colores'],
+                ],
+            ],
+            [
+                'pagina' => 2,
+                'filas' => [
+                    ['ESPECIFICACIONES TECNICAS - PROMOCION, MUJER Y GENERO'],
+                    ['Ítem Presupuestario: 215.22.04.002.016'],
+                    ['UNIDAD DE MEDIDA CANTIDAD BIEN O SERVICIO ESPECIFICACIONES TÉCNICAS'],
+                    ['Unidades 5 Cinta de embalaje Cinta de embalaje transparente de 48mm'],
+                ],
+            ],
+            [
+                'pagina' => 3,
+                'filas' => [
+                    ['Unidades 6 Cinta de tela Cinta de tela raso satín 10mm'],
+                    ['Caja 1 Lapiceras pasta Lapiz pasta azul x50'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'BIEN O SERVICIO');
+
+        $this->assertCount(4, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertSame(6, $lineas[2]['cantidad']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertStringContainsString('Block de cartulina', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('Cinta de embalaje', $lineas[1]['descripcion']);
+        $this->assertStringContainsString('Cinta de tela', $lineas[2]['descripcion']);
+        $this->assertStringContainsString('Lapiceras pasta', $lineas[3]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

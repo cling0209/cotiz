@@ -440,7 +440,7 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Para tablas DIDECO use <strong>CANTIDAD</strong> y <strong>BIEN O SERVICIO</strong> (no «Especificaciones técnicas», que es otra columna). Se procesan todas las hojas; si el título se repite en otras páginas, se omite automáticamente.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Para tablas DIDECO use <strong>CANTIDAD</strong> y <strong>BIEN O SERVICIO</strong>. Se leen <strong>todas las hojas</strong>: algunas repiten título y encabezado (se omiten) y otras continúan solo con filas de productos usando las mismas columnas.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
                                     Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).

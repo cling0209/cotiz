@@ -510,7 +510,14 @@ class PdfPaddleOcrService
         }
 
         if ($this->esNombreEspecificacionesTecnicas($nombre)) {
-            return min($maxConfig, 11);
+            try {
+                $parser = new Parser;
+                $pdf = $parser->parseFile($pdfPath);
+
+                return min($maxConfig, max(1, count($pdf->getPages())));
+            } catch (\Throwable) {
+                return $maxConfig;
+            }
         }
 
         try {
