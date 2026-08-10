@@ -573,6 +573,9 @@
                             <label class="form-check-label" for="popupVincularModoTexto">B&uacute;squeda por texto</label>
                         </div>
                     </div>
+                    <p class="small text-muted mb-2 mb-md-1 d-none" id="popupVincularModoTextoAyuda">
+                        Por texto: cada palabra debe existir en el producto (c&oacute;digo o nombre), sin importar el orden.
+                    </p>
                     <div class="input-group input-group-sm mb-0">
                         <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
                         <button type="button" class="btn btn-outline-secondary" id="btnPopupVincularLimpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
@@ -4200,6 +4203,13 @@
         return checked?.value === 'texto' ? 'texto' : 'similitud';
     }
 
+    function actualizarAyudaModoVincular() {
+        const ayuda = document.getElementById('popupVincularModoTextoAyuda');
+        if (ayuda) {
+            ayuda.classList.toggle('d-none', obtenerModoBusquedaVincular() !== 'texto');
+        }
+    }
+
     function precioVentaProductoVincular(p) {
         return precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor);
     }
@@ -4314,6 +4324,7 @@
         if (popupVincularResultados) popupVincularResultados.innerHTML = '';
         const modoSimilitud = document.getElementById('popupVincularModoSimilitud');
         if (modoSimilitud) modoSimilitud.checked = true;
+        actualizarAyudaModoVincular();
         if (popupVincularEl) popupVincularEl.style.display = 'flex';
         buscarProductosVincularPopup();
     }
@@ -4573,6 +4584,7 @@
     document.querySelectorAll('input[name="popupVincularModo"]').forEach((radio) => {
         radio.addEventListener('change', () => {
             vincularSortVenta = null;
+            actualizarAyudaModoVincular();
             buscarProductosVincularPopup();
         });
     });

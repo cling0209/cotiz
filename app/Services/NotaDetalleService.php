@@ -1181,6 +1181,7 @@ class NotaDetalleService
 
     /**
      * Búsqueda literal por texto en código/nombre (sin ranking por similitud ni tope de 50).
+     * Con varias palabras exige que cada término significativo exista en el producto, sin importar el orden.
      */
     public function buscarProductosPorTexto(?string $term, ?string $familia = null): Collection
     {
@@ -1197,14 +1198,25 @@ class NotaDetalleService
             ->whereNotNull('prod_item')
             ->where('prod_item', '!=', '');
 
-        $tokens = preg_split('/\s+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        foreach ($tokens as $token) {
-            $like = '%'.$token.'%';
-            $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(prod_nombre) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(prod_item) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(prod_item_softland, \'\')) LIKE ?', [$like]);
-            });
+        $norm = $this->busquedaSimilitud->normalizarTexto($term);
+        $tokens = $this->busquedaSimilitud->tokensSignificativos($norm);
+        if ($tokens === []) {
+            $tokens = preg_split('/\s+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+
+        $textoCombinado = "LOWER(COALESCE(prod_item, '') || ' ' || COALESCE(prod_nombre, '') || ' ' || COALESCE(prod_item_softland, ''))";
+
+        if (count($tokens) > 1) {
+            foreach ($tokens as $token) {
+                $token = mb_strtolower(trim((string) $token), 'UTF-8');
+                if ($token === '') {
+                    continue;
+                }
+                $query->whereRaw($textoCombinado.' LIKE ?', ['%'.$token.'%']);
+            }
+        } else {
+            $needle = mb_strtolower($tokens[0] ?? $term, 'UTF-8');
+            $query->whereRaw($textoCombinado.' LIKE ?', ['%'.$needle.'%']);
         }
 
         if ($familia) {

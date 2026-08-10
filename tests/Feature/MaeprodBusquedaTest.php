@@ -138,4 +138,44 @@ class MaeprodBusquedaTest extends TestCase
         $this->assertContains('PAPEL002', $codigos);
         $this->assertContains('DEMO001', $codigos);
     }
+
+    public function test_buscar_productos_modo_texto_no_depende_del_orden_de_palabras(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'RLLT5720',
+            'prod_nombre' => 'TRANSBANK ROLLOS PAPEL TERMICO 57MM X 20M',
+            'prod_valor' => 196,
+            'prod_valor_costo' => 150,
+            'prod_familia' => 'LIBR',
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson(route('admin.productos.buscar', [
+            'q' => 'termico transbank rollos',
+            'modo' => 'texto',
+        ]));
+
+        $response->assertOk();
+        $codigos = collect($response->json('data'))->pluck('prod_item')->all();
+        $this->assertContains('RLLT5720', $codigos);
+    }
+
+    public function test_buscar_productos_modo_texto_palabras_en_codigo_y_nombre(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'FEDC',
+            'prod_nombre' => 'ROLLO PAPEL TERMICO 57 X 40 MM',
+            'prod_valor' => 1258,
+            'prod_valor_costo' => 900,
+            'prod_familia' => 'LIBR',
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson(route('admin.productos.buscar', [
+            'q' => 'fedc termico 57',
+            'modo' => 'texto',
+        ]));
+
+        $response->assertOk();
+        $codigos = collect($response->json('data'))->pluck('prod_item')->all();
+        $this->assertContains('FEDC', $codigos);
+    }
 }
