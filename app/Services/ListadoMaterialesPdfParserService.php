@@ -181,11 +181,16 @@ class ListadoMaterialesPdfParserService
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
 
-        if ($lineas === []) {
-            Log::info('Import PDF: grilla o mapeo de columnas vacío; fallback parseDocumentoCompleto', [
+        $filasUnidadGrilla = $this->contarFilasUnidadEnGrilla($paginasFilas);
+        $mapeoIncompleto = $filasUnidadGrilla >= 2 && count($lineas) < $filasUnidadGrilla;
+
+        if ($lineas === [] || $mapeoIncompleto) {
+            Log::info('Import PDF: grilla o mapeo de columnas vacío/incompleto; fallback parseDocumentoCompleto', [
                 'archivo' => trim((string) $file->getClientOriginalName()),
                 'columna_cantidad' => $columnaCantidad,
                 'columna_producto' => $columnaProducto,
+                'lineas_mapeo' => count($lineas),
+                'filas_unidad_grilla' => $filasUnidadGrilla,
             ]);
 
             $completo = $this->parseDocumentoCompleto($file);
@@ -416,6 +421,10 @@ class ListadoMaterialesPdfParserService
                 $nombreCantidad,
                 $nombreProducto,
             );
+        }
+
+        if ($this->detectarCotizacionMultilineaEnGrilla($paginasFilas, $nombreCantidad, $nombreProducto)) {
+            return $this->aplicarMapeoCotizacionMultilineaPorGrilla($paginasFilas);
         }
 
         $productoEsSpecs = $this->columnaProductoEsEspecificaciones($columnaProducto);
@@ -1093,6 +1102,118 @@ class ListadoMaterialesPdfParserService
         }
 
         return str_contains($texto, $nombre);
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function contarFilasUnidadEnGrilla(array $paginasFilas): int
+    {
+        $total = 0;
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                foreach ($celdasRaw as $celda) {
+                    $celda = trim((string) $celda);
+                    if ($celda !== '' && preg_match('/^UNIDAD\s+\d+/iu', $celda) === 1) {
+                        $total++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * Cotización comercial IBF: DESCRIPCION multilínea + filas «UNIDAD cantidad» en grilla nativa.
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function detectarCotizacionMultilineaEnGrilla(
+        array $paginasFilas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): bool {
+        $tieneEncabezado = false;
+        $filasUnidad = $this->contarFilasUnidadEnGrilla($paginasFilas);
+
+        if ($filasUnidad < 2) {
+            return false;
+        }
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                $texto = implode(' ', array_values(array_filter(
+                    array_map(static fn ($c): string => trim((string) $c), $celdasRaw),
+                    static fn (string $c): bool => $c !== '',
+                )));
+
+                if ($texto === '') {
+                    continue;
+                }
+
+                $norm = $this->normalizarEncabezadoParaCoincidencia($texto);
+                $tieneProducto = $this->textoContieneNombreColumna($texto, $nombreProducto)
+                    || str_contains($norm, 'DESCRIPCION');
+                $tieneCantidad = $this->textoContieneNombreColumna($texto, $nombreCantidad)
+                    || str_contains($norm, 'UNIDAD');
+
+                if ($tieneProducto && $tieneCantidad) {
+                    $tieneEncabezado = true;
+                    break 2;
+                }
+            }
+        }
+
+        return $tieneEncabezado;
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoCotizacionMultilineaPorGrilla(array $paginasFilas): array
+    {
+        return $this->parseCotizacionMultilinea($this->textoPlanoDesdeGrillaPaginas($paginasFilas));
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function textoPlanoDesdeGrillaPaginas(array $paginasFilas): string
+    {
+        $lineas = [];
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                $celdas = array_values(array_filter(
+                    array_map(static fn ($c): string => trim((string) $c), $celdasRaw),
+                    static fn (string $c): bool => $c !== '',
+                ));
+
+                if ($celdas === []) {
+                    continue;
+                }
+
+                $lineas[] = implode("\t", $celdas);
+            }
+        }
+
+        return implode("\n", $lineas);
     }
 
     /**

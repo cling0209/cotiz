@@ -1032,6 +1032,40 @@ TXT;
         $this->assertSame('CUCHILLO CARTONERO GRANDE N18', $lineas[10]['descripcion']);
     }
 
+    public function test_mapeo_columnas_cotizacion_ibf_descripcion_cantidad(): void
+    {
+        $texto = $this->cargarFixture('cotizacion_ibf_1291_nativo.txt');
+        $filasGrilla = [];
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $linea) {
+            $linea = trim($linea);
+            if ($linea === '') {
+                continue;
+            }
+
+            $filasGrilla[] = str_contains($linea, "\t")
+                ? array_values(array_filter(explode("\t", $linea), static fn (string $c): bool => trim($c) !== ''))
+                : [$linea];
+        }
+
+        $paginasFilas = [['pagina' => 1, 'filas' => $filasGrilla]];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'DESCRIPCION');
+
+        $this->assertCount(11, $lineas);
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertSame('CUADERNO UNIVERSITARIO MATEMATICA 7 MM 100 HOJAS LISO', $lineas[0]['descripcion']);
+        $this->assertSame(300, $lineas[3]['cantidad']);
+        $this->assertSame('LAPIZ PASTA 1.0 MM PUNTA MEDIA AZUL CRISTAL', $lineas[3]['descripcion']);
+        $this->assertSame(36, $lineas[9]['cantidad']);
+        $this->assertSame('DESTACADOR ADIX PALETA TRANSPARENTE VERDE', $lineas[9]['descripcion']);
+    }
+
     public function test_detecta_y_parsea_formato_tabla_dideco(): void
     {
         $texto = $this->cargarFixture('dideco_programas.txt');
