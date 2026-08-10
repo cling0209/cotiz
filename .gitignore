@@ -31,3 +31,14 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /scripts/validar_out.txt
+
+# Scripts locales de diagnóstico PDF (no versionar)
+/scripts/compare_parsers_*.php
+/scripts/count_lineas_*.php
+/scripts/count_parse_*.php
+/scripts/debug_catalogo_*.php
+/scripts/diagnostico_*.php
+/scripts/diff_parsers.php
+/scripts/dump_grilla_pagina.php
+/scripts/dump_p37_*.php
+/scripts/dump_texto_pagina37.php
