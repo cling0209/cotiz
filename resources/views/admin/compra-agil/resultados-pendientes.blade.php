@@ -167,7 +167,7 @@
                             <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $seg])</td>
                             <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap cell-acciones">
-                                @if($apiConfigurada)
+                                @if($seg->puedeReconsultarMp() && $apiConfigurada)
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $seg->nronota }}"

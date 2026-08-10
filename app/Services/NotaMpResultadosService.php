@@ -774,7 +774,8 @@ class NotaMpResultadosService
                     })
                     ->orWhere(function ($sub) {
                         $this->aplicarFiltroPendienteOcompraAlfanumerica($sub);
-                    });
+                    })
+                    ->orWhereRaw('COALESCE(seg.finalizado, false) = false');
             });
         }
 
@@ -2877,7 +2878,10 @@ class NotaMpResultadosService
     private function buildPendientesSeguimientoQuery(array $filtros): \Illuminate\Database\Eloquent\Builder
     {
         return $this->aplicarFiltrosListadoSeguimiento(
-            NotaMpSeguimiento::query()->where('resultado_propio', 'pendiente'),
+            NotaMpSeguimiento::query()->where(function ($q) {
+                $q->where('resultado_propio', 'pendiente')
+                    ->orWhereRaw('COALESCE(finalizado, false) = false');
+            }),
             $filtros,
         );
     }

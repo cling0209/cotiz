@@ -157,7 +157,7 @@ class NotaListadoService
     {
         $query = Nota::query()
             ->select('notas.*')
-            ->with(['usuarioRel', 'mpSeguimiento']);
+            ->with(['usuarioRel', 'mpSeguimiento.nota']);
 
         if ($incluirTotal) {
             // Solo necesario al ordenar por total (el planner debe calcularlo para todo el set filtrado).

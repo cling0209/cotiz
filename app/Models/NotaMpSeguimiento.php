@@ -121,6 +121,24 @@ class NotaMpSeguimiento extends Model
         return $texto === '—' ? '' : $texto;
     }
 
+    /** Aún debe poder consultarse MP (seguimiento abierto o falta código AG). */
+    public function puedeReconsultarMp(): bool
+    {
+        if ($this->resultado_propio === 'pendiente') {
+            return true;
+        }
+
+        if (! $this->finalizado) {
+            return true;
+        }
+
+        return app(\App\Services\NotaMpResultadosService::class)->pendienteOcompraAlfanumerica(
+            (string) ($this->nota?->ocompra ?? ''),
+            $this->id_orden_compra,
+            $this->rut_ganador,
+        );
+    }
+
     public function scopeWhereFinalizado(Builder $query): Builder
     {
         return $query->whereRaw('finalizado IS TRUE');

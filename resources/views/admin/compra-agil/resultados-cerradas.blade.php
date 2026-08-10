@@ -155,6 +155,14 @@
                             <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $seg])</td>
                             <td class="small text-muted cell-consultado">{{ $seg->textoConsultado() }}</td>
                             <td class="text-nowrap">
+                                @if($seg->puedeReconsultarMp() && $apiConfigurada)
+                                    <button type="button"
+                                        class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
+                                        data-nronota="{{ $seg->nronota }}"
+                                        title="Consultar estado en Mercado Público">
+                                        <i class="bi bi-cloud-download"></i> Consultar MP
+                                    </button>
+                                @endif
                                 <button type="button" class="btn btn-outline-primary btn-sm btn-comparar-mp" data-nronota="{{ $seg->nronota }}" title="Comparar precios Prov. seleccionado vs {{ config('cotiz.sistema') }}"><i class="bi bi-arrow-left-right"></i> Comparar</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $seg->nronota }}">Detalle</button>
                             </td>

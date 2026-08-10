@@ -69,4 +69,14 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
 
         $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
     }
+
+    public function test_puede_reconsultar_si_seguimiento_no_finalizado(): void
+    {
+        $seg = new NotaMpSeguimiento([
+            'resultado_propio' => 'cerrada',
+            'finalizado' => false,
+        ]);
+
+        $this->assertTrue($seg->puedeReconsultarMp());
+    }
 }

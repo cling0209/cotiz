@@ -64,6 +64,7 @@ class CompraAgilResultadosController extends Controller
             'cerradas' => $this->resultados->listadoCerradasPaginado($porPagina, $filtros),
             'filtros' => $filtros,
             'ejecutivosFiltro' => $this->ejecutivosFiltro(),
+            'apiConfigurada' => $this->resultados->apiConfigurada(),
         ]);
     }
 

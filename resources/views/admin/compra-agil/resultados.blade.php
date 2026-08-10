@@ -211,7 +211,7 @@
                             <td class="small cell-oc">@include('admin.compra-agil.partials.celda-orden-compra-mp', ['seg' => $nov->seguimiento])</td>
                             <td class="small text-muted cell-consultado">{{ $nov->seguimiento?->textoConsultado() ?? '—' }}</td>
                             <td class="text-nowrap cell-acciones">
-                                @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
+                                @if($nov->seguimiento?->puedeReconsultarMp() && $apiConfigurada)
                                     <button type="button"
                                         class="btn btn-outline-info btn-sm btn-consultar-mp-individual"
                                         data-nronota="{{ $nov->nronota }}"
@@ -223,7 +223,7 @@
                                 <button type="button" class="btn btn-outline-secondary btn-sm btn-detalle-mp" data-nronota="{{ $nov->nronota }}">Detalle</button>
                             </td>
                         </tr>
-                        @if(($nov->resultado_propio ?? '') === 'pendiente' && $apiConfigurada)
+                        @if($nov->seguimiento?->puedeReconsultarMp() && $apiConfigurada)
                         <tr class="consulta-mp-feedback d-none" data-nronota="{{ $nov->nronota }}">
                             <td colspan="14" class="py-2 bg-light">
                                 <div class="progress" style="height: 0.5rem;">

@@ -251,7 +251,11 @@
         if (!acciones) return;
 
         const btnConsultar = acciones.querySelector('.btn-consultar-mp-individual');
-        if (btnConsultar && r.resultado_propio !== 'pendiente') {
+        const reconsultarMp = r.resultado_propio === 'pendiente'
+            || r.finalizado === false
+            || r.orden_compra === 'Pendiente'
+            || (r.es_ganador_grupo && r.id_orden_compra && !r.ocompra && !r.orden_compra);
+        if (btnConsultar && !reconsultarMp) {
             btnConsultar.remove();
         } else if (btnConsultar) {
             btnConsultar.disabled = false;
