@@ -174,17 +174,26 @@ class ListadoMaterialesPdfParserService
         }
 
         if ($paginasFilas === []) {
-            throw new RuntimeException(
-                'No se detectó tabla en el documento. Verifique el archivo o que PaddleOCR esté disponible.',
-            );
+            $paginasFilas = $this->extraerGrillaDesdeOcrPdf($path);
         }
 
-        $lineas = $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto);
+        $lineas = $paginasFilas !== []
+            ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
+            : [];
+
         if ($lineas === []) {
-            throw new RuntimeException(
-                'No se encontraron filas con las columnas «'.$columnaCantidad.'» y «'.$columnaProducto.'». '
-                .'Verifique que los nombres coincidan con el encabezado de la tabla (ej. cantidad: CANTIDAD, producto: BIEN O SERVICIO).',
-            );
+            Log::info('Import PDF: grilla o mapeo de columnas vacío; fallback parseDocumentoCompleto', [
+                'archivo' => trim((string) $file->getClientOriginalName()),
+                'columna_cantidad' => $columnaCantidad,
+                'columna_producto' => $columnaProducto,
+            ]);
+
+            $completo = $this->parseDocumentoCompleto($file);
+
+            return [
+                'cabecera' => $completo['cabecera'],
+                'lineas' => $completo['lineas'],
+            ];
         }
 
         return [
@@ -308,6 +317,51 @@ class ListadoMaterialesPdfParserService
         }
 
         return $paginas;
+    }
+
+    /**
+     * Grilla desde OCR página a página (PDF escaneado sin texto nativo ni Paddle).
+     *
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    private function extraerGrillaDesdeOcrPdf(string $path): array
+    {
+        $ocr = $this->ocr ?? new PdfOcrService;
+        if (! $ocr->estaDisponible()) {
+            return [];
+        }
+
+        $nombreArchivo = basename($path);
+        $esEett = $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo);
+        $opciones = $esEett
+            ? []
+            : ['crop_left_percent' => $this->porcentajeRecorteColumnaProducto()];
+        $paginas = max(1, min(30, $this->contarPaginasPdf($path, $nombreArchivo)));
+        $resultado = [];
+
+        for ($numPagina = 1; $numPagina <= $paginas; $numPagina++) {
+            try {
+                $textoPagina = trim($ocr->extraerTextoPagina($path, $numPagina, $opciones));
+            } catch (\Throwable $e) {
+                Log::warning('Import PDF: OCR grilla por página falló', [
+                    'pagina' => $numPagina,
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            if ($textoPagina === '') {
+                continue;
+            }
+
+            $filas = $this->filasGrillaDesdeTextoPagina($textoPagina);
+            if ($filas !== []) {
+                $resultado[] = ['pagina' => $numPagina, 'filas' => $filas];
+            }
+        }
+
+        return $resultado;
     }
 
     /**
@@ -2546,11 +2600,11 @@ class ListadoMaterialesPdfParserService
         }
 
         $mejor = $fragmentos[0];
-        $maxLineas = count($this->parseTablaProductoCantidad($mejor));
+        $maxLineas = $this->contarLineasUtilesDesdeTexto($mejor);
 
         for ($i = 1; $i < count($fragmentos); $i++) {
             $candidato = $this->elegirMejorTextoPdfTablaProducto($mejor, $fragmentos[$i]);
-            $lineas = count($this->parseTablaProductoCantidad($candidato));
+            $lineas = $this->contarLineasUtilesDesdeTexto($candidato);
             if ($lineas >= $maxLineas) {
                 $maxLineas = $lineas;
                 $mejor = $candidato;
@@ -2558,12 +2612,21 @@ class ListadoMaterialesPdfParserService
         }
 
         $combinado = trim(implode("\n", $fragmentos));
-        $lineasCombinado = count($this->parseTablaProductoCantidad($combinado));
+        $lineasCombinado = $this->contarLineasUtilesDesdeTexto($combinado);
         if ($lineasCombinado >= $maxLineas) {
             return $combinado;
         }
 
         return $mejor;
+    }
+
+    private function contarLineasUtilesDesdeTexto(string $texto): int
+    {
+        if (trim($texto) === '') {
+            return 0;
+        }
+
+        return count($this->parseTexto($texto));
     }
 
     private function resolverTextoPdfMedianteOcr(string $path, ?string $textoNativo): string
@@ -2967,12 +3030,21 @@ class ListadoMaterialesPdfParserService
 
     private function elegirMejorTextoPdfTablaProducto(string $textoNativo, string $textoOcr): string
     {
-        $lineasNativo = count($this->parseTablaProductoCantidad($textoNativo));
-        $lineasOcr = count($this->parseTablaProductoCantidad($textoOcr));
+        $lineasNativo = max(
+            count($this->parseTablaProductoCantidad($textoNativo)),
+            $this->contarLineasUtilesDesdeTexto($textoNativo),
+        );
+        $lineasOcr = max(
+            count($this->parseTablaProductoCantidad($textoOcr)),
+            $this->contarLineasUtilesDesdeTexto($textoOcr),
+        );
 
         if ($lineasNativo > 0 && $lineasOcr > 0) {
             $combinado = trim($textoNativo."\n".$textoOcr);
-            $lineasCombinado = count($this->parseTablaProductoCantidad($combinado));
+            $lineasCombinado = max(
+                count($this->parseTablaProductoCantidad($combinado)),
+                $this->contarLineasUtilesDesdeTexto($combinado),
+            );
             if ($lineasCombinado >= max($lineasNativo, $lineasOcr)) {
                 return $combinado;
             }
@@ -3038,6 +3110,10 @@ class ListadoMaterialesPdfParserService
             $formatoDoc = self::FORMATO_BASES;
         }
         if ($formatoDoc === self::FORMATO_COTIZACION_MULTILINEA && count($lineasTexto) >= 2) {
+            return $lineasTexto;
+        }
+
+        if ($formatoDoc === self::FORMATO_EETT && count($lineasTexto) >= 1) {
             return $lineasTexto;
         }
 
@@ -3373,7 +3449,11 @@ class ListadoMaterialesPdfParserService
         }
 
         $paginas = max(1, min(30, $paginas));
-        $opciones = ['crop_left_percent' => $this->porcentajeRecorteColumnaProducto()];
+        $nombreArchivo = basename($path);
+        $esEett = $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo);
+        $opciones = $esEett
+            ? []
+            : ['crop_left_percent' => $this->porcentajeRecorteColumnaProducto()];
         $lineas = [];
 
         for ($pagina = 1; $pagina <= $paginas; $pagina++) {
@@ -3459,7 +3539,8 @@ class ListadoMaterialesPdfParserService
     private function esNombreArchivoEspecificacionesTecnicas(string $nombre): bool
     {
         return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
-            || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1;
+            || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1
+            || preg_match('/\bEETT\b/u', $nombre) === 1;
     }
 
     private function puedeImportarPdfSoloConPaddle(string $path, string $nombreArchivo): bool
