@@ -1506,6 +1506,9 @@ class ListadoMaterialesPdfParserService
         $filasEsperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
 
         $formatoDoc = $this->detectarFormato($texto);
+        if ($formatoDoc !== self::FORMATO_BASES && $this->esNombreArchivoBasesLicitacion($nombreArchivo)) {
+            $formatoDoc = self::FORMATO_BASES;
+        }
         if ($formatoDoc === self::FORMATO_COTIZACION_MULTILINEA && count($lineasTexto) >= 2) {
             return $lineasTexto;
         }
@@ -1716,8 +1719,9 @@ class ListadoMaterialesPdfParserService
     ): array {
         $minEsperadas = max(450, min(537, (int) floor($paginas * 11)));
         $countTexto = count($lineasTexto);
+        $umbralSinPaddle = max(250, (int) floor($minEsperadas * 0.55));
 
-        if ($countTexto >= 520) {
+        if ($countTexto >= 520 || ($countTexto >= $umbralSinPaddle && $countTexto > 0)) {
             return $lineasTexto;
         }
 
@@ -1732,6 +1736,7 @@ class ListadoMaterialesPdfParserService
         }
 
         try {
+            @set_time_limit(max(120, (int) ini_get('max_execution_time')));
             $lineasPaddle = $paddle->extraerLineasTabla($path, $nombreArchivo);
         } catch (\Throwable $e) {
             Log::warning('Import PDF: bases_linea Paddle falló; se usa texto', [
@@ -1906,8 +1911,21 @@ class ListadoMaterialesPdfParserService
         }
 
         $nombre = trim($nombreArchivo) !== '' ? $nombreArchivo : basename($path);
+        if ($this->esNombreArchivoBasesLicitacion($nombre) && $paginas >= 5) {
+            return true;
+        }
 
         return $this->esNombreArchivoEspecificacionesTecnicas($nombre);
+    }
+
+    private function esNombreArchivoBasesLicitacion(string $nombre): bool
+    {
+        $upper = mb_strtoupper($nombre);
+
+        return str_contains($upper, 'BASES_LICT')
+            || str_contains($upper, 'BASES LICT')
+            || str_contains($upper, 'BASES ADMINISTRATIVAS')
+            || (str_contains($upper, 'BASES') && str_contains($upper, 'MATERIAL'));
     }
 
     private function esNombreArchivoEspecificacionesTecnicas(string $nombre): bool
@@ -1951,9 +1969,16 @@ class ListadoMaterialesPdfParserService
 
     private function textoHintTablaMaterialesEscaneada(string $nombreArchivo, int $paginas): string
     {
-        $lineas = ['PRODUCTO CANTIDAD'];
-        if ($this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)) {
-            $lineas[] = 'ESPECIFICACIONES TECNICAS';
+        if ($this->esNombreArchivoBasesLicitacion($nombreArchivo)) {
+            $lineas = [
+                'LINEA DESCRIPCION REQUERIMIENTO',
+                'UNIDADES POR AÑO Monto Total ($) POR AÑO',
+            ];
+        } else {
+            $lineas = ['PRODUCTO CANTIDAD'];
+            if ($this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)) {
+                $lineas[] = 'ESPECIFICACIONES TECNICAS';
+            }
         }
         $paginas = max(1, $paginas);
         if ($paginas > 1) {

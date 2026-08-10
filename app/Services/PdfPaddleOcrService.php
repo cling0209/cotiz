@@ -55,6 +55,20 @@ class PdfPaddleOcrService
         $paginasDoc = $this->resolverPaginasDocumento($pdfPath, $nombreArchivo);
         $umbralPorPagina = max(2, (int) $this->config('paddleocr.per_page_min_pages', 6));
 
+        if ($this->esNombreBasesLicitacion($nombre)) {
+            $firstPage = max(1, $paginasDoc - 24);
+
+            return $this->extraerLineasTablaPorPaginaDesdeBytes(
+                $url,
+                $pdfBytes,
+                $nombre,
+                $timeout,
+                $paginasDoc,
+                max(1, min(4, (int) $this->config('paddleocr.parallel_pages', 2))),
+                $firstPage,
+            );
+        }
+
         if ($paginasDoc >= $umbralPorPagina || $this->esNombreEspecificacionesTecnicas($nombre)) {
             $concurrency = $this->esNombreEspecificacionesTecnicas($nombre) ? 1 : 0;
 
@@ -127,8 +141,10 @@ class PdfPaddleOcrService
         int $timeout,
         int $maxPaginas,
         int $concurrency = 0,
+        int $firstPage = 1,
     ): array {
-        $maxPaginas = max(1, min(30, $maxPaginas));
+        $firstPage = max(1, $firstPage);
+        $maxPaginas = max($firstPage, min(50, $maxPaginas));
         if ($concurrency <= 0) {
             $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 2)));
         }
@@ -136,7 +152,7 @@ class PdfPaddleOcrService
         /** @var array<int, array<int, array{cantidad: int, descripcion: string, pagina?: int}>> $porPagina */
         $porPagina = [];
 
-        for ($batchStart = 1; $batchStart <= $maxPaginas; $batchStart += $concurrency) {
+        for ($batchStart = $firstPage; $batchStart <= $maxPaginas; $batchStart += $concurrency) {
             $batchEnd = min($maxPaginas, $batchStart + $concurrency - 1);
             $paginasBatch = range($batchStart, $batchEnd);
 
@@ -160,7 +176,7 @@ class PdfPaddleOcrService
             }
         }
 
-        $faltantes = array_values(array_diff(range(1, $maxPaginas), array_keys($porPagina)));
+        $faltantes = array_values(array_diff(range($firstPage, $maxPaginas), array_keys($porPagina)));
         foreach ($faltantes as $pagina) {
             for ($intento = 1; $intento <= 3; $intento++) {
                 try {
@@ -185,7 +201,7 @@ class PdfPaddleOcrService
         }
 
         $todas = [];
-        for ($pagina = 1; $pagina <= $maxPaginas; $pagina++) {
+        for ($pagina = $firstPage; $pagina <= $maxPaginas; $pagina++) {
             foreach ($porPagina[$pagina] ?? [] as $fila) {
                 $todas[] = $fila;
             }
@@ -325,6 +341,10 @@ class PdfPaddleOcrService
         $maxConfig = max(1, min(30, (int) $this->config('paddleocr.max_pages', 30)));
         $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
 
+        if ($this->esNombreBasesLicitacion($nombre)) {
+            $maxConfig = max($maxConfig, min(50, (int) $this->config('paddleocr.max_pages_bases', 50)));
+        }
+
         if ($this->esNombreEspecificacionesTecnicas($nombre)) {
             return min($maxConfig, 11);
         }
@@ -337,6 +357,16 @@ class PdfPaddleOcrService
         } catch (\Throwable) {
             return 1;
         }
+    }
+
+    private function esNombreBasesLicitacion(string $nombre): bool
+    {
+        $upper = mb_strtoupper($nombre);
+
+        return str_contains($upper, 'BASES_LICT')
+            || str_contains($upper, 'BASES LICT')
+            || str_contains($upper, 'BASES ADMINISTRATIVAS')
+            || (str_contains($upper, 'BASES') && str_contains($upper, 'MATERIAL'));
     }
 
     private function esNombreEspecificacionesTecnicas(string $nombre): bool
