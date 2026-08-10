@@ -658,6 +658,66 @@ def get_ppstructure_engine() -> Any:
     return _engine
 
 
+def _filas_crudas_desde_html_tabla(html: str) -> list[list[str]]:
+    parser = _TableHtmlParser()
+    parser.feed(html)
+    filas: list[list[str]] = []
+    for row in parser.rows:
+        celdas = _normalizar_celdas(row)
+        if celdas:
+            filas.append(celdas)
+    return filas
+
+
+def extraer_grilla_pdf(
+    pdf_path: str,
+    dpi: int = 200,
+    first_page: int = 1,
+    last_page: int = 15,
+) -> list[dict[str, Any]]:
+    """Devuelve filas crudas de tabla por página (celdas, multilínea unida en cada celda)."""
+    from pdf2image import convert_from_path
+
+    engine = get_ppstructure_engine()
+    first_page = max(1, int(first_page))
+    last_page = max(first_page, int(last_page))
+
+    images = convert_from_path(
+        pdf_path,
+        dpi=dpi,
+        first_page=first_page,
+        last_page=last_page,
+        fmt="png",
+    )
+
+    paginas: list[dict[str, Any]] = []
+
+    for offset, image in enumerate(images):
+        pagina_num = first_page + offset
+        filas_pagina: list[list[str]] = []
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = tmp.name
+            image.save(tmp_path, format="PNG")
+
+        try:
+            resultados = engine(tmp_path)
+            for bloque in resultados or []:
+                if bloque.get("type") != "table":
+                    continue
+                res = bloque.get("res") or {}
+                html = res.get("html") if isinstance(res, dict) else None
+                if html:
+                    filas_pagina.extend(_filas_crudas_desde_html_tabla(html))
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        if filas_pagina:
+            paginas.append({"pagina": pagina_num, "filas": filas_pagina})
+
+    return paginas
+
+
 def extraer_lineas_pdf(
     pdf_path: str,
     dpi: int = 200,

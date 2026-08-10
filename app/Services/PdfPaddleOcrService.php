@@ -130,6 +130,170 @@ class PdfPaddleOcrService
     }
 
     /**
+     * Grilla cruda de celdas por página (para mapeo de columnas definido por el usuario).
+     *
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    public function extraerGrillaTabla(string $pdfPath, string $nombreArchivo = ''): array
+    {
+        if (! is_readable($pdfPath)) {
+            throw new RuntimeException('No se pudo leer el PDF para PaddleOCR.');
+        }
+
+        $url = $this->baseUrl();
+        if ($url === '') {
+            throw new RuntimeException('PaddleOCR no configurado (COTIZ_PADDLEOCR_URL).');
+        }
+
+        $pdfBytes = (string) file_get_contents($pdfPath);
+        $nombre = $this->nombreArchivoParaPaddle($pdfPath, $nombreArchivo);
+        $timeout = max(30, (int) $this->config('paddleocr.timeout', 300));
+        $paginasDoc = $this->resolverPaginasDocumento($pdfPath, $nombreArchivo);
+        $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 2)));
+
+        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>}> $porPagina */
+        $porPagina = [];
+
+        for ($batchStart = 1; $batchStart <= $paginasDoc; $batchStart += $concurrency) {
+            $batchEnd = min($paginasDoc, $batchStart + $concurrency - 1);
+            $paginasBatch = range($batchStart, $batchEnd);
+
+            $responses = Http::pool(function (Pool $pool) use ($url, $pdfBytes, $nombre, $timeout, $paginasBatch) {
+                foreach ($paginasBatch as $pagina) {
+                    $pool->as("p{$pagina}")
+                        ->timeout($timeout)
+                        ->attach('pdf', $pdfBytes, $nombre)
+                        ->post($url.'/extract-grilla', [
+                            'first_page' => $pagina,
+                            'last_page' => $pagina,
+                        ]);
+                }
+            }, count($paginasBatch));
+
+            foreach ($paginasBatch as $pagina) {
+                $grilla = $this->grillaDesdeRespuestaPool($responses["p{$pagina}"] ?? null, $pagina);
+                if ($grilla !== null) {
+                    $porPagina[$pagina] = $grilla;
+                }
+            }
+        }
+
+        $faltantes = array_values(array_diff(range(1, $paginasDoc), array_keys($porPagina)));
+        foreach ($faltantes as $pagina) {
+            try {
+                $grilla = $this->solicitarGrillaPaddle($url, $pdfBytes, $nombre, $timeout, $pagina, $pagina);
+                if ($grilla !== null) {
+                    $porPagina[$pagina] = $grilla;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Import PDF: grilla Paddle reintento falló', [
+                    'pagina' => $pagina,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $todas = [];
+        for ($pagina = 1; $pagina <= $paginasDoc; $pagina++) {
+            if (isset($porPagina[$pagina])) {
+                $todas[] = $porPagina[$pagina];
+            }
+        }
+
+        if ($todas === []) {
+            throw new RuntimeException('PaddleOCR no detectó tablas en el PDF.');
+        }
+
+        Log::info('Import PDF: grilla Paddle completada', [
+            'paginas_doc' => $paginasDoc,
+            'paginas_con_datos' => count($porPagina),
+            'filas_total' => array_sum(array_map(
+                static fn (array $p): int => count($p['filas'] ?? []),
+                $todas,
+            )),
+        ]);
+
+        return $todas;
+    }
+
+    /**
+     * @return array{pagina: int, filas: array<int, array<int, string>>}|null
+     */
+    private function grillaDesdeRespuestaPool(mixed $response, int $pagina): ?array
+    {
+        if ($response instanceof \Throwable) {
+            Log::warning('Import PDF: grilla Paddle por página falló', [
+                'pagina' => $pagina,
+                'error' => $response->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response instanceof \Illuminate\Http\Client\Response || ! $response->successful()) {
+            return null;
+        }
+
+        $paginas = $response->json('paginas');
+        if (! is_array($paginas) || $paginas === []) {
+            return null;
+        }
+
+        $filas = [];
+        foreach ($paginas as $bloque) {
+            if (! is_array($bloque)) {
+                continue;
+            }
+            foreach ($bloque['filas'] ?? [] as $fila) {
+                if (! is_array($fila)) {
+                    continue;
+                }
+                $celdas = array_values(array_filter(
+                    array_map(static fn ($c): string => trim((string) $c), $fila),
+                    static fn (string $c): bool => $c !== '',
+                ));
+                if ($celdas !== []) {
+                    $filas[] = $celdas;
+                }
+            }
+        }
+
+        if ($filas === []) {
+            return null;
+        }
+
+        return ['pagina' => $pagina, 'filas' => $filas];
+    }
+
+    /**
+     * @return array{pagina: int, filas: array<int, array<int, string>>}|null
+     */
+    private function solicitarGrillaPaddle(
+        string $url,
+        string $pdfBytes,
+        string $nombre,
+        int $timeout,
+        int $firstPage,
+        int $lastPage,
+    ): ?array {
+        $response = Http::timeout($timeout)
+            ->attach('pdf', $pdfBytes, $nombre)
+            ->post($url.'/extract-grilla', [
+                'first_page' => $firstPage,
+                'last_page' => $lastPage,
+            ]);
+
+        if (! $response->successful()) {
+            $detalle = trim((string) ($response->json('detail') ?? $response->body()));
+            throw new RuntimeException(
+                'PaddleOCR no pudo extraer la grilla'.($detalle !== '' ? ': '.$detalle : '.'),
+            );
+        }
+
+        return $this->grillaDesdeRespuestaPool($response, $firstPage);
+    }
+
+    /**
      * Procesa TODAS las páginas: lote paralelo + reintento secuencial de hojas faltantes.
      *
      * @return array<int, array{cantidad: int, descripcion: string, pagina?: int}>

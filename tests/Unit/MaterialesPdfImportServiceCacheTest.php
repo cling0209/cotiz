@@ -40,7 +40,9 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
         ];
 
         $parser = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $parser->shouldReceive('parseDocumentoCompleto')->once()->andReturn($documento);
+        $parser->shouldReceive('parseDocumentoConMapeoColumnas')
+            ->once()
+            ->andReturn($documento);
 
         $compra = Mockery::mock(CompraAgilImportService::class);
         $compra->shouldReceive('previewLoteDesdeDatos')
@@ -65,8 +67,8 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
 
         $service = new MaterialesPdfImportService($parser, $compra);
 
-        $lote1 = $service->previewLote($pdf, 0, 1, $lockId);
-        $lote2 = $service->previewLote($pdf, 1, 2, $lockId);
+        $lote1 = $service->previewLote($pdf, 0, 1, $lockId, 'CANTIDAD', 'PRODUCTO');
+        $lote2 = $service->previewLote($pdf, 1, 2, $lockId, 'CANTIDAD', 'PRODUCTO');
 
         $this->assertSame(2, $lote1['total']);
         $this->assertSame(2, $lote2['total']);
@@ -93,7 +95,7 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
         ];
 
         $parser = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $parser->shouldReceive('parseDocumentoCompleto')->twice()->andReturn($documento);
+        $parser->shouldReceive('parseDocumentoConMapeoColumnas')->twice()->andReturn($documento);
 
         $compra = Mockery::mock(CompraAgilImportService::class);
         $compra->shouldReceive('previewLoteDesdeDatos')
@@ -118,8 +120,8 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
 
         $service = new MaterialesPdfImportService($parser, $compra);
 
-        $service->previewLote($pdf, 0, 1, (string) Str::uuid());
-        $service->previewLote($pdf, 0, 1, (string) Str::uuid());
+        $service->previewLote($pdf, 0, 1, (string) Str::uuid(), 'CANTIDAD', 'PRODUCTO');
+        $service->previewLote($pdf, 0, 1, (string) Str::uuid(), 'CANTIDAD', 'PRODUCTO');
     }
 
     public function test_cache_key_incluye_version_y_lock(): void
@@ -134,7 +136,7 @@ class MaterialesPdfImportServiceCacheTest extends TestCase
 
         try {
             $key = $service->cacheKeyPdfImport($tmp, 'lock-abc');
-            $this->assertStringContainsString('v41', $key);
+            $this->assertStringContainsString('v44', $key);
             $this->assertStringContainsString('lock-abc', $key);
         } finally {
             @unlink($tmp);

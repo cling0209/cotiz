@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 
 class MaterialesPdfImportService
 {
-    private const CACHE_VERSION = 'v43';
+    private const CACHE_VERSION = 'v44';
 
     public function __construct(
         protected ListadoMaterialesPdfParserService $parser,
@@ -18,9 +18,9 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function preview(UploadedFile $file, ?string $lockId = null): array
+    public function preview(UploadedFile $file, ?string $lockId = null, ?string $columnaCantidad = null, ?string $columnaProducto = null): array
     {
-        $datos = $this->datosDesdePdf($file, $lockId);
+        $datos = $this->datosDesdePdf($file, $lockId, $columnaCantidad, $columnaProducto);
         $total = count($datos['lineas']);
         $resultado = $this->compraAgilImport->previewLoteDesdeDatos($datos, 0, $total);
         unset($resultado['total'], $resultado['procesadas'], $resultado['completado']);
@@ -31,10 +31,10 @@ class MaterialesPdfImportService
     /**
      * @return array<string, mixed>
      */
-    public function previewLote(UploadedFile $file, int $desde, int $hasta, ?string $lockId = null): array
+    public function previewLote(UploadedFile $file, int $desde, int $hasta, ?string $lockId = null, ?string $columnaCantidad = null, ?string $columnaProducto = null): array
     {
         $this->renovarLockImportacion($lockId);
-        $datos = $this->datosDesdePdf($file, $lockId);
+        $datos = $this->datosDesdePdf($file, $lockId, $columnaCantidad, $columnaProducto);
         $this->renovarLockImportacion($lockId);
 
         return $this->compraAgilImport->previewLoteDesdeDatos($datos, $desde, $hasta);
@@ -144,12 +144,16 @@ class MaterialesPdfImportService
      *   lineas: array<int, array{id_agile: string, descripcion: string, cantidad: int, categoria: string}>
      * }
      */
-    private function datosDesdePdf(UploadedFile $file, ?string $lockId = null): array
-    {
+    private function datosDesdePdf(
+        UploadedFile $file,
+        ?string $lockId = null,
+        ?string $columnaCantidad = null,
+        ?string $columnaProducto = null,
+    ): array {
         $path = $file->getRealPath() ?: $file->getPathname();
         $cacheKey = null;
         if (is_string($path) && is_readable($path)) {
-            $cacheKey = $this->cacheKeyPdfImport($path, $lockId);
+            $cacheKey = $this->cacheKeyPdfImport($path, $lockId, $columnaCantidad, $columnaProducto);
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['cabecera'], $cached['lineas'])) {
                 return $cached;
@@ -157,7 +161,11 @@ class MaterialesPdfImportService
         }
 
         $this->renovarLockImportacion($lockId);
-        $documento = $this->parser->parseDocumentoCompleto($file);
+        $columnaCantidad = trim((string) $columnaCantidad);
+        $columnaProducto = trim((string) $columnaProducto);
+        $documento = ($columnaCantidad !== '' && $columnaProducto !== '')
+            ? $this->parser->parseDocumentoConMapeoColumnas($file, $columnaCantidad, $columnaProducto)
+            : $this->parser->parseDocumentoCompleto($file);
         $this->renovarLockImportacion($lockId);
         $lineas = [];
 
@@ -191,15 +199,16 @@ class MaterialesPdfImportService
      * Clave por lock_id + hash: cada "Analizar PDF" (nuevo lock) re-parsea;
      * los lotes del mismo análisis reutilizan el resultado sin repetir OCR/Paddle.
      */
-    public function cacheKeyPdfImport(string $path, ?string $lockId = null): string
+    public function cacheKeyPdfImport(string $path, ?string $lockId = null, ?string $columnaCantidad = null, ?string $columnaProducto = null): string
     {
         $hash = hash_file('sha1', $path) ?: 'unknown';
         $lockId = trim((string) $lockId);
+        $mapa = md5(mb_strtolower(trim((string) $columnaCantidad).'|'.trim((string) $columnaProducto)));
         if ($lockId !== '') {
-            return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$lockId.'.'.$hash;
+            return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$lockId.'.'.$mapa.'.'.$hash;
         }
 
-        return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$hash;
+        return 'cotiz.pdf_import.'.self::CACHE_VERSION.'.'.$mapa.'.'.$hash;
     }
 
     private function renovarLockImportacion(?string $lockId): void

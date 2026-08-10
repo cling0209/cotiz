@@ -953,6 +953,8 @@ class CotizacionController extends Controller
 
         $datos = $request->validate([
             'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
+            'columna_cantidad' => ['required', 'string', 'max:80'],
+            'columna_producto' => ['required', 'string', 'max:80'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
             'lock_id' => ['required', 'string', 'max:64'],
@@ -962,6 +964,8 @@ class CotizacionController extends Controller
         $desde = (int) ($datos['desde'] ?? 0);
         $archivo = $request->file('pdf');
         $nombreArchivo = $archivo?->getClientOriginalName() ?: 'archivo.pdf';
+        $columnaCantidad = trim((string) $datos['columna_cantidad']);
+        $columnaProducto = trim((string) $datos['columna_producto']);
 
         try {
             $this->gestionarLockAnalisisMateriales($request, $lockId, 'pdf', $nombreArchivo, $desde);
@@ -972,9 +976,16 @@ class CotizacionController extends Controller
                     (int) $datos['desde'],
                     (int) $datos['hasta'],
                     $lockId,
+                    $columnaCantidad,
+                    $columnaProducto,
                 );
             } else {
-                $resultado = $this->materialesPdfImport->preview($archivo, $lockId);
+                $resultado = $this->materialesPdfImport->preview(
+                    $archivo,
+                    $lockId,
+                    $columnaCantidad,
+                    $columnaProducto,
+                );
             }
         } catch (\InvalidArgumentException $e) {
             return $this->respuestaLockAnalisisMateriales($e);

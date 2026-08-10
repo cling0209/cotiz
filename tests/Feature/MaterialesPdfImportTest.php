@@ -58,8 +58,9 @@ class MaterialesPdfImportTest extends TestCase
         $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
 
         $mock = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $mock->shouldReceive('parseDocumentoCompleto')
+        $mock->shouldReceive('parseDocumentoConMapeoColumnas')
             ->once()
+            ->with(Mockery::type(UploadedFile::class), 'CANTIDAD', 'PRODUCTO')
             ->andReturn([
                 'cabecera' => [
                     'codigo_cotizacion' => '',
@@ -75,7 +76,7 @@ class MaterialesPdfImportTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
-            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
+            ['pdf' => $pdf, 'lock_id' => $this->lockId(), 'columna_cantidad' => 'CANTIDAD', 'columna_producto' => 'PRODUCTO'],
         );
 
         $response->assertOk();
@@ -118,8 +119,9 @@ class MaterialesPdfImportTest extends TestCase
         $pdf = UploadedFile::fake()->create('listado.pdf', 20, 'application/pdf');
 
         $mock = Mockery::mock(ListadoMaterialesPdfParserService::class);
-        $mock->shouldReceive('parseDocumentoCompleto')
+        $mock->shouldReceive('parseDocumentoConMapeoColumnas')
             ->once()
+            ->with(Mockery::type(UploadedFile::class), 'CANTIDAD', 'PRODUCTO')
             ->andReturn([
                 'cabecera' => [
                     'codigo_cotizacion' => '',
@@ -135,7 +137,7 @@ class MaterialesPdfImportTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
-            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
+            ['pdf' => $pdf, 'lock_id' => $this->lockId(), 'columna_cantidad' => 'CANTIDAD', 'columna_producto' => 'PRODUCTO'],
         );
 
         $response->assertOk();
@@ -244,7 +246,7 @@ class MaterialesPdfImportTest extends TestCase
 
         $response = $this->actingAs($this->admin)->postJson(
             route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
-            ['pdf' => $pdf, 'lock_id' => $this->lockId()],
+            ['pdf' => $pdf, 'lock_id' => $this->lockId(), 'columna_cantidad' => 'CANTIDAD', 'columna_producto' => 'PRODUCTO'],
         );
 
         $response->assertStatus(409);

@@ -104,6 +104,280 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
+     * Import con mapeo explícito de columnas (nombre de encabezado cantidad / producto).
+     *
+     * @return array{
+     *   cabecera: array{codigo_cotizacion: string, empresa: string, rutempresa: string, nombre: string},
+     *   lineas: array<int, array{cantidad: int, descripcion: string}>
+     * }
+     */
+    public function parseDocumentoConMapeoColumnas(
+        UploadedFile $file,
+        string $columnaCantidad,
+        string $columnaProducto,
+    ): array {
+        $path = $file->getRealPath() ?: $file->getPathname();
+        $extension = strtolower((string) ($file->getClientOriginalExtension() ?: pathinfo($path, PATHINFO_EXTENSION)));
+        $columnaCantidad = trim($columnaCantidad);
+        $columnaProducto = trim($columnaProducto);
+
+        if ($columnaCantidad === '' || $columnaProducto === '') {
+            throw new RuntimeException('Indique el nombre de las columnas cantidad y producto.');
+        }
+
+        if ($this->normalizarEncabezadoCelda($columnaCantidad) === $this->normalizarEncabezadoCelda($columnaProducto)) {
+            throw new RuntimeException('Las columnas cantidad y producto deben ser distintas.');
+        }
+
+        if ($extension === 'doc') {
+            throw new RuntimeException(
+                'El formato .doc antiguo no está soportado. Guarde el archivo como .docx o PDF e intente de nuevo.',
+            );
+        }
+
+        $textoCabecera = '';
+        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>}> $paginasFilas */
+        $paginasFilas = [];
+
+        if ($extension === 'docx') {
+            $xml = $this->leerDocumentXmlDocx($path);
+            $paginasFilas = [['pagina' => 1, 'filas' => $this->extraerFilasTablaDocx($xml)]];
+            try {
+                $textoCabecera = $this->extraerTextoDocx($path);
+            } catch (RuntimeException) {
+                $textoCabecera = '';
+            }
+        } else {
+            $paddle = $this->paddle ?? new PdfPaddleOcrService;
+            if ($paddle->estaDisponible()) {
+                try {
+                    $paginasFilas = $paddle->extraerGrillaTabla($path, trim((string) $file->getClientOriginalName()));
+                } catch (\Throwable $e) {
+                    Log::warning('Import PDF: grilla Paddle falló', ['error' => $e->getMessage()]);
+                }
+            }
+
+            if ($paginasFilas === []) {
+                $paginasFilas = $this->extraerGrillaNativaPdf($path);
+            }
+
+            try {
+                $textoCabecera = trim((string) (new Parser)->parseFile($path)->getText());
+            } catch (\Throwable) {
+                $textoCabecera = '';
+            }
+        }
+
+        if ($paginasFilas === []) {
+            throw new RuntimeException(
+                'No se detectó tabla en el documento. Verifique el archivo o que PaddleOCR esté disponible.',
+            );
+        }
+
+        $lineas = $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto);
+        if ($lineas === []) {
+            throw new RuntimeException(
+                'No se encontraron filas con las columnas «'.$columnaCantidad.'» y «'.$columnaProducto.'».',
+            );
+        }
+
+        return [
+            'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
+            'lineas' => $lineas,
+        ];
+    }
+
+    /**
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    private function extraerGrillaNativaPdf(string $path): array
+    {
+        if (! is_readable($path)) {
+            return [];
+        }
+
+        try {
+            $texto = trim((string) (new Parser)->parseFile($path)->getText());
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($texto === '') {
+            return [];
+        }
+
+        $bloques = preg_split('/\R--\s*\d+\s+of\s+\d+\s+--\R/u', $texto) ?: [$texto];
+        $paginas = [];
+        $numPagina = 1;
+
+        foreach ($bloques as $bloque) {
+            $filas = [];
+            foreach (preg_split('/\r\n|\n|\r/u', $bloque) ?: [] as $lineaCruda) {
+                if (! str_contains($lineaCruda, "\t")) {
+                    continue;
+                }
+                $celdas = array_values(array_filter(
+                    array_map(static fn (string $c): string => trim($c), explode("\t", $lineaCruda)),
+                    static fn (string $c): bool => $c !== '',
+                ));
+                if ($celdas !== []) {
+                    $filas[] = $celdas;
+                }
+            }
+
+            if ($filas !== []) {
+                $paginas[] = ['pagina' => $numPagina, 'filas' => $filas];
+            }
+
+            $numPagina++;
+        }
+
+        return $paginas;
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoColumnasPorNombre(
+        array $paginasFilas,
+        string $columnaCantidad,
+        string $columnaProducto,
+    ): array {
+        $nombreCantidad = $this->normalizarEncabezadoCelda($columnaCantidad);
+        $nombreProducto = $this->normalizarEncabezadoCelda($columnaProducto);
+        $idxCantidad = null;
+        $idxProducto = null;
+        $resultado = [];
+        $bufferDesc = null;
+        $bufferCant = null;
+
+        $volcarBuffer = function () use (&$resultado, &$bufferDesc, &$bufferCant): void {
+            if ($bufferDesc !== null && $bufferCant !== null && mb_strlen($bufferDesc) >= 2) {
+                $resultado[] = [
+                    'cantidad' => $bufferCant,
+                    'descripcion' => $bufferDesc,
+                ];
+            }
+            $bufferDesc = null;
+            $bufferCant = null;
+        };
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                $celdas = array_values(array_map(
+                    static fn ($c): string => trim((string) $c),
+                    $celdasRaw,
+                ));
+
+                if ($this->filaGrillaVacia($celdas)) {
+                    continue;
+                }
+
+                $indicesHeader = $this->resolverIndicesHeaderPorNombre($celdas, $nombreCantidad, $nombreProducto);
+                if ($indicesHeader !== null) {
+                    $idxCantidad = $indicesHeader['cantidad'];
+                    $idxProducto = $indicesHeader['producto'];
+                    $volcarBuffer();
+
+                    continue;
+                }
+
+                if ($idxCantidad === null || $idxProducto === null) {
+                    continue;
+                }
+
+                while (count($celdas) <= max($idxCantidad, $idxProducto)) {
+                    $celdas[] = '';
+                }
+
+                $cantRaw = trim($celdas[$idxCantidad] ?? '');
+                $prodRaw = trim($celdas[$idxProducto] ?? '');
+                $cantidad = $this->parseCantidadCeldaTabla($cantRaw);
+
+                if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
+                    $volcarBuffer();
+                    $bufferDesc = $prodRaw;
+                    $bufferCant = $cantidad;
+
+                    continue;
+                }
+
+                if ($bufferDesc !== null && $prodRaw !== '' && $cantidad === null) {
+                    $bufferDesc = trim($bufferDesc.' '.$prodRaw);
+                }
+            }
+        }
+
+        $volcarBuffer();
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array{cantidad: int, producto: int}|null
+     */
+    private function resolverIndicesHeaderPorNombre(
+        array $celdas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): ?array {
+        $idxCantidad = null;
+        $idxProducto = null;
+
+        foreach ($celdas as $indice => $celda) {
+            $normalizada = $this->normalizarEncabezadoCelda($celda);
+            if ($normalizada === '') {
+                continue;
+            }
+            if ($this->celdaCoincideNombreColumna($normalizada, $nombreCantidad)) {
+                $idxCantidad = $indice;
+            }
+            if ($this->celdaCoincideNombreColumna($normalizada, $nombreProducto)) {
+                $idxProducto = $indice;
+            }
+        }
+
+        if ($idxCantidad === null || $idxProducto === null || $idxCantidad === $idxProducto) {
+            return null;
+        }
+
+        return ['cantidad' => $idxCantidad, 'producto' => $idxProducto];
+    }
+
+    private function celdaCoincideNombreColumna(string $celdaNormalizada, string $nombreNormalizado): bool
+    {
+        if ($celdaNormalizada === $nombreNormalizado) {
+            return true;
+        }
+
+        if (str_contains($celdaNormalizada, $nombreNormalizado)) {
+            return true;
+        }
+
+        return str_contains($nombreNormalizado, $celdaNormalizada) && mb_strlen($celdaNormalizada) >= 4;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function filaGrillaVacia(array $celdas): bool
+    {
+        foreach ($celdas as $celda) {
+            if (trim($celda) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
     public function parseUploadedFile(UploadedFile $file): array

@@ -1057,6 +1057,40 @@ TXT;
         $this->assertStringContainsString('Resmas de papel oficio', $lineas[4]['descripcion']);
     }
 
+    public function test_mapeo_columnas_multihoja_omite_headers_repetidos(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES'],
+                    ['UN', '3', 'Block de cartulina', 'Colores surtidos'],
+                    ['UN', '', 'continuacion descripcion', ''],
+                ],
+            ],
+            [
+                'pagina' => 2,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA', 'CANTIDAD', 'BIEN O SERVICIO', 'ESPECIFICACIONES'],
+                    ['UN', '5', 'Cinta de embalaje', '48mm x 100mt'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'BIEN O SERVICIO');
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertSame('Block de cartulina continuacion descripcion', $lineas[0]['descripcion']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertSame('Cinta de embalaje', $lineas[1]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

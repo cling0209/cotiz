@@ -440,12 +440,22 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales (cantidad y producto). Si el PDF est&aacute; escaneado se intentar&aacute; OCR. Se sugerir&aacute; el producto del maestro m&aacute;s parecido; use Buscar en cada fila si hace falta.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el título se repite en otras páginas, se omite automáticamente.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
                                     Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
                                 </div>
                             @endif
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-compra-agil-pdf-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-compra-agil-pdf-col-cant" class="form-control form-control-sm" value="CANTIDAD" maxlength="80" placeholder="CANTIDAD">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-compra-agil-pdf-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-compra-agil-pdf-col-desc" class="form-control form-control-sm" value="PRODUCTO" maxlength="80" placeholder="PRODUCTO o BIEN O SERVICIO">
+                                </div>
+                            </div>
                             <input
                                 type="file"
                                 id="importar-compra-agil-pdf"
@@ -2595,6 +2605,8 @@
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
     const importarTexto = document.getElementById('importar-compra-agil-texto');
     const importarPdfInput = document.getElementById('importar-compra-agil-pdf');
+    const importarPdfColCant = document.getElementById('importar-compra-agil-pdf-col-cant');
+    const importarPdfColDesc = document.getElementById('importar-compra-agil-pdf-col-desc');
     const btnImportarAnalizarPdf = document.getElementById('btn-importar-compra-agil-analizar-pdf');
     const importarExcelInput = document.getElementById('importar-compra-agil-excel');
     const importarExcelColDesc = document.getElementById('importar-compra-agil-excel-col-desc');
@@ -2623,6 +2635,8 @@
     let importCodigoApi = null;
     let importModo = 'texto';
     let importPdfFile = null;
+    let importPdfColumnaCantidad = '';
+    let importPdfColumnaProducto = '';
     let importExcelFile = null;
     let importSimTimer = null;
     let importMaterialesLockId = null;
@@ -3029,6 +3043,8 @@
         cancelarAnalisisMaterialesAlSalir();
         if (importarTexto) importarTexto.value = '';
         if (importarPdfInput) importarPdfInput.value = '';
+        if (importarPdfColCant) importarPdfColCant.value = 'CANTIDAD';
+        if (importarPdfColDesc) importarPdfColDesc.value = 'PRODUCTO';
         if (importarExcelInput) importarExcelInput.value = '';
         if (importarExcelColCant) importarExcelColCant.value = 'A';
         if (importarExcelColDesc) importarExcelColDesc.value = 'B';
@@ -3314,10 +3330,22 @@
         importCodigoApi = null;
         importExcelFile = null;
         const file = importarPdfInput?.files?.[0] || null;
+        const colCant = String(importarPdfColCant?.value || '').trim();
+        const colDesc = String(importarPdfColDesc?.value || '').trim();
         if (!file) {
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx).';
             return;
         }
+        if (!colCant || !colDesc) {
+            if (importarEstado) importarEstado.textContent = 'Indique el nombre de las columnas cantidad y producto (como en el encabezado del PDF).';
+            return;
+        }
+        if (colCant.toUpperCase() === colDesc.toUpperCase()) {
+            if (importarEstado) importarEstado.textContent = 'Las columnas cantidad y producto deben ser distintas.';
+            return;
+        }
+        importPdfColumnaCantidad = colCant;
+        importPdfColumnaProducto = colDesc;
         importPdfFile = file;
         limpiarImportAlerta();
         if (importarEstado) importarEstado.textContent = '';
@@ -3363,6 +3391,8 @@
                         const body = new FormData();
                         body.append('_token', csrf);
                         body.append('pdf', importPdfFile);
+                        body.append('columna_cantidad', importPdfColumnaCantidad || colCant);
+                        body.append('columna_producto', importPdfColumnaProducto || colDesc);
                         body.append('desde', String(desde));
                         body.append('hasta', String(hasta));
                         return body;
