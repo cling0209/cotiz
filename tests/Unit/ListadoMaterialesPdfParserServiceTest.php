@@ -1261,7 +1261,7 @@ TXT;
                     ['ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE'],
                     ['STANDARD 500ML 366 ROSA QUINACRIDONA', '2', '71.376'],
                     ['AGUJAS METALICA BLISTER 3 UNIDADES', '36', '33.120'],
-                    ['10 ACRÍLICO 250ML AZUL REAL METAL 440'],
+                    ['10 ACRÍLICO 250ML AZUL REAL METAL 440', '29', '150.188'],
                 ],
             ],
         ];
@@ -1284,8 +1284,153 @@ TXT;
         $this->assertStringContainsString('ROSA QUINACRIDONA', $lineas[0]['descripcion']);
         $this->assertSame(36, $lineas[1]['cantidad']);
         $this->assertStringContainsString('AGUJAS METALICA', $lineas[1]['descripcion']);
-        $this->assertSame(440, $lineas[2]['cantidad']);
+        $this->assertSame(29, $lineas[2]['cantidad']);
         $this->assertStringContainsString('AZUL REAL METAL', $lineas[2]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_catalogo_filas_partidas_multirenglon(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 48,
+                'filas' => [
+                    ['LINEA', 'DESCRIPCION REQUERIMIENTO'],
+                    ['UNIDADES* POR', 'AÑO', 'MONTO TOTAL ($) POR AÑO'],
+                    ['510 TACO ESCRITORIO ANUAL'],
+                    ['26', '77.740'],
+                    ['511'],
+                    ['TALONARIO VALES (100 HOJAS)', '28'],
+                    ['10.929'],
+                    ['514 TERMOLAMINADORA INDUSTRIAL'],
+                    ['26'],
+                    ['1.100.072'],
+                    ['533'],
+                    ['TIRITAS PARA VISORES BLANCO (PAQUETE 250 UND)'],
+                    ['25', '18.475'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke(
+            $this->parser,
+            $paginasFilas,
+            'UNIDADES* POR AÑO',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+
+        $this->assertCount(4, $lineas);
+        $this->assertSame(26, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('TACO ESCRITORIO ANUAL', $lineas[0]['descripcion']);
+        $this->assertSame(28, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('TALONARIO VALES', $lineas[1]['descripcion']);
+        $this->assertSame(26, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('TERMOLAMINADORA', $lineas[2]['descripcion']);
+        $this->assertSame(25, $lineas[3]['cantidad']);
+        $this->assertStringContainsString('TIRITAS PARA VISORES BLANCO', $lineas[3]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_catalogo_descripcion_multilinea_con_indice(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 34,
+                'filas' => [
+                    ['LINEA', 'DESCRIPCION REQUERIMIENTO'],
+                    ['UNIDADES* POR', 'AÑO', 'MONTO TOTAL ($) POR AÑO'],
+                    ['ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE'],
+                    ['3'],
+                    ['STANDARD 500ML 257 ANARANJADO REFLEX', '3', '107.064'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        $lineas = $method->invoke(
+            $this->parser,
+            $paginasFilas,
+            'UNIDADES* POR AÑO',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+
+        $this->assertCount(1, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('ANARANJADO REFLEX', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('ACRÍLICO', $lineas[0]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_catalogo_descripcion_partida_en_varias_filas(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 37,
+                'filas' => [
+                    ['LINEA', 'DESCRIPCION REQUERIMIENTO'],
+                    ['UNIDADES* POR', 'AÑO', 'MONTO TOTAL ($) POR AÑO'],
+                    ['Limpiapipa 100 undiades de 1 color o surtidos 6mm x'],
+                    ['128 30cm', '12.000'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        $lineas = $method->invoke(
+            $this->parser,
+            $paginasFilas,
+            'UNIDADES* POR AÑO',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+
+        $this->assertCount(1, $lineas);
+        $this->assertSame(1, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Limpiapipa', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('30cm', $lineas[0]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_catalogo_texto_pdf_sin_columna_cantidad(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 37,
+                'filas' => [
+                    ['LINEA', 'DESCRIPCION REQUERIMIENTO'],
+                    ['UNIDADES* POR', 'AÑO', 'MONTO TOTAL ($) POR AÑO'],
+                    ['126 LICENCIA ENSEÑANZA BASICA 50 UNIDADES', '144.000'],
+                    ['127 LICENCIA ENSEÑANZA MEDIA 50 UNIDADES', '24.000'],
+                    ['Limpiapipa 100 undiades de 1 color o surtidos 6mm x'],
+                    ['128 30cm', '12.000'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        $lineas = $method->invoke(
+            $this->parser,
+            $paginasFilas,
+            'UNIDADES* POR AÑO',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+
+        $this->assertCount(3, $lineas);
+        $this->assertStringContainsString('LICENCIA ENSEÑANZA BASICA', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('LICENCIA ENSEÑANZA MEDIA', $lineas[1]['descripcion']);
+        $this->assertStringContainsString('Limpiapipa', $lineas[2]['descripcion']);
+        $this->assertStringContainsString('30cm', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[0]['cantidad']);
+        $this->assertSame(1, $lineas[2]['cantidad']);
     }
 
     private function cargarFixture(string $nombre): string

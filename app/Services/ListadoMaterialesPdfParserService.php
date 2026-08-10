@@ -1117,7 +1117,7 @@ class ListadoMaterialesPdfParserService
         string $nombreProducto,
     ): array {
         $resultado = [];
-        $bufferDesc = null;
+        $estadoCatalogo = $this->estadoCatalogoVacio();
         $enCatalogo = false;
         /** @var array<int, string> $ventanaHeader */
         $ventanaHeader = [];
@@ -1166,10 +1166,20 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
-                $fila = $this->extraerFilaCatalogoMapeoColumnas($celdas, $bufferDesc);
+                $fila = $this->extraerFilaCatalogoMapeoColumnas($celdas, $estadoCatalogo);
                 if ($fila !== null) {
                     $resultado[] = $fila;
                 }
+            }
+        }
+
+        if (($estadoCatalogo['desc'] !== null || $estadoCatalogo['linea'] !== null) && $estadoCatalogo['qty'] !== null) {
+            $filaPendiente = $this->emitirFilaCatalogoDesdeTexto(
+                $this->combinarDescripcionCatalogoEstado($estadoCatalogo),
+                $estadoCatalogo['qty'],
+            );
+            if ($filaPendiente !== null) {
+                $resultado[] = $filaPendiente;
             }
         }
 
@@ -1195,13 +1205,7 @@ class ListadoMaterialesPdfParserService
             || preg_match('/^LINEA\s+DESCRIPCION/u', $texto) === 1
             || preg_match('/^UNIDADES\s+POR/u', $texto) === 1;
 
-        if (! $esEncabezado) {
-            return false;
-        }
-
-        $bufferDummy = null;
-
-        return $this->extraerFilaCatalogoMapeoColumnas($celdas, $bufferDummy) === null;
+        return $esEncabezado;
     }
 
     private function filaEsFinCatalogoUsuario(string $textoFila): bool
@@ -1236,10 +1240,157 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
-     * @param  array<int, string>  $celdas
+     * @return array{desc: ?string, linea: ?string, qty: ?string}
+     */
+    private function estadoCatalogoVacio(): array
+    {
+        return ['desc' => null, 'linea' => null, 'qty' => null];
+    }
+
+    /**
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     */
+    private function limpiarEstadoCatalogo(array &$estado): void
+    {
+        $estado = $this->estadoCatalogoVacio();
+    }
+
+    /**
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     */
+    private function combinarDescripcionCatalogoEstado(array $estado, string $extra = ''): string
+    {
+        $desc = trim((string) ($estado['desc'] ?? ''));
+        if ($extra !== '') {
+            $desc = trim($desc === '' ? $extra : $desc.' '.$extra);
+        }
+
+        return trim(preg_replace('/\s+/u', ' ', $desc) ?? $desc);
+    }
+
+    private function celdaEsIndiceLineaCatalogo(string $raw): bool
+    {
+        return preg_match('/^\d{1,3}$/u', trim($raw)) === 1;
+    }
+
+    private function celdaContieneTextoProductoCatalogo(string $raw): bool
+    {
+        $raw = trim($raw);
+        if ($raw === '' || $this->celdaPareceMontoCatalogo($raw)) {
+            return false;
+        }
+
+        return preg_match('/\p{L}/u', $raw) === 1;
+    }
+
+    /**
+     * Regla estándar catálogo tabular: primero se arma la columna producto (desc + índice),
+     * luego la columna cantidad. Un dígito suelto no es cantidad hasta tener índice de línea.
+     *
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     */
+    private function resolverDigitoSueltoCatalogo(array &$estado, string $texto): void
+    {
+        if ($estado['desc'] !== null && $estado['linea'] === null) {
+            $estado['linea'] = $texto;
+
+            return;
+        }
+
+        if ($estado['desc'] !== null && $estado['linea'] !== null && $estado['qty'] === null) {
+            $estado['qty'] = $texto;
+
+            return;
+        }
+
+        $estado['linea'] = $texto;
+    }
+
+    /**
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     */
+    private function aplicarTextoConIndiceCatalogo(array &$estado, string $indice, string $texto): void
+    {
+        $estado['linea'] = $indice;
+        $estado['desc'] = $this->combinarDescripcionCatalogoEstado($estado, $texto);
+        $estado['qty'] = null;
+    }
+
+    /**
      * @return array{cantidad: int, descripcion: string}|null
      */
-    private function extraerFilaCatalogoMapeoColumnas(array $celdas, ?string &$bufferDesc): ?array
+    private function emitirFilaCatalogoDesdeTexto(string $desc, string $cantRaw): ?array
+    {
+        $desc = trim(preg_replace('/\s+/u', ' ', $desc) ?? $desc);
+        $cantidad = $this->parseCantidadCatalogo($cantRaw);
+        if ($cantidad === null || mb_strlen($desc) < 2 || $this->esDescripcionAdministrativa($desc)) {
+            return null;
+        }
+
+        return ['cantidad' => $cantidad, 'descripcion' => $desc];
+    }
+
+    /**
+     * Fila completa en una línea de texto: «índice descripción cantidad monto».
+     *
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function parseLineaCatalogoTextoCompleta(string $linea): ?array
+    {
+        $linea = trim(preg_replace('/\s+/u', ' ', $linea) ?? $linea);
+        if ($linea === '') {
+            return null;
+        }
+
+        if (preg_match('/^(\d{1,3})\s+(.+?)\s+(\d{1,5})\s+(\d{1,3}(?:\.\d{3})+)$/u', $linea, $coincidencia) !== 1) {
+            return null;
+        }
+
+        if (! $this->celdaPareceMontoCatalogo($coincidencia[4]) || ! $this->celdaPareceCantidadCatalogo($coincidencia[3])) {
+            return null;
+        }
+
+        return $this->emitirFilaCatalogoDesdeTexto(trim($coincidencia[2]), $coincidencia[3]);
+    }
+
+    /**
+     * Cuando el PDF entrega producto + monto pero pierde la columna cantidad en el texto.
+     *
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function emitirFilaCatalogoConCantidadMinima(string $desc): ?array
+    {
+        return $this->emitirFilaCatalogoDesdeTexto($desc, '1');
+    }
+
+    /**
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     * @param  array<int, string>  $celdas
+     */
+    private function reiniciarEstadoSiNuevaFilaCatalogo(array $celdas, array &$estado): void
+    {
+        if ($estado['qty'] !== null) {
+            return;
+        }
+
+        if ($estado['desc'] === null && $estado['linea'] === null) {
+            return;
+        }
+
+        $primera = trim($celdas[0] ?? '');
+        if (preg_match('/^(\d{1,3})\s+(\p{L}.+)$/u', $primera) !== 1) {
+            return;
+        }
+
+        $this->limpiarEstadoCatalogo($estado);
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @param  array{desc: ?string, linea: ?string, qty: ?string}  $estado
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaCatalogoMapeoColumnas(array $celdas, array &$estado): ?array
     {
         $celdas = array_values(array_filter(
             array_map(static fn (string $c): string => trim($c), $celdas),
@@ -1250,67 +1401,137 @@ class ListadoMaterialesPdfParserService
             return null;
         }
 
+        $this->reiniciarEstadoSiNuevaFilaCatalogo($celdas, $estado);
+
+        $textoUnido = implode(' ', $celdas);
+        if ($estado['desc'] === null && $estado['linea'] === null) {
+            $filaCompleta = $this->parseLineaCatalogoTextoCompleta($textoUnido);
+            if ($filaCompleta !== null) {
+                $this->limpiarEstadoCatalogo($estado);
+
+                return $filaCompleta;
+            }
+        }
+
+        if (count($celdas) >= 4) {
+            $tercera = trim($celdas[2]);
+            $cuarta = trim($celdas[3]);
+            if ($this->celdaPareceCantidadCatalogo($tercera) && $this->celdaPareceMontoCatalogo($cuarta)) {
+                $descPartes = array_slice($celdas, 0, 2);
+                $desc = trim(implode(' ', array_filter(array_map('trim', $descPartes))));
+                $descCompleta = $this->combinarDescripcionCatalogoEstado($estado, $desc);
+                $this->limpiarEstadoCatalogo($estado);
+
+                return $this->emitirFilaCatalogoDesdeTexto($descCompleta, $tercera);
+            }
+        }
+
         if (count($celdas) >= 3) {
             $desc = trim($celdas[0]);
             $cantRaw = trim($celdas[1]);
             $tercera = trim($celdas[2]);
 
             if ($this->celdaPareceMontoCatalogo($tercera) && $this->celdaPareceCantidadCatalogo($cantRaw)) {
-                if ($bufferDesc !== null && $bufferDesc !== '') {
-                    $desc = trim($bufferDesc.' '.$desc);
-                    $bufferDesc = null;
-                }
+                $descCompleta = $this->combinarDescripcionCatalogoEstado($estado, $desc);
+                $this->limpiarEstadoCatalogo($estado);
 
-                $cantidad = $this->parseCantidadCatalogo($cantRaw);
-                if ($cantidad !== null && mb_strlen($desc) >= 2 && ! $this->esDescripcionAdministrativa($desc)) {
-                    return ['cantidad' => $cantidad, 'descripcion' => $desc];
-                }
+                return $this->emitirFilaCatalogoDesdeTexto($descCompleta, $cantRaw);
             }
         }
 
         if (count($celdas) === 2) {
-            $desc = trim($celdas[0]);
+            $primera = trim($celdas[0]);
             $segunda = trim($celdas[1]);
 
-            if ($this->celdaPareceCantidadCatalogo($segunda) && ! $this->celdaPareceMontoCatalogo($segunda)) {
-                if ($bufferDesc !== null && $bufferDesc !== '') {
-                    $desc = trim($bufferDesc.' '.$desc);
-                    $bufferDesc = null;
-                }
+            if (preg_match('/^\d{1,3}$/u', $primera) === 1
+                && ! $this->celdaPareceCantidadCatalogo($segunda)
+                && ! $this->celdaPareceMontoCatalogo($segunda)) {
+                $estado['linea'] = $primera;
+                $estado['desc'] = $this->combinarDescripcionCatalogoEstado($estado, $segunda);
 
-                $cantidad = $this->parseCantidadCatalogo($segunda);
-                if ($cantidad !== null && mb_strlen($desc) >= 2 && ! $this->esDescripcionAdministrativa($desc)) {
-                    return ['cantidad' => $cantidad, 'descripcion' => $desc];
-                }
+                return null;
             }
 
-            if ($this->celdaPareceMontoCatalogo($segunda)) {
-                $fila = $this->parseFilaBasesLineaCompleta($desc);
-                if ($fila !== null) {
-                    if ($bufferDesc !== null && $bufferDesc !== '') {
-                        $fila['descripcion'] = trim($bufferDesc.' '.$fila['descripcion']);
-                        $bufferDesc = null;
+            if ($this->celdaPareceCantidadCatalogo($primera)
+                && $this->celdaPareceMontoCatalogo($segunda)
+                && ! $this->celdaPareceMontoCatalogo($primera)
+                && ($estado['desc'] !== null || $estado['linea'] !== null)) {
+                $descCompleta = $this->combinarDescripcionCatalogoEstado($estado);
+                $this->limpiarEstadoCatalogo($estado);
+
+                return $this->emitirFilaCatalogoDesdeTexto($descCompleta, $primera);
+            }
+
+            if ($this->celdaPareceCantidadCatalogo($segunda) && ! $this->celdaPareceMontoCatalogo($segunda)) {
+                $descCompleta = $this->combinarDescripcionCatalogoEstado($estado, $primera);
+                $this->limpiarEstadoCatalogo($estado);
+
+                return $this->emitirFilaCatalogoDesdeTexto($descCompleta, $segunda);
+            }
+
+            if ($this->celdaPareceMontoCatalogo($segunda) && ! $this->celdaPareceCantidadCatalogo($primera)) {
+                if (preg_match('/^(\d{1,3})\s+(.+)$/u', $primera, $coincidencia) === 1) {
+                    if ($estado['desc'] !== null || $estado['linea'] !== null) {
+                        $this->aplicarTextoConIndiceCatalogo($estado, $coincidencia[1], trim($coincidencia[2]));
+                        $descCompleta = $this->combinarDescripcionCatalogoEstado($estado);
+                        $this->limpiarEstadoCatalogo($estado);
+
+                        return $this->emitirFilaCatalogoConCantidadMinima($descCompleta);
                     }
 
-                    return $fila;
+                    $this->limpiarEstadoCatalogo($estado);
+
+                    return $this->emitirFilaCatalogoConCantidadMinima(trim($coincidencia[2]));
+                }
+
+                $descCompleta = $this->combinarDescripcionCatalogoEstado($estado, $primera);
+                if ($descCompleta !== '') {
+                    $this->limpiarEstadoCatalogo($estado);
+
+                    return $this->emitirFilaCatalogoConCantidadMinima($descCompleta);
                 }
             }
         }
 
         if (count($celdas) === 1) {
             $texto = $celdas[0];
-            $fila = $this->parseFilaBasesLineaCompleta($texto);
-            if ($fila !== null) {
-                if ($bufferDesc !== null && $bufferDesc !== '') {
-                    $fila['descripcion'] = trim($bufferDesc.' '.$fila['descripcion']);
-                    $bufferDesc = null;
-                }
 
-                return $fila;
+            $filaCompletaCelda = $this->parseLineaCatalogoTextoCompleta($texto);
+            if ($filaCompletaCelda !== null) {
+                $this->limpiarEstadoCatalogo($estado);
+
+                return $filaCompletaCelda;
             }
 
-            if (! $this->esOrphanAdministrativo($texto) && ! $this->esDescripcionAdministrativa($texto)) {
-                $bufferDesc = trim(($bufferDesc ?? '').' '.$texto);
+            if ($this->celdaPareceMontoCatalogo($texto)) {
+                if (($estado['desc'] !== null || $estado['linea'] !== null) && $estado['qty'] !== null) {
+                    $descCompleta = $this->combinarDescripcionCatalogoEstado($estado);
+                    $cantRaw = (string) $estado['qty'];
+                    $this->limpiarEstadoCatalogo($estado);
+
+                    return $this->emitirFilaCatalogoDesdeTexto($descCompleta, $cantRaw);
+                }
+
+                return null;
+            }
+
+            if ($this->celdaEsIndiceLineaCatalogo($texto)) {
+                $this->resolverDigitoSueltoCatalogo($estado, $texto);
+
+                return null;
+            }
+
+            if (preg_match('/^(\d{1,3})\s+(.+)$/u', $texto, $coincidencia) === 1
+                && $this->celdaContieneTextoProductoCatalogo($coincidencia[2])) {
+                $this->aplicarTextoConIndiceCatalogo($estado, $coincidencia[1], trim($coincidencia[2]));
+
+                return null;
+            }
+
+            if ($this->celdaContieneTextoProductoCatalogo($texto)
+                && ! $this->esOrphanAdministrativo($texto)
+                && ! $this->esDescripcionAdministrativa($texto)) {
+                $estado['desc'] = $this->combinarDescripcionCatalogoEstado($estado, $texto);
             }
 
             return null;
