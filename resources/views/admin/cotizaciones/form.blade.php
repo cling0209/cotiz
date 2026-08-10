@@ -2709,7 +2709,18 @@
     }
 
     function mensajeErrorImportJson(json, fallback) {
-        if (json?.error) return json.error;
+        if (json?.error) return String(json.error);
+        if (json?.detail) {
+            if (typeof json.detail === 'string') return json.detail;
+            if (Array.isArray(json.detail)) {
+                const partes = json.detail.map((item) => {
+                    if (typeof item === 'string') return item;
+                    if (item && typeof item.msg === 'string') return item.msg;
+                    return '';
+                }).filter(Boolean);
+                if (partes.length) return partes.join(' ');
+            }
+        }
         if (json?.message && typeof json.message === 'string') return json.message;
         if (json?.errors && typeof json.errors === 'object') {
             const partes = [];
@@ -2719,6 +2730,28 @@
                 });
             });
             if (partes.length) return partes.join(' ');
+        }
+        return fallback;
+    }
+
+    function mensajeErrorImportResp(res, json, fallback) {
+        const msg = mensajeErrorImportJson(json, '');
+        if (msg) return msg;
+        const status = Number(res?.status) || 0;
+        if (status === 504 || status === 502) {
+            return `Tiempo de espera agotado (HTTP ${status}). El archivo puede ser muy grande; intente de nuevo en unos minutos.`;
+        }
+        if (status === 419) {
+            return 'Sesión expirada. Recargue la página e inicie sesión de nuevo.';
+        }
+        if (status === 409) {
+            return fallback + ' Otro análisis está en curso; espere o cancele e intente de nuevo.';
+        }
+        if (status >= 500) {
+            return `${fallback} (error del servidor HTTP ${status}).`;
+        }
+        if (status >= 400) {
+            return `${fallback} (HTTP ${status}).`;
         }
         return fallback;
     }
@@ -3218,7 +3251,7 @@
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(json.error || json.message || 'Error al analizar.');
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'Error al analizar.'));
                     renderImportPreview(null);
                     return;
                 }
@@ -3340,7 +3373,7 @@
 
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el PDF o Word.'));
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el PDF o Word.'));
                     return;
                 }
 
@@ -3380,7 +3413,7 @@
             }
         } catch (err) {
             ocultarProgresoImportar();
-            mostrarImportError('Error de conexión.');
+            mostrarImportError(err?.message ? String(err.message) : 'Error de conexión.');
         } finally {
             await liberarImportMaterialesLock();
             marcarAnalisisMaterialesTerminado();
@@ -3465,7 +3498,7 @@
 
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo analizar el Excel.'));
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el Excel.'));
                     return;
                 }
 
@@ -3947,7 +3980,7 @@
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok) {
                         ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
                         return;
                     }
                     sincronizarNronotaDesdeJson(json);
@@ -3997,7 +4030,7 @@
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok) {
                         ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
                         return;
                     }
                     sincronizarNronotaDesdeJson(json);
@@ -4019,7 +4052,7 @@
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     ocultarProgresoImportar();
-                    mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
                     return;
                 }
                 sincronizarNronotaDesdeJson(json);
@@ -4047,7 +4080,7 @@
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok) {
                         ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportJson(json, 'No se pudo importar.'));
+                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
                         return;
                     }
                     sincronizarNronotaDesdeJson(json);

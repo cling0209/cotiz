@@ -987,9 +987,7 @@ class CotizacionController extends Controller
             report($e);
 
             return response()->json([
-                'error' => config('app.debug')
-                    ? $e->getMessage()
-                    : 'Error al analizar el PDF o Word.',
+                'error' => $this->mensajeErrorImportMateriales($e, 'Error al analizar el PDF o Word.'),
             ], 500);
         } finally {
             if (isset($resultado) && is_array($resultado)) {
@@ -1156,9 +1154,7 @@ class CotizacionController extends Controller
             report($e);
 
             return response()->json([
-                'error' => config('app.debug')
-                    ? $e->getMessage()
-                    : 'Error al analizar el Excel.',
+                'error' => $this->mensajeErrorImportMateriales($e, 'Error al analizar el Excel.'),
             ], 500);
         } finally {
             if (isset($resultado) && is_array($resultado)) {
@@ -1580,6 +1576,31 @@ class CotizacionController extends Controller
             'code' => 'materiales_import_locked',
             'lock' => $lock,
         ], 409);
+    }
+
+    /**
+     * Mensaje seguro para mostrar en UI al fallar import PDF/Excel (sin rutas vendor ni stack).
+     */
+    private function mensajeErrorImportMateriales(\Throwable $e, string $fallback): string
+    {
+        if ($e instanceof RuntimeException || $e instanceof \InvalidArgumentException) {
+            $mensaje = trim($e->getMessage());
+
+            return $mensaje !== '' ? $mensaje : $fallback;
+        }
+
+        $mensaje = trim($e->getMessage());
+        if ($mensaje !== ''
+            && mb_strlen($mensaje) <= 500
+            && ! preg_match('/vendor[\\\\\\/]|stack trace|\.php:\d+/iu', $mensaje)) {
+            return $mensaje;
+        }
+
+        if (config('app.debug') && $mensaje !== '') {
+            return $mensaje;
+        }
+
+        return $fallback;
     }
 
     private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): RedirectResponse|JsonResponse|null
