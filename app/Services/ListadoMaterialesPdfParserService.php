@@ -177,6 +177,8 @@ class ListadoMaterialesPdfParserService
             $paginasFilas = $this->extraerGrillaDesdeOcrPdf($path);
         }
 
+        $paginasFilas = $this->reconstruirGrillaPedidoEstablecimiento($paginasFilas);
+
         $lineas = $paginasFilas !== []
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
@@ -1214,6 +1216,71 @@ class ListadoMaterialesPdfParserService
         }
 
         return implode("\n", $lineas);
+    }
+
+    /**
+     * Formato licitación: el PDF nativo entrega una línea por celda (sin columnas).
+     * Reconstruye grilla estándar PRODUCTO | CANTIDAD para el mapeo del usuario.
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     */
+    private function reconstruirGrillaPedidoEstablecimiento(array $paginasFilas): array
+    {
+        if ($paginasFilas === [] || ! $this->grillaEsPedidoEstablecimientoMonocolumna($paginasFilas)) {
+            return $paginasFilas;
+        }
+
+        $lineas = $this->parseLicitacionPedido($this->textoPlanoDesdeGrillaPaginas($paginasFilas));
+        if (count($lineas) < 2) {
+            return $paginasFilas;
+        }
+
+        $filas = [['PRODUCTO', 'CANTIDAD']];
+        foreach ($lineas as $linea) {
+            $filas[] = [$linea['descripcion'], (string) $linea['cantidad']];
+        }
+
+        return [['pagina' => 1, 'filas' => $filas]];
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function grillaEsPedidoEstablecimientoMonocolumna(array $paginasFilas): bool
+    {
+        $texto = mb_strtoupper($this->textoPlanoDesdeGrillaPaginas($paginasFilas));
+        if (! str_contains($texto, 'PEDIDO ESTABLECIMIENTO') || ! str_contains($texto, 'CANTIDAD')) {
+            return false;
+        }
+
+        $filasMonocol = 0;
+        $filasMulticol = 0;
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                $celdas = array_values(array_filter(
+                    array_map(static fn ($c): string => trim((string) $c), $celdasRaw),
+                    static fn (string $c): bool => $c !== '',
+                ));
+
+                if ($celdas === []) {
+                    continue;
+                }
+
+                if (count($celdas) <= 1) {
+                    $filasMonocol++;
+                } else {
+                    $filasMulticol++;
+                }
+            }
+        }
+
+        return $filasMonocol >= 5 && $filasMonocol > $filasMulticol;
     }
 
     /**
@@ -2305,6 +2372,7 @@ class ListadoMaterialesPdfParserService
             if (
                 str_contains($upper, 'PEDIDO ESTABLECIMIENTO')
                 || str_starts_with($upper, 'MONTO ESTIMADO')
+                || preg_match('/^ESTIMADO\s+MONTO/u', $upper) === 1
             ) {
                 return;
             }
@@ -2342,7 +2410,10 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            if (str_starts_with($upper, 'MONTO ESTIMADO')) {
+            if (
+                str_starts_with($upper, 'MONTO ESTIMADO')
+                || preg_match('/^ESTIMADO\s+MONTO/u', $upper) === 1
+            ) {
                 $flush();
 
                 continue;

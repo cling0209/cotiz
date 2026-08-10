@@ -60,9 +60,13 @@ services:
       context: ./docker/paddleocr
       dockerfile: Dockerfile
     environment:
-      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-150}
+      # Docker Desktop local suele tener ~2GB: OCR de líneas + recorte de IMAGEN.
+      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-140}
       PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
       PADDLEOCR_WARMUP: ${PADDLEOCR_WARMUP:-true}
+      PADDLEOCR_MODE: ${PADDLEOCR_MODE:-tesseract}
+      PADDLEOCR_CROP_LEFT_PERCENT: ${PADDLEOCR_CROP_LEFT_PERCENT:-58}
+      PADDLEOCR_MAX_IMAGE_WIDTH: ${PADDLEOCR_MAX_IMAGE_WIDTH:-1200}
     volumes:
       - paddleocr_models:/root/.paddleocr
     ports:

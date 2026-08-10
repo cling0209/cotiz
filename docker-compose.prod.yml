@@ -41,9 +41,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-200}
+      # En VPS con más RAM se puede usar PADDLEOCR_MODE=structure y DPI 150–200.
+      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-120}
       PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
       PADDLEOCR_WARMUP: ${PADDLEOCR_WARMUP:-true}
+      PADDLEOCR_MODE: ${PADDLEOCR_MODE:-tesseract}
+      PADDLEOCR_CROP_LEFT_PERCENT: ${PADDLEOCR_CROP_LEFT_PERCENT:-58}
+      PADDLEOCR_MAX_IMAGE_WIDTH: ${PADDLEOCR_MAX_IMAGE_WIDTH:-1400}
     # Sin puerto en el host: la app usa http://paddleocr:8080 en la red interna.
     # Evita conflicto 8010 cuando Romulo y Reicol comparten el mismo VPS.
 

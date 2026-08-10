@@ -355,9 +355,13 @@ class PdfPaddleOcrService
         }
 
         $faltantes = array_values(array_diff(range($firstPage, $maxPaginas), array_keys($porPagina)));
+        $fallosConexionSeguidos = 0;
         foreach ($faltantes as $pagina) {
-            for ($intento = 1; $intento <= 3; $intento++) {
+            for ($intento = 1; $intento <= 2; $intento++) {
                 try {
+                    if ($intento > 1 || $fallosConexionSeguidos > 0) {
+                        $this->esperarPaddleSaludable($url, 45);
+                    }
                     $lineas = $this->solicitarLineasPaddle($url, $pdfBytes, $nombre, $timeout, $pagina, $pagina);
                     if ($lineas === []) {
                         continue;
@@ -366,13 +370,22 @@ class PdfPaddleOcrService
                         $lineas[$i]['pagina'] = $pagina;
                     }
                     $porPagina[$pagina] = $lineas;
+                    $fallosConexionSeguidos = 0;
                     break;
                 } catch (\Throwable $e) {
-                    if ($intento >= 3) {
+                    $esConexion = $this->esErrorConexionPaddle($e->getMessage());
+                    if ($esConexion) {
+                        $fallosConexionSeguidos++;
+                    }
+                    if ($intento >= 2 || ($esConexion && $fallosConexionSeguidos >= 3)) {
                         Log::warning('Import PDF: Paddle reintento secuencial falló', [
                             'pagina' => $pagina,
                             'error' => $e->getMessage(),
                         ]);
+                    }
+                    // Sidecar caído (OOM): no martillar las 11 páginas × N reintentos.
+                    if ($esConexion && $fallosConexionSeguidos >= 3) {
+                        break 2;
                     }
                 }
             }
@@ -572,6 +585,39 @@ class PdfPaddleOcrService
         $base = basename($pdfPath);
 
         return $base !== '' ? $base : 'documento.pdf';
+    }
+
+    private function esErrorConexionPaddle(string $mensaje): bool
+    {
+        $m = mb_strtolower($mensaje);
+
+        return str_contains($m, 'connection')
+            || str_contains($m, 'curl error')
+            || str_contains($m, 'timed out')
+            || str_contains($m, 'failed to connect')
+            || str_contains($m, 'connection refused')
+            || str_contains($m, 'could not resolve')
+            || str_contains($m, 'empty reply');
+    }
+
+    private function esperarPaddleSaludable(string $url, int $maxSegundos = 45): void
+    {
+        $deadline = microtime(true) + max(5, $maxSegundos);
+        while (microtime(true) < $deadline) {
+            try {
+                $response = Http::timeout(3)->get($url.'/health');
+                if (
+                    $response->successful()
+                    && is_array($response->json())
+                    && ($response->json('status') === 'ok')
+                ) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // sidecar reiniciando tras OOM
+            }
+            usleep(1_500_000);
+        }
     }
 
     private function baseUrl(): string

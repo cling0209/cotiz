@@ -265,6 +265,52 @@ TXT;
         $this->assertStringNotContainsStringIgnoringCase('PEDIDO ESTABLECIMIENTO', $lineas[0]['descripcion']);
     }
 
+    public function test_mapeo_columnas_licitacion_pedido_separa_productos(): void
+    {
+        $texto = $this->cargarFixture('licitacion_le26.txt');
+        $filasGrilla = [];
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $linea) {
+            $linea = trim($linea);
+            if ($linea === '') {
+                continue;
+            }
+
+            $filasGrilla[] = [$linea];
+        }
+
+        $paginasFilas = [['pagina' => 1, 'filas' => $filasGrilla]];
+
+        $ref = new \ReflectionClass($this->parser);
+        $recon = $ref->getMethod('reconstruirGrillaPedidoEstablecimiento');
+        $recon->setAccessible(true);
+        $paginasFilas = $recon->invoke($this->parser, $paginasFilas);
+
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'PRODUCTO');
+
+        $this->assertGreaterThanOrEqual(560, count($lineas));
+
+        $lapiz = array_values(array_filter(
+            $lineas,
+            static fn (array $l): bool => str_contains(mb_strtoupper($l['descripcion']), 'LÁPIZ BICOLOR AZUL/ROJO'),
+        ));
+        $cuadernos = array_values(array_filter(
+            $lineas,
+            static fn (array $l): bool => str_contains(mb_strtoupper($l['descripcion']), 'CUADERNOS UNIVERSITARIOS'),
+        ));
+
+        $this->assertCount(1, $lapiz);
+        $this->assertSame(7, $lapiz[0]['cantidad']);
+        $this->assertCount(1, $cuadernos);
+        $this->assertSame(63, $cuadernos[0]['cantidad']);
+        $this->assertStringNotContainsStringIgnoringCase('Estimado Monto', $cuadernos[0]['descripcion']);
+        $this->assertStringNotContainsStringIgnoringCase('LÁPIZ BICOLOR', $cuadernos[0]['descripcion']);
+    }
+
     public function test_fixture_bases_las_condes(): void
     {
         $texto = $this->cargarFixture('bases_las_condes.txt');

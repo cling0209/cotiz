@@ -13,7 +13,7 @@ from table_extractor import extraer_grilla_pdf, extraer_lineas_pdf
 
 app = FastAPI(title="Cotiz PaddleOCR", version="1.0.0")
 
-DPI = int(os.environ.get("PADDLEOCR_DPI", "200"))
+DPI = int(os.environ.get("PADDLEOCR_DPI", "120"))
 MAX_PAGES = int(os.environ.get("PADDLEOCR_MAX_PAGES", "15"))
 
 
