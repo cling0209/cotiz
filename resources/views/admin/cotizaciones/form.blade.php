@@ -453,7 +453,7 @@
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label form-label-sm mb-0" for="importar-compra-agil-pdf-col-desc">Columna producto</label>
-                                    <input type="text" id="importar-compra-agil-pdf-col-desc" class="form-control form-control-sm" value="" maxlength="80" placeholder="PRODUCTO o BIEN O SERVICIO">
+                                    <input type="text" id="importar-compra-agil-pdf-col-desc" class="form-control form-control-sm" value="" maxlength="80" placeholder="PRODUCTO">
                                 </div>
                             </div>
                             <input
