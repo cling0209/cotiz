@@ -1020,6 +1020,8 @@ TXT;
         $this->assertSame('CUADERNO UNIVERSITARIO MATEMATICA 7 MM 100 HOJAS LISO', $lineas[0]['descripcion']);
         $this->assertSame(30, $lineas[1]['cantidad']);
         $this->assertSame('REPUESTO CUCHILLO CARTONERO GRANDE 10 UN', $lineas[1]['descripcion']);
+        $this->assertSame(30, $lineas[2]['cantidad']);
+        $this->assertSame('DISPENSADOR CINTA ADHESIVA ISOFIT MEDIANO', $lineas[2]['descripcion']);
         $this->assertSame(300, $lineas[3]['cantidad']);
         $this->assertSame('LAPIZ PASTA 1.0 MM PUNTA MEDIA AZUL CRISTAL', $lineas[3]['descripcion']);
         $this->assertSame(120, $lineas[6]['cantidad']);

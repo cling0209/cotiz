@@ -2876,10 +2876,6 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
-            if ($this->esRuidoLineaTablaColumnas($linea)) {
-                continue;
-            }
-
             $descripcionPartes[] = $linea;
         }
 
