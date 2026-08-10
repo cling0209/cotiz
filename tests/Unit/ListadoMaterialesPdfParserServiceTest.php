@@ -1007,6 +1007,29 @@ TXT;
         $this->assertStringContainsString('STEP', $lineas[0]['descripcion']);
     }
 
+    public function test_parse_cotizacion_ibf_multilinea_11_productos(): void
+    {
+        $texto = $this->cargarFixture('cotizacion_ibf_1291_nativo.txt');
+
+        $this->assertSame('cotizacion_multilinea', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(11, $lineas);
+        $this->assertSame(30, $lineas[0]['cantidad']);
+        $this->assertSame('CUADERNO UNIVERSITARIO MATEMATICA 7 MM 100 HOJAS LISO', $lineas[0]['descripcion']);
+        $this->assertSame(30, $lineas[1]['cantidad']);
+        $this->assertSame('REPUESTO CUCHILLO CARTONERO GRANDE 10 UN', $lineas[1]['descripcion']);
+        $this->assertSame(300, $lineas[3]['cantidad']);
+        $this->assertSame('LAPIZ PASTA 1.0 MM PUNTA MEDIA AZUL CRISTAL', $lineas[3]['descripcion']);
+        $this->assertSame(120, $lineas[6]['cantidad']);
+        $this->assertSame('MARCADOR PIZARRA S70 PUNTA REDONDA NEGRO', $lineas[6]['descripcion']);
+        $this->assertSame(36, $lineas[8]['cantidad']);
+        $this->assertSame('DESTACADOR ADIX PALETA TRANSPARENTE AMARILLO', $lineas[8]['descripcion']);
+        $this->assertSame(30, $lineas[10]['cantidad']);
+        $this->assertSame('CUCHILLO CARTONERO GRANDE N18', $lineas[10]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

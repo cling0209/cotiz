@@ -29,6 +29,9 @@ class ListadoMaterialesPdfParserService
     /** Tabla multi-columna: producto y cantidad en columnas distintas (p. ej. cotización proveedor). */
     private const FORMATO_TABLA_COLUMNAS = 'tabla_columnas';
 
+    /** Cotización proveedor: ítem en línea propia, descripción multilínea, cantidad en «UNIDAD N». */
+    private const FORMATO_COTIZACION_MULTILINEA = 'cotizacion_multilinea';
+
     /** Catálogo/oferta con descripción + unidad + precio, sin columna cantidad (p. ej. ANEXO ENAMI). */
     private const FORMATO_OFERTA_PRECIO = 'oferta_precio';
 
@@ -217,6 +220,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_LICITACION => $this->parseLicitacionPedido($texto),
             self::FORMATO_BASES => $this->parseBasesLinea($texto),
             self::FORMATO_TABLA_PRODUCTO_CANTIDAD => $this->parseTablaProductoCantidad($texto),
+            self::FORMATO_COTIZACION_MULTILINEA => $this->parseCotizacionMultilinea($texto),
             self::FORMATO_TABLA_COLUMNAS => $this->parseTablaColumnas($texto),
             self::FORMATO_OFERTA_PRECIO => $this->parseOfertaPrecio($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
@@ -320,6 +324,10 @@ class ListadoMaterialesPdfParserService
             || (str_contains($upper, 'BASES ADMINISTRATIVAS') && str_contains($upper, 'DESCRIPCION TECNICA'))
         ) {
             return self::FORMATO_BASES;
+        }
+
+        if ($this->esFormatoCotizacionMultilinea($upper, $texto)) {
+            return self::FORMATO_COTIZACION_MULTILINEA;
         }
 
         if ($this->esFormatoTablaColumnas($upper)) {
@@ -1457,6 +1465,11 @@ class ListadoMaterialesPdfParserService
         $esTablaEscaneada = $this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path, $nombreArchivo);
         $minEsperadas = $this->minLineasEsperadasTablaProducto($texto, $paginas);
         $filasEsperadas = $this->estimarFilasEsperadasTablaMateriales($texto, $paginas);
+
+        $formatoDoc = $this->detectarFormato($texto);
+        if ($formatoDoc === self::FORMATO_COTIZACION_MULTILINEA && count($lineasTexto) >= 2) {
+            return $lineasTexto;
+        }
 
         if (! $esTabla && ! $esTablaMateriales && ! $esTablaEscaneada && count($lineasTexto) >= $minEsperadas) {
             return $lineasTexto;
@@ -2796,6 +2809,154 @@ class ListadoMaterialesPdfParserService
         }
 
         return ['producto' => $idxProducto, 'cantidad' => $idxCantidad];
+    }
+
+    /**
+     * Cotización comercial (p. ej. IBF): número de ítem, descripción en varias líneas, «UNIDAD cantidad» + precios.
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseCotizacionMultilinea(string $texto): array
+    {
+        $resultado = [];
+        $descripcionPartes = [];
+        $enTabla = false;
+
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaCruda) {
+            $linea = trim($lineaCruda);
+            if ($linea === '') {
+                continue;
+            }
+
+            if (! $enTabla) {
+                $upperLinea = mb_strtoupper($linea);
+                if (str_contains($upperLinea, 'DESCRIPCION') && str_contains($upperLinea, 'UNIDAD')) {
+                    $enTabla = true;
+                }
+
+                continue;
+            }
+
+            if ($this->esPieCotizacionMultilinea($linea)) {
+                break;
+            }
+
+            if (preg_match('/^(?:PRECIO\s+UNIT|SUB\s+TOTAL\s+NETO|SUBTOTAL)\b/iu', $linea)) {
+                continue;
+            }
+
+            if ($this->esRuidoIntermedioCotizacionMultilinea($linea)) {
+                continue;
+            }
+
+            $filaInline = $this->extraerFilaCotizacionMultilineaInline($lineaCruda);
+        if ($filaInline !== null) {
+            $resultado[] = $filaInline;
+            $descripcionPartes = [];
+
+            continue;
+        }
+
+        if (preg_match('/^UNIDAD\s+(\d{1,6})(?:\t|\s+[\$]?\s*[\d.,]+.*)?$/iu', $linea, $coincidencia) === 1) {
+                $descripcion = trim(implode(' ', $descripcionPartes));
+                if ($descripcion !== '' && mb_strlen($descripcion) >= 3) {
+                    $resultado[] = [
+                        'cantidad' => max(1, (int) $coincidencia[1]),
+                        'descripcion' => $descripcion,
+                    ];
+                }
+                $descripcionPartes = [];
+
+                continue;
+            }
+
+            if (preg_match('/^\d{1,3}$/u', $linea) === 1) {
+                $descripcionPartes = [];
+
+                continue;
+            }
+
+            if ($this->esRuidoLineaTablaColumnas($linea)) {
+                continue;
+            }
+
+            $descripcionPartes[] = $linea;
+        }
+
+        return $resultado;
+    }
+
+    private function esFormatoCotizacionMultilinea(string $upper, string $texto): bool
+    {
+        if (preg_match('/\bCOTIZACI(?:O|Ó)N\b/u', $upper) !== 1) {
+            return false;
+        }
+
+        if (! str_contains($upper, 'DESCRIPCION') || ! str_contains($upper, 'UNIDAD')) {
+            return false;
+        }
+
+        $itemsSolo = preg_match_all('/^\d{1,3}\s*$/m', $texto) ?: 0;
+        $lineasUnidad = preg_match_all('/^UNIDAD\s+\d+/m', $texto) ?: 0;
+
+        return $itemsSolo >= 2 && $lineasUnidad >= 2;
+    }
+
+    private function esPieCotizacionMultilinea(string $linea): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
+
+        foreach ([
+            'CONDICIONES DE VENTA',
+            'SUBTOTAL NETO',
+            'TERMINOS DE PAGO',
+            'TIEMPO DE ENTREGA',
+            'PRECIO DE VENTA',
+            'DESPACHO',
+        ] as $marcador) {
+            if (str_starts_with($normalizada, $marcador) || str_contains($normalizada, $marcador)) {
+                return true;
+            }
+        }
+
+        return preg_match('/^(?:RHEIN|IVA\s+\d|SUBTOTAL|TOTAL)\b/u', $normalizada) === 1;
+    }
+
+    private function esRuidoIntermedioCotizacionMultilinea(string $linea): bool
+    {
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
+
+        if (in_array($normalizada, ['CLIENTE', 'CONTACTO', 'ENCARGADO DE', 'OPERACIONES'], true)) {
+            return true;
+        }
+
+        if (str_starts_with($normalizada, 'EMAIL') || str_contains($linea, '@')) {
+            return true;
+        }
+
+        return preg_match('/^(?:VENDEDOR|MAURICIO\s+TORO|KAREN\s+HALL|SUPERVISOR)/iu', $linea) === 1;
+    }
+
+    /**
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaCotizacionMultilineaInline(string $lineaCruda): ?array
+    {
+        $partes = $this->partirLineaEnColumnas($lineaCruda);
+        if (count($partes) >= 2 && preg_match('/^\d{1,3}$/u', $partes[0]) === 1) {
+            $celda = trim($partes[1]);
+            if (preg_match('/^(.+?)\s+UNIDAD\s+(\d{1,6})$/iu', $celda, $coincidencia) === 1) {
+                $descripcion = trim($coincidencia[1]);
+
+                return mb_strlen($descripcion) >= 3
+                    ? ['cantidad' => max(1, (int) $coincidencia[2]), 'descripcion' => $descripcion]
+                    : null;
+            }
+        }
+
+        $linea = trim($lineaCruda);
+
+        return null;
     }
 
     /**
