@@ -105,4 +105,37 @@ class MaeprodBusquedaTest extends TestCase
         $response->assertOk();
         $this->assertSame([], $response->json('data'));
     }
+
+    public function test_buscar_productos_modo_texto_devuelve_todos_los_coincidentes(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'PAPEL001',
+            'prod_nombre' => 'PAPEL BOND EXTRA A4',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'PAPEL002',
+            'prod_nombre' => 'PAPEL BOND OFICIO',
+            'prod_valor' => 1200,
+            'prod_valor_costo' => 900,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson(route('admin.productos.buscar', [
+            'q' => 'papel bond',
+            'modo' => 'texto',
+        ]));
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.modo', 'texto');
+        $response->assertJsonPath('meta.limit', null);
+
+        $codigos = collect($response->json('data'))->pluck('prod_item')->all();
+        $this->assertContains('PAPEL001', $codigos);
+        $this->assertContains('PAPEL002', $codigos);
+        $this->assertContains('DEMO001', $codigos);
+    }
 }

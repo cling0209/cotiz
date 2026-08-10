@@ -1178,4 +1178,39 @@ class NotaDetalleService
 
         return $this->busquedaSimilitud->buscar($term, $familia, $limit);
     }
+
+    /**
+     * Búsqueda literal por texto en código/nombre (sin ranking por similitud ni tope de 50).
+     */
+    public function buscarProductosPorTexto(?string $term, ?string $familia = null): Collection
+    {
+        $term = trim((string) $term);
+        $minChars = max(1, (int) config('cotiz.buscar_productos_min_chars', 2));
+
+        if (mb_strlen($term) < $minChars) {
+            return collect();
+        }
+
+        $query = Maeprod::query()
+            ->whereNotNull('prod_nombre')
+            ->where('prod_nombre', '!=', '')
+            ->whereNotNull('prod_item')
+            ->where('prod_item', '!=', '');
+
+        $tokens = preg_split('/\s+/u', mb_strtolower($term), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        foreach ($tokens as $token) {
+            $like = '%'.$token.'%';
+            $query->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(prod_nombre) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(prod_item) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(prod_item_softland, \'\')) LIKE ?', [$like]);
+            });
+        }
+
+        if ($familia) {
+            $query->where('prod_familia', trim($familia));
+        }
+
+        return $query->orderBy('prod_nombre')->orderBy('prod_item')->get();
+    }
 }

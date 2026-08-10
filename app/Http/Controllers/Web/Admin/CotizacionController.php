@@ -1312,14 +1312,21 @@ class CotizacionController extends Controller
     {
         $term = $request->string('q')->trim()->toString();
         $familia = $request->string('familia')->trim()->toString() ?: null;
-        $limiteConfig = (int) config('cotiz.buscar_productos_limite', 15);
-        $maxLimite = (int) config('cotiz.buscar_productos_max_limite', 50);
-        $limit = min(
-            max(1, (int) $request->input('limit', $limiteConfig)),
-            max(1, $maxLimite),
-        );
+        $modo = $request->string('modo')->trim()->toString() ?: 'similitud';
+        $porTexto = $modo === 'texto';
 
-        $productos = $this->detalleService->buscarProductos($term, $familia, $limit);
+        if ($porTexto) {
+            $productos = $this->detalleService->buscarProductosPorTexto($term, $familia);
+            $limit = null;
+        } else {
+            $limiteConfig = (int) config('cotiz.buscar_productos_limite', 15);
+            $maxLimite = (int) config('cotiz.buscar_productos_max_limite', 50);
+            $limit = min(
+                max(1, (int) $request->input('limit', $limiteConfig)),
+                max(1, $maxLimite),
+            );
+            $productos = $this->detalleService->buscarProductos($term, $familia, $limit);
+        }
 
         return response()->json([
             'data' => $productos->map(fn (Maeprod $p) => [
@@ -1336,6 +1343,7 @@ class CotizacionController extends Controller
             ]),
             'meta' => [
                 'q' => $term,
+                'modo' => $porTexto ? 'texto' : 'similitud',
                 'count' => $productos->count(),
                 'limit' => $limit,
                 'min_chars' => (int) config('cotiz.buscar_productos_min_chars', 2),

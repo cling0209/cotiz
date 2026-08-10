@@ -553,6 +553,16 @@
             <div class="cotiz-popup-body">
                 <div class="cotiz-popup-buscar">
                     <p class="small text-muted mb-2"><strong>Descripci&oacute;n Compra &Aacute;gil:</strong> <span id="popupVincularDescAgile"></span></p>
+                    <div class="d-flex flex-wrap gap-3 mb-2 small" role="radiogroup" aria-label="Modo de búsqueda">
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="radio" name="popupVincularModo" id="popupVincularModoSimilitud" value="similitud" checked>
+                            <label class="form-check-label" for="popupVincularModoSimilitud">B&uacute;squeda por similitud</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="radio" name="popupVincularModo" id="popupVincularModoTexto" value="texto">
+                            <label class="form-check-label" for="popupVincularModoTexto">B&uacute;squeda por texto</label>
+                        </div>
+                    </div>
                     <div class="input-group input-group-sm mb-0">
                         <input type="text" id="popupVincularBusqueda" class="form-control" placeholder="C&oacute;digo o nombre">
                         <button type="button" class="btn btn-outline-secondary" id="btnPopupVincularLimpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
@@ -4120,6 +4130,110 @@
     let vincularOrdenActual = null;
     let vincularAgileIdActual = null;
     let vincularResultadosActuales = [];
+    let vincularSortVenta = null;
+
+    function obtenerModoBusquedaVincular() {
+        const checked = document.querySelector('input[name="popupVincularModo"]:checked');
+        return checked?.value === 'texto' ? 'texto' : 'similitud';
+    }
+
+    function precioVentaProductoVincular(p) {
+        return precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor);
+    }
+
+    function iconoOrdenVentaVincular() {
+        if (vincularSortVenta === 'asc') return '<i class="bi bi-arrow-up-short ms-1" aria-hidden="true"></i>';
+        if (vincularSortVenta === 'desc') return '<i class="bi bi-arrow-down-short ms-1" aria-hidden="true"></i>';
+        return '<i class="bi bi-arrow-down-up ms-1 text-muted" aria-hidden="true"></i>';
+    }
+
+    function ordenarResultadosVincular(items) {
+        if (!vincularSortVenta) return items.slice();
+        const dir = vincularSortVenta === 'asc' ? 1 : -1;
+        return items.slice().sort((a, b) => {
+            const va = precioVentaProductoVincular(a);
+            const vb = precioVentaProductoVincular(b);
+            if (va === vb) {
+                return String(a.prod_item || '').localeCompare(String(b.prod_item || ''), 'es');
+            }
+            return va > vb ? dir : -dir;
+        });
+    }
+
+    function renderResultadosVincularPopup(items) {
+        const cont = popupVincularResultados;
+        if (!cont) return;
+
+        vincularResultadosActuales = items.slice();
+        if (!items.length) {
+            cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
+            return;
+        }
+
+        const ordenados = ordenarResultadosVincular(items);
+        const resumenModo = obtenerModoBusquedaVincular() === 'texto'
+            ? '<p class="small text-muted mb-2">' + ordenados.length + ' producto(s) encontrado(s).</p>'
+            : '';
+
+        let html = resumenModo + '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
+            + '<th style="width:80px"></th>'
+            + '<th>Código</th><th>Nombre</th>'
+            + '<th class="text-end" style="width:70px">Stock</th>'
+            + '<th>Costo</th>'
+            + '<th class="text-end cotiz-vincular-sort-venta" style="cursor:pointer;user-select:none" role="button" tabindex="0"'
+            + ' aria-sort="' + (vincularSortVenta === 'asc' ? 'ascending' : (vincularSortVenta === 'desc' ? 'descending' : 'none')) + '">'
+            + 'Venta' + iconoOrdenVentaVincular() + '</th><th></th>'
+            + '</tr></thead><tbody>';
+
+        ordenados.forEach((p) => {
+            const idx = vincularResultadosActuales.indexOf(p);
+            html += '<tr>'
+                + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
+                + '<td>' + escHtml(p.prod_item) + '</td>'
+                + '<td>' + escHtml(p.prod_nombre) + '</td>'
+                + '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>'
+                + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
+                + '<td class="text-end tabular-nums">' + formatMoneyCotiz(precioVentaProductoVincular(p)) + '</td>'
+                + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        cont.innerHTML = html;
+        enlazarZoomImagenes(cont);
+
+        const thVenta = cont.querySelector('.cotiz-vincular-sort-venta');
+        const toggleSortVenta = () => {
+            if (!vincularSortVenta) {
+                vincularSortVenta = 'asc';
+            } else {
+                vincularSortVenta = vincularSortVenta === 'asc' ? 'desc' : 'asc';
+            }
+            renderResultadosVincularPopup(vincularResultadosActuales);
+        };
+        thVenta?.addEventListener('click', toggleSortVenta);
+        thVenta?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSortVenta();
+            }
+        });
+
+        cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
+            b.addEventListener('click', e => {
+                e.stopPropagation();
+                const p = vincularResultadosActuales[parseInt(b.dataset.vinculoIdx, 10)];
+                if (!p) return;
+                seleccionarVinculoAgile(
+                    p.prod_item,
+                    parseInt(p.prod_valor_costo, 10) || 0,
+                    parseInt(p.prod_valor, 10) || 0,
+                    p.prod_nombre || '',
+                    b,
+                    p.prod_item_softland || '',
+                );
+            });
+        });
+    }
 
     function formatMoneyCotiz(n) {
         return Math.round(Number(n) || 0).toLocaleString('es-CL');
@@ -4130,10 +4244,13 @@
         vincularFilaActual = fila?.dataset.linea ?? btn.dataset.fila ?? null;
         vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
         vincularAgileIdActual = btn.dataset.prodItemAgile || '';
+        vincularSortVenta = null;
         const desc = btn.dataset.descripcionAgile || '';
         if (popupVincularDesc) popupVincularDesc.textContent = desc;
         if (popupVincularBusqueda) popupVincularBusqueda.value = desc;
         if (popupVincularResultados) popupVincularResultados.innerHTML = '';
+        const modoSimilitud = document.getElementById('popupVincularModoSimilitud');
+        if (modoSimilitud) modoSimilitud.checked = true;
         if (popupVincularEl) popupVincularEl.style.display = 'flex';
         buscarProductosVincularPopup();
     }
@@ -4144,6 +4261,7 @@
         vincularOrdenActual = null;
         vincularAgileIdActual = null;
         vincularResultadosActuales = [];
+        vincularSortVenta = null;
     }
 
     function encontrarFilaVincular(filaIdx, orden, agileId) {
@@ -4184,53 +4302,19 @@
             return;
         }
 
+        const modo = obtenerModoBusquedaVincular();
+        let url = buscarConfig.url + '?q=' + encodeURIComponent(q) + '&modo=' + encodeURIComponent(modo);
+        if (modo === 'similitud') {
+            url += '&limit=' + buscarConfig.limit;
+        }
+
         cont.innerHTML = buscarLoadingHtml('Buscando...');
-        fetch(buscarConfig.url + '?q=' + encodeURIComponent(q) + '&limit=' + buscarConfig.limit, {
+        fetch(url, {
             headers: { Accept: 'application/json' },
         })
             .then(r => r.json())
             .then(data => {
-                const items = data.data || [];
-                vincularResultadosActuales = items;
-                if (!items.length) {
-                    cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
-                    return;
-                }
-                let html = '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
-                    + '<th style="width:80px"></th>'
-                    + '<th>Código</th><th>Nombre</th>'
-                    + '<th class="text-end" style="width:70px">Stock</th>'
-                    + '<th>Costo</th><th>Venta</th><th></th>'
-                    + '</tr></thead><tbody>';
-                items.forEach((p, idx) => {
-                    html += '<tr>'
-                        + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
-                        + '<td>' + escHtml(p.prod_item) + '</td>'
-                        + '<td>' + escHtml(p.prod_nombre) + '</td>'
-                        + '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>'
-                        + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
-                        + '<td>' + formatMoneyCotiz(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>'
-                        + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
-                        + '</tr>';
-                });
-                html += '</tbody></table>';
-                cont.innerHTML = html;
-                enlazarZoomImagenes(cont);
-                cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                    b.addEventListener('click', e => {
-                        e.stopPropagation();
-                        const p = vincularResultadosActuales[parseInt(b.dataset.vinculoIdx, 10)];
-                        if (!p) return;
-                        seleccionarVinculoAgile(
-                            p.prod_item,
-                            parseInt(p.prod_valor_costo, 10) || 0,
-                            parseInt(p.prod_valor, 10) || 0,
-                            p.prod_nombre || '',
-                            b,
-                            p.prod_item_softland || '',
-                        );
-                    });
-                });
+                renderResultadosVincularPopup(data.data || []);
             })
             .catch(() => {
                 cont.innerHTML = '<p class="text-danger small">Error al buscar.</p>';
@@ -4423,6 +4507,12 @@
     });
     document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
     document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
+    document.querySelectorAll('input[name="popupVincularModo"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            vincularSortVenta = null;
+            buscarProductosVincularPopup();
+        });
+    });
     document.getElementById('btnPopupVincularLimpiar')?.addEventListener('click', () => {
         if (popupVincularBusqueda) {
             popupVincularBusqueda.value = '';
