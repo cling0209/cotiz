@@ -440,7 +440,7 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el título se repite en otras páginas, se omite automáticamente.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Para tablas DIDECO use <strong>CANTIDAD</strong> y <strong>BIEN O SERVICIO</strong> (no «Especificaciones técnicas», que es otra columna). Se procesan todas las hojas; si el título se repite en otras páginas, se omite automáticamente.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
                                     Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
@@ -453,7 +453,7 @@
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label form-label-sm mb-0" for="importar-compra-agil-pdf-col-desc">Columna producto</label>
-                                    <input type="text" id="importar-compra-agil-pdf-col-desc" class="form-control form-control-sm" value="PRODUCTO" maxlength="80" placeholder="PRODUCTO o BIEN O SERVICIO">
+                                    <input type="text" id="importar-compra-agil-pdf-col-desc" class="form-control form-control-sm" value="BIEN O SERVICIO" maxlength="80" placeholder="BIEN O SERVICIO o PRODUCTO">
                                 </div>
                             </div>
                             <input
@@ -3047,7 +3047,7 @@
         if (importarTexto) importarTexto.value = '';
         if (importarPdfInput) importarPdfInput.value = '';
         if (importarPdfColCant) importarPdfColCant.value = 'CANTIDAD';
-        if (importarPdfColDesc) importarPdfColDesc.value = 'PRODUCTO';
+        if (importarPdfColDesc) importarPdfColDesc.value = 'BIEN O SERVICIO';
         if (importarExcelInput) importarExcelInput.value = '';
         if (importarExcelColCant) importarExcelColCant.value = 'A';
         if (importarExcelColDesc) importarExcelColDesc.value = 'B';

@@ -177,7 +177,8 @@ class ListadoMaterialesPdfParserService
         $lineas = $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto);
         if ($lineas === []) {
             throw new RuntimeException(
-                'No se encontraron filas con las columnas «'.$columnaCantidad.'» y «'.$columnaProducto.'».',
+                'No se encontraron filas con las columnas «'.$columnaCantidad.'» y «'.$columnaProducto.'». '
+                .'Verifique que los nombres coincidan con el encabezado de la tabla (ej. cantidad: CANTIDAD, producto: BIEN O SERVICIO).',
             );
         }
 
@@ -213,13 +214,20 @@ class ListadoMaterialesPdfParserService
         foreach ($bloques as $bloque) {
             $filas = [];
             foreach (preg_split('/\r\n|\n|\r/u', $bloque) ?: [] as $lineaCruda) {
-                if (! str_contains($lineaCruda, "\t")) {
+                $linea = trim($lineaCruda);
+                if ($linea === '') {
                     continue;
                 }
-                $celdas = array_values(array_filter(
-                    array_map(static fn (string $c): string => trim($c), explode("\t", $lineaCruda)),
-                    static fn (string $c): bool => $c !== '',
-                ));
+
+                if (str_contains($linea, "\t")) {
+                    $celdas = array_values(array_filter(
+                        array_map(static fn (string $c): string => trim($c), explode("\t", $linea)),
+                        static fn (string $c): bool => $c !== '',
+                    ));
+                } else {
+                    $celdas = $this->expandirLineaNativaATabla($linea);
+                }
+
                 if ($celdas !== []) {
                     $filas[] = $celdas;
                 }
@@ -278,6 +286,8 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
+                $celdas = $this->expandirCeldasFilaGrilla($celdas, $nombreCantidad, $nombreProducto);
+
                 $indicesHeader = $this->resolverIndicesHeaderPorNombre($celdas, $nombreCantidad, $nombreProducto);
                 if ($indicesHeader !== null) {
                     $idxCantidad = $indicesHeader['cantidad'];
@@ -301,6 +311,13 @@ class ListadoMaterialesPdfParserService
 
                 if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
                     $volcarBuffer();
+                    $specIdx = $idxProducto + 1;
+                    if (isset($celdas[$specIdx])) {
+                        $specRaw = trim($celdas[$specIdx]);
+                        if ($specRaw !== '' && ! str_contains(mb_strtolower($prodRaw), mb_strtolower($specRaw))) {
+                            $prodRaw = trim($prodRaw.' '.$specRaw);
+                        }
+                    }
                     $bufferDesc = $prodRaw;
                     $bufferCant = $cantidad;
 
@@ -316,6 +333,124 @@ class ListadoMaterialesPdfParserService
         $volcarBuffer();
 
         return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array<int, string>
+     */
+    private function expandirCeldasFilaGrilla(array $celdas, string $nombreCantidad, string $nombreProducto): array
+    {
+        if (count($celdas) !== 1) {
+            return $celdas;
+        }
+
+        $unica = trim($celdas[0] ?? '');
+        if ($unica === '') {
+            return $celdas;
+        }
+
+        $norm = $this->normalizarEncabezadoCelda($unica);
+        $pareceEncabezado = $this->celdaCoincideNombreColumna($norm, $nombreCantidad)
+            || $this->celdaCoincideNombreColumna($norm, $nombreProducto)
+            || str_contains($norm, 'UNIDAD DE MEDIDA')
+            || str_contains($norm, 'BIEN O SERVICIO');
+
+        if ($pareceEncabezado) {
+            $partida = $this->partirLineaEncabezadoTabla($unica);
+            if (count($partida) > 1) {
+                return $partida;
+            }
+        }
+
+        $partidaDatos = $this->partirFilaDatosTabular($unica);
+        if (count($partidaDatos) > 1) {
+            return $partidaDatos;
+        }
+
+        return $celdas;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function expandirLineaNativaATabla(string $linea): array
+    {
+        $partida = $this->partirLineaEncabezadoTabla($linea);
+        if (count($partida) > 1) {
+            return $partida;
+        }
+
+        $partida = $this->partirFilaDatosTabular($linea);
+        if (count($partida) > 1) {
+            return $partida;
+        }
+
+        return [trim($linea)];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function partirLineaEncabezadoTabla(string $linea): array
+    {
+        $norm = $this->normalizarEncabezadoCelda($linea);
+        $anclas = [
+            'UNIDAD DE MEDIDA',
+            'CANTIDAD',
+            'BIEN O SERVICIO',
+            'ESPECIFICACIONES TECNICAS',
+            'PRODUCTO',
+            'DESCRIPCION',
+            'DETALLE',
+            'UNIDADES',
+        ];
+
+        $encontradas = [];
+        foreach ($anclas as $ancla) {
+            $pos = mb_strpos($norm, $ancla);
+            if ($pos !== false) {
+                $encontradas[$pos] = $ancla;
+            }
+        }
+
+        if (count($encontradas) < 2) {
+            return [$linea];
+        }
+
+        ksort($encontradas);
+
+        return array_values($encontradas);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function partirFilaDatosTabular(string $linea): array
+    {
+        $linea = trim($linea);
+        if ($linea === '') {
+            return [];
+        }
+
+        if (preg_match(
+            '/^(Unidades|Caja|Display|Piezas?|Paquetes?|Rollos?|Sets?|Kits?|Metros?|Litros?|Global|Par|Botellas?|Frascos?)\s+(\d+)\s+(.+)$/ui',
+            $linea,
+            $coincidencias,
+        ) !== 1) {
+            return [$linea];
+        }
+
+        $resto = trim($coincidencias[3]);
+        $palabras = preg_split('/\s+/u', $resto) ?: [];
+        if (count($palabras) <= 3) {
+            return [trim($coincidencias[1]), $coincidencias[2], $resto, ''];
+        }
+
+        $producto = implode(' ', array_slice($palabras, 0, 3));
+        $specs = implode(' ', array_slice($palabras, 3));
+
+        return [trim($coincidencias[1]), $coincidencias[2], $producto, $specs];
     }
 
     /**

@@ -1057,6 +1057,34 @@ TXT;
         $this->assertStringContainsString('Resmas de papel oficio', $lineas[4]['descripcion']);
     }
 
+    public function test_mapeo_columnas_fila_encabezado_unificada_dideco(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['UNIDAD DE MEDIDA CANTIDAD BIEN O SERVICIO ESPECIFICACIONES TÉCNICAS'],
+                    ['Unidades 3 Block de cartulina Bolson cartulina de colores 18 pliegos de 26.5x37cm'],
+                    ['Unidades 5 Cinta de embalaje Cinta de embalaje transparente de 48mmx100mt.'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'BIEN O SERVICIO');
+
+        $this->assertCount(2, $lineas);
+        $this->assertSame(3, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Block de cartulina', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('Bolson cartulina', $lineas[0]['descripcion']);
+        $this->assertSame(5, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('Cinta de embalaje', $lineas[1]['descripcion']);
+    }
+
     public function test_mapeo_columnas_multihoja_omite_headers_repetidos(): void
     {
         $paginasFilas = [
@@ -1086,9 +1114,9 @@ TXT;
 
         $this->assertCount(2, $lineas);
         $this->assertSame(3, $lineas[0]['cantidad']);
-        $this->assertSame('Block de cartulina continuacion descripcion', $lineas[0]['descripcion']);
+        $this->assertSame('Block de cartulina Colores surtidos continuacion descripcion', $lineas[0]['descripcion']);
         $this->assertSame(5, $lineas[1]['cantidad']);
-        $this->assertSame('Cinta de embalaje', $lineas[1]['descripcion']);
+        $this->assertSame('Cinta de embalaje 48mm x 100mt', $lineas[1]['descripcion']);
     }
 
     private function cargarFixture(string $nombre): string
