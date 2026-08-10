@@ -355,6 +355,15 @@ class ListadoMaterialesPdfParserService
     ): array {
         $nombreCantidad = $this->normalizarEncabezadoCelda($columnaCantidad);
         $nombreProducto = $this->normalizarEncabezadoCelda($columnaProducto);
+
+        if ($this->detectarHeaderCatalogoMultilinea($paginasFilas, $nombreCantidad, $nombreProducto)) {
+            return $this->aplicarMapeoCatalogoPorColumnasUsuario(
+                $paginasFilas,
+                $nombreCantidad,
+                $nombreProducto,
+            );
+        }
+
         $productoEsSpecs = $this->columnaProductoEsEspecificaciones($columnaProducto);
         $idxCantidad = null;
         $idxProducto = null;
@@ -998,15 +1007,356 @@ class ListadoMaterialesPdfParserService
 
     private function celdaCoincideNombreColumna(string $celdaNormalizada, string $nombreNormalizado): bool
     {
-        if ($celdaNormalizada === $nombreNormalizado) {
+        $celda = $this->normalizarEncabezadoParaCoincidencia($celdaNormalizada);
+        $nombre = $this->normalizarEncabezadoParaCoincidencia($nombreNormalizado);
+
+        if ($celda === $nombre) {
             return true;
         }
 
-        if (str_contains($celdaNormalizada, $nombreNormalizado)) {
+        if ($celda !== '' && $nombre !== '' && str_contains($celda, $nombre)) {
             return true;
         }
 
-        return str_contains($nombreNormalizado, $celdaNormalizada) && mb_strlen($celdaNormalizada) >= 4;
+        return $nombre !== '' && str_contains($nombre, $celda) && mb_strlen($celda) >= 4;
+    }
+
+    private function normalizarEncabezadoParaCoincidencia(string $texto): string
+    {
+        $texto = $this->normalizarEncabezadoCelda($texto);
+        $texto = preg_replace('/[*$()]/u', ' ', $texto) ?? $texto;
+
+        return preg_replace('/\s+/u', ' ', trim($texto)) ?? trim($texto);
+    }
+
+    private function textoContieneNombreColumna(string $textoNormalizado, string $nombreColumna): bool
+    {
+        $nombre = $this->normalizarEncabezadoParaCoincidencia($nombreColumna);
+        $texto = $this->normalizarEncabezadoParaCoincidencia($textoNormalizado);
+
+        if ($nombre === '' || $texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, $nombre);
+    }
+
+    /**
+     * Encabezado partido en varias filas (p. ej. bases licitación: LÍNEA + DESCRIPCIÓN / UNIDADES POR AÑO).
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function detectarHeaderCatalogoMultilinea(
+        array $paginasFilas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): bool {
+        foreach ($paginasFilas as $pagina) {
+            $filas = $pagina['filas'] ?? [];
+            $total = count($filas);
+
+            for ($i = 0; $i < $total; $i++) {
+                $textoVentana = '';
+
+                for ($j = $i; $j < min($i + 5, $total); $j++) {
+                    $celdas = array_values(array_map(
+                        fn ($c): string => trim((string) $c),
+                        is_array($filas[$j]) ? $filas[$j] : [],
+                    ));
+                    $textoVentana = trim($textoVentana.' '.implode(' ', array_filter($celdas, static fn (string $c): bool => $c !== '')));
+
+                    if (! $this->textoContieneNombreColumna($textoVentana, $nombreProducto)) {
+                        continue;
+                    }
+
+                    if (! $this->textoContieneNombreColumna($textoVentana, $nombreCantidad)) {
+                        continue;
+                    }
+
+                    $normVentana = $this->normalizarEncabezadoParaCoincidencia($textoVentana);
+
+                    if (str_contains($normVentana, 'UNIDAD DE MEDIDA')
+                        || str_contains($normVentana, 'BIEN O SERVICIO')
+                        || str_contains($normVentana, 'ESPECIFICACIONES TECNICAS')) {
+                        continue;
+                    }
+
+                    if (! str_contains($normVentana, 'LINEA') || ! str_contains($normVentana, 'UNIDADES')) {
+                        continue;
+                    }
+
+                    for ($k = $i; $k <= $j; $k++) {
+                        $celdasFila = array_values(array_map(
+                            fn ($c): string => trim((string) $c),
+                            is_array($filas[$k]) ? $filas[$k] : [],
+                        ));
+                        $celdasFila = array_values(array_filter($celdasFila, static fn (string $c): bool => $c !== ''));
+
+                        if ($this->resolverIndicesHeaderPorNombre($celdasFila, $nombreCantidad, $nombreProducto) !== null) {
+                            continue 3;
+                        }
+                    }
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Catálogo con encabezado multilínea: extrae descripción y unidades según columnas indicadas por el usuario.
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoCatalogoPorColumnasUsuario(
+        array $paginasFilas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): array {
+        $resultado = [];
+        $bufferDesc = null;
+        $enCatalogo = false;
+        /** @var array<int, string> $ventanaHeader */
+        $ventanaHeader = [];
+
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+
+                $celdas = array_values(array_map(
+                    fn ($c): string => $this->normalizarTextoCeldaGrilla((string) $c),
+                    $celdasRaw,
+                ));
+
+                if ($this->filaGrillaVacia($celdas)) {
+                    continue;
+                }
+
+                $textoFila = implode(' ', array_filter($celdas, static fn (string $c): bool => trim($c) !== ''));
+
+                if (! $enCatalogo) {
+                    $ventanaHeader[] = $textoFila;
+                    if (count($ventanaHeader) > 5) {
+                        array_shift($ventanaHeader);
+                    }
+
+                    $textoVentana = implode(' ', $ventanaHeader);
+                    if ($this->textoContieneNombreColumna($textoVentana, $nombreProducto)
+                        && $this->textoContieneNombreColumna($textoVentana, $nombreCantidad)) {
+                        $enCatalogo = true;
+                    }
+
+                    continue;
+                }
+
+                if ($this->filaEsEncabezadoCatalogoUsuario($celdas, $nombreCantidad, $nombreProducto)) {
+                    continue;
+                }
+
+                if ($this->filaEsFinCatalogoUsuario($textoFila)) {
+                    break 2;
+                }
+
+                if ($this->filaEsRuidoCatalogoUsuario($textoFila)) {
+                    continue;
+                }
+
+                $fila = $this->extraerFilaCatalogoMapeoColumnas($celdas, $bufferDesc);
+                if ($fila !== null) {
+                    $resultado[] = $fila;
+                }
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     */
+    private function filaEsEncabezadoCatalogoUsuario(
+        array $celdas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): bool {
+        $texto = $this->normalizarEncabezadoParaCoincidencia(implode(' ', array_filter($celdas, static fn (string $c): bool => trim($c) !== '')));
+        if ($texto === '') {
+            return true;
+        }
+
+        $esEncabezado = $this->textoContieneNombreColumna($texto, $nombreCantidad)
+            || $this->textoContieneNombreColumna($texto, $nombreProducto)
+            || str_contains($texto, 'MONTO TOTAL')
+            || preg_match('/^LINEA\s+DESCRIPCION/u', $texto) === 1
+            || preg_match('/^UNIDADES\s+POR/u', $texto) === 1;
+
+        if (! $esEncabezado) {
+            return false;
+        }
+
+        $bufferDummy = null;
+
+        return $this->extraerFilaCatalogoMapeoColumnas($celdas, $bufferDummy) === null;
+    }
+
+    private function filaEsFinCatalogoUsuario(string $textoFila): bool
+    {
+        $norm = $this->normalizarEncabezadoParaCoincidencia($textoFila);
+
+        return str_contains($norm, 'LOS OFERENTES PODRAN POSTULAR')
+            || str_contains($norm, 'LOS OFERENTES PODRÁN POSTULAR');
+    }
+
+    private function filaEsRuidoCatalogoUsuario(string $textoFila): bool
+    {
+        $norm = $this->normalizarEncabezadoParaCoincidencia($textoFila);
+
+        if ($norm === '') {
+            return true;
+        }
+
+        if (preg_match('/^PAGINA\s+\d+\s+DE\s+\d+/u', $norm) === 1) {
+            return true;
+        }
+
+        if (str_contains($norm, 'CORPORACION DE') && str_contains($norm, 'SALUD')) {
+            return true;
+        }
+
+        if (in_array($norm, ['LAS CONDES', 'MUNICIPALIDAD', 'A'], true)) {
+            return true;
+        }
+
+        return preg_match('/^[A-ZÁÉÍÓÚÑ]{1,3}$/u', $norm) === 1;
+    }
+
+    /**
+     * @param  array<int, string>  $celdas
+     * @return array{cantidad: int, descripcion: string}|null
+     */
+    private function extraerFilaCatalogoMapeoColumnas(array $celdas, ?string &$bufferDesc): ?array
+    {
+        $celdas = array_values(array_filter(
+            array_map(static fn (string $c): string => trim($c), $celdas),
+            static fn (string $c): bool => $c !== '',
+        ));
+
+        if ($celdas === []) {
+            return null;
+        }
+
+        if (count($celdas) >= 3) {
+            $desc = trim($celdas[0]);
+            $cantRaw = trim($celdas[1]);
+            $tercera = trim($celdas[2]);
+
+            if ($this->celdaPareceMontoCatalogo($tercera) && $this->celdaPareceCantidadCatalogo($cantRaw)) {
+                if ($bufferDesc !== null && $bufferDesc !== '') {
+                    $desc = trim($bufferDesc.' '.$desc);
+                    $bufferDesc = null;
+                }
+
+                $cantidad = $this->parseCantidadCatalogo($cantRaw);
+                if ($cantidad !== null && mb_strlen($desc) >= 2 && ! $this->esDescripcionAdministrativa($desc)) {
+                    return ['cantidad' => $cantidad, 'descripcion' => $desc];
+                }
+            }
+        }
+
+        if (count($celdas) === 2) {
+            $desc = trim($celdas[0]);
+            $segunda = trim($celdas[1]);
+
+            if ($this->celdaPareceCantidadCatalogo($segunda) && ! $this->celdaPareceMontoCatalogo($segunda)) {
+                if ($bufferDesc !== null && $bufferDesc !== '') {
+                    $desc = trim($bufferDesc.' '.$desc);
+                    $bufferDesc = null;
+                }
+
+                $cantidad = $this->parseCantidadCatalogo($segunda);
+                if ($cantidad !== null && mb_strlen($desc) >= 2 && ! $this->esDescripcionAdministrativa($desc)) {
+                    return ['cantidad' => $cantidad, 'descripcion' => $desc];
+                }
+            }
+
+            if ($this->celdaPareceMontoCatalogo($segunda)) {
+                $fila = $this->parseFilaBasesLineaCompleta($desc);
+                if ($fila !== null) {
+                    if ($bufferDesc !== null && $bufferDesc !== '') {
+                        $fila['descripcion'] = trim($bufferDesc.' '.$fila['descripcion']);
+                        $bufferDesc = null;
+                    }
+
+                    return $fila;
+                }
+            }
+        }
+
+        if (count($celdas) === 1) {
+            $texto = $celdas[0];
+            $fila = $this->parseFilaBasesLineaCompleta($texto);
+            if ($fila !== null) {
+                if ($bufferDesc !== null && $bufferDesc !== '') {
+                    $fila['descripcion'] = trim($bufferDesc.' '.$fila['descripcion']);
+                    $bufferDesc = null;
+                }
+
+                return $fila;
+            }
+
+            if (! $this->esOrphanAdministrativo($texto) && ! $this->esDescripcionAdministrativa($texto)) {
+                $bufferDesc = trim(($bufferDesc ?? '').' '.$texto);
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    private function celdaPareceMontoCatalogo(string $raw): bool
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return false;
+        }
+
+        if (preg_match('/^\d{1,3}(?:\.\d{3})+$/u', $raw) === 1) {
+            return true;
+        }
+
+        return preg_match('/^\d{5,}$/u', str_replace('.', '', $raw)) === 1;
+    }
+
+    private function celdaPareceCantidadCatalogo(string $raw): bool
+    {
+        $raw = trim($raw);
+        if ($raw === '' || $this->celdaPareceMontoCatalogo($raw)) {
+            return false;
+        }
+
+        if (preg_match('/^\d{1,5}$/u', $raw) === 1) {
+            return true;
+        }
+
+        return preg_match('/^\d{1,4}\.\d{3}$/u', $raw) === 1 && (int) str_replace('.', '', $raw) < 100000;
+    }
+
+    private function parseCantidadCatalogo(string $raw): ?int
+    {
+        $raw = trim(str_replace('.', '', $raw));
+        if ($raw === '' || ! ctype_digit($raw)) {
+            return null;
+        }
+
+        $valor = (int) $raw;
+
+        return $valor >= 1 ? $valor : null;
     }
 
     private function celdaEsColumnaProducto(string $celdaNormalizada, string $nombreProducto): bool

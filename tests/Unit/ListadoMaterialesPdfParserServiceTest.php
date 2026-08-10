@@ -1249,6 +1249,45 @@ TXT;
         $this->assertStringContainsString('Cuaderno college 80 HOJAS', $lineas[3]['descripcion']);
     }
 
+    public function test_mapeo_columnas_catalogo_header_multilinea(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 34,
+                'filas' => [
+                    ['LINEA', 'DESCRIPCION REQUERIMIENTO'],
+                    ['UNIDADES* POR'],
+                    ['AÑO Monto Total ($) POR AÑO'],
+                    ['ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE'],
+                    ['STANDARD 500ML 366 ROSA QUINACRIDONA', '2', '71.376'],
+                    ['AGUJAS METALICA BLISTER 3 UNIDADES', '36', '33.120'],
+                    ['10 ACRÍLICO 250ML AZUL REAL METAL 440'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke(
+            $this->parser,
+            $paginasFilas,
+            'unidades por año',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('ACRÍLICO', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('ROSA QUINACRIDONA', $lineas[0]['descripcion']);
+        $this->assertSame(36, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('AGUJAS METALICA', $lineas[1]['descripcion']);
+        $this->assertSame(440, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('AZUL REAL METAL', $lineas[2]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
