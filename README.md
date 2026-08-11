@@ -89,6 +89,6 @@ config/cotiz.php                   → factor precio, empresa
 
 | Plataforma | Documentación |
 |------------|---------------|
-| **Hetzner VPS** (Docker + CI/CD, Rómulo + Reicol) | **[HETZNER.md](HETZNER.md)** |
+| **Hetzner VPS** (Docker + CI/CD, Rómulo + Reicol) | **[HETZNER.md](HETZNER.md)** — incluye respaldo diario a R2 (`romulo-bases`) |
 | **Render** + Postgres + Resend | **[RENDER.md](RENDER.md)** |
 | **Koyeb** + Neon | **[KOYEB.md](KOYEB.md)** |

@@ -4,6 +4,7 @@
 .env.backup
 .env.production
 .env.prod
+scripts/backup-r2.env
 cotiz-*.env
 *.env.local
 .phpactor.json

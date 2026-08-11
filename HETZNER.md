@@ -233,3 +233,73 @@ docker stats
 ## 6. RAM del VPS
 
 Con `carro` + 2× `cotiz` ≈ **6 contenedores** (3 app + 3 postgres). En **CX23 (4 GB)** puede ir justo; vigila `docker stats`. Considera **CX33 (8 GB)** si hay imports pesados o OCR concurrente.
+
+## 7. Respaldo de bases → Cloudflare R2
+
+Respaldos diarios de **carro**, **romulo** y **reicol** al bucket privado **`romulo-bases`**, con nombre `{base}_{fecha}.sql.gz` en la carpeta `{base}/`.
+
+### 7.1 Cloudflare
+
+1. R2 → crear bucket **`romulo-bases`** (privado, sin dominio público).
+2. Crear API token R2 con lectura/escritura **solo** en ese bucket (no reutilizar el de imágenes).
+3. Anotar `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_ENDPOINT`.
+
+### 7.2 Configuración en el VPS (una vez)
+
+```bash
+apt install -y awscli   # cliente S3 compatible con R2
+
+mkdir -p /etc/cotiz-backup
+cp /opt/cotiz-romulo/scripts/backup-r2.env.example /etc/cotiz-backup/backup-r2.env
+nano /etc/cotiz-backup/backup-r2.env   # credenciales R2 + revisar rutas BACKUP_TARGETS
+chmod 600 /etc/cotiz-backup/backup-r2.env
+chmod +x /opt/cotiz-romulo/scripts/backup-all-dbs-to-r2.sh
+chmod +x /opt/cotiz-romulo/scripts/restore-db-from-r2.sh
+```
+
+Plantilla: **`scripts/backup-r2.env.example`**. Ajusta `BACKUP_TARGETS` si **carro** usa otro usuario/BD o ruta distinta a `/opt/carro`.
+
+### 7.3 Ejecutar manualmente
+
+```bash
+BACKUP_CONFIG=/etc/cotiz-backup/backup-r2.env \
+  bash /opt/cotiz-romulo/scripts/backup-all-dbs-to-r2.sh
+```
+
+Archivos en R2:
+
+```text
+romulo-bases/carro/carro_2026-08-10_0300.sql.gz
+romulo-bases/romulo/romulo_2026-08-10_0300.sql.gz
+romulo-bases/reicol/reicol_2026-08-10_0300.sql.gz
+```
+
+### 7.4 Cron diario (3:00 AM)
+
+```bash
+crontab -e
+```
+
+```cron
+0 3 * * * BACKUP_CONFIG=/etc/cotiz-backup/backup-r2.env /opt/cotiz-romulo/scripts/backup-all-dbs-to-r2.sh >> /var/log/pg-backup-r2.log 2>&1
+```
+
+Opcional en Cloudflare R2: regla **Lifecycle** para borrar objetos con más de 30 días.
+
+### 7.5 Restaurar desde R2
+
+```bash
+BACKUP_CONFIG=/etc/cotiz-backup/backup-r2.env \
+  bash /opt/cotiz-romulo/scripts/restore-db-from-r2.sh \
+  romulo /opt/cotiz-romulo romulo/romulo_2026-08-10_0300.sql.gz
+```
+
+Listar backups en el bucket:
+
+```bash
+source /etc/cotiz-backup/backup-r2.env
+export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+aws s3 ls "s3://${R2_BACKUP_BUCKET}/" --recursive --endpoint-url "$R2_ENDPOINT"
+```
+
+**Importante:** nunca uses `docker compose down -v` en producción; borra el volumen `postgres_data`.
