@@ -35,13 +35,20 @@ jobs:
 
       - name: Deploy Rómulo + Reicol via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          R2_BACKUP_ENDPOINT: ${{ secrets.R2_BACKUP_ENDPOINT }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+          BACKUP_CRON_HOUR: ${{ vars.BACKUP_CRON_HOUR }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key_path: .ssh/deploy_key
           port: ${{ secrets.VPS_PORT || 22 }}
           command_timeout: 45m
-          script_stop: true
+          script_stop: false
+          envs: R2_BACKUP_ACCESS_KEY_ID,R2_BACKUP_SECRET_ACCESS_KEY,R2_BACKUP_ENDPOINT,R2_BACKUP_BUCKET,BACKUP_CRON_HOUR
           script: |
             set -euo pipefail
 
@@ -69,4 +76,14 @@ jobs:
             deploy_instance /opt/cotiz-romulo
             deploy_instance /opt/cotiz-reicol
             docker image prune -f
+
+            if [ -d /opt/cotiz-romulo/scripts ]; then
+              export R2_BACKUP_ACCESS_KEY_ID="${R2_BACKUP_ACCESS_KEY_ID:-}"
+              export R2_BACKUP_SECRET_ACCESS_KEY="${R2_BACKUP_SECRET_ACCESS_KEY:-}"
+              export R2_BACKUP_ENDPOINT="${R2_BACKUP_ENDPOINT:-}"
+              export R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-romulo-bases}"
+              export CRON_HOUR="${BACKUP_CRON_HOUR:-3}"
+              bash /opt/cotiz-romulo/scripts/setup-vps-backup-r2.sh || echo "::warning::setup-vps-backup-r2 falló (revisar secrets R2_BACKUP_* en GitHub)"
+            fi
+
             echo "Deploy cotiz completo"

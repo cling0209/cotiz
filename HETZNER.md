@@ -137,6 +137,10 @@ Los secrets **no se comparten entre repos**. Aunque `carro` ya despliegue bien, 
 | `VPS_USER` | Mismo usuario que en `carro` (ej. `root`) |
 | `VPS_SSH_KEY` | Clave **privada** completa (ver abajo) |
 | `VPS_PORT` | `22` (opcional; solo si usas otro puerto) |
+| `R2_BACKUP_ACCESS_KEY_ID` | Token R2 solo para bucket `romulo-bases` (respaldos) |
+| `R2_BACKUP_SECRET_ACCESS_KEY` | Secret del token R2 backups |
+| `R2_BACKUP_ENDPOINT` | Endpoint R2 (`https://….r2.cloudflarestorage.com`) |
+| `R2_BACKUP_BUCKET` | `romulo-bases` (opcional) |
 
 #### Copiar `VPS_SSH_KEY` para pegar en GitHub
 
@@ -244,18 +248,36 @@ Respaldos diarios de **carro**, **romulo** y **reicol** al bucket privado **`rom
 2. Crear API token R2 con lectura/escritura **solo** en ese bucket (no reutilizar el de imágenes).
 3. Anotar `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_ENDPOINT`.
 
-### 7.2 Configuración en el VPS (una vez)
+### 7.2 Configuración en el VPS (automática o manual)
+
+**Automática (recomendada):** en GitHub → repo **cotiz** → Settings → Secrets → Actions, agrega:
+
+| Secret | Valor |
+|--------|--------|
+| `R2_BACKUP_ACCESS_KEY_ID` | Access key del token R2 (bucket `romulo-bases`) |
+| `R2_BACKUP_SECRET_ACCESS_KEY` | Secret key |
+| `R2_BACKUP_ENDPOINT` | `https://ACCOUNT_ID.r2.cloudflarestorage.com` |
+| `R2_BACKUP_BUCKET` | `romulo-bases` (opcional; default en script) |
+
+Opcional en **Variables** → `BACKUP_CRON_HOUR` = `3` (hora del VPS, default 3 AM).
+
+Cada deploy (`hetzner-deploy.yml`) ejecuta `scripts/setup-vps-backup-r2.sh`: instala `awscli`, escribe `/etc/cotiz-backup/backup-r2.env` y registra el cron.
+
+**Manual (una vez):**
 
 ```bash
-apt install -y awscli   # cliente S3 compatible con R2
+apt install -y awscli
 
-mkdir -p /etc/cotiz-backup
-cp /opt/cotiz-romulo/scripts/backup-r2.env.example /etc/cotiz-backup/backup-r2.env
-nano /etc/cotiz-backup/backup-r2.env   # credenciales R2 + revisar rutas BACKUP_TARGETS
-chmod 600 /etc/cotiz-backup/backup-r2.env
-chmod +x /opt/cotiz-romulo/scripts/backup-all-dbs-to-r2.sh
-chmod +x /opt/cotiz-romulo/scripts/restore-db-from-r2.sh
+export R2_BACKUP_ACCESS_KEY_ID=...
+export R2_BACKUP_SECRET_ACCESS_KEY=...
+export R2_BACKUP_ENDPOINT=https://ACCOUNT_ID.r2.cloudflarestorage.com
+bash /opt/cotiz-romulo/scripts/setup-vps-backup-r2.sh
+
+# Probar backup inmediato:
+RUN_BACKUP_NOW=1 bash /opt/cotiz-romulo/scripts/setup-vps-backup-r2.sh
 ```
+
+Si no hay secrets en GitHub, el setup deja plantilla en `/etc/cotiz-backup/backup-r2.env` para completar con `nano`.
 
 Plantilla: **`scripts/backup-r2.env.example`**. Ajusta `BACKUP_TARGETS` si **carro** usa otro usuario/BD o ruta distinta a `/opt/carro`.
 
