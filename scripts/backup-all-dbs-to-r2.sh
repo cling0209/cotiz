@@ -57,7 +57,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ "${#BACKUP_TARGETS[@]:-0}" -eq 0 ]; then
+if [ "${#BACKUP_TARGETS[@]}" -eq 0 ]; then
   echo "BACKUP_TARGETS vacío en $BACKUP_CONFIG" >&2
   exit 1
 fi

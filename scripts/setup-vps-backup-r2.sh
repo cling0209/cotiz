@@ -76,23 +76,27 @@ write_backup_config() {
     return 0
   fi
 
-  cat > "$BACKUP_CONFIG" <<EOF
+  cat > "$BACKUP_CONFIG" <<'ENVEOF'
 # Generado por setup-vps-backup-r2.sh — no commitear
-R2_BACKUP_BUCKET=${R2_BACKUP_BUCKET}
-R2_ENDPOINT=${endpoint}
-R2_ACCESS_KEY_ID=${access_key}
-R2_SECRET_ACCESS_KEY=${secret_key}
+R2_BACKUP_BUCKET=__R2_BACKUP_BUCKET__
+R2_ENDPOINT=__R2_ENDPOINT__
+R2_ACCESS_KEY_ID=__R2_ACCESS_KEY_ID__
+R2_SECRET_ACCESS_KEY=__R2_SECRET_ACCESS_KEY__
 
 LOCAL_BACKUP_DIR=/var/backups/postgres
 LOCAL_RETENTION_DAYS=3
 KEEP_LOCAL_AFTER_UPLOAD=false
 
 BACKUP_TARGETS=(
-  "/opt/carro|carro|carro|carro"
+  "/opt/carro|carro|carro|tienda"
   "/opt/cotiz-romulo|romulo|romulo|romulo"
   "/opt/cotiz-reicol|reicol|reicol|reicol"
 )
-EOF
+ENVEOF
+  sed -i "s|__R2_BACKUP_BUCKET__|${R2_BACKUP_BUCKET}|g" "$BACKUP_CONFIG"
+  sed -i "s|__R2_ENDPOINT__|${endpoint}|g" "$BACKUP_CONFIG"
+  sed -i "s|__R2_ACCESS_KEY_ID__|${access_key}|g" "$BACKUP_CONFIG"
+  sed -i "s|__R2_SECRET_ACCESS_KEY__|${secret_key}|g" "$BACKUP_CONFIG"
   chmod 600 "$BACKUP_CONFIG"
   echo "[OK] Escrito $BACKUP_CONFIG"
 }
