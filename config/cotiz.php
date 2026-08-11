@@ -5,7 +5,7 @@ return [
     'empresa_rut' => env('COTIZ_EMPRESA_RUT', '76.356.855-5'),
     // RUTs del grupo Reicol / Romulo (reportes de productos ganados en Compra Ágil).
     'reicol_rut' => env('COTIZ_REICOL_RUT', '76.356.855-5'),
-    'romulo_rut' => env('COTIZ_ROMULO_RUT', '76.779.675-7'),
+    'romulo_rut' => env('COTIZ_ROMULO_RUT', '76.185.139-K'),
     'empresa_correo' => env('COTIZ_EMPRESA_CORREO', 'jlocier@reicol.cl'),
     'empresa_fono' => env('COTIZ_EMPRESA_FONO', '+56 9 9044 5886'),
     'empresa_direccion' => env('COTIZ_EMPRESA_DIRECCION', 'Santa Carolina Parcela 14-A Lampa, Santiago'),
@@ -154,7 +154,7 @@ return [
             '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', '1417881'),
         ],
         // Días máximos (desde fecha cierre/último cambio −1 hasta hoy) al buscar código AG en OC v1.
-        'oc_busqueda_max_dias' => max(4, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS', 15))),
+        'oc_busqueda_max_dias' => max(4, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS', 31))),
         'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(

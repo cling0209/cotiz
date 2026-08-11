@@ -91,13 +91,23 @@ class NotaMpSeguimiento extends Model
         return $this->etiquetaGanadorGrupo() !== null;
     }
 
+    /** Ganador del grupo (Reicol/Romulo) o empresa propia de esta instancia (misma lógica que fila verde). */
+    public function esGanadorParaOrdenCompra(): bool
+    {
+        if ($this->esGanadorGrupo()) {
+            return true;
+        }
+
+        return ! empty($this->es_ganador_propio);
+    }
+
     /**
      * Código AG en notas.ocompra (ej. 1411-2423-AG26) solo si ganó Reicol o Romulo.
      * «Pendiente» si MP ya emitió OC numérica pero falta el código alfanumérico.
      */
     public function textoOrdenCompraMp(): string
     {
-        if (! $this->esGanadorGrupo()) {
+        if (! $this->esGanadorParaOrdenCompra()) {
             return '—';
         }
 

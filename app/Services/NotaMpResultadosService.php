@@ -2488,7 +2488,7 @@ class NotaMpResultadosService
     {
         return [
             'reicol' => $this->normalizarRutEmpresa((string) config('cotiz.reicol_rut', '76.356.855-5')),
-            'romulo' => $this->normalizarRutEmpresa((string) config('cotiz.romulo_rut', '76.779.675-7')),
+            'romulo' => $this->normalizarRutEmpresa((string) config('cotiz.romulo_rut', '76.185.139-K')),
         ];
     }
 

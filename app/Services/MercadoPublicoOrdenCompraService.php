@@ -105,7 +105,7 @@ class MercadoPublicoOrdenCompraService
 
         $tz = (string) config('app.timezone', 'America/Santiago');
         $hoy = now()->timezone($tz)->startOfDay();
-        $maxDias = max(4, min(31, (int) config('cotiz.mercadopublico.oc_busqueda_max_dias', 15)));
+        $maxDias = max(4, min(31, (int) config('cotiz.mercadopublico.oc_busqueda_max_dias', 31)));
 
         if ($referencia === null) {
             return [$hoy->format('dmY')];
@@ -116,11 +116,32 @@ class MercadoPublicoOrdenCompraService
             $inicio = $hoy->copy();
         }
 
+        $span = $inicio->diffInDays($hoy) + 1;
         $out = [];
+
+        if ($span <= $maxDias) {
+            $cursor = $inicio->copy();
+            while ($cursor->lessThanOrEqualTo($hoy)) {
+                $out[] = $cursor->format('dmY');
+                $cursor->addDay();
+            }
+
+            return array_values(array_unique($out));
+        }
+
+        // OC puede emitirse semanas después del último cambio: tramo desde adjudicación + días recientes.
+        $diasAdjudicacion = min(28, max(1, $maxDias - 1));
         $cursor = $inicio->copy();
-        while ($cursor->lessThanOrEqualTo($hoy) && count($out) < $maxDias) {
+        for ($i = 0; $i < $diasAdjudicacion && $cursor->lessThanOrEqualTo($hoy); $i++) {
             $out[] = $cursor->format('dmY');
             $cursor->addDay();
+        }
+
+        $diasRecientes = max(0, $maxDias - count($out));
+        $cursor = $hoy->copy();
+        for ($i = 0; $i < $diasRecientes; $i++) {
+            $out[] = $cursor->format('dmY');
+            $cursor->subDay();
         }
 
         return array_values(array_unique($out));

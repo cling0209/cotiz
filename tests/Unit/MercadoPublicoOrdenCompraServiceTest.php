@@ -106,6 +106,21 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_fechas_busqueda_incluye_tramo_post_adjudicacion_cuando_oc_tarda_semanas(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-10 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago', 'cotiz.mercadopublico.oc_busqueda_max_dias' => 31]);
+
+        $fechas = $this->service->fechasBusquedaDesdePayload([
+            'fechas' => ['fecha_ultimo_cambio' => '2026-06-03 13:05:00'],
+        ]);
+
+        $this->assertContains('26062026', $fechas);
+        $this->assertContains('10082026', $fechas);
+
+        Carbon::setTestNow();
+    }
+
     public function test_resolver_codigo_en_fecha_posterior_al_cierre(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-10 12:00:00', 'America/Santiago'));
