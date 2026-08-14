@@ -83,14 +83,14 @@ class NotaService
     }
 
     /**
-     * Copia cabecera y productos en una nota nueva que conserva el código de
-     * Mercado Público y avanza el correlativo, para ofertar otra vez al mismo proceso.
+     * Copia la cabecera (y opcionalmente los productos) en una nota nueva que
+     * conserva el código de Mercado Público y avanza el correlativo.
      *
      * La copia nace sin estado (no aceptada), sin enviar a la API y como nota local.
      */
-    public function duplicar(Nota $origen, ?string $usuarioAccion = null): Nota
+    public function duplicar(Nota $origen, ?string $usuarioAccion = null, bool $copiarDetalle = true): Nota
     {
-        return DB::transaction(function () use ($origen, $usuarioAccion) {
+        return DB::transaction(function () use ($origen, $usuarioAccion, $copiarDetalle) {
             $nronota = $this->siguienteNronota();
 
             // La copia queda con el mismo ejecutivo dueño, aunque la cree un superadmin.
@@ -120,19 +120,21 @@ class NotaService
                 'comuna' => $origen->comuna,
             ]);
 
-            // replicate() copia los atributos ya normalizados, sin volver a pasar
-            // las descripciones Agile por sus mutadores.
-            foreach ($origen->detalle()->get() as $linea) {
-                $lineaCopia = $linea->replicate();
-                $lineaCopia->nronota = $nronota;
-                $lineaCopia->fechahora = now();
-                $lineaCopia->save();
+            if ($copiarDetalle) {
+                // replicate() copia los atributos ya normalizados, sin volver a pasar
+                // las descripciones Agile por sus mutadores.
+                foreach ($origen->detalle()->get() as $linea) {
+                    $lineaCopia = $linea->replicate();
+                    $lineaCopia->nronota = $nronota;
+                    $lineaCopia->fechahora = now();
+                    $lineaCopia->save();
+                }
             }
 
             $this->auditoria->registrarAgregar(
                 $copia,
                 $usuarioAccion ?: $origen->usuario,
-                'Duplicación desde nota #'.$origen->nronota,
+                'Duplicación desde nota #'.$origen->nronota.($copiarDetalle ? '' : ' (solo encabezado)'),
             );
 
             return $copia;

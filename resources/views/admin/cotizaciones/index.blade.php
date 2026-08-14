@@ -227,9 +227,9 @@
                                     <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
 
                                     @if(trim((string) $nota->encargado) !== '')
-                                        <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline"
-                                              data-confirm="¿Duplicar la cotización #{{ $nota->nronota }} («{{ trim((string) $nota->encargado) }}»)? Se crea una cotización nueva con el mismo código y el correlativo siguiente, copiando la cabecera y todos los productos, para presentar otra oferta al mismo proceso. La copia queda asignada a {{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}. Después puede cambiar precios y cantidades.">
+                                        <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline js-duplicar-cotizacion">
                                             @csrf
+                                            <input type="hidden" name="copiar_detalle" value="1">
                                             @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Duplicar</button>
                                         </form>
@@ -339,4 +339,36 @@
     font-weight: 500;
 }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.classList.contains('js-duplicar-cotizacion')) {
+        return;
+    }
+    if (form.dataset.duplicarConfirmado === '1') {
+        return;
+    }
+
+    e.preventDefault();
+
+    const input = form.querySelector('[name="copiar_detalle"]');
+    const msg = '¿Copiar también el detalle (productos)? El encabezado se copia siempre.';
+    const opts = { okText: 'Sí, copiar detalle', cancelText: 'No, solo encabezado' };
+
+    const ask = (window.AdminDialog && typeof window.AdminDialog.confirm === 'function')
+        ? window.AdminDialog.confirm(msg, opts)
+        : Promise.resolve(window.confirm(msg));
+
+    ask.then(function (ok) {
+        if (input) {
+            input.value = ok ? '1' : '0';
+        }
+        form.dataset.duplicarConfirmado = '1';
+        form.submit();
+    });
+});
+</script>
 @endpush

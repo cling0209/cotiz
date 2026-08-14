@@ -53,6 +53,28 @@ class CotizacionDuplicarTest extends TestCase
         $this->assertSame(2500, (int) $lineas[1]->prod_valor);
     }
 
+    public function test_duplicar_sin_detalle_copia_solo_cabecera(): void
+    {
+        $nota = $this->crearNota();
+        $this->crearLinea($nota, ['prod_item' => 'PROD001', 'orden' => 1, 'cantidad' => 3]);
+
+        $response = $this->actingAs($this->admin)
+            ->post(route('admin.cotizaciones.duplicar', $nota->nronota), [
+                'copiar_detalle' => '0',
+            ]);
+
+        $copia = $this->copiaDe($nota);
+
+        $response->assertRedirect(route('admin.cotizaciones.edit', $copia->nronota));
+        $response->assertSessionHas('success');
+        $this->assertStringContainsString('Se copió solo el encabezado.', session('success'));
+        $this->assertSame(self::CODIGO, trim((string) $copia->encargado));
+        $this->assertSame(2, (int) $copia->correlativo);
+        $this->assertSame('Cliente Test', $copia->empresa);
+        $this->assertSame(0, NotaDetalle::query()->where('nronota', $copia->nronota)->count());
+        $this->assertSame(1, NotaDetalle::query()->where('nronota', $nota->nronota)->count());
+    }
+
     public function test_duplicar_una_copia_avanza_al_correlativo_siguiente(): void
     {
         $nota = $this->crearNota();
