@@ -15,6 +15,7 @@
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
     $detalleColspan = ($desdeAdjudicadas ? 15 : 16) - ($mostrarSoftland ? 0 : 1);
+    $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
 @endphp
 
 <div class="cotizacion-ingreso">
@@ -102,16 +103,18 @@
                 <tr>
                     <th>Monto Total</th>
                     <td><input type="text" name="montototal" id="montototal" readonly value="${{ number_format($total, 0, ',', '.') }}"></td>
+                    <th>Monto + IVA</th>
+                    <td><input type="text" id="montototal_iva" readonly tabindex="-1" value="${{ number_format($totalConIva, 0, ',', '.') }}"></td>
                     <th>D&iacute;as H&aacute;biles</th>
                     <td><input type="number" name="diashabiles" id="diashabiles" min="0" maxlength="2" value="{{ old('diashabiles', $nota->diashabiles ?? config('cotiz.diashabiles_rm', 5)) }}"></td>
-                    <th>O.Compra</th>
-                    <td><input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"></td>
                 </tr>
                 <tr>
+                    <th>O.Compra</th>
+                    <td><input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"></td>
                     <th>Entrega</th>
                     <td><input type="date" name="fechaentrega" id="fechaentrega" value="{{ old('fechaentrega', $nota->fechaentrega?->format('Y-m-d')) }}"></td>
                     <th>Descripci&oacute;n</th>
-                    <td colspan="3"><input type="text" name="descripcion" id="descripcion" maxlength="500" value="{{ old('descripcion', $nota->descripcion) }}" required></td>
+                    <td><input type="text" name="descripcion" id="descripcion" maxlength="500" value="{{ old('descripcion', $nota->descripcion) }}" required></td>
                 </tr>
                 <tr>
                     <th>Direcci&oacute;n</th>
@@ -831,6 +834,7 @@
     }
 
     const montototal = document.getElementById('montototal');
+    const montototalIva = document.getElementById('montototal_iva');
     const factorInput = document.getElementById('factor_precio_venta');
     let factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
     let cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
@@ -1530,6 +1534,10 @@
             sum += total;
         });
         if (montototal) montototal.value = fmt(sum);
+        if (montototalIva) {
+            const iva = Math.round(sum * 19 / 100);
+            montototalIva.value = fmt(sum + iva);
+        }
     }
 
     marcarLineasRepetidas();
