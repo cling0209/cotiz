@@ -202,7 +202,8 @@ class NotaListadoService
         }
 
         if ($estado === 'sin_consultar') {
-            $query->whereNotExists(function ($q): void {
+            $query->where('notas.es_compra_agil', true)
+                ->whereNotExists(function ($q): void {
                 $q->selectRaw('1')
                     ->from('nota_mp_seguimientos as seg')
                     ->whereColumn('seg.nronota', 'notas.nronota');

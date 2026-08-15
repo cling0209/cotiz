@@ -10,6 +10,7 @@
 @php
     $desdeAdjudicadas = $desdeAdjudicadas ?? false;
     $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
+    $esInterna = $esInterna ?? $nota->esCotizacionInterna();
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
@@ -23,6 +24,8 @@
         <h1 class="h5 mb-0" id="cotiz-titulo-nota">
             @if($desdeAdjudicadas)
                 Cotizaciones adjudicadas
+            @elseif($esInterna && $esBorrador)
+                Nueva cotizaci&oacute;n interna
             @elseif($esBorrador)
                 Nueva cotizaci&oacute;n
             @else
@@ -41,7 +44,7 @@
         @endif
     </div>
 
-    @if($requiereNumeroCotizacion && ! $desdeAdjudicadas)
+    @if($requiereNumeroCotizacion && ! $desdeAdjudicadas && ! $esInterna)
         <div class="alert alert-info py-2 mb-2" role="alert">
             @if($esBorrador)
                 Use <strong>Importar desde Compra &Aacute;gil</strong> o <strong>Grabar</strong> para comenzar.
@@ -60,6 +63,9 @@
 
     <form method="post" action="{{ route('admin.cotizaciones.update', $nota->nronota) }}" id="form-cotizacion" data-no-loader>
         @csrf
+        @if($esInterna)
+            <input type="hidden" name="es_interna" id="es_interna" value="1">
+        @endif
 
         <fieldset class="cotiz-cabecera">
             <table id="tabla_datos1">
@@ -79,11 +85,12 @@
                             id="encargado"
                             maxlength="100"
                             value="{{ old('encargado', $nota->encargado) }}"
+                            @if($esInterna) readonly @endif
                             @class([
-                                'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || $errors->has('encargado'),
-                                'is-invalid' => $errors->has('encargado'),
+                                'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || (isset($errors) && $errors->has('encargado')),
+                                'is-invalid' => isset($errors) && $errors->has('encargado'),
                             ])
-                            placeholder="{{ $requiereNumeroCotizacion ? 'Se completa al importar o para PDF / Word' : '' }}"
+                            placeholder="{{ $esInterna ? 'CM- + n° de nota al grabar' : ($requiereNumeroCotizacion ? 'Se completa al importar o para PDF / Word' : '') }}"
                         >
                         @error('encargado')
                             <div class="text-danger small mt-1">{{ $message }}</div>
@@ -172,14 +179,18 @@
         <div class="cotiz-contenido-detalle">
         @unless($desdeAdjudicadas)
             <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
+                @unless($esInterna)
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
                     <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil 2.0
                 </button>
+                @endunless
                 <span class="small text-muted" id="cotiz-resumen-lineas-actual">
                     {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
                     ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
                 </span>
+                @unless($esInterna)
                 <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto, suba un PDF / Word o un Excel de listado de materiales.</span>
+                @endunless
             </div>
         @endunless
             @unless($desdeAdjudicadas)
@@ -2012,6 +2023,10 @@
             body.append('cantidad', cantidad);
             body.append('prod_valor', String(prodValor));
             body.append('factor_precio_venta', factorEnvio);
+            const esInternaInput = document.getElementById('es_interna');
+            if (esInternaInput) {
+                body.append('es_interna', esInternaInput.value);
+            }
             if (prodValorCosto !== '' && prodValorCosto != null) {
                 body.append('prod_valor_costo', prodValorCosto);
             }

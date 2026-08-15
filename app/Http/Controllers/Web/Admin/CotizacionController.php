@@ -44,11 +44,12 @@ class CotizacionController extends Controller
     {
         $usuario = $request->user()->username;
         $codigo = strtoupper(trim((string) $request->query('codigo', '')));
+        $interna = $request->boolean('es_interna');
 
         // Contar visita apenas llega desde Oportunidades (antes de posibles redirects).
         $this->registrarVisitaOportunidadSiCorresponde($request, $codigo);
 
-        if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+        if (! $interna && ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario))) {
             $this->olvidarNotaMaterializada();
             $params = ['nronota' => $pendiente->nronota];
             if ($codigo !== '') {
@@ -60,7 +61,7 @@ class CotizacionController extends Controller
                 ->with('error', 'Complete el número de cotización de la nota #'.$pendiente->nronota.' antes de crear otra.');
         }
 
-        if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+        if ($vacia = $this->notaService->ultimaSinProductos($usuario, $interna)) {
             $this->olvidarNotaMaterializada();
             $params = ['nronota' => $vacia->nronota];
             if ($codigo !== '') {
@@ -77,11 +78,13 @@ class CotizacionController extends Controller
 
         return $this->vistaFormulario(
             $request,
-            $this->notaService->borrador($usuario),
+            $this->notaService->borrador($usuario, $interna),
             $codigo,
-            $codigo !== ''
-                ? 'Importando Compra Ágil '.$codigo.'…'
-                : 'Importe desde Compra Ágil para comenzar. El número de nota se genera al importar o al grabar.',
+            $interna
+                ? 'Cotización interna: el código se asigna al grabar (CM- + número de nota) y no se consulta en Mercado Público.'
+                : ($codigo !== ''
+                    ? 'Importando Compra Ágil '.$codigo.'…'
+                    : 'Importe desde Compra Ágil para comenzar. El número de nota se genera al importar o al grabar.'),
         );
     }
 
@@ -141,9 +144,13 @@ class CotizacionController extends Controller
         $hayPrecioAntiguo = $lineas->contains(fn ($row) => $row['prod_valor_fecha_antigua']);
         $previewImportarCompraAgil = $this->previewVinculoCacheadoParaFormulario($nota, $codigoImportar);
 
+        $esInterna = $nota->esCotizacionInterna();
+        $requiereNumero = $esInterna ? false : $nota->requiereNumeroCotizacion();
+
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
             'esBorrador' => $esBorrador,
+            'esInterna' => $esInterna,
             'lineas' => $lineas,
             'total' => $lineas->sum(fn ($row) => $row['total']),
             'resumenLineas' => $esBorrador
@@ -151,9 +158,9 @@ class CotizacionController extends Controller
                 : $this->detalleService->resumenDesdeColeccionLineas($lineas),
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
-            'requiereNumeroCotizacion' => $nota->requiereNumeroCotizacion(),
+            'requiereNumeroCotizacion' => $requiereNumero,
             'abrirImportarAlInicio' => $request->query('from') !== 'adjudicadas'
-                && $nota->requiereNumeroCotizacion()
+                && $requiereNumero
                 && $lineas->isEmpty(),
             'codigoImportarCompraAgil' => $codigoImportar,
             'previewImportarCompraAgil' => $previewImportarCompraAgil,
@@ -209,24 +216,28 @@ class CotizacionController extends Controller
         }
 
         $usuario = $request->user()->username;
+        $interna = $request->boolean('es_interna');
 
-        if ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario)) {
+        if (! $interna && ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario))) {
             return [$pendiente, false];
         }
 
-        if ($vacia = $this->notaService->ultimaSinProductos($usuario)) {
+        if ($vacia = $this->notaService->ultimaSinProductos($usuario, $interna)) {
             return [$vacia, false];
         }
 
         if (! $persistir) {
-            return [$this->notaService->borrador($usuario), false];
+            return [$this->notaService->borrador($usuario, $interna), false];
         }
 
         if ($materializada = $this->notaMaterializadaEnSesion($usuario)) {
-            return [$materializada, false];
+            if ($materializada->esCotizacionInterna() === $interna) {
+                return [$materializada, false];
+            }
+            $this->olvidarNotaMaterializada();
         }
 
-        $nota = $this->notaService->crear($usuario);
+        $nota = $this->notaService->crear($usuario, interna: $interna);
         $this->recordarNotaMaterializada($nota);
 
         return [$nota, true];
@@ -363,7 +374,8 @@ class CotizacionController extends Controller
             $request->merge(['lineas' => $lineasJson]);
         }
 
-        $datos = $request->validate(array_merge($this->reglasCabecera(), [
+        $interna = $this->esInterna($request, $notaCheck);
+        $datos = $request->validate(array_merge($this->reglasCabecera($interna), [
             'lineas_json' => ['nullable', 'string', 'max:500000'],
             'lineas' => ['nullable', 'array'],
             'lineas.*.prod_item' => ['required_with:lineas', 'string', 'max:50'],
@@ -377,15 +389,17 @@ class CotizacionController extends Controller
             'lineas.*.observacion_cliente' => ['nullable', 'string'],
         ]));
 
-        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username);
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaParaValidar, $datos['encargado'], false, true)) {
-            return back()->withInput()->withErrors(['encargado' => $error]);
-        }
+        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username, $interna);
+        if (! $interna) {
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaParaValidar, $datos['encargado'], false, true)) {
+                return back()->withInput()->withErrors(['encargado' => $error]);
+            }
 
-        try {
-            $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
-        } catch (RuntimeException $e) {
-            return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
+            try {
+                $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
+            } catch (RuntimeException $e) {
+                return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
+            }
         }
 
         [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
@@ -447,22 +461,25 @@ class CotizacionController extends Controller
             $request->merge(['factor_precio_venta' => $factor]);
         }
 
-        $datos = $request->validate($this->reglasCabecera());
+        $interna = $this->esInterna($request, $notaCheck);
+        $datos = $request->validate($this->reglasCabecera($interna));
 
-        if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaCheck, $datos['encargado'], false, true)) {
-            return response()->json([
-                'error' => $error,
-                'errors' => ['encargado' => [$error]],
-            ], 422);
-        }
+        if (! $interna) {
+            if ($error = $this->notaService->validarNumeroCotizacionDisponible($notaCheck, $datos['encargado'], false, true)) {
+                return response()->json([
+                    'error' => $error,
+                    'errors' => ['encargado' => [$error]],
+                ], 422);
+            }
 
-        try {
-            $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
-        } catch (RuntimeException $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
-                'errors' => ['encargado' => [$e->getMessage()]],
-            ], 422);
+            try {
+                $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($datos['encargado']);
+            } catch (RuntimeException $e) {
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'errors' => ['encargado' => [$e->getMessage()]],
+                ], 422);
+            }
         }
 
         [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
@@ -570,7 +587,7 @@ class CotizacionController extends Controller
             return $this->respuestaNotaNoExiste($nronota);
         }
 
-        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username);
+        $notaParaValidar = $notaCheck ?? $this->notaService->borrador($request->user()->username, $request->boolean('es_interna'));
         if ($respuesta = $this->rechazarSinNumeroCotizacion($request, $notaParaValidar)) {
             return $respuesta;
         }
@@ -763,6 +780,10 @@ class CotizacionController extends Controller
             return $this->respuestaNotaNoExiste($nronota);
         }
 
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+            return $respuesta;
+        }
+
         $datos = $request->validate([
             'texto' => ['required', 'string', 'max:50000'],
             'desde' => ['nullable', 'integer', 'min:0'],
@@ -843,6 +864,10 @@ class CotizacionController extends Controller
             return $this->respuestaNotaNoExiste($nronota);
         }
 
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+            return $respuesta;
+        }
+
         $request->validate([
             'texto' => ['nullable', 'string', 'max:50000'],
         ]);
@@ -864,6 +889,10 @@ class CotizacionController extends Controller
             return $this->respuestaNotaNoExiste($nronota);
         }
 
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+            return $respuesta;
+        }
+
         $eliminadas = $this->detalleService->eliminarTodasLineasAgile($nota);
 
         return response()->json(array_merge([
@@ -879,6 +908,10 @@ class CotizacionController extends Controller
 
         if (! $notaCheck) {
             return $this->respuestaNotaNoExiste($nronota);
+        }
+
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($notaCheck)) {
+            return $respuesta;
         }
 
         $datos = $request->validate([
@@ -1383,12 +1416,12 @@ class CotizacionController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function reglasCabecera(): array
+    private function reglasCabecera(bool $interna = false): array
     {
         return [
             'descripcion' => ['required', 'string', 'max:500'],
             'empresa' => ['nullable', 'string', 'max:100'],
-            'encargado' => ['required', 'string', 'max:100'],
+            'encargado' => $interna ? ['nullable', 'string', 'max:100'] : ['required', 'string', 'max:100'],
             'celular' => ['nullable', 'string', 'max:15'],
             'contacto' => ['nullable', 'string', 'max:100'],
             'contactocorreo' => ['nullable', 'string', 'max:60'],
@@ -1614,8 +1647,32 @@ class CotizacionController extends Controller
         return $fallback;
     }
 
+    private function esInterna(Request $request, ?Nota $nota = null): bool
+    {
+        if ($nota !== null && $nota->esCotizacionInterna()) {
+            return true;
+        }
+
+        return $request->boolean('es_interna');
+    }
+
+    private function rechazarSiInternaNoUsaMp(Nota $nota): ?JsonResponse
+    {
+        if (! $nota->esCotizacionInterna()) {
+            return null;
+        }
+
+        return response()->json([
+            'error' => 'Esta cotización interna no se importa ni se consulta en Mercado Público.',
+        ], 422);
+    }
+
     private function rechazarSinNumeroCotizacion(Request $request, Nota $nota): RedirectResponse|JsonResponse|null
     {
+        if ($this->esInterna($request, $nota)) {
+            return null;
+        }
+
         if ($error = $this->notaService->validarNumeroCotizacion($nota)) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => $error], 422);

@@ -14,18 +14,23 @@ class NotaService
         protected NotaAuditoriaService $auditoria,
     ) {}
 
-    public function crear(string $usuario, ?string $descripcion = null, ?int $notaOrigen = null, ?string $sistema = null): Nota
-    {
-        return DB::transaction(function () use ($usuario, $descripcion, $notaOrigen, $sistema) {
+    public function crear(
+        string $usuario,
+        ?string $descripcion = null,
+        ?int $notaOrigen = null,
+        ?string $sistema = null,
+        bool $interna = false,
+    ): Nota {
+        return DB::transaction(function () use ($usuario, $descripcion, $notaOrigen, $sistema, $interna) {
             $nronota = $this->siguienteNronota();
             $notaSoftland = $this->siguienteNotaSoftland();
 
             $nota = Nota::create([
                 'nronota' => $nronota,
-                'descripcion' => $descripcion ?? 'Cotización '.$nronota,
+                'descripcion' => $descripcion ?? ($interna ? 'Cotización interna '.$nronota : 'Cotización '.$nronota),
                 'fecha' => now()->toDateString(),
                 'usuario' => $usuario,
-                'encargado' => '',
+                'encargado' => $interna ? $this->codigoInternoParaNota($nronota) : '',
                 'correlativo' => 1,
                 'empresa' => '',
                 'celular' => '',
@@ -37,24 +42,36 @@ class NotaService
                 'enviadoapi' => 0,
                 'diashabiles' => (int) config('cotiz.diashabiles_rm', 5),
                 'factor_precio_venta' => config('cotiz.factor_precio_venta'),
+                'es_compra_agil' => ! $interna,
             ]);
 
             $this->adoptarVerificacionParDesdeBorrador($nronota);
-            $this->auditoria->registrarAgregar($nota, $usuario, 'Alta de cotización');
+            $this->auditoria->registrarAgregar(
+                $nota,
+                $usuario,
+                $interna ? 'Alta de cotización interna' : 'Alta de cotización',
+            );
 
             return $nota;
         });
+    }
+
+    public function codigoInternoParaNota(int $nronota): string
+    {
+        $prefijo = (string) config('cotiz.cotizacion_interna_prefijo', 'CM-');
+
+        return $prefijo.$nronota;
     }
 
     /**
      * Nota en memoria (sin grabar) para el formulario de ingreso.
      * El nronota se asigna recién al importar productos o al grabar.
      */
-    public function borrador(string $usuario): Nota
+    public function borrador(string $usuario, bool $interna = false): Nota
     {
         $nota = new Nota([
             'nronota' => 0,
-            'descripcion' => 'Nueva cotización',
+            'descripcion' => $interna ? 'Nueva cotización interna' : 'Nueva cotización',
             'fecha' => now()->toDateString(),
             'usuario' => $usuario,
             'encargado' => '',
@@ -71,6 +88,7 @@ class NotaService
             'diashabiles' => (int) config('cotiz.diashabiles_rm', 5),
             'factor_precio_venta' => config('cotiz.factor_precio_venta'),
             'ocompra' => '',
+            'es_compra_agil' => ! $interna,
         ]);
         $nota->exists = false;
 
@@ -94,13 +112,14 @@ class NotaService
             $nronota = $this->siguienteNronota();
 
             // La copia queda con el mismo ejecutivo dueño, aunque la cree un superadmin.
+            $esInterna = $origen->esCotizacionInterna();
             $copia = Nota::create([
                 'nronota' => $nronota,
-                'correlativo' => $this->siguienteCorrelativo((string) $origen->encargado),
+                'correlativo' => $esInterna ? 1 : $this->siguienteCorrelativo((string) $origen->encargado),
                 'descripcion' => $origen->descripcion,
                 'fecha' => now()->toDateString(),
                 'usuario' => $origen->usuario,
-                'encargado' => $origen->encargado,
+                'encargado' => $esInterna ? $this->codigoInternoParaNota($nronota) : $origen->encargado,
                 'empresa' => $origen->empresa,
                 'celular' => $origen->celular,
                 'contacto' => $origen->contacto,
@@ -118,6 +137,7 @@ class NotaService
                 'region' => $origen->region,
                 'nombre_region' => $origen->nombre_region,
                 'comuna' => $origen->comuna,
+                'es_compra_agil' => ! $esInterna,
             ]);
 
             if ($copiarDetalle) {
@@ -273,6 +293,7 @@ class NotaService
     {
         return Nota::query()
             ->where('usuario', $usuario)
+            ->where('es_compra_agil', true)
             ->whereRaw("trim(coalesce(encargado, '')) = ''")
             ->orderByDesc('nronota')
             ->first();
@@ -280,10 +301,16 @@ class NotaService
 
     /**
      * Última nota del usuario sin líneas de detalle (sin productos).
+     * Por defecto solo reutiliza cotizaciones de Mercado Público; las internas
+     * se piden con $interna = true para no mezclar ambos flujos.
      */
-    public function ultimaSinProductos(string $usuario): ?Nota
+    public function ultimaSinProductos(string $usuario, bool $interna = false): ?Nota
     {
-        $ultima = $this->obtenerUltima($usuario);
+        $ultima = Nota::query()
+            ->where('usuario', $usuario)
+            ->where('es_compra_agil', ! $interna)
+            ->orderByDesc('nronota')
+            ->first();
         if ($ultima === null) {
             return null;
         }
@@ -317,10 +344,18 @@ class NotaService
 
         $factor = $factorParsed ?? round((float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta')), 2);
 
+        $encargado = $datos['encargado'] ?? $nota->encargado;
+        if ($nota->esCotizacionInterna()) {
+            $encargado = trim((string) $nota->encargado);
+            if ($encargado === '' && (int) $nota->nronota > 0) {
+                $encargado = $this->codigoInternoParaNota((int) $nota->nronota);
+            }
+        }
+
         $payload = [
             'descripcion' => $datos['descripcion'] ?? $nota->descripcion,
             'empresa' => $datos['empresa'] ?? $nota->empresa,
-            'encargado' => $datos['encargado'] ?? $nota->encargado,
+            'encargado' => $encargado,
             'celular' => $datos['celular'] ?? $nota->celular,
             'contacto' => $datos['contacto'] ?? $nota->contacto,
             'contactocorreo' => $datos['contactocorreo'] ?? $nota->contactocorreo,

@@ -15,6 +15,10 @@
                 <form action="{{ route('admin.cotizaciones.create') }}" method="post">@csrf
                     <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva</button>
                 </form>
+                <form action="{{ route('admin.cotizaciones.create') }}" method="post">@csrf
+                    <input type="hidden" name="es_interna" value="1">
+                    <button type="submit" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva interna</button>
+                </form>
             @endif
             <a href="{{ route('admin.cotizaciones.retomar') }}" class="btn btn-outline-secondary btn-sm">Retomar &uacute;ltima</a>
             <a href="{{ route('admin.cotizaciones.carga-archivo.index') }}" class="btn btn-outline-primary btn-sm">
@@ -154,7 +158,10 @@
                             $estaAceptada = strtolower(trim((string) $nota->estado)) === 'aceptada';
                             $sinUsuario = trim((string) $nota->usuario) === '';
                             $esSegundoLlamado = in_array((int) $nota->nronota, $nronotasSegundoLlamado, true);
-                            $estadoMp = $nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar';
+                            $esInterna = $nota->esCotizacionInterna();
+                            $estadoMp = $esInterna
+                                ? 'no_aplica'
+                                : ($nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar');
                             $esGanadorPropio = $estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio);
                             $esGanadorGrupo = $nota->mpSeguimiento?->esGanadorGrupo() ?? false;
                             $textoOcMp = $nota->mpSeguimiento?->textoOrdenCompraMp() ?? '—';

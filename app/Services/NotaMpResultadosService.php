@@ -743,6 +743,7 @@ class NotaMpResultadosService
                 'seg.fecha_ultimo_cambio as mp_fecha_ultimo_cambio',
             ])
             ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->where('notas.es_compra_agil', true)
             ->whereRaw("trim(coalesce(notas.encargado, '')) <> ''")
             ->where(function ($q) {
                 // Alineado con el badge «Pendientes seguimiento»: debe poder reconsultarse

@@ -120,7 +120,7 @@ class CotizacionListadoController extends Controller
 
         $copiarDetalle = $request->boolean('copiar_detalle', true);
 
-        if ($copiarDetalle) {
+        if ($copiarDetalle && ! $nota->esCotizacionInterna()) {
             $par = $this->notaService->parIdenticoDelCodigo((string) $nota->encargado);
             if ($par !== null) {
                 [$original, $sinCambios] = $par;

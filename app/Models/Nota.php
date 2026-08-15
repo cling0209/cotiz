@@ -25,6 +25,7 @@ class Nota extends Model
         'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
         'estadofecha', 'estadousuario', 'ocompra', 'fechaentrega', 'factor_precio_venta',
         'direccion_entrega', 'region', 'nombre_region', 'comuna',
+        'es_compra_agil',
     ];
 
     protected function casts(): array
@@ -38,6 +39,7 @@ class Nota extends Model
             'diashabiles' => 'integer',
             'region' => 'integer',
             'correlativo' => 'integer',
+            'es_compra_agil' => 'boolean',
         ];
     }
 
@@ -82,5 +84,10 @@ class Nota extends Model
     public function esCopiaDeCotizacion(): bool
     {
         return (int) ($this->correlativo ?? 1) > 1;
+    }
+
+    public function esCotizacionInterna(): bool
+    {
+        return $this->es_compra_agil === false;
     }
 }

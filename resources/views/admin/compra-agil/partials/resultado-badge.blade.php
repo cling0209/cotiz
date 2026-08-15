@@ -6,6 +6,7 @@
         'cancelada' => ['class' => 'secondary', 'label' => 'Cancelada'],
         'no_encontrada' => ['class' => 'dark', 'label' => 'No existe en MP'],
         'sin_consultar' => ['class' => 'info', 'label' => 'Sin consultar MP'],
+        'no_aplica' => ['class' => 'secondary', 'label' => 'No aplica MP'],
     ];
     $info = $badges[$resultado ?? ''] ?? ['class' => 'secondary', 'label' => $resultado ?: '—'];
 @endphp

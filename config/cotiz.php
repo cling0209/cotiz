@@ -14,6 +14,8 @@ return [
     'concepto_bodega' => env('COTIZ_CONCEPTO_BODEGA', '26'),
     'codigo_proveedor' => env('COTIZ_CODIGO_PROVEEDOR', '76185139'),
     'factor_precio_venta' => (float) env('COTIZ_FACTOR_PRECIO_VENTA', 1.22),
+    // Prefijo fijo del código de cotizaciones internas (no Mercado Público).
+    'cotizacion_interna_prefijo' => env('COTIZ_COTIZACION_INTERNA_PREFIJO', 'CM-'),
     // Factor por región al importar Compra Ágil / Oportunidades (editable después en la nota).
     'factor_precio_venta_rm' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_RM', 1.22),
     'factor_precio_venta_otras' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_OTRAS', 1.30),
