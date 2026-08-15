@@ -95,6 +95,13 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('guardados', 1);
 
         Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/bases.pdf');
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/manifest.json');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('consultados.0', '1000-1-COT26');
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
@@ -109,5 +116,49 @@ class OportunidadAdjuntosTest extends TestCase
             ]))
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_superadmin_marca_consulta_si_no_hay_adjuntos(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1000-1-COT26',
+            'nombre' => 'Papel bond',
+            'organismo' => 'Hospital Demo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 500000,
+            'moneda' => 'CLP',
+            'fecha_publicacion' => now()->subDay(),
+            'fecha_cierre' => now()->addDays(5),
+            'palabras_coinciden' => ['papel'],
+            'cantidad_productos' => 3,
+            'fecha_busqueda' => now()->toDateString(),
+            'indice_region_config' => 0,
+        ]);
+
+        Http::fake([
+            'servicios-compra-agil.mercadopublico.cl/v1/adjuntos-compra-agil/listar/*' => Http::response([
+                'success' => 'OK',
+                'payload' => ['files' => []],
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK', 'payload' => []], 200),
+            'buscador.mercadopublico.cl/*' => Http::response('<html></html>', 200),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.adjuntos.buscar'), [
+                'codigo' => '1000-1-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('sin_adjuntos', true)
+            ->assertJsonPath('guardados', 0);
+
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/manifest.json');
     }
 }

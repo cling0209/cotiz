@@ -79,13 +79,14 @@ class OportunidadAdjuntoService
     }
 
     /**
-     * @return array<string, list<string>>
+     * @return array{archivos: array<string, list<string>>, consultados: list<string>}
      */
-    public function archivosPorCodigo(): array
+    public function indicePorCodigo(): array
     {
         $this->assertConfigurado();
         $prefix = $this->prefix();
         $porCodigo = [];
+        $consultados = [];
         $disk = Storage::disk($this->disk());
         $root = $prefix === '' ? '' : $prefix;
 
@@ -99,10 +100,14 @@ class OportunidadAdjuntoService
                 continue;
             }
             $nombre = basename($partes[1]);
-            if ($nombre === '' || $nombre === 'manifest.json') {
+            if ($nombre === '') {
                 continue;
             }
             $codigo = strtoupper($partes[0]);
+            $consultados[$codigo] = true;
+            if ($nombre === 'manifest.json') {
+                continue;
+            }
             $porCodigo[$codigo] ??= [];
             $porCodigo[$codigo][] = $nombre;
         }
@@ -113,7 +118,21 @@ class OportunidadAdjuntoService
         }
         unset($nombres);
 
-        return $porCodigo;
+        $codigos = array_keys($consultados);
+        sort($codigos);
+
+        return [
+            'archivos' => $porCodigo,
+            'consultados' => $codigos,
+        ];
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public function archivosPorCodigo(): array
+    {
+        return $this->indicePorCodigo()['archivos'];
     }
 
     /**
@@ -152,7 +171,7 @@ class OportunidadAdjuntoService
     }
 
     /**
-     * @return array{codigo: string, guardados: int, omitidos: int, archivos: list<array{nombre: string, bytes: int, mime: string}>}
+     * @return array{codigo: string, guardados: int, omitidos: int, archivos: list<array{nombre: string, bytes: int, mime: string}>, consultado: true, sin_adjuntos: bool}
      */
     public function buscarYGuardar(string $codigo): array
     {
@@ -170,10 +189,6 @@ class OportunidadAdjuntoService
         }
 
         $candidatos = $this->recolectarCandidatos($codigo);
-        if ($candidatos === []) {
-            throw new RuntimeException('No se encontraron adjuntos en Mercado Público para esta cotización.');
-        }
-
         $disk = Storage::disk($this->disk());
         $guardados = 0;
         $omitidos = 0;
@@ -196,18 +211,28 @@ class OportunidadAdjuntoService
         }
 
         $archivos = $this->listar($codigo);
-        $disk->put($this->carpeta($codigo).'/manifest.json', json_encode([
-            'codigo' => $codigo,
-            'actualizado_at' => now()->toIso8601String(),
-            'archivos' => array_column($archivos, 'nombre'),
-        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->escribirManifest($codigo, array_column($archivos, 'nombre'));
 
         return [
             'codigo' => $codigo,
             'guardados' => $guardados,
             'omitidos' => $omitidos,
             'archivos' => $archivos,
+            'consultado' => true,
+            'sin_adjuntos' => $archivos === [],
         ];
+    }
+
+    /**
+     * @param  list<string>  $nombres
+     */
+    private function escribirManifest(string $codigo, array $nombres): void
+    {
+        Storage::disk($this->disk())->put($this->carpeta($codigo).'/manifest.json', json_encode([
+            'codigo' => $codigo,
+            'actualizado_at' => now()->toIso8601String(),
+            'archivos' => $nombres,
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     }
 
     public function htmlPreviewExcel(string $contenido): string

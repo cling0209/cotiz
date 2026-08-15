@@ -655,6 +655,7 @@
         };
         const adjuntosPorCodigo = {};
         const adjuntosArchivosPorCodigo = {};
+        const adjuntosConsultados = {};
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
@@ -1478,12 +1479,13 @@
                     credentials: 'same-origin',
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.ok || !data.conteos) {
+                if (!res.ok || !data.ok) {
                     return;
                 }
                 Object.keys(adjuntosPorCodigo).forEach((k) => { delete adjuntosPorCodigo[k]; });
                 Object.keys(adjuntosArchivosPorCodigo).forEach((k) => { delete adjuntosArchivosPorCodigo[k]; });
-                Object.entries(data.conteos).forEach(([cod, n]) => {
+                Object.keys(adjuntosConsultados).forEach((k) => { delete adjuntosConsultados[k]; });
+                Object.entries(data.conteos || {}).forEach(([cod, n]) => {
                     adjuntosPorCodigo[String(cod).toUpperCase()] = Number(n) || 0;
                 });
                 if (data.archivos && typeof data.archivos === 'object') {
@@ -1493,6 +1495,12 @@
                             : [];
                     });
                 }
+                (Array.isArray(data.consultados) ? data.consultados : []).forEach((cod) => {
+                    adjuntosConsultados[String(cod).toUpperCase()] = true;
+                });
+                Object.keys(adjuntosPorCodigo).forEach((cod) => {
+                    adjuntosConsultados[cod] = true;
+                });
                 renderTabla(false);
             } catch (_e) {
                 // silencioso
@@ -1535,7 +1543,16 @@
                     : [];
                 adjuntosArchivosPorCodigo[codigo] = nombresResp;
                 adjuntosPorCodigo[codigo] = nombresResp.length || (Number(data.guardados) || 0);
+                adjuntosConsultados[codigo] = true;
                 renderTabla(false);
+                if (data.sin_adjuntos) {
+                    if (window.AdminDialog?.alert) {
+                        await AdminDialog.alert('No hay adjuntos en Mercado Público para esta cotización.', {
+                            title: 'Adjuntos',
+                            type: 'info',
+                        });
+                    }
+                }
             } catch (e) {
                 const err = e && e.message ? e.message : 'Error de red.';
                 if (window.AdminDialog?.alert) {
@@ -1823,7 +1840,7 @@
                 const nombresAdj = Array.isArray(adjuntosArchivosPorCodigo[codigo])
                     ? adjuntosArchivosPorCodigo[codigo]
                     : [];
-                const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar && nAdj === 0)
+                const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar && nAdj === 0 && !adjuntosConsultados[codigo])
                     ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap w-100 btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
                         <i class="bi bi-cloud-download"></i> Buscar adjuntos
                     </button>`

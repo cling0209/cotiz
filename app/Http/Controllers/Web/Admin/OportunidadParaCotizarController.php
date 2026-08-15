@@ -126,11 +126,12 @@ class OportunidadParaCotizarController extends Controller
         }
 
         try {
-            $archivos = $this->adjuntos->archivosPorCodigo();
+            $indice = $this->adjuntos->indicePorCodigo();
         } catch (RuntimeException $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
 
+        $archivos = $indice['archivos'];
         $conteos = [];
         foreach ($archivos as $codigo => $nombres) {
             $conteos[$codigo] = count($nombres);
@@ -140,6 +141,7 @@ class OportunidadParaCotizarController extends Controller
             'ok' => true,
             'conteos' => $conteos,
             'archivos' => $archivos,
+            'consultados' => $indice['consultados'],
         ]);
     }
 
@@ -167,6 +169,8 @@ class OportunidadParaCotizarController extends Controller
             'guardados' => $resultado['guardados'],
             'omitidos' => $resultado['omitidos'],
             'archivos' => $resultado['archivos'],
+            'consultado' => true,
+            'sin_adjuntos' => (bool) ($resultado['sin_adjuntos'] ?? false),
         ]);
     }
 
