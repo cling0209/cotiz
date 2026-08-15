@@ -55,6 +55,20 @@
                         <i class="bi bi-trophy"></i> Resultados Compra Ágil
                     </a>
                 @endif
+            @elseif(auth()->user()->isEjecutivo())
+                <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
+                    <i class="bi bi-box-seam"></i> Productos
+                </a>
+            @endif
+            @if(auth()->user()->canVerOportunidades())
+                <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}" data-no-loader>
+                    <i class="bi bi-lightning-charge"></i> Oportunidades
+                </a>
+                <a href="{{ route('admin.producto-mp.encontrados.index') }}" class="nav-link-admin {{ request()->routeIs('admin.producto-mp.encontrados.*') ? 'active' : '' }}" data-no-loader>
+                    <i class="bi bi-box-seam"></i> Productos MP
+                </a>
+            @endif
+            @if(auth()->user()->isSuperAdmin())
                 <div class="dropdown">
                     <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.producto-mp.frases.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
@@ -109,18 +123,6 @@
                         </li>
                     </ul>
                 </div>
-            @elseif(auth()->user()->isEjecutivo())
-                <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
-                    <i class="bi bi-box-seam"></i> Productos
-                </a>
-            @endif
-            @if(auth()->user()->canVerOportunidades())
-                <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}" data-no-loader>
-                    <i class="bi bi-lightning-charge"></i> Oportunidades
-                </a>
-                <a href="{{ route('admin.producto-mp.encontrados.index') }}" class="nav-link-admin {{ request()->routeIs('admin.producto-mp.encontrados.*') ? 'active' : '' }}" data-no-loader>
-                    <i class="bi bi-box-seam"></i> Productos MP
-                </a>
             @endif
             <div class="dropdown">
                 <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.account.password') ? 'active' : '' }}"
