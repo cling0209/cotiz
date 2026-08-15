@@ -219,5 +219,12 @@ return [
         ),
         'adjuntos_disk' => env('R2_ADJUNTOS_DISK', env('PRODUCT_STORAGE_DISK', 'r2')),
         'adjuntos_prefix' => env('R2_ADJUNTOS_PREFIX', 'mp-adjuntos'),
+        'compra_agil_adjuntos_base' => env(
+            'MP_COMPRA_AGIL_ADJUNTOS_BASE',
+            'https://servicios-compra-agil.mercadopublico.cl',
+        ),
+        // Clave pública del buscador (header user_key). Vacío = se obtiene del JS del portal.
+        'compra_agil_user_key' => env('MP_COMPRA_AGIL_USER_KEY', ''),
+        'http_without_verifying' => filter_var(env('MP_HTTP_WITHOUT_VERIFYING', false), FILTER_VALIDATE_BOOL),
     ],
 ];

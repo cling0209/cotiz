@@ -22,6 +22,7 @@ class OportunidadAdjuntosTest extends TestCase
             'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
             'cotiz.mercadopublico.adjuntos_disk' => 'r2',
             'cotiz.mercadopublico.adjuntos_prefix' => 'mp-adjuntos',
+            'cotiz.mercadopublico.compra_agil_user_key' => 'test-user-key',
             'filesystems.disks.r2.bucket' => 'test-bucket',
             'filesystems.disks.r2.key' => 'test-key',
             'filesystems.disks.r2.secret' => 'test-secret',
@@ -68,20 +69,20 @@ class OportunidadAdjuntosTest extends TestCase
         $pdf = '%PDF-1.4 fake-pdf-content-xxxxxxxx';
 
         Http::fake([
-            'api2.mercadopublico.cl/v2/compra-agil/1000-1-COT26' => Http::response([
+            'servicios-compra-agil.mercadopublico.cl/v1/adjuntos-compra-agil/listar/*' => Http::response([
                 'success' => 'OK',
                 'payload' => [
-                    'codigo' => '1000-1-COT26',
-                    'documentos' => [
-                        ['id' => '5f47e991-c525-40a0-b36c-44d53e538ae5', 'nombre' => 'bases.pdf'],
+                    'files' => [
+                        ['id' => '5f47e991-c525-40a0-b36c-44d53e538ae5', 'nombreArchivo' => 'bases.pdf'],
                     ],
                 ],
             ], 200),
-            'adjunto.mercadopublico.cl/adjunto-compra-agil/descargar/*' => Http::response(
+            'servicios-compra-agil.mercadopublico.cl/v1/adjuntos-compra-agil/descargar/*' => Http::response(
                 $pdf,
                 200,
                 ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="bases.pdf"'],
             ),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK', 'payload' => []], 200),
             'buscador.mercadopublico.cl/*' => Http::response('<html></html>', 200),
         ]);
 

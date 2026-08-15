@@ -12,6 +12,8 @@ use ZipArchive;
 
 class OportunidadAdjuntoService
 {
+    private ?string $compraAgilUserKeyMemo = null;
+
     public function __construct(
         protected CompraAgilApiService $compraAgilApi,
     ) {}
@@ -237,6 +239,10 @@ class OportunidadAdjuntoService
     {
         $porNombre = [];
 
+        foreach ($this->desdeServiciosCompraAgil($codigo) as $item) {
+            $porNombre[$item['nombre']] = $item;
+        }
+
         foreach ($this->desdeApiDetalle($codigo) as $item) {
             $porNombre[$item['nombre']] = $item;
         }
@@ -246,6 +252,113 @@ class OportunidadAdjuntoService
         }
 
         return array_values($porNombre);
+    }
+
+    /**
+     * Adjuntos reales de Compra Ágil: UUID vía servicios-compra-agil (no el id numérico de api2).
+     *
+     * @return list<array{nombre: string, contents: string, mime: string}>
+     */
+    private function desdeServiciosCompraAgil(string $codigo): array
+    {
+        $userKey = $this->compraAgilUserKey();
+        if ($userKey === '') {
+            return [];
+        }
+
+        $base = rtrim((string) config(
+            'cotiz.mercadopublico.compra_agil_adjuntos_base',
+            'https://servicios-compra-agil.mercadopublico.cl',
+        ), '/');
+
+        try {
+            $response = $this->httpAdjuntosMp()
+                ->withHeaders(['user_key' => $userKey, 'Accept' => 'application/json'])
+                ->get($base.'/v1/adjuntos-compra-agil/listar/'.$codigo);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! $response->successful()) {
+            return [];
+        }
+
+        $files = data_get($response->json(), 'payload.files');
+        if (! is_array($files)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($files as $file) {
+            if (! is_array($file)) {
+                continue;
+            }
+            $id = trim((string) ($file['id'] ?? ''));
+            $nombre = trim((string) ($file['nombreArchivo'] ?? $file['nombre'] ?? ''));
+            if ($id === '' || ! preg_match('/^[0-9a-f-]{36}$/i', $id)) {
+                continue;
+            }
+            if ($nombre === '') {
+                $nombre = $id.'.bin';
+            }
+
+            $bajado = $this->bajarBinario(
+                $base.'/v1/adjuntos-compra-agil/descargar/'.$id,
+                $nombre,
+                ['user_key' => $userKey],
+            );
+            if ($bajado !== null) {
+                $out[] = $bajado;
+            }
+        }
+
+        return $out;
+    }
+
+    private function compraAgilUserKey(): string
+    {
+        if ($this->compraAgilUserKeyMemo !== null) {
+            return $this->compraAgilUserKeyMemo;
+        }
+
+        $configured = trim((string) config('cotiz.mercadopublico.compra_agil_user_key', ''));
+        if ($configured !== '') {
+            return $this->compraAgilUserKeyMemo = $configured;
+        }
+
+        try {
+            $ua = ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'];
+            $html = (string) $this->httpAdjuntosMp()->withHeaders($ua)
+                ->get('https://buscador.mercadopublico.cl/')
+                ->body();
+            if (! preg_match('#/static/js/main\.[a-f0-9]+\.js#i', $html, $m)) {
+                return $this->compraAgilUserKeyMemo = '';
+            }
+            $js = (string) $this->httpAdjuntosMp()->withHeaders($ua)
+                ->get('https://buscador.mercadopublico.cl'.$m[0])
+                ->body();
+            if (! preg_match('/mn="([0-9a-fA-F-]{16,})"/', $js, $key)) {
+                return $this->compraAgilUserKeyMemo = '';
+            }
+
+            return $this->compraAgilUserKeyMemo = $key[1];
+        } catch (\Throwable) {
+            return $this->compraAgilUserKeyMemo = '';
+        }
+    }
+
+    private function httpAdjuntosMp(): \Illuminate\Http\Client\PendingRequest
+    {
+        $pending = Http::timeout(60)->withHeaders([
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept' => '*/*',
+        ]);
+
+        if ((bool) config('cotiz.mercadopublico.http_without_verifying')) {
+            $pending = $pending->withoutVerifying();
+        }
+
+        return $pending;
     }
 
     /**
@@ -397,20 +510,21 @@ class OportunidadAdjuntoService
     /**
      * @return array{nombre: string, contents: string, mime: string}|null
      */
-    private function bajarBinario(string $url, string $nombreSugerido): ?array
+    /**
+     * @param  array<string, string>  $extraHeaders
+     * @return array{nombre: string, contents: string, mime: string}|null
+     */
+    private function bajarBinario(string $url, string $nombreSugerido, array $extraHeaders = []): ?array
     {
         $ticket = trim((string) config('cotiz.mercadopublico.ticket', ''));
         $esApiMp = str_contains(strtolower($url), 'api2.mercadopublico.cl');
-        $headers = [
-            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept' => '*/*',
-        ];
+        $headers = $extraHeaders;
         if ($esApiMp && $ticket !== '') {
             $headers['ticket'] = $ticket;
         }
 
         try {
-            $pending = Http::timeout(60)->withHeaders($headers);
+            $pending = $this->httpAdjuntosMp()->withHeaders($headers);
             if ($esApiMp && $ticket !== '') {
                 $pending = $pending->withQueryParameters(['ticket' => $ticket]);
             }
