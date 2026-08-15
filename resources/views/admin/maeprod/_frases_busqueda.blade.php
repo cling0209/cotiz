@@ -1,10 +1,10 @@
                 @if($puedeGestionarFrases)
                 <div class="card shadow-sm mt-3">
-                    <div class="card-header py-2 small fw-semibold">Palabras clave MP</div>
+                    <div class="card-header py-2 small fw-semibold">Palabras clave producto</div>
                     <div class="card-body">
                         <p class="small text-muted mb-3">
                             Palabra clave opcional asociada a este producto para <strong>encontrar</strong> líneas en Compra Ágil.
-                            El mantenedor principal (sin código) está en Mantenedores → Palabras clave MP.
+                            El mantenedor principal (sin código) está en Mantenedores → Palabras clave producto.
                             No reemplazan las frases de vincular Agile ni las palabras clave de Oportunidades.
                         </p>
                         <form method="post"
@@ -14,7 +14,7 @@
                             @csrf
                             <input type="hidden" name="prod_item" value="{{ $producto->prod_item }}">
                             <input type="hidden" name="redirect_producto" value="1">
-                            <label class="form-label small mb-1" for="frase_busqueda_mp">Nueva palabra clave</label>
+                            <label class="form-label small mb-1" for="frase_busqueda_mp">Nueva palabra clave producto</label>
                             <div class="input-group input-group-sm">
                                 <input type="text" name="frase" id="frase_busqueda_mp"
                                        class="form-control @error('frase') is-invalid @enderror"

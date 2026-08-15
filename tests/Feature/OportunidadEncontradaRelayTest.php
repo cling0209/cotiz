@@ -240,7 +240,7 @@ class OportunidadEncontradaRelayTest extends TestCase
             ->assertOk()
             ->assertSee('sincronizadas desde el sitio', false)
             ->assertDontSee('Buscar cotizaciones', false)
-            ->assertDontSee('Palabras clave', false);
+            ->assertDontSee('Palabras clave cotización', false);
 
         $this->actingAs($user)
             ->get(route('admin.oportunidades.palabras-clave.index'))

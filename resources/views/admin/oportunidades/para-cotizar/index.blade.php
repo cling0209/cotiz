@@ -24,7 +24,7 @@
         <div class="d-flex flex-wrap gap-2 align-items-center">
             @if($puedePalabras ?? false)
             <a href="{{ route('admin.oportunidades.palabras-clave.index') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-tags"></i> Palabras clave
+                <i class="bi bi-tags"></i> Palabras clave cotización
             </a>
             @endif
             @if($puedeBuscar)

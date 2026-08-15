@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Palabras clave MP')
+@section('title', 'Palabras clave producto')
 
 @section('content')
 @php
@@ -14,7 +14,7 @@
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h1 class="h3 mb-1">Palabras clave MP</h1>
+            <h1 class="h3 mb-1">Palabras clave producto</h1>
             <p class="text-muted mb-0 small">
                 Textos para encontrar <strong>&iacute;tems de producto</strong> en Compra &Aacute;gil
                 (nombre y descripci&oacute;n de la l&iacute;nea; no el t&iacute;tulo de la CA).
@@ -41,7 +41,7 @@
             <form method="post" action="{{ route('admin.producto-mp.frases.store') }}" class="row g-3">
                 @csrf
                 <div class="col-md-8 col-lg-5">
-                    <label class="form-label small mb-1" for="frase">Nueva palabra clave</label>
+                    <label class="form-label small mb-1" for="frase">Nueva palabra clave producto</label>
                     <input type="text" name="frase" id="frase" class="form-control form-control-sm @error('frase') is-invalid @enderror"
                            maxlength="200" required placeholder="Ej: barra pritt, papel oficio 75..."
                            value="{{ old('frase') }}">
@@ -168,7 +168,7 @@
                     @empty
                         <tr>
                             <td colspan="6" class="text-center text-muted py-4">
-                                A&uacute;n no hay palabras clave. Agregue al menos una para buscar productos MP.
+                                A&uacute;n no hay palabras clave producto. Agregue al menos una para buscar productos MP.
                             </td>
                         </tr>
                     @endforelse

@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Palabras clave')
+@section('title', 'Palabras clave cotización')
 
 @section('content')
 @php
@@ -14,7 +14,7 @@
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h1 class="h3 mb-1">Palabras clave</h1>
+            <h1 class="h3 mb-1">Palabras clave cotización</h1>
             <p class="text-muted mb-0 small">
                 Temas que usa este sitio para encontrar oportunidades publicadas en Compra &Aacute;gil
                 (solo con <code>MERCADOPUBLICO_ANALISIS_ADMIN=true</code>).
@@ -39,7 +39,7 @@
             <form method="post" action="{{ route('admin.oportunidades.palabras-clave.store') }}" class="row g-3">
                 @csrf
                 <div class="col-md-8 col-lg-5">
-                    <label class="form-label small mb-1" for="frase">Nueva palabra clave</label>
+                    <label class="form-label small mb-1" for="frase">Nueva palabra clave cotización</label>
                     <input type="text" name="frase" id="frase" class="form-control form-control-sm @error('frase') is-invalid @enderror"
                            maxlength="200" required placeholder="Ej: servicio de aseo, alimentaci&oacute;n..."
                            value="{{ old('frase') }}">
@@ -166,7 +166,7 @@
                     @empty
                         <tr>
                             <td colspan="6" class="text-center text-muted py-4">
-                                A&uacute;n no hay palabras clave. Agregue al menos una para buscar oportunidades.
+                                A&uacute;n no hay palabras clave cotizaci&oacute;n. Agregue al menos una para buscar oportunidades.
                             </td>
                         </tr>
                     @endforelse

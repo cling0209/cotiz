@@ -70,7 +70,7 @@ class ProductoMpBusquedaService
         }
 
         if (MaeprodFraseBusqueda::query()->doesntExist()) {
-            throw new RuntimeException('No hay palabras clave MP. Agréguelas en el mantenedor.');
+            throw new RuntimeException('No hay palabras clave producto. Agréguelas en el mantenedor.');
         }
 
         $regiones = CompraAgilRegionScope::regionesIncluidas();

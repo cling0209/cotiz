@@ -65,7 +65,7 @@ class ProductoMpBusquedaTest extends TestCase
         $this->actingAs($this->superadmin)
             ->get(route('admin.producto-mp.frases.index'))
             ->assertOk()
-            ->assertSee('Nueva palabra clave')
+            ->assertSee('Nueva palabra clave producto')
             ->assertSee('Regiones (opcional)')
             ->assertDontSee('Código producto');
 
@@ -129,7 +129,7 @@ class ProductoMpBusquedaTest extends TestCase
             ->assertOk()
             ->assertSee('Frases para vincular')
             ->assertSee('adhesivo barra')
-            ->assertSee('Palabras clave MP')
+            ->assertSee('Palabras clave producto')
             ->assertSee('barra pritt');
     }
 

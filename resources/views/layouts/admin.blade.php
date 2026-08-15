@@ -89,7 +89,7 @@
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.oportunidades.palabras-clave.*') ? 'active' : '' }}"
                                    href="{{ route('admin.oportunidades.palabras-clave.index') }}">
-                                    <i class="bi bi-tags"></i> Palabras clave
+                                    <i class="bi bi-tags"></i> Palabras clave cotización
                                 </a>
                             </li>
                         @endif
@@ -97,7 +97,7 @@
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.producto-mp.frases.*') ? 'active' : '' }}"
                                    href="{{ route('admin.producto-mp.frases.index') }}">
-                                    <i class="bi bi-search"></i> Palabras clave MP
+                                    <i class="bi bi-search"></i> Palabras clave producto
                                 </a>
                             </li>
                         @endif
