@@ -54,7 +54,7 @@ class ProductoMpBusquedaTest extends TestCase
         ]);
     }
 
-    public function test_superadmin_puede_agregar_frase_busqueda_sin_tocar_frases_agile(): void
+    public function test_mantenedor_agrega_palabra_clave_sin_codigo_ni_tocar_frases_agile(): void
     {
         MaeprodFrase::query()->create([
             'prod_item' => 'DEMO003',
@@ -63,49 +63,52 @@ class ProductoMpBusquedaTest extends TestCase
         ]);
 
         $this->actingAs($this->superadmin)
+            ->get(route('admin.producto-mp.frases.index'))
+            ->assertOk()
+            ->assertSee('Nueva palabra clave')
+            ->assertSee('Regiones (opcional)')
+            ->assertDontSee('Código producto');
+
+        $this->actingAs($this->superadmin)
             ->post(route('admin.producto-mp.frases.store'), [
-                'prod_item' => 'DEMO003',
                 'frase' => '  barra pritt  ',
+                'regiones' => [13],
             ])
             ->assertRedirect(route('admin.producto-mp.frases.index'))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('maeprod_frases_busqueda', [
-            'prod_item' => 'DEMO003',
             'frase' => 'barra pritt',
             'frase_norm' => 'BARRA PRITT',
+            'created_by' => $this->superadmin->id,
+        ]);
+        $this->assertDatabaseHas('maeprod_frase_busqueda_regiones', [
+            'region_codigo' => 13,
         ]);
         $this->assertDatabaseHas('maeprod_frases', [
             'prod_item' => 'DEMO003',
             'frase' => 'adhesivo barra',
         ]);
         $this->assertSame(1, MaeprodFrase::query()->count());
+        $this->assertNull(MaeprodFraseBusqueda::query()->value('prod_item'));
     }
 
-    public function test_frase_busqueda_puede_repetirse_en_otro_producto(): void
+    public function test_palabra_clave_no_se_repite_globalmente(): void
     {
-        Maeprod::query()->create([
-            'prod_item' => 'OTRO01',
-            'prod_nombre' => 'OTRO',
-            'prod_valor' => 100,
-            'prod_familia' => 'PAPEL',
-            'prod_gramaje' => 'unidad',
-        ]);
-
         MaeprodFraseBusqueda::query()->create([
-            'prod_item' => 'DEMO003',
             'frase' => 'papel oficio',
             'frase_norm' => 'PAPEL OFICIO',
         ]);
 
         $this->actingAs($this->superadmin)
+            ->from(route('admin.producto-mp.frases.index'))
             ->post(route('admin.producto-mp.frases.store'), [
-                'prod_item' => 'OTRO01',
                 'frase' => 'papel oficio',
             ])
-            ->assertRedirect(route('admin.producto-mp.frases.index'));
+            ->assertRedirect(route('admin.producto-mp.frases.index'))
+            ->assertSessionHasErrors('frase');
 
-        $this->assertSame(2, MaeprodFraseBusqueda::query()->count());
+        $this->assertSame(1, MaeprodFraseBusqueda::query()->count());
     }
 
     public function test_ficha_producto_muestra_ambos_bloques_de_frases(): void
@@ -126,8 +129,28 @@ class ProductoMpBusquedaTest extends TestCase
             ->assertOk()
             ->assertSee('Frases para vincular')
             ->assertSee('adhesivo barra')
-            ->assertSee('Frases de búsqueda MP')
+            ->assertSee('Palabras clave MP')
             ->assertSee('barra pritt');
+    }
+
+    public function test_match_respeta_regiones_de_la_palabra_clave(): void
+    {
+        $todas = MaeprodFraseBusqueda::query()->create([
+            'frase' => 'resma carta',
+            'frase_norm' => 'RESMA CARTA',
+        ]);
+        $soloValparaiso = MaeprodFraseBusqueda::query()->create([
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+        $soloValparaiso->regiones()->create(['region_codigo' => 5]);
+
+        $svc = $this->app->make(ProductoMpBusquedaService::class);
+
+        $this->assertNotNull($svc->mejorFraseParaDescripcion('resma carta 75g', 13));
+        $this->assertNull($svc->mejorFraseParaDescripcion('barra adhesiva Pritt 21 ml', 13));
+        $this->assertNotNull($svc->mejorFraseParaDescripcion('barra adhesiva Pritt 21 ml', 5));
+        $this->assertSame('resma carta', $todas->frase);
     }
 
     public function test_match_usa_frases_busqueda_no_las_de_vincular(): void

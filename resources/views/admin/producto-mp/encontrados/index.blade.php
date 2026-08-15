@@ -8,14 +8,14 @@
         <div>
             <h1 class="h3 mb-1">Productos MP</h1>
             <p class="text-muted mb-0 small">
-                Ítems de Compra Ágil que coinciden con las <strong>frases de búsqueda</strong> del catálogo.
+                Ítems de Compra Ágil que coinciden con las <strong>palabras clave MP</strong>.
                 Recorre <strong>todas</strong> las CA publicadas del día (no solo las de Oportunidades).
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             @if($puedeFrases ?? false)
             <a href="{{ route('admin.producto-mp.frases.index') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-tags"></i> Frases de búsqueda
+                <i class="bi bi-tags"></i> Palabras clave MP
             </a>
             @endif
             @if($puedeBuscar ?? false)

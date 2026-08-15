@@ -188,7 +188,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->name('producto-mp.frases.index');
         Route::post('producto-mp/frases', [MaeprodFraseBusquedaController::class, 'store'])
             ->name('producto-mp.frases.store');
-        Route::post('producto-mp/frases/{frase}/eliminar', [MaeprodFraseBusquedaController::class, 'destroy'])
+        Route::put('producto-mp/frases/{frase}', [MaeprodFraseBusquedaController::class, 'update'])
+            ->name('producto-mp.frases.update')
+            ->whereNumber('frase');
+        Route::delete('producto-mp/frases/{frase}', [MaeprodFraseBusquedaController::class, 'destroy'])
             ->name('producto-mp.frases.destroy')
             ->whereNumber('frase');
 

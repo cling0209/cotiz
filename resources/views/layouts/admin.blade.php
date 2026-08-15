@@ -97,7 +97,7 @@
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.producto-mp.frases.*') ? 'active' : '' }}"
                                    href="{{ route('admin.producto-mp.frases.index') }}">
-                                    <i class="bi bi-search"></i> Frases búsqueda MP
+                                    <i class="bi bi-search"></i> Palabras clave MP
                                 </a>
                             </li>
                         @endif

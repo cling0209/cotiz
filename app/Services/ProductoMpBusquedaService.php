@@ -27,7 +27,7 @@ class ProductoMpBusquedaService
 
     private const ITEMS_POR_JOB = 8;
 
-    /** @var list<object{prod_item: string, prod_nombre: string, frase: string, frase_norm: string}>|null */
+    /** @var list<object{prod_item: string, prod_nombre: string, frase: string, frase_norm: string, aplica_todas: bool, regiones: list<int>}>|null */
     private ?array $frasesCache = null;
 
     public function __construct(
@@ -70,7 +70,7 @@ class ProductoMpBusquedaService
         }
 
         if (MaeprodFraseBusqueda::query()->doesntExist()) {
-            throw new RuntimeException('No hay frases de búsqueda MP. Agréguelas en el mantenedor.');
+            throw new RuntimeException('No hay palabras clave MP. Agréguelas en el mantenedor.');
         }
 
         $regiones = CompraAgilRegionScope::regionesIncluidas();
@@ -376,7 +376,8 @@ class ProductoMpBusquedaService
                 $codigoMp = substr(md5($texto), 0, 32);
             }
 
-            $match = $this->mejorFraseParaDescripcion($texto);
+            $regionCa = isset($resumen['region']) ? (int) $resumen['region'] : null;
+            $match = $this->mejorFraseParaDescripcion($texto, $regionCa);
             if ($match === null) {
                 continue;
             }
@@ -385,7 +386,7 @@ class ProductoMpBusquedaService
                 [
                     'codigo' => $codigo,
                     'codigo_producto_mp' => mb_substr($codigoMp, 0, 80),
-                    'prod_item' => $match['prod_item'],
+                    'prod_item' => $match['prod_item'] !== '' ? $match['prod_item'] : '',
                     'frase_norm' => $match['frase_norm'],
                 ],
                 [
@@ -443,7 +444,7 @@ class ProductoMpBusquedaService
      *
      * @return array{prod_item: string, prod_nombre: string, frase: string, frase_norm: string}|null
      */
-    public function mejorFraseParaDescripcion(string $descripcion): ?array
+    public function mejorFraseParaDescripcion(string $descripcion, ?int $region = null): ?array
     {
         $descNorm = $this->busquedaSimilitud->normalizarTexto($descripcion);
         if ($descNorm === '') {
@@ -459,6 +460,9 @@ class ProductoMpBusquedaService
         $mejor = null;
         $mejorLen = -1;
         foreach ($this->frasesBusqueda() as $frase) {
+            if ($region !== null && ! $frase->aplica_todas && ! in_array($region, $frase->regiones, true)) {
+                continue;
+            }
             $norm = (string) $frase->frase_norm;
             if ($norm === '' || ! $this->frasePalabrasEnDescripcion($norm, $setDesc)) {
                 continue;
@@ -498,7 +502,7 @@ class ProductoMpBusquedaService
     }
 
     /**
-     * @return list<object{prod_item: string, prod_nombre: string, frase: string, frase_norm: string}>
+     * @return list<object{prod_item: string, prod_nombre: string, frase: string, frase_norm: string, aplica_todas: bool, regiones: list<int>}>
      */
     private function frasesBusqueda(): array
     {
@@ -507,22 +511,29 @@ class ProductoMpBusquedaService
         }
 
         $rows = MaeprodFraseBusqueda::query()
+            ->with('regiones')
             ->where('frase_norm', '!=', '')
             ->orderByRaw('LENGTH(frase_norm) DESC')
             ->orderBy('id')
-            ->get(['prod_item', 'frase', 'frase_norm']);
+            ->get();
 
-        $nombres = Maeprod::query()
-            ->whereIn('prod_item', $rows->pluck('prod_item')->unique()->all())
-            ->pluck('prod_nombre', 'prod_item');
+        $prodItems = $rows->pluck('prod_item')->filter()->unique()->values()->all();
+        $nombres = $prodItems === []
+            ? collect()
+            : Maeprod::query()
+                ->whereIn('prod_item', $prodItems)
+                ->pluck('prod_nombre', 'prod_item');
 
         $out = [];
         foreach ($rows as $row) {
+            $prodItem = (string) ($row->prod_item ?? '');
             $out[] = (object) [
-                'prod_item' => (string) $row->prod_item,
-                'prod_nombre' => (string) ($nombres[$row->prod_item] ?? ''),
+                'prod_item' => $prodItem,
+                'prod_nombre' => (string) ($nombres[$prodItem] ?? ''),
                 'frase' => (string) $row->frase,
                 'frase_norm' => (string) $row->frase_norm,
+                'aplica_todas' => $row->aplicaATodasLasRegiones(),
+                'regiones' => $row->codigosRegion(),
             ];
         }
 
