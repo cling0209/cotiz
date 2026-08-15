@@ -39,11 +39,13 @@ services:
         condition: service_started
 
   libreoffice:
+    image: cotiz-libreoffice:local
     build:
       context: ./docker/libreoffice
       dockerfile: Dockerfile
     restart: unless-stopped
     # Sin puerto en el host: la app usa http://libreoffice:8080 en la red interna.
+    # Misma imagen para Rómulo y Reicol (un solo build en el VPS).
 
   paddleocr:
     build:

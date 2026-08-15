@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -39,17 +40,34 @@ class LibreOfficeConvertService
         }
 
         $timeout = max(30, min(180, (int) config('cotiz.libreoffice.timeout', 120)));
-        $response = Http::timeout($timeout)
-            ->connectTimeout(8)
-            ->withBody($contenido, 'application/octet-stream')
-            ->withHeaders(['X-Filename' => basename(str_replace('\\', '/', $nombre))])
-            ->post($this->baseUrl().'/convert');
+
+        try {
+            $response = Http::timeout($timeout)
+                ->connectTimeout(8)
+                ->withBody($contenido, 'application/octet-stream')
+                ->withHeaders(['X-Filename' => $this->nombreAsciiParaSidecar($nombre)])
+                ->post($this->baseUrl().'/convert');
+        } catch (\Throwable $e) {
+            Log::warning('LibreOffice no disponible para preview', [
+                'nombre' => $nombre,
+                'error' => $e->getMessage(),
+            ]);
+            throw new RuntimeException('No se pudo convertir el documento para mostrarlo.');
+        }
 
         if (! $response->successful() || ! str_starts_with($response->body(), '%PDF')) {
             throw new RuntimeException('No se pudo convertir el documento para mostrarlo.');
         }
 
         return $response->body();
+    }
+
+    private function nombreAsciiParaSidecar(string $nombre): string
+    {
+        $ext = strtolower((string) pathinfo($nombre, PATHINFO_EXTENSION));
+        $ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
+
+        return 'archivo.'.$ext;
     }
 
     private function baseUrl(): string

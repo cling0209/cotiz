@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\OportunidadEncontrada;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -239,6 +240,26 @@ class OportunidadAdjuntosTest extends TestCase
             ]))
             ->assertOk()
             ->assertHeader('content-type', 'text/html; charset=UTF-8')
+            ->assertSee('descargar', false);
+    }
+
+    public function test_preview_doc_con_sidecar_caido_no_devuelve_500(): void
+    {
+        $user = $this->superadmin();
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/TEXTILES CADETES AÑO 2027.doc', 'fake-ole-doc-content');
+        Http::fake(function () {
+            throw new ConnectionException('Connection refused');
+        });
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.adjuntos.ver', [
+                'codigo' => '1000-1-COT26',
+                'archivo' => 'TEXTILES CADETES AÑO 2027.doc',
+                'preview' => 1,
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/html; charset=UTF-8')
+            ->assertDontSee('Server Error', false)
             ->assertSee('descargar', false);
     }
 

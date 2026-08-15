@@ -219,8 +219,10 @@ class OportunidadParaCotizarController extends Controller
         if ($preview && ! $descargar) {
             try {
                 $out = $this->adjuntos->contenidoParaPreview($codigo, $nombre, $bin);
-            } catch (RuntimeException $e) {
-                return response($this->htmlPreviewAdjuntoError($e->getMessage()), 200, [
+            } catch (\Throwable) {
+                return response($this->htmlPreviewAdjuntoError(
+                    'No se pudo convertir el documento para mostrarlo. Puede descargarlo.'
+                ), 200, [
                     'Content-Type' => 'text/html; charset=UTF-8',
                 ]);
             }

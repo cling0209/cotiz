@@ -322,16 +322,15 @@ class OportunidadAdjuntoService
 
         try {
             $pdf = $this->libreOffice->convertirAPdf($binario, $nombre);
-        } catch (RuntimeException) {
+            $disk->put($key, $pdf, [
+                'visibility' => 'private',
+                'ContentType' => 'application/pdf',
+            ]);
+
+            return $pdf;
+        } catch (\Throwable) {
             return null;
         }
-
-        $disk->put($key, $pdf, [
-            'visibility' => 'private',
-            'ContentType' => 'application/pdf',
-        ]);
-
-        return $pdf;
     }
 
     private function esArchivoInterno(string $key, string $nombre): bool
