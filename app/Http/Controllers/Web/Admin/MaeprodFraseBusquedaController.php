@@ -34,7 +34,6 @@ class MaeprodFraseBusquedaController extends Controller
                 $like = '%'.$q.'%';
                 $query->where(function ($inner) use ($like) {
                     $inner->where('frase', 'like', $like)
-                        ->orWhere('prod_item', 'like', $like)
                         ->orWhereHas('producto', fn ($p) => $p->where('prod_nombre', 'like', $like));
                 });
             })

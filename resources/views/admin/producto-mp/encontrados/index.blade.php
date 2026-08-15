@@ -51,7 +51,7 @@
     <form method="get" class="row g-2 mb-3" data-no-loader>
         <div class="col-md-4">
             <input type="text" name="q" value="{{ $filtros['q'] ?? '' }}" class="form-control form-control-sm"
-                   placeholder="CA, descripción, frase, organismo…">
+                   placeholder="Descripción, frase, nombre, organismo…">
         </div>
         <div class="col-md-2">
             <input type="text" name="prod_item" value="{{ $filtros['prod_item'] ?? '' }}" class="form-control form-control-sm"

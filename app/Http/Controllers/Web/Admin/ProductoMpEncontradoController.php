@@ -35,8 +35,7 @@ class ProductoMpEncontradoController extends Controller
             ->when($q !== '', function ($query) use ($q) {
                 $like = '%'.$q.'%';
                 $query->where(function ($inner) use ($like) {
-                    $inner->where('codigo', 'like', $like)
-                        ->orWhere('descripcion_mp', 'like', $like)
+                    $inner->where('descripcion_mp', 'like', $like)
                         ->orWhere('frase', 'like', $like)
                         ->orWhere('prod_nombre', 'like', $like)
                         ->orWhere('organismo', 'like', $like)

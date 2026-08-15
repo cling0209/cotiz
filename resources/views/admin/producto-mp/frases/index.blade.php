@@ -58,7 +58,7 @@
     <form method="get" class="row g-2 mb-3" data-no-loader>
         <div class="col-md-4">
             <input type="text" name="q" value="{{ $filtros['q'] ?? '' }}" class="form-control form-control-sm"
-                   placeholder="Buscar frase, código o nombre">
+                   placeholder="Buscar frase o nombre de producto">
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-outline-secondary btn-sm">Filtrar</button>

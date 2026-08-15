@@ -363,16 +363,20 @@ class ProductoMpBusquedaService
 
         $guardados = 0;
         foreach ($lineas as $linea) {
+            $texto = $this->textoLineaParaMatch($linea);
+            if ($texto === '') {
+                continue;
+            }
             $descripcion = trim((string) ($linea['descripcion'] ?? ''));
             if ($descripcion === '') {
-                continue;
+                $descripcion = $texto;
             }
             $codigoMp = trim((string) ($linea['id_agile'] ?? $linea['codigo_producto'] ?? ''));
             if ($codigoMp === '') {
-                $codigoMp = substr(md5($descripcion), 0, 32);
+                $codigoMp = substr(md5($texto), 0, 32);
             }
 
-            $match = $this->mejorFraseParaDescripcion($descripcion);
+            $match = $this->mejorFraseParaDescripcion($texto);
             if ($match === null) {
                 continue;
             }
@@ -405,7 +409,37 @@ class ProductoMpBusquedaService
     }
 
     /**
-     * Match público para tests: todas las palabras de la frase en la descripción.
+     * Texto de la línea MP para el match: nombre + descripción. Nunca el código de producto.
+     *
+     * @param  array<string, mixed>  $linea
+     */
+    public function textoLineaParaMatch(array $linea): string
+    {
+        $partes = [
+            trim((string) ($linea['descripcion'] ?? '')),
+            trim((string) ($linea['categoria'] ?? '')),
+            trim((string) ($linea['nombre'] ?? '')),
+        ];
+
+        $vistos = [];
+        $out = [];
+        foreach ($partes as $parte) {
+            if ($parte === '') {
+                continue;
+            }
+            $clave = mb_strtolower($parte, 'UTF-8');
+            if (isset($vistos[$clave])) {
+                continue;
+            }
+            $vistos[$clave] = true;
+            $out[] = $parte;
+        }
+
+        return trim(implode(' ', $out));
+    }
+
+    /**
+     * Match público para tests: todas las palabras de la frase en el texto (no en el código).
      *
      * @return array{prod_item: string, prod_nombre: string, frase: string, frase_norm: string}|null
      */

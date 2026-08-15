@@ -149,6 +149,61 @@ class ProductoMpBusquedaTest extends TestCase
         $this->assertNull($svc->mejorFraseParaDescripcion('adhesivo en barra 21 ml'));
     }
 
+    public function test_match_no_usa_codigo_producto_mp(): void
+    {
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => '31237835',
+            'frase_norm' => '31237835',
+        ]);
+
+        $svc = $this->app->make(ProductoMpBusquedaService::class);
+
+        $this->assertSame('', $svc->textoLineaParaMatch([
+            'id_agile' => '31237835',
+            'codigo_producto' => '31237835',
+            'descripcion' => '',
+            'categoria' => '',
+        ]));
+        $this->assertNull($svc->mejorFraseParaDescripcion($svc->textoLineaParaMatch([
+            'id_agile' => '31237835',
+            'descripcion' => 'resma carta 75g',
+        ])));
+        $this->assertNotNull($svc->mejorFraseParaDescripcion($svc->textoLineaParaMatch([
+            'id_agile' => '999',
+            'descripcion' => 'item 31237835 oficina',
+        ])));
+    }
+
+    public function test_filtro_listado_no_busca_por_codigo(): void
+    {
+        ProductoMpEncontrado::query()->create([
+            'codigo' => '1161-1-COT26',
+            'nombre_ca' => 'Utiles',
+            'organismo' => 'Municipalidad X',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'codigo_producto_mp' => '31237835',
+            'descripcion_mp' => 'barra adhesiva Pritt 21 ml',
+            'prod_item' => 'DEMO003',
+            'prod_nombre' => 'ADHESIVO BARRA',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+            'origen_detalle' => 'mp',
+            'fecha_busqueda' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->get(route('admin.producto-mp.encontrados.index', ['q' => '1161-1-COT26']))
+            ->assertOk()
+            ->assertDontSee('barra adhesiva Pritt 21 ml');
+
+        $this->actingAs($this->superadmin)
+            ->get(route('admin.producto-mp.encontrados.index', ['q' => 'Pritt']))
+            ->assertOk()
+            ->assertSee('barra adhesiva Pritt 21 ml');
+    }
+
     public function test_reusa_preview_de_oportunidad_sin_pedir_detalle(): void
     {
         MaeprodFraseBusqueda::query()->create([
