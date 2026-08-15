@@ -1805,17 +1805,17 @@
                     </button>`
                     : '';
                 const btnProductos = codigo
-                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-ver-vinculo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Ver productos y vinculación">
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap w-100 btn-ver-vinculo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Ver productos y vinculación">
                         <i class="bi bi-list-ul"></i> Productos
                     </button>`
                     : '';
                 const btnCotizar = href
-                    ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
+                    ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap w-100 btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
                         <i class="bi bi-cart-plus"></i> Ir a cotizar
                    </a>`
                     : '';
                 const btnEliminar = (puedeEliminar && codigo && urls.eliminar)
-                    ? `<button type="button" class="btn btn-outline-danger btn-sm text-nowrap btn-eliminar-oportunidad" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Eliminar oportunidad (también en el sitio par)">
+                    ? `<button type="button" class="btn btn-outline-danger btn-sm text-nowrap w-100 btn-eliminar-oportunidad" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Eliminar oportunidad (también en el sitio par)">
                         <i class="bi bi-trash"></i> Eliminar
                     </button>`
                     : '';
@@ -1824,7 +1824,7 @@
                     ? adjuntosArchivosPorCodigo[codigo]
                     : [];
                 const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar && nAdj === 0)
-                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap w-100 btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
                         <i class="bi bi-cloud-download"></i> Buscar adjuntos
                     </button>`
                     : '';
@@ -1836,7 +1836,7 @@
                         ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
                         : '');
                 const accionHtml = (btnProductos || btnCotizar || btnAdjuntos || btnEliminar)
-                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnAdjuntos}${btnEliminar}</div>`
+                    ? `<div class="d-inline-flex flex-column align-items-stretch gap-1">${btnProductos}${btnCotizar}${btnAdjuntos}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
