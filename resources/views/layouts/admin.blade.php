@@ -122,14 +122,29 @@
                     <i class="bi bi-box-seam"></i> Productos MP
                 </a>
             @endif
-            <span class="text-white-50 small d-none d-md-inline">{{ auth()->user()->fullName() ?: auth()->user()->username }}</span>
-            <a href="{{ route('admin.account.password') }}" class="nav-link-admin {{ request()->routeIs('admin.account.password') ? 'active' : '' }}" title="Cambiar contraseña">
-                <i class="bi bi-key"></i> Contraseña
-            </a>
-            <form action="{{ route('admin.logout') }}" method="post" class="d-inline">
-                @csrf
-                <button type="submit" class="btn btn-outline-light btn-sm">Salir</button>
-            </form>
+            <div class="dropdown">
+                <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.account.password') ? 'active' : '' }}"
+                   data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-person-circle"></i>
+                    {{ auth()->user()->fullName() ?: auth()->user()->username }}
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item {{ request()->routeIs('admin.account.password') ? 'active' : '' }}"
+                           href="{{ route('admin.account.password') }}">
+                            <i class="bi bi-key"></i> Contraseña
+                        </a>
+                    </li>
+                    <li>
+                        <form action="{{ route('admin.logout') }}" method="post">
+                            @csrf
+                            <button type="submit" class="dropdown-item">
+                                <i class="bi bi-box-arrow-right"></i> Salir
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
         </div>
     </div>
 </nav>
