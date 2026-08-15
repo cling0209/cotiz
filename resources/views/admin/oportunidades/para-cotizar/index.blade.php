@@ -1551,7 +1551,7 @@
             }
         }
 
-        async function abrirModalAdjuntos(codigo) {
+        async function abrirModalAdjuntos(codigo, archivoInicial) {
             const modalEl = document.getElementById('modal-adjuntos');
             const label = document.getElementById('modal-adjuntos-label');
             const loading = document.getElementById('modal-adjuntos-loading');
@@ -1559,11 +1559,14 @@
             const lista = document.getElementById('modal-adjuntos-lista');
             const frame = document.getElementById('modal-adjuntos-frame');
             const vacio = document.getElementById('modal-adjuntos-vacio');
+            const archivoPedido = String(archivoInicial || '').trim();
             const bs = modalEl && typeof bootstrap !== 'undefined'
                 ? bootstrap.Modal.getOrCreateInstance(modalEl)
                 : null;
             if (label) {
-                label.textContent = `Documentos — ${codigo}`;
+                label.textContent = archivoPedido
+                    ? `Documentos — ${codigo} — ${archivoPedido}`
+                    : `Documentos — ${codigo}`;
             }
             if (errBox) {
                 errBox.classList.add('d-none');
@@ -1628,6 +1631,17 @@
                             frame.src = b.getAttribute('data-url') || 'about:blank';
                         });
                     });
+                    const mostrar = archivoPedido
+                        ? archivos.find((a) => String(a.nombre || '') === archivoPedido)
+                            || archivos.find((a) => String(a.nombre || '').toLowerCase() === archivoPedido.toLowerCase())
+                            || archivos[0]
+                        : archivos[0];
+                    if (mostrar && frame) {
+                        const nomMostrar = String(mostrar.nombre || '');
+                        const verAhora = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nomMostrar)}&preview=1`;
+                        frame.classList.remove('d-none');
+                        frame.src = verAhora;
+                    }
                 }
             } catch (e) {
                 if (loading) {
@@ -1816,7 +1830,7 @@
                     : '';
                 const listaAdjuntos = (puedeAdjuntos && codigo && nombresAdj.length > 0)
                     ? `<div class="d-flex flex-column align-items-start gap-0 mt-1">${nombresAdj.map((nom) =>
-                        `<button type="button" class="btn btn-link btn-sm p-0 text-start text-break btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="${escapeHtml(nom)}">${escapeHtml(nom)}</button>`
+                        `<button type="button" class="btn btn-link btn-sm p-0 text-start text-break btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" data-archivo="${escapeHtml(nom)}" title="${escapeHtml(nom)}">${escapeHtml(nom)}</button>`
                     ).join('')}</div>`
                     : ((puedeAdjuntos && codigo && nAdj > 0)
                         ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
@@ -2373,7 +2387,7 @@
                     e.preventDefault();
                     const codVer = String(btnVerAdj.getAttribute('data-codigo') || '').trim().toUpperCase();
                     if (codVer) {
-                        abrirModalAdjuntos(codVer);
+                        abrirModalAdjuntos(codVer, btnVerAdj.getAttribute('data-archivo') || '');
                     }
                     return;
                 }
