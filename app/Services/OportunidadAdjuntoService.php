@@ -79,13 +79,13 @@ class OportunidadAdjuntoService
     }
 
     /**
-     * @return array<string, int>
+     * @return array<string, list<string>>
      */
-    public function conteosPorCodigo(): array
+    public function archivosPorCodigo(): array
     {
         $this->assertConfigurado();
         $prefix = $this->prefix();
-        $conteos = [];
+        $porCodigo = [];
         $disk = Storage::disk($this->disk());
         $root = $prefix === '' ? '' : $prefix;
 
@@ -103,7 +103,27 @@ class OportunidadAdjuntoService
                 continue;
             }
             $codigo = strtoupper($partes[0]);
-            $conteos[$codigo] = ($conteos[$codigo] ?? 0) + 1;
+            $porCodigo[$codigo] ??= [];
+            $porCodigo[$codigo][] = $nombre;
+        }
+
+        foreach ($porCodigo as &$nombres) {
+            natcasesort($nombres);
+            $nombres = array_values($nombres);
+        }
+        unset($nombres);
+
+        return $porCodigo;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function conteosPorCodigo(): array
+    {
+        $conteos = [];
+        foreach ($this->archivosPorCodigo() as $codigo => $nombres) {
+            $conteos[$codigo] = count($nombres);
         }
 
         return $conteos;

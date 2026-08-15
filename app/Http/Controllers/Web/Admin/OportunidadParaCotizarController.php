@@ -126,14 +126,20 @@ class OportunidadParaCotizarController extends Controller
         }
 
         try {
-            $conteos = $this->adjuntos->conteosPorCodigo();
+            $archivos = $this->adjuntos->archivosPorCodigo();
         } catch (RuntimeException $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        $conteos = [];
+        foreach ($archivos as $codigo => $nombres) {
+            $conteos[$codigo] = count($nombres);
         }
 
         return response()->json([
             'ok' => true,
             'conteos' => $conteos,
+            'archivos' => $archivos,
         ]);
     }
 

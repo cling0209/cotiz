@@ -654,6 +654,7 @@
             adjuntosVerBase: @json(($puedeAdjuntos ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
         };
         const adjuntosPorCodigo = {};
+        const adjuntosArchivosPorCodigo = {};
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
@@ -1481,9 +1482,17 @@
                     return;
                 }
                 Object.keys(adjuntosPorCodigo).forEach((k) => { delete adjuntosPorCodigo[k]; });
+                Object.keys(adjuntosArchivosPorCodigo).forEach((k) => { delete adjuntosArchivosPorCodigo[k]; });
                 Object.entries(data.conteos).forEach(([cod, n]) => {
                     adjuntosPorCodigo[String(cod).toUpperCase()] = Number(n) || 0;
                 });
+                if (data.archivos && typeof data.archivos === 'object') {
+                    Object.entries(data.archivos).forEach(([cod, lista]) => {
+                        adjuntosArchivosPorCodigo[String(cod).toUpperCase()] = Array.isArray(lista)
+                            ? lista.map((x) => String(x || '')).filter(Boolean)
+                            : [];
+                    });
+                }
                 renderTabla(false);
             } catch (_e) {
                 // silencioso
@@ -1521,7 +1530,11 @@
                     }
                     return;
                 }
-                adjuntosPorCodigo[codigo] = Array.isArray(data.archivos) ? data.archivos.length : (Number(data.guardados) || 0);
+                const nombresResp = Array.isArray(data.archivos)
+                    ? data.archivos.map((a) => String(a.nombre || '')).filter(Boolean)
+                    : [];
+                adjuntosArchivosPorCodigo[codigo] = nombresResp;
+                adjuntosPorCodigo[codigo] = nombresResp.length || (Number(data.guardados) || 0);
                 renderTabla(false);
             } catch (e) {
                 const err = e && e.message ? e.message : 'Error de red.';
@@ -1588,6 +1601,8 @@
                 }
                 const archivos = Array.isArray(data.archivos) ? data.archivos : [];
                 adjuntosPorCodigo[codigo] = archivos.length;
+                adjuntosArchivosPorCodigo[codigo] = archivos.map((a) => String(a.nombre || '')).filter(Boolean);
+                renderTabla(false);
                 if (archivos.length === 0) {
                     if (vacio) {
                         vacio.classList.remove('d-none');
@@ -1791,19 +1806,23 @@
                     </button>`
                     : '';
                 const nAdj = Number(adjuntosPorCodigo[codigo] || 0);
-                const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar)
-                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
+                const nombresAdj = Array.isArray(adjuntosArchivosPorCodigo[codigo])
+                    ? adjuntosArchivosPorCodigo[codigo]
+                    : [];
+                const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar && nAdj === 0)
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos mt-1" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
                         <i class="bi bi-cloud-download"></i> Buscar adjuntos
                     </button>`
                     : '';
-                const linkAdjuntos = (puedeAdjuntos && codigo && nAdj > 0)
-                    ? `<button type="button" class="btn btn-link btn-sm p-0 text-nowrap btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
-                    : '';
-                const bloqueAdjuntos = (btnAdjuntos || linkAdjuntos)
-                    ? `<div class="d-flex flex-column align-items-end gap-0">${btnAdjuntos}${linkAdjuntos}</div>`
-                    : '';
-                const accionHtml = (btnProductos || btnCotizar || btnEliminar || bloqueAdjuntos)
-                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${bloqueAdjuntos}${btnEliminar}</div>`
+                const listaAdjuntos = (puedeAdjuntos && codigo && nombresAdj.length > 0)
+                    ? `<div class="d-flex flex-column align-items-start gap-0 mt-1">${nombresAdj.map((nom) =>
+                        `<button type="button" class="btn btn-link btn-sm p-0 text-start text-break btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="${escapeHtml(nom)}">${escapeHtml(nom)}</button>`
+                    ).join('')}</div>`
+                    : ((puedeAdjuntos && codigo && nAdj > 0)
+                        ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
+                        : '');
+                const accionHtml = (btnProductos || btnCotizar || btnEliminar)
+                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
@@ -1812,6 +1831,8 @@
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
                     ${vinculoHtml}
+                    ${btnAdjuntos}
+                    ${listaAdjuntos}
                 </td>
                 <td class="small">
                     <div class="fw-semibold opc-linea-2" title="${escapeHtml(regionNombre)}">${escapeHtml(regionNombre)}</div>
