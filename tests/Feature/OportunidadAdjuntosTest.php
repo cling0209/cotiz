@@ -69,12 +69,15 @@ class OportunidadAdjuntosTest extends TestCase
 
         Http::fake([
             'api2.mercadopublico.cl/v2/compra-agil/1000-1-COT26' => Http::response([
-                'codigo' => '1000-1-COT26',
-                'documentos' => [
-                    ['id' => 'doc-1', 'nombre' => 'bases.pdf'],
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '1000-1-COT26',
+                    'documentos' => [
+                        ['id' => '5f47e991-c525-40a0-b36c-44d53e538ae5', 'nombre' => 'bases.pdf'],
+                    ],
                 ],
             ], 200),
-            'api2.mercadopublico.cl/v2/compra-agil/1000-1-COT26/documentos/doc-1*' => Http::response(
+            'adjunto.mercadopublico.cl/adjunto-compra-agil/descargar/*' => Http::response(
                 $pdf,
                 200,
                 ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="bases.pdf"'],

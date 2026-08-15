@@ -276,7 +276,7 @@ class OportunidadAdjuntoService
      */
     private function extraerDocumentos(array $detalle): array
     {
-        $raw = $detalle['documentos'] ?? [];
+        $raw = $detalle['documentos'] ?? $detalle['adjuntos'] ?? [];
         if (! is_array($raw)) {
             return [];
         }
@@ -312,9 +312,19 @@ class OportunidadAdjuntoService
         if ($doc['url'] !== '') {
             $urls[] = $doc['url'];
         }
-        $base = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
         if ($doc['id'] !== '') {
-            $idEnc = rawurlencode($doc['id']);
+            $id = $doc['id'];
+            $idEnc = rawurlencode($id);
+            $esUuid = (bool) preg_match(
+                '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+                $id,
+            );
+            if ($esUuid) {
+                $urls[] = 'https://adjunto.mercadopublico.cl/adjunto-compra-agil/descargar/'.$idEnc;
+            } else {
+                $urls[] = 'https://www.mercadopublico.cl/FichaLicitacion/RetornaDocumento.aspx?id='.$idEnc;
+            }
+            $base = rtrim((string) config('cotiz.mercadopublico.base_url'), '/');
             $urls[] = $base.'/v2/compra-agil/'.rawurlencode($codigo).'/documentos/'.$idEnc;
             $urls[] = $base.'/v2/documentos/'.$idEnc;
         }
@@ -349,6 +359,24 @@ class OportunidadAdjuntoService
         }
 
         $out = [];
+        if (preg_match_all('/https?:\/\/adjunto\.mercadopublico\.cl\/adjunto-compra-agil\/descargar\/[0-9a-f-]+/i', $html, $cdn)) {
+            foreach ($cdn[0] as $url) {
+                $bajado = $this->bajarBinario($url, $this->nombreDesdeUrl($url));
+                if ($bajado !== null) {
+                    $out[$bajado['nombre']] = $bajado;
+                }
+            }
+        }
+        if (preg_match_all('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i', $html, $uuids)
+            && str_contains(strtolower($html), 'adjunt')) {
+            foreach (array_unique($uuids[0]) as $uuid) {
+                $url = 'https://adjunto.mercadopublico.cl/adjunto-compra-agil/descargar/'.$uuid;
+                $bajado = $this->bajarBinario($url, $uuid.'.pdf');
+                if ($bajado !== null) {
+                    $out[$bajado['nombre']] = $bajado;
+                }
+            }
+        }
         if (preg_match_all('/href=["\']([^"\']+)["\']/i', $html, $m)) {
             foreach ($m[1] as $href) {
                 $abs = $this->absoluta($fichaUrl, html_entity_decode($href, ENT_QUOTES, 'UTF-8'));
@@ -372,14 +400,21 @@ class OportunidadAdjuntoService
     private function bajarBinario(string $url, string $nombreSugerido): ?array
     {
         $ticket = trim((string) config('cotiz.mercadopublico.ticket', ''));
+        $esApiMp = str_contains(strtolower($url), 'api2.mercadopublico.cl');
+        $headers = [
+            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept' => '*/*',
+        ];
+        if ($esApiMp && $ticket !== '') {
+            $headers['ticket'] = $ticket;
+        }
+
         try {
-            $response = Http::timeout(60)
-                ->withHeaders(array_filter([
-                    'ticket' => $ticket !== '' ? $ticket : null,
-                    'User-Agent' => 'Mozilla/5.0 CotizAdjuntos',
-                ]))
-                ->withQueryParameters($ticket !== '' ? ['ticket' => $ticket] : [])
-                ->get($url);
+            $pending = Http::timeout(60)->withHeaders($headers);
+            if ($esApiMp && $ticket !== '') {
+                $pending = $pending->withQueryParameters(['ticket' => $ticket]);
+            }
+            $response = $pending->get($url);
         } catch (\Throwable) {
             return null;
         }
@@ -394,10 +429,12 @@ class OportunidadAdjuntoService
         }
 
         $mime = strtolower((string) $response->header('Content-Type'));
-        if (str_contains($mime, 'text/html') || str_contains($mime, 'application/json')) {
+        $esPdf = str_starts_with($contents, '%PDF');
+        $esZip = str_starts_with($contents, 'PK');
+        if (! $esPdf && ! $esZip && (str_contains($mime, 'text/html') || str_contains($mime, 'application/json'))) {
             return null;
         }
-        if (str_starts_with(ltrim($contents), '<') && ! str_starts_with($contents, 'PK')) {
+        if (! $esPdf && ! $esZip && str_starts_with(ltrim($contents), '<')) {
             return null;
         }
 
@@ -444,6 +481,8 @@ class OportunidadAdjuntoService
         }
 
         return (bool) preg_match('/\.(pdf|docx?|xlsx?|zip)(\?|$)/i', $url)
+            || str_contains($lower, 'adjunto.mercadopublico.cl')
+            || str_contains($lower, 'retornadocumento')
             || str_contains($lower, 'download')
             || str_contains($lower, 'adjunt')
             || str_contains($lower, 'attachment')
