@@ -89,6 +89,43 @@ class MaeprodBusquedaSimilitudService
         'JERINGA' => ['JERINGA'],
         'PILA' => ['PILA', 'BATERIA'],
         'TATUAJE' => ['TATUAJE'],
+        'ADHESIVO' => ['ADHESIVO', 'PEGAMENTO'],
+        'LAPIZ' => ['LAPIZ', 'LAPICES'],
+        'MARCADOR' => ['MARCADOR'],
+        'GOMA_BORRAR' => ['BORRADOR'],
+    ];
+
+    /** @var string[] */
+    private const COLORES_PRODUCTO = [
+        'AZUL', 'ROJO', 'ROJA', 'VERDE', 'NEGRO', 'NEGRA', 'BLANCO', 'BLANCA',
+        'AMARILLO', 'AMARILLA', 'NARANJA', 'ROSADO', 'ROSADA', 'MORADO', 'MORADA',
+        'GRIS', 'CAFE', 'BEIGE', 'CELESTE', 'FUCSIA', 'TRANSPARENTE',
+    ];
+
+    /** @var string[] */
+    private const MARCAS_PRODUCTO = [
+        'FABER', 'BIC', 'PILOT', 'ARTESCO', 'TORRE', 'HP', 'CANON', 'EPSON',
+        'PRITT', 'PELIKAN', 'SCOTCH', 'OFFIONE', 'TEXMARKET', 'MEMPHIS',
+        'MEGABOX', 'NEDFLEX', 'STABILO', 'SHARPIE', 'PAPERMATE', 'MAXISAFE',
+    ];
+
+    /** @var array<string, array{tipo: string, factor: float}> */
+    private const UNIDADES_MEDIDA = [
+        'KILOS' => ['tipo' => 'masa', 'factor' => 1000.0],
+        'KILO' => ['tipo' => 'masa', 'factor' => 1000.0],
+        'KG' => ['tipo' => 'masa', 'factor' => 1000.0],
+        'GRAMOS' => ['tipo' => 'masa', 'factor' => 1.0],
+        'GMS' => ['tipo' => 'masa', 'factor' => 1.0],
+        'GR' => ['tipo' => 'masa', 'factor' => 1.0],
+        'G' => ['tipo' => 'masa', 'factor' => 1.0],
+        'ML' => ['tipo' => 'vol', 'factor' => 1.0],
+        'CC' => ['tipo' => 'vol', 'factor' => 1.0],
+        'METROS' => ['tipo' => 'largo', 'factor' => 1000.0],
+        'METRO' => ['tipo' => 'largo', 'factor' => 1000.0],
+        'MTS' => ['tipo' => 'largo', 'factor' => 1000.0],
+        'MT' => ['tipo' => 'largo', 'factor' => 1000.0],
+        'CM' => ['tipo' => 'largo', 'factor' => 10.0],
+        'MM' => ['tipo' => 'largo', 'factor' => 1.0],
     ];
 
     public function buscar(string $term, ?string $familia = null, int $limit = 15): Collection
@@ -425,13 +462,240 @@ class MaeprodBusquedaSimilitudService
             return false;
         }
 
+        $palabras = preg_split('/\s+/u', $textoNorm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($palabras === []) {
+            return false;
+        }
+
         foreach ($this->tokenVariantes($token) as $v) {
-            if (mb_strpos($textoNorm, $v, 0, 'UTF-8') !== false) {
-                return true;
+            foreach ($palabras as $palabra) {
+                if ($this->palabraCoincideVariante($palabra, $v)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Familia + medida/color/marca. Usado en frases (el mapeo humano ya eligió el SKU).
+     */
+    public function pasaFiltrosAtributos(string $textoConsulta, string $textoCandidato): bool
+    {
+        if ($this->hayConflictoFamilia($textoConsulta, $textoCandidato)) {
+            return false;
+        }
+        if (! $this->medidasCompatibles($textoConsulta, $textoCandidato)) {
+            return false;
+        }
+        if (! $this->coloresCompatibles($textoConsulta, $textoCandidato)) {
+            return false;
+        }
+
+        return $this->marcasCompatibles($textoConsulta, $textoCandidato);
+    }
+
+    /**
+     * Equivalencia para similitud: atributos + solape distintivo.
+     */
+    public function sonEquivalentes(string $textoConsulta, string $textoCandidato): bool
+    {
+        return $this->pasaFiltrosAtributos($textoConsulta, $textoCandidato)
+            && $this->tieneSolapeDistintivo($textoConsulta, $textoCandidato);
+    }
+
+    public function tieneAtributosDiscriminantes(string $texto): bool
+    {
+        return $this->extraerMedidas($texto) !== []
+            || $this->extraerColores($texto) !== []
+            || $this->extraerMarcas($texto) !== [];
+    }
+
+    /**
+     * @param  list<array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $productos
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    public function elegirMasEconomico(array $productos): ?array
+    {
+        if ($productos === []) {
+            return null;
+        }
+
+        $mejor = null;
+        $mejorCosto = PHP_INT_MAX;
+        foreach ($productos as $producto) {
+            $costo = $this->costoPropuesta(
+                (int) ($producto['prod_valor'] ?? 0),
+                (int) ($producto['prod_valor_costo'] ?? 0),
+            );
+            if ($costo < $mejorCosto) {
+                $mejorCosto = $costo;
+                $mejor = $producto;
+            }
+        }
+
+        return $mejor;
+    }
+
+    public function costoPropuesta(int $valor, int $costo): int
+    {
+        if ($costo > 0) {
+            return $costo;
+        }
+        if ($valor > 0) {
+            return $valor;
+        }
+
+        return PHP_INT_MAX;
+    }
+
+    /**
+     * @return list<array{tipo: string, valor: float}>
+     */
+    public function extraerMedidas(string $texto): array
+    {
+        $norm = $this->normalizarTexto($texto);
+        if ($norm === '') {
+            return [];
+        }
+
+        $medidas = [];
+        $unidades = implode('|', array_keys(self::UNIDADES_MEDIDA));
+        if (preg_match_all('/(\d+(?:[.,]\d+)?)\s*('.$unidades.')\b/u', $norm, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $cantidad = (float) str_replace(',', '.', $match[1]);
+                $unidad = $match[2];
+                $def = self::UNIDADES_MEDIDA[$unidad] ?? null;
+                if ($def === null || $cantidad <= 0) {
+                    continue;
+                }
+                $medidas[] = [
+                    'tipo' => $def['tipo'],
+                    'valor' => $cantidad * $def['factor'],
+                ];
+            }
+        }
+
+        if (preg_match_all('/\b(A3|A4|A5|OFICIO|CARTA|LEGAL)\b/u', $norm, $papel)) {
+            foreach ($papel[1] as $formato) {
+                $medidas[] = ['tipo' => 'papel', 'valor' => 0.0, 'formato' => $formato];
+            }
+        }
+
+        return $medidas;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function extraerColores(string $texto): array
+    {
+        $norm = $this->normalizarTexto($texto);
+        $palabras = preg_split('/\s+/u', $norm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $out = [];
+        foreach ($palabras as $palabra) {
+            if (in_array($palabra, self::COLORES_PRODUCTO, true)) {
+                $out[] = $palabra;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @return string[]
+     */
+    public function extraerMarcas(string $texto): array
+    {
+        $norm = $this->normalizarTexto($texto);
+        $hay = ' '.$norm.' ';
+        $out = [];
+        foreach (self::MARCAS_PRODUCTO as $marca) {
+            if (str_contains($hay, ' '.$marca.' ')) {
+                $out[] = $marca;
+            }
+        }
+
+        return $out;
+    }
+
+    public function medidasCompatibles(string $textoConsulta, string $textoCandidato): bool
+    {
+        $consulta = $this->extraerMedidas($textoConsulta);
+        if ($consulta === []) {
+            return true;
+        }
+
+        $candidato = $this->extraerMedidas($textoCandidato);
+        if ($candidato === []) {
+            return true;
+        }
+
+        $porTipoConsulta = $this->agruparMedidasPorTipo($consulta);
+        $porTipoCandidato = $this->agruparMedidasPorTipo($candidato);
+
+        foreach ($porTipoConsulta as $tipo => $valores) {
+            if (! isset($porTipoCandidato[$tipo])) {
+                continue;
+            }
+            if ($tipo === 'papel') {
+                if (array_intersect($valores, $porTipoCandidato[$tipo]) === []) {
+                    return false;
+                }
+
+                continue;
+            }
+            $ok = false;
+            foreach ($valores as $valor) {
+                foreach ($porTipoCandidato[$tipo] as $otro) {
+                    if (abs((float) $valor - (float) $otro) < 0.05) {
+                        $ok = true;
+                        break 2;
+                    }
+                }
+            }
+            if (! $ok) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function coloresCompatibles(string $textoConsulta, string $textoCandidato): bool
+    {
+        $consulta = $this->extraerColores($textoConsulta);
+        if ($consulta === []) {
+            return true;
+        }
+
+        $candNorm = $this->normalizarTexto($textoCandidato);
+        if (str_contains(' '.$candNorm.' ', ' SURTIDO ') || str_contains($candNorm, 'SURTIDOS')) {
+            return true;
+        }
+
+        $candidato = $this->extraerColores($textoCandidato);
+        if ($candidato === []) {
+            return true;
+        }
+
+        return array_intersect($consulta, $candidato) !== [];
+    }
+
+    public function marcasCompatibles(string $textoConsulta, string $textoCandidato): bool
+    {
+        $consulta = $this->extraerMarcas($textoConsulta);
+        if ($consulta === []) {
+            return true;
+        }
+
+        $candidato = $this->extraerMarcas($textoCandidato);
+        if ($candidato === []) {
+            return true;
+        }
+
+        return array_intersect($consulta, $candidato) !== [];
     }
 
     public function pesoToken(string $palabra): float
@@ -766,5 +1030,48 @@ class MaeprodBusquedaSimilitudService
     private function esStopword(string $token): bool
     {
         return in_array(mb_strtoupper($token, 'UTF-8'), self::STOPWORDS, true);
+    }
+
+    private function palabraCoincideVariante(string $palabra, string $variante): bool
+    {
+        if ($palabra === $variante) {
+            return true;
+        }
+        if ($palabra === $variante.'S' || $palabra === $variante.'ES') {
+            return true;
+        }
+        if (str_ends_with($variante, 'S') && $palabra === mb_substr($variante, 0, -1, 'UTF-8')) {
+            return true;
+        }
+        if (str_ends_with($variante, 'ES') && mb_strlen($variante, 'UTF-8') >= 5) {
+            $raiz = mb_substr($variante, 0, -2, 'UTF-8');
+
+            return $palabra === $raiz;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<array{tipo: string, valor: float, formato?: string}>  $medidas
+     * @return array<string, list<float|string>>
+     */
+    private function agruparMedidasPorTipo(array $medidas): array
+    {
+        $out = [];
+        foreach ($medidas as $medida) {
+            $tipo = (string) ($medida['tipo'] ?? '');
+            if ($tipo === '') {
+                continue;
+            }
+            if ($tipo === 'papel') {
+                $out[$tipo][] = (string) ($medida['formato'] ?? '');
+
+                continue;
+            }
+            $out[$tipo][] = (float) ($medida['valor'] ?? 0);
+        }
+
+        return $out;
     }
 }

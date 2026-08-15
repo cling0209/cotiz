@@ -166,4 +166,47 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
             $this->service->hayConflictoFamilia('CINTA MASKING 24 MM', 'CINTA ADHESIVA TRANSPARENTE 24 MM')
         );
     }
+
+    public function test_cinta_no_cae_dentro_de_cartulina(): void
+    {
+        $this->assertFalse(
+            $this->service->tokenVarianteCaeEnTexto('CINTA', 'CARTULINA ESPANOLA COLORES')
+        );
+        $this->assertTrue(
+            $this->service->tokenVarianteCaeEnTexto('CINTA', 'CINTA MASKING 24 MM')
+        );
+    }
+
+    public function test_medidas_21g_no_equivale_a_40g(): void
+    {
+        $this->assertFalse(
+            $this->service->medidasCompatibles('ADHESIVO BARRA 21 G', 'ADHESIVO BARRA 40 G')
+        );
+        $this->assertTrue(
+            $this->service->medidasCompatibles('ADHESIVO BARRA 21 G', 'ADHESIVO EN BARRA 21G FABER')
+        );
+        $this->assertTrue(
+            $this->service->medidasCompatibles('GREDAS 1 KILO', 'GREDAS ESCOLARES 1 KG')
+        );
+    }
+
+    public function test_elige_el_mas_economico(): void
+    {
+        $elegido = $this->service->elegirMasEconomico([
+            [
+                'prod_item' => 'CARO',
+                'prod_nombre' => 'ADHESIVO BARRA 21 G',
+                'prod_valor' => 900,
+                'prod_valor_costo' => 700,
+            ],
+            [
+                'prod_item' => 'BARATO',
+                'prod_nombre' => 'ADHESIVO BARRA 21 G OFERTA',
+                'prod_valor' => 500,
+                'prod_valor_costo' => 300,
+            ],
+        ]);
+
+        $this->assertSame('BARATO', $elegido['prod_item'] ?? null);
+    }
 }

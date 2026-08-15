@@ -205,9 +205,9 @@ class AgileVinculoAprendizajeService
     }
 
     /**
-     * Match por palabras: todas las de la frase deben aparecer en la descripción
-     * (pueden ir en otro orden o con texto en medio).
-     * Si varias coinciden, gana la frase más larga (más específica).
+     * Match por palabras: todas las de la frase deben aparecer en la descripción.
+     * Se descartan frases subsumidas por otra más específica. Frase de 1 palabra
+     * sin atributos en la línea no auto-vincula. Entre equivalentes, el más barato.
      *
      * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
      */
@@ -224,19 +224,88 @@ class AgileVinculoAprendizajeService
         }
         $setDesc = array_fill_keys($palabrasDesc, true);
 
+        $coincidentes = [];
         foreach ($this->ensureFrasesMaestroCache() as $frase) {
             $norm = (string) $frase->frase_norm;
             if ($norm === '' || ! $this->frasePalabrasEnDescripcion($norm, $setDesc)) {
                 continue;
             }
+            $coincidentes[] = $frase;
+        }
 
-            $producto = $this->maeprodArrayCache[(string) $frase->prod_item] ?? null;
-            if ($producto !== null) {
-                return $producto;
+        $coincidentes = $this->frasesNoSubsumidas($coincidentes);
+        if ($coincidentes === []) {
+            return null;
+        }
+
+        $soloUnaPalabra = true;
+        foreach ($coincidentes as $frase) {
+            $palabras = preg_split('/\s+/u', (string) $frase->frase_norm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            if (count($palabras) >= 2) {
+                $soloUnaPalabra = false;
+                break;
             }
         }
 
-        return null;
+        if ($soloUnaPalabra && ! $this->busqueda->tieneAtributosDiscriminantes($descripcion)) {
+            return null;
+        }
+
+        $productos = [];
+        foreach ($coincidentes as $frase) {
+            $producto = $this->maeprodArrayCache[(string) $frase->prod_item] ?? null;
+            if ($producto === null) {
+                continue;
+            }
+            if (! $this->busqueda->pasaFiltrosAtributos($descripcion, $producto['prod_nombre'])) {
+                continue;
+            }
+            $productos[$producto['prod_item']] = $producto;
+        }
+
+        return $this->busqueda->elegirMasEconomico(array_values($productos));
+    }
+
+    /**
+     * @param  list<object{prod_item: string, frase_norm: string}>  $frases
+     * @return list<object{prod_item: string, frase_norm: string}>
+     */
+    private function frasesNoSubsumidas(array $frases): array
+    {
+        $sets = [];
+        foreach ($frases as $i => $frase) {
+            $palabras = preg_split('/\s+/u', (string) $frase->frase_norm, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $sets[$i] = array_fill_keys($palabras, true);
+        }
+
+        $out = [];
+        foreach ($frases as $i => $frase) {
+            $subsumida = false;
+            foreach ($frases as $j => $otra) {
+                if ($i === $j) {
+                    continue;
+                }
+                if (count($sets[$j]) <= count($sets[$i])) {
+                    continue;
+                }
+                $falta = false;
+                foreach (array_keys($sets[$i]) as $palabra) {
+                    if (! isset($sets[$j][$palabra])) {
+                        $falta = true;
+                        break;
+                    }
+                }
+                if (! $falta) {
+                    $subsumida = true;
+                    break;
+                }
+            }
+            if (! $subsumida) {
+                $out[] = $frase;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -352,12 +421,15 @@ class AgileVinculoAprendizajeService
             return null;
         }
 
-        $mejorScore = 0.0;
-        $mejorProdItem = null;
+        $minimo = $this->scoreMinimoAprendido();
+        $equivalentes = [];
 
         foreach ($candidatos as $row) {
             $descAprendida = (string) ($row->prod_descripcion_agile ?? '');
             if (! $this->busqueda->tieneSolapeDistintivo($descripcion, $descAprendida)) {
+                continue;
+            }
+            if (! $this->busqueda->sonEquivalentes($descripcion, $descAprendida)) {
                 continue;
             }
 
@@ -366,29 +438,22 @@ class AgileVinculoAprendizajeService
                 (string) $row->prod_item,
                 $descAprendida,
             );
-
-            if ($score > $mejorScore) {
-                $mejorScore = $score;
-                $mejorProdItem = (string) $row->prod_item;
+            if ($score < $minimo) {
+                continue;
             }
+
+            $producto = $this->maeprodDesdeCache((string) $row->prod_item);
+            if ($producto === null) {
+                continue;
+            }
+            if (! $this->busqueda->sonEquivalentes($descripcion, $producto['prod_nombre'])) {
+                continue;
+            }
+
+            $equivalentes[$producto['prod_item']] = $producto;
         }
 
-        $minimo = $this->scoreMinimoAprendido();
-        if ($mejorProdItem === null || $mejorScore < $minimo) {
-            return null;
-        }
-
-        $producto = $this->maeprodDesdeCache($mejorProdItem);
-        if ($producto === null) {
-            return null;
-        }
-
-        // Doble chequeo contra el nombre real del maestro (no solo la descripción aprendida).
-        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, $producto['prod_nombre'])) {
-            return null;
-        }
-
-        return $producto;
+        return $this->busqueda->elegirMasEconomico(array_values($equivalentes));
     }
 
     /**
@@ -396,17 +461,22 @@ class AgileVinculoAprendizajeService
      */
     private function resolverSugerenciaMaeprod(string $descripcion): ?array
     {
-        $resultados = $this->busqueda->buscar($descripcion, null, 1);
-        $mae = $resultados->first();
-        if (! $mae instanceof Maeprod) {
-            return null;
+        $resultados = $this->busqueda->buscar($descripcion, null, 15);
+        $equivalentes = [];
+
+        foreach ($resultados as $mae) {
+            if (! $mae instanceof Maeprod) {
+                continue;
+            }
+            $nombre = (string) $mae->prod_nombre;
+            if (! $this->busqueda->sonEquivalentes($descripcion, $nombre)) {
+                continue;
+            }
+            $producto = $this->maeprodArray($mae);
+            $equivalentes[$producto['prod_item']] = $producto;
         }
 
-        if (! $this->busqueda->tieneSolapeDistintivo($descripcion, (string) $mae->prod_nombre)) {
-            return null;
-        }
-
-        return $this->maeprodArray($mae);
+        return $this->busqueda->elegirMasEconomico(array_values($equivalentes));
     }
 
     /**

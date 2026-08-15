@@ -253,4 +253,63 @@ class AgileVinculoAprendizajeServiceTest extends TestCase
         $this->assertSame('ARTE001', $resultado['producto']['prod_item']);
         $this->assertSame('frase_maeprod', $resultado['origen']);
     }
+
+    public function test_frase_una_palabra_sin_atributos_no_auto_vincula(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ARTE001',
+            'frase' => 'lapiz',
+            'frase_norm' => 'LAPIZ',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('LAPIZ ESCOLAR GRAFITO');
+
+        $this->assertNotSame('frase_maeprod', $resultado['origen']);
+    }
+
+    public function test_frase_elige_el_adhesivo_mas_barato_de_21g(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'ADH21C',
+            'prod_nombre' => 'ADHESIVO BARRA 21 G CARO',
+            'prod_valor' => 900,
+            'prod_valor_costo' => 700,
+            'prod_familia' => 'ARTE',
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'ADH21B',
+            'prod_nombre' => 'ADHESIVO BARRA 21 G BARATO',
+            'prod_valor' => 400,
+            'prod_valor_costo' => 250,
+            'prod_familia' => 'ARTE',
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'ADH40',
+            'prod_nombre' => 'ADHESIVO BARRA 40 G',
+            'prod_valor' => 200,
+            'prod_valor_costo' => 100,
+            'prod_familia' => 'ARTE',
+        ]);
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ADH21C',
+            'frase' => 'adhesivo 21',
+            'frase_norm' => 'ADHESIVO 21',
+        ]);
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ADH21B',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+        MaeprodFrase::query()->create([
+            'prod_item' => 'ADH40',
+            'frase' => 'adhesivo 40',
+            'frase_norm' => 'ADHESIVO 40',
+        ]);
+
+        $resultado = $this->service->resolverParaImportacion('ADHESIVO EN BARRA 21 G');
+
+        $this->assertSame('vinculado', $resultado['estado']);
+        $this->assertSame('ADH21B', $resultado['producto']['prod_item']);
+        $this->assertSame('frase_maeprod', $resultado['origen']);
+    }
 }
