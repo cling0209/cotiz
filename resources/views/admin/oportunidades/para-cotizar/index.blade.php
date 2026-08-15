@@ -1824,7 +1824,7 @@
                     ? adjuntosArchivosPorCodigo[codigo]
                     : [];
                 const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar && nAdj === 0)
-                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos mt-1" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
                         <i class="bi bi-cloud-download"></i> Buscar adjuntos
                     </button>`
                     : '';
@@ -1835,8 +1835,8 @@
                     : ((puedeAdjuntos && codigo && nAdj > 0)
                         ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
                         : '');
-                const accionHtml = (btnProductos || btnCotizar || btnEliminar)
-                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnEliminar}</div>`
+                const accionHtml = (btnProductos || btnCotizar || btnAdjuntos || btnEliminar)
+                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnAdjuntos}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
@@ -1845,7 +1845,6 @@
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
                     ${vinculoHtml}
-                    ${btnAdjuntos}
                     ${listaAdjuntos}
                 </td>
                 <td class="small">
