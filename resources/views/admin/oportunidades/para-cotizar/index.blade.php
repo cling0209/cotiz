@@ -431,6 +431,9 @@
                     <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
                         <i class="bi bi-funnel"></i> Filtrar
                     </button>
+                    <button type="button" id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm" data-no-loader title="Quitar filtros">
+                        <i class="bi bi-x-circle"></i> Quitar filtros
+                    </button>
                     <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
                         <i class="bi bi-download"></i> CSV
                     </button>
@@ -439,6 +442,9 @@
             <p class="small text-muted mb-0 mt-2">
                 Orden por defecto: presupuesto de mayor a menor; a igual presupuesto, menos productos primero.
                 El CSV exporta exactamente lo visible con los filtros actuales.
+                <button type="button" id="btn-ir-al-final" class="btn btn-outline-secondary btn-sm ms-2" data-no-loader>
+                    <i class="bi bi-arrow-down"></i> Ir al final
+                </button>
             </p>
         </div>
         <div class="table-responsive">
@@ -716,6 +722,8 @@
         const btnFiltroCierre24h = document.getElementById('filtro-cierre-24h');
         const badgeFiltroCierre24h = document.getElementById('filtro-cierre-24h-count');
         const btnFiltrarOportunidades = document.getElementById('btn-filtrar-oportunidades');
+        const btnLimpiarFiltros = document.getElementById('btn-limpiar-filtros');
+        const btnIrAlFinal = document.getElementById('btn-ir-al-final');
         let filtroCierre24hActivo = false;
         const btnDescargarCsv = document.getElementById('btn-descargar-csv');
         const paginacionNav = document.getElementById('oportunidad-paginacion');
@@ -1190,6 +1198,23 @@
             filtroPalabraClaveAplicado = filtroPalabraClave ?
                 normalizarTexto(filtroPalabraClave.value) :
                 '';
+            guardarFiltros();
+            renderTabla(true);
+        }
+
+        function limpiarFiltros() {
+            if (filtroRegion) filtroRegion.value = '';
+            if (filtroOrganismo) filtroOrganismo.value = '';
+            if (filtroPalabraClave) filtroPalabraClave.value = '';
+            if (filtroVinculoDesde) filtroVinculoDesde.value = '';
+            if (filtroVinculoHasta) filtroVinculoHasta.value = '';
+            if (filtroCodigo) filtroCodigo.value = '';
+            if (filtroPubDesde) filtroPubDesde.value = '';
+            if (filtroPubHasta) filtroPubHasta.value = '';
+            if (filtroCierreDesde) filtroCierreDesde.value = '';
+            if (filtroCierreHasta) filtroCierreHasta.value = '';
+            filtroCierre24hActivo = false;
+            filtroPalabraClaveAplicado = '';
             guardarFiltros();
             renderTabla(true);
         }
@@ -1920,6 +1945,16 @@
 
         if (btnFiltrarOportunidades) {
             btnFiltrarOportunidades.addEventListener('click', () => aplicarFiltros());
+        }
+
+        if (btnLimpiarFiltros) {
+            btnLimpiarFiltros.addEventListener('click', () => limpiarFiltros());
+        }
+
+        if (btnIrAlFinal) {
+            btnIrAlFinal.addEventListener('click', () => {
+                paginacionNav?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            });
         }
 
         if (btnFiltroCierre24h) {
