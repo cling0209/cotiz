@@ -124,6 +124,13 @@ return [
         'parallel_pages' => max(1, min(8, (int) env('COTIZ_PADDLEOCR_PARALLEL_PAGES', 2))),
     ],
 
+    // Sidecar LibreOffice (vista previa Office → PDF). En Docker: http://libreoffice:8080
+    'libreoffice' => [
+        'enabled' => filter_var(env('COTIZ_LIBREOFFICE_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'url' => rtrim((string) env('COTIZ_LIBREOFFICE_URL', 'http://libreoffice:8080'), '/'),
+        'timeout' => max(30, min(180, (int) env('COTIZ_LIBREOFFICE_TIMEOUT', 120))),
+    ],
+
     // Render free: evita spin-down (idle ~15 min) mientras hay jobs.
     // Solo activo con RENDER_KEEPALIVE=true (ver .env.render.example).
     // - Servidor: worker hace GET APP_URL/up (refuerzo; poco fiable solo).

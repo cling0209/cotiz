@@ -216,15 +216,18 @@ class OportunidadParaCotizarController extends Controller
         $descargar = (bool) ($data['descargar'] ?? false);
         $preview = (bool) ($data['preview'] ?? false);
 
-        if ($preview && ! $descargar && $this->adjuntos->esExcel($nombre)) {
-            return response($this->adjuntos->htmlPreviewExcel($bin), 200, [
-                'Content-Type' => 'text/html; charset=UTF-8',
-            ]);
-        }
+        if ($preview && ! $descargar) {
+            try {
+                $out = $this->adjuntos->contenidoParaPreview($codigo, $nombre, $bin);
+            } catch (RuntimeException $e) {
+                return response($this->htmlPreviewAdjuntoError($e->getMessage()), 200, [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                ]);
+            }
 
-        if ($preview && ! $descargar && $this->adjuntos->esWord($nombre)) {
-            return response($this->adjuntos->htmlPreviewDocx($bin), 200, [
-                'Content-Type' => 'text/html; charset=UTF-8',
+            return response($out['body'], 200, [
+                'Content-Type' => $out['mime'],
+                'Content-Disposition' => 'inline; filename="'.str_replace('"', '', $out['filename']).'"',
             ]);
         }
 
@@ -614,5 +617,14 @@ class OportunidadParaCotizarController extends Controller
             'fin' => $fin?->toIso8601String(),
             'fin_label' => $fin?->format('H:i:s'),
         ]);
+    }
+
+    private function htmlPreviewAdjuntoError(string $mensaje): string
+    {
+        return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Vista previa</title></head>'
+            .'<body style="font-family:system-ui,sans-serif;padding:1.5rem;color:#334155;">'
+            .'<p>'.e($mensaje).'</p>'
+            .'<p style="color:#64748b;font-size:0.9rem;">Puede descargar el archivo original desde el listado.</p>'
+            .'</body></html>';
     }
 }

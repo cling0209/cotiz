@@ -16,6 +16,7 @@ class OportunidadAdjuntoService
 
     public function __construct(
         protected CompraAgilApiService $compraAgilApi,
+        protected LibreOfficeConvertService $libreOffice,
     ) {}
 
     public function disk(): string
@@ -63,7 +64,7 @@ class OportunidadAdjuntoService
 
         foreach ($disk->files($carpeta) as $key) {
             $nombre = basename(str_replace('\\', '/', $key));
-            if ($nombre === '' || $nombre === 'manifest.json') {
+            if ($this->esArchivoInterno($key, $nombre)) {
                 continue;
             }
             $out[] = [
@@ -105,7 +106,7 @@ class OportunidadAdjuntoService
             }
             $codigo = strtoupper($partes[0]);
             $consultados[$codigo] = true;
-            if ($nombre === 'manifest.json') {
+            if ($this->esArchivoInterno($key, $nombre) || str_starts_with($partes[1], '_preview/')) {
                 continue;
             }
             $porCodigo[$codigo] ??= [];
@@ -233,6 +234,113 @@ class OportunidadAdjuntoService
             'actualizado_at' => now()->toIso8601String(),
             'archivos' => $nombres,
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+
+    /**
+     * PDF en caché (_preview/) o conversión LibreOffice. Si falla, Excel/DOCX HTML.
+     *
+     * @return array{body: string, mime: string, filename: string}
+     */
+    public function contenidoParaPreview(string $codigo, string $nombre, string $binario): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        $safeName = $this->nombreSeguro($nombre);
+        if ($this->esPdf($nombre)) {
+            return [
+                'body' => $binario,
+                'mime' => 'application/pdf',
+                'filename' => $safeName,
+            ];
+        }
+
+        if ($this->necesitaConversionPreview($nombre)) {
+            $pdf = $this->pdfPreviewDesdeCacheOConversion($codigo, $nombre, $binario);
+            if ($pdf !== null) {
+                return [
+                    'body' => $pdf,
+                    'mime' => 'application/pdf',
+                    'filename' => pathinfo($safeName, PATHINFO_FILENAME).'.pdf',
+                ];
+            }
+            if ($this->esExcel($nombre)) {
+                try {
+                    return [
+                        'body' => $this->htmlPreviewExcel($binario),
+                        'mime' => 'text/html; charset=UTF-8',
+                        'filename' => $safeName,
+                    ];
+                } catch (\Throwable) {
+                    throw new RuntimeException('No se pudo convertir el documento para mostrarlo. Puede descargarlo.');
+                }
+            }
+            if (strtolower((string) pathinfo($nombre, PATHINFO_EXTENSION)) === 'docx') {
+                try {
+                    return [
+                        'body' => $this->htmlPreviewDocx($binario),
+                        'mime' => 'text/html; charset=UTF-8',
+                        'filename' => $safeName,
+                    ];
+                } catch (\Throwable) {
+                    throw new RuntimeException('No se pudo convertir el documento para mostrarlo. Puede descargarlo.');
+                }
+            }
+
+            throw new RuntimeException('No se pudo convertir el documento para mostrarlo. Puede descargarlo.');
+        }
+
+        return [
+            'body' => $binario,
+            'mime' => $this->mimeDesdeNombre($nombre),
+            'filename' => $safeName,
+        ];
+    }
+
+    public function necesitaConversionPreview(string $nombre): bool
+    {
+        return $this->esExcel($nombre) || $this->esWord($nombre);
+    }
+
+    public function clavePreviewPdf(string $codigo, string $nombre): string
+    {
+        return $this->carpeta($codigo).'/_preview/'.$this->nombreSeguro($nombre).'.pdf';
+    }
+
+    private function pdfPreviewDesdeCacheOConversion(string $codigo, string $nombre, string $binario): ?string
+    {
+        $key = $this->clavePreviewPdf($codigo, $nombre);
+        $disk = Storage::disk($this->disk());
+        if ($disk->exists($key)) {
+            $cached = (string) $disk->get($key);
+            if (str_starts_with($cached, '%PDF')) {
+                return $cached;
+            }
+        }
+
+        if (! $this->libreOffice->estaConfigurado()) {
+            return null;
+        }
+
+        try {
+            $pdf = $this->libreOffice->convertirAPdf($binario, $nombre);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        $disk->put($key, $pdf, [
+            'visibility' => 'private',
+            'ContentType' => 'application/pdf',
+        ]);
+
+        return $pdf;
+    }
+
+    private function esArchivoInterno(string $key, string $nombre): bool
+    {
+        if ($nombre === '' || $nombre === 'manifest.json') {
+            return true;
+        }
+
+        return str_contains(str_replace('\\', '/', $key), '/_preview/');
     }
 
     public function htmlPreviewExcel(string $contenido): string

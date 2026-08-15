@@ -551,6 +551,10 @@
                         <div class="spinner-border spinner-border-sm" role="status"></div>
                         <span class="ms-2">Cargando documentos…</span>
                     </div>
+                    <div id="modal-adjuntos-convirtiendo" class="text-center text-muted py-4 d-none">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Convirtiendo para mostrar…</span>
+                    </div>
                     <div id="modal-adjuntos-error" class="alert alert-warning py-2 small d-none mb-2"></div>
                     <ul id="modal-adjuntos-lista" class="list-unstyled small mb-3"></ul>
                     <iframe id="modal-adjuntos-frame" class="w-100 border rounded d-none" style="min-height: 28rem;" title="Vista previa"></iframe>
@@ -1572,10 +1576,32 @@
             const modalEl = document.getElementById('modal-adjuntos');
             const label = document.getElementById('modal-adjuntos-label');
             const loading = document.getElementById('modal-adjuntos-loading');
+            const convirtiendo = document.getElementById('modal-adjuntos-convirtiendo');
             const errBox = document.getElementById('modal-adjuntos-error');
             const lista = document.getElementById('modal-adjuntos-lista');
             const frame = document.getElementById('modal-adjuntos-frame');
             const vacio = document.getElementById('modal-adjuntos-vacio');
+
+            const esPdfAdjunto = (nom) => /\.pdf$/i.test(String(nom || ''));
+            const necesitaConversionAdjunto = (nom) => /\.(docx?|xlsx?)$/i.test(String(nom || ''));
+            const cargarPreviewAdjunto = (url, nombre) => {
+                if (!frame) {
+                    return;
+                }
+                const convertir = necesitaConversionAdjunto(nombre) && !esPdfAdjunto(nombre);
+                if (convirtiendo) {
+                    convirtiendo.classList.toggle('d-none', !convertir);
+                }
+                frame.classList.toggle('d-none', convertir);
+                frame.onload = () => {
+                    if (convirtiendo) {
+                        convirtiendo.classList.add('d-none');
+                    }
+                    frame.classList.remove('d-none');
+                    frame.onload = null;
+                };
+                frame.src = url || 'about:blank';
+            };
             const archivoPedido = String(archivoInicial || '').trim();
             const bs = modalEl && typeof bootstrap !== 'undefined'
                 ? bootstrap.Modal.getOrCreateInstance(modalEl)
@@ -1592,7 +1618,11 @@
             if (lista) {
                 lista.innerHTML = '';
             }
+            if (convirtiendo) {
+                convirtiendo.classList.add('d-none');
+            }
             if (frame) {
+                frame.onload = null;
                 frame.classList.add('d-none');
                 frame.src = 'about:blank';
             }
@@ -1635,17 +1665,16 @@
                         const ver = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nom)}&preview=1`;
                         const dl = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nom)}&descargar=1`;
                         return `<li class="d-flex flex-wrap align-items-center gap-2 mb-1">
-                            <button type="button" class="btn btn-link btn-sm p-0 btn-preview-adjunto" data-url="${escapeHtml(ver)}">${escapeHtml(nom)}</button>
+                            <button type="button" class="btn btn-link btn-sm p-0 btn-preview-adjunto" data-url="${escapeHtml(ver)}" data-nombre="${escapeHtml(nom)}">${escapeHtml(nom)}</button>
                             <a class="btn btn-outline-secondary btn-sm py-0" href="${escapeHtml(dl)}" data-no-loader>Descargar</a>
                         </li>`;
                     }).join('');
                     lista.querySelectorAll('.btn-preview-adjunto').forEach((b) => {
                         b.addEventListener('click', () => {
-                            if (!frame) {
-                                return;
-                            }
-                            frame.classList.remove('d-none');
-                            frame.src = b.getAttribute('data-url') || 'about:blank';
+                            cargarPreviewAdjunto(
+                                b.getAttribute('data-url') || 'about:blank',
+                                b.getAttribute('data-nombre') || '',
+                            );
                         });
                     });
                     const mostrar = archivoPedido
@@ -1656,8 +1685,7 @@
                     if (mostrar && frame) {
                         const nomMostrar = String(mostrar.nombre || '');
                         const verAhora = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nomMostrar)}&preview=1`;
-                        frame.classList.remove('d-none');
-                        frame.src = verAhora;
+                        cargarPreviewAdjunto(verAhora, nomMostrar);
                     }
                 }
             } catch (e) {

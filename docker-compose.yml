@@ -45,6 +45,7 @@ services:
       PRODUCT_STORAGE_DISK: r2
       LEGACY_PRODUCT_IMAGES_PATH: /legacy-images
       COTIZ_PADDLEOCR_URL: http://paddleocr:8080
+      COTIZ_LIBREOFFICE_URL: http://libreoffice:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +53,15 @@ services:
         condition: service_started
       paddleocr:
         condition: service_started
+      libreoffice:
+        condition: service_started
+    networks:
+      - cotiz
+
+  libreoffice:
+    build:
+      context: ./docker/libreoffice
+      dockerfile: Dockerfile
     networks:
       - cotiz
 
