@@ -277,6 +277,7 @@ Frases Agile
                     </div>
                 </div>
                 @endif
+                @include('admin.maeprod._frases_busqueda')
             </div>
         @endif
     </div>

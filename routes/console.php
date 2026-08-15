@@ -30,6 +30,11 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
             ->cron('0 '.$horas->implode(',').' * * *')
             ->timezone($tz)
             ->withoutOverlapping(120);
+
+        Schedule::command('producto-mp:buscar')
+            ->cron('15 '.$horas->implode(',').' * * *')
+            ->timezone($tz)
+            ->withoutOverlapping(120);
     }
 }
 

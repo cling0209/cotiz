@@ -56,7 +56,7 @@
                     </a>
                 @endif
                 <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') ? 'active' : '' }}"
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.producto-mp.frases.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-gear"></i> Mantenedores
                     </a>
@@ -93,6 +93,14 @@
                                 </a>
                             </li>
                         @endif
+                        @if(auth()->user()->canManageMaeprodFrases())
+                            <li>
+                                <a class="dropdown-item {{ request()->routeIs('admin.producto-mp.frases.*') ? 'active' : '' }}"
+                                   href="{{ route('admin.producto-mp.frases.index') }}">
+                                    <i class="bi bi-search"></i> Frases búsqueda MP
+                                </a>
+                            </li>
+                        @endif
                         <li>
                             <a class="dropdown-item {{ request()->routeIs('admin.colores.*') ? 'active' : '' }}"
                                href="{{ route('admin.colores.index') }}">
@@ -109,6 +117,9 @@
             @if(auth()->user()->canVerOportunidades())
                 <a href="{{ route('admin.oportunidades.para-cotizar.index') }}" class="nav-link-admin {{ request()->routeIs('admin.oportunidades.para-cotizar.*') ? 'active' : '' }}" data-no-loader>
                     <i class="bi bi-lightning-charge"></i> Oportunidades
+                </a>
+                <a href="{{ route('admin.producto-mp.encontrados.index') }}" class="nav-link-admin {{ request()->routeIs('admin.producto-mp.encontrados.*') ? 'active' : '' }}" data-no-loader>
+                    <i class="bi bi-box-seam"></i> Productos MP
                 </a>
             @endif
             <span class="text-white-50 small d-none d-md-inline">{{ auth()->user()->fullName() ?: auth()->user()->username }}</span>

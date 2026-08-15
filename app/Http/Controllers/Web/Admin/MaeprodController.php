@@ -163,7 +163,7 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
-        $producto = Maeprod::query()->with('frases')->find($prod_item);
+        $producto = Maeprod::query()->with(['frases', 'frasesBusqueda'])->find($prod_item);
 
         if (! $producto) {
             return redirect()

@@ -14,6 +14,8 @@ use App\Http\Controllers\Web\Admin\CotizacionEnvioDexController;
 use App\Http\Controllers\Web\Admin\CotizacionExportController;
 use App\Http\Controllers\Web\Admin\CotizacionListadoController;
 use App\Http\Controllers\Web\Admin\MaeprodController;
+use App\Http\Controllers\Web\Admin\MaeprodFraseBusquedaController;
+use App\Http\Controllers\Web\Admin\ProductoMpEncontradoController;
 use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
 use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
 use App\Http\Controllers\Web\Admin\OrganismoObservacionController;
@@ -181,6 +183,23 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
         });
+
+        Route::get('producto-mp/frases', [MaeprodFraseBusquedaController::class, 'index'])
+            ->name('producto-mp.frases.index');
+        Route::post('producto-mp/frases', [MaeprodFraseBusquedaController::class, 'store'])
+            ->name('producto-mp.frases.store');
+        Route::post('producto-mp/frases/{frase}/eliminar', [MaeprodFraseBusquedaController::class, 'destroy'])
+            ->name('producto-mp.frases.destroy')
+            ->whereNumber('frase');
+
+        Route::get('producto-mp', [ProductoMpEncontradoController::class, 'index'])
+            ->name('producto-mp.encontrados.index');
+        Route::post('producto-mp/iniciar', [ProductoMpEncontradoController::class, 'iniciar'])
+            ->name('producto-mp.encontrados.iniciar');
+        Route::get('producto-mp/estado', [ProductoMpEncontradoController::class, 'estado'])
+            ->name('producto-mp.encontrados.estado');
+        Route::post('producto-mp/cancelar', [ProductoMpEncontradoController::class, 'cancelar'])
+            ->name('producto-mp.encontrados.cancelar');
 
         Route::middleware('oportunidades-palabras')->group(function () {
             Route::get('oportunidades/palabras-clave', [OportunidadPalabraClaveController::class, 'index'])

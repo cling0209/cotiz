@@ -1,0 +1,331 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Jobs\ProcessProductoMpBusquedaJob;
+use App\Models\Maeprod;
+use App\Models\MaeprodFrase;
+use App\Models\MaeprodFraseBusqueda;
+use App\Models\OportunidadEncontrada;
+use App\Models\OportunidadPalabraClave;
+use App\Models\ProductoMpEncontrado;
+use App\Models\User;
+use App\Services\ProductoMpBusquedaService;
+use Database\Seeders\FamprodSeeder;
+use Database\Seeders\GramajeSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Tests\TestCase;
+
+class ProductoMpBusquedaTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $superadmin;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(GramajeSeeder::class);
+        $this->seed(FamprodSeeder::class);
+
+        $this->superadmin = User::factory()->create([
+            'username' => 'superadmin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'DEMO003',
+            'prod_nombre' => 'ADHESIVO BARRA',
+            'prod_valor' => 500,
+            'prod_familia' => 'LIBR',
+            'prod_gramaje' => 'unidad',
+        ]);
+
+        config([
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+            'app.timezone' => 'America/Santiago',
+        ]);
+    }
+
+    public function test_superadmin_puede_agregar_frase_busqueda_sin_tocar_frases_agile(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.producto-mp.frases.store'), [
+                'prod_item' => 'DEMO003',
+                'frase' => '  barra pritt  ',
+            ])
+            ->assertRedirect(route('admin.producto-mp.frases.index'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('maeprod_frases_busqueda', [
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+        $this->assertDatabaseHas('maeprod_frases', [
+            'prod_item' => 'DEMO003',
+            'frase' => 'adhesivo barra',
+        ]);
+        $this->assertSame(1, MaeprodFrase::query()->count());
+    }
+
+    public function test_frase_busqueda_puede_repetirse_en_otro_producto(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'OTRO01',
+            'prod_nombre' => 'OTRO',
+            'prod_valor' => 100,
+            'prod_familia' => 'PAPEL',
+            'prod_gramaje' => 'unidad',
+        ]);
+
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'papel oficio',
+            'frase_norm' => 'PAPEL OFICIO',
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->post(route('admin.producto-mp.frases.store'), [
+                'prod_item' => 'OTRO01',
+                'frase' => 'papel oficio',
+            ])
+            ->assertRedirect(route('admin.producto-mp.frases.index'));
+
+        $this->assertSame(2, MaeprodFraseBusqueda::query()->count());
+    }
+
+    public function test_ficha_producto_muestra_ambos_bloques_de_frases(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->get(route('admin.productos.edit', 'DEMO003'))
+            ->assertOk()
+            ->assertSee('Frases para vincular')
+            ->assertSee('adhesivo barra')
+            ->assertSee('Frases de búsqueda MP')
+            ->assertSee('barra pritt');
+    }
+
+    public function test_match_usa_frases_busqueda_no_las_de_vincular(): void
+    {
+        MaeprodFrase::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'adhesivo barra',
+            'frase_norm' => 'ADHESIVO BARRA',
+        ]);
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+
+        $svc = $this->app->make(ProductoMpBusquedaService::class);
+
+        $this->assertNotNull($svc->mejorFraseParaDescripcion('barra adhesiva Pritt 21 ml'));
+        $this->assertNull($svc->mejorFraseParaDescripcion('adhesivo en barra 21 ml'));
+    }
+
+    public function test_reusa_preview_de_oportunidad_sin_pedir_detalle(): void
+    {
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1161-1-COT26',
+            'nombre' => 'Utiles de oficina',
+            'organismo' => 'Municipalidad X',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-08-14',
+            'palabras_coinciden' => ['oficina'],
+            'vinculo_completo' => true,
+            'vinculo_preview_json' => [
+                'lineas' => [
+                    [
+                        'id_agile' => '31237835',
+                        'descripcion' => 'barra adhesiva Pritt 21 ml',
+                        'cantidad' => 2,
+                    ],
+                ],
+            ],
+        ]);
+
+        Http::fake();
+
+        $svc = $this->app->make(ProductoMpBusquedaService::class);
+        $guardados = $svc->procesarCodigo('1161-1-COT26', [
+            'codigo' => '1161-1-COT26',
+            'nombre' => 'Utiles de oficina',
+            'organismo' => 'Municipalidad X',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+        ], '2026-08-14');
+
+        $this->assertSame(1, $guardados);
+        $this->assertDatabaseHas('producto_mp_encontrados', [
+            'codigo' => '1161-1-COT26',
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'codigo_producto_mp' => '31237835',
+            'origen_detalle' => 'preview',
+        ]);
+        Http::assertNothingSent();
+        $this->assertSame(1, OportunidadEncontrada::query()->count());
+        $this->assertDatabaseHas('oportunidad_encontradas', [
+            'codigo' => '1161-1-COT26',
+        ]);
+    }
+
+    public function test_corrida_revisa_ca_aunque_no_este_en_oportunidades(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00', 'America/Santiago'));
+
+        MaeprodFraseBusqueda::query()->create([
+            'prod_item' => 'DEMO003',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'aseo',
+            'orden' => 1,
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/3450-88-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '3450-88-COT26',
+                    'nombre' => 'Utiles de oficina',
+                    'institucion' => [
+                        'organismo_comprador' => 'Hospital Y',
+                        'region' => 13,
+                        'comuna' => 'Santiago',
+                    ],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-08-14T09:00:00-04:00',
+                        'fecha_cierre' => '2026-08-16T18:00:00-04:00',
+                    ],
+                    'productos_solicitados' => [
+                        [
+                            'codigo_producto' => '44112200',
+                            'nombre' => 'Adhesivo',
+                            'descripcion' => 'barra adhesiva Pritt 21 ml',
+                            'cantidad' => 1,
+                        ],
+                    ],
+                ],
+            ]),
+            'api2.mercadopublico.cl/v2/compra-agil*' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'items' => [
+                        [
+                            'codigo' => '3450-88-COT26',
+                            'nombre' => 'Utiles de oficina',
+                            'fechas' => [
+                                'fecha_publicacion' => '2026-08-14T09:00:00-04:00',
+                                'fecha_cierre' => '2026-08-16T18:00:00-04:00',
+                            ],
+                            'institucion' => [
+                                'organismo_comprador' => 'Hospital Y',
+                                'region' => 13,
+                                'comuna' => 'Santiago',
+                            ],
+                        ],
+                    ],
+                    'paginacion' => [
+                        'numero_pagina' => 1,
+                        'total_paginas' => 1,
+                        'total_resultados' => 1,
+                    ],
+                ],
+            ]),
+        ]);
+
+        Queue::fake();
+        $svc = $this->app->make(ProductoMpBusquedaService::class);
+        $corrida = $svc->iniciar('tester', '2026-08-14');
+        Queue::assertPushed(ProcessProductoMpBusquedaJob::class);
+
+        $guardas = 0;
+        while ($svc->procesarPaso($corrida->fresh()) && $guardas < 20) {
+            $guardas++;
+        }
+
+        $this->assertDatabaseHas('producto_mp_encontrados', [
+            'codigo' => '3450-88-COT26',
+            'prod_item' => 'DEMO003',
+            'codigo_producto_mp' => '44112200',
+            'origen_detalle' => 'mp',
+        ]);
+        $this->assertDatabaseMissing('oportunidad_encontradas', [
+            'codigo' => '3450-88-COT26',
+        ]);
+        $this->assertSame(ProductoMpBusquedaService::ESTADO_COMPLETED, $corrida->fresh()->estado);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_listado_productos_mp_muestra_match(): void
+    {
+        ProductoMpEncontrado::query()->create([
+            'codigo' => '1161-1-COT26',
+            'nombre_ca' => 'Utiles',
+            'organismo' => 'Municipalidad X',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'codigo_producto_mp' => '31237835',
+            'descripcion_mp' => 'barra adhesiva Pritt 21 ml',
+            'prod_item' => 'DEMO003',
+            'prod_nombre' => 'ADHESIVO BARRA',
+            'frase' => 'barra pritt',
+            'frase_norm' => 'BARRA PRITT',
+            'origen_detalle' => 'mp',
+            'fecha_busqueda' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($this->superadmin)
+            ->get(route('admin.producto-mp.encontrados.index'))
+            ->assertOk()
+            ->assertSee('1161-1-COT26')
+            ->assertSee('barra pritt')
+            ->assertSee('DEMO003');
+    }
+
+    public function test_iniciar_sin_frases_devuelve_error(): void
+    {
+        Queue::fake();
+
+        $this->actingAs($this->superadmin)
+            ->postJson(route('admin.producto-mp.encontrados.iniciar'))
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false);
+    }
+}

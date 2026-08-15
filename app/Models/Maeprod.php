@@ -41,6 +41,12 @@ class Maeprod extends Model
             ->orderBy('frase');
     }
 
+    public function frasesBusqueda(): HasMany
+    {
+        return $this->hasMany(MaeprodFraseBusqueda::class, 'prod_item', 'prod_item')
+            ->orderBy('frase');
+    }
+
     public function imageUrl(): string
     {
         return $this->resolveImageUrl();
