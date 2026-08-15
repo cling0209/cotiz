@@ -562,9 +562,8 @@ class OportunidadAdjuntoService
             return null;
         }
 
-        $nombre = $this->nombreDesdeContentDisposition((string) $response->header('Content-Disposition'))
-            ?: $nombreSugerido
-            ?: $this->nombreDesdeUrl($url);
+        $desdeHeader = $this->nombreDesdeContentDisposition((string) $response->header('Content-Disposition'));
+        $nombre = $this->elegirNombreArchivo($nombreSugerido, $desdeHeader, $url);
 
         return [
             'nombre' => $nombre,
@@ -621,13 +620,52 @@ class OportunidadAdjuntoService
         return $base !== '' ? rawurldecode($base) : 'adjunto.bin';
     }
 
+    private function elegirNombreArchivo(string $sugerido, string $desdeHeader, string $url): string
+    {
+        if ($this->pareceNombreHumano($sugerido)) {
+            return $sugerido;
+        }
+        if ($this->pareceNombreHumano($desdeHeader)) {
+            return $desdeHeader;
+        }
+
+        return $sugerido !== '' ? $sugerido : ($desdeHeader !== '' ? $desdeHeader : $this->nombreDesdeUrl($url));
+    }
+
+    private function pareceNombreHumano(string $nombre): bool
+    {
+        $nombre = trim($nombre);
+        if ($nombre === '') {
+            return false;
+        }
+        $lower = strtolower($nombre);
+        if (str_contains($lower, 'utf-8') || str_contains($lower, '=?')) {
+            return false;
+        }
+
+        return (bool) preg_match('/\.(pdf|docx?|xlsx?|zip)$/i', $nombre);
+    }
+
     private function nombreDesdeContentDisposition(string $header): string
     {
-        if (preg_match('/filename\*=UTF-8\'\'([^;]+)/i', $header, $m)) {
+        if (preg_match("/filename\\*=(?:UTF-8)''([^;]+)/i", $header, $m)) {
             return rawurldecode(trim($m[1], " \t\"'"));
         }
-        if (preg_match('/filename="?([^";]+)"?/i', $header, $m)) {
-            return trim($m[1], " \t\"'");
+        if (preg_match('/filename="([^"]+)"/i', $header, $m) || preg_match('/filename=([^;]+)/i', $header, $m)) {
+            $raw = trim($m[1], " \t\"'");
+            if (str_contains($raw, '=?')) {
+                $decoded = function_exists('mb_decode_mimeheader') ? mb_decode_mimeheader($raw) : $raw;
+                if (is_string($decoded) && $decoded !== '' && $decoded !== $raw) {
+                    $raw = $decoded;
+                } elseif (preg_match('/=\?utf-8\?B\?([^?]+)\?=/i', $raw, $b64)) {
+                    $bin = base64_decode($b64[1], true);
+                    if (is_string($bin) && $bin !== '') {
+                        $raw = $bin;
+                    }
+                }
+            }
+
+            return $raw;
         }
 
         return '';
