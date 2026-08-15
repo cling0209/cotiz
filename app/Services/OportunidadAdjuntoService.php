@@ -270,18 +270,19 @@ class OportunidadAdjuntoService
     private function desdeServiciosCompraAgil(string $codigo): array
     {
         $userKey = $this->compraAgilUserKey();
-        if ($userKey === '') {
-            return [];
-        }
-
         $base = rtrim((string) config(
             'cotiz.mercadopublico.compra_agil_adjuntos_base',
             'https://servicios-compra-agil.mercadopublico.cl',
         ), '/');
 
+        $headers = ['Accept' => 'application/json'];
+        if ($userKey !== '') {
+            $headers['user_key'] = $userKey;
+        }
+
         try {
             $response = $this->httpAdjuntosMp()
-                ->withHeaders(['user_key' => $userKey, 'Accept' => 'application/json'])
+                ->withHeaders($headers)
                 ->get($base.'/v1/adjuntos-compra-agil/listar/'.$codigo);
         } catch (\Throwable) {
             return [];
@@ -310,10 +311,11 @@ class OportunidadAdjuntoService
                 $nombre = $id.'.bin';
             }
 
+            $extra = $userKey !== '' ? ['user_key' => $userKey] : [];
             $bajado = $this->bajarBinario(
                 $base.'/v1/adjuntos-compra-agil/descargar/'.$id,
                 $nombre,
-                ['user_key' => $userKey],
+                $extra,
             );
             if ($bajado !== null) {
                 $out[] = $bajado;
