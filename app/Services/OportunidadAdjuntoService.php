@@ -20,7 +20,7 @@ class OportunidadAdjuntoService
 
     public function disk(): string
     {
-        return (string) config('cotiz.mercadopublico.adjuntos_disk', 'r2');
+        return (string) config('cotiz.mercadopublico.adjuntos_disk', 'r2_adjuntos');
     }
 
     public function isConfigured(): bool
@@ -34,12 +34,15 @@ class OportunidadAdjuntoService
 
     public function prefix(): string
     {
-        return trim((string) config('cotiz.mercadopublico.adjuntos_prefix', 'mp-adjuntos'), '/');
+        return trim((string) config('cotiz.mercadopublico.adjuntos_prefix', ''), '/');
     }
 
     public function carpeta(string $codigo): string
     {
-        return $this->prefix().'/'.$this->normalizarCodigo($codigo);
+        $codigo = $this->normalizarCodigo($codigo);
+        $prefix = $this->prefix();
+
+        return $prefix === '' ? $codigo : $prefix.'/'.$codigo;
     }
 
     public function normalizarCodigo(string $codigo): string
@@ -81,12 +84,17 @@ class OportunidadAdjuntoService
     public function conteosPorCodigo(): array
     {
         $this->assertConfigurado();
-        $prefix = $this->prefix().'/';
+        $prefix = $this->prefix();
         $conteos = [];
+        $disk = Storage::disk($this->disk());
+        $root = $prefix === '' ? '' : $prefix;
 
-        foreach (Storage::disk($this->disk())->allFiles($this->prefix()) as $key) {
-            $rel = ltrim(substr($key, strlen($prefix)), '/');
-            $partes = explode('/', str_replace('\\', '/', $rel), 2);
+        foreach ($disk->allFiles($root) as $key) {
+            $rel = str_replace('\\', '/', $key);
+            if ($prefix !== '') {
+                $rel = ltrim(substr($rel, strlen($prefix)), '/');
+            }
+            $partes = explode('/', $rel, 2);
             if (count($partes) < 2) {
                 continue;
             }
@@ -684,7 +692,7 @@ class OportunidadAdjuntoService
     private function assertConfigurado(): void
     {
         if (! $this->isConfigured()) {
-            throw new RuntimeException('R2 no configurado: defina R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET.');
+            throw new RuntimeException('R2 adjuntos no configurado: defina R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_ADJUNTOS_BUCKET.');
         }
     }
 }

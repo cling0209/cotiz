@@ -217,8 +217,8 @@ return [
             env('MERCADOPUBLICO_RESULTADOS_FILTRAR_ULTIMO_CAMBIO', true),
             FILTER_VALIDATE_BOOL,
         ),
-        'adjuntos_disk' => env('R2_ADJUNTOS_DISK', env('PRODUCT_STORAGE_DISK', 'r2')),
-        'adjuntos_prefix' => env('R2_ADJUNTOS_PREFIX', 'mp-adjuntos'),
+        'adjuntos_disk' => env('R2_ADJUNTOS_DISK', 'r2_adjuntos'),
+        'adjuntos_prefix' => env('R2_ADJUNTOS_PREFIX', ''),
         'compra_agil_adjuntos_base' => env(
             'MP_COMPRA_AGIL_ADJUNTOS_BASE',
             'https://servicios-compra-agil.mercadopublico.cl',

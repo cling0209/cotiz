@@ -20,14 +20,14 @@ class OportunidadAdjuntosTest extends TestCase
         config([
             'cotiz.mercadopublico.ticket' => 'test-ticket',
             'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
-            'cotiz.mercadopublico.adjuntos_disk' => 'r2',
-            'cotiz.mercadopublico.adjuntos_prefix' => 'mp-adjuntos',
+            'cotiz.mercadopublico.adjuntos_disk' => 'r2_adjuntos',
+            'cotiz.mercadopublico.adjuntos_prefix' => '',
             'cotiz.mercadopublico.compra_agil_user_key' => 'test-user-key',
-            'filesystems.disks.r2.bucket' => 'test-bucket',
-            'filesystems.disks.r2.key' => 'test-key',
-            'filesystems.disks.r2.secret' => 'test-secret',
+            'filesystems.disks.r2_adjuntos.bucket' => 'mp-adjuntos',
+            'filesystems.disks.r2_adjuntos.key' => 'test-key',
+            'filesystems.disks.r2_adjuntos.secret' => 'test-secret',
         ]);
-        Storage::fake('r2');
+        Storage::fake('r2_adjuntos');
     }
 
     public function test_ejecutivo_no_puede_buscar_adjuntos(): void
@@ -94,7 +94,7 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('guardados', 1);
 
-        Storage::disk('r2')->assertExists('mp-adjuntos/1000-1-COT26/bases.pdf');
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/bases.pdf');
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
