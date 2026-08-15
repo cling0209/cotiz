@@ -217,5 +217,7 @@ return [
             env('MERCADOPUBLICO_RESULTADOS_FILTRAR_ULTIMO_CAMBIO', true),
             FILTER_VALIDATE_BOOL,
         ),
+        'adjuntos_disk' => env('R2_ADJUNTOS_DISK', env('PRODUCT_STORAGE_DISK', 'r2')),
+        'adjuntos_prefix' => env('R2_ADJUNTOS_PREFIX', 'mp-adjuntos'),
     ],
 ];

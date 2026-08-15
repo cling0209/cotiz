@@ -529,6 +529,30 @@
         </div>
     </div>
 
+    <div class="modal fade" id="modal-adjuntos" tabindex="-1" aria-labelledby="modal-adjuntos-label" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="modal-adjuntos-label">Documentos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-adjuntos-loading" class="text-center text-muted py-4 d-none">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Cargando documentos…</span>
+                    </div>
+                    <div id="modal-adjuntos-error" class="alert alert-warning py-2 small d-none mb-2"></div>
+                    <ul id="modal-adjuntos-lista" class="list-unstyled small mb-3"></ul>
+                    <iframe id="modal-adjuntos-frame" class="w-100 border rounded d-none" style="min-height: 28rem;" title="Vista previa"></iframe>
+                    <div id="modal-adjuntos-vacio" class="text-muted small d-none">No hay documentos guardados.</div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 <style>
     .oportunidades-tabla-compacta td {
@@ -598,6 +622,7 @@
     (function() {
         const puedeBuscar = @json((bool) $puedeBuscar);
         const puedeEliminar = @json((bool) ($puedeEliminar ?? false));
+        const puedeAdjuntos = @json((bool) ($puedeAdjuntos ?? false));
         const urls = {
             iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
             estado: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.estado') : ''),
@@ -613,7 +638,12 @@
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
             eliminar: @json(($puedeEliminar ?? false) ? route('admin.oportunidades.para-cotizar.destroy') : ''),
             cotizarBase: @json(route('admin.cotizaciones.create')),
+            adjuntosEstado: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
+            adjuntosBuscar: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
+            adjuntosListarBase: @json(($puedeAdjuntos ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
+            adjuntosVerBase: @json(($puedeAdjuntos ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
         };
+        const adjuntosPorCodigo = {};
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
@@ -1404,6 +1434,168 @@
             }
         }
 
+        function urlAdjuntos(base, codigo) {
+            return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
+        }
+
+        async function cargarConteosAdjuntos() {
+            if (!puedeAdjuntos || !urls.adjuntosEstado) {
+                return;
+            }
+            try {
+                const res = await fetch(urls.adjuntosEstado, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.ok || !data.conteos) {
+                    return;
+                }
+                Object.keys(adjuntosPorCodigo).forEach((k) => { delete adjuntosPorCodigo[k]; });
+                Object.entries(data.conteos).forEach(([cod, n]) => {
+                    adjuntosPorCodigo[String(cod).toUpperCase()] = Number(n) || 0;
+                });
+                renderTabla(false);
+            } catch (_e) {
+                // silencioso
+            }
+        }
+
+        async function buscarAdjuntos(codigo, btn) {
+            if (!puedeAdjuntos || !urls.adjuntosBuscar || !csrf) {
+                return;
+            }
+            const labelPrev = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando…';
+            }
+            try {
+                const res = await fetch(urls.adjuntosBuscar, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ codigo }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.ok) {
+                    const err = (data && data.error) ? data.error : 'No se pudieron buscar adjuntos.';
+                    if (window.AdminDialog?.alert) {
+                        await AdminDialog.alert(err, { title: 'Adjuntos', type: 'danger' });
+                    } else {
+                        window.alert(err);
+                    }
+                    return;
+                }
+                adjuntosPorCodigo[codigo] = Array.isArray(data.archivos) ? data.archivos.length : (Number(data.guardados) || 0);
+                renderTabla(false);
+            } catch (e) {
+                const err = e && e.message ? e.message : 'Error de red.';
+                if (window.AdminDialog?.alert) {
+                    await AdminDialog.alert(err, { title: 'Adjuntos', type: 'danger' });
+                } else {
+                    window.alert(err);
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = labelPrev;
+                }
+            }
+        }
+
+        async function abrirModalAdjuntos(codigo) {
+            const modalEl = document.getElementById('modal-adjuntos');
+            const label = document.getElementById('modal-adjuntos-label');
+            const loading = document.getElementById('modal-adjuntos-loading');
+            const errBox = document.getElementById('modal-adjuntos-error');
+            const lista = document.getElementById('modal-adjuntos-lista');
+            const frame = document.getElementById('modal-adjuntos-frame');
+            const vacio = document.getElementById('modal-adjuntos-vacio');
+            const bs = modalEl && typeof bootstrap !== 'undefined'
+                ? bootstrap.Modal.getOrCreateInstance(modalEl)
+                : null;
+            if (label) {
+                label.textContent = `Documentos — ${codigo}`;
+            }
+            if (errBox) {
+                errBox.classList.add('d-none');
+                errBox.textContent = '';
+            }
+            if (lista) {
+                lista.innerHTML = '';
+            }
+            if (frame) {
+                frame.classList.add('d-none');
+                frame.src = 'about:blank';
+            }
+            if (vacio) {
+                vacio.classList.add('d-none');
+            }
+            if (loading) {
+                loading.classList.remove('d-none');
+            }
+            bs?.show();
+            try {
+                const res = await fetch(urlAdjuntos(urls.adjuntosListarBase, codigo), {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                const data = await res.json().catch(() => ({}));
+                if (loading) {
+                    loading.classList.add('d-none');
+                }
+                if (!res.ok || !data.ok) {
+                    if (errBox) {
+                        errBox.textContent = (data && data.error) ? data.error : 'No se pudieron listar documentos.';
+                        errBox.classList.remove('d-none');
+                    }
+                    return;
+                }
+                const archivos = Array.isArray(data.archivos) ? data.archivos : [];
+                adjuntosPorCodigo[codigo] = archivos.length;
+                if (archivos.length === 0) {
+                    if (vacio) {
+                        vacio.classList.remove('d-none');
+                    }
+                    return;
+                }
+                if (lista) {
+                    lista.innerHTML = archivos.map((a) => {
+                        const nom = String(a.nombre || '');
+                        const ver = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nom)}&preview=1`;
+                        const dl = `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nom)}&descargar=1`;
+                        return `<li class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <button type="button" class="btn btn-link btn-sm p-0 btn-preview-adjunto" data-url="${escapeHtml(ver)}">${escapeHtml(nom)}</button>
+                            <a class="btn btn-outline-secondary btn-sm py-0" href="${escapeHtml(dl)}" data-no-loader>Descargar</a>
+                        </li>`;
+                    }).join('');
+                    lista.querySelectorAll('.btn-preview-adjunto').forEach((b) => {
+                        b.addEventListener('click', () => {
+                            if (!frame) {
+                                return;
+                            }
+                            frame.classList.remove('d-none');
+                            frame.src = b.getAttribute('data-url') || 'about:blank';
+                        });
+                    });
+                }
+            } catch (e) {
+                if (loading) {
+                    loading.classList.add('d-none');
+                }
+                if (errBox) {
+                    errBox.textContent = e && e.message ? e.message : 'Error de red.';
+                    errBox.classList.remove('d-none');
+                }
+            }
+        }
+
         function visitasDeItem(item) {
             const codigo = String(item?.codigo || '').toUpperCase().trim();
             const servidor = Number(item?.visitas_usuario) || 0;
@@ -1569,8 +1761,20 @@
                         <i class="bi bi-trash"></i> Eliminar
                     </button>`
                     : '';
-                const accionHtml = (btnProductos || btnCotizar || btnEliminar)
-                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${btnEliminar}</div>`
+                const nAdj = Number(adjuntosPorCodigo[codigo] || 0);
+                const btnAdjuntos = (puedeAdjuntos && codigo && urls.adjuntosBuscar)
+                    ? `<button type="button" class="btn btn-outline-secondary btn-sm text-nowrap btn-buscar-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Buscar adjuntos en Mercado Público">
+                        <i class="bi bi-cloud-download"></i> Buscar adjuntos
+                    </button>`
+                    : '';
+                const linkAdjuntos = (puedeAdjuntos && codigo && nAdj > 0)
+                    ? `<button type="button" class="btn btn-link btn-sm p-0 text-nowrap btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
+                    : '';
+                const bloqueAdjuntos = (btnAdjuntos || linkAdjuntos)
+                    ? `<div class="d-flex flex-column align-items-end gap-0">${btnAdjuntos}${linkAdjuntos}</div>`
+                    : '';
+                const accionHtml = (btnProductos || btnCotizar || btnEliminar || bloqueAdjuntos)
+                    ? `<div class="d-inline-flex flex-column align-items-end gap-1">${btnProductos}${btnCotizar}${bloqueAdjuntos}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
@@ -2092,6 +2296,24 @@
                     const codElim = String(btnEliminar.getAttribute('data-codigo') || '').trim().toUpperCase();
                     if (codElim) {
                         eliminarOportunidad(codElim, btnEliminar);
+                    }
+                    return;
+                }
+                const btnAdj = e.target.closest('button.btn-buscar-adjuntos');
+                if (btnAdj) {
+                    e.preventDefault();
+                    const codAdj = String(btnAdj.getAttribute('data-codigo') || '').trim().toUpperCase();
+                    if (codAdj) {
+                        buscarAdjuntos(codAdj, btnAdj);
+                    }
+                    return;
+                }
+                const btnVerAdj = e.target.closest('button.btn-ver-adjuntos');
+                if (btnVerAdj) {
+                    e.preventDefault();
+                    const codVer = String(btnVerAdj.getAttribute('data-codigo') || '').trim().toUpperCase();
+                    if (codVer) {
+                        abrirModalAdjuntos(codVer);
                     }
                     return;
                 }
@@ -3939,6 +4161,9 @@
             });
             setSyncDetalleAbierto('cot', false);
             setSyncDetalleAbierto('vin', false);
+        }
+        if (puedeAdjuntos) {
+            cargarConteosAdjuntos();
         }
     })();
 </script>

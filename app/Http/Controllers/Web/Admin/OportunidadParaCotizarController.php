@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\CompraAgilRegionScope;
+use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadEncontradaRelayService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -20,6 +22,7 @@ class OportunidadParaCotizarController extends Controller
         protected OportunidadBusquedaService $busqueda,
         protected OportunidadVinculoService $vinculos,
         protected OportunidadEncontradaRelayService $encontradaRelay,
+        protected OportunidadAdjuntoService $adjuntos,
     ) {}
 
     public function index(Request $request): View
@@ -48,6 +51,7 @@ class OportunidadParaCotizarController extends Controller
             'puedeBuscar' => $puedeBuscar,
             'puedePalabras' => $puedePalabras,
             'puedeEliminar' => (bool) $request->user()?->isSuperAdmin(),
+            'puedeAdjuntos' => (bool) $request->user()?->isSuperAdmin(),
             'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
                 ? (string) $corridaEstado['fecha_busqueda']
                 : $this->servicio->fechaBusquedaHoy(),
@@ -112,6 +116,114 @@ class OportunidadParaCotizarController extends Controller
             'ok' => true,
             'codigo' => strtoupper(trim($data['codigo'])),
             'visitas_usuario' => $veces,
+        ]);
+    }
+
+    public function adjuntosEstado(): JsonResponse
+    {
+        if (! request()->user()?->isSuperAdmin()) {
+            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
+        }
+
+        try {
+            $conteos = $this->adjuntos->conteosPorCodigo();
+        } catch (RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'conteos' => $conteos,
+        ]);
+    }
+
+    public function buscarAdjuntos(Request $request): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
+        }
+
+        $data = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+        ]);
+
+        @set_time_limit(120);
+
+        try {
+            $resultado = $this->adjuntos->buscarYGuardar($data['codigo']);
+        } catch (RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'codigo' => $resultado['codigo'],
+            'guardados' => $resultado['guardados'],
+            'omitidos' => $resultado['omitidos'],
+            'archivos' => $resultado['archivos'],
+        ]);
+    }
+
+    public function listarAdjuntos(Request $request, string $codigo): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
+        }
+
+        try {
+            $archivos = $this->adjuntos->listar($codigo);
+        } catch (RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'codigo' => $this->adjuntos->normalizarCodigo($codigo),
+            'archivos' => $archivos,
+        ]);
+    }
+
+    public function verAdjunto(Request $request, string $codigo): Response
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'archivo' => ['required', 'string', 'max:180'],
+            'descargar' => ['sometimes', 'boolean'],
+            'preview' => ['sometimes', 'boolean'],
+        ]);
+
+        $nombre = $data['archivo'];
+
+        try {
+            $bin = $this->adjuntos->contenido($codigo, $nombre);
+        } catch (RuntimeException $e) {
+            abort(404, $e->getMessage());
+        }
+
+        $descargar = (bool) ($data['descargar'] ?? false);
+        $preview = (bool) ($data['preview'] ?? false);
+
+        if ($preview && ! $descargar && $this->adjuntos->esExcel($nombre)) {
+            return response($this->adjuntos->htmlPreviewExcel($bin), 200, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        if ($preview && ! $descargar && $this->adjuntos->esWord($nombre)) {
+            return response($this->adjuntos->htmlPreviewDocx($bin), 200, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        $mime = $this->adjuntos->mimeDesdeNombre($nombre);
+        $disposition = $descargar ? 'attachment' : 'inline';
+
+        return response($bin, 200, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => $disposition.'; filename="'.str_replace('"', '', $nombre).'"',
         ]);
     }
 

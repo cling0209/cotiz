@@ -1,12 +1,12 @@
 <?php
 
+use App\Http\Controllers\Web\Admin\AccountController;
 use App\Http\Controllers\Web\Admin\AdjudicadaListadoController;
 use App\Http\Controllers\Web\Admin\AgileRecepcionController;
 use App\Http\Controllers\Web\Admin\AuthController;
-use App\Http\Controllers\Web\Admin\AccountController;
 use App\Http\Controllers\Web\Admin\CompraAgilAnalisisController;
-use App\Http\Controllers\Web\Admin\CompraAgilResultadosController;
 use App\Http\Controllers\Web\Admin\CompraAgilBusquedaController;
+use App\Http\Controllers\Web\Admin\CompraAgilResultadosController;
 use App\Http\Controllers\Web\Admin\CorreosChileTarifaController;
 use App\Http\Controllers\Web\Admin\CotizacionCargaArchivoController;
 use App\Http\Controllers\Web\Admin\CotizacionController;
@@ -15,11 +15,11 @@ use App\Http\Controllers\Web\Admin\CotizacionExportController;
 use App\Http\Controllers\Web\Admin\CotizacionListadoController;
 use App\Http\Controllers\Web\Admin\MaeprodController;
 use App\Http\Controllers\Web\Admin\MaeprodFraseBusquedaController;
-use App\Http\Controllers\Web\Admin\ProductoMpEncontradoController;
 use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
 use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
 use App\Http\Controllers\Web\Admin\OrganismoObservacionController;
 use App\Http\Controllers\Web\Admin\PasswordResetController;
+use App\Http\Controllers\Web\Admin\ProductoMpEncontradoController;
 use App\Http\Controllers\Web\Admin\ThemeController;
 use App\Http\Controllers\Web\Admin\UserController;
 use App\Http\Controllers\Web\ThemeFaviconController;
@@ -159,6 +159,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->where('codigo', '[^/]+');
             Route::post('oportunidades/para-cotizar/vincular-codigo', [OportunidadParaCotizarController::class, 'vincularCodigo'])
                 ->name('oportunidades.para-cotizar.vincular-codigo');
+            Route::get('oportunidades/para-cotizar/adjuntos', [OportunidadParaCotizarController::class, 'adjuntosEstado'])
+                ->name('oportunidades.para-cotizar.adjuntos.estado');
+            Route::post('oportunidades/para-cotizar/adjuntos', [OportunidadParaCotizarController::class, 'buscarAdjuntos'])
+                ->name('oportunidades.para-cotizar.adjuntos.buscar');
+            Route::get('oportunidades/para-cotizar/adjuntos/{codigo}', [OportunidadParaCotizarController::class, 'listarAdjuntos'])
+                ->name('oportunidades.para-cotizar.adjuntos.listar')
+                ->where('codigo', '[^/]+');
+            Route::get('oportunidades/para-cotizar/adjuntos/{codigo}/archivo', [OportunidadParaCotizarController::class, 'verAdjunto'])
+                ->name('oportunidades.para-cotizar.adjuntos.ver')
+                ->where('codigo', '[^/]+');
         });
 
         Route::middleware('oportunidades-admin')->group(function () {
