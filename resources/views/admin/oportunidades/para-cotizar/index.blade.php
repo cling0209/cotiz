@@ -390,7 +390,18 @@
                     <input type="search" id="filtro-codigo" class="form-control form-control-sm"
                         placeholder="Ej. 1234-56-COT25" autocomplete="off">
                 </div>
-                <div class="col-6 col-md-4 col-xl-3">
+                <div class="col-12 col-md-6 col-xl-2 d-flex align-items-end">
+                    <button type="button" id="filtro-cierre-24h" class="btn btn-sm w-100 filtro-cierre-24h"
+                        data-no-loader
+                        title="Mostrar solo cotizaciones que cierran en las pr&oacute;ximas 24 horas"
+                        aria-pressed="false">
+                        <i class="bi bi-alarm"></i> Cierran en 24 h
+                        (<span id="filtro-cierre-24h-count" class="filtro-cierre-24h-count">0</span>)
+                    </button>
+                </div>
+            </div>
+            <div class="row g-2 align-items-end mt-1">
+                <div class="col-6 col-md-3 col-xl-2">
                     <label class="form-label small mb-1">% v&iacute;nculo</label>
                     <div class="d-flex gap-1 align-items-center" title="Rango de vinculaci&oacute;n al maestro. Vac&iacute;o = todas.">
                         <input type="number" id="filtro-vinculo-desde" class="form-control form-control-sm"
@@ -399,42 +410,35 @@
                         <input type="number" id="filtro-vinculo-hasta" class="form-control form-control-sm"
                             min="0" max="100" step="1" placeholder="Hasta" inputmode="numeric" autocomplete="off">
                     </div>
-                    <button type="button" id="filtro-cierre-24h" class="btn btn-sm mt-1 w-100 filtro-cierre-24h"
-                        data-no-loader
-                        title="Mostrar solo cotizaciones que cierran en las pr&oacute;ximas 24 horas"
-                        aria-pressed="false">
-                        <i class="bi bi-alarm"></i> Cierran en 24 h
-                        (<span id="filtro-cierre-24h-count" class="filtro-cierre-24h-count">0</span>)
-                    </button>
                 </div>
-                <div class="col-12 col-md-6 col-xl-3">
+                <div class="col-12 col-md-4 col-xl-3">
                     <label class="form-label small mb-1">Fecha publicaci&oacute;n</label>
-                    <div class="d-flex gap-1 align-items-center" title="Rango de fecha de publicaci&oacute;n. Vac&iacute;o = todas.">
-                        <input type="date" id="filtro-pub-desde" class="form-control form-control-sm"
+                    <div class="d-flex gap-1 align-items-center min-w-0" title="Rango de fecha de publicaci&oacute;n. Vac&iacute;o = todas.">
+                        <input type="date" id="filtro-pub-desde" class="form-control form-control-sm min-w-0"
                             autocomplete="off" aria-label="Publicaci&oacute;n desde">
                         <span class="small text-muted flex-shrink-0">a</span>
-                        <input type="date" id="filtro-pub-hasta" class="form-control form-control-sm"
+                        <input type="date" id="filtro-pub-hasta" class="form-control form-control-sm min-w-0"
                             autocomplete="off" aria-label="Publicaci&oacute;n hasta">
                     </div>
                 </div>
-                <div class="col-12 col-md-6 col-xl-3">
+                <div class="col-12 col-md-4 col-xl-3">
                     <label class="form-label small mb-1">Fecha cierre</label>
-                    <div class="d-flex gap-1 align-items-center" title="Rango de fecha de cierre. Vac&iacute;o = todas.">
-                        <input type="date" id="filtro-cierre-desde" class="form-control form-control-sm"
+                    <div class="d-flex gap-1 align-items-center min-w-0" title="Rango de fecha de cierre. Vac&iacute;o = todas.">
+                        <input type="date" id="filtro-cierre-desde" class="form-control form-control-sm min-w-0"
                             autocomplete="off" aria-label="Cierre desde">
                         <span class="small text-muted flex-shrink-0">a</span>
-                        <input type="date" id="filtro-cierre-hasta" class="form-control form-control-sm"
+                        <input type="date" id="filtro-cierre-hasta" class="form-control form-control-sm min-w-0"
                             autocomplete="off" aria-label="Cierre hasta">
                     </div>
                 </div>
-                <div class="col-12 col-md-6 col-xl-2 d-flex flex-wrap gap-2 align-items-end">
-                    <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm" data-no-loader>
+                <div class="col-12 col-md-12 col-xl-4 d-flex flex-nowrap gap-2 align-items-end">
+                    <button type="button" id="btn-filtrar-oportunidades" class="btn btn-primary btn-sm text-nowrap" data-no-loader>
                         <i class="bi bi-funnel"></i> Filtrar
                     </button>
-                    <button type="button" id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm" data-no-loader title="Quitar filtros">
+                    <button type="button" id="btn-limpiar-filtros" class="btn btn-outline-secondary btn-sm text-nowrap" data-no-loader title="Quitar filtros">
                         <i class="bi bi-x-circle"></i> Quitar filtros
                     </button>
-                    <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm" data-no-loader>
+                    <button type="button" id="btn-descargar-csv" class="btn btn-outline-success btn-sm text-nowrap" data-no-loader>
                         <i class="bi bi-download"></i> CSV
                     </button>
                 </div>
