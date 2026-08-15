@@ -9,6 +9,9 @@
 @section('content')
 @php
     $desdeAdjudicadas = $desdeAdjudicadas ?? false;
+    $cotizacionListadoUrl = $cotizacionListadoUrl ?? route('admin.cotizaciones.index');
+    $cotizacionListadoLabel = $cotizacionListadoLabel ?? 'Listado';
+    $cotizacionListadoQuery = $cotizacionListadoQuery ?? [];
     $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
     $esInterna = $esInterna ?? $nota->esCotizacionInterna();
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
@@ -37,11 +40,7 @@
                 @endif
             @endif
         </h1>
-        @if($desdeAdjudicadas)
-            <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Adjudicadas</a>
-        @else
-            <a href="{{ route('admin.cotizaciones.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Listado</a>
-        @endif
+        <a href="{{ $cotizacionListadoUrl }}" class="btn btn-outline-secondary btn-sm">&larr; {{ $cotizacionListadoLabel }}</a>
     </div>
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas && ! $esInterna)

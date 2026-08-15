@@ -23,7 +23,7 @@
             {{ config('app.name', 'Cotiz') }}
         </a>
         <div class="d-flex align-items-center gap-3">
-            <a href="{{ route('admin.cotizaciones.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.index') ? 'active' : '' }}">
+            <a href="{{ $cotizacionListadoUrl ?? route('admin.cotizaciones.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.index') ? 'active' : '' }}">
                 <i class="bi bi-list-ul"></i> Listado
             </a>
             @if($cotizacionPendienteSinNumero ?? null)

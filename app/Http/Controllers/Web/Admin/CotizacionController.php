@@ -17,6 +17,7 @@ use App\Services\NotaService;
 use App\Services\OrganismoObservacionService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
+use App\Support\CotizacionListadoRetorno;
 use RuntimeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -46,12 +47,16 @@ class CotizacionController extends Controller
         $codigo = strtoupper(trim((string) $request->query('codigo', '')));
         $interna = $request->boolean('es_interna');
 
+        if ($request->isMethod('POST') && ! $request->filled('from') && $request->hasSession()) {
+            $request->session()->forget(CotizacionListadoRetorno::SESSION_KEY);
+        }
+
         // Contar visita apenas llega desde Oportunidades (antes de posibles redirects).
         $this->registrarVisitaOportunidadSiCorresponde($request, $codigo);
 
         if (! $interna && ($pendiente = $this->notaService->pendienteSinNumeroCotizacion($usuario))) {
             $this->olvidarNotaMaterializada();
-            $params = ['nronota' => $pendiente->nronota];
+            $params = $this->paramsRutaEdit($request, $pendiente->nronota);
             if ($codigo !== '') {
                 $params['codigo'] = $codigo;
             }
@@ -63,7 +68,7 @@ class CotizacionController extends Controller
 
         if ($vacia = $this->notaService->ultimaSinProductos($usuario, $interna)) {
             $this->olvidarNotaMaterializada();
-            $params = ['nronota' => $vacia->nronota];
+            $params = $this->paramsRutaEdit($request, $vacia->nronota);
             if ($codigo !== '') {
                 $params['codigo'] = $codigo;
             }
@@ -137,6 +142,8 @@ class CotizacionController extends Controller
 
         $this->registrarVisitaOportunidadSiCorresponde($request, $codigoImportar);
 
+        CotizacionListadoRetorno::syncSession($request);
+
         $esBorrador = $this->notaService->esBorrador($nota);
         $lineas = $esBorrador
             ? collect()
@@ -146,6 +153,8 @@ class CotizacionController extends Controller
 
         $esInterna = $nota->esCotizacionInterna();
         $requiereNumero = $esInterna ? false : $nota->requiereNumeroCotizacion();
+        $cotizacionListadoQuery = CotizacionListadoRetorno::query($request);
+        $desdeAdjudicadas = ($cotizacionListadoQuery['from'] ?? '') === CotizacionListadoRetorno::FROM_ADJUDICADAS;
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
@@ -159,12 +168,15 @@ class CotizacionController extends Controller
             'hayPrecioAntiguo' => $hayPrecioAntiguo,
             'umbralPrecioMeses' => config('cotiz.prod_valor_fecha_meses'),
             'requiereNumeroCotizacion' => $requiereNumero,
-            'abrirImportarAlInicio' => $request->query('from') !== 'adjudicadas'
+            'abrirImportarAlInicio' => ! $desdeAdjudicadas
                 && $requiereNumero
                 && $lineas->isEmpty(),
             'codigoImportarCompraAgil' => $codigoImportar,
             'previewImportarCompraAgil' => $previewImportarCompraAgil,
-            'desdeAdjudicadas' => $request->query('from') === 'adjudicadas',
+            'desdeAdjudicadas' => $desdeAdjudicadas,
+            'cotizacionListadoUrl' => CotizacionListadoRetorno::url($request),
+            'cotizacionListadoLabel' => CotizacionListadoRetorno::label($request),
+            'cotizacionListadoQuery' => $cotizacionListadoQuery,
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
             'observacionesOrganismo' => $this->organismoObservacion->observacionesParaRut($nota->rutempresa),
         ]);
@@ -306,7 +318,7 @@ class CotizacionController extends Controller
     {
         return [
             'nronota' => (int) $nota->nronota,
-            'edit_url' => route('admin.cotizaciones.edit', $nota->nronota),
+            'edit_url' => route('admin.cotizaciones.edit', $this->paramsRutaEdit(request(), (int) $nota->nronota)),
             'recien_creada' => $recienCreada,
         ];
     }
@@ -682,7 +694,7 @@ class CotizacionController extends Controller
         }
 
         return redirect()
-            ->route('admin.cotizaciones.edit', $nota->nronota)
+            ->route('admin.cotizaciones.edit', $this->paramsRutaEdit($request, (int) $nota->nronota))
             ->with('success', 'Línea agregada.');
     }
 
@@ -1403,14 +1415,20 @@ class CotizacionController extends Controller
 
     private function redirectTrasGuardar(Request $request, int $nronota, string $mensaje): RedirectResponse
     {
-        $params = ['nronota' => $nronota];
-        if ($request->query('from') === 'adjudicadas') {
-            $params['from'] = 'adjudicadas';
-        }
+        $params = $this->paramsRutaEdit($request, $nronota);
 
         return redirect()
             ->route('admin.cotizaciones.edit', $params)
             ->with('success', $mensaje);
+    }
+
+    /**
+     * @param  array<string, scalar>  $extra
+     * @return array<string, scalar>
+     */
+    private function paramsRutaEdit(Request $request, int $nronota, array $extra = []): array
+    {
+        return array_merge(['nronota' => $nronota], CotizacionListadoRetorno::query($request), $extra);
     }
 
     /**

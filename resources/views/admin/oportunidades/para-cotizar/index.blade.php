@@ -1263,6 +1263,9 @@
                     cierre_desde: filtroCierreDesde ? String(filtroCierreDesde.value || '') : '',
                     cierre_hasta: filtroCierreHasta ? String(filtroCierreHasta.value || '') : '',
                     cierre_24h: filtroCierre24hActivo === true,
+                    pagina: paginaActual,
+                    sort_column: sortState.column,
+                    sort_direction: sortState.direction,
                 }));
             } catch (e) {
                 // localStorage no disponible
@@ -1308,6 +1311,16 @@
             filtroPalabraClaveAplicado = data.palabra_clave_aplicada != null ?
                 String(data.palabra_clave_aplicada || '') :
                 (filtroPalabraClave ? normalizarTexto(filtroPalabraClave.value) : '');
+            const paginaGuardada = Number.parseInt(String(data.pagina || ''), 10);
+            if (Number.isFinite(paginaGuardada) && paginaGuardada > 0) {
+                paginaActual = paginaGuardada;
+            }
+            if (data.sort_column) {
+                sortState.column = String(data.sort_column);
+            }
+            if (data.sort_direction === 'asc' || data.sort_direction === 'desc') {
+                sortState.direction = data.sort_direction;
+            }
         }
 
         function leerVisitasLocales() {
@@ -1791,6 +1804,7 @@
             if (paginaActual < 1) {
                 paginaActual = 1;
             }
+            guardarFiltros();
             actualizarIndicadoresOrden();
             actualizarUiCierre24h();
             if (relEncontradas) relEncontradas.textContent = String(total);
@@ -1822,7 +1836,7 @@
 
             tbody.innerHTML = paginaItems.map((item) => {
                 const codigo = String(item.codigo || '').toUpperCase();
-                const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}` : '';
+                const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}&from=oportunidades` : '';
                 const nombre = String(item.nombre || '').trim();
                 const organismo = String(item.organismo || '').trim() || '—';
                 const regionNombre = String(item.nombre_region || '').trim() || '—';

@@ -3,6 +3,12 @@
 @section('title', 'Cotizaciones adjudicadas')
 
 @section('content')
+@php
+    $adjudicadasRetorno = \App\Support\CotizacionListadoRetorno::paraAdjudicadas(
+        $filtros,
+        (int) $cotizaciones->currentPage(),
+    );
+@endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h3 mb-0">Cotizaciones adjudicadas</h1>
@@ -56,7 +62,7 @@
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->fechaentrega?->format('d/m/Y') ?: '—' }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.cotizaciones.edit', ['nronota' => $nota->nronota, 'from' => 'adjudicadas']) }}" class="btn btn-outline-primary btn-sm">
+                                <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $nota->nronota], $adjudicadasRetorno)) }}" class="btn btn-outline-primary btn-sm">
                                     Ver cotizaci&oacute;n
                                 </a>
                             </td>

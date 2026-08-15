@@ -3,6 +3,12 @@
 @section('title', 'Listado cotizaciones')
 
 @section('content')
+@php
+    $listadoRetorno = \App\Support\CotizacionListadoRetorno::paraListado(
+        $filtros,
+        (int) $cotizaciones->currentPage(),
+    );
+@endphp
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h1 class="h3 mb-0">Listado cotizaciones</h1>
@@ -95,7 +101,7 @@
                                     : null;
                             @endphp
                             <div>
-                                <a href="{{ route('admin.cotizaciones.edit', $item->nronota) }}" class="fw-semibold text-decoration-underline">
+                                <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $item->nronota], $listadoRetorno)) }}" class="fw-semibold text-decoration-underline">
                                     #{{ $item->nronota }}
                                     @if($item->encargado)
                                         ({{ $item->encargado }})
@@ -231,7 +237,7 @@
                             @endif
                             <td class="text-end">
                                 <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                    <a href="{{ route('admin.cotizaciones.edit', $nota->nronota) }}" class="btn btn-outline-primary btn-sm">Ver</a>
+                                    <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $nota->nronota], $listadoRetorno)) }}" class="btn btn-outline-primary btn-sm">Ver</a>
 
                                     @if(trim((string) $nota->encargado) !== '')
                                         <form method="post" action="{{ route('admin.cotizaciones.duplicar', $nota->nronota) }}" class="d-inline js-duplicar-cotizacion">
