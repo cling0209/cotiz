@@ -42,19 +42,36 @@
                 <i class="bi bi-upload"></i> Cargar cotización
             </a>
             @if(auth()->user()->isSuperAdmin())
-                <a href="{{ route('admin.cotizaciones.adjudicadas.index') }}" class="nav-link-admin {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') ? 'active' : '' }}">
-                    <i class="bi bi-check2-circle"></i> Adjudicadas
-                </a>
-                @if(auth()->user()->canAccessCompraAgilAnalisis())
-                    <a href="{{ route('admin.compra-agil.analisis.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.analisis.*') ? 'active' : '' }}">
-                        <i class="bi bi-graph-up"></i> Análisis MP
+                <div class="dropdown">
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') || request()->routeIs('admin.compra-agil.analisis.*') || request()->routeIs('admin.compra-agil.resultados.*') ? 'active' : '' }}"
+                       data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-clipboard-data"></i> Resultados
                     </a>
-                @endif
-                @if(auth()->user()->canAccessCompraAgilResultados())
-                    <a href="{{ route('admin.compra-agil.resultados.index') }}" class="nav-link-admin {{ request()->routeIs('admin.compra-agil.resultados.*') ? 'active' : '' }}">
-                        <i class="bi bi-trophy"></i> Resultados Compra Ágil
-                    </a>
-                @endif
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        @if(auth()->user()->canAccessCompraAgilResultados())
+                            <li>
+                                <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.resultados.*') ? 'active' : '' }}"
+                                   href="{{ route('admin.compra-agil.resultados.index') }}">
+                                    <i class="bi bi-trophy"></i> Resultados Compra Ágil
+                                </a>
+                            </li>
+                        @endif
+                        <li>
+                            <a class="dropdown-item {{ request()->routeIs('admin.cotizaciones.adjudicadas.*') ? 'active' : '' }}"
+                               href="{{ route('admin.cotizaciones.adjudicadas.index') }}">
+                                <i class="bi bi-check2-circle"></i> Adjudicadas
+                            </a>
+                        </li>
+                        @if(auth()->user()->canAccessCompraAgilAnalisis())
+                            <li>
+                                <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.analisis.*') ? 'active' : '' }}"
+                                   href="{{ route('admin.compra-agil.analisis.index') }}">
+                                    <i class="bi bi-graph-up"></i> Análisis MP
+                                </a>
+                            </li>
+                        @endif
+                    </ul>
+                </div>
             @elseif(auth()->user()->isEjecutivo())
                 <a href="{{ route('admin.productos.index') }}" class="nav-link-admin {{ request()->routeIs('admin.productos.*') ? 'active' : '' }}">
                     <i class="bi bi-box-seam"></i> Productos
