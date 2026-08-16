@@ -155,6 +155,8 @@ class CotizacionController extends Controller
         $requiereNumero = $esInterna ? false : $nota->requiereNumeroCotizacion();
         $cotizacionListadoQuery = CotizacionListadoRetorno::query($request);
         $desdeAdjudicadas = ($cotizacionListadoQuery['from'] ?? '') === CotizacionListadoRetorno::FROM_ADJUDICADAS;
+        $desdeOportunidades = ($cotizacionListadoQuery['from'] ?? '') === CotizacionListadoRetorno::FROM_OPORTUNIDADES
+            && $codigoImportar !== '';
 
         return view('admin.cotizaciones.form', [
             'nota' => $nota,
@@ -174,6 +176,8 @@ class CotizacionController extends Controller
             'codigoImportarCompraAgil' => $codigoImportar,
             'previewImportarCompraAgil' => $previewImportarCompraAgil,
             'desdeAdjudicadas' => $desdeAdjudicadas,
+            'desdeOportunidades' => $desdeOportunidades,
+            'oportunidadYaVinculada' => $previewImportarCompraAgil !== null,
             'cotizacionListadoUrl' => CotizacionListadoRetorno::url($request),
             'cotizacionListadoLabel' => CotizacionListadoRetorno::label($request),
             'cotizacionListadoQuery' => $cotizacionListadoQuery,

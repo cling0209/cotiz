@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Nota;
+use App\Models\OportunidadEncontrada;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -41,6 +42,47 @@ class CotizacionListadoRetornoTest extends TestCase
         $this->assertStringContainsString('op_organismo=Ministerio', $html);
         $this->assertStringContainsString('name="from"', $html);
         $this->assertStringContainsString('name="op_page"', $html);
+        $this->assertMatchesRegularExpression('/id="encargado"[^>]*\breadonly\b/i', $html);
+        $this->assertMatchesRegularExpression('/id="ca-api-codigo"[^>]*\breadonly\b/i', $html);
+        $this->assertStringContainsString('value="1000-1-COT26"', $html);
+        $this->assertStringContainsString('id="wrap-ca-buscar-codigo"', $html);
+        $this->assertStringNotContainsString('col-md-auto d-none', $html);
+    }
+
+    public function test_nueva_desde_oportunidad_vinculada_oculta_cargar(): void
+    {
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1000-2-COT26',
+            'nombre' => 'Con vinculo',
+            'fecha_busqueda' => now()->toDateString(),
+            'palabras_coinciden' => ['aseo'],
+            'indice_region_config' => 0,
+            'vinculo_completo' => true,
+            'vinculo_preview_json' => [
+                'cabecera' => ['codigo_cotizacion' => '1000-2-COT26'],
+                'lineas' => [
+                    [
+                        'id_agile' => '1',
+                        'descripcion' => 'Producto demo',
+                        'cantidad' => 1,
+                        'estado' => 'vinculado',
+                    ],
+                ],
+                'resumen' => ['total' => 1, 'vinculados' => 1, 'pendientes' => 0],
+            ],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.create', [
+                'codigo' => '1000-2-COT26',
+                'from' => 'oportunidades',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('col-md-auto d-none', $html);
+        $this->assertMatchesRegularExpression('/id="encargado"[^>]*\breadonly\b/i', $html);
+        $this->assertStringContainsString('value="1000-2-COT26"', $html);
     }
 
     public function test_ver_desde_listado_conserva_filtros_y_pagina(): void

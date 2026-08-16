@@ -9,9 +9,16 @@
 @section('content')
 @php
     $desdeAdjudicadas = $desdeAdjudicadas ?? false;
+    $desdeOportunidades = $desdeOportunidades ?? false;
+    $oportunidadYaVinculada = $oportunidadYaVinculada ?? false;
+    $codigoImportarCompraAgil = strtoupper(trim((string) ($codigoImportarCompraAgil ?? '')));
     $cotizacionListadoUrl = $cotizacionListadoUrl ?? route('admin.cotizaciones.index');
     $cotizacionListadoLabel = $cotizacionListadoLabel ?? 'Listado';
     $cotizacionListadoQuery = $cotizacionListadoQuery ?? [];
+    $encargadoMostrado = old('encargado', $nota->encargado);
+    if ($desdeOportunidades && $codigoImportarCompraAgil !== '') {
+        $encargadoMostrado = $codigoImportarCompraAgil;
+    }
     $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
     $esInterna = $esInterna ?? $nota->esCotizacionInterna();
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
@@ -86,8 +93,8 @@
                             name="encargado"
                             id="encargado"
                             maxlength="100"
-                            value="{{ old('encargado', $nota->encargado) }}"
-                            @if($esInterna) readonly @endif
+                            value="{{ $encargadoMostrado }}"
+                            @if($esInterna || $desdeOportunidades) readonly @endif
                             @class([
                                 'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || (isset($errors) && $errors->has('encargado')),
                                 'is-invalid' => isset($errors) && $errors->has('encargado'),
@@ -436,9 +443,16 @@
                         <div class="tab-pane fade show active" id="panel-ca-codigo" role="tabpanel">
                             <div class="row g-2 mb-2">
                                 <div class="col-md-6">
-                                    <input type="text" id="ca-api-codigo" class="form-control form-control-sm font-monospace" placeholder="1161-172-COT26">
+                                    <input
+                                        type="text"
+                                        id="ca-api-codigo"
+                                        class="form-control form-control-sm font-monospace{{ $desdeOportunidades ? ' bg-light' : '' }}"
+                                        placeholder="1161-172-COT26"
+                                        value="{{ $desdeOportunidades ? $codigoImportarCompraAgil : '' }}"
+                                        @if($desdeOportunidades) readonly @endif
+                                    >
                                 </div>
-                                <div class="col-md-auto">
+                                <div class="col-md-auto{{ $oportunidadYaVinculada ? ' d-none' : '' }}" id="wrap-ca-buscar-codigo">
                                     <button type="button" class="btn btn-primary btn-sm" id="btn-ca-buscar-codigo"><i class="bi bi-hash"></i> Cargar</button>
                                 </div>
                             </div>
@@ -680,6 +694,9 @@
     const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
     const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
     const previewImportarCompraAgil = @json($previewImportarCompraAgil ?? null);
+    const desdeOportunidades = @json($desdeOportunidades ?? false);
+    const oportunidadYaVinculada = @json($oportunidadYaVinculada ?? false);
+    const sinLineasEnNota = @json((int) ($resumenLineas['total'] ?? 0) === 0);
     const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
 
     // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
@@ -856,7 +873,7 @@
         cotizar: @json(route('admin.cotizaciones.envio-dex.cotizar', $nota->nronota)),
     };
     let lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
-    let encargadoActual = @json(trim((string) $nota->encargado));
+    let encargadoActual = @json(trim((string) $encargadoMostrado));
     let consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
     let cotizNronotaActual = @json((int) $nota->nronota);
     const cotizEditUrlTpl = @json(route('admin.cotizaciones.edit', ['nronota' => 999999999]));
@@ -3061,6 +3078,63 @@
         }
     }
 
+    function previewOportunidadesDisponible() {
+        return desdeOportunidades
+            && oportunidadYaVinculada
+            && previewImportarCompraAgil
+            && typeof previewImportarCompraAgil === 'object'
+            && Array.isArray(previewImportarCompraAgil.lineas);
+    }
+
+    function bloquearCodigoImportarOportunidad() {
+        if (!desdeOportunidades || !codigoImportarCompraAgil) {
+            return;
+        }
+        const input = document.getElementById('ca-api-codigo');
+        if (input) {
+            input.value = codigoImportarCompraAgil;
+            input.readOnly = true;
+            input.classList.add('bg-light');
+        }
+        const enc = document.getElementById('encargado');
+        if (enc) {
+            enc.value = codigoImportarCompraAgil;
+            enc.readOnly = true;
+        }
+        actualizarBotonCargarSegunVinculo(previewOportunidadesDisponible() || !!(importPreviewData && importPreviewData.desde_cache));
+    }
+
+    function actualizarBotonCargarSegunVinculo(ocultar) {
+        const wrap = document.getElementById('wrap-ca-buscar-codigo');
+        if (wrap) {
+            wrap.classList.toggle('d-none', !!ocultar);
+        }
+    }
+
+    function mostrarDetalleImportarOportunidades() {
+        bloquearCodigoImportarOportunidad();
+        document.getElementById('tab-ca-codigo')?.click();
+        actualizarResumenLineas(resumenLineasInicial);
+        if (previewOportunidadesDisponible()) {
+            aplicarPreviewCacheado(codigoImportarCompraAgil, previewImportarCompraAgil);
+            return;
+        }
+        if (importPreviewData && Array.isArray(importPreviewData.lineas) && importPreviewData.lineas.length > 0) {
+            renderImportPreview(importPreviewData);
+            return;
+        }
+        if (codigoImportarCompraAgil) {
+            analizarCodigoApi(codigoImportarCompraAgil);
+        }
+    }
+
+    function debeReabrirDetalleOportunidades() {
+        return desdeOportunidades
+            && !!codigoImportarCompraAgil
+            && !importandoCompraAgil
+            && sinLineasEnNota;
+    }
+
     function resetImportCompraAgilModal() {
         importPreviewData = null;
         importCodigoApi = null;
@@ -3077,6 +3151,9 @@
         if (importarExcelColCant) importarExcelColCant.value = 'A';
         if (importarExcelColDesc) importarExcelColDesc.value = 'B';
         document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            bloquearCodigoImportarOportunidad();
+        }
         if (importarEstado) importarEstado.textContent = '';
         if (importarCabecera) importarCabecera.classList.add('d-none');
         if (importarCabeceraTexto) importarCabeceraTexto.textContent = '';
@@ -3918,6 +3995,10 @@
                 ? ''
                 : 'Análisis desde Oportunidades (sin consultar Mercado Público).';
         }
+        if (desdeOportunidades) {
+            bloquearCodigoImportarOportunidad();
+            actualizarBotonCargarSegunVinculo(true);
+        }
         return true;
     }
 
@@ -4169,6 +4250,11 @@
     }
 
     btnAbrirImportar?.addEventListener('click', () => {
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            mostrarDetalleImportarOportunidades();
+            bsModalImportar?.show();
+            return;
+        }
         resetImportCompraAgilModal();
         actualizarResumenLineas(resumenLineasInicial);
         bsModalImportar?.show();
@@ -4208,7 +4294,20 @@
     btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
 
+    let reabriendoImportarOportunidad = false;
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
+        if (debeReabrirDetalleOportunidades()) {
+            if (reabriendoImportarOportunidad) {
+                return;
+            }
+            reabriendoImportarOportunidad = true;
+            setTimeout(() => {
+                mostrarDetalleImportarOportunidades();
+                bsModalImportar?.show();
+                reabriendoImportarOportunidad = false;
+            }, 200);
+            return;
+        }
         resetImportCompraAgilModal();
     });
 
@@ -4640,29 +4739,34 @@
     @endif
 
     if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar) {
-        resetImportCompraAgilModal();
-        actualizarResumenLineas(resumenLineasInicial);
-        if (codigoImportarCompraAgil) {
-            const inputCodigo = document.getElementById('ca-api-codigo');
-            if (inputCodigo) {
-                inputCodigo.value = codigoImportarCompraAgil;
-            }
-            document.getElementById('tab-ca-codigo')?.click();
-        }
-        bsModalImportar.show();
-        if (codigoImportarCompraAgil) {
-            const cache = previewImportarCompraAgil
-                && typeof previewImportarCompraAgil === 'object'
-                && Array.isArray(previewImportarCompraAgil.lineas)
-                ? previewImportarCompraAgil
-                : null;
-            if (cache) {
-                setTimeout(() => aplicarPreviewCacheado(codigoImportarCompraAgil, cache), 350);
-            } else {
-                setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
-            }
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            mostrarDetalleImportarOportunidades();
+            bsModalImportar.show();
         } else {
-            setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+            resetImportCompraAgilModal();
+            actualizarResumenLineas(resumenLineasInicial);
+            if (codigoImportarCompraAgil) {
+                const inputCodigo = document.getElementById('ca-api-codigo');
+                if (inputCodigo) {
+                    inputCodigo.value = codigoImportarCompraAgil;
+                }
+                document.getElementById('tab-ca-codigo')?.click();
+            }
+            bsModalImportar.show();
+            if (codigoImportarCompraAgil) {
+                const cache = previewImportarCompraAgil
+                    && typeof previewImportarCompraAgil === 'object'
+                    && Array.isArray(previewImportarCompraAgil.lineas)
+                    ? previewImportarCompraAgil
+                    : null;
+                if (cache) {
+                    setTimeout(() => aplicarPreviewCacheado(codigoImportarCompraAgil, cache), 350);
+                } else {
+                    setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
+                }
+            } else {
+                setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+            }
         }
     }
 
