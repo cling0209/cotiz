@@ -33,6 +33,11 @@ echo "Building sidecar LibreOffice (Office → PDF)..."
 echo "Levantando sidecar LibreOffice..."
 "${COMPOSE[@]}" up -d --no-deps libreoffice
 
+echo "Building sidecar PaddleOCR (tablas PDF nativas + OCR)..."
+"${COMPOSE[@]}" build paddleocr
+echo "Levantando sidecar PaddleOCR..."
+"${COMPOSE[@]}" up -d --no-deps --force-recreate paddleocr
+
 echo "Recreando contenedor (rm inmediato antes de up)..."
 docker rm -f "$APP_CONTAINER" 2>/dev/null || true
 docker ps -aq --filter "name=${PROJECT_NAME}-app" | xargs -r docker rm -f 2>/dev/null || true

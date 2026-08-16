@@ -124,7 +124,7 @@ Cada **push a `main`** ejecuta `.github/workflows/hetzner-deploy.yml`:
 
 1. SSH al VPS
 2. `git pull` en `/opt/cotiz-romulo` y `/opt/cotiz-reicol`
-3. `docker compose ... up -d --build app` en cada una
+3. `docker compose ... build` de app, LibreOffice y PaddleOCR; `up` de sidecars + app
 4. Health check en `/up` (puerto de cada `.env.prod`)
 
 ### Secrets en GitHub (repo `cotiz`)
