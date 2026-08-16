@@ -236,7 +236,35 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        if (count($lineasSidecar) >= 1) {
+        $nombreArchivo = trim((string) $file->getClientOriginalName());
+        $paginasPdf = max(
+            count($paginasFilas),
+            $this->resolverPaginasPdf($path, $nombreArchivo),
+        );
+
+        // Solicitud/EETT multi-página: no cortar el pipeline dedicado si Mistral trae pocas filas.
+        if (
+            $extension === 'pdf'
+            && $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)
+            && $textoCabecera === ''
+            && $paginasPdf >= 5
+            && ! $this->sidecarMapeoSuficienteParaEspecificaciones($lineasSidecar, $paginasPdf)
+        ) {
+            Log::info('Import PDF: sidecar incompleto; se usa parseDocumentoCompleto (especificaciones)', [
+                'archivo' => $nombreArchivo,
+                'sidecar' => count($lineasSidecar),
+                'paginas' => $paginasPdf,
+            ]);
+            $completo = $this->parseDocumentoCompleto($file);
+            if (count($completo['lineas']) >= count($lineasSidecar)) {
+                return [
+                    'cabecera' => $completo['cabecera'],
+                    'lineas' => $completo['lineas'],
+                ];
+            }
+        }
+
+        if ($this->sidecarMapeoEsAceptable($lineasSidecar, $nombreArchivo, $textoCabecera, $paginasPdf)) {
             return [
                 'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
                 'lineas' => $this->filtrarLineasPieMapeo($lineasSidecar),
@@ -248,12 +276,6 @@ class ListadoMaterialesPdfParserService
         }
 
         $paginasFilas = $this->reconstruirGrillaPedidoEstablecimiento($paginasFilas);
-
-        $nombreArchivo = trim((string) $file->getClientOriginalName());
-        $paginasPdf = max(
-            count($paginasFilas),
-            $this->resolverPaginasPdf($path, $nombreArchivo),
-        );
 
         if (
             $extension === 'pdf'
@@ -4597,6 +4619,45 @@ class ListadoMaterialesPdfParserService
         return preg_match('/ESPECIFICACIONES\s+TECNICAS/u', $nombre) === 1
             || preg_match('/ESPECIFICACIONES\s+TÉCNICAS/u', $nombre) === 1
             || preg_match('/\bEETT\b/u', $nombre) === 1;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineasSidecar
+     */
+    private function sidecarMapeoSuficienteParaEspecificaciones(array $lineasSidecar, int $paginasPdf): bool
+    {
+        if ($lineasSidecar === []) {
+            return false;
+        }
+
+        // ~9 productos/página en solicitud 83965 (11 págs ≈ 97). Exigir al menos ~70%.
+        $min = max(20, (int) floor($paginasPdf * 6));
+
+        return count($lineasSidecar) >= $min;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineasSidecar
+     */
+    private function sidecarMapeoEsAceptable(
+        array $lineasSidecar,
+        string $nombreArchivo,
+        string $textoCabecera,
+        int $paginasPdf,
+    ): bool {
+        if ($lineasSidecar === []) {
+            return false;
+        }
+
+        if (
+            $this->esNombreArchivoEspecificacionesTecnicas($nombreArchivo)
+            && $textoCabecera === ''
+            && $paginasPdf >= 5
+        ) {
+            return $this->sidecarMapeoSuficienteParaEspecificaciones($lineasSidecar, $paginasPdf);
+        }
+
+        return true;
     }
 
     private function puedeImportarPdfSoloConPaddle(string $path, string $nombreArchivo): bool

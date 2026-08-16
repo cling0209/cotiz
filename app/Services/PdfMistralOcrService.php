@@ -253,8 +253,17 @@ class PdfMistralOcrService
 
                 continue;
             }
+            $textoFilaPre = trim(implode(' ', $fila));
             if ($this->pareceFilaEncabezadoAjeno($fila, $columnaCantidad, $columnaProducto)) {
-                break;
+                // Solo cortar ante logística/pies; no abandonar el resto por un falso encabezado OCR.
+                if (
+                    $this->esFilaSeccionOLogistica($textoFilaPre)
+                    || $this->esFilaPieTotales($textoFilaPre)
+                ) {
+                    break;
+                }
+
+                continue;
             }
             if ($idxC === null || $idxP === null) {
                 continue;
@@ -264,7 +273,7 @@ class PdfMistralOcrService
             }
             $cantidad = $this->parseCantidad($fila[$idxC] ?? '');
             $descripcion = trim((string) ($fila[$idxP] ?? ''));
-            $textoFila = trim(implode(' ', $fila));
+            $textoFila = $textoFilaPre !== '' ? $textoFilaPre : trim(implode(' ', $fila));
             if (
                 $this->esFilaPieTotales($descripcion)
                 || $this->esFilaPieTotales($textoFila)

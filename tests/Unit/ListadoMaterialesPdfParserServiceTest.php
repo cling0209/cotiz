@@ -1932,6 +1932,54 @@ TXT;
         $this->assertStringContainsString('Toalla', $lineas[2]['descripcion']);
     }
 
+    public function test_sidecar_escaso_no_basta_para_especificaciones_multipagina(): void
+    {
+        $ref = new \ReflectionClass($this->parser);
+        $suficiente = $ref->getMethod('sidecarMapeoSuficienteParaEspecificaciones');
+        $suficiente->setAccessible(true);
+        $aceptable = $ref->getMethod('sidecarMapeoEsAceptable');
+        $aceptable->setAccessible(true);
+
+        $pocas = [
+            ['cantidad' => 3, 'descripcion' => 'PERFORADORA GRANDE'],
+            ['cantidad' => 15, 'descripcion' => 'CINTA DOBLE CONTACTO'],
+            ['cantidad' => 2, 'descripcion' => 'CUADERNO CUARTA'],
+            ['cantidad' => 5, 'descripcion' => 'QUITAGRAPAS'],
+            ['cantidad' => 3, 'descripcion' => 'PERFORADORA METALICA'],
+        ];
+
+        $this->assertFalse($suficiente->invoke($this->parser, $pocas, 11));
+        $this->assertFalse($aceptable->invoke(
+            $this->parser,
+            $pocas,
+            'ESPECIFICACIONES TECNICAS3.pdf',
+            '',
+            11,
+        ));
+
+        $muchas = [];
+        for ($i = 0; $i < 70; $i++) {
+            $muchas[] = ['cantidad' => 1, 'descripcion' => 'PRODUCTO '.$i];
+        }
+        $this->assertTrue($suficiente->invoke($this->parser, $muchas, 11));
+        $this->assertTrue($aceptable->invoke(
+            $this->parser,
+            $muchas,
+            'ESPECIFICACIONES TECNICAS3.pdf',
+            '',
+            11,
+        ));
+
+        // Otros PDFs: cualquier sidecar no vacío sigue siendo aceptable.
+        $this->assertTrue($aceptable->invoke(
+            $this->parser,
+            $pocas,
+            'cotizacion-proveedor.pdf',
+            'algo',
+            2,
+        ));
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
