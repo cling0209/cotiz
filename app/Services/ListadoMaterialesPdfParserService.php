@@ -41,6 +41,7 @@ class ListadoMaterialesPdfParserService
     public function __construct(
         protected ?PdfOcrService $ocr = null,
         protected ?PdfPaddleOcrService $paddle = null,
+        protected ?PdfMistralOcrService $mistral = null,
     ) {}
 
     /**
@@ -150,8 +151,25 @@ class ListadoMaterialesPdfParserService
                 $textoCabecera = '';
             }
         } else {
+            $mistral = $this->mistral ?? new PdfMistralOcrService;
+            if ($mistral->estaDisponible()) {
+                try {
+                    $paginasFilas = $mistral->extraerGrillaTabla(
+                        $path,
+                        trim((string) $file->getClientOriginalName()),
+                        $columnaCantidad,
+                        $columnaProducto,
+                    );
+                    $lineasSidecar = $this->deduplicarLineasMapeo(
+                        $this->lineasDesdeItemsGrilla($paginasFilas),
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Import PDF: Mistral OCR falló', ['error' => $e->getMessage()]);
+                }
+            }
+
             $paddle = $this->paddle ?? new PdfPaddleOcrService;
-            if ($paddle->estaDisponible()) {
+            if ($paginasFilas === [] && $paddle->estaDisponible()) {
                 try {
                     $paginasFilas = $paddle->extraerGrillaTabla(
                         $path,

@@ -112,6 +112,15 @@ return [
         'crop_left_percent_tabla' => max(40, min(75, (int) env('COTIZ_OCR_CROP_LEFT_TABLA', 58))),
     ],
 
+    // Mistral OCR (tablas HTML). Preferido para PDF nativos y escaneados al mapear columnas.
+    'mistral_ocr' => [
+        'enabled' => filter_var(env('COTIZ_MISTRAL_OCR_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'api_key' => (string) env('COTIZ_MISTRAL_API_KEY', env('MISTRAL_API_KEY', '')),
+        'model' => env('COTIZ_MISTRAL_OCR_MODEL', 'mistral-ocr-latest'),
+        'endpoint' => rtrim((string) env('COTIZ_MISTRAL_OCR_ENDPOINT', 'https://api.mistral.ai/v1/ocr'), '/'),
+        'timeout' => max(30, min(300, (int) env('COTIZ_MISTRAL_OCR_TIMEOUT', 180))),
+    ],
+
     // Sidecar PaddleOCR (tablas escaneadas producto/cantidad). En Docker: http://paddleocr:8080
     'paddleocr' => [
         'enabled' => filter_var(env('COTIZ_PADDLEOCR_ENABLED', true), FILTER_VALIDATE_BOOL),
