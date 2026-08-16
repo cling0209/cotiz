@@ -3199,6 +3199,10 @@
         return 'otro';
     }
 
+    function esAdjuntoPdfAnalizable(tipo) {
+        return tipo === 'pdf' || tipo === 'doc';
+    }
+
     function mimeAdjuntoImportar(nombre) {
         const tipo = tipoAdjuntoImportar(nombre);
         if (tipo === 'excel') {
@@ -3259,15 +3263,15 @@
         const tipo = adjuntoImportarSeleccionado.tipo;
         const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
         const colsExcel = document.getElementById('importar-adjunto-cols-excel');
-        const analizable = tipo === 'pdf' || tipo === 'excel';
-        colsPdf?.classList.toggle('d-none', tipo !== 'pdf');
+        const analizable = esAdjuntoPdfAnalizable(tipo) || tipo === 'excel';
+        colsPdf?.classList.toggle('d-none', !esAdjuntoPdfAnalizable(tipo));
         colsExcel?.classList.toggle('d-none', tipo !== 'excel');
         wrapImportarAdjuntosAnalizar?.classList.toggle('d-none', !analizable);
         if (btnImportarAnalizarAdjunto) {
             btnImportarAnalizarAdjunto.classList.toggle('d-none', !analizable);
         }
         actualizarHintAdjuntoImportar();
-        const tabId = tipo === 'excel' ? 'tab-ca-excel' : (tipo === 'pdf' ? 'tab-ca-pdf' : '');
+        const tabId = tipo === 'excel' ? 'tab-ca-excel' : (esAdjuntoPdfAnalizable(tipo) ? 'tab-ca-pdf' : '');
         if (tabId) {
             document.getElementById(tabId)?.click();
         }
@@ -3281,9 +3285,11 @@
         const hayPdfInput = !!(importarPdfInput?.files && importarPdfInput.files[0]);
         const hayExcelInput = !!(importarExcelInput?.files && importarExcelInput.files[0]);
         if (hintPdf) {
-            if (!hayPdfInput && sel && sel.tipo === 'pdf' && sel.nombre) {
+            if (!hayPdfInput && sel && esAdjuntoPdfAnalizable(sel.tipo) && sel.nombre) {
                 hintPdf.classList.remove('d-none');
-                hintPdf.textContent = 'Adjunto seleccionado: ' + sel.nombre;
+                hintPdf.textContent = sel.tipo === 'doc'
+                    ? ('Adjunto seleccionado: ' + sel.nombre + ' (se analizará el PDF convertido)')
+                    : ('Adjunto seleccionado: ' + sel.nombre);
             } else {
                 hintPdf.classList.add('d-none');
                 hintPdf.textContent = '';
@@ -3316,13 +3322,24 @@
             return file;
         }
         const sel = adjuntoImportarSeleccionado;
-        if (!sel || !sel.nombre || sel.tipo !== tipoEsperado) {
+        if (!sel || !sel.nombre) {
+            return null;
+        }
+        if (tipoEsperado === 'pdf' && !esAdjuntoPdfAnalizable(sel.tipo)) {
+            return null;
+        }
+        if (tipoEsperado === 'excel' && sel.tipo !== 'excel') {
+            return null;
+        }
+        if (tipoEsperado !== 'pdf' && tipoEsperado !== 'excel' && sel.tipo !== tipoEsperado) {
             return null;
         }
         if (importarEstado) {
-            importarEstado.textContent = 'Descargando adjunto…';
+            importarEstado.textContent = sel.tipo === 'doc'
+                ? 'Convirtiendo .doc a PDF…'
+                : 'Descargando adjunto…';
         }
-        return descargarAdjuntoComoFile(sel.nombre);
+        return descargarAdjuntoComoFile(sel.nombre, sel.tipo);
     }
 
     function bumpBackdropAdjuntoImportar() {
@@ -3457,17 +3474,38 @@
         }
     }
 
-    async function descargarAdjuntoComoFile(nombre) {
+    async function descargarAdjuntoComoFile(nombre, tipo) {
         const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&descargar=1`;
+        const tipoAdj = tipo || tipoAdjuntoImportar(nombre);
+        const qs = tipoAdj === 'doc'
+            ? `archivo=${encodeURIComponent(nombre)}&analizar=1`
+            : `archivo=${encodeURIComponent(nombre)}&descargar=1`;
+        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?${qs}`;
         const res = await fetch(url, {
             credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         });
         if (!res.ok) {
-            throw new Error('No se pudo descargar el adjunto.');
+            let msg = 'No se pudo descargar el adjunto.';
+            try {
+                const data = await res.json();
+                if (data && data.error) {
+                    msg = String(data.error);
+                }
+            } catch (_e) {
+                // keep default
+            }
+            throw new Error(msg);
         }
         const blob = await res.blob();
+        if (tipoAdj === 'doc') {
+            const cabeza = await blob.slice(0, 4).text();
+            if (cabeza !== '%PDF') {
+                throw new Error('No se pudo convertir el .doc a PDF para analizarlo.');
+            }
+            const pdfName = String(nombre).replace(/\.doc$/i, '.pdf');
+            return new File([blob], pdfName, { type: 'application/pdf' });
+        }
         return new File([blob], nombre, { type: blob.type || mimeAdjuntoImportar(nombre) });
     }
 
@@ -3477,9 +3515,9 @@
             return;
         }
         const tipo = sel.tipo;
-        if (tipo !== 'pdf' && tipo !== 'excel') {
+        if (!esAdjuntoPdfAnalizable(tipo) && tipo !== 'excel') {
             if (importarEstado) {
-                importarEstado.textContent = 'Este archivo no se puede analizar. Use PDF, Word (.docx) o Excel.';
+                importarEstado.textContent = 'Este archivo no se puede analizar. Use PDF, Word o Excel.';
             }
             return;
         }
@@ -3494,11 +3532,13 @@
             bootstrap.Modal.getInstance(modalEl)?.hide();
         }
         if (importarEstado) {
-            importarEstado.textContent = 'Descargando adjunto…';
+            importarEstado.textContent = tipo === 'doc'
+                ? 'Convirtiendo .doc a PDF…'
+                : 'Descargando adjunto…';
         }
         setAdjuntoAnalizarBusy(true);
         try {
-            const file = await descargarAdjuntoComoFile(sel.nombre);
+            const file = await descargarAdjuntoComoFile(sel.nombre, tipo);
             if (tipo === 'excel') {
                 await analizarImportExcel({
                     file,

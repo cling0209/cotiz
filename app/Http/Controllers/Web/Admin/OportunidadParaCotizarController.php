@@ -182,12 +182,13 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
-    public function verAdjunto(Request $request, string $codigo): Response
+    public function verAdjunto(Request $request, string $codigo): Response|JsonResponse
     {
         $data = $request->validate([
             'archivo' => ['required', 'string', 'max:180'],
             'descargar' => ['sometimes', 'boolean'],
             'preview' => ['sometimes', 'boolean'],
+            'analizar' => ['sometimes', 'boolean'],
         ]);
 
         $nombre = $data['archivo'];
@@ -200,6 +201,23 @@ class OportunidadParaCotizarController extends Controller
 
         $descargar = (bool) ($data['descargar'] ?? false);
         $preview = (bool) ($data['preview'] ?? false);
+        $analizar = (bool) ($data['analizar'] ?? false);
+
+        if ($analizar) {
+            try {
+                $out = $this->adjuntos->contenidoParaAnalisis($codigo, $nombre, $bin);
+            } catch (RuntimeException $e) {
+                return response()->json([
+                    'ok' => false,
+                    'error' => $e->getMessage(),
+                ], 422);
+            }
+
+            return response($out['body'], 200, [
+                'Content-Type' => $out['mime'],
+                'Content-Disposition' => 'attachment; filename="'.str_replace('"', '', $out['filename']).'"',
+            ]);
+        }
 
         if ($preview && ! $descargar) {
             try {

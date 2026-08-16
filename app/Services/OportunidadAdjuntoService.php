@@ -335,6 +335,38 @@ class OportunidadAdjuntoService
         ];
     }
 
+    /**
+     * Para analizar un .doc se usa el PDF convertido (caché o LibreOffice), no el Word original.
+     *
+     * @return array{body: string, mime: string, filename: string}
+     */
+    public function contenidoParaAnalisis(string $codigo, string $nombre, string $binario): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        $safeName = $this->nombreSeguro($nombre);
+
+        if ($this->esDocAntiguo($nombre)) {
+            $pdf = $this->pdfPreviewDesdeCacheOConversion($codigo, $nombre, $binario);
+            if ($pdf === null || ! str_starts_with($pdf, '%PDF')) {
+                throw new RuntimeException(
+                    'No se pudo convertir el .doc a PDF para analizarlo. Puede descargar el archivo original.',
+                );
+            }
+
+            return [
+                'body' => $pdf,
+                'mime' => 'application/pdf',
+                'filename' => pathinfo($safeName, PATHINFO_FILENAME).'.pdf',
+            ];
+        }
+
+        return [
+            'body' => $binario,
+            'mime' => $this->mimeDesdeNombre($nombre),
+            'filename' => $safeName,
+        ];
+    }
+
     public function necesitaConversionPreview(string $nombre): bool
     {
         return $this->esExcel($nombre) || $this->esWord($nombre);
@@ -914,6 +946,11 @@ class OportunidadAdjuntoService
     public function esWord(string $nombre): bool
     {
         return in_array(strtolower((string) pathinfo($nombre, PATHINFO_EXTENSION)), ['docx', 'doc'], true);
+    }
+
+    public function esDocAntiguo(string $nombre): bool
+    {
+        return strtolower((string) pathinfo($nombre, PATHINFO_EXTENSION)) === 'doc';
     }
 
     public function esPdf(string $nombre): bool

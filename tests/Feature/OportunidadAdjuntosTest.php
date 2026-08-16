@@ -247,6 +247,76 @@ class OportunidadAdjuntosTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_analizar_doc_devuelve_pdf_convertido(): void
+    {
+        $user = $this->superadmin();
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/TEXTILES.doc', 'fake-ole-doc-content');
+        Http::fake([
+            'libreoffice.test/*' => Http::response('%PDF-1.4 converted-doc-xxxxxxxx', 200, [
+                'Content-Type' => 'application/pdf',
+            ]),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.adjuntos.ver', [
+                'codigo' => '1000-1-COT26',
+                'archivo' => 'TEXTILES.doc',
+                'analizar' => 1,
+            ]));
+
+        $response
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf')
+            ->assertSee('%PDF-1.4 converted', false);
+        $this->assertStringContainsString(
+            'TEXTILES.pdf',
+            (string) $response->headers->get('content-disposition'),
+        );
+
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/_preview/TEXTILES.doc.pdf');
+    }
+
+    public function test_analizar_doc_usa_pdf_en_cache_sin_libreoffice(): void
+    {
+        $user = $this->superadmin();
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/TEXTILES.doc', 'fake-ole-doc-content');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/_preview/TEXTILES.doc.pdf', '%PDF-1.4 cached-doc-xxxxxxxx');
+        Http::fake([
+            'libreoffice.test/*' => Http::response('should-not-run', 500),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.adjuntos.ver', [
+                'codigo' => '1000-1-COT26',
+                'archivo' => 'TEXTILES.doc',
+                'analizar' => 1,
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf')
+            ->assertSee('%PDF-1.4 cached', false);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_analizar_doc_sin_conversion_devuelve_422(): void
+    {
+        $user = $this->superadmin();
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/TEXTILES.doc', 'fake-ole-doc-content');
+        Http::fake([
+            'libreoffice.test/*' => Http::response('fail', 422),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.ver', [
+                'codigo' => '1000-1-COT26',
+                'archivo' => 'TEXTILES.doc',
+                'analizar' => 1,
+            ]))
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonFragment(['error' => 'No se pudo convertir el .doc a PDF para analizarlo. Puede descargar el archivo original.']);
+    }
+
     public function test_preview_doc_sin_conversion_devuelve_html_y_no_500(): void
     {
         $user = $this->superadmin();
