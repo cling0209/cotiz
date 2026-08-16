@@ -136,8 +136,10 @@ class ListadoMaterialesPdfParserService
         }
 
         $textoCabecera = '';
-        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>}> $paginasFilas */
+        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>, items?: array<int, array{cantidad: int, descripcion: string}>}> $paginasFilas */
         $paginasFilas = [];
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineasSidecar */
+        $lineasSidecar = [];
 
         if ($extension === 'docx') {
             $xml = $this->leerDocumentXmlDocx($path);
@@ -151,7 +153,13 @@ class ListadoMaterialesPdfParserService
             $paddle = $this->paddle ?? new PdfPaddleOcrService;
             if ($paddle->estaDisponible()) {
                 try {
-                    $paginasFilas = $paddle->extraerGrillaTabla($path, trim((string) $file->getClientOriginalName()));
+                    $paginasFilas = $paddle->extraerGrillaTabla(
+                        $path,
+                        trim((string) $file->getClientOriginalName()),
+                        $columnaCantidad,
+                        $columnaProducto,
+                    );
+                    $lineasSidecar = $this->lineasDesdeItemsGrilla($paginasFilas);
                 } catch (\Throwable $e) {
                     Log::warning('Import PDF: grilla Paddle falló', ['error' => $e->getMessage()]);
                 }
@@ -215,6 +223,10 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        if (count($lineasSidecar) >= 2 && count($lineasSidecar) >= count($lineas)) {
+            $lineas = $lineasSidecar;
+        }
+
         if ($lineas === []) {
             Log::info('Import PDF: mapeo de columnas vacío; fallback parseDocumentoCompleto', [
                 'archivo' => $nombreArchivo,
@@ -251,6 +263,37 @@ class ListadoMaterialesPdfParserService
             'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
             'lineas' => $lineas,
         ];
+    }
+
+    /**
+     * Ítems ya mapeados por el sidecar Paddle (`cantidad` + `descripcion`).
+     *
+     * @param  array<int, array{pagina?: int, filas?: mixed, items?: mixed}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function lineasDesdeItemsGrilla(array $paginasFilas): array
+    {
+        $lineas = [];
+        foreach ($paginasFilas as $pagina) {
+            if (! is_array($pagina)) {
+                continue;
+            }
+            foreach ($pagina['items'] ?? [] as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $cantidad = (int) ($item['cantidad'] ?? 0);
+                $descripcion = trim((string) ($item['descripcion'] ?? ''));
+                if ($cantidad >= 1 && mb_strlen($descripcion) >= 2) {
+                    $lineas[] = [
+                        'cantidad' => $cantidad,
+                        'descripcion' => $descripcion,
+                    ];
+                }
+            }
+        }
+
+        return $lineas;
     }
 
     /**

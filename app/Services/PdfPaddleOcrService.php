@@ -132,10 +132,14 @@ class PdfPaddleOcrService
     /**
      * Grilla cruda de celdas por página (para mapeo de columnas definido por el usuario).
      *
-     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>}>
+     * @return array<int, array{pagina: int, filas: array<int, array<int, string>>, items?: array<int, array{cantidad: int, descripcion: string}>}>
      */
-    public function extraerGrillaTabla(string $pdfPath, string $nombreArchivo = ''): array
-    {
+    public function extraerGrillaTabla(
+        string $pdfPath,
+        string $nombreArchivo = '',
+        string $columnaCantidad = '',
+        string $columnaProducto = '',
+    ): array {
         if (! is_readable($pdfPath)) {
             throw new RuntimeException('No se pudo leer el PDF para PaddleOCR.');
         }
@@ -151,22 +155,29 @@ class PdfPaddleOcrService
         $paginasDoc = $this->resolverPaginasDocumento($pdfPath, $nombreArchivo);
         $concurrency = max(1, min(8, (int) $this->config('paddleocr.parallel_pages', 2)));
 
-        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>}> $porPagina */
+        /** @var array<int, array{pagina: int, filas: array<int, array<int, string>>, items?: array<int, array{cantidad: int, descripcion: string}>}> $porPagina */
         $porPagina = [];
 
         for ($batchStart = 1; $batchStart <= $paginasDoc; $batchStart += $concurrency) {
             $batchEnd = min($paginasDoc, $batchStart + $concurrency - 1);
             $paginasBatch = range($batchStart, $batchEnd);
 
-            $responses = Http::pool(function (Pool $pool) use ($url, $pdfBytes, $nombre, $timeout, $paginasBatch) {
+            $responses = Http::pool(function (Pool $pool) use ($url, $pdfBytes, $nombre, $timeout, $paginasBatch, $columnaCantidad, $columnaProducto) {
                 foreach ($paginasBatch as $pagina) {
+                    $campos = [
+                        'first_page' => $pagina,
+                        'last_page' => $pagina,
+                    ];
+                    if (trim($columnaCantidad) !== '') {
+                        $campos['columna_cantidad'] = trim($columnaCantidad);
+                    }
+                    if (trim($columnaProducto) !== '') {
+                        $campos['columna_producto'] = trim($columnaProducto);
+                    }
                     $pool->as("p{$pagina}")
                         ->timeout($timeout)
                         ->attach('pdf', $pdfBytes, $nombre)
-                        ->post($url.'/extract-grilla', [
-                            'first_page' => $pagina,
-                            'last_page' => $pagina,
-                        ]);
+                        ->post($url.'/extract-grilla', $campos);
                 }
             }, count($paginasBatch));
 
@@ -181,7 +192,16 @@ class PdfPaddleOcrService
         $faltantes = array_values(array_diff(range(1, $paginasDoc), array_keys($porPagina)));
         foreach ($faltantes as $pagina) {
             try {
-                $grilla = $this->solicitarGrillaPaddle($url, $pdfBytes, $nombre, $timeout, $pagina, $pagina);
+                $grilla = $this->solicitarGrillaPaddle(
+                    $url,
+                    $pdfBytes,
+                    $nombre,
+                    $timeout,
+                    $pagina,
+                    $pagina,
+                    $columnaCantidad,
+                    $columnaProducto,
+                );
                 if ($grilla !== null) {
                     $porPagina[$pagina] = $grilla;
                 }
@@ -211,13 +231,17 @@ class PdfPaddleOcrService
                 static fn (array $p): int => count($p['filas'] ?? []),
                 $todas,
             )),
+            'items_total' => array_sum(array_map(
+                static fn (array $p): int => count($p['items'] ?? []),
+                $todas,
+            )),
         ]);
 
         return $todas;
     }
 
     /**
-     * @return array{pagina: int, filas: array<int, array<int, string>>}|null
+     * @return array{pagina: int, filas: array<int, array<int, string>>, items?: array<int, array{cantidad: int, descripcion: string}>}|null
      */
     private function grillaDesdeRespuestaPool(mixed $response, int $pagina): ?array
     {
@@ -236,7 +260,12 @@ class PdfPaddleOcrService
 
         $paginas = $response->json('paginas');
         if (! is_array($paginas) || $paginas === []) {
-            return null;
+            $itemsSolo = $this->itemsDesdeJson($response->json('items'));
+            if ($itemsSolo === []) {
+                return null;
+            }
+
+            return ['pagina' => $pagina, 'filas' => [], 'items' => $itemsSolo];
         }
 
         $filas = [];
@@ -258,11 +287,68 @@ class PdfPaddleOcrService
             }
         }
 
-        if ($filas === []) {
+        $items = $this->itemsDesdeJson($response->json('items'));
+
+        if ($filas === [] && $items === []) {
             return null;
         }
 
-        return ['pagina' => $pagina, 'filas' => $filas];
+        $resultado = ['pagina' => $pagina, 'filas' => $filas];
+        if ($items !== []) {
+            $resultado['items'] = $items;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function itemsDesdeJson(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $cantidad = (int) ($item['cantidad'] ?? 0);
+            $descripcion = trim((string) ($item['descripcion'] ?? ''));
+            if ($cantidad >= 1 && mb_strlen($descripcion) >= 2) {
+                $items[] = [
+                    'cantidad' => $cantidad,
+                    'descripcion' => $descripcion,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array<string, int|string>
+     */
+    private function camposExtractGrilla(
+        int $firstPage,
+        int $lastPage,
+        string $columnaCantidad = '',
+        string $columnaProducto = '',
+    ): array {
+        $campos = [
+            'first_page' => $firstPage,
+            'last_page' => $lastPage,
+        ];
+        if (trim($columnaCantidad) !== '') {
+            $campos['columna_cantidad'] = trim($columnaCantidad);
+        }
+        if (trim($columnaProducto) !== '') {
+            $campos['columna_producto'] = trim($columnaProducto);
+        }
+
+        return $campos;
     }
 
     /**
@@ -280,7 +366,7 @@ class PdfPaddleOcrService
     }
 
     /**
-     * @return array{pagina: int, filas: array<int, array<int, string>>}|null
+     * @return array{pagina: int, filas: array<int, array<int, string>>, items?: array<int, array{cantidad: int, descripcion: string}>}|null
      */
     private function solicitarGrillaPaddle(
         string $url,
@@ -289,13 +375,17 @@ class PdfPaddleOcrService
         int $timeout,
         int $firstPage,
         int $lastPage,
+        string $columnaCantidad = '',
+        string $columnaProducto = '',
     ): ?array {
         $response = Http::timeout($timeout)
             ->attach('pdf', $pdfBytes, $nombre)
-            ->post($url.'/extract-grilla', [
-                'first_page' => $firstPage,
-                'last_page' => $lastPage,
-            ]);
+            ->post($url.'/extract-grilla', $this->camposExtractGrilla(
+                $firstPage,
+                $lastPage,
+                $columnaCantidad,
+                $columnaProducto,
+            ));
 
         if (! $response->successful()) {
             $detalle = trim((string) ($response->json('detail') ?? $response->body()));

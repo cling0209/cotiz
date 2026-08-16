@@ -601,4 +601,52 @@ class ListadoMaterialesPdfPaddleFusionTest extends TestCase
         $this->assertGreaterThanOrEqual(90, count($fusionadas));
         $this->assertGreaterThan(39, count($fusionadas));
     }
+
+    public function test_parse_mapeo_columnas_usa_items_del_sidecar(): void
+    {
+        $paddle = $this->createMock(PdfPaddleOcrService::class);
+        $paddle->method('estaDisponible')->willReturn(true);
+        $paddle->method('extraerGrillaTabla')->willReturn([
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD', 'DESCRIPCIÓN'],
+                    ['6', 'Silla con respaldo con perforaciones y asientos tapiz'],
+                    ['3', 'Mesa Modular Masca para 3 personas. ESTRATEGIA ≡≡'],
+                ],
+                'items' => [
+                    ['cantidad' => 2, 'descripcion' => 'Mesón de préstamo cubierta simple.'],
+                    ['cantidad' => 2, 'descripcion' => 'Diario mural tipo vitrina'],
+                    ['cantidad' => 4, 'descripcion' => 'Lector Inalámbrico'],
+                    ['cantidad' => 1, 'descripcion' => 'Alfombra Rectangular, modelo circulo de colores'],
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo con perforaciones y asientos tapiz'],
+                    ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
+                ],
+            ],
+        ]);
+
+        $parser = new ListadoMaterialesPdfParserService(null, $paddle);
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-cra-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $uploaded = new \Illuminate\Http\UploadedFile($tmp, 'DETALLE 011 CRA.pdf', 'application/pdf', null, true);
+            $documento = $parser->parseDocumentoConMapeoColumnas($uploaded, 'CANTIDAD', 'DESCRIPCIÓN');
+        } finally {
+            @unlink($tmp);
+        }
+
+        $lineas = $documento['lineas'];
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertSame('Mesón de préstamo cubierta simple.', $lineas[0]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+        foreach ($lineas as $linea) {
+            $this->assertStringNotContainsString('ESTRATEGIA', $linea['descripcion']);
+            $this->assertStringNotContainsString('≡', $linea['descripcion']);
+        }
+    }
 }

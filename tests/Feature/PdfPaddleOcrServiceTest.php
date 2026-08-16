@@ -132,4 +132,68 @@ class PdfPaddleOcrServiceTest extends TestCase
 
         $this->assertCount(11, $lineas);
     }
+
+    public function test_extraer_grilla_tabla_envia_columnas_y_usa_items(): void
+    {
+        config([
+            'cotiz.paddleocr.max_pages' => 1,
+            'cotiz.paddleocr.parallel_pages' => 1,
+        ]);
+
+        Http::fake([
+            'http://paddleocr.test/extract-grilla' => Http::response([
+                'paginas' => [
+                    [
+                        'filas' => [
+                            ['6 Silla con respaldo'],
+                            ['3 Mesa Modular'],
+                        ],
+                    ],
+                ],
+                'items' => [
+                    ['cantidad' => 2, 'descripcion' => 'Mesón de préstamo'],
+                    ['cantidad' => 2, 'descripcion' => 'Diario mural tipo vitrina'],
+                    ['cantidad' => 4, 'descripcion' => 'Lector Inalámbrico'],
+                    ['cantidad' => 1, 'descripcion' => 'Alfombra Rectangular'],
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
+                    ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
+                ],
+                'total_filas' => 2,
+            ]),
+            'http://paddleocr.test/*' => Http::response(['status' => 'ok']),
+        ]);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz-pdf-');
+        file_put_contents($tmp, '%PDF-1.4');
+
+        try {
+            $paginas = (new PdfPaddleOcrService)->extraerGrillaTabla(
+                $tmp,
+                'DETALLE 011 CRA.pdf',
+                'CANTIDAD',
+                'DESCRIPCIÓN',
+            );
+        } finally {
+            @unlink($tmp);
+        }
+
+        $this->assertCount(1, $paginas);
+        $this->assertCount(6, $paginas[0]['items'] ?? []);
+        $this->assertSame('Lector Inalámbrico', $paginas[0]['items'][2]['descripcion']);
+
+        $campos = [];
+        foreach (Http::recorded() as $pair) {
+            $request = $pair[0];
+            if (! str_contains($request->url(), 'extract-grilla')) {
+                continue;
+            }
+            foreach ($request->data() as $parte) {
+                if (is_array($parte) && isset($parte['name'])) {
+                    $campos[$parte['name']] = $parte['contents'] ?? null;
+                }
+            }
+        }
+        $this->assertSame('CANTIDAD', $campos['columna_cantidad'] ?? null);
+        $this->assertSame('DESCRIPCIÓN', $campos['columna_producto'] ?? null);
+    }
 }

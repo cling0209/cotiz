@@ -1788,6 +1788,38 @@ TXT;
         }
     }
 
+    public function test_lineas_desde_items_grilla_sidecar(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['6', 'Silla'],
+                    ['3', 'Mesa ESTRATEGIA'],
+                ],
+                'items' => [
+                    ['cantidad' => 2, 'descripcion' => 'Mesón de préstamo cubierta simple.'],
+                    ['cantidad' => 2, 'descripcion' => 'Diario mural tipo vitrina'],
+                    ['cantidad' => 4, 'descripcion' => 'Lector Inalámbrico'],
+                    ['cantidad' => 1, 'descripcion' => 'Alfombra Rectangular'],
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
+                    ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('lineasDesdeItemsGrilla');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas);
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

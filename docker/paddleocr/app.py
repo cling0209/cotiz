@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from items_mapper import extraer_items_desde_paginas
 from table_extractor import extraer_grilla_pdf, extraer_lineas_pdf
 
 app = FastAPI(title="Cotiz PaddleOCR", version="1.0.0")
@@ -62,6 +63,8 @@ async def extract_grilla(
     pdf: UploadFile = File(...),
     first_page: int | None = Form(default=None),
     last_page: int | None = Form(default=None),
+    columna_cantidad: str = Form(default="CANTIDAD"),
+    columna_producto: str = Form(default="PRODUCTO"),
 ) -> JSONResponse:
     if not pdf.filename or not pdf.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Se requiere un archivo PDF.")
@@ -90,10 +93,16 @@ async def extract_grilla(
         Path(tmp_path).unlink(missing_ok=True)
 
     total_filas = sum(len(p.get("filas") or []) for p in paginas)
+    items = extraer_items_desde_paginas(
+        paginas,
+        columna_cantidad=columna_cantidad or "CANTIDAD",
+        columna_producto=columna_producto or "PRODUCTO",
+    )
 
     return JSONResponse(
         {
             "paginas": paginas,
+            "items": items,
             "total_filas": total_filas,
             "first_page": page_start,
             "last_page": page_end,
