@@ -1700,6 +1700,44 @@ TXT;
         $this->assertFalse($method->invoke($this->parser, []));
     }
 
+    public function test_mapeo_columnas_parte_fila_unica_pegoteada_detalle_cra(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD', 'DESCRIPCIÓN', 'ID¹'],
+                    ['2', 'Mesón de préstamo cubierta simple. Medidas mesón: largo 200 x alto 72 x fondo 65 cm. 2 Diario mural tipo vitrina 4 Lector Inalámbrico 1 Alfombra Rectangular, modelo circulo de colores 6 Silla con respaldo con perforaciones y asientos tapiz 3 Mesa Modular Masca para 3 personas. ANTECEDENTES GENERALES Gestión de Recursos https://www.mercadopublico.cl/TiendaHome OBJETIVOS ESTRATÉGICOS', ''],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo cubierta simple', $lineas[0]['descripcion']);
+        $this->assertStringNotContainsString('ANTECEDENTES', $lineas[0]['descripcion']);
+        $this->assertStringNotContainsString('mercadopublico', mb_strtolower($lineas[0]['descripcion']));
+        $this->assertSame(2, $lineas[1]['cantidad']);
+        $this->assertSame('Diario mural tipo vitrina', $lineas[1]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertSame(6, $lineas[4]['cantidad']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+        foreach ($lineas as $linea) {
+            $this->assertStringNotContainsString('ANTECEDENTES', $linea['descripcion']);
+            $this->assertStringNotContainsString('OBJETIVOS', $linea['descripcion']);
+        }
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

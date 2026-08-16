@@ -203,13 +203,16 @@ class ListadoMaterialesPdfParserService
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
 
-        if ($lineas === []) {
+        if ($lineas === [] || $this->mapeoEsFilaUnicaPegoteada($lineas)) {
             $textoGrilla = $this->textoPlanoDesdeGrilla($paginasFilas);
-            $lineas = $this->aplicarMapeoColumnasDesdeTexto(
+            $lineasTexto = $this->aplicarMapeoColumnasDesdeTexto(
                 trim($textoGrilla."\n".$textoCabecera),
                 $columnaCantidad,
                 $columnaProducto,
             );
+            if ($lineas === [] || count($lineasTexto) > count($lineas)) {
+                $lineas = $lineasTexto;
+            }
         }
 
         if ($lineas === []) {
@@ -508,10 +511,9 @@ class ListadoMaterialesPdfParserService
 
         $volcarBuffer = function () use (&$resultado, &$bufferDesc, &$bufferCant): void {
             if ($bufferDesc !== null && $bufferCant !== null && mb_strlen($bufferDesc) >= 2) {
-                $resultado[] = [
-                    'cantidad' => $bufferCant,
-                    'descripcion' => $bufferDesc,
-                ];
+                foreach ($this->partirBufferEnProductos($bufferCant, $bufferDesc) as $item) {
+                    $resultado[] = $item;
+                }
             }
             $bufferDesc = null;
             $bufferCant = null;
@@ -598,12 +600,17 @@ class ListadoMaterialesPdfParserService
                 }
 
                 if ($bufferDesc !== null && $cantidad === null) {
+                    $candidatoFila = trim(implode(' ', $celdas));
+                    if ($this->textoEsRuidoPlantillaDocumento($candidatoFila)) {
+                        continue;
+                    }
+
                     $continuacion = $this->resolverContinuacionMultilinea(
                         $celdas,
                         $idxProductoFila,
                         $productoEsSpecs,
                     );
-                    if ($continuacion !== '') {
+                    if ($continuacion !== '' && ! $this->textoEsRuidoPlantillaDocumento($continuacion)) {
                         $bufferDesc = trim($bufferDesc.' '.$continuacion);
                         continue;
                     }
@@ -614,6 +621,100 @@ class ListadoMaterialesPdfParserService
         $volcarBuffer();
 
         return $resultado;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     */
+    private function mapeoEsFilaUnicaPegoteada(array $lineas): bool
+    {
+        if (count($lineas) !== 1) {
+            return false;
+        }
+
+        $desc = trim((string) ($lineas[0]['descripcion'] ?? ''));
+        if ($desc === '') {
+            return true;
+        }
+
+        return mb_strlen($desc) > 180
+            || $this->contieneMultiplesProductosTabla($desc)
+            || $this->textoEsRuidoPlantillaDocumento($desc);
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function partirBufferEnProductos(int $cantidad, string $descripcion): array
+    {
+        $descripcion = $this->recortarDescripcionHastaRuidoDocumento($descripcion);
+        if ($descripcion === '' || mb_strlen($descripcion) < 2) {
+            return [];
+        }
+
+        $partes = $this->separarProductosPegadosEnLinea($cantidad.' '.$descripcion);
+        $resultado = [];
+
+        foreach ($partes as $indice => $parte) {
+            $partida = $this->partirFilaCantidadProductoSimple($parte);
+            if (count($partida) >= 2) {
+                $cantParte = $this->parseCantidadCeldaTabla($partida[0]);
+                $descParte = $this->recortarDescripcionHastaRuidoDocumento($partida[1]);
+                if ($cantParte !== null && mb_strlen($descParte) >= 2) {
+                    $resultado[] = [
+                        'cantidad' => $cantParte,
+                        'descripcion' => $descParte,
+                    ];
+
+                    continue;
+                }
+            }
+
+            $descParte = $this->recortarDescripcionHastaRuidoDocumento($parte);
+            if ($descParte === '') {
+                continue;
+            }
+
+            if ($indice === 0 || $resultado === []) {
+                $resultado[] = [
+                    'cantidad' => $cantidad,
+                    'descripcion' => $descParte,
+                ];
+            } else {
+                $ultimo = count($resultado) - 1;
+                $resultado[$ultimo]['descripcion'] = trim($resultado[$ultimo]['descripcion'].' '.$descParte);
+            }
+        }
+
+        return $resultado;
+    }
+
+    private function recortarDescripcionHastaRuidoDocumento(string $texto): string
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return '';
+        }
+
+        $partes = preg_split(
+            '/\bANTECEDENTES GENERALES\b|https?:\/\/www\.mercadopublico\.cl|\bOBJETIVOS ESTRAT[ÉE]GICOS\b|Incluir tantas l[ií]neas de productos|\bTrat[aá]ndose de compras por Convenio Marco\b|\bGesti[oó]n de Recursos\b/iu',
+            $texto,
+            2,
+        );
+
+        return trim((string) ($partes[0] ?? $texto));
+    }
+
+    private function textoEsRuidoPlantillaDocumento(string $texto): bool
+    {
+        $norm = mb_strtoupper($this->normalizarEncabezadoCelda($texto));
+
+        return str_contains($norm, 'ANTECEDENTES GENERALES')
+            || str_contains($norm, 'OBJETIVOS ESTRATEGICOS')
+            || str_contains($norm, 'MERCADOPUBLICO.CL')
+            || str_contains($norm, 'CONVENIO MARCO')
+            || str_contains($norm, 'INCLUIR TANTAS LINEAS')
+            || str_contains($norm, 'GESTION DE RECURSOS');
     }
 
     /**
@@ -671,10 +772,9 @@ class ListadoMaterialesPdfParserService
 
         $volcarBuffer = function () use (&$resultado, &$bufferDesc, &$bufferCant): void {
             if ($bufferDesc !== null && $bufferCant !== null && mb_strlen($bufferDesc) >= 2) {
-                $resultado[] = [
-                    'cantidad' => $bufferCant,
-                    'descripcion' => $bufferDesc,
-                ];
+                foreach ($this->partirBufferEnProductos($bufferCant, $bufferDesc) as $item) {
+                    $resultado[] = $item;
+                }
             }
             $bufferDesc = null;
             $bufferCant = null;
@@ -697,7 +797,12 @@ class ListadoMaterialesPdfParserService
 
             $partida = $this->partirFilaCantidadProductoSimple($linea);
             if (count($partida) < 2) {
-                if ($despuesDeEncabezado && $bufferDesc !== null && $this->parseCantidadCeldaTabla($linea) === null) {
+                if (
+                    $despuesDeEncabezado
+                    && $bufferDesc !== null
+                    && $this->parseCantidadCeldaTabla($linea) === null
+                    && ! $this->textoEsRuidoPlantillaDocumento($linea)
+                ) {
                     $bufferDesc = trim($bufferDesc.' '.$linea);
                 }
 
@@ -854,13 +959,13 @@ class ListadoMaterialesPdfParserService
             return [];
         }
 
-        $patronProducto = '/\d{1,5}\s+[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,}/u';
+        $patronProducto = '/\d{1,5}\s+(?!HOJAS\b|UNIDADES\b|UNIDAD\b|PLIEGOS\b|PLIEGO\b|PACKS?\b|CAJAS?\b|SETS?\b|SOBRES?\b)[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,}/u';
         if (preg_match_all($patronProducto, $linea) < 2) {
             return [$linea];
         }
 
         $separado = preg_replace(
-            '/(?<=\S)\s+(?=\d{1,5}\s+[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,})/u',
+            '/(?<=\S)\s+(?=\d{1,5}\s+(?!HOJAS\b|UNIDADES\b|UNIDAD\b|PLIEGOS\b|PLIEGO\b|PACKS?\b|CAJAS?\b|SETS?\b|SOBRES?\b)[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,})/u',
             "\n",
             $linea,
         ) ?? $linea;
