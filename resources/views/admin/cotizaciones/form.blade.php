@@ -470,7 +470,7 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx) con listado de materiales. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el t&iacute;tulo se repite en otras p&aacute;ginas, se omite autom&aacute;ticamente.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx), o pinche un adjunto abajo. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el t&iacute;tulo se repite en otras p&aacute;ginas, se omite autom&aacute;ticamente.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
                                     Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
@@ -492,6 +492,7 @@
                                 class="form-control form-control-sm mb-2"
                                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             >
+                            <p class="small text-muted mb-2 d-none" id="importar-compra-agil-pdf-adjunto-hint"></p>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-pdf">
                                 <i class="bi bi-file-earmark-text"></i> Analizar PDF / Word
                             </button>
@@ -523,6 +524,7 @@
                                 class="form-control form-control-sm mb-2"
                                 accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                             >
+                            <p class="small text-muted mb-2 d-none" id="importar-compra-agil-excel-adjunto-hint"></p>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-excel">
                                 <i class="bi bi-file-earmark-spreadsheet"></i> Analizar Excel
                             </button>
@@ -3239,6 +3241,9 @@
                 btn.type = 'button';
                 btn.className = 'btn btn-link btn-sm p-0 text-start';
                 btn.textContent = nom;
+                if (adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.nombre === nom) {
+                    btn.classList.add('fw-semibold');
+                }
                 btn.addEventListener('click', () => {
                     seleccionarAdjuntoImportar(nom);
                     abrirPreviewAdjuntoImportar(nom);
@@ -3261,6 +3266,63 @@
         if (btnImportarAnalizarAdjunto) {
             btnImportarAnalizarAdjunto.classList.toggle('d-none', !analizable);
         }
+        actualizarHintAdjuntoImportar();
+        const tabId = tipo === 'excel' ? 'tab-ca-excel' : (tipo === 'pdf' ? 'tab-ca-pdf' : '');
+        if (tabId) {
+            document.getElementById(tabId)?.click();
+        }
+        renderAdjuntosImportar();
+    }
+
+    function actualizarHintAdjuntoImportar() {
+        const sel = adjuntoImportarSeleccionado;
+        const hintPdf = document.getElementById('importar-compra-agil-pdf-adjunto-hint');
+        const hintExcel = document.getElementById('importar-compra-agil-excel-adjunto-hint');
+        const hayPdfInput = !!(importarPdfInput?.files && importarPdfInput.files[0]);
+        const hayExcelInput = !!(importarExcelInput?.files && importarExcelInput.files[0]);
+        if (hintPdf) {
+            if (!hayPdfInput && sel && sel.tipo === 'pdf' && sel.nombre) {
+                hintPdf.classList.remove('d-none');
+                hintPdf.textContent = 'Se analizará el adjunto: ' + sel.nombre;
+            } else {
+                hintPdf.classList.add('d-none');
+                hintPdf.textContent = '';
+            }
+        }
+        if (hintExcel) {
+            if (!hayExcelInput && sel && sel.tipo === 'excel' && sel.nombre) {
+                hintExcel.classList.remove('d-none');
+                hintExcel.textContent = 'Se analizará el adjunto: ' + sel.nombre;
+            } else {
+                hintExcel.classList.add('d-none');
+                hintExcel.textContent = '';
+            }
+        }
+    }
+
+    function valorColumnaImport(opciones, clave, valorTab, valorAdjunto) {
+        if (opciones[clave] != null && String(opciones[clave]).trim() !== '') {
+            return String(opciones[clave]).trim();
+        }
+        const tab = String(valorTab || '').trim();
+        if (tab !== '') {
+            return tab;
+        }
+        return String(valorAdjunto || '').trim();
+    }
+
+    async function resolverArchivoAdjuntoSiFalta(file, tipoEsperado) {
+        if (file) {
+            return file;
+        }
+        const sel = adjuntoImportarSeleccionado;
+        if (!sel || !sel.nombre || sel.tipo !== tipoEsperado) {
+            return null;
+        }
+        if (importarEstado) {
+            importarEstado.textContent = 'Descargando adjunto…';
+        }
+        return descargarAdjuntoComoFile(sel.nombre);
     }
 
     function bumpBackdropAdjuntoImportar() {
@@ -3489,6 +3551,8 @@
         if (importarExcelInput) importarExcelInput.value = '';
         if (importarExcelColCant) importarExcelColCant.value = 'A';
         if (importarExcelColDesc) importarExcelColDesc.value = 'B';
+        adjuntoImportarSeleccionado = null;
+        actualizarHintAdjuntoImportar();
         document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
         if (desdeOportunidades && codigoImportarCompraAgil) {
             bloquearCodigoImportarOportunidad();
@@ -3774,11 +3838,29 @@
         importModo = 'pdf';
         importCodigoApi = null;
         importExcelFile = null;
-        const file = opciones.file || importarPdfInput?.files?.[0] || null;
-        const colCant = String((opciones.colCant != null ? opciones.colCant : importarPdfColCant?.value) || '').trim();
-        const colDesc = String((opciones.colDesc != null ? opciones.colDesc : importarPdfColDesc?.value) || '').trim();
+        let file = opciones.file || importarPdfInput?.files?.[0] || null;
+        try {
+            file = await resolverArchivoAdjuntoSiFalta(file, 'pdf');
+        } catch (e) {
+            if (importarEstado) {
+                importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+            }
+            return;
+        }
+        const colCant = valorColumnaImport(
+            opciones,
+            'colCant',
+            importarPdfColCant?.value,
+            document.getElementById('importar-adjunto-pdf-col-cant')?.value,
+        );
+        const colDesc = valorColumnaImport(
+            opciones,
+            'colDesc',
+            importarPdfColDesc?.value,
+            document.getElementById('importar-adjunto-pdf-col-desc')?.value,
+        );
         if (!file) {
-            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx).';
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx), o pinche un adjunto.';
             return;
         }
         if (!colCant || !colDesc) {
@@ -3903,11 +3985,29 @@
         importModo = 'excel';
         importCodigoApi = null;
         importPdfFile = null;
-        const file = opciones.file || importarExcelInput?.files?.[0] || null;
-        const colDesc = String((opciones.colDesc != null ? opciones.colDesc : importarExcelColDesc?.value) || '').trim().toUpperCase();
-        const colCant = String((opciones.colCant != null ? opciones.colCant : importarExcelColCant?.value) || '').trim().toUpperCase();
+        let file = opciones.file || importarExcelInput?.files?.[0] || null;
+        try {
+            file = await resolverArchivoAdjuntoSiFalta(file, 'excel');
+        } catch (e) {
+            if (importarEstado) {
+                importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+            }
+            return;
+        }
+        const colDesc = valorColumnaImport(
+            opciones,
+            'colDesc',
+            importarExcelColDesc?.value,
+            document.getElementById('importar-adjunto-excel-col-desc')?.value,
+        ).toUpperCase();
+        const colCant = valorColumnaImport(
+            opciones,
+            'colCant',
+            importarExcelColCant?.value,
+            document.getElementById('importar-adjunto-excel-col-cant')?.value,
+        ).toUpperCase();
         if (!file) {
-            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv).';
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv), o pinche un adjunto.';
             return;
         }
         if (!colDesc || !colCant) {
@@ -4638,6 +4738,8 @@
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
     btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
     btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
+    importarPdfInput?.addEventListener('change', () => actualizarHintAdjuntoImportar());
+    importarExcelInput?.addEventListener('change', () => actualizarHintAdjuntoImportar());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
     btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
     btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
