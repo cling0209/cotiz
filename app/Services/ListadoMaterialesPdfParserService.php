@@ -24,6 +24,9 @@ class ListadoMaterialesPdfParserService
 
     private const FORMATO_EETT = 'eett_especificaciones';
 
+    /** Bases técnicas: CANTIDAD / DESCRIPCIÓN multilínea (230 + unidades + Frazadas…). */
+    private const FORMATO_BASES_TECNICAS_CANTIDAD = 'bases_tecnicas_cantidad_multilinea';
+
     private const FORMATO_TABLA_PRODUCTO_CANTIDAD = 'tabla_producto_cantidad';
 
     /** Tabla multi-columna: producto y cantidad en columnas distintas (p. ej. cotización proveedor). */
@@ -166,7 +169,8 @@ class ListadoMaterialesPdfParserService
                 $columnaProducto,
             );
             $nativoSuficiente = count($lineasNativas) >= 1
-                && ! $this->mapeoEsFilaUnicaPegoteada($lineasNativas);
+                && ! $this->mapeoEsFilaUnicaPegoteada($lineasNativas)
+                && ! $this->mapeoPareceFragmentado($lineasNativas);
 
             if ($nativoSuficiente) {
                 Log::info('Import PDF: mapeo nativo suficiente; se omite Mistral/Paddle', [
@@ -265,25 +269,29 @@ class ListadoMaterialesPdfParserService
             ];
         }
 
-        $lineas = $paginasFilas !== []
-            ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
-            : [];
-
-        if ($lineas === [] || $this->mapeoEsFilaUnicaPegoteada($lineas)) {
-            $textoGrilla = $this->textoPlanoDesdeGrilla($paginasFilas);
-            $lineasTexto = $this->aplicarMapeoColumnasDesdeTexto(
-                trim($textoGrilla."\n".$textoCabecera),
-                $columnaCantidad,
-                $columnaProducto,
-            );
-            if ($lineas === [] || count($lineasTexto) > count($lineas)) {
-                $lineas = $lineasTexto;
-            }
-        }
-
-        $lineas = $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
+        $lineas = $this->lineasMapeoDesdeGrillaYTexto(
+            $paginasFilas,
+            $textoCabecera,
+            $columnaCantidad,
+            $columnaProducto,
+        );
         if (count($lineasSidecar) >= 2 && count($lineasSidecar) >= count($lineas)) {
             $lineas = $this->filtrarLineasPieMapeo($lineasSidecar);
+        }
+
+        if ($lineas === [] || $this->mapeoPareceFragmentado($lineas)) {
+            $desdeTexto = $this->deduplicarLineasMapeo(
+                $this->filtrarLineasPieMapeo($this->parseTexto($textoCabecera)),
+            );
+            if (
+                $desdeTexto !== []
+                && (
+                    $lineas === []
+                    || (! $this->mapeoPareceFragmentado($desdeTexto) && count($desdeTexto) >= 1)
+                )
+            ) {
+                $lineas = $desdeTexto;
+            }
         }
 
         if ($lineas === []) {
@@ -367,23 +375,79 @@ class ListadoMaterialesPdfParserService
         string $columnaCantidad,
         string $columnaProducto,
     ): array {
+        $textoPlano = trim($this->textoPlanoDesdeGrilla($paginasFilas)."\n".$textoCabecera);
+        if ($textoPlano !== '' && $this->esFormatoBasesTecnicasCantidadMultilinea(
+            mb_strtoupper($this->normalizarEspaciosDocumento($textoPlano)),
+            $textoPlano,
+        )) {
+            $bases = $this->deduplicarLineasMapeo(
+                $this->filtrarLineasPieMapeo($this->parseBasesTecnicasCantidadMultilinea($textoPlano)),
+            );
+            if ($bases !== [] && ! $this->mapeoPareceFragmentado($bases)) {
+                return $bases;
+            }
+        }
+
         $lineas = $paginasFilas !== []
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
 
-        if ($lineas === [] || $this->mapeoEsFilaUnicaPegoteada($lineas)) {
+        if ($lineas === [] || $this->mapeoEsFilaUnicaPegoteada($lineas) || $this->mapeoPareceFragmentado($lineas)) {
             $textoGrilla = $this->textoPlanoDesdeGrilla($paginasFilas);
             $lineasTexto = $this->aplicarMapeoColumnasDesdeTexto(
                 trim($textoGrilla."\n".$textoCabecera),
                 $columnaCantidad,
                 $columnaProducto,
             );
-            if ($lineas === [] || count($lineasTexto) > count($lineas)) {
-                $lineas = $lineasTexto;
+            if ($lineas === [] || count($lineasTexto) > count($lineas) || $this->mapeoPareceFragmentado($lineas)) {
+                if (! $this->mapeoPareceFragmentado($lineasTexto) || count($lineasTexto) > count($lineas)) {
+                    $lineas = $lineasTexto;
+                }
             }
         }
 
         return $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
+    }
+
+    /**
+     * Detecta mapeos que partieron una ficha técnica en muchas filas basura.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     */
+    private function mapeoPareceFragmentado(array $lineas): bool
+    {
+        if (count($lineas) < 3) {
+            return false;
+        }
+
+        $fragmentos = 0;
+        foreach ($lineas as $linea) {
+            $desc = trim((string) ($linea['descripcion'] ?? ''));
+            if ($desc === '') {
+                $fragmentos++;
+
+                continue;
+            }
+            if (preg_match('/^(?:unidades?|juegos?|packs?|cajas?)\.?$/iu', $desc) === 1) {
+                $fragmentos++;
+
+                continue;
+            }
+            if (preg_match('/^(?:color|material|modelo|medida|medidas|peso|composicion|composici[oó]n|tela|gramaje|plaza)\b/iu', $desc) === 1) {
+                $fragmentos++;
+
+                continue;
+            }
+            if (
+                mb_strlen($desc) < 40
+                && preg_match('/\b(?:mts?\.?|cm\.?|kg\.?|grs?\.?|hilos?)\b/iu', $desc) === 1
+                && preg_match('/\b(?:frazad|s[aá]ban|toalla|producto|adquisici)/iu', $desc) !== 1
+            ) {
+                $fragmentos++;
+            }
+        }
+
+        return $fragmentos >= (int) max(2, ceil(count($lineas) * 0.4));
     }
 
     /**
@@ -2744,6 +2808,7 @@ class ListadoMaterialesPdfParserService
             self::FORMATO_OFERTA_PRECIO => $this->parseOfertaPrecio($texto),
             self::FORMATO_TABLA_DIDECO => $this->parseTablaDideco($texto),
             self::FORMATO_EETT => $this->parseEettEspecificaciones($texto),
+            self::FORMATO_BASES_TECNICAS_CANTIDAD => $this->parseBasesTecnicasCantidadMultilinea($texto),
             default => $this->parseListadoCantidad($texto),
         };
 
@@ -2831,6 +2896,10 @@ class ListadoMaterialesPdfParserService
 
         if (str_contains($upper, 'DETALLE PRODUCTO') && str_contains($upper, 'UNIDADES')) {
             return self::FORMATO_DETALLE;
+        }
+
+        if ($this->esFormatoBasesTecnicasCantidadMultilinea($upper, $texto)) {
+            return self::FORMATO_BASES_TECNICAS_CANTIDAD;
         }
 
         if ($this->esFormatoTablaProductoCantidad($upper)) {
@@ -8695,6 +8764,175 @@ class ListadoMaterialesPdfParserService
         }
 
         return $resultado;
+    }
+
+    /**
+     * Bases técnicas FACh/similares: "230 / unidades / Frazadas / specs…" o "230 juegosSábanas…".
+     */
+    private function esFormatoBasesTecnicasCantidadMultilinea(string $upper, string $texto): bool
+    {
+        $upperFold = strtr($upper, [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U', 'Ñ' => 'N',
+        ]);
+        if (! str_contains($upperFold, 'CANTIDAD') || ! str_contains($upperFold, 'DESCRIPCION')) {
+            return false;
+        }
+
+        $marcador = str_contains($upperFold, 'FOTO REFERENCIAL')
+            || str_contains($upperFold, 'FOTO REFERECIAL')
+            || str_contains($upperFold, 'BASES TECNICAS')
+            || str_contains($upperFold, 'ESPECIFICACIONES DE LOS');
+
+        if (! $marcador) {
+            return false;
+        }
+
+        $tieneUnidadesSeparadas = preg_match('/^\d{1,5}\s*$/m', $texto) === 1
+            && preg_match('/^unidades?\.?\s*$/im', $texto) === 1;
+        $tieneJuegos = preg_match('/\d{1,5}\s*juegos?\s*\S+/iu', $texto) === 1;
+
+        return $tieneUnidadesSeparadas || $tieneJuegos;
+    }
+
+    /**
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function parseBasesTecnicasCantidadMultilinea(string $texto): array
+    {
+        $texto = $this->normalizarEspaciosDocumento($texto);
+        $lineasRaw = preg_split('/\n+/u', $texto) ?: [];
+        $lineas = [];
+        foreach ($lineasRaw as $lineaCruda) {
+            $linea = trim(preg_replace('/[ \t]+/u', ' ', (string) $lineaCruda) ?? (string) $lineaCruda);
+            if ($linea !== '') {
+                $lineas[] = $linea;
+            }
+        }
+
+        $resultado = [];
+        $cantidad = null;
+        $nombre = null;
+        $detalle = [];
+        $esperandoUnidad = false;
+        $leyendo = false;
+
+        $flush = function () use (&$resultado, &$cantidad, &$nombre, &$detalle, &$esperandoUnidad): void {
+            if ($cantidad === null || $nombre === null || trim($nombre) === '') {
+                $cantidad = null;
+                $nombre = null;
+                $detalle = [];
+                $esperandoUnidad = false;
+
+                return;
+            }
+            $specs = array_values(array_filter(array_map('trim', $detalle), static fn (string $s): bool => $s !== ''));
+            $descripcion = trim($nombre.(count($specs) > 0 ? ' — '.implode('; ', array_slice($specs, 0, 12)) : ''));
+            if ($descripcion !== '' && ! $this->esDescripcionAdministrativa($descripcion)) {
+                $resultado[] = [
+                    'cantidad' => max(1, $cantidad),
+                    'descripcion' => mb_substr($descripcion, 0, 500),
+                ];
+            }
+            $cantidad = null;
+            $nombre = null;
+            $detalle = [];
+            $esperandoUnidad = false;
+        };
+
+        foreach ($lineas as $linea) {
+            $upper = mb_strtoupper($linea);
+            $upperFold = strtr($upper, [
+                'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U', 'Ñ' => 'N',
+            ]);
+
+            if (
+                preg_match('/^III[\.\-]|^IV[\.\-]/u', $upperFold) === 1
+                || str_starts_with($upperFold, 'CONSIDERACIONES ESPECIALES')
+                || str_starts_with($upperFold, 'LUGAR DE ENTREGA')
+            ) {
+                $flush();
+                $leyendo = false;
+
+                break;
+            }
+
+            if (
+                ! $leyendo
+                && str_contains($upperFold, 'CANTIDAD')
+                && str_contains($upperFold, 'DESCRIPCION')
+            ) {
+                $leyendo = true;
+
+                continue;
+            }
+
+            if (! $leyendo) {
+                continue;
+            }
+
+            if (preg_match('/^(\d{1,5})\s*(unidades?|juegos?|packs?|cajas?)\s*(.+)$/iu', $linea, $m) === 1) {
+                $flush();
+                $cantidad = (int) $m[1];
+                $nombre = trim($m[3]);
+                $detalle = [];
+                $esperandoUnidad = false;
+
+                continue;
+            }
+
+            if (preg_match('/^(\d{1,5})\s*$/u', $linea, $m) === 1) {
+                $flush();
+                $cantidad = (int) $m[1];
+                $nombre = null;
+                $detalle = [];
+                $esperandoUnidad = true;
+
+                continue;
+            }
+
+            if ($esperandoUnidad && preg_match('/^(unidades?|juegos?|packs?|cajas?)\.?$/iu', $linea) === 1) {
+                $esperandoUnidad = false;
+
+                continue;
+            }
+
+            if ($cantidad !== null && $nombre === null) {
+                if ($this->esLineaSpecBasesTecnicas($linea)) {
+                    continue;
+                }
+                $nombre = $linea;
+                $esperandoUnidad = false;
+
+                continue;
+            }
+
+            if ($cantidad !== null && $nombre !== null) {
+                if ($this->esLineaSpecBasesTecnicas($linea) || ! $this->pareceInicioProductoBasesTecnicas($linea)) {
+                    $detalle[] = $linea;
+                }
+            }
+        }
+
+        $flush();
+
+        return $resultado;
+    }
+
+    private function esLineaSpecBasesTecnicas(string $linea): bool
+    {
+        return preg_match(
+            '/^(?:color|material|modelo|medida|medidas|peso|composici[oó]n|tela|gramaje|debe\s+incluir|s[aá]bana|de\s+\d)/iu',
+            trim($linea),
+        ) === 1
+            || preg_match('/\b(?:mts?\.?|cm\.?|kg\.?|grs?\.?|hilos?|aprox\.?)\b/iu', $linea) === 1
+            || preg_match('/^\d+\s*plaza\b/iu', $linea) === 1
+            || preg_match('/^(?:100%\s+|50%\s+)/iu', $linea) === 1;
+    }
+
+    private function pareceInicioProductoBasesTecnicas(string $linea): bool
+    {
+        return preg_match('/^(\d{1,5})\s*(unidades?|juegos?)\b/iu', $linea) === 1
+            || preg_match('/^(\d{1,5})\s*$/u', $linea) === 1;
     }
 
     private function extraerTextoDocx(string $path): string

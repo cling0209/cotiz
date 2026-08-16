@@ -1894,6 +1894,44 @@ TXT;
         $this->assertSame(3, $unicas[1]['cantidad']);
     }
 
+    public function test_bases_tecnicas_cantidad_multilinea_textiles_cadetes(): void
+    {
+        $texto = <<<'TXT'
+II.- ESPECIFICACIONES DE LOS PRODUCTOS.
+CANTIDAD DESCRIPCIÓN	FOTO REFERECIAL.
+230
+unidades
+Frazadas
+Color solidos azul o gris.
+1 plaza (Medidas 1.40 mts., largo de
+2.10 mts. y alto aprox. De 0.25)
+Material de 95% lana y 5% poliéster
+Modelo escocesa.
+Frazada posee huinchas laterales de
+amarre.
+230 juegosSábanas con fundas
+Color blanco.
+Composición 50% poliéster, 50%
+algodón o similar.
+230 juegosToalla Baño y Cara.
+Color blanco.
+100% algodón.
+III.- CONSIDERACIONES ESPECIALES
+TXT;
+
+        $this->assertSame('bases_tecnicas_cantidad_multilinea', $this->parser->detectarFormato($texto));
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(230, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Frazadas', $lineas[0]['descripcion']);
+        $this->assertSame(230, $lineas[1]['cantidad']);
+        $this->assertStringContainsString('Sábanas', $lineas[1]['descripcion']);
+        $this->assertSame(230, $lineas[2]['cantidad']);
+        $this->assertStringContainsString('Toalla', $lineas[2]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
