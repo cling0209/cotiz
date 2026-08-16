@@ -696,7 +696,6 @@
     const previewImportarCompraAgil = @json($previewImportarCompraAgil ?? null);
     const desdeOportunidades = @json($desdeOportunidades ?? false);
     const oportunidadYaVinculada = @json($oportunidadYaVinculada ?? false);
-    const sinLineasEnNota = @json((int) ($resumenLineas['total'] ?? 0) === 0);
     const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
 
     // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
@@ -3128,13 +3127,6 @@
         }
     }
 
-    function debeReabrirDetalleOportunidades() {
-        return desdeOportunidades
-            && !!codigoImportarCompraAgil
-            && !importandoCompraAgil
-            && sinLineasEnNota;
-    }
-
     function resetImportCompraAgilModal() {
         importPreviewData = null;
         importCodigoApi = null;
@@ -4294,18 +4286,9 @@
     btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
 
-    let reabriendoImportarOportunidad = false;
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
-        if (debeReabrirDetalleOportunidades()) {
-            if (reabriendoImportarOportunidad) {
-                return;
-            }
-            reabriendoImportarOportunidad = true;
-            setTimeout(() => {
-                mostrarDetalleImportarOportunidades();
-                bsModalImportar?.show();
-                reabriendoImportarOportunidad = false;
-            }, 200);
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            bloquearCodigoImportarOportunidad();
             return;
         }
         resetImportCompraAgilModal();
