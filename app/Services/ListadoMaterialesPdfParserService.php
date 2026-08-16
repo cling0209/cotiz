@@ -203,20 +203,20 @@ class ListadoMaterialesPdfParserService
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
 
-        $filasUnidadGrilla = $this->contarFilasUnidadEnGrilla($paginasFilas);
-        $minEsperadas = $this->minLineasEsperadasTablaProducto($textoCabecera, $paginasPdf);
-        $mapeoIncompleto = ($filasUnidadGrilla >= 2 && count($lineas) < $filasUnidadGrilla)
-            || count($lineas) < $minEsperadas
-            || $this->grillaMapeoDeBajaCalidad($lineas, $paginasFilas);
+        if ($lineas === []) {
+            $textoGrilla = $this->textoPlanoDesdeGrilla($paginasFilas);
+            $lineas = $this->aplicarMapeoColumnasDesdeTexto(
+                trim($textoGrilla."\n".$textoCabecera),
+                $columnaCantidad,
+                $columnaProducto,
+            );
+        }
 
-        if ($lineas === [] || $mapeoIncompleto) {
-            Log::info('Import PDF: grilla o mapeo de columnas vacío/incompleto; fallback parseDocumentoCompleto', [
+        if ($lineas === []) {
+            Log::info('Import PDF: mapeo de columnas vacío; fallback parseDocumentoCompleto', [
                 'archivo' => $nombreArchivo,
                 'columna_cantidad' => $columnaCantidad,
                 'columna_producto' => $columnaProducto,
-                'lineas_mapeo' => count($lineas),
-                'filas_unidad_grilla' => $filasUnidadGrilla,
-                'min_esperadas' => $minEsperadas,
             ]);
 
             $completo = $this->parseDocumentoCompleto($file);
@@ -225,6 +225,23 @@ class ListadoMaterialesPdfParserService
                 'cabecera' => $completo['cabecera'],
                 'lineas' => $completo['lineas'],
             ];
+        }
+
+        $filasUnidadGrilla = $this->contarFilasUnidadEnGrilla($paginasFilas);
+        $minEsperadas = $this->minLineasEsperadasTablaProducto($textoCabecera, $paginasPdf);
+        $mapeoIncompleto = ($filasUnidadGrilla >= 2 && count($lineas) < $filasUnidadGrilla)
+            || count($lineas) < $minEsperadas
+            || $this->grillaMapeoDeBajaCalidad($lineas, $paginasFilas);
+
+        if ($mapeoIncompleto) {
+            Log::info('Import PDF: mapeo con pocas filas; se conserva porque el usuario indicó columnas', [
+                'archivo' => $nombreArchivo,
+                'columna_cantidad' => $columnaCantidad,
+                'columna_producto' => $columnaProducto,
+                'lineas_mapeo' => count($lineas),
+                'filas_unidad_grilla' => $filasUnidadGrilla,
+                'min_esperadas' => $minEsperadas,
+            ]);
         }
 
         return [
@@ -526,6 +543,23 @@ class ListadoMaterialesPdfParserService
                 );
                 $cantidad = $this->parseCantidadCeldaTabla($cantRaw);
 
+                if ($cantidad === null || mb_strlen($prodRaw) < 2) {
+                    $candidato = trim($cantRaw.(mb_strlen($prodRaw) >= 2 ? '' : ' '.$prodRaw));
+                    if ($candidato === '') {
+                        $candidato = trim(implode(' ', $celdas));
+                    }
+                    $partida = $this->partirFilaCantidadProductoSimple($candidato);
+                    if (count($partida) >= 2) {
+                        $cantidadPartida = $this->parseCantidadCeldaTabla($partida[0]);
+                        if ($cantidadPartida !== null) {
+                            $cantidad = $cantidadPartida;
+                        }
+                        if (mb_strlen($partida[1]) >= 2) {
+                            $prodRaw = $partida[1];
+                        }
+                    }
+                }
+
                 if ($cantidad !== null && mb_strlen($prodRaw) >= 2) {
                     $volcarBuffer();
                     $bufferDesc = $prodRaw;
@@ -551,6 +585,164 @@ class ListadoMaterialesPdfParserService
         $volcarBuffer();
 
         return $resultado;
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function textoPlanoDesdeGrilla(array $paginasFilas): string
+    {
+        $lineas = [];
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdasRaw) {
+                if (! is_array($celdasRaw)) {
+                    continue;
+                }
+                $texto = trim(implode(' ', array_map(
+                    static fn ($c): string => trim((string) $c),
+                    $celdasRaw,
+                )));
+                if ($texto !== '') {
+                    $lineas[] = $texto;
+                }
+            }
+        }
+
+        return implode("\n", $lineas);
+    }
+
+    /**
+     * Mapeo cantidad/producto sobre texto plano usando los nombres de columna del usuario.
+     *
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoColumnasDesdeTexto(
+        string $texto,
+        string $columnaCantidad,
+        string $columnaProducto,
+    ): array {
+        $texto = $this->normalizarEspaciosDocumento($texto);
+        if (trim($texto) === '') {
+            return [];
+        }
+
+        $nombreCantidad = $this->normalizarEncabezadoCelda($columnaCantidad);
+        $nombreProducto = $this->normalizarEncabezadoCelda($columnaProducto);
+        $lineasCrudas = [];
+        foreach (preg_split('/\r\n|\n|\r/u', $texto) ?: [] as $lineaOrigen) {
+            foreach ($this->separarProductosPegadosEnLinea((string) $lineaOrigen) as $parte) {
+                $lineasCrudas[] = $parte;
+            }
+        }
+
+        $despuesDeEncabezado = false;
+        $resultado = [];
+        $bufferDesc = null;
+        $bufferCant = null;
+
+        $volcarBuffer = function () use (&$resultado, &$bufferDesc, &$bufferCant): void {
+            if ($bufferDesc !== null && $bufferCant !== null && mb_strlen($bufferDesc) >= 2) {
+                $resultado[] = [
+                    'cantidad' => $bufferCant,
+                    'descripcion' => $bufferDesc,
+                ];
+            }
+            $bufferDesc = null;
+            $bufferCant = null;
+        };
+
+        foreach ($lineasCrudas as $lineaCruda) {
+            $linea = trim((string) $lineaCruda);
+            if ($linea === '') {
+                continue;
+            }
+
+            $esHeader = $this->textoContieneNombreColumna($linea, $nombreCantidad)
+                && $this->textoContieneNombreColumna($linea, $nombreProducto);
+            if ($esHeader) {
+                $despuesDeEncabezado = true;
+                $volcarBuffer();
+
+                continue;
+            }
+
+            $partida = $this->partirFilaCantidadProductoSimple($linea);
+            if (count($partida) < 2) {
+                if ($despuesDeEncabezado && $bufferDesc !== null && $this->parseCantidadCeldaTabla($linea) === null) {
+                    $bufferDesc = trim($bufferDesc.' '.$linea);
+                }
+
+                continue;
+            }
+
+            $cantidad = $this->parseCantidadCeldaTabla($partida[0]);
+            if ($cantidad === null) {
+                continue;
+            }
+
+            if (! $despuesDeEncabezado && $resultado === []) {
+                $despuesDeEncabezado = true;
+            }
+
+            $volcarBuffer();
+            $bufferCant = $cantidad;
+            $bufferDesc = $partida[1];
+        }
+
+        $volcarBuffer();
+
+        return $resultado;
+    }
+
+    /**
+     * Fila "2 Mesón de préstamo..." → cantidad + descripción.
+     *
+     * @return array<int, string>
+     */
+    private function partirFilaCantidadProductoSimple(string $linea): array
+    {
+        $linea = trim($linea);
+        if ($linea === '' || preg_match('/^\d+x\d+/iu', $linea) === 1) {
+            return $linea === '' ? [] : [$linea];
+        }
+
+        if (preg_match('/^(\d{1,5})\s+([A-Za-zÁÉÍÓÚÑáéíóúñ¿¡(].+)$/u', $linea, $coincidencias) !== 1) {
+            return [$linea];
+        }
+
+        $descripcion = trim($coincidencias[2]);
+        if (mb_strlen($descripcion) < 2) {
+            return [$linea];
+        }
+
+        return [$coincidencias[1], $descripcion];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function separarProductosPegadosEnLinea(string $linea): array
+    {
+        $linea = trim($linea);
+        if ($linea === '') {
+            return [];
+        }
+
+        $patronProducto = '/\d{1,5}\s+[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,}/u';
+        if (preg_match_all($patronProducto, $linea) < 2) {
+            return [$linea];
+        }
+
+        $separado = preg_replace(
+            '/(?<=\S)\s+(?=\d{1,5}\s+[A-ZÁÉÍÓÚÑ(][A-Za-zÁ-ú]{2,})/u',
+            "\n",
+            $linea,
+        ) ?? $linea;
+
+        return array_values(array_filter(
+            array_map(static fn (string $parte): string => trim($parte), preg_split('/\n/u', $separado) ?: []),
+            static fn (string $parte): bool => $parte !== '',
+        ));
     }
 
     private function normalizarTextoCeldaGrilla(string $texto): string
@@ -922,6 +1114,11 @@ class ListadoMaterialesPdfParserService
         $partidaDatos = $this->partirFilaDatosTabular($unica, $productoEsSpecs);
         if (count($partidaDatos) > 1) {
             return $partidaDatos;
+        }
+
+        $partidaSimple = $this->partirFilaCantidadProductoSimple($unica);
+        if (count($partidaSimple) > 1) {
+            return $partidaSimple;
         }
 
         return $celdas;
@@ -8186,10 +8383,14 @@ class ListadoMaterialesPdfParserService
 
     private function esEncabezadoListado(string $linea): bool
     {
-        $normalizada = mb_strtoupper($linea);
+        $normalizada = $this->normalizarEncabezadoCelda($linea);
 
         return str_contains($normalizada, 'CANTIDAD')
-            && (str_contains($normalizada, 'NOMBRE') || str_contains($normalizada, 'PRODUCTO'));
+            && (
+                str_contains($normalizada, 'NOMBRE')
+                || str_contains($normalizada, 'PRODUCTO')
+                || str_contains($normalizada, 'DESCRIPCION')
+            );
     }
 
     private function esRuidoListado(string $linea): bool

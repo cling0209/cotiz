@@ -1513,6 +1513,121 @@ TXT;
         $this->assertSame(1, $lineas[2]['cantidad']);
     }
 
+    public function test_mapeo_columnas_detalle_cra_filas_pegadas(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD DESCRIPCIÓN ID¹'],
+                    ['2 Mesón de préstamo cubierta simple. Medidas mesón: largo 200 x alto 72 x fondo 65 cm.'],
+                    ['2 Diario mural tipo vitrina'],
+                    ['4 Lector Inalámbrico'],
+                    ['1 Alfombra Rectangular, modelo circulo de colores'],
+                    ['6 Silla con respaldo con perforaciones y asientos tapiz'],
+                    ['3 Mesa Modular Masca para 3 personas.'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo cubierta simple', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('largo 200 x alto 72', $lineas[0]['descripcion']);
+        $this->assertSame(2, $lineas[1]['cantidad']);
+        $this->assertSame('Diario mural tipo vitrina', $lineas[1]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertSame(6, $lineas[4]['cantidad']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_detalle_cra_celdas_separadas(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD', 'DESCRIPCIÓN', 'ID¹'],
+                    ['2', 'Mesón de préstamo cubierta simple. Medidas mesón: largo 200 x alto 72 x fondo 65 cm.', ''],
+                    ['2', 'Diario mural tipo vitrina', ''],
+                    ['4', 'Lector Inalámbrico', ''],
+                    ['1', 'Alfombra Rectangular, modelo circulo de colores', ''],
+                    ['6', 'Silla con respaldo con perforaciones y asientos tapiz', ''],
+                    ['3', 'Mesa Modular Masca para 3 personas.', ''],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasPorNombre');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $paginasFilas, 'CANTIDAD', 'DESCRIPCION');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_desde_texto_detalle_cra(): void
+    {
+        $texto = <<<'TXT'
+1233623-451-COT26 — DETALLE 011 CRA
+CANTIDAD DESCRIPCIÓN ID¹
+2 Mesón de préstamo cubierta simple. Medidas mesón: largo 200 x alto 72 x fondo 65 cm.
+2 Diario mural tipo vitrina
+4 Lector Inalámbrico
+1 Alfombra Rectangular, modelo circulo de colores
+6 Silla con respaldo con perforaciones y asientos tapiz
+3 Mesa Modular Masca para 3 personas.
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasDesdeTexto');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $texto, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo', $lineas[0]['descripcion']);
+        $this->assertStringContainsString('fondo 65 cm', $lineas[0]['descripcion']);
+        $this->assertSame(6, $lineas[4]['cantidad']);
+        $this->assertSame('Silla con respaldo con perforaciones y asientos tapiz', $lineas[4]['descripcion']);
+    }
+
+    public function test_mapeo_columnas_desde_texto_productos_en_una_linea(): void
+    {
+        $texto = 'CANTIDAD DESCRIPCIÓN ID 2 Diario mural tipo vitrina 4 Lector Inalámbrico 1 Alfombra Rectangular';
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasDesdeTexto');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $texto, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(3, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertSame('Diario mural tipo vitrina', $lineas[0]['descripcion']);
+        $this->assertSame(4, $lineas[1]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[1]['descripcion']);
+        $this->assertSame(1, $lineas[2]['cantidad']);
+        $this->assertSame('Alfombra Rectangular', $lineas[2]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;
