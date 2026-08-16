@@ -16,7 +16,7 @@ if ! flock -w 900 200; then
   exit 1
 fi
 
-git fetch origin main
+git fetch origin +main:refs/remotes/origin/main
 git reset --hard origin/main
 
 echo "Deteniendo contenedor app (${APP_CONTAINER})..."

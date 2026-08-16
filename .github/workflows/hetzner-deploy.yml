@@ -64,7 +64,8 @@ jobs:
               fi
               git config --global --add safe.directory "$dir"
               cd "$dir"
-              git fetch origin main
+              # Force-update evita "incorrect old value" si hay fetch concurrente.
+              git fetch origin +main:refs/remotes/origin/main
               git reset --hard origin/main
               if [ ! -f scripts/deploy-prod.sh ]; then
                 echo "::error::Falta $dir/scripts/deploy-prod.sh"
