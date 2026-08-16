@@ -1715,6 +1715,44 @@ TXT;
         }
     }
 
+    public function test_mapeo_columnas_desde_texto_cra_no_se_queda_en_silla_y_mesa(): void
+    {
+        $texto = <<<'TXT'
+CANTIDAD DESCRIPCIÓN m1
+2
+2
+4
+1
+6
+3
+Mesón de préstamo cubierta simple. Medidas mesón: largo
+200 x alto 72 x fondo 65 cm.
+Diario mural tipo vitrina
+Lector Inalámbrico
+Alfombra Rectangular, modelo circulo de colores
+Silla con respaldo con perforaciones y asientos tapiz
+Mesa Modular Masca para 3 personas.
+6 Silla con respaldo con perforaciones y asientos tapiz
+3 Mesa Modular Masca para 3 personas.
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasDesdeTexto');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $texto, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo', $lineas[0]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertSame(6, $lineas[4]['cantidad']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+    }
+
     public function test_grilla_con_celdas_separadas_no_debe_mezclarse_con_smalot(): void
     {
         $ref = new \ReflectionClass($this->parser);
@@ -1818,6 +1856,42 @@ TXT;
         $this->assertCount(6, $lineas);
         $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
         $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+    }
+
+    public function test_deduplicar_items_sidecar_repetidos_entre_paginas(): void
+    {
+        $paginasFilas = [
+            [
+                'pagina' => 3,
+                'filas' => [],
+                'items' => [
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
+                    ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
+                ],
+            ],
+            [
+                'pagina' => 4,
+                'filas' => [],
+                'items' => [
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
+                    ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
+                ],
+            ],
+        ];
+
+        $ref = new \ReflectionClass($this->parser);
+        $desdeItems = $ref->getMethod('lineasDesdeItemsGrilla');
+        $desdeItems->setAccessible(true);
+        $dedup = $ref->getMethod('deduplicarLineasMapeo');
+        $dedup->setAccessible(true);
+
+        $brutas = $desdeItems->invoke($this->parser, $paginasFilas);
+        $this->assertCount(4, $brutas);
+
+        $unicas = $dedup->invoke($this->parser, $brutas);
+        $this->assertCount(2, $unicas);
+        $this->assertSame(6, $unicas[0]['cantidad']);
+        $this->assertSame(3, $unicas[1]['cantidad']);
     }
 
     private function cargarFixture(string $nombre): string

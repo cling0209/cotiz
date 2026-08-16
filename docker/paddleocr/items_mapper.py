@@ -53,11 +53,9 @@ def extraer_items_desde_paginas(
             if isinstance(fila, list):
                 filas.append([str(c).strip() if c is not None else "" for c in fila])
 
-    items = _expandir_pegoteados(
-        _items_desde_celdas(filas, columna_cantidad, columna_producto)
+    por_celdas = _dedup_items(
+        _expandir_pegoteados(_items_desde_celdas(filas, columna_cantidad, columna_producto))
     )
-    if len(items) >= 2:
-        return items
 
     lineas: list[str] = []
     for fila in filas:
@@ -65,12 +63,14 @@ def extraer_items_desde_paginas(
             texto = str(celda).strip()
             if texto:
                 lineas.append(texto)
-        if len(fila) > 1:
-            unida = " ".join(c for c in fila if str(c).strip())
-            if unida:
-                lineas.append(unida)
 
-    return _expandir_pegoteados(_items_desde_lineas(lineas, columna_cantidad, columna_producto))
+    por_lineas = _dedup_items(
+        _expandir_pegoteados(_items_desde_lineas(lineas, columna_cantidad, columna_producto))
+    )
+
+    if len(por_lineas) > len(por_celdas):
+        return por_lineas
+    return por_celdas
 
 
 def _norm(texto: str) -> str:
@@ -130,6 +130,20 @@ def _parse_qty(texto: str) -> int | None:
         valor = int(texto)
         return valor if 1 <= valor <= 99999 else None
     return None
+
+
+def _dedup_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[int, str]] = set()
+    out: list[dict[str, Any]] = []
+    for item in items:
+        qty = int(item.get("cantidad") or 0)
+        desc = str(item.get("descripcion") or "").strip()
+        clave = (qty, _norm(desc)[:80])
+        if qty < 1 or len(desc) < 2 or clave in seen:
+            continue
+        seen.add(clave)
+        out.append({"cantidad": qty, "descripcion": desc})
+    return out
 
 
 def _item(qty: int, desc: str) -> dict[str, Any] | None:
@@ -247,7 +261,13 @@ def _items_desde_lineas(
             continue
         partida = _QTY_DESC.match(linea)
         if partida:
-            push(int(partida.group(1)), partida.group(2))
+            qty = int(partida.group(1))
+            desc = partida.group(2)
+            if pending and pending[0] == qty:
+                pending.pop(0)
+            elif pending:
+                continue
+            push(qty, desc)
             continue
         if not re.match(r"^[A-Za-zÁÉÍÓÚÑáéíóúñ¿¡(]", linea):
             if items and re.match(r"^\d{1,4}\s+x\s", linea, re.I):

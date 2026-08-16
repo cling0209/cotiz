@@ -129,6 +129,50 @@ class TestItemsMapperCra(unittest.TestCase):
         self.assertEqual(2, len(items))
         self.assertEqual("RESMA OFICIO", items[0]["descripcion"])
 
+    def test_no_corta_en_silla_mesa_si_hay_cantidades_sueltas(self) -> None:
+        paginas = [
+            {
+                "filas": [
+                    ["CANTIDAD DESCRIPCIÓN m1"],
+                    ["2"],
+                    ["2"],
+                    ["4"],
+                    ["1"],
+                    ["6"],
+                    ["3"],
+                    ["Mesón de préstamo cubierta simple."],
+                    ["Diario mural tipo vitrina"],
+                    ["Lector Inalámbrico"],
+                    ["Alfombra Rectangular"],
+                    ["Silla con respaldo con perforaciones y asientos tapiz"],
+                    ["Mesa Modular Masca para 3 personas."],
+                    ["6 Silla con respaldo con perforaciones y asientos tapiz"],
+                    ["3 Mesa Modular Masca para 3 personas."],
+                ]
+            },
+            {
+                "filas": [
+                    ["6 Silla con respaldo con perforaciones y asientos tapiz"],
+                    ["3 Mesa Modular Masca para 3 personas."],
+                ]
+            },
+        ]
+        items = extraer_items_desde_paginas(paginas, "CANTIDAD", "DESCRIPCIÓN")
+        self.assertEqual(6, len(items))
+        self.assertEqual("Lector Inalámbrico", items[2]["descripcion"])
+        cantidades = [i["cantidad"] for i in items]
+        self.assertEqual([2, 2, 4, 1, 6, 3], cantidades)
+
+    def test_dedup_misma_tabla_en_dos_paginas(self) -> None:
+        fila = [
+            ["CANTIDAD", "DESCRIPCIÓN"],
+            ["6", "Silla con respaldo"],
+            ["3", "Mesa Modular Masca para 3 personas."],
+        ]
+        paginas = [{"filas": fila}, {"filas": fila}]
+        items = extraer_items_desde_paginas(paginas, "CANTIDAD", "DESCRIPCIÓN")
+        self.assertEqual(2, len(items))
+
 
 if __name__ == "__main__":
     unittest.main()

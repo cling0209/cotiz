@@ -159,7 +159,9 @@ class ListadoMaterialesPdfParserService
                         $columnaCantidad,
                         $columnaProducto,
                     );
-                    $lineasSidecar = $this->lineasDesdeItemsGrilla($paginasFilas);
+                    $lineasSidecar = $this->deduplicarLineasMapeo(
+                        $this->lineasDesdeItemsGrilla($paginasFilas),
+                    );
                 } catch (\Throwable $e) {
                     Log::warning('Import PDF: grilla Paddle falló', ['error' => $e->getMessage()]);
                 }
@@ -223,6 +225,7 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        $lineas = $this->deduplicarLineasMapeo($lineas);
         if (count($lineasSidecar) >= 2 && count($lineasSidecar) >= count($lineas)) {
             $lineas = $lineasSidecar;
         }
@@ -294,6 +297,36 @@ class ListadoMaterialesPdfParserService
         }
 
         return $lineas;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function deduplicarLineasMapeo(array $lineas): array
+    {
+        $unicas = [];
+        $vistos = [];
+
+        foreach ($lineas as $linea) {
+            $cantidad = (int) ($linea['cantidad'] ?? 0);
+            $descripcion = trim((string) ($linea['descripcion'] ?? ''));
+            if ($cantidad < 1 || mb_strlen($descripcion) < 2) {
+                continue;
+            }
+
+            $clave = $cantidad.'|'.mb_strtolower(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
+            if (isset($vistos[$clave])) {
+                continue;
+            }
+            $vistos[$clave] = true;
+            $unicas[] = [
+                'cantidad' => $cantidad,
+                'descripcion' => $descripcion,
+            ];
+        }
+
+        return $unicas;
     }
 
     /**
@@ -868,15 +901,18 @@ class ListadoMaterialesPdfParserService
 
         $volcarBuffer();
 
-        if ($resultado !== []) {
-            return $resultado;
-        }
-
-        return $this->aplicarMapeoColumnasEnColumnasSueltas(
+        $sueltas = $this->deduplicarLineasMapeo($this->aplicarMapeoColumnasEnColumnasSueltas(
             $lineasCrudas,
             $nombreCantidad,
             $nombreProducto,
-        );
+        ));
+        $resultado = $this->deduplicarLineasMapeo($resultado);
+
+        if (count($sueltas) > count($resultado)) {
+            return $sueltas;
+        }
+
+        return $resultado;
     }
 
     /**
