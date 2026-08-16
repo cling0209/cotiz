@@ -50,8 +50,10 @@ class PdfMistralOcrService
         $endpoint = rtrim((string) $this->config('mistral_ocr.endpoint', 'https://api.mistral.ai/v1/ocr'), '/');
 
         $response = Http::timeout($timeout)
+            ->connectTimeout(20)
             ->withToken($key)
             ->acceptJson()
+            ->asJson()
             ->post($endpoint, [
                 'model' => $model,
                 'document' => [
@@ -157,7 +159,8 @@ class PdfMistralOcrService
                 if ($tag !== 'td' && $tag !== 'th') {
                     continue;
                 }
-                $texto = trim(preg_replace('/\s+/u', ' ', $child->textContent) ?? '');
+                $texto = html_entity_decode((string) $child->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $texto = trim(preg_replace('/\s+/u', ' ', $texto) ?? '');
                 $celdas[] = $texto;
             }
             if ($celdas !== [] && implode('', $celdas) !== '') {
@@ -256,6 +259,14 @@ class PdfMistralOcrService
 
     public function normalizar(string $texto): string
     {
+        $texto = html_entity_decode($texto, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (class_exists(\Normalizer::class)) {
+            $normalizado = \Normalizer::normalize($texto, \Normalizer::FORM_KD);
+            if (is_string($normalizado) && $normalizado !== '') {
+                $texto = $normalizado;
+            }
+            $texto = preg_replace('/\p{Mn}+/u', '', $texto) ?? $texto;
+        }
         $texto = strtr($texto, [
             'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U', 'Ñ' => 'N',
             'á' => 'A', 'é' => 'E', 'í' => 'I', 'ó' => 'O', 'ú' => 'U', 'ü' => 'U', 'ñ' => 'N',
@@ -268,12 +279,7 @@ class PdfMistralOcrService
 
     private function apiKey(): string
     {
-        $key = trim((string) $this->config('mistral_ocr.api_key', ''));
-        if ($key === '') {
-            $key = trim((string) env('MISTRAL_API_KEY', ''));
-        }
-
-        return trim($key, " \t\n\r\0\x0B\"'");
+        return trim((string) $this->config('mistral_ocr.api_key', ''), " \t\n\r\0\x0B\"'");
     }
 
     private function config(string $key, mixed $default = null): mixed

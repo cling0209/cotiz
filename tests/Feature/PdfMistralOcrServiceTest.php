@@ -106,4 +106,22 @@ class PdfMistralOcrServiceTest extends TestCase
                 && ($data['model'] ?? null) === 'mistral-ocr-latest';
         });
     }
+
+    public function test_mapea_encabezado_descripcion_con_acento(): void
+    {
+        $html = '<table><tr><th>CANTIDAD</th><th>DESCRIPCIÓN</th></tr>'
+            .'<tr><td>2</td><td>Diario mural tipo vitrina</td></tr>'
+            .'<tr><td>6</td><td>Silla con respaldo</td></tr>'
+            .'</table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [[
+                'index' => 0,
+                'tables' => [['content' => $html]],
+            ]],
+        ], 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(2, $paginas[0]['items']);
+        $this->assertSame(6, $paginas[0]['items'][1]['cantidad']);
+    }
 }

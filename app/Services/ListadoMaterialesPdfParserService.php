@@ -201,6 +201,13 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        if (count($lineasSidecar) >= 1) {
+            return [
+                'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
+                'lineas' => $lineasSidecar,
+            ];
+        }
+
         if ($paginasFilas === []) {
             $paginasFilas = $this->extraerGrillaDesdeOcrPdf($path);
         }
