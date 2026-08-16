@@ -62,6 +62,9 @@
 
     <form method="post" action="{{ route('admin.cotizaciones.update', $nota->nronota) }}" id="form-cotizacion" data-no-loader>
         @csrf
+        @foreach($cotizacionListadoQuery as $retornoKey => $retornoValor)
+            <input type="hidden" name="{{ $retornoKey }}" value="{{ $retornoValor }}">
+        @endforeach
         @if($esInterna)
             <input type="hidden" name="es_interna" id="es_interna" value="1">
         @endif

@@ -1272,8 +1272,99 @@
             }
         }
 
-        function restaurarFiltros() {
-            const data = leerFiltrosGuardados();
+        function paramsRetornoOportunidades() {
+            const q = new URLSearchParams();
+            q.set('from', 'oportunidades');
+            const setIf = (key, val) => {
+                const s = String(val ?? '').trim();
+                if (s !== '') {
+                    q.set(key, s);
+                }
+            };
+            setIf('op_region', filtroRegion?.value);
+            setIf('op_organismo', filtroOrganismo?.value);
+            setIf('op_palabra_clave', filtroPalabraClave?.value);
+            setIf('op_palabra_clave_aplicada', filtroPalabraClaveAplicado);
+            setIf('op_vinculo_desde', filtroVinculoDesde?.value);
+            setIf('op_vinculo_hasta', filtroVinculoHasta?.value);
+            setIf('op_codigo', filtroCodigo?.value);
+            setIf('op_pub_desde', filtroPubDesde?.value);
+            setIf('op_pub_hasta', filtroPubHasta?.value);
+            setIf('op_cierre_desde', filtroCierreDesde?.value);
+            setIf('op_cierre_hasta', filtroCierreHasta?.value);
+            if (filtroCierre24hActivo) {
+                q.set('op_cierre_24h', '1');
+            }
+            if (paginaActual > 1) {
+                q.set('op_page', String(paginaActual));
+            }
+            if (sortState.column && sortState.column !== 'presupuesto') {
+                q.set('op_sort_column', sortState.column);
+            }
+            if (sortState.direction && sortState.direction !== 'desc') {
+                q.set('op_sort_direction', sortState.direction);
+            }
+            if (PAGE_SIZE !== 20) {
+                q.set('op_por_pagina', String(PAGE_SIZE));
+            }
+            return q;
+        }
+
+        function hrefIrACotizar(codigo) {
+            const codigoNorm = String(codigo || '').trim();
+            if (!codigoNorm) {
+                return '';
+            }
+            const q = paramsRetornoOportunidades();
+            q.set('codigo', codigoNorm);
+            return `${urls.cotizarBase}?${q.toString()}`;
+        }
+
+        function leerFiltrosDesdeUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const tieneOp = [...params.keys()].some((k) => k.startsWith('op_'));
+            if (!tieneOp) {
+                return null;
+            }
+            const pagina = Number.parseInt(String(params.get('op_page') || '1'), 10);
+            return {
+                region: params.get('op_region') || '',
+                organismo: params.get('op_organismo') || '',
+                palabra_clave: params.get('op_palabra_clave') || '',
+                palabra_clave_aplicada: params.get('op_palabra_clave_aplicada') || '',
+                vinculo_desde: params.get('op_vinculo_desde') || '',
+                vinculo_hasta: params.get('op_vinculo_hasta') || '',
+                codigo: params.get('op_codigo') || '',
+                pub_desde: params.get('op_pub_desde') || '',
+                pub_hasta: params.get('op_pub_hasta') || '',
+                cierre_desde: params.get('op_cierre_desde') || '',
+                cierre_hasta: params.get('op_cierre_hasta') || '',
+                cierre_24h: params.get('op_cierre_24h') === '1',
+                pagina: Number.isFinite(pagina) && pagina > 0 ? pagina : 1,
+                sort_column: params.get('op_sort_column') || 'presupuesto',
+                sort_direction: params.get('op_sort_direction') || 'desc',
+                por_pagina: params.get('op_por_pagina') || '',
+            };
+        }
+
+        function limpiarParamsRetornoUrl() {
+            const params = new URLSearchParams(window.location.search);
+            let cambio = false;
+            [...params.keys()].forEach((key) => {
+                if (key.startsWith('op_')) {
+                    params.delete(key);
+                    cambio = true;
+                }
+            });
+            if (!cambio) {
+                return;
+            }
+            const qs = params.toString();
+            const next = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+            history.replaceState({}, '', next);
+        }
+
+        function aplicarDatosFiltros(data) {
             if (!data) {
                 return;
             }
@@ -1320,6 +1411,22 @@
             }
             if (data.sort_direction === 'asc' || data.sort_direction === 'desc') {
                 sortState.direction = data.sort_direction;
+            }
+            const porPagina = Number.parseInt(String(data.por_pagina || ''), 10);
+            if (Number.isFinite(porPagina) && porPagina > 0) {
+                PAGE_SIZE = normalizarPageSize(porPagina);
+                if (selectPorPagina) {
+                    selectPorPagina.value = String(PAGE_SIZE);
+                }
+            }
+        }
+
+        function restaurarFiltros() {
+            const desdeUrl = leerFiltrosDesdeUrl();
+            aplicarDatosFiltros(desdeUrl || leerFiltrosGuardados());
+            if (desdeUrl) {
+                guardarFiltros();
+                limpiarParamsRetornoUrl();
             }
         }
 
@@ -1798,7 +1905,9 @@
             const total = porCodigo.size;
             const items = itemsFiltrados();
             const totalPaginas = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-            if (paginaActual > totalPaginas) {
+            // No recortar la página si el listado aún no cargó: si no, al volver de cotizar
+            // se guarda página 1 y se pierde el retorno.
+            if (items.length > 0 && paginaActual > totalPaginas) {
                 paginaActual = totalPaginas;
             }
             if (paginaActual < 1) {
@@ -1836,7 +1945,7 @@
 
             tbody.innerHTML = paginaItems.map((item) => {
                 const codigo = String(item.codigo || '').toUpperCase();
-                const href = codigo ? `${urls.cotizarBase}?codigo=${encodeURIComponent(codigo)}&from=oportunidades` : '';
+                const href = hrefIrACotizar(codigo);
                 const nombre = String(item.nombre || '').trim();
                 const organismo = String(item.organismo || '').trim() || '—';
                 const regionNombre = String(item.nombre_region || '').trim() || '—';

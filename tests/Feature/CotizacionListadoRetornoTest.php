@@ -24,11 +24,23 @@ class CotizacionListadoRetornoTest extends TestCase
 
     public function test_nueva_desde_oportunidades_vuelve_a_oportunidades(): void
     {
-        $this->actingAs($this->admin)
-            ->get(route('admin.cotizaciones.create', ['codigo' => '1000-1-COT26', 'from' => 'oportunidades']))
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.create', [
+                'codigo' => '1000-1-COT26',
+                'from' => 'oportunidades',
+                'op_page' => 3,
+                'op_region' => '13',
+                'op_organismo' => 'Ministerio',
+            ]))
             ->assertOk()
-            ->assertSee(route('admin.oportunidades.para-cotizar.index'), false)
-            ->assertSee('&larr; Oportunidades', false);
+            ->assertSee('&larr; Oportunidades', false)
+            ->getContent();
+
+        $this->assertStringContainsString('op_page=3', $html);
+        $this->assertStringContainsString('op_region=13', $html);
+        $this->assertStringContainsString('op_organismo=Ministerio', $html);
+        $this->assertStringContainsString('name="from"', $html);
+        $this->assertStringContainsString('name="op_page"', $html);
     }
 
     public function test_ver_desde_listado_conserva_filtros_y_pagina(): void

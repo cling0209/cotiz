@@ -32,13 +32,37 @@ class CotizacionListadoRetornoTest extends TestCase
         $request = Request::create('/admin/cotizaciones/nueva', 'GET', [
             'from' => 'oportunidades',
             'codigo' => '1000-1-COT26',
+            'op_page' => 4,
+            'op_region' => '13',
+            'op_codigo' => 'CA-FILTRO',
         ]);
 
-        $this->assertSame(
-            route('admin.oportunidades.para-cotizar.index'),
-            CotizacionListadoRetorno::url($request),
-        );
+        $url = CotizacionListadoRetorno::url($request);
+        $this->assertStringContainsString(route('admin.oportunidades.para-cotizar.index', [], false), parse_url($url, PHP_URL_PATH) ?: '');
+        $this->assertStringContainsString('op_page=4', $url);
+        $this->assertStringContainsString('op_region=13', $url);
+        $this->assertStringContainsString('op_codigo=CA-FILTRO', $url);
+        $this->assertStringNotContainsString('codigo=1000', $url);
         $this->assertSame('Oportunidades', CotizacionListadoRetorno::label($request));
+    }
+
+    public function test_para_oportunidades_usa_prefijo_op(): void
+    {
+        $q = CotizacionListadoRetorno::paraOportunidades([
+            'region' => '13',
+            'codigo' => '1000-1-LE26',
+            'cierre_24h' => true,
+            'sort_column' => 'cierre',
+            'sort_direction' => 'asc',
+        ], 5);
+
+        $this->assertSame('oportunidades', $q['from']);
+        $this->assertSame('13', $q['op_region']);
+        $this->assertSame('1000-1-LE26', $q['op_codigo']);
+        $this->assertSame('1', $q['op_cierre_24h']);
+        $this->assertSame(5, $q['op_page']);
+        $this->assertArrayNotHasKey('codigo', $q);
+        $this->assertArrayNotHasKey('page', $q);
     }
 
     public function test_url_adjudicadas_restaura_filtros(): void
