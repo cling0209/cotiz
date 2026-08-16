@@ -554,32 +554,6 @@
                             <i class="bi bi-cloud-download"></i> Buscar adjuntos
                         </button>
                         <div id="importar-compra-agil-adjuntos-links" class="d-flex flex-column align-items-start gap-1 mb-2"></div>
-                        <div id="importar-compra-agil-adjuntos-analizar" class="border rounded p-2 mb-2 d-none">
-                            <p class="small mb-2 mb-md-1" id="importar-adjunto-analizar-nombre"></p>
-                            <div id="importar-adjunto-cols-pdf" class="row g-2 mb-2 d-none">
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-cant">Columna cantidad</label>
-                                    <input type="text" id="importar-adjunto-pdf-col-cant" class="form-control form-control-sm" value="CANTIDAD" maxlength="80" placeholder="CANTIDAD">
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-desc">Columna producto</label>
-                                    <input type="text" id="importar-adjunto-pdf-col-desc" class="form-control form-control-sm" value="" maxlength="80" placeholder="PRODUCTO">
-                                </div>
-                            </div>
-                            <div id="importar-adjunto-cols-excel" class="row g-2 mb-2 d-none">
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-cant">Columna cantidad</label>
-                                    <input type="text" id="importar-adjunto-excel-col-cant" class="form-control form-control-sm text-uppercase" value="A" maxlength="3" placeholder="A">
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-desc">Columna producto</label>
-                                    <input type="text" id="importar-adjunto-excel-col-desc" class="form-control form-control-sm text-uppercase" value="B" maxlength="3" placeholder="B">
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-analizar-adjunto">
-                                <i class="bi bi-search"></i> Analizar archivo
-                            </button>
-                        </div>
                     </div>
                     <div id="importar-compra-agil-cabecera" class="small mb-2 d-none">
                         <strong>Cabecera detectada:</strong>
@@ -634,7 +608,34 @@
                     <iframe id="modal-adjuntos-importar-frame" class="w-100 border rounded d-none" style="min-height: 28rem;" title="Vista previa"></iframe>
                 </div>
                 <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                    <div class="d-flex w-100 flex-wrap align-items-end gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                        <div id="modal-adjuntos-importar-analizar" class="d-none d-flex flex-wrap align-items-end gap-2 flex-grow-1">
+                            <div id="importar-adjunto-cols-pdf" class="d-none d-flex flex-wrap align-items-end gap-2">
+                                <div>
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-adjunto-pdf-col-cant" class="form-control form-control-sm" value="CANTIDAD" maxlength="80" placeholder="CANTIDAD" style="min-width:8rem">
+                                </div>
+                                <div>
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-adjunto-pdf-col-desc" class="form-control form-control-sm" value="PRODUCTO" maxlength="80" placeholder="PRODUCTO" style="min-width:8rem">
+                                </div>
+                            </div>
+                            <div id="importar-adjunto-cols-excel" class="d-none d-flex flex-wrap align-items-end gap-2">
+                                <div>
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-adjunto-excel-col-cant" class="form-control form-control-sm text-uppercase" value="A" maxlength="3" placeholder="A" style="width:4.5rem">
+                                </div>
+                                <div>
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-adjunto-excel-col-desc" class="form-control form-control-sm text-uppercase" value="B" maxlength="3" placeholder="B" style="width:4.5rem">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-analizar-adjunto">
+                                <i class="bi bi-search"></i> Analizar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3178,7 +3179,7 @@
     const btnImportarAnalizarAdjunto = document.getElementById('btn-importar-analizar-adjunto');
     const wrapImportarAdjuntos = document.getElementById('importar-compra-agil-adjuntos');
     const wrapImportarAdjuntosLinks = document.getElementById('importar-compra-agil-adjuntos-links');
-    const wrapImportarAdjuntosAnalizar = document.getElementById('importar-compra-agil-adjuntos-analizar');
+    const wrapImportarAdjuntosAnalizar = document.getElementById('modal-adjuntos-importar-analizar');
 
     function puedeAdjuntosImportar() {
         return !!(desdeOportunidades && codigoImportarCompraAgil && importarMpUrls.adjuntosListarBase);
@@ -3237,9 +3238,6 @@
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-link btn-sm p-0 text-start';
-                if (adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.nombre === nom) {
-                    btn.classList.add('fw-semibold');
-                }
                 btn.textContent = nom;
                 btn.addEventListener('click', () => {
                     seleccionarAdjuntoImportar(nom);
@@ -3248,29 +3246,21 @@
                 wrapImportarAdjuntosLinks.appendChild(btn);
             });
         }
-        if (!adjuntoImportarSeleccionado) {
-            wrapImportarAdjuntosAnalizar?.classList.add('d-none');
-        }
     }
 
     function seleccionarAdjuntoImportar(nombre) {
         const nom = String(nombre || '');
         adjuntoImportarSeleccionado = { nombre: nom, tipo: tipoAdjuntoImportar(nom) };
         const tipo = adjuntoImportarSeleccionado.tipo;
-        const nombreEl = document.getElementById('importar-adjunto-analizar-nombre');
-        if (nombreEl) {
-            nombreEl.textContent = nom;
-        }
         const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
         const colsExcel = document.getElementById('importar-adjunto-cols-excel');
         const analizable = tipo === 'pdf' || tipo === 'excel';
         colsPdf?.classList.toggle('d-none', tipo !== 'pdf');
         colsExcel?.classList.toggle('d-none', tipo !== 'excel');
         wrapImportarAdjuntosAnalizar?.classList.toggle('d-none', !analizable);
-        if (tipo === 'doc' && importarEstado) {
-            importarEstado.textContent = 'El formato .doc antiguo no se puede analizar. Ábralo o conviértalo a .docx o PDF.';
+        if (btnImportarAnalizarAdjunto) {
+            btnImportarAnalizarAdjunto.classList.toggle('d-none', !analizable);
         }
-        renderAdjuntosImportar();
     }
 
     function bumpBackdropAdjuntoImportar() {
@@ -3431,6 +3421,16 @@
             }
             return;
         }
+        const colCant = tipo === 'excel'
+            ? document.getElementById('importar-adjunto-excel-col-cant')?.value
+            : document.getElementById('importar-adjunto-pdf-col-cant')?.value;
+        const colDesc = tipo === 'excel'
+            ? document.getElementById('importar-adjunto-excel-col-desc')?.value
+            : document.getElementById('importar-adjunto-pdf-col-desc')?.value;
+        const modalEl = document.getElementById('modal-adjuntos-importar');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getInstance(modalEl)?.hide();
+        }
         if (importarEstado) {
             importarEstado.textContent = 'Descargando adjunto…';
         }
@@ -3440,15 +3440,15 @@
             if (tipo === 'excel') {
                 await analizarImportExcel({
                     file,
-                    colCant: document.getElementById('importar-adjunto-excel-col-cant')?.value,
-                    colDesc: document.getElementById('importar-adjunto-excel-col-desc')?.value,
+                    colCant,
+                    colDesc,
                 });
                 return;
             }
             await analizarImportPdf({
                 file,
-                colCant: document.getElementById('importar-adjunto-pdf-col-cant')?.value,
-                colDesc: document.getElementById('importar-adjunto-pdf-col-desc')?.value,
+                colCant,
+                colDesc,
             });
         } catch (e) {
             setAdjuntoAnalizarBusy(false);
