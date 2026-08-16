@@ -202,6 +202,17 @@ class PdfMistralOcrService
             return [];
         }
 
+        // ANEXO ENAMI / oferta económica: 1 o 2 tablas lado a lado con
+        // N° ítem | Descripción | Unidad | Precio (sin columna cantidad real).
+        $oferta = $this->itemsDesdeFilasOfertaPrecio($filas, $columnaProducto);
+        if ($oferta !== null) {
+            // Evita que la continuación sticky tome N° ítem como "cantidad".
+            $idxC = null;
+            $idxP = null;
+
+            return $oferta;
+        }
+
         $inicio = 0;
         $headerLocal = null;
         foreach ($filas as $i => $fila) {
@@ -271,6 +282,182 @@ class PdfMistralOcrService
         }
 
         return $items;
+    }
+
+    /**
+     * Oferta económica dual (ENAMI): una o dos columnas con el mismo encabezado
+     * Descripción/Unidad/Precio. Cantidad fija en 1 (N° ítem no es cantidad).
+     *
+     * @param  array<int, array<int, string>>  $filas
+     * @return array<int, array{cantidad: int, descripcion: string}>|null null = no es este formato
+     */
+    public function itemsDesdeFilasOfertaPrecio(array $filas, string $columnaProducto = ''): ?array
+    {
+        $inicio = null;
+        $indicesDesc = [];
+        foreach ($filas as $i => $fila) {
+            if ($i > 4) {
+                break;
+            }
+            $indices = $this->indicesDescripcionOfertaEnFila($fila, $columnaProducto);
+            if ($indices === [] || ! $this->filaEsEncabezadoOfertaPrecio($fila)) {
+                continue;
+            }
+            $inicio = $i + 1;
+            $indicesDesc = $indices;
+            break;
+        }
+
+        if ($inicio === null || $indicesDesc === []) {
+            return null;
+        }
+
+        $items = [];
+        for ($i = $inicio; $i < count($filas); $i++) {
+            $fila = $filas[$i];
+            if ($this->filaEsEncabezadoOfertaPrecio($fila)) {
+                $indicesDesc = $this->indicesDescripcionOfertaEnFila($fila, $columnaProducto) ?: $indicesDesc;
+
+                continue;
+            }
+            $textoFila = trim(implode(' ', $fila));
+            if ($this->esFilaPieTotales($textoFila) || $this->esFilaSeccionOLogistica($textoFila)) {
+                break;
+            }
+            // Cuadro de distribución / logística con otro encabezado.
+            if ($this->filaPareceEncabezadoDistintoDeOferta($fila)) {
+                break;
+            }
+
+            foreach ($indicesDesc as $idxP) {
+                while (count($fila) <= $idxP) {
+                    $fila[] = '';
+                }
+                $descripcion = trim((string) ($fila[$idxP] ?? ''));
+                if (mb_strlen($descripcion) < 3) {
+                    continue;
+                }
+                if (
+                    $this->esFilaPieTotales($descripcion)
+                    || $this->esFilaSeccionOLogistica($descripcion)
+                    || preg_match('/^(?:UNI|CJA|PQT|UND|UNIDAD|NOTAS)\b/iu', $this->normalizar($descripcion)) === 1
+                ) {
+                    continue;
+                }
+                $items[] = [
+                    'cantidad' => 1,
+                    'descripcion' => $descripcion,
+                ];
+            }
+        }
+
+        return $items === [] ? null : $items;
+    }
+
+    /**
+     * @param  array<int, string>  $fila
+     */
+    public function filaEsEncabezadoOfertaPrecio(array $fila): bool
+    {
+        $tieneDesc = false;
+        $tieneUnidad = false;
+        $tienePrecio = false;
+        $tieneItem = false;
+        $descCount = 0;
+        foreach ($fila as $celda) {
+            $n = $this->normalizar((string) $celda);
+            if ($n === '') {
+                continue;
+            }
+            if (str_contains($n, 'DESCRIPCION') || (str_contains($n, 'PRODUCTO') && ! str_contains($n, 'PRECIO'))) {
+                $tieneDesc = true;
+                if (str_contains($n, 'DESCRIPCION')) {
+                    $descCount++;
+                }
+            }
+            if (preg_match('/\bUNIDAD(?:ES)?\b/u', $n) === 1) {
+                $tieneUnidad = true;
+            }
+            if (str_contains($n, 'PRECIO') || str_contains($n, 'NETO UNITARIO')) {
+                $tienePrecio = true;
+            }
+            if (preg_match('/\b(?:N\s*[°º.]?\s*)?ITEM\b/u', $n) === 1 || $n === 'N ITEM' || str_starts_with($n, 'N ITEM')) {
+                $tieneItem = true;
+            }
+        }
+
+        // Dos columnas Descripción lado a lado (ENAMI).
+        if ($descCount >= 2) {
+            return true;
+        }
+
+        if ($tieneDesc && $tieneUnidad && $tienePrecio) {
+            return true;
+        }
+
+        // Catálogo con N° ítem + Descripción + Unidad (precio OCR incompleto).
+        return $tieneDesc && $tieneUnidad && $tieneItem;
+    }
+
+    /**
+     * @param  array<int, string>  $fila
+     * @return list<int>
+     */
+    public function indicesDescripcionOfertaEnFila(array $fila, string $columnaProducto = ''): array
+    {
+        $indices = [];
+        $producto = trim($columnaProducto);
+        foreach ($fila as $i => $celda) {
+            $n = $this->normalizar((string) $celda);
+            if ($n === '') {
+                continue;
+            }
+            $esDesc = str_contains($n, 'DESCRIPCION')
+                || ($producto !== '' && $this->encabezadoCoincide((string) $celda, $producto));
+            if (! $esDesc) {
+                continue;
+            }
+            // Evitar "Precio Neto Unitario ($)" u otras celdas largas que no son descripción.
+            if (str_contains($n, 'PRECIO') || str_contains($n, 'UNITARIO')) {
+                continue;
+            }
+            $indices[] = (int) $i;
+        }
+
+        return array_values(array_unique($indices));
+    }
+
+    /**
+     * @param  array<int, string>  $fila
+     */
+    public function filaPareceEncabezadoDistintoDeOferta(array $fila): bool
+    {
+        if ($this->filaEsEncabezadoOfertaPrecio($fila)) {
+            return false;
+        }
+
+        $texto = trim(implode(' ', $fila));
+        $n = $this->normalizar($texto);
+        if ($n === '') {
+            return false;
+        }
+
+        if (
+            str_contains($n, 'DISTRIBUCION')
+            || str_contains($n, 'GRATUITO')
+            || str_contains($n, 'CONDICIONES')
+            || str_contains($n, 'PLAZO ENTREGA')
+            || str_contains($n, 'LUGAR DE ENTREGA')
+        ) {
+            $celdas = array_values(array_filter(
+                array_map(static fn ($c): string => trim((string) $c), $fila),
+                static fn (string $c): bool => $c !== '',
+            ));
+
+            return count($celdas) >= 2 && preg_match('/^\d{1,4}$/u', $celdas[0]) !== 1;
+        }
+
+        return false;
     }
 
     /**

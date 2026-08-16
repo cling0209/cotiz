@@ -388,6 +388,16 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        $upperPlano = mb_strtoupper($this->normalizarEspaciosDocumento($textoPlano));
+        if ($textoPlano !== '' && $this->esFormatoOfertaPrecio($upperPlano)) {
+            $oferta = $this->deduplicarLineasMapeo(
+                $this->filtrarLineasPieMapeo($this->parseOfertaPrecio($textoPlano)),
+            );
+            if ($oferta !== [] && ! $this->mapeoPareceFragmentado($oferta)) {
+                return $oferta;
+            }
+        }
+
         $lineas = $paginasFilas !== []
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
@@ -793,6 +803,11 @@ class ListadoMaterialesPdfParserService
         $nombreCantidad = $this->normalizarEncabezadoCelda($columnaCantidad);
         $nombreProducto = $this->normalizarEncabezadoCelda($columnaProducto);
 
+        $oferta = $this->aplicarMapeoOfertaPrecioDualPorGrilla($paginasFilas, $nombreProducto);
+        if ($oferta !== []) {
+            return $oferta;
+        }
+
         if ($this->detectarHeaderCatalogoMultilinea($paginasFilas, $nombreCantidad, $nombreProducto)) {
             return $this->aplicarMapeoCatalogoPorColumnasUsuario(
                 $paginasFilas,
@@ -935,6 +950,32 @@ class ListadoMaterialesPdfParserService
         }
 
         $volcarBuffer();
+
+        return $resultado;
+    }
+
+    /**
+     * Grilla ENAMI / oferta: 1–2 bloques Descripción+Unidad+Precio → cantidad 1.
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoOfertaPrecioDualPorGrilla(array $paginasFilas, string $nombreProducto): array
+    {
+        $ocr = $this->mistral ?? new PdfMistralOcrService;
+        $resultado = [];
+
+        foreach ($paginasFilas as $pagina) {
+            $filas = $pagina['filas'] ?? [];
+            if (! is_array($filas) || $filas === []) {
+                continue;
+            }
+            $items = $ocr->itemsDesdeFilasOfertaPrecio($filas, $nombreProducto);
+            if ($items === null || $items === []) {
+                continue;
+            }
+            array_push($resultado, ...$items);
+        }
 
         return $resultado;
     }

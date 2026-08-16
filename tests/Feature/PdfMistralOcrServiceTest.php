@@ -224,4 +224,63 @@ class PdfMistralOcrServiceTest extends TestCase
         $this->assertSame(2, $svc->parseCantidad('2 unidades'));
         $this->assertSame(30, $svc->parseCantidad('30'));
     }
+
+    public function test_oferta_enami_dual_column_cantidad_uno_y_ambas_tablas(): void
+    {
+        $html = '<table><tr>'
+            .'<th>N° ítem</th><th>Descripción</th><th>Unidad</th><th>Precio Neto Unitario ($)</th>'
+            .'<th>N° ítem</th><th>Descripción</th><th>Unidad</th><th>Precio Neto Unitario ($)</th>'
+            .'</tr>'
+            .'<tr><td>1</td><td>ADH. EN BARRA 10GR PRITT</td><td>UNI</td><td>-</td>'
+            .'<td>391</td><td>LAPIZ PASTA AZUL PILOT</td><td>UNI</td><td>-</td></tr>'
+            .'<tr><td>2</td><td>ADH. TUBO 2GR INSTANTANEO</td><td>UNI</td><td>-</td>'
+            .'<td>392</td><td>LAPIZ PASTA NEGRO PILOT</td><td>UNI</td><td>-</td></tr>'
+            .'</table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [[
+                'index' => 15,
+                'tables' => [['content' => $html]],
+            ]],
+        ], 'N° ítem', 'Descripción');
+
+        $items = $paginas[0]['items'];
+        $this->assertCount(4, $items);
+        foreach ($items as $item) {
+            $this->assertSame(1, $item['cantidad']);
+        }
+        $this->assertSame('ADH. EN BARRA 10GR PRITT', $items[0]['descripcion']);
+        $this->assertSame('LAPIZ PASTA AZUL PILOT', $items[1]['descripcion']);
+        $this->assertSame('ADH. TUBO 2GR INSTANTANEO', $items[2]['descripcion']);
+        $this->assertSame('LAPIZ PASTA NEGRO PILOT', $items[3]['descripcion']);
+    }
+
+    public function test_oferta_enami_dos_tablas_html_separadas_mismo_header(): void
+    {
+        $izq = '<table><tr><th>N° Item</th><th>Descripción</th><th>Unidad</th><th>Precio Neto Unitario ($)</th></tr>'
+            .'<tr><td>12</td><td>ARCHIVADOR CARTON</td><td>UNI</td><td>-</td></tr>'
+            .'<tr><td>13</td><td>BANDEJA ESCRITORIO</td><td>UNI</td><td>-</td></tr></table>';
+        $der = '<table><tr><th>N° Item</th><th>Descripción</th><th>Unidad</th><th>Precio Neto Unitario ($)</th></tr>'
+            .'<tr><td>403</td><td>LIBRETA UNIVERSITARIA</td><td>UNI</td><td>-</td></tr>'
+            .'<tr><td>404</td><td>LOMO ARCHIVADOR</td><td>UNI</td><td>-</td></tr></table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [[
+                'index' => 16,
+                'tables' => [
+                    ['content' => $izq],
+                    ['content' => $der],
+                ],
+            ]],
+        ], 'N Item', 'Descripción');
+
+        $items = $paginas[0]['items'];
+        $this->assertCount(4, $items);
+        foreach ($items as $item) {
+            $this->assertSame(1, $item['cantidad'], $item['descripcion']);
+        }
+        $descs = array_column($items, 'descripcion');
+        $this->assertContains('ARCHIVADOR CARTON', $descs);
+        $this->assertContains('LIBRETA UNIVERSITARIA', $descs);
+    }
 }
