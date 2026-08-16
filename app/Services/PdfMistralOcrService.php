@@ -45,23 +45,39 @@ class PdfMistralOcrService
             throw new RuntimeException('PDF vacío para Mistral OCR.');
         }
 
-        $timeout = max(30, (int) $this->config('mistral_ocr.timeout', 180));
+        $timeout = max(30, (int) $this->config('mistral_ocr.timeout', 240));
         $model = trim((string) $this->config('mistral_ocr.model', 'mistral-ocr-latest')) ?: 'mistral-ocr-latest';
         $endpoint = rtrim((string) $this->config('mistral_ocr.endpoint', 'https://api.mistral.ai/v1/ocr'), '/');
+        $columnaCantidad = trim($columnaCantidad);
+        $columnaProducto = trim($columnaProducto);
+
+        $payload = [
+            'model' => $model,
+            'document' => [
+                'type' => 'document_url',
+                'document_url' => 'data:application/pdf;base64,'.base64_encode($pdfBytes),
+            ],
+            'table_format' => 'html',
+        ];
+
+        if (
+            $columnaCantidad !== ''
+            && $columnaProducto !== ''
+            && filter_var($this->config('mistral_ocr.annotation_enabled', true), FILTER_VALIDATE_BOOL)
+        ) {
+            $payload['document_annotation_format'] = $this->formatoAnotacionMateriales();
+            $payload['document_annotation_prompt'] = $this->promptAnotacionMateriales(
+                $columnaCantidad,
+                $columnaProducto,
+            );
+        }
 
         $response = Http::timeout($timeout)
             ->connectTimeout(20)
             ->withToken($key)
             ->acceptJson()
             ->asJson()
-            ->post($endpoint, [
-                'model' => $model,
-                'document' => [
-                    'type' => 'document_url',
-                    'document_url' => 'data:application/pdf;base64,'.base64_encode($pdfBytes),
-                ],
-                'table_format' => 'html',
-            ]);
+            ->post($endpoint, $payload);
 
         if (! $response->successful()) {
             Log::warning('Mistral OCR: respuesta HTTP no exitosa', [
@@ -79,8 +95,8 @@ class PdfMistralOcrService
 
         return $this->paginasDesdeRespuesta(
             $json,
-            trim($columnaCantidad),
-            trim($columnaProducto),
+            $columnaCantidad,
+            $columnaProducto,
         );
     }
 
@@ -90,6 +106,21 @@ class PdfMistralOcrService
      */
     public function paginasDesdeRespuesta(array $json, string $columnaCantidad, string $columnaProducto): array
     {
+        $anotados = $this->itemsDesdeAnotacionDocumento($json);
+        if ($anotados !== []) {
+            Log::info('Mistral OCR: document_annotation con ítems', [
+                'items' => count($anotados),
+                'columna_cantidad' => $columnaCantidad,
+                'columna_producto' => $columnaProducto,
+            ]);
+
+            return [[
+                'pagina' => 1,
+                'filas' => [],
+                'items' => $anotados,
+            ]];
+        }
+
         $paginas = [];
         $pages = $json['pages'] ?? [];
         if (! is_array($pages)) {
@@ -137,6 +168,134 @@ class PdfMistralOcrService
         }
 
         return $paginas;
+    }
+
+    /**
+     * Prompt genérico: cualquier tabla; columnas del usuario; sin acentos/caso.
+     */
+    public function promptAnotacionMateriales(string $columnaCantidad, string $columnaProducto): string
+    {
+        $cant = trim($columnaCantidad);
+        $prod = trim($columnaProducto);
+
+        return <<<PROMPT
+Extrae TODOS los productos/materiales de las tablas de este documento.
+
+Columnas indicadas por el usuario (única fuente de verdad):
+- cantidad: "{$cant}"
+- producto: "{$prod}"
+
+Reglas de coincidencia de encabezados:
+- Ignora acentos y mayúsculas/minúsculas al comparar nombres de columna.
+- Acepta coincidencia exacta o que la celda de encabezado contenga el nombre indicado (normalizado).
+- No asumas un formato de documento fijo: sirve cualquier tipo de tabla.
+
+Extracción:
+1. Recorre todas las páginas y todas las tablas donde aparezcan esas columnas.
+2. Si el mismo par de columnas aparece dos veces (tablas lado a lado o bloques repetidos en una fila), emite un ítem por cada bloque. No fusiones izquierda y derecha en un solo ítem.
+3. "descripcion" = texto de la columna de producto (limpia).
+4. "cantidad" = entero de la columna de cantidad. Si no hay número usable (vacío, guion, o la columna es solo N° ítem/código), usa 1.
+5. Omite pies (subtotal, IVA, total), notas, lugar de entrega, distribución/logística e imágenes referenciales.
+6. No inventes productos. Prefiere omitir una fila dudosa antes que inventarla.
+
+Responde solo con el JSON del schema (campo items).
+PROMPT;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function formatoAnotacionMateriales(): array
+    {
+        return [
+            'type' => 'json_schema',
+            'json_schema' => [
+                'name' => 'materiales_items',
+                'strict' => true,
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'items' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'cantidad' => [
+                                        'type' => 'integer',
+                                        'description' => 'Cantidad pedida (>= 1)',
+                                    ],
+                                    'descripcion' => [
+                                        'type' => 'string',
+                                        'description' => 'Descripción del producto',
+                                    ],
+                                ],
+                                'required' => ['cantidad', 'descripcion'],
+                                'additionalProperties' => false,
+                            ],
+                        ],
+                    ],
+                    'required' => ['items'],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    public function itemsDesdeAnotacionDocumento(array $json): array
+    {
+        $raw = $json['document_annotation'] ?? null;
+        if (is_array($raw)) {
+            $data = $raw;
+        } elseif (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            $data = is_array($decoded) ? $decoded : null;
+        } else {
+            $data = null;
+        }
+
+        if (! is_array($data)) {
+            return [];
+        }
+
+        $lista = $data['items'] ?? null;
+        if (! is_array($lista)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($lista as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $descripcion = trim((string) ($row['descripcion'] ?? $row['description'] ?? $row['producto'] ?? ''));
+            if (mb_strlen($descripcion) < 2) {
+                continue;
+            }
+            if ($this->esFilaPieTotales($descripcion) || $this->esFilaSeccionOLogistica($descripcion)) {
+                continue;
+            }
+
+            $cantidadRaw = $row['cantidad'] ?? $row['quantity'] ?? 1;
+            if (is_string($cantidadRaw)) {
+                $cantidad = $this->parseCantidad($cantidadRaw) ?? 1;
+            } else {
+                $cantidad = (int) $cantidadRaw;
+            }
+            if ($cantidad < 1) {
+                $cantidad = 1;
+            }
+
+            $items[] = [
+                'cantidad' => $cantidad,
+                'descripcion' => mb_substr($descripcion, 0, 500),
+            ];
+        }
+
+        return $items;
     }
 
     /**

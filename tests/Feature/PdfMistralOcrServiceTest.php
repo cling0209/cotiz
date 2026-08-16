@@ -17,6 +17,7 @@ class PdfMistralOcrServiceTest extends TestCase
             'cotiz.mistral_ocr.model' => 'mistral-ocr-latest',
             'cotiz.mistral_ocr.endpoint' => 'https://api.mistral.ai/v1/ocr',
             'cotiz.mistral_ocr.timeout' => 30,
+            'cotiz.mistral_ocr.annotation_enabled' => true,
         ]);
     }
 
@@ -103,8 +104,46 @@ class PdfMistralOcrServiceTest extends TestCase
             $data = $request->data();
 
             return ($data['table_format'] ?? null) === 'html'
-                && ($data['model'] ?? null) === 'mistral-ocr-latest';
+                && ($data['model'] ?? null) === 'mistral-ocr-latest'
+                && isset($data['document_annotation_format'])
+                && is_string($data['document_annotation_prompt'] ?? null)
+                && str_contains((string) $data['document_annotation_prompt'], 'CANTIDAD')
+                && str_contains((string) $data['document_annotation_prompt'], 'PRODUCTO');
         });
+    }
+
+    public function test_prioriza_document_annotation_sobre_tablas_html(): void
+    {
+        $html = '<table><tr><th>CANTIDAD</th><th>DESCRIPCION</th></tr>'
+            .'<tr><td>2</td><td>Solo HTML</td></tr></table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'document_annotation' => json_encode([
+                'items' => [
+                    ['cantidad' => 1, 'descripcion' => 'MINAS 0.3MM HB PILOT'],
+                    ['cantidad' => 3, 'descripcion' => 'CINTA DOBLE CONTACTO'],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'pages' => [[
+                'index' => 0,
+                'tables' => [['content' => $html]],
+            ]],
+        ], 'CANTIDAD', 'Descripción');
+
+        $this->assertCount(1, $paginas);
+        $this->assertCount(2, $paginas[0]['items']);
+        $this->assertSame(1, $paginas[0]['items'][0]['cantidad']);
+        $this->assertSame('MINAS 0.3MM HB PILOT', $paginas[0]['items'][0]['descripcion']);
+        $this->assertSame(3, $paginas[0]['items'][1]['cantidad']);
+    }
+
+    public function test_prompt_anotacion_incluye_columnas_usuario(): void
+    {
+        $prompt = (new PdfMistralOcrService)->promptAnotacionMateriales('N° ítem', 'Descripción');
+        $this->assertStringContainsString('N° ítem', $prompt);
+        $this->assertStringContainsString('Descripción', $prompt);
+        $this->assertStringContainsString('acentos', $prompt);
+        $this->assertStringContainsString('lado a lado', $prompt);
     }
 
     public function test_mapea_encabezado_descripcion_con_acento(): void
