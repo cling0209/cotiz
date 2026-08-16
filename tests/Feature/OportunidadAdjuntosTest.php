@@ -33,17 +33,40 @@ class OportunidadAdjuntosTest extends TestCase
         Storage::fake('r2_adjuntos');
     }
 
-    public function test_ejecutivo_no_puede_buscar_adjuntos(): void
+    public function test_ejecutivo_puede_buscar_adjuntos(): void
     {
         $user = User::factory()->create([
             'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '1000-1-COT26',
+            'nombre' => 'Papel bond',
+            'organismo' => 'Hospital Demo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_publicacion' => now()->subDay(),
+            'fecha_cierre' => now()->addDays(5),
+            'palabras_coinciden' => ['papel'],
+            'fecha_busqueda' => now()->toDateString(),
+            'indice_region_config' => 0,
+        ]);
+
+        Http::fake([
+            'servicios-compra-agil.mercadopublico.cl/v1/adjuntos-compra-agil/listar/*' => Http::response([
+                'success' => 'OK',
+                'payload' => ['files' => []],
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK', 'payload' => []], 200),
+            'buscador.mercadopublico.cl/*' => Http::response('<html></html>', 200),
         ]);
 
         $this->actingAs($user)
             ->postJson(route('admin.oportunidades.para-cotizar.adjuntos.buscar'), [
                 'codigo' => '1000-1-COT26',
             ])
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('ok', true);
     }
 
     public function test_superadmin_busca_adjuntos_y_los_guarda_en_r2(): void
@@ -274,7 +297,8 @@ class OportunidadAdjuntosTest extends TestCase
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
             ->assertOk()
             ->assertJsonCount(1, 'archivos')
-            ->assertJsonPath('archivos.0.nombre', 'bases.pdf');
+            ->assertJsonPath('archivos.0.nombre', 'bases.pdf')
+            ->assertJsonPath('consultado', true);
     }
 
     private function superadmin(): User

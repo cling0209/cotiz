@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Models\OportunidadEncontrada;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Writer\Html as HtmlWriter;
 use RuntimeException;
+use Throwable;
 use ZipArchive;
 
 class OportunidadAdjuntoService
@@ -169,6 +171,44 @@ class OportunidadAdjuntoService
         }
 
         return $this->carpeta($codigo).'/'.$safe;
+    }
+
+    public function yaConsultado(string $codigo): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return false;
+        }
+        try {
+            return Storage::disk($this->disk())->exists($this->carpeta($codigo).'/manifest.json');
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * En corrida: busca adjuntos si aún no se consultó. No lanza.
+     */
+    public function buscarSiPendiente(string $codigo): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '' || $this->yaConsultado($codigo)) {
+            return;
+        }
+        try {
+            $this->buscarYGuardar($codigo);
+        } catch (Throwable $e) {
+            Log::warning('OportunidadAdjunto: no se pudieron buscar adjuntos en corrida', [
+                'codigo' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

@@ -51,7 +51,7 @@ class OportunidadParaCotizarController extends Controller
             'puedeBuscar' => $puedeBuscar,
             'puedePalabras' => $puedePalabras,
             'puedeEliminar' => (bool) $request->user()?->isSuperAdmin(),
-            'puedeAdjuntos' => (bool) $request->user()?->isSuperAdmin(),
+            'puedeAdjuntos' => (bool) $request->user()?->canVerOportunidades(),
             'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
                 ? (string) $corridaEstado['fecha_busqueda']
                 : $this->servicio->fechaBusquedaHoy(),
@@ -121,10 +121,6 @@ class OportunidadParaCotizarController extends Controller
 
     public function adjuntosEstado(): JsonResponse
     {
-        if (! request()->user()?->isSuperAdmin()) {
-            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
-        }
-
         try {
             $indice = $this->adjuntos->indicePorCodigo();
         } catch (RuntimeException $e) {
@@ -147,10 +143,6 @@ class OportunidadParaCotizarController extends Controller
 
     public function buscarAdjuntos(Request $request): JsonResponse
     {
-        if (! $request->user()?->isSuperAdmin()) {
-            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
-        }
-
         $data = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
         ]);
@@ -176,10 +168,6 @@ class OportunidadParaCotizarController extends Controller
 
     public function listarAdjuntos(Request $request, string $codigo): JsonResponse
     {
-        if (! $request->user()?->isSuperAdmin()) {
-            return response()->json(['ok' => false, 'error' => 'No autorizado.'], 403);
-        }
-
         try {
             $archivos = $this->adjuntos->listar($codigo);
         } catch (RuntimeException $e) {
@@ -190,15 +178,12 @@ class OportunidadParaCotizarController extends Controller
             'ok' => true,
             'codigo' => $this->adjuntos->normalizarCodigo($codigo),
             'archivos' => $archivos,
+            'consultado' => $this->adjuntos->yaConsultado($codigo),
         ]);
     }
 
     public function verAdjunto(Request $request, string $codigo): Response
     {
-        if (! $request->user()?->isSuperAdmin()) {
-            abort(403);
-        }
-
         $data = $request->validate([
             'archivo' => ['required', 'string', 'max:180'],
             'descargar' => ['sometimes', 'boolean'],

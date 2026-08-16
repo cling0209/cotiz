@@ -549,6 +549,38 @@
                         </div>
                         <p id="importar-compra-agil-progreso-texto" class="small text-primary fw-semibold mb-0 mt-1">Preparando importaci&oacute;n...</p>
                     </div>
+                    <div id="importar-compra-agil-adjuntos" class="mb-2{{ ($puedeAdjuntosOportunidad ?? false) ? '' : ' d-none' }}">
+                        <button type="button" class="btn btn-outline-secondary btn-sm mb-2 d-none" id="btn-importar-buscar-adjuntos">
+                            <i class="bi bi-cloud-download"></i> Buscar adjuntos
+                        </button>
+                        <div id="importar-compra-agil-adjuntos-links" class="d-flex flex-column align-items-start gap-1 mb-2"></div>
+                        <div id="importar-compra-agil-adjuntos-analizar" class="border rounded p-2 mb-2 d-none">
+                            <p class="small mb-2 mb-md-1" id="importar-adjunto-analizar-nombre"></p>
+                            <div id="importar-adjunto-cols-pdf" class="row g-2 mb-2 d-none">
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-adjunto-pdf-col-cant" class="form-control form-control-sm" value="CANTIDAD" maxlength="80" placeholder="CANTIDAD">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-pdf-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-adjunto-pdf-col-desc" class="form-control form-control-sm" value="" maxlength="80" placeholder="PRODUCTO">
+                                </div>
+                            </div>
+                            <div id="importar-adjunto-cols-excel" class="row g-2 mb-2 d-none">
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-cant">Columna cantidad</label>
+                                    <input type="text" id="importar-adjunto-excel-col-cant" class="form-control form-control-sm text-uppercase" value="A" maxlength="3" placeholder="A">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label form-label-sm mb-0" for="importar-adjunto-excel-col-desc">Columna producto</label>
+                                    <input type="text" id="importar-adjunto-excel-col-desc" class="form-control form-control-sm text-uppercase" value="B" maxlength="3" placeholder="B">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-importar-analizar-adjunto">
+                                <i class="bi bi-search"></i> Analizar archivo
+                            </button>
+                        </div>
+                    </div>
                     <div id="importar-compra-agil-cabecera" class="small mb-2 d-none">
                         <strong>Cabecera detectada:</strong>
                         <span id="importar-compra-agil-cabecera-texto"></span>
@@ -578,6 +610,31 @@
                             <i class="bi bi-download"></i> Importar
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="modal-adjuntos-importar" tabindex="-1" aria-labelledby="modal-adjuntos-importar-label" aria-hidden="true" style="z-index: 2000;">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="modal-adjuntos-importar-label">Documentos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-adjuntos-importar-loading" class="text-center text-muted py-4 d-none">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Cargando documento…</span>
+                    </div>
+                    <div id="modal-adjuntos-importar-convirtiendo" class="text-center text-muted py-4 d-none">
+                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                        <span class="ms-2">Convirtiendo para mostrar…</span>
+                    </div>
+                    <div id="modal-adjuntos-importar-error" class="alert alert-warning py-2 small d-none mb-2"></div>
+                    <iframe id="modal-adjuntos-importar-frame" class="w-100 border rounded d-none" style="min-height: 28rem;" title="Vista previa"></iframe>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
         </div>
@@ -2644,6 +2701,10 @@
         apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
         apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
         oportunidadesIndex: @json(route('admin.oportunidades.para-cotizar.index')),
+        adjuntosEstado: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
+        adjuntosBuscar: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
+        adjuntosListarBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
+        adjuntosVerBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
     };
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
@@ -3110,10 +3171,296 @@
         }
     }
 
+    let adjuntosImportarArchivos = [];
+    let adjuntosImportarConsultado = false;
+    let adjuntoImportarSeleccionado = null;
+    const btnImportarBuscarAdjuntos = document.getElementById('btn-importar-buscar-adjuntos');
+    const btnImportarAnalizarAdjunto = document.getElementById('btn-importar-analizar-adjunto');
+    const wrapImportarAdjuntos = document.getElementById('importar-compra-agil-adjuntos');
+    const wrapImportarAdjuntosLinks = document.getElementById('importar-compra-agil-adjuntos-links');
+    const wrapImportarAdjuntosAnalizar = document.getElementById('importar-compra-agil-adjuntos-analizar');
+
+    function puedeAdjuntosImportar() {
+        return !!(desdeOportunidades && codigoImportarCompraAgil && importarMpUrls.adjuntosListarBase);
+    }
+
+    function urlAdjuntosImportar(base, codigo) {
+        return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
+    }
+
+    function tipoAdjuntoImportar(nombre) {
+        const n = String(nombre || '').toLowerCase();
+        if (/\.(xlsx|xls|csv)$/i.test(n)) return 'excel';
+        if (/\.(pdf|docx)$/i.test(n)) return 'pdf';
+        if (/\.doc$/i.test(n)) return 'doc';
+        return 'otro';
+    }
+
+    function mimeAdjuntoImportar(nombre) {
+        const tipo = tipoAdjuntoImportar(nombre);
+        if (tipo === 'excel') {
+            if (/\.csv$/i.test(nombre)) return 'text/csv';
+            if (/\.xls$/i.test(nombre)) return 'application/vnd.ms-excel';
+            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        }
+        if (/\.docx$/i.test(nombre)) {
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        }
+        if (/\.pdf$/i.test(nombre)) return 'application/pdf';
+        return 'application/octet-stream';
+    }
+
+    function setAdjuntoAnalizarBusy(busy) {
+        if (btnImportarAnalizarAdjunto) {
+            btnImportarAnalizarAdjunto.disabled = !!busy;
+        }
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.disabled = !!busy;
+        }
+    }
+
+    function renderAdjuntosImportar() {
+        if (!wrapImportarAdjuntos || !puedeAdjuntosImportar()) {
+            wrapImportarAdjuntos?.classList.add('d-none');
+            return;
+        }
+        wrapImportarAdjuntos.classList.remove('d-none');
+        const hayArchivos = adjuntosImportarArchivos.length > 0;
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.classList.toggle('d-none', adjuntosImportarConsultado || hayArchivos);
+        }
+        if (wrapImportarAdjuntosLinks) {
+            wrapImportarAdjuntosLinks.innerHTML = '';
+            adjuntosImportarArchivos.forEach((a) => {
+                const nom = String(a.nombre || a || '');
+                if (!nom) return;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-link btn-sm p-0 text-start';
+                if (adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.nombre === nom) {
+                    btn.classList.add('fw-semibold');
+                }
+                btn.textContent = nom;
+                btn.addEventListener('click', () => {
+                    seleccionarAdjuntoImportar(nom);
+                    abrirPreviewAdjuntoImportar(nom);
+                });
+                wrapImportarAdjuntosLinks.appendChild(btn);
+            });
+        }
+        if (!adjuntoImportarSeleccionado) {
+            wrapImportarAdjuntosAnalizar?.classList.add('d-none');
+        }
+    }
+
+    function seleccionarAdjuntoImportar(nombre) {
+        const nom = String(nombre || '');
+        adjuntoImportarSeleccionado = { nombre: nom, tipo: tipoAdjuntoImportar(nom) };
+        const tipo = adjuntoImportarSeleccionado.tipo;
+        const nombreEl = document.getElementById('importar-adjunto-analizar-nombre');
+        if (nombreEl) {
+            nombreEl.textContent = nom;
+        }
+        const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
+        const colsExcel = document.getElementById('importar-adjunto-cols-excel');
+        const analizable = tipo === 'pdf' || tipo === 'excel';
+        colsPdf?.classList.toggle('d-none', tipo !== 'pdf');
+        colsExcel?.classList.toggle('d-none', tipo !== 'excel');
+        wrapImportarAdjuntosAnalizar?.classList.toggle('d-none', !analizable);
+        if (tipo === 'doc' && importarEstado) {
+            importarEstado.textContent = 'El formato .doc antiguo no se puede analizar. Ábralo o conviértalo a .docx o PDF.';
+        }
+        renderAdjuntosImportar();
+    }
+
+    function bumpBackdropAdjuntoImportar() {
+        const backs = document.querySelectorAll('.modal-backdrop');
+        if (backs.length > 1) {
+            backs[backs.length - 1].style.zIndex = '1990';
+        }
+    }
+
+    function abrirPreviewAdjuntoImportar(nombre) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const modalEl = document.getElementById('modal-adjuntos-importar');
+        const label = document.getElementById('modal-adjuntos-importar-label');
+        const loading = document.getElementById('modal-adjuntos-importar-loading');
+        const convirtiendo = document.getElementById('modal-adjuntos-importar-convirtiendo');
+        const errBox = document.getElementById('modal-adjuntos-importar-error');
+        const frame = document.getElementById('modal-adjuntos-importar-frame');
+        if (!modalEl || !importarMpUrls.adjuntosVerBase) {
+            return;
+        }
+        const bs = typeof bootstrap !== 'undefined'
+            ? bootstrap.Modal.getOrCreateInstance(modalEl)
+            : null;
+        if (label) {
+            label.textContent = nombre ? `Documentos — ${codigo} — ${nombre}` : `Documentos — ${codigo}`;
+        }
+        if (errBox) {
+            errBox.classList.add('d-none');
+            errBox.textContent = '';
+        }
+        if (convirtiendo) {
+            convirtiendo.classList.add('d-none');
+        }
+        if (frame) {
+            frame.onload = null;
+            frame.classList.add('d-none');
+            frame.src = 'about:blank';
+        }
+        loading?.classList.remove('d-none');
+        modalEl.addEventListener('shown.bs.modal', bumpBackdropAdjuntoImportar, { once: true });
+        bs?.show();
+        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&preview=1`;
+        const convertir = /\.(docx?|xlsx?)$/i.test(nombre) && !/\.pdf$/i.test(nombre);
+        if (convirtiendo) {
+            convirtiendo.classList.toggle('d-none', !convertir);
+        }
+        if (frame) {
+            frame.onload = () => {
+                loading?.classList.add('d-none');
+                convirtiendo?.classList.add('d-none');
+                frame.classList.remove('d-none');
+                frame.onload = null;
+            };
+            frame.src = url;
+        }
+    }
+
+    async function cargarAdjuntosImportar() {
+        if (!puedeAdjuntosImportar()) {
+            return;
+        }
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        try {
+            const res = await fetch(urlAdjuntosImportar(importarMpUrls.adjuntosListarBase, codigo), {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                adjuntosImportarConsultado = false;
+                adjuntosImportarArchivos = [];
+                renderAdjuntosImportar();
+                return;
+            }
+            adjuntosImportarConsultado = !!data.consultado;
+            adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
+            renderAdjuntosImportar();
+        } catch (_e) {
+            adjuntosImportarConsultado = false;
+            adjuntosImportarArchivos = [];
+            renderAdjuntosImportar();
+        }
+    }
+
+    async function buscarAdjuntosImportar() {
+        if (!puedeAdjuntosImportar() || !importarMpUrls.adjuntosBuscar || !csrf) {
+            return;
+        }
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const labelPrev = btnImportarBuscarAdjuntos ? btnImportarBuscarAdjuntos.innerHTML : '';
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.disabled = true;
+            btnImportarBuscarAdjuntos.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando…';
+        }
+        try {
+            const res = await fetch(importarMpUrls.adjuntosBuscar, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ codigo }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                await dlgAlert((data && data.error) ? data.error : 'No se pudieron buscar adjuntos.', {
+                    title: 'Adjuntos',
+                    type: 'danger',
+                });
+                return;
+            }
+            adjuntosImportarConsultado = true;
+            adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
+            renderAdjuntosImportar();
+            if (data.sin_adjuntos) {
+                await dlgAlert('No hay adjuntos en Mercado Público para esta cotización.', {
+                    title: 'Adjuntos',
+                    type: 'info',
+                });
+            }
+        } catch (e) {
+            await dlgAlert(e && e.message ? e.message : 'Error de red.', { title: 'Adjuntos', type: 'danger' });
+        } finally {
+            if (btnImportarBuscarAdjuntos) {
+                btnImportarBuscarAdjuntos.disabled = false;
+                btnImportarBuscarAdjuntos.innerHTML = labelPrev;
+            }
+            renderAdjuntosImportar();
+        }
+    }
+
+    async function descargarAdjuntoComoFile(nombre) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&descargar=1`;
+        const res = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!res.ok) {
+            throw new Error('No se pudo descargar el adjunto.');
+        }
+        const blob = await res.blob();
+        return new File([blob], nombre, { type: blob.type || mimeAdjuntoImportar(nombre) });
+    }
+
+    async function analizarAdjuntoImportar() {
+        const sel = adjuntoImportarSeleccionado;
+        if (!sel || !sel.nombre) {
+            return;
+        }
+        const tipo = sel.tipo;
+        if (tipo !== 'pdf' && tipo !== 'excel') {
+            if (importarEstado) {
+                importarEstado.textContent = 'Este archivo no se puede analizar. Use PDF, Word (.docx) o Excel.';
+            }
+            return;
+        }
+        if (importarEstado) {
+            importarEstado.textContent = 'Descargando adjunto…';
+        }
+        setAdjuntoAnalizarBusy(true);
+        try {
+            const file = await descargarAdjuntoComoFile(sel.nombre);
+            if (tipo === 'excel') {
+                await analizarImportExcel({
+                    file,
+                    colCant: document.getElementById('importar-adjunto-excel-col-cant')?.value,
+                    colDesc: document.getElementById('importar-adjunto-excel-col-desc')?.value,
+                });
+                return;
+            }
+            await analizarImportPdf({
+                file,
+                colCant: document.getElementById('importar-adjunto-pdf-col-cant')?.value,
+                colDesc: document.getElementById('importar-adjunto-pdf-col-desc')?.value,
+            });
+        } catch (e) {
+            setAdjuntoAnalizarBusy(false);
+            mostrarImportError(e && e.message ? e.message : 'No se pudo analizar el adjunto.');
+        }
+    }
+
     function mostrarDetalleImportarOportunidades() {
         bloquearCodigoImportarOportunidad();
         document.getElementById('tab-ca-codigo')?.click();
         actualizarResumenLineas(resumenLineasInicial);
+        cargarAdjuntosImportar();
         if (previewOportunidadesDisponible()) {
             aplicarPreviewCacheado(codigoImportarCompraAgil, previewImportarCompraAgil);
             return;
@@ -3422,13 +3769,14 @@
         }
     }
 
-    async function analizarImportPdf() {
+    async function analizarImportPdf(opciones) {
+        opciones = opciones || {};
         importModo = 'pdf';
         importCodigoApi = null;
         importExcelFile = null;
-        const file = importarPdfInput?.files?.[0] || null;
-        const colCant = String(importarPdfColCant?.value || '').trim();
-        const colDesc = String(importarPdfColDesc?.value || '').trim();
+        const file = opciones.file || importarPdfInput?.files?.[0] || null;
+        const colCant = String((opciones.colCant != null ? opciones.colCant : importarPdfColCant?.value) || '').trim();
+        const colDesc = String((opciones.colDesc != null ? opciones.colDesc : importarPdfColDesc?.value) || '').trim();
         if (!file) {
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx).';
             return;
@@ -3447,6 +3795,7 @@
         limpiarImportAlerta();
         if (importarEstado) importarEstado.textContent = '';
         if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
+        setAdjuntoAnalizarBusy(true);
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
         renderImportPreview(null);
         mostrarProgresoImportar();
@@ -3545,16 +3894,18 @@
             await liberarImportMaterialesLock();
             marcarAnalisisMaterialesTerminado();
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+            setAdjuntoAnalizarBusy(false);
         }
     }
 
-    async function analizarImportExcel() {
+    async function analizarImportExcel(opciones) {
+        opciones = opciones || {};
         importModo = 'excel';
         importCodigoApi = null;
         importPdfFile = null;
-        const file = importarExcelInput?.files?.[0] || null;
-        const colDesc = String(importarExcelColDesc?.value || '').trim().toUpperCase();
-        const colCant = String(importarExcelColCant?.value || '').trim().toUpperCase();
+        const file = opciones.file || importarExcelInput?.files?.[0] || null;
+        const colDesc = String((opciones.colDesc != null ? opciones.colDesc : importarExcelColDesc?.value) || '').trim().toUpperCase();
+        const colCant = String((opciones.colCant != null ? opciones.colCant : importarExcelColCant?.value) || '').trim().toUpperCase();
         if (!file) {
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv).';
             return;
@@ -3571,6 +3922,7 @@
         limpiarImportAlerta();
         if (importarEstado) importarEstado.textContent = '';
         if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
+        setAdjuntoAnalizarBusy(true);
         if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
         renderImportPreview(null);
         mostrarProgresoImportar();
@@ -3678,6 +4030,7 @@
             await liberarImportMaterialesLock();
             marcarAnalisisMaterialesTerminado();
             if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
+            setAdjuntoAnalizarBusy(false);
         }
     }
 
@@ -4238,6 +4591,7 @@
             if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
             if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
             if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
+            setAdjuntoAnalizarBusy(false);
         }
     }
 
@@ -4285,6 +4639,8 @@
     btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
     btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
+    btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
+    btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
         if (desdeOportunidades && codigoImportarCompraAgil) {

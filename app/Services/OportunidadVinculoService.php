@@ -44,6 +44,7 @@ class OportunidadVinculoService
         protected OportunidadParaCotizarService $oportunidades,
         protected OportunidadEncontradaRelayService $encontradaRelay,
         protected AgileVinculoAprendizajeService $vinculoAprendizaje,
+        protected OportunidadAdjuntoService $adjuntos,
     ) {}
 
     public function corridaEnCurso(): ?OportunidadVinculoCorrida
@@ -476,6 +477,8 @@ class OportunidadVinculoService
                 ],
             ], OportunidadEncontradaRelayService::ACCION_VINCULO);
         }
+
+        $this->adjuntos->buscarSiPendiente($codigo);
 
         return [
             'total' => $total,
