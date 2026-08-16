@@ -96,6 +96,10 @@ class PdfMistralOcrService
             return [];
         }
 
+        // Índices de columna persistentes entre páginas (tabla que continúa sin encabezado).
+        $idxC = null;
+        $idxP = null;
+
         foreach ($pages as $page) {
             if (! is_array($page)) {
                 continue;
@@ -109,7 +113,13 @@ class PdfMistralOcrService
                 if ($rows === []) {
                     continue;
                 }
-                $mapped = $this->itemsDesdeFilas($rows, $columnaCantidad, $columnaProducto);
+                $mapped = $this->itemsDesdeFilas(
+                    $rows,
+                    $columnaCantidad,
+                    $columnaProducto,
+                    $idxC,
+                    $idxP,
+                );
                 if ($mapped === []) {
                     continue;
                 }
@@ -172,29 +182,64 @@ class PdfMistralOcrService
     }
 
     /**
+     * Extrae ítems de filas. Si $idxC/$idxP vienen de páginas anteriores, continúa
+     * la tabla sin encabezado. Si la tabla trae un encabezado distinto al pedido,
+     * no toma esas filas (el mapeo previo se conserva para páginas siguientes).
+     *
      * @param  array<int, array<int, string>>  $filas
+     * @param  int|null  $idxC
+     * @param  int|null  $idxP
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
-    public function itemsDesdeFilas(array $filas, string $columnaCantidad, string $columnaProducto): array
-    {
-        $idxC = $idxP = null;
-        $items = [];
+    public function itemsDesdeFilas(
+        array $filas,
+        string $columnaCantidad,
+        string $columnaProducto,
+        ?int &$idxC = null,
+        ?int &$idxP = null,
+    ): array {
+        if ($filas === []) {
+            return [];
+        }
 
-        foreach ($filas as $fila) {
-            $foundC = $foundP = null;
-            foreach ($fila as $i => $celda) {
-                if ($this->encabezadoCoincide($celda, $columnaCantidad)) {
-                    $foundC = $i;
-                }
-                if ($this->encabezadoCoincide($celda, $columnaProducto)) {
-                    $foundP = $i;
-                }
+        $inicio = 0;
+        $headerLocal = null;
+        foreach ($filas as $i => $fila) {
+            if ($i > 3) {
+                break;
             }
-            if ($foundC !== null && $foundP !== null && $foundC !== $foundP) {
-                $idxC = $foundC;
-                $idxP = $foundP;
+            $headerLocal = $this->resolverEncabezadoUsuario($fila, $columnaCantidad, $columnaProducto);
+            if ($headerLocal !== null) {
+                $idxC = $headerLocal['cantidad'];
+                $idxP = $headerLocal['producto'];
+                $inicio = $i + 1;
+                break;
+            }
+        }
+
+        if ($headerLocal === null) {
+            if ($idxC === null || $idxP === null) {
+                return [];
+            }
+            // Tabla con otro encabezado: no mezclar; conservar índices para continuación.
+            if ($this->pareceFilaEncabezadoAjeno($filas[0], $columnaCantidad, $columnaProducto)) {
+                return [];
+            }
+        }
+
+        $items = [];
+        for ($i = $inicio; $i < count($filas); $i++) {
+            $fila = $filas[$i];
+            // Encabezado repetido a mitad de tabla (misma o distinta).
+            $headerMid = $this->resolverEncabezadoUsuario($fila, $columnaCantidad, $columnaProducto);
+            if ($headerMid !== null) {
+                $idxC = $headerMid['cantidad'];
+                $idxP = $headerMid['producto'];
 
                 continue;
+            }
+            if ($this->pareceFilaEncabezadoAjeno($fila, $columnaCantidad, $columnaProducto)) {
+                break;
             }
             if ($idxC === null || $idxP === null) {
                 continue;
@@ -213,6 +258,70 @@ class PdfMistralOcrService
         }
 
         return $items;
+    }
+
+    /**
+     * @param  array<int, string>  $fila
+     * @return array{cantidad: int, producto: int}|null
+     */
+    public function resolverEncabezadoUsuario(array $fila, string $columnaCantidad, string $columnaProducto): ?array
+    {
+        $foundC = $foundP = null;
+        foreach ($fila as $i => $celda) {
+            if ($this->encabezadoCoincide($celda, $columnaCantidad)) {
+                $foundC = $i;
+            }
+            if ($this->encabezadoCoincide($celda, $columnaProducto)) {
+                $foundP = $i;
+            }
+        }
+        if ($foundC === null || $foundP === null || $foundC === $foundP) {
+            return null;
+        }
+
+        return ['cantidad' => $foundC, 'producto' => $foundP];
+    }
+
+    /**
+     * Fila que parece encabezado de otra tabla (no la pedida por el usuario).
+     *
+     * @param  array<int, string>  $fila
+     */
+    public function pareceFilaEncabezadoAjeno(array $fila, string $columnaCantidad, string $columnaProducto): bool
+    {
+        if ($this->resolverEncabezadoUsuario($fila, $columnaCantidad, $columnaProducto) !== null) {
+            return false;
+        }
+
+        $celdas = array_values(array_filter(
+            array_map(static fn ($c): string => trim((string) $c), $fila),
+            static fn (string $c): bool => $c !== '',
+        ));
+        if (count($celdas) < 2) {
+            return false;
+        }
+
+        // Continuación típica: empieza con número de línea / cantidad.
+        if (preg_match('/^\d{1,5}$/', $celdas[0]) === 1) {
+            return false;
+        }
+
+        $etiquetas = 0;
+        foreach ($celdas as $celda) {
+            $n = $this->normalizar($celda);
+            if ($n === '') {
+                continue;
+            }
+            if (mb_strlen($n) > 48) {
+                return false;
+            }
+            if (preg_match('/^\d{1,5}$/', $n) === 1) {
+                continue;
+            }
+            $etiquetas++;
+        }
+
+        return $etiquetas >= 2;
     }
 
     public function encabezadoCoincide(string $celda, string $nombre): bool

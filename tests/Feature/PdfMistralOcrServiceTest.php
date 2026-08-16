@@ -124,4 +124,43 @@ class PdfMistralOcrServiceTest extends TestCase
         $this->assertCount(2, $paginas[0]['items']);
         $this->assertSame(6, $paginas[0]['items'][1]['cantidad']);
     }
+
+    public function test_continua_tabla_sin_encabezado_en_paginas_siguientes(): void
+    {
+        $paginaConHeader = '<table><tr><th>LINEA</th><th>DESCRIPCION REQUERIMIENTO</th><th>UNIDADES* POR ANO</th><th>Monto</th></tr>'
+            .'<tr><td>1</td><td>ACRILICO BLANCO</td><td>1</td><td>10</td></tr>'
+            .'<tr><td>2</td><td>ACRILICO AMARILLO</td><td>3</td><td>20</td></tr>'
+            .'</table>';
+        $paginaSinHeader = '<table><tr><td>10</td><td>ACRILICO 250ML AZUL</td><td>23</td><td>119</td></tr>'
+            .'<tr><td>11</td><td>ACRILICO 250ML NEGRO</td><td>23</td><td>119</td></tr>'
+            .'</table>';
+        $otraTabla = '<table><tr><td>DIMENSION</td><td>Gestion de Recursos</td></tr>'
+            .'<tr><td>ACCION</td><td>Mejoramiento biblioteca</td></tr>'
+            .'</table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [
+                ['index' => 33, 'tables' => [['content' => $paginaConHeader]]],
+                ['index' => 34, 'tables' => [['content' => $paginaSinHeader]]],
+                ['index' => 35, 'tables' => [['content' => $otraTabla]]],
+            ],
+        ], 'UNIDADES* POR ANO', 'DESCRIPCION REQUERIMIENTO');
+
+        $items = [];
+        foreach ($paginas as $pagina) {
+            foreach ($pagina['items'] as $item) {
+                $items[] = $item;
+            }
+        }
+
+        $this->assertCount(4, $items);
+        $this->assertSame(1, $items[0]['cantidad']);
+        $this->assertSame('ACRILICO BLANCO', $items[0]['descripcion']);
+        $this->assertSame(23, $items[2]['cantidad']);
+        $this->assertSame('ACRILICO 250ML AZUL', $items[2]['descripcion']);
+        foreach ($items as $item) {
+            $this->assertStringNotContainsString('Mejoramiento', $item['descripcion']);
+            $this->assertStringNotContainsString('Gestion', $item['descripcion']);
+        }
+    }
 }
