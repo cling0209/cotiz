@@ -1197,8 +1197,17 @@ def extraer_grilla_pdf(
     """Devuelve filas crudas de tabla por página (celdas, multilínea unida en cada celda)."""
     from pdf2image import convert_from_path
 
+    from native_grid import extraer_grilla_nativa_pdf, grilla_nativa_util
+
     first_page = max(1, int(first_page))
     last_page = max(first_page, int(last_page))
+
+    try:
+        nativa = extraer_grilla_nativa_pdf(pdf_path, first_page, last_page)
+        if grilla_nativa_util(nativa):
+            return nativa
+    except Exception:
+        pass
 
     # Una página a la vez: menos RAM pico en Docker Desktop (~2GB).
     paginas: list[dict[str, Any]] = []

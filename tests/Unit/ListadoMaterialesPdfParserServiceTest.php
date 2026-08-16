@@ -1665,6 +1665,41 @@ TXT;
         $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
     }
 
+    public function test_grilla_con_celdas_separadas_no_debe_mezclarse_con_smalot(): void
+    {
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('grillaTieneCeldasSeparadas');
+        $method->setAccessible(true);
+
+        $grillaSidecar = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD', 'DESCRIPCIÓN', 'ID¹'],
+                    ['2', 'Mesón de préstamo cubierta simple.', ''],
+                    ['4', 'Lector Inalámbrico', ''],
+                ],
+            ],
+        ];
+        $grillaSmalotColumna = [
+            [
+                'pagina' => 1,
+                'filas' => [
+                    ['CANTIDAD'],
+                    ['DESCRIPCIÓN'],
+                    ['2'],
+                    ['4'],
+                    ['Mesón de préstamo cubierta simple.'],
+                    ['Lector Inalámbrico'],
+                ],
+            ],
+        ];
+
+        $this->assertTrue($method->invoke($this->parser, $grillaSidecar));
+        $this->assertFalse($method->invoke($this->parser, $grillaSmalotColumna));
+        $this->assertFalse($method->invoke($this->parser, []));
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

@@ -159,7 +159,7 @@ class ListadoMaterialesPdfParserService
 
             if ($paginasFilas === []) {
                 $paginasFilas = $this->extraerGrillaNativaPdf($path);
-            } else {
+            } elseif (! $this->grillaTieneCeldasSeparadas($paginasFilas)) {
                 $paginasNativas = $this->extraerGrillaNativaPdf($path);
                 if ($paginasNativas !== []) {
                     $paginasFilas = $this->combinarGrillasPaginas($paginasFilas, $paginasNativas);
@@ -248,6 +248,35 @@ class ListadoMaterialesPdfParserService
             'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
             'lineas' => $lineas,
         ];
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginas
+     */
+    private function grillaTieneCeldasSeparadas(array $paginas): bool
+    {
+        $filasConCeldas = 0;
+
+        foreach ($paginas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $fila) {
+                if (! is_array($fila)) {
+                    continue;
+                }
+
+                $noVacias = 0;
+                foreach ($fila as $celda) {
+                    if (trim((string) $celda) !== '') {
+                        $noVacias++;
+                    }
+                }
+
+                if ($noVacias >= 2) {
+                    $filasConCeldas++;
+                }
+            }
+        }
+
+        return $filasConCeldas >= 2;
     }
 
     /**
