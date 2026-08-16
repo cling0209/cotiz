@@ -151,7 +151,37 @@ class ListadoMaterialesPdfParserService
                 $textoCabecera = '';
             }
         } else {
+            // PDF con texto: nativo primero (gratis). Mistral/Paddle solo si el mapeo nativo es débil.
+            $paginasFilas = $this->extraerGrillaNativaPdf($path);
+            try {
+                $textoCabecera = trim((string) (new Parser)->parseFile($path)->getText());
+            } catch (\Throwable) {
+                $textoCabecera = '';
+            }
+
+            $lineasNativas = $this->lineasMapeoDesdeGrillaYTexto(
+                $paginasFilas,
+                $textoCabecera,
+                $columnaCantidad,
+                $columnaProducto,
+            );
+            $nativoSuficiente = count($lineasNativas) >= 1
+                && ! $this->mapeoEsFilaUnicaPegoteada($lineasNativas);
+
+            if ($nativoSuficiente) {
+                Log::info('Import PDF: mapeo nativo suficiente; se omite Mistral/Paddle', [
+                    'archivo' => trim((string) $file->getClientOriginalName()),
+                    'lineas' => count($lineasNativas),
+                ]);
+
+                return [
+                    'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
+                    'lineas' => $lineasNativas,
+                ];
+            }
+
             $mistral = $this->mistral ?? new PdfMistralOcrService;
+            $paginasNativasBackup = $paginasFilas;
             if ($mistral->estaDisponible()) {
                 try {
                     $paginasFilas = $mistral->extraerGrillaTabla(
@@ -161,50 +191,51 @@ class ListadoMaterialesPdfParserService
                         $columnaProducto,
                     );
                     $lineasSidecar = $this->deduplicarLineasMapeo(
-                        $this->lineasDesdeItemsGrilla($paginasFilas),
+                        $this->filtrarLineasPieMapeo(
+                            $this->lineasDesdeItemsGrilla($paginasFilas),
+                        ),
                     );
                 } catch (\Throwable $e) {
                     Log::warning('Import PDF: Mistral OCR falló', ['error' => $e->getMessage()]);
+                    $paginasFilas = $paginasNativasBackup;
                 }
             }
 
             $paddle = $this->paddle ?? new PdfPaddleOcrService;
-            if ($paginasFilas === [] && $paddle->estaDisponible()) {
+            if ($lineasSidecar === [] && $paddle->estaDisponible()) {
                 try {
-                    $paginasFilas = $paddle->extraerGrillaTabla(
+                    $paginasPaddle = $paddle->extraerGrillaTabla(
                         $path,
                         trim((string) $file->getClientOriginalName()),
                         $columnaCantidad,
                         $columnaProducto,
                     );
                     $lineasSidecar = $this->deduplicarLineasMapeo(
-                        $this->lineasDesdeItemsGrilla($paginasFilas),
+                        $this->filtrarLineasPieMapeo(
+                            $this->lineasDesdeItemsGrilla($paginasPaddle),
+                        ),
                     );
+                    if ($lineasSidecar !== []) {
+                        $paginasFilas = $paginasPaddle;
+                    }
                 } catch (\Throwable $e) {
                     Log::warning('Import PDF: grilla Paddle falló', ['error' => $e->getMessage()]);
                 }
             }
 
-            if ($paginasFilas === []) {
+            if ($lineasSidecar === [] && $paginasNativasBackup !== []) {
+                $paginasFilas = $paginasNativasBackup;
+            } elseif ($paginasFilas === []) {
                 $paginasFilas = $this->extraerGrillaNativaPdf($path);
-            } elseif (! $this->grillaTieneCeldasSeparadas($paginasFilas)) {
-                $paginasNativas = $this->extraerGrillaNativaPdf($path);
-                if ($paginasNativas !== []) {
-                    $paginasFilas = $this->combinarGrillasPaginas($paginasFilas, $paginasNativas);
-                }
-            }
-
-            try {
-                $textoCabecera = trim((string) (new Parser)->parseFile($path)->getText());
-            } catch (\Throwable) {
-                $textoCabecera = '';
+            } elseif (! $this->grillaTieneCeldasSeparadas($paginasFilas) && $paginasNativasBackup !== []) {
+                $paginasFilas = $this->combinarGrillasPaginas($paginasFilas, $paginasNativasBackup);
             }
         }
 
         if (count($lineasSidecar) >= 1) {
             return [
                 'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
-                'lineas' => $lineasSidecar,
+                'lineas' => $this->filtrarLineasPieMapeo($lineasSidecar),
             ];
         }
 
@@ -250,9 +281,9 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        $lineas = $this->deduplicarLineasMapeo($lineas);
+        $lineas = $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
         if (count($lineasSidecar) >= 2 && count($lineasSidecar) >= count($lineas)) {
-            $lineas = $lineasSidecar;
+            $lineas = $this->filtrarLineasPieMapeo($lineasSidecar);
         }
 
         if ($lineas === []) {
@@ -322,6 +353,80 @@ class ListadoMaterialesPdfParserService
         }
 
         return $lineas;
+    }
+
+    /**
+     * Mapeo nativo (grilla + texto) sin llamar APIs externas.
+     *
+     * @param  array<int, array{pagina?: int, filas?: mixed, items?: mixed}>  $paginasFilas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function lineasMapeoDesdeGrillaYTexto(
+        array $paginasFilas,
+        string $textoCabecera,
+        string $columnaCantidad,
+        string $columnaProducto,
+    ): array {
+        $lineas = $paginasFilas !== []
+            ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
+            : [];
+
+        if ($lineas === [] || $this->mapeoEsFilaUnicaPegoteada($lineas)) {
+            $textoGrilla = $this->textoPlanoDesdeGrilla($paginasFilas);
+            $lineasTexto = $this->aplicarMapeoColumnasDesdeTexto(
+                trim($textoGrilla."\n".$textoCabecera),
+                $columnaCantidad,
+                $columnaProducto,
+            );
+            if ($lineas === [] || count($lineasTexto) > count($lineas)) {
+                $lineas = $lineasTexto;
+            }
+        }
+
+        return $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
+    }
+
+    /**
+     * Omite pies de cotización / totales (RHEIN, SUBTOTAL, IVA, etc.).
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function filtrarLineasPieMapeo(array $lineas): array
+    {
+        return array_values(array_filter($lineas, function (array $linea): bool {
+            $descripcion = trim((string) ($linea['descripcion'] ?? ''));
+            if ($descripcion === '') {
+                return false;
+            }
+
+            return ! $this->esPieCotizacionMultilinea($descripcion)
+                && ! $this->esDescripcionSoloTotalesDocumento($descripcion);
+        }));
+    }
+
+    private function esDescripcionSoloTotalesDocumento(string $descripcion): bool
+    {
+        $n = $this->normalizarEncabezadoCelda($descripcion);
+        if ($n === '') {
+            return true;
+        }
+
+        if (preg_match('/\b(?:SUBTOTAL|SUB\s+TOTAL|IVA\s*\d|TOTAL\s+NETO|^TOTAL$)\b/u', $n) === 1) {
+            // Producto real casi nunca es solo totales; si mezcla marca+totales, también descartar.
+            if (preg_match('/\b(?:RHEIN|CONDICIONES|TERMINOS|DESPACHO|VIGENCIA)\b/u', $n) === 1) {
+                return true;
+            }
+            // "SUBTOTAL NETO IVA 19% TOTAL" sin nombre de producto.
+            if (preg_match('/^(?:RHEIN\s+)?(?:SUBTOTAL|SUB\s+TOTAL|IVA|TOTAL)\b/u', $n) === 1) {
+                return true;
+            }
+            if (mb_strlen($n) <= 48 && preg_match('/\b(?:SUBTOTAL|IVA\s*\d|^TOTAL)\b/u', $n) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

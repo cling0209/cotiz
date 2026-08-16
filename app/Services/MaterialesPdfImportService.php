@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 
 class MaterialesPdfImportService
 {
-    private const CACHE_VERSION = 'v60';
+    private const CACHE_VERSION = 'v61';
 
     public function __construct(
         protected ListadoMaterialesPdfParserService $parser,

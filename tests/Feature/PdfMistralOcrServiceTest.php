@@ -163,4 +163,27 @@ class PdfMistralOcrServiceTest extends TestCase
             $this->assertStringNotContainsString('Gestion', $item['descripcion']);
         }
     }
+
+    public function test_omite_fila_pie_subtotal_iva_rhein(): void
+    {
+        $html = '<table><tr><th>ITEM</th><th>DESCRIPCION</th><th>CANTIDAD</th></tr>'
+            .'<tr><td>4</td><td>LAPIZ PASTA AZUL</td><td>300</td></tr>'
+            .'<tr><td>5</td><td>LAPIZ PASTA NEGRO</td><td>100</td></tr>'
+            .'<tr><td></td><td>RHEIN SUBTOTAL NETO IVA 19% TOTAL</td><td>30</td></tr>'
+            .'</table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [[
+                'index' => 0,
+                'tables' => [['content' => $html]],
+            ]],
+        ], 'CANTIDAD', 'DESCRIPCION');
+
+        $this->assertCount(2, $paginas[0]['items']);
+        $this->assertSame(300, $paginas[0]['items'][0]['cantidad']);
+        foreach ($paginas[0]['items'] as $item) {
+            $this->assertStringNotContainsString('SUBTOTAL', $item['descripcion']);
+            $this->assertStringNotContainsString('RHEIN', $item['descripcion']);
+        }
+    }
 }

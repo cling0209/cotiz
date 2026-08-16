@@ -249,6 +249,9 @@ class PdfMistralOcrService
             }
             $cantidad = $this->parseCantidad($fila[$idxC] ?? '');
             $descripcion = trim((string) ($fila[$idxP] ?? ''));
+            if ($this->esFilaPieTotales($descripcion) || $this->esFilaPieTotales(implode(' ', $fila))) {
+                break;
+            }
             if ($cantidad !== null && mb_strlen($descripcion) >= 2) {
                 $items[] = [
                     'cantidad' => $cantidad,
@@ -258,6 +261,38 @@ class PdfMistralOcrService
         }
 
         return $items;
+    }
+
+    /**
+     * Pie de cotización / totales: no es producto.
+     */
+    public function esFilaPieTotales(string $texto): bool
+    {
+        $n = $this->normalizar($texto);
+        if ($n === '') {
+            return false;
+        }
+
+        foreach ([
+            'CONDICIONES DE VENTA',
+            'SUBTOTAL NETO',
+            'SUB TOTAL NETO',
+            'SUB TOTAL',
+            'SUBTOTAL',
+            'TERMINOS DE PAGO',
+            'TIEMPO DE ENTREGA',
+            'PRECIO DE VENTA',
+        ] as $marcador) {
+            if (str_starts_with($n, $marcador) || str_contains($n, $marcador)) {
+                return true;
+            }
+        }
+
+        if (preg_match('/^(?:RHEIN|IVA\s*\d|TOTAL)\b/u', $n) === 1) {
+            return true;
+        }
+
+        return preg_match('/\bRHEIN\b.*\b(?:SUBTOTAL|IVA|TOTAL)\b/u', $n) === 1;
     }
 
     /**
