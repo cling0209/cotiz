@@ -1665,6 +1665,56 @@ TXT;
         $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
     }
 
+    public function test_mapeo_columnas_desde_texto_cra_escaneado_no_salta_descripcion_accion(): void
+    {
+        $texto = <<<'TXT'
+SLEP Calama I Ollagüe I San Pedro de Atacama
+CANTIDAD DESCRIPCIÓN m1
+2
+2
+4
+1
+6
+3
+2.
+Mesón de préstamo cubierta simple. Medidas mesón: largo
+200 x alto 72 x fondo 65 cm.
+Diario mural tipo vitrina
+Lector Inalámbrico
+Alfombra Rectangular, modelo circulo de colores
+Silla con respaldo con perforaciones y asientos tapiz
+Mesa Modular Masca para 3 personas.
+ID1 : Tratándose de compras por Convenio Marco o Suministro.
+https://www.mercadopublico.cl/TiendaHome/
+ANTECEDENTES GENERALES (Sólo debe ser llenado para requerimientos SEP)
+DESCRIPCIÓN DE LA ACCIÓN Fortalecimiento de la biblioteca CRA como espacio educativo
+Página 3 de 5
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasDesdeTexto');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $texto, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo cubierta simple', $lineas[0]['descripcion']);
+        $this->assertSame(2, $lineas[1]['cantidad']);
+        $this->assertSame('Diario mural tipo vitrina', $lineas[1]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(1, $lineas[3]['cantidad']);
+        $this->assertSame(6, $lineas[4]['cantidad']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+        foreach ($lineas as $linea) {
+            $this->assertStringNotContainsString('ANTECEDENTES', $linea['descripcion']);
+            $this->assertStringNotContainsString('Fortalecimiento', $linea['descripcion']);
+        }
+    }
+
     public function test_grilla_con_celdas_separadas_no_debe_mezclarse_con_smalot(): void
     {
         $ref = new \ReflectionClass($this->parser);

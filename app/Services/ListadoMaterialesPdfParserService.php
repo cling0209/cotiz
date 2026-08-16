@@ -855,7 +855,7 @@ class ListadoMaterialesPdfParserService
             }
             $tieneCantidad = $this->textoContieneNombreColumna($linea, $nombreCantidad);
             $tieneProducto = $this->textoContieneNombreColumna($linea, $nombreProducto);
-            if ($tieneCantidad || $tieneProducto) {
+            if (($tieneCantidad || $tieneProducto) && $this->lineaEsSoloEncabezadoDeColumna($linea)) {
                 $idxInicio = max($idxInicio, $indice + 1);
             }
         }
@@ -913,6 +913,13 @@ class ListadoMaterialesPdfParserService
         return $resultado;
     }
 
+    private function lineaEsSoloEncabezadoDeColumna(string $linea): bool
+    {
+        $norm = $this->normalizarEncabezadoParaCoincidencia($linea);
+
+        return $norm !== '' && mb_strlen($norm) <= 48;
+    }
+
     private function esCabeceraColumnaSuelta(string $linea): bool
     {
         $norm = $this->normalizarEncabezadoCelda($linea);
@@ -942,7 +949,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $descripcion = trim($coincidencias[2]);
-        if (mb_strlen($descripcion) < 2) {
+        if ($descripcion === '' || mb_strlen($descripcion) < 2 || preg_match('/^x\s/iu', $descripcion) === 1) {
             return [$linea];
         }
 
