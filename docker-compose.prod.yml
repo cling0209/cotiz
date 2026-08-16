@@ -53,11 +53,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # En VPS con más RAM se puede usar PADDLEOCR_MODE=structure y DPI 150–200.
-      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-120}
+      # CX33 (8 GB): PP-Structure para tablas escaneadas. Reicol puede forzar tesseract si falta RAM.
+      PADDLEOCR_DPI: ${PADDLEOCR_DPI:-150}
       PADDLEOCR_MAX_PAGES: ${PADDLEOCR_MAX_PAGES:-15}
       PADDLEOCR_WARMUP: ${PADDLEOCR_WARMUP:-true}
-      PADDLEOCR_MODE: ${PADDLEOCR_MODE:-tesseract}
+      PADDLEOCR_MODE: ${PADDLEOCR_MODE:-structure}
       PADDLEOCR_CROP_LEFT_PERCENT: ${PADDLEOCR_CROP_LEFT_PERCENT:-58}
       PADDLEOCR_MAX_IMAGE_WIDTH: ${PADDLEOCR_MAX_IMAGE_WIDTH:-1400}
     # Sin puerto en el host: la app usa http://paddleocr:8080 en la red interna.

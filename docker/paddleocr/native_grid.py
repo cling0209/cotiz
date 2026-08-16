@@ -118,10 +118,11 @@ def _limpiar_celda(valor: Any) -> str:
 
 
 def _grilla_util(filas: list[list[str]]) -> bool:
+    """Exige mayoría de filas con ≥2 celdas. Un encabezado y el resto en 1 columna no cuenta (escaneo)."""
     if len(filas) < 2:
         return False
     con_celdas = sum(1 for f in filas if sum(1 for c in f if str(c).strip() != "") >= 2)
-    return con_celdas >= 1
+    return con_celdas >= 2 and con_celdas >= (len(filas) / 2)
 
 
 def grilla_nativa_util(paginas: list[dict[str, Any]]) -> bool:

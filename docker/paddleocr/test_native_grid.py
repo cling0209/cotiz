@@ -78,6 +78,18 @@ class TestNativeGridPalabras(unittest.TestCase):
         self.assertFalse(_grilla_util([["solo una celda"]]))
         self.assertFalse(grilla_nativa_util([]))
 
+    def test_encabezado_y_resto_monocolumna_no_es_util(self) -> None:
+        filas = [
+            ["CANTIDAD", "DESCRIPCIÓN"],
+            ["2"],
+            ["2"],
+            ["4"],
+            ["Mesón de préstamo"],
+            ["Diario mural tipo vitrina"],
+        ]
+        self.assertFalse(_grilla_util(filas))
+        self.assertFalse(grilla_nativa_util([{"pagina": 1, "filas": filas}]))
+
 
 if __name__ == "__main__":
     unittest.main()

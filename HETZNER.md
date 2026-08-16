@@ -236,7 +236,7 @@ docker stats
 
 ## 6. RAM del VPS
 
-Con `carro` + 2× `cotiz` ≈ **6 contenedores** (3 app + 3 postgres). En **CX23 (4 GB)** puede ir justo; vigila `docker stats`. Considera **CX33 (8 GB)** si hay imports pesados o OCR concurrente.
+Con `carro` + 2× `cotiz` ≈ **6 contenedores** (3 app + 3 postgres) + sidecars OCR. En **CX33 (8 GB)** el sidecar usa `PADDLEOCR_MODE=structure` (PP-Structure). Si falta RAM, en `.env.prod` de Reicol poné `PADDLEOCR_MODE=tesseract`. Vigilá `docker stats`.
 
 ## 7. Respaldo de bases → Cloudflare R2
 
