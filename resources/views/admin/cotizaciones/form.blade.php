@@ -3283,7 +3283,7 @@
         if (hintPdf) {
             if (!hayPdfInput && sel && sel.tipo === 'pdf' && sel.nombre) {
                 hintPdf.classList.remove('d-none');
-                hintPdf.textContent = 'Se analizará el adjunto: ' + sel.nombre;
+                hintPdf.textContent = 'Adjunto seleccionado: ' + sel.nombre;
             } else {
                 hintPdf.classList.add('d-none');
                 hintPdf.textContent = '';
@@ -3292,7 +3292,7 @@
         if (hintExcel) {
             if (!hayExcelInput && sel && sel.tipo === 'excel' && sel.nombre) {
                 hintExcel.classList.remove('d-none');
-                hintExcel.textContent = 'Se analizará el adjunto: ' + sel.nombre;
+                hintExcel.textContent = 'Adjunto seleccionado: ' + sel.nombre;
             } else {
                 hintExcel.classList.add('d-none');
                 hintExcel.textContent = '';
@@ -3965,9 +3965,10 @@
 
             if (importarEstado) {
                 const n = previewFinal.resumen.total || 0;
+                const nom = importPdfFile && importPdfFile.name ? String(importPdfFile.name) : 'el archivo';
                 importarEstado.textContent = n > 0
-                    ? 'Análisis listo (PDF / Word).'
-                    : 'No se detectaron productos en el archivo.';
+                    ? 'Análisis listo (PDF / Word): ' + nom
+                    : 'No se detectaron productos en «' + nom + '».';
             }
         } catch (err) {
             ocultarProgresoImportar();
@@ -4115,9 +4116,10 @@
 
             if (importarEstado) {
                 const n = previewFinal.resumen.total || 0;
+                const nom = importExcelFile && importExcelFile.name ? String(importExcelFile.name) : 'el archivo';
                 let msg = n > 0
-                    ? 'Análisis listo (Excel).'
-                    : 'No se detectaron productos en el archivo.';
+                    ? 'Análisis listo (Excel): ' + nom
+                    : 'No se detectaron productos en «' + nom + '».';
                 if (n > 0 && omitidas > 0) {
                     msg += ' Se omitieron ' + omitidas + ' fila(s) vacías o de título/total.';
                 }

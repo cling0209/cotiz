@@ -1628,6 +1628,43 @@ TXT;
         $this->assertSame('Alfombra Rectangular', $lineas[2]['descripcion']);
     }
 
+    public function test_mapeo_columnas_desde_texto_columnas_sueltas_detalle_cra(): void
+    {
+        $texto = <<<'TXT'
+1233623-451-COT26 — DETALLE 011 CRA
+CANTIDAD
+DESCRIPCIÓN
+ID¹
+2
+2
+4
+1
+6
+3
+Mesón de préstamo cubierta simple. Medidas mesón: largo 200 x alto 72 x fondo 65 cm.
+Diario mural tipo vitrina
+Lector Inalámbrico
+Alfombra Rectangular, modelo circulo de colores
+Silla con respaldo con perforaciones y asientos tapiz
+Mesa Modular Masca para 3 personas.
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('aplicarMapeoColumnasDesdeTexto');
+        $method->setAccessible(true);
+
+        /** @var array<int, array{cantidad: int, descripcion: string}> $lineas */
+        $lineas = $method->invoke($this->parser, $texto, 'CANTIDAD', 'DESCRIPCIÓN');
+
+        $this->assertCount(6, $lineas);
+        $this->assertSame(2, $lineas[0]['cantidad']);
+        $this->assertStringContainsString('Mesón de préstamo', $lineas[0]['descripcion']);
+        $this->assertSame(4, $lineas[2]['cantidad']);
+        $this->assertSame('Lector Inalámbrico', $lineas[2]['descripcion']);
+        $this->assertSame(3, $lineas[5]['cantidad']);
+        $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
+    }
+
     private function cargarFixture(string $nombre): string
     {
         $path = dirname(__DIR__).DIRECTORY_SEPARATOR.'Fixtures'.DIRECTORY_SEPARATOR.'pdf_materiales'.DIRECTORY_SEPARATOR.$nombre;

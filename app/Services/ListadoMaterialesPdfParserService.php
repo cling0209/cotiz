@@ -691,7 +691,104 @@ class ListadoMaterialesPdfParserService
 
         $volcarBuffer();
 
+        if ($resultado !== []) {
+            return $resultado;
+        }
+
+        return $this->aplicarMapeoColumnasEnColumnasSueltas(
+            $lineasCrudas,
+            $nombreCantidad,
+            $nombreProducto,
+        );
+    }
+
+    /**
+     * PDF nativo a veces vuelca la tabla por columnas: CANTIDAD, DESCRIPCIÓN, 2, 2, 4, Mesón..., Diario...
+     *
+     * @param  list<string>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
+    private function aplicarMapeoColumnasEnColumnasSueltas(
+        array $lineas,
+        string $nombreCantidad,
+        string $nombreProducto,
+    ): array {
+        $idxInicio = 0;
+        foreach ($lineas as $indice => $lineaCruda) {
+            $linea = trim((string) $lineaCruda);
+            if ($linea === '') {
+                continue;
+            }
+            $tieneCantidad = $this->textoContieneNombreColumna($linea, $nombreCantidad);
+            $tieneProducto = $this->textoContieneNombreColumna($linea, $nombreProducto);
+            if ($tieneCantidad || $tieneProducto) {
+                $idxInicio = max($idxInicio, $indice + 1);
+            }
+        }
+
+        $cantidades = [];
+        $descripciones = [];
+        $total = count($lineas);
+        for ($i = $idxInicio; $i < $total; $i++) {
+            $linea = trim((string) $lineas[$i]);
+            if ($linea === '' || $this->esEncabezadoListado($linea) || $this->esCabeceraColumnaSuelta($linea)) {
+                continue;
+            }
+
+            if (preg_match('/^\d{1,5}$/u', $linea) === 1) {
+                $cantidades[] = max(1, (int) $linea);
+
+                continue;
+            }
+
+            $partida = $this->partirFilaCantidadProductoSimple($linea);
+            if (count($partida) >= 2) {
+                $cantidad = $this->parseCantidadCeldaTabla($partida[0]);
+                if ($cantidad !== null) {
+                    $cantidades[] = $cantidad;
+                    $descripciones[] = $partida[1];
+                }
+
+                continue;
+            }
+
+            if (preg_match('/^[A-Za-zÁÉÍÓÚÑáéíóúñ¿¡(]/u', $linea) !== 1 || mb_strlen($linea) < 2) {
+                continue;
+            }
+
+            $descripciones[] = $linea;
+        }
+
+        $n = min(count($cantidades), count($descripciones));
+        if ($n < 1) {
+            return [];
+        }
+
+        if (count($cantidades) > ($n * 2) && count($descripciones) < 2) {
+            return [];
+        }
+
+        $resultado = [];
+        for ($i = 0; $i < $n; $i++) {
+            $resultado[] = [
+                'cantidad' => $cantidades[$i],
+                'descripcion' => $descripciones[$i],
+            ];
+        }
+
         return $resultado;
+    }
+
+    private function esCabeceraColumnaSuelta(string $linea): bool
+    {
+        $norm = $this->normalizarEncabezadoCelda($linea);
+        $norm = preg_replace('/[^A-Z0-9 ]/u', '', $norm) ?? $norm;
+        $norm = trim($norm);
+
+        return $norm === 'ID'
+            || $norm === 'ITEM'
+            || $norm === 'N'
+            || preg_match('/^ID\d*$/u', $norm) === 1;
     }
 
     /**
