@@ -137,12 +137,40 @@ class PdfMistralOcrServiceTest extends TestCase
         $this->assertSame(3, $paginas[0]['items'][1]['cantidad']);
     }
 
+    public function test_anotacion_fragmentada_cae_a_html(): void
+    {
+        $html = '<table><tr><th>CANTIDAD</th><th>DESCRIPCION</th></tr>'
+            .'<tr><td>40</td><td>ACUARELAS DE 12 COLORES C/U</td></tr>'
+            .'<tr><td>20</td><td>BLOCK DE DIBUJO LICEO</td></tr></table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'document_annotation' => json_encode([
+                'items' => [
+                    ['cantidad' => 40, 'descripcion' => 'ACUARELAS DE'],
+                    ['cantidad' => 12, 'descripcion' => 'COLORES C/U'],
+                    ['cantidad' => 20, 'descripcion' => 'BLOCK DE DIBUJO LICEO N°'],
+                    ['cantidad' => 180, 'descripcion' => 'ARTEL O EQUIVALENTE 1/8'],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'pages' => [[
+                'index' => 0,
+                'tables' => [['content' => $html]],
+            ]],
+        ], 'CANTIDAD', 'DESCRIPCION');
+
+        $this->assertCount(2, $paginas[0]['items']);
+        $this->assertSame(40, $paginas[0]['items'][0]['cantidad']);
+        $this->assertSame('ACUARELAS DE 12 COLORES C/U', $paginas[0]['items'][0]['descripcion']);
+    }
+
     public function test_prompt_anotacion_incluye_columnas_usuario(): void
     {
         $prompt = (new PdfMistralOcrService)->promptAnotacionMateriales('N° ítem', 'Descripción');
         $this->assertStringContainsString('N° ítem', $prompt);
         $this->assertStringContainsString('Descripción', $prompt);
         $this->assertStringContainsString('acentos', $prompt);
+        $this->assertStringContainsString('CONCATENA', $prompt);
+        $this->assertStringContainsString('12 COLORES', $prompt);
         $this->assertStringContainsString('lado a lado', $prompt);
     }
 

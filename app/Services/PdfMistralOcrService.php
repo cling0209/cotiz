@@ -107,7 +107,7 @@ class PdfMistralOcrService
     public function paginasDesdeRespuesta(array $json, string $columnaCantidad, string $columnaProducto): array
     {
         $anotados = $this->itemsDesdeAnotacionDocumento($json);
-        if ($anotados !== []) {
+        if ($anotados !== [] && ! $this->anotacionPareceFragmentada($anotados)) {
             Log::info('Mistral OCR: document_annotation con ítems', [
                 'items' => count($anotados),
                 'columna_cantidad' => $columnaCantidad,
@@ -119,6 +119,11 @@ class PdfMistralOcrService
                 'filas' => [],
                 'items' => $anotados,
             ]];
+        }
+        if ($anotados !== []) {
+            Log::info('Mistral OCR: document_annotation fragmentada; se usa mapeo HTML', [
+                'items_anotacion' => count($anotados),
+            ]);
         }
 
         $paginas = [];
@@ -179,7 +184,7 @@ class PdfMistralOcrService
         $prod = trim($columnaProducto);
 
         return <<<PROMPT
-Extrae TODOS los productos/materiales de las tablas de este documento.
+Extrae TODOS los productos/materiales de este documento (tablas o listados).
 
 Columnas indicadas por el usuario (única fuente de verdad):
 - cantidad: "{$cant}"
@@ -188,15 +193,18 @@ Columnas indicadas por el usuario (única fuente de verdad):
 Reglas de coincidencia de encabezados:
 - Ignora acentos y mayúsculas/minúsculas al comparar nombres de columna.
 - Acepta coincidencia exacta o que la celda de encabezado contenga el nombre indicado (normalizado).
-- No asumas un formato de documento fijo: sirve cualquier tipo de tabla.
+- No asumas un formato de documento fijo: sirve cualquier tipo de tabla o listado "cantidad + nombre".
 
 Extracción:
-1. Recorre todas las páginas y todas las tablas donde aparezcan esas columnas.
+1. Recorre todas las páginas y todas las tablas/listados donde aparezcan esas columnas.
 2. Si el mismo par de columnas aparece dos veces (tablas lado a lado o bloques repetidos en una fila), emite un ítem por cada bloque. No fusiones izquierda y derecha en un solo ítem.
-3. "descripcion" = texto de la columna de producto (limpia).
-4. "cantidad" = entero de la columna de cantidad. Si no hay número usable (vacío, guion, o la columna es solo N° ítem/código), usa 1.
-5. Omite pies (subtotal, IVA, total), notas, lugar de entrega, distribución/logística e imágenes referenciales.
-6. No inventes productos. Prefiere omitir una fila dudosa antes que inventarla.
+3. Una fila de producto = una cantidad en la columna de cantidad + su descripción completa.
+4. Si el nombre del producto continúa en la línea siguiente SIN una nueva cantidad en la columna de cantidad, CONCATENA ese texto a la descripción anterior. No crees un ítem nuevo.
+5. Nunca uses como cantidad un número que forme parte del nombre del producto (ej. "12 COLORES", "N° 180", "1/8", "500 HOJAS").
+6. "descripcion" = texto completo del producto (limpia, una sola cadena).
+7. "cantidad" = entero de la columna de cantidad. Si no hay número usable en esa columna, usa 1.
+8. Omite pies (subtotal, IVA, total), notas, lugar de entrega, distribución/logística e imágenes referenciales.
+9. No inventes productos. Prefiere omitir una fila dudosa antes que inventarla.
 
 Responde solo con el JSON del schema (campo items).
 PROMPT;
@@ -296,6 +304,39 @@ PROMPT;
         }
 
         return $items;
+    }
+
+    /**
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $items
+     */
+    public function anotacionPareceFragmentada(array $items): bool
+    {
+        if (count($items) < 3) {
+            return false;
+        }
+
+        $cortas = 0;
+        $cortes = 0;
+        foreach ($items as $item) {
+            $desc = trim((string) ($item['descripcion'] ?? ''));
+            if ($desc === '') {
+                $cortas++;
+
+                continue;
+            }
+            if (mb_strlen($desc) <= 28) {
+                $cortas++;
+            }
+            if (preg_match('/(?:\bDE|\bDEL|\bN[°º.]?|\bO)$/iu', $desc) === 1 && mb_strlen($desc) <= 40) {
+                $cortes++;
+            }
+            if (preg_match('/^(?:colores?(?:\s+c\/u)?|artel\b|equivalente\b)/iu', $desc) === 1) {
+                $cortes++;
+            }
+        }
+
+        return $cortas >= (int) max(3, ceil(count($items) * 0.4))
+            || $cortes >= (int) max(2, ceil(count($items) * 0.25));
     }
 
     /**

@@ -420,6 +420,24 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        // Listado "Cantidad / NOMBRE DEL PRODUCTO" nativo: parseTexto une continuaciónes.
+        if ($textoCabecera !== '') {
+            $desdeListado = $this->deduplicarLineasMapeo(
+                $this->filtrarLineasPieMapeo($this->parseTexto($textoCabecera)),
+            );
+            if (
+                $desdeListado !== []
+                && ! $this->mapeoPareceFragmentado($desdeListado)
+                && in_array($this->detectarFormato($textoCabecera), [
+                    self::FORMATO_LISTADO,
+                    self::FORMATO_DETALLE,
+                    self::FORMATO_TABLA_PRODUCTO_CANTIDAD,
+                ], true)
+            ) {
+                return $desdeListado;
+            }
+        }
+
         $lineas = $paginasFilas !== []
             ? $this->aplicarMapeoColumnasPorNombre($paginasFilas, $columnaCantidad, $columnaProducto)
             : [];
@@ -438,6 +456,19 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        if ($textoCabecera !== '') {
+            $desdeTexto = $this->deduplicarLineasMapeo(
+                $this->filtrarLineasPieMapeo($this->parseTexto($textoCabecera)),
+            );
+            if (
+                $desdeTexto !== []
+                && ! $this->mapeoPareceFragmentado($desdeTexto)
+                && ($lineas === [] || $this->mapeoPareceFragmentado($lineas) || $this->mapeoPeorQueParseTexto($lineas, $desdeTexto))
+            ) {
+                return $desdeTexto;
+            }
+        }
+
         return $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
     }
 
@@ -453,6 +484,7 @@ class ListadoMaterialesPdfParserService
         }
 
         $fragmentos = 0;
+        $cortas = 0;
         foreach ($lineas as $linea) {
             $desc = trim((string) ($linea['descripcion'] ?? ''));
             if ($desc === '') {
@@ -460,12 +492,24 @@ class ListadoMaterialesPdfParserService
 
                 continue;
             }
-            if (preg_match('/^(?:unidades?|juegos?|packs?|cajas?)\.?$/iu', $desc) === 1) {
+            if (mb_strlen($desc) <= 28) {
+                $cortas++;
+            }
+            if (preg_match('/^(?:unidades?|juegos?|packs?|cajas?|colores?(?:\s+c\/u)?)\.?$/iu', $desc) === 1) {
                 $fragmentos++;
 
                 continue;
             }
-            if (preg_match('/^(?:color|material|modelo|medida|medidas|peso|composicion|composici[oó]n|tela|gramaje|plaza)\b/iu', $desc) === 1) {
+            if (preg_match('/^(?:color|material|modelo|medida|medidas|peso|composicion|composici[oó]n|tela|gramaje|plaza|artel\b|equivalente\b)/iu', $desc) === 1) {
+                $fragmentos++;
+
+                continue;
+            }
+            // Corte a mitad de nombre: "ACUARELAS DE", "BLOCK DE DIBUJO LICEO N°"
+            if (
+                mb_strlen($desc) <= 36
+                && preg_match('/(?:\bDE|\bDEL|\bN[°º.]?|\bO)$/iu', $desc) === 1
+            ) {
                 $fragmentos++;
 
                 continue;
@@ -479,7 +523,42 @@ class ListadoMaterialesPdfParserService
             }
         }
 
+        if ($cortas >= (int) max(3, ceil(count($lineas) * 0.45))) {
+            return true;
+        }
+
         return $fragmentos >= (int) max(2, ceil(count($lineas) * 0.4));
+    }
+
+    /**
+     * El mapeo por columnas partió nombres y tomó dígitos del producto como cantidad.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $mapeo
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $texto
+     */
+    private function mapeoPeorQueParseTexto(array $mapeo, array $texto): bool
+    {
+        if ($texto === [] || $mapeo === []) {
+            return false;
+        }
+
+        $avg = static function (array $lineas): float {
+            $sum = 0;
+            foreach ($lineas as $l) {
+                $sum += mb_strlen(trim((string) ($l['descripcion'] ?? '')));
+            }
+
+            return $sum / max(1, count($lineas));
+        };
+
+        $avgMap = $avg($mapeo);
+        $avgTxt = $avg($texto);
+
+        if ($avgTxt >= 28 && $avgMap > 0 && $avgMap < $avgTxt * 0.55) {
+            return true;
+        }
+
+        return count($mapeo) > (int) ceil(count($texto) * 1.15) && $avgMap < $avgTxt;
     }
 
     /**
