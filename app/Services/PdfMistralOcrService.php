@@ -221,8 +221,12 @@ class PdfMistralOcrService
             if ($idxC === null || $idxP === null) {
                 return [];
             }
-            // Tabla con otro encabezado: no mezclar; conservar índices para continuación.
-            if ($this->pareceFilaEncabezadoAjeno($filas[0], $columnaCantidad, $columnaProducto)) {
+            // Tabla con otro encabezado / logística: no mezclar; conservar índices para continuación.
+            if (
+                $this->pareceFilaEncabezadoAjeno($filas[0], $columnaCantidad, $columnaProducto)
+                || $this->esFilaSeccionOLogistica(implode(' ', $filas[0]))
+                || $this->esFilaPieTotales(implode(' ', $filas[0]))
+            ) {
                 return [];
             }
         }
@@ -249,7 +253,13 @@ class PdfMistralOcrService
             }
             $cantidad = $this->parseCantidad($fila[$idxC] ?? '');
             $descripcion = trim((string) ($fila[$idxP] ?? ''));
-            if ($this->esFilaPieTotales($descripcion) || $this->esFilaPieTotales(implode(' ', $fila))) {
+            $textoFila = trim(implode(' ', $fila));
+            if (
+                $this->esFilaPieTotales($descripcion)
+                || $this->esFilaPieTotales($textoFila)
+                || $this->esFilaSeccionOLogistica($descripcion)
+                || $this->esFilaSeccionOLogistica($textoFila)
+            ) {
                 break;
             }
             if ($cantidad !== null && mb_strlen($descripcion) >= 2) {
@@ -296,6 +306,42 @@ class PdfMistralOcrService
     }
 
     /**
+     * Sección o tabla ajena (lugar de entrega, horarios, contacto) — no es ítem de productos.
+     */
+    public function esFilaSeccionOLogistica(string $texto): bool
+    {
+        $n = $this->normalizar($texto);
+        if ($n === '') {
+            return false;
+        }
+
+        if (preg_match('/^(?:\d+[\.\-)\s]+)?(?:LUGAR DE ENTREGA|CONDICIONES(?:\s+DE\s+ENTREGA)?|FORMA DE PAGO|PLAZO DE ENTREGA|OBSERVACIONES|NOTAS)\b/u', $n) === 1) {
+            return true;
+        }
+
+        if (str_contains($n, 'LUGAR DE ENTREGA')) {
+            return true;
+        }
+
+        // Horario laboral típico de tabla de recepción.
+        if (
+            preg_match('/\bLUNES\s+A\s+VIERNES\b/u', $n) === 1
+            && preg_match('/\b\d{1,2}\s*:\s*\d{2}\b/u', $texto) === 1
+        ) {
+            return true;
+        }
+
+        if (
+            preg_match('/\b(?:CESFAM|CONSULTORIO|HOSPITAL|MUNICIPALIDAD|DIRECCION DE ENTREGA)\b/u', $n) === 1
+            && preg_match('/\b(?:HORAS|CONTACTAR|RECEPCION|COORDINAR|SECRETARIA)\b/u', $n) === 1
+        ) {
+            return true;
+        }
+
+        return preg_match('/\b(?:PERSONAS A COORDINAR|COORDINAR RECEPCION|RECEPCION DE PRODUCTOS)\b/u', $n) === 1;
+    }
+
+    /**
      * @param  array<int, string>  $fila
      * @return array{cantidad: int, producto: int}|null
      */
@@ -328,6 +374,11 @@ class PdfMistralOcrService
             return false;
         }
 
+        $textoFila = trim(implode(' ', $fila));
+        if ($this->esFilaSeccionOLogistica($textoFila) || $this->esFilaPieTotales($textoFila)) {
+            return true;
+        }
+
         $celdas = array_values(array_filter(
             array_map(static fn ($c): string => trim((string) $c), $fila),
             static fn (string $c): bool => $c !== '',
@@ -337,7 +388,7 @@ class PdfMistralOcrService
         }
 
         // Continuación típica: empieza con número de línea / cantidad.
-        if (preg_match('/^\d{1,5}$/', $celdas[0]) === 1) {
+        if (preg_match('/^\d{1,5}(?:\s*unidades?)?$/iu', $celdas[0]) === 1) {
             return false;
         }
 
@@ -347,10 +398,7 @@ class PdfMistralOcrService
             if ($n === '') {
                 continue;
             }
-            if (mb_strlen($n) > 48) {
-                return false;
-            }
-            if (preg_match('/^\d{1,5}$/', $n) === 1) {
+            if (preg_match('/^\d{1,5}(?:\s*UNIDADES?)?$/u', $n) === 1) {
                 continue;
             }
             $etiquetas++;
@@ -393,7 +441,26 @@ class PdfMistralOcrService
         if ($texto === '') {
             return null;
         }
-        if (preg_match('/(\d{1,5})/', str_replace(['.', ','], '', $texto), $m) !== 1) {
+
+        // No tomar dígitos de horarios (08:00 → 8).
+        $sinHoras = trim((string) (preg_replace('/\b\d{1,2}:\d{2}(?::\d{2})?\b/u', ' ', $texto) ?? $texto));
+        if ($sinHoras === '') {
+            return null;
+        }
+
+        if (preg_match('/(\d{1,5})\s*(?:unidades?|und\.?|u\.?)\b/iu', $sinHoras, $m) === 1) {
+            $valor = (int) $m[1];
+
+            return $valor >= 1 && $valor <= 99999 ? $valor : null;
+        }
+
+        if (preg_match('/^\s*(\d{1,5})\s*$/u', $sinHoras, $m) === 1) {
+            $valor = (int) $m[1];
+
+            return $valor >= 1 && $valor <= 99999 ? $valor : null;
+        }
+
+        if (preg_match('/(\d{1,5})/', str_replace(['.', ','], '', $sinHoras), $m) !== 1) {
             return null;
         }
         $valor = (int) $m[1];

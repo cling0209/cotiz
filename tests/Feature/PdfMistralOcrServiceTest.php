@@ -186,4 +186,42 @@ class PdfMistralOcrServiceTest extends TestCase
             $this->assertStringNotContainsString('RHEIN', $item['descripcion']);
         }
     }
+
+    public function test_omite_tabla_lugar_de_entrega_tras_productos(): void
+    {
+        $productos = '<table><tr><th>ITEM</th><th>CANTIDAD</th><th>DESCRIPCION</th></tr>'
+            .'<tr><td>1</td><td>30 unidades</td><td>STEP: Color Negro</td></tr>'
+            .'<tr><td>2</td><td>2 unidades</td><td>BANDA ELASTICA 45 M</td></tr>'
+            .'</table>';
+        $entrega = '<table><tr><td>CESFAM Manuel Bustos Huerta</td>'
+            .'<td>LUNES A VIERNES, DE 08:00 A 13:00 HORAS, Y DE 14:00 A 16:48</td>'
+            .'<td>Las personas a coordinar recepcion de productos seran de subdireccion</td></tr></table>';
+
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'pages' => [[
+                'index' => 0,
+                'tables' => [
+                    ['content' => $productos],
+                    ['content' => $entrega],
+                ],
+            ]],
+        ], 'CANTIDAD', 'DESCRIPCION');
+
+        $this->assertCount(2, $paginas[0]['items']);
+        $this->assertSame(30, $paginas[0]['items'][0]['cantidad']);
+        $this->assertSame(2, $paginas[0]['items'][1]['cantidad']);
+        foreach ($paginas[0]['items'] as $item) {
+            $this->assertStringNotContainsString('CESFAM', $item['descripcion']);
+            $this->assertStringNotContainsString('coordinar', mb_strtolower($item['descripcion']));
+            $this->assertStringNotContainsString('LUNES', $item['descripcion']);
+        }
+    }
+
+    public function test_parse_cantidad_no_usa_hora(): void
+    {
+        $svc = new PdfMistralOcrService;
+        $this->assertNull($svc->parseCantidad('LUNES A VIERNES, DE 08:00 A 13:00 HORAS'));
+        $this->assertSame(2, $svc->parseCantidad('2 unidades'));
+        $this->assertSame(30, $svc->parseCantidad('30'));
+    }
 }

@@ -401,8 +401,41 @@ class ListadoMaterialesPdfParserService
             }
 
             return ! $this->esPieCotizacionMultilinea($descripcion)
-                && ! $this->esDescripcionSoloTotalesDocumento($descripcion);
+                && ! $this->esDescripcionSoloTotalesDocumento($descripcion)
+                && ! $this->esDescripcionSeccionOLogistica($descripcion);
         }));
+    }
+
+    private function esDescripcionSeccionOLogistica(string $descripcion): bool
+    {
+        $n = $this->normalizarEncabezadoCelda($descripcion);
+        if ($n === '') {
+            return false;
+        }
+
+        if (preg_match('/^(?:\d+[\.\-)\s]+)?(?:LUGAR DE ENTREGA|CONDICIONES(?:\s+DE\s+ENTREGA)?|FORMA DE PAGO|PLAZO DE ENTREGA|OBSERVACIONES|NOTAS)\b/u', $n) === 1) {
+            return true;
+        }
+
+        if (str_contains($n, 'LUGAR DE ENTREGA')) {
+            return true;
+        }
+
+        if (
+            preg_match('/\bLUNES\s+A\s+VIERNES\b/u', $n) === 1
+            && preg_match('/\b\d{1,2}\s*:\s*\d{2}\b/u', $descripcion) === 1
+        ) {
+            return true;
+        }
+
+        if (
+            preg_match('/\b(?:CESFAM|CONSULTORIO|HOSPITAL|MUNICIPALIDAD|DIRECCION DE ENTREGA)\b/u', $n) === 1
+            && preg_match('/\b(?:HORAS|CONTACTAR|RECEPCION|COORDINAR|SECRETARIA)\b/u', $n) === 1
+        ) {
+            return true;
+        }
+
+        return preg_match('/\b(?:PERSONAS A COORDINAR|COORDINAR RECEPCION|RECEPCION DE PRODUCTOS)\b/u', $n) === 1;
     }
 
     private function esDescripcionSoloTotalesDocumento(string $descripcion): bool
@@ -746,6 +779,19 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
 
+                $textoFila = trim(implode(' ', array_filter($celdas, static fn (string $c): bool => trim($c) !== '')));
+                if (
+                    $idxCantidad !== null
+                    && $idxProducto !== null
+                    && $this->esDescripcionSeccionOLogistica($textoFila)
+                ) {
+                    $volcarBuffer();
+                    $idxCantidad = null;
+                    $idxProducto = null;
+
+                    continue;
+                }
+
                 if ($this->esFragmentoRuidoMultilinea($celdas, $productoEsSpecs, $bufferDesc !== null)) {
                     continue;
                 }
@@ -920,7 +966,8 @@ class ListadoMaterialesPdfParserService
             || str_contains($norm, 'MERCADOPUBLICO.CL')
             || str_contains($norm, 'CONVENIO MARCO')
             || str_contains($norm, 'INCLUIR TANTAS LINEAS')
-            || str_contains($norm, 'GESTION DE RECURSOS');
+            || str_contains($norm, 'GESTION DE RECURSOS')
+            || str_contains($norm, 'LUGAR DE ENTREGA');
     }
 
     /**
@@ -1700,6 +1747,10 @@ class ListadoMaterialesPdfParserService
 
         if (preg_match('/^(PROMOCION|MUJER|GENERO|PROGRAMA|MESA ALIMENTACION|INCLUSION PERSONAS)/u', $texto) === 1
             && ! str_contains($texto, 'CANTIDAD')) {
+            return true;
+        }
+
+        if ($this->esDescripcionSeccionOLogistica($texto) || $this->esPieCotizacionMultilinea($texto)) {
             return true;
         }
 
