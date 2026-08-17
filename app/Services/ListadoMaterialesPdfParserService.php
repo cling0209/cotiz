@@ -761,10 +761,17 @@ class ListadoMaterialesPdfParserService
      * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
      * @return array<int, array{cantidad: int, descripcion: string}>
      */
+    /**
+     * Quita solo repeticiones consecutivas (eco OCR / misma fila leída dos veces).
+     * Si el PDF trae el mismo producto en líneas distintas, se conservan ambas.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     * @return array<int, array{cantidad: int, descripcion: string}>
+     */
     private function deduplicarLineasMapeo(array $lineas): array
     {
         $unicas = [];
-        $vistos = [];
+        $claveAnterior = null;
 
         foreach ($lineas as $linea) {
             $cantidad = (int) ($linea['cantidad'] ?? 0);
@@ -774,10 +781,10 @@ class ListadoMaterialesPdfParserService
             }
 
             $clave = $cantidad.'|'.mb_strtolower(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
-            if (isset($vistos[$clave])) {
+            if ($claveAnterior !== null && $clave === $claveAnterior) {
                 continue;
             }
-            $vistos[$clave] = true;
+            $claveAnterior = $clave;
             $unicas[] = [
                 'cantidad' => $cantidad,
                 'descripcion' => $descripcion,

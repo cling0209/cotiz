@@ -1937,13 +1937,14 @@ TXT;
         $this->assertSame('Mesa Modular Masca para 3 personas.', $lineas[5]['descripcion']);
     }
 
-    public function test_deduplicar_items_sidecar_repetidos_entre_paginas(): void
+    public function test_deduplicar_items_sidecar_solo_consecutivos(): void
     {
         $paginasFilas = [
             [
                 'pagina' => 3,
                 'filas' => [],
                 'items' => [
+                    ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
                     ['cantidad' => 6, 'descripcion' => 'Silla con respaldo'],
                     ['cantidad' => 3, 'descripcion' => 'Mesa Modular Masca para 3 personas.'],
                 ],
@@ -1965,12 +1966,34 @@ TXT;
         $dedup->setAccessible(true);
 
         $brutas = $desdeItems->invoke($this->parser, $paginasFilas);
-        $this->assertCount(4, $brutas);
+        $this->assertCount(5, $brutas);
 
         $unicas = $dedup->invoke($this->parser, $brutas);
-        $this->assertCount(2, $unicas);
+        // Solo colapsa el eco consecutivo de "Silla"; la silla de la otra página se conserva.
+        $this->assertCount(4, $unicas);
         $this->assertSame(6, $unicas[0]['cantidad']);
         $this->assertSame(3, $unicas[1]['cantidad']);
+        $this->assertSame(6, $unicas[2]['cantidad']);
+        $this->assertSame(3, $unicas[3]['cantidad']);
+    }
+
+    public function test_deduplicar_conserva_mismo_producto_no_consecutivo(): void
+    {
+        $ref = new \ReflectionClass($this->parser);
+        $dedup = $ref->getMethod('deduplicarLineasMapeo');
+        $dedup->setAccessible(true);
+
+        $lineas = [
+            ['cantidad' => 40, 'descripcion' => 'PAPEL ALUMINIO 30CM. X 30M'],
+            ['cantidad' => 30, 'descripcion' => 'PAPEL ALTA CALIDAD EPSON 100 HOJAS'],
+            ['cantidad' => 40, 'descripcion' => 'PAPEL ALUMINIO 30CM. X 30M'],
+            ['cantidad' => 4, 'descripcion' => 'PAPEL CREPE PLIEGO ROJO'],
+        ];
+
+        $out = $dedup->invoke($this->parser, $lineas);
+        $this->assertCount(4, $out);
+        $this->assertSame('PAPEL ALUMINIO 30CM. X 30M', $out[0]['descripcion']);
+        $this->assertSame('PAPEL ALUMINIO 30CM. X 30M', $out[2]['descripcion']);
     }
 
     public function test_bases_tecnicas_cantidad_multilinea_textiles_cadetes(): void
