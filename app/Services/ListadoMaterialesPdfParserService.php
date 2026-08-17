@@ -168,14 +168,22 @@ class ListadoMaterialesPdfParserService
                 $columnaCantidad,
                 $columnaProducto,
             );
-            $nativoSuficiente = count($lineasNativas) >= 1
+            // Solo omitir Mistral si el PDF es texto nativo limpio (no escaneo / capa OCR débil).
+            $nombreArchivoTmp = trim((string) $file->getClientOriginalName());
+            $textoNativoConfiable = $this->textoPdfNativoEsConfiable(
+                $textoCabecera,
+                $path,
+                $nombreArchivoTmp,
+            );
+            $nativoSuficiente = $textoNativoConfiable
+                && count($lineasNativas) >= 1
                 && ! $this->mapeoEsFilaUnicaPegoteada($lineasNativas)
                 && ! $this->mapeoPareceFragmentado($lineasNativas)
                 && ! $this->mapeoBasesPareceCorrupto($lineasNativas);
 
             if ($nativoSuficiente) {
                 Log::info('Import PDF: mapeo nativo suficiente; se omite Mistral/Paddle', [
-                    'archivo' => trim((string) $file->getClientOriginalName()),
+                    'archivo' => $nombreArchivoTmp,
                     'lineas' => count($lineasNativas),
                 ]);
 
@@ -183,6 +191,13 @@ class ListadoMaterialesPdfParserService
                     'cabecera' => $this->extraerCabeceraDocumento($textoCabecera),
                     'lineas' => $lineasNativas,
                 ];
+            }
+
+            if (! $textoNativoConfiable && $textoCabecera !== '') {
+                Log::info('Import PDF: texto no nativo/confiable; se prioriza Mistral', [
+                    'archivo' => $nombreArchivoTmp,
+                    'lineas_nativas' => count($lineasNativas),
+                ]);
             }
 
             $mistral = $this->mistral ?? new PdfMistralOcrService;
@@ -473,6 +488,86 @@ class ListadoMaterialesPdfParserService
         }
 
         return $this->deduplicarLineasMapeo($this->filtrarLineasPieMapeo($lineas));
+    }
+
+    /**
+     * Texto extraíble ≠ PDF nativo limpio. Escaneos con capa OCR / celdas partidas
+     * deben ir a Mistral aunque Smalot devuelva texto.
+     */
+    private function textoPdfNativoEsConfiable(string $texto, string $path, string $nombreArchivo): bool
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return false;
+        }
+
+        $paginas = max(1, $this->resolverPaginasPdf($path, $nombreArchivo));
+        $chars = mb_strlen(preg_replace('/\s+/u', '', $texto) ?? '');
+        // Muy poco texto por página: probablemente imagen o OCR casi vacío.
+        if ($paginas >= 2 && $chars < ($paginas * 80)) {
+            return false;
+        }
+
+        if ($this->textoPdfPareceCapaOcrDebil($texto)) {
+            return false;
+        }
+
+        if ($this->esProbableTablaMaterialesEscaneada($texto, $paginas, $path, $nombreArchivo)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Señales de texto “pegado” de escaneo/OCR: cantidad/monto en otra línea, índices sueltos.
+     */
+    private function textoPdfPareceCapaOcrDebil(string $texto): bool
+    {
+        $lineas = preg_split('/\R/u', $texto) ?: [];
+        $noVacias = [];
+        foreach ($lineas as $linea) {
+            $t = trim(preg_replace('/[ \t]+/u', ' ', (string) $linea) ?? (string) $linea);
+            if ($t !== '') {
+                $noVacias[] = $t;
+            }
+        }
+
+        if (count($noVacias) < 10) {
+            return false;
+        }
+
+        $soloUnidadesMonto = 0;
+        $soloIndice = 0;
+        $descConCodigoSinMonto = 0;
+
+        foreach ($noVacias as $linea) {
+            if ($this->esLineaSoloUnidadesMontoBases($linea)) {
+                $soloUnidadesMonto++;
+            }
+            if (preg_match('/^\d{1,3}$/u', $linea) === 1) {
+                $soloIndice++;
+            }
+            // Ej. "10 ACRÍLICO … METAL 440" sin unidades/monto en la misma línea.
+            if (
+                preg_match('/^\d{1,3}\s+\S.+\s+\d{3}$/u', $linea) === 1
+                && preg_match('/\d+\s+\d{1,3}(?:\.\d{3})+/u', $linea) !== 1
+            ) {
+                $descConCodigoSinMonto++;
+            }
+        }
+
+        if ($soloUnidadesMonto >= 5) {
+            return true;
+        }
+        if ($soloIndice >= 10) {
+            return true;
+        }
+        if ($descConCodigoSinMonto >= 5) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

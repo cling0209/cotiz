@@ -163,6 +163,45 @@ TXT;
         $this->assertSame(255, $glitter['cantidad']);
     }
 
+    public function test_capa_ocr_debil_con_celdas_partidas_no_es_nativo_confiable(): void
+    {
+        $lineas = [];
+        for ($i = 10; $i <= 20; $i++) {
+            $lineas[] = $i.' ACRÍLICO 250ML COLOR '.$i.'0'.$i;
+            $lineas[] = '23 119.114';
+        }
+        $texto = "LINEA DESCRIPCION\n".implode("\n", $lineas);
+
+        $ref = new \ReflectionClass($this->parser);
+        $metodo = $ref->getMethod('textoPdfPareceCapaOcrDebil');
+        $metodo->setAccessible(true);
+
+        $this->assertTrue($metodo->invoke($this->parser, $texto));
+    }
+
+    public function test_listado_limpio_no_parece_capa_ocr_debil(): void
+    {
+        $texto = <<<'TXT'
+Cantidad NOMBRE DEL PRODUCTO
+40 ACUARELAS DE 12 COLORES C/U
+20 BLOCK DE DIBUJO LICEO
+6 BOLSA DE POMBONES GRANDES 25 mm
+15 BOLSA DE 70 PIEZA DE PEGAMAIZ
+10 BOLSAS DE GLOBOS COLORES
+5 CAJAS DE LAPICES ACRILICOS
+20 CAJAS DE LAPICES DE CERA
+20 CAJAS DE LAPICES SCRIPTO
+3 CAJAS DE LAPIZ PASTA
+4 CAJAS DE LAPICES DE MINA
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $metodo = $ref->getMethod('textoPdfPareceCapaOcrDebil');
+        $metodo->setAccessible(true);
+
+        $this->assertFalse($metodo->invoke($this->parser, $texto));
+    }
+
     public function test_fixture_listado_materiales(): void
     {
         $texto = $this->cargarFixture('listado_materiales.txt');
