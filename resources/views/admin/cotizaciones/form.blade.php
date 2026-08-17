@@ -3665,7 +3665,7 @@
         }
 
         importarTablaWrap.classList.remove('d-none');
-        importarResultados.innerHTML = lineas.map(ln => {
+        importarResultados.innerHTML = lineas.map((ln, i) => {
             const prod = ln.producto;
             let estadoHtml;
             if (ln.estado === 'vinculado') {
@@ -3683,7 +3683,10 @@
                 : '—';
 
             return '<tr>'
-                + '<td>' + escHtml(ln.id_agile) + '</td>'
+                + '<td>'
+                +   '<div class="small text-muted">Línea ' + (i + 1) + '</div>'
+                +   '<div class="text-break">' + escHtml(ln.id_agile) + '</div>'
+                + '</td>'
                 + '<td>' + escHtml(ln.descripcion) + '</td>'
                 + '<td class="text-end">' + escHtml(ln.cantidad) + '</td>'
                 + '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>'
