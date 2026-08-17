@@ -6,6 +6,7 @@ use App\Services\ListadoMaterialesPdfParserService;
 use App\Services\PdfOcrService;
 use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 class ListadoMaterialesPdfParserServiceTest extends TestCase
 {
@@ -1994,6 +1995,56 @@ TXT;
         $this->assertCount(4, $out);
         $this->assertSame('PAPEL ALUMINIO 30CM. X 30M', $out[0]['descripcion']);
         $this->assertSame('PAPEL ALUMINIO 30CM. X 30M', $out[2]['descripcion']);
+    }
+
+    public function test_assert_columnas_usuario_ok_con_encabezados_partidos(): void
+    {
+        $texto = <<<'TXT'
+LINEA DESCRIPCION REQUERIMIENTO
+UNIDADES* POR
+AÑO Monto Total ($) POR AÑO
+1 PRODUCTO EJEMPLO 2 10.000
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('assertColumnasUsuarioPresentesEnDocumento');
+        $method->setAccessible(true);
+
+        $method->invoke(
+            $this->parser,
+            $texto,
+            [],
+            'UNIDADES* POR AÑO',
+            'DESCRIPCION REQUERIMIENTO',
+        );
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_assert_columnas_usuario_falla_si_no_existen(): void
+    {
+        $texto = <<<'TXT'
+LINEA DESCRIPCION REQUERIMIENTO
+UNIDADES* POR AÑO Monto Total ($) POR AÑO
+1 PRODUCTO EJEMPLO 2 10.000
+TXT;
+
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('assertColumnasUsuarioPresentesEnDocumento');
+        $method->setAccessible(true);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('CANTIDAD');
+        $method->invoke($this->parser, $texto, [], 'CANTIDAD', 'NOMBRE DEL PRODUCTO');
+    }
+
+    public function test_assert_columnas_usuario_omite_si_casi_sin_texto(): void
+    {
+        $ref = new \ReflectionClass($this->parser);
+        $method = $ref->getMethod('assertColumnasUsuarioPresentesEnDocumento');
+        $method->setAccessible(true);
+
+        $method->invoke($this->parser, 'abc', [], 'CANTIDAD', 'PRODUCTO');
+        $this->addToAssertionCount(1);
     }
 
     public function test_bases_tecnicas_cantidad_multilinea_textiles_cadetes(): void

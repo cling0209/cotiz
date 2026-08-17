@@ -200,6 +200,14 @@ class ListadoMaterialesPdfParserService
                 ]);
             }
 
+            // Con texto extraíble: validar encabezados del usuario antes de gastar OCR/API.
+            $this->assertColumnasUsuarioPresentesEnDocumento(
+                $textoCabecera,
+                $paginasFilas,
+                $columnaCantidad,
+                $columnaProducto,
+            );
+
             $mistral = $this->mistral ?? new PdfMistralOcrService;
             $paginasNativasBackup = $paginasFilas;
             if ($mistral->estaDisponible()) {
@@ -2156,6 +2164,64 @@ class ListadoMaterialesPdfParserService
         }
 
         return str_contains($texto, $nombre);
+    }
+
+    /**
+     * Si hay texto/grilla nativa suficiente, exige que existan las columnas del usuario
+     * (sin acentos/caso) antes de llamar a Mistral/Paddle.
+     *
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function assertColumnasUsuarioPresentesEnDocumento(
+        string $textoCabecera,
+        array $paginasFilas,
+        string $columnaCantidad,
+        string $columnaProducto,
+    ): void {
+        $corpus = $this->corpusTextoParaBuscarColumnas($textoCabecera, $paginasFilas);
+        $chars = mb_strlen(preg_replace('/\s+/u', '', $corpus) ?? '');
+        // Sin capa de texto útil no se puede validar; el OCR irá después.
+        if ($chars < 40) {
+            return;
+        }
+
+        $faltan = [];
+        if (! $this->textoContieneNombreColumna($corpus, $columnaCantidad)) {
+            $faltan[] = $columnaCantidad;
+        }
+        if (! $this->textoContieneNombreColumna($corpus, $columnaProducto)) {
+            $faltan[] = $columnaProducto;
+        }
+        if ($faltan === []) {
+            return;
+        }
+
+        throw new RuntimeException(
+            'No se encontraron en el documento las columnas indicadas: «'
+            .implode('», «', $faltan)
+            .'». Revise el nombre del encabezado (se ignoran acentos y mayúsculas).',
+        );
+    }
+
+    /**
+     * @param  array<int, array{pagina: int, filas: array<int, array<int, string>>}>  $paginasFilas
+     */
+    private function corpusTextoParaBuscarColumnas(string $textoCabecera, array $paginasFilas): string
+    {
+        $partes = [trim($textoCabecera)];
+        foreach ($paginasFilas as $pagina) {
+            foreach ($pagina['filas'] ?? [] as $celdas) {
+                if (! is_array($celdas)) {
+                    continue;
+                }
+                $partes[] = implode(' ', array_map(
+                    static fn ($c): string => trim((string) $c),
+                    $celdas,
+                ));
+            }
+        }
+
+        return trim(implode("\n", array_filter($partes, static fn (string $p): bool => $p !== '')));
     }
 
     /**
