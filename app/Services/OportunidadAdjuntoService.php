@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\OportunidadEncontrada;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +15,8 @@ use ZipArchive;
 
 class OportunidadAdjuntoService
 {
+    private const CACHE_FALLOS = 'oportunidad_adjuntos.fallos';
+
     private ?string $compraAgilUserKeyMemo = null;
 
     public function __construct(
@@ -82,7 +85,11 @@ class OportunidadAdjuntoService
     }
 
     /**
-     * @return array{archivos: array<string, list<string>>, consultados: list<string>}
+     * @return array{
+     *   archivos: array<string, list<string>>,
+     *   consultados: list<string>,
+     *   fallos: list<array{codigo: string, error: string, at: string|null}>
+     * }
      */
     public function indicePorCodigo(): array
     {
@@ -90,6 +97,7 @@ class OportunidadAdjuntoService
         $prefix = $this->prefix();
         $porCodigo = [];
         $consultados = [];
+        $fallosPorCodigo = [];
         $disk = Storage::disk($this->disk());
         $root = $prefix === '' ? '' : $prefix;
 
@@ -107,10 +115,23 @@ class OportunidadAdjuntoService
                 continue;
             }
             $codigo = strtoupper($partes[0]);
-            $consultados[$codigo] = true;
+            if ($nombre === 'error.json') {
+                $parsed = $this->leerErrorDesdeDisco($disk, $key, $codigo);
+                if ($parsed !== null) {
+                    $fallosPorCodigo[$codigo] = $parsed;
+                }
+
+                continue;
+            }
+            if ($nombre === 'manifest.json') {
+                $consultados[$codigo] = true;
+
+                continue;
+            }
             if ($this->esArchivoInterno($key, $nombre) || str_starts_with($partes[1], '_preview/')) {
                 continue;
             }
+            $consultados[$codigo] = true;
             $porCodigo[$codigo] ??= [];
             $porCodigo[$codigo][] = $nombre;
         }
@@ -121,12 +142,28 @@ class OportunidadAdjuntoService
         }
         unset($nombres);
 
+        foreach ($this->fallosDesdeCache() as $fallo) {
+            $codigo = $fallo['codigo'];
+            if ($codigo === '' || isset($consultados[$codigo])) {
+                continue;
+            }
+            $fallosPorCodigo[$codigo] ??= $fallo;
+        }
+
+        foreach ($consultados as $codigo => $_) {
+            unset($fallosPorCodigo[$codigo]);
+        }
+
         $codigos = array_keys($consultados);
         sort($codigos);
+
+        $fallos = array_values($fallosPorCodigo);
+        usort($fallos, fn ($a, $b) => strcasecmp($a['codigo'], $b['codigo']));
 
         return [
             'archivos' => $porCodigo,
             'consultados' => $codigos,
+            'fallos' => $fallos,
         ];
     }
 
@@ -204,10 +241,153 @@ class OportunidadAdjuntoService
         try {
             $this->buscarYGuardar($codigo);
         } catch (Throwable $e) {
+            $this->registrarFallo($codigo, $e->getMessage());
             Log::warning('OportunidadAdjunto: no se pudieron buscar adjuntos en corrida', [
                 'codigo' => $codigo,
                 'message' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * @param  list<string>  $codigosVigentes
+     * @param  array{archivos?: array<string, list<string>>, consultados?: list<string>, fallos?: list<array{codigo: string, error: string, at: string|null}>}|null  $indice
+     * @return array{
+     *   configurado: bool,
+     *   total: int,
+     *   consultados: int,
+     *   con_archivos: int,
+     *   sin_adjuntos: int,
+     *   pendientes: int,
+     *   fallos_count: int,
+     *   fallos: list<array{codigo: string, error: string, at: string|null}>
+     * }
+     */
+    public function resumen(array $codigosVigentes, ?array $indice = null): array
+    {
+        $vigentes = [];
+        foreach ($codigosVigentes as $codigo) {
+            $codigo = $this->normalizarCodigo((string) $codigo);
+            if ($codigo !== '') {
+                $vigentes[$codigo] = true;
+            }
+        }
+        $total = count($vigentes);
+
+        if (! $this->isConfigured()) {
+            return [
+                'configurado' => false,
+                'total' => $total,
+                'consultados' => 0,
+                'con_archivos' => 0,
+                'sin_adjuntos' => 0,
+                'pendientes' => $total,
+                'fallos_count' => 0,
+                'fallos' => [],
+            ];
+        }
+
+        if ($indice === null) {
+            try {
+                $indice = $this->indicePorCodigo();
+            } catch (Throwable) {
+                return [
+                    'configurado' => true,
+                    'total' => $total,
+                    'consultados' => 0,
+                    'con_archivos' => 0,
+                    'sin_adjuntos' => 0,
+                    'pendientes' => $total,
+                    'fallos_count' => 0,
+                    'fallos' => [],
+                ];
+            }
+        }
+
+        $consultadosSet = array_fill_keys($indice['consultados'] ?? [], true);
+        $archivos = is_array($indice['archivos'] ?? null) ? $indice['archivos'] : [];
+        $consultados = 0;
+        $conArchivos = 0;
+        foreach ($vigentes as $codigo => $_) {
+            if (! isset($consultadosSet[$codigo])) {
+                continue;
+            }
+            $consultados++;
+            $n = count($archivos[$codigo] ?? []);
+            if ($n > 0) {
+                $conArchivos++;
+            }
+        }
+
+        $fallos = [];
+        foreach ($indice['fallos'] ?? [] as $fallo) {
+            if (! is_array($fallo)) {
+                continue;
+            }
+            $codigo = $this->normalizarCodigo((string) ($fallo['codigo'] ?? ''));
+            if ($codigo === '' || isset($consultadosSet[$codigo])) {
+                continue;
+            }
+            $fallos[] = [
+                'codigo' => $codigo,
+                'error' => (string) ($fallo['error'] ?? 'Error al buscar adjuntos.'),
+                'at' => isset($fallo['at']) ? (string) $fallo['at'] : null,
+            ];
+        }
+
+        return [
+            'configurado' => true,
+            'total' => $total,
+            'consultados' => $consultados,
+            'con_archivos' => $conArchivos,
+            'sin_adjuntos' => max(0, $consultados - $conArchivos),
+            'pendientes' => max(0, $total - $consultados),
+            'fallos_count' => count($fallos),
+            'fallos' => $fallos,
+        ];
+    }
+
+    public function registrarFallo(string $codigo, string $mensaje): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return;
+        }
+        $payload = [
+            'codigo' => $codigo,
+            'error' => mb_substr(trim($mensaje), 0, 240),
+            'at' => now()->toIso8601String(),
+        ];
+        $this->guardarFalloCache($payload);
+        if (! $this->isConfigured()) {
+            return;
+        }
+        try {
+            Storage::disk($this->disk())->put(
+                $this->carpeta($codigo).'/error.json',
+                json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+            );
+        } catch (Throwable) {
+        }
+    }
+
+    public function limpiarFallo(string $codigo): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return;
+        }
+        $this->quitarFalloCache($codigo);
+        if (! $this->isConfigured()) {
+            return;
+        }
+        try {
+            $disk = Storage::disk($this->disk());
+            $key = $this->carpeta($codigo).'/error.json';
+            if ($disk->exists($key)) {
+                $disk->delete($key);
+            }
+        } catch (Throwable) {
         }
     }
 
@@ -253,6 +433,7 @@ class OportunidadAdjuntoService
 
         $archivos = $this->listar($codigo);
         $this->escribirManifest($codigo, array_column($archivos, 'nombre'));
+        $this->limpiarFallo($codigo);
 
         return [
             'codigo' => $codigo,
@@ -407,11 +588,94 @@ class OportunidadAdjuntoService
 
     private function esArchivoInterno(string $key, string $nombre): bool
     {
-        if ($nombre === '' || $nombre === 'manifest.json') {
+        if ($nombre === '' || $nombre === 'manifest.json' || $nombre === 'error.json') {
             return true;
         }
 
         return str_contains(str_replace('\\', '/', $key), '/_preview/');
+    }
+
+    /**
+     * @param  \Illuminate\Contracts\Filesystem\Filesystem  $disk
+     * @return array{codigo: string, error: string, at: string|null}|null
+     */
+    private function leerErrorDesdeDisco($disk, string $key, string $codigo): ?array
+    {
+        try {
+            $raw = json_decode((string) $disk->get($key), true);
+        } catch (Throwable) {
+            return [
+                'codigo' => $codigo,
+                'error' => 'Error al buscar adjuntos.',
+                'at' => null,
+            ];
+        }
+        if (! is_array($raw)) {
+            return [
+                'codigo' => $codigo,
+                'error' => 'Error al buscar adjuntos.',
+                'at' => null,
+            ];
+        }
+        $error = trim((string) ($raw['error'] ?? $raw['message'] ?? ''));
+
+        return [
+            'codigo' => $codigo,
+            'error' => $error !== '' ? mb_substr($error, 0, 240) : 'Error al buscar adjuntos.',
+            'at' => isset($raw['at']) ? (string) $raw['at'] : null,
+        ];
+    }
+
+    /**
+     * @return list<array{codigo: string, error: string, at: string|null}>
+     */
+    private function fallosDesdeCache(): array
+    {
+        $raw = Cache::get(self::CACHE_FALLOS, []);
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $codigo = $this->normalizarCodigo((string) ($item['codigo'] ?? ''));
+            if ($codigo === '') {
+                continue;
+            }
+            $error = trim((string) ($item['error'] ?? ''));
+            $out[] = [
+                'codigo' => $codigo,
+                'error' => $error !== '' ? mb_substr($error, 0, 240) : 'Error al buscar adjuntos.',
+                'at' => isset($item['at']) ? (string) $item['at'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{codigo: string, error: string, at: string}  $payload
+     */
+    private function guardarFalloCache(array $payload): void
+    {
+        $porCodigo = [];
+        foreach ($this->fallosDesdeCache() as $fallo) {
+            $porCodigo[$fallo['codigo']] = $fallo;
+        }
+        $porCodigo[$payload['codigo']] = $payload;
+        Cache::put(self::CACHE_FALLOS, array_values($porCodigo), now()->addDays(14));
+    }
+
+    private function quitarFalloCache(string $codigo): void
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+        $restantes = array_values(array_filter(
+            $this->fallosDesdeCache(),
+            fn (array $fallo) => $fallo['codigo'] !== $codigo,
+        ));
+        Cache::put(self::CACHE_FALLOS, $restantes, now()->addDays(14));
     }
 
     public function htmlPreviewExcel(string $contenido): string

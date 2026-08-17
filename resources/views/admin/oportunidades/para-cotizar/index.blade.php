@@ -260,7 +260,7 @@
     </div>
 
     <div class="row g-3 mb-3" id="sync-par-paneles">
-        <div class="col-md-6">
+        <div class="{{ ($puedeAdjuntos ?? false) ? 'col-12 col-lg-4' : 'col-md-6' }}">
             <div id="sync-cotizaciones-estado" class="card shadow-sm h-100">
                 <div class="card-body py-3">
                     <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
@@ -306,7 +306,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="{{ ($puedeAdjuntos ?? false) ? 'col-12 col-lg-4' : 'col-md-6' }}">
             <div id="sync-vinculaciones-estado" class="card shadow-sm h-100">
                 <div class="card-body py-3">
                     <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
@@ -352,6 +352,50 @@
                 </div>
             </div>
         </div>
+        @if($puedeAdjuntos ?? false)
+        <div class="col-12 col-lg-4">
+            <div id="sync-adjuntos-estado" class="card shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
+                        <div class="fw-semibold text-nowrap">
+                            <i class="bi bi-paperclip"></i> Adjuntos Mercado P&uacute;blico
+                        </div>
+                        <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
+                    </div>
+                    <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div class="progress mb-2" style="height: 0.45rem;" id="sync-adj-progreso-wrap">
+                        <div id="sync-adj-progreso-bar" class="progress-bar bg-success" role="progressbar"
+                            style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <button type="button" id="sync-adj-detalle-toggle" class="btn btn-sm btn-outline-secondary"
+                            aria-expanded="false" aria-controls="sync-adj-detalle-panel" data-no-loader>
+                            <i class="bi bi-list-ul"></i>
+                            Fallidas <span id="sync-adj-detalle-contador" class="badge text-bg-secondary ms-1">0</span>
+                            <i id="sync-adj-detalle-chevron" class="bi bi-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <div id="sync-adj-detalle-panel" class="d-none">
+                        <div id="sync-adj-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
+                        <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
+                            <table class="table table-sm table-striped align-middle small mb-0">
+                                <thead class="table-light" style="position: sticky; top: 0;">
+                                    <tr>
+                                        <th class="text-nowrap">C&oacute;digo</th>
+                                        <th class="text-nowrap">Error</th>
+                                        <th class="text-nowrap">Cuando</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sync-adj-fallos-tbody">
+                                    <tr><td colspan="3" class="text-center text-muted py-3">Sin fallos.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
     </div>
 
     <div id="oportunidad-placeholder" class="card shadow-sm @if(! $puedeBuscar || $palabras === [] || count($guardadas) > 0) d-none @endif">
@@ -1609,10 +1653,108 @@
             return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
         }
 
+        function pintarPanelAdjuntos(data) {
+            const card = document.getElementById('sync-adjuntos-estado');
+            if (!card) return;
+            const badge = document.getElementById('sync-adj-badge');
+            const resumenEl = document.getElementById('sync-adj-resumen');
+            const bar = document.getElementById('sync-adj-progreso-bar');
+            const errorEl = document.getElementById('sync-adj-error');
+            const contador = document.getElementById('sync-adj-detalle-contador');
+            const tbody = document.getElementById('sync-adj-fallos-tbody');
+            const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
+            const total = Number(r.total) || 0;
+            const consultados = Number(r.consultados) || 0;
+            const conArchivos = Number(r.con_archivos) || 0;
+            const sinAdjuntos = Number(r.sin_adjuntos) || 0;
+            const pendientes = Number(r.pendientes) || 0;
+            const fallos = Array.isArray(r.fallos) ? r.fallos : (Array.isArray(data?.fallos) ? data.fallos : []);
+            const fallosCount = Number(r.fallos_count) || fallos.length;
+            const pct = total > 0 ? Math.min(100, Math.round((consultados / total) * 100)) : (consultados > 0 ? 100 : 0);
+
+            if (badge) {
+                if (r.configurado === false) {
+                    badge.textContent = 'sin R2';
+                    badge.className = 'badge text-bg-secondary';
+                } else if (fallosCount > 0) {
+                    badge.textContent = `${fallosCount} fallida${fallosCount === 1 ? '' : 's'}`;
+                    badge.className = 'badge text-bg-danger';
+                } else if (pendientes > 0) {
+                    badge.textContent = `${pendientes} pendiente${pendientes === 1 ? '' : 's'}`;
+                    badge.className = 'badge text-bg-warning';
+                } else {
+                    badge.textContent = 'al día';
+                    badge.className = 'badge text-bg-success';
+                }
+            }
+            if (resumenEl) {
+                if (r.configurado === false) {
+                    resumenEl.textContent = 'R2 adjuntos no configurado.';
+                } else if (total === 0 && consultados === 0) {
+                    resumenEl.textContent = 'Sin cotizaciones vigentes.';
+                } else {
+                    resumenEl.textContent = `Consultadas ${consultados} de ${total}`
+                        + ` · ${conArchivos} con archivo`
+                        + ` · ${sinAdjuntos} sin adjuntos`
+                        + (fallosCount > 0 ? ` · ${fallosCount} fallida${fallosCount === 1 ? '' : 's'}` : '');
+                }
+            }
+            if (bar) {
+                bar.style.width = `${pct}%`;
+                bar.setAttribute('aria-valuenow', String(pct));
+                bar.classList.toggle('bg-danger', fallosCount > 0 && pendientes > 0);
+                bar.classList.toggle('bg-success', fallosCount === 0);
+                bar.classList.toggle('bg-warning', fallosCount > 0 && pendientes === 0);
+            }
+            if (contador) {
+                contador.textContent = String(fallosCount);
+                contador.className = 'badge ms-1 ' + (fallosCount > 0 ? 'text-bg-danger' : 'text-bg-secondary');
+            }
+            if (errorEl) {
+                const err = String(data?.error || '').trim();
+                if (err) {
+                    errorEl.textContent = err;
+                    errorEl.classList.remove('d-none');
+                } else {
+                    errorEl.textContent = '';
+                    errorEl.classList.add('d-none');
+                }
+            }
+            if (tbody) {
+                if (fallos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Sin fallos.</td></tr>';
+                } else {
+                    tbody.innerHTML = fallos.map((f) => {
+                        const cod = escapeHtmlSync(String(f.codigo || '').toUpperCase());
+                        const errTxt = String(f.error || '').trim();
+                        const cuando = formatearFechaSync(f.at) || '—';
+                        return `<tr>
+                            <td class="font-monospace small">${cod || '—'}</td>
+                            <td class="small text-danger">${errTxt ? escapeHtmlSync(errTxt) : '—'}</td>
+                            <td class="text-nowrap small tabular-nums">${escapeHtmlSync(cuando)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+        }
+
+        let adjuntosEstadoAt = 0;
+        let adjuntosEstadoEnCurso = false;
+
+        async function maybeRefreshAdjuntos(forzar) {
+            if (!puedeAdjuntos) return;
+            const now = Date.now();
+            if (!forzar && now - adjuntosEstadoAt < 8000) return;
+            if (adjuntosEstadoEnCurso) return;
+            adjuntosEstadoAt = now;
+            await cargarConteosAdjuntos();
+        }
+
         async function cargarConteosAdjuntos() {
             if (!puedeAdjuntos || !urls.adjuntosEstado) {
                 return;
             }
+            adjuntosEstadoEnCurso = true;
             try {
                 const res = await fetch(urls.adjuntosEstado, {
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -1620,6 +1762,12 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok) {
+                    pintarPanelAdjuntos({
+                        ok: false,
+                        error: (data && data.error) ? data.error : 'No se pudo cargar el estado de adjuntos.',
+                        resumen: data.resumen || {},
+                        fallos: data.fallos || [],
+                    });
                     return;
                 }
                 Object.keys(adjuntosPorCodigo).forEach((k) => { delete adjuntosPorCodigo[k]; });
@@ -1641,9 +1789,17 @@
                 Object.keys(adjuntosPorCodigo).forEach((cod) => {
                     adjuntosConsultados[cod] = true;
                 });
+                pintarPanelAdjuntos(data);
                 renderTabla(false);
             } catch (_e) {
-                // silencioso
+                pintarPanelAdjuntos({
+                    ok: false,
+                    error: 'No se pudo cargar el estado de adjuntos.',
+                    resumen: {},
+                    fallos: [],
+                });
+            } finally {
+                adjuntosEstadoEnCurso = false;
             }
         }
 
@@ -1705,6 +1861,7 @@
                     btn.disabled = false;
                     btn.innerHTML = labelPrev;
                 }
+                cargarConteosAdjuntos();
             }
         }
 
@@ -3925,6 +4082,9 @@
             if (corrida.sync_par) {
                 aplicarSyncPar(corrida.sync_par);
             }
+            if (corrida.vinculo && corrida.vinculo.estado === 'running') {
+                maybeRefreshAdjuntos(false);
+            }
             const activo = corrida.estado === 'running';
             const esperandoWorker = corridaEsperandoWorker(corrida);
             const cambiandoDia = corrida.estado === 'completed' &&
@@ -4416,8 +4576,13 @@
                 const panel = document.getElementById('sync-vin-detalle-panel');
                 setSyncDetalleAbierto('vin', !!panel?.classList.contains('d-none'));
             });
+            document.getElementById('sync-adj-detalle-toggle')?.addEventListener('click', () => {
+                const panel = document.getElementById('sync-adj-detalle-panel');
+                setSyncDetalleAbierto('adj', !!panel?.classList.contains('d-none'));
+            });
             setSyncDetalleAbierto('cot', false);
             setSyncDetalleAbierto('vin', false);
+            setSyncDetalleAbierto('adj', false);
         }
         if (puedeAdjuntos) {
             cargarConteosAdjuntos();

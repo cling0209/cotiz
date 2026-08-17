@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\OportunidadEncontrada;
 use App\Models\User;
+use App\Services\OportunidadAdjuntoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -31,6 +33,7 @@ class OportunidadAdjuntosTest extends TestCase
             'filesystems.disks.r2_adjuntos.secret' => 'test-secret',
         ]);
         Storage::fake('r2_adjuntos');
+        Cache::forget('oportunidad_adjuntos.fallos');
     }
 
     public function test_ejecutivo_puede_buscar_adjuntos(): void
@@ -127,7 +130,10 @@ class OportunidadAdjuntosTest extends TestCase
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
             ->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('consultados.0', '1000-1-COT26');
+            ->assertJsonPath('consultados.0', '1000-1-COT26')
+            ->assertJsonPath('resumen.consultados', 1)
+            ->assertJsonPath('resumen.con_archivos', 1)
+            ->assertJsonPath('resumen.fallos_count', 0);
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
@@ -186,6 +192,61 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('guardados', 0);
 
         Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/manifest.json');
+    }
+
+    public function test_estado_incluye_resumen_y_fallos_de_corrida(): void
+    {
+        $user = $this->superadmin();
+        $this->crearOportunidad('1000-1-COT26');
+
+        $svc = app(OportunidadAdjuntoService::class);
+        $svc->buscarSiPendiente('NO-EXISTE-1-COT26');
+
+        Storage::disk('r2_adjuntos')->assertExists('NO-EXISTE-1-COT26/error.json');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('resumen.total', 1)
+            ->assertJsonPath('resumen.pendientes', 1)
+            ->assertJsonPath('resumen.fallos_count', 1)
+            ->assertJsonPath('fallos.0.codigo', 'NO-EXISTE-1-COT26');
+    }
+
+    public function test_busqueda_exitosa_limpia_fallo_previo(): void
+    {
+        $user = $this->superadmin();
+        $this->crearOportunidad('1000-1-COT26');
+
+        $svc = app(OportunidadAdjuntoService::class);
+        $svc->registrarFallo('1000-1-COT26', 'timeout MP');
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/error.json');
+
+        Http::fake([
+            'servicios-compra-agil.mercadopublico.cl/v1/adjuntos-compra-agil/listar/*' => Http::response([
+                'success' => 'OK',
+                'payload' => ['files' => []],
+            ], 200),
+            'api2.mercadopublico.cl/*' => Http::response(['success' => 'OK', 'payload' => []], 200),
+            'buscador.mercadopublico.cl/*' => Http::response('<html></html>', 200),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('admin.oportunidades.para-cotizar.adjuntos.buscar'), [
+                'codigo' => '1000-1-COT26',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        Storage::disk('r2_adjuntos')->assertMissing('1000-1-COT26/error.json');
+        Storage::disk('r2_adjuntos')->assertExists('1000-1-COT26/manifest.json');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('resumen.fallos_count', 0)
+            ->assertJsonPath('resumen.consultados', 1);
     }
 
     public function test_preview_pdf_no_llama_a_libreoffice(): void
@@ -362,6 +423,7 @@ class OportunidadAdjuntosTest extends TestCase
         Storage::disk('r2_adjuntos')->put('1000-1-COT26/bases.pdf', '%PDF-1.4 x');
         Storage::disk('r2_adjuntos')->put('1000-1-COT26/_preview/TEXTILES.doc.pdf', '%PDF-1.4 y');
         Storage::disk('r2_adjuntos')->put('1000-1-COT26/manifest.json', '{}');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/error.json', '{"error":"timeout"}');
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
@@ -376,6 +438,25 @@ class OportunidadAdjuntosTest extends TestCase
         return User::factory()->create([
             'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+    }
+
+    private function crearOportunidad(string $codigo): OportunidadEncontrada
+    {
+        return OportunidadEncontrada::query()->create([
+            'codigo' => $codigo,
+            'nombre' => 'Papel bond',
+            'organismo' => 'Hospital Demo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 500000,
+            'moneda' => 'CLP',
+            'fecha_publicacion' => now()->subDay(),
+            'fecha_cierre' => now()->addDays(5),
+            'palabras_coinciden' => ['papel'],
+            'cantidad_productos' => 3,
+            'fecha_busqueda' => now()->toDateString(),
+            'indice_region_config' => 0,
         ]);
     }
 }

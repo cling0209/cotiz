@@ -121,6 +121,21 @@ class OportunidadParaCotizarController extends Controller
 
     public function adjuntosEstado(): JsonResponse
     {
+        $codigosVigentes = $this->servicio->codigosVigentesUnicos();
+
+        if (! $this->adjuntos->isConfigured()) {
+            $resumen = $this->adjuntos->resumen($codigosVigentes);
+
+            return response()->json([
+                'ok' => true,
+                'conteos' => [],
+                'archivos' => [],
+                'consultados' => [],
+                'resumen' => $resumen,
+                'fallos' => $resumen['fallos'],
+            ]);
+        }
+
         try {
             $indice = $this->adjuntos->indicePorCodigo();
         } catch (RuntimeException $e) {
@@ -133,11 +148,15 @@ class OportunidadParaCotizarController extends Controller
             $conteos[$codigo] = count($nombres);
         }
 
+        $resumen = $this->adjuntos->resumen($codigosVigentes, $indice);
+
         return response()->json([
             'ok' => true,
             'conteos' => $conteos,
             'archivos' => $archivos,
             'consultados' => $indice['consultados'],
+            'resumen' => $resumen,
+            'fallos' => $resumen['fallos'],
         ]);
     }
 
@@ -152,6 +171,8 @@ class OportunidadParaCotizarController extends Controller
         try {
             $resultado = $this->adjuntos->buscarYGuardar($data['codigo']);
         } catch (RuntimeException $e) {
+            $this->adjuntos->registrarFallo($data['codigo'], $e->getMessage());
+
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
 
