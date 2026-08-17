@@ -123,6 +123,46 @@ TXT;
         $this->assertStringContainsString('GLOBOS', $lineas[2]['descripcion']);
     }
 
+    public function test_bases_linea_reune_cantidad_monto_en_linea_aparte(): void
+    {
+        $texto = <<<'TXT'
+LINEA DESCRIPCION REQUERIMIENTO
+UNIDADES* POR
+AÑO Monto Total ($) POR AÑO
+ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE
+1 STANDARD 105 BLANCO TITANIO 600 ML 1 33.201
+Página 34 de 50
+Corporación de
+Ecucación y Salud
+LAS CONDES
+MUNICIPALIDAD
+10 ACRÍLICO 250ML AZUL REAL METAL 440
+23 119.114
+11 ACRÍLICO 250ML BERMELLON 888
+23 119.114
+18
+ADHESIVO GLITTER GLUE 6 COLORES ESCARCHA
+255 180.856
+Los oferentes podrán postular a una o más líneas, de manera independiente.
+TXT;
+
+        $lineas = $this->parser->parseTexto($texto);
+
+        $azul = collect($lineas)->first(
+            fn (array $l) => str_contains(mb_strtoupper($l['descripcion']), 'AZUL REAL METAL'),
+        );
+        $glitter = collect($lineas)->first(
+            fn (array $l) => str_contains(mb_strtoupper($l['descripcion']), 'GLITTER GLUE'),
+        );
+
+        $this->assertNotNull($azul);
+        $this->assertSame(23, $azul['cantidad']);
+        $this->assertStringContainsString('440', $azul['descripcion']);
+        $this->assertStringNotContainsStringIgnoringCase('Corporación', $azul['descripcion']);
+        $this->assertNotNull($glitter);
+        $this->assertSame(255, $glitter['cantidad']);
+    }
+
     public function test_fixture_listado_materiales(): void
     {
         $texto = $this->cargarFixture('listado_materiales.txt');

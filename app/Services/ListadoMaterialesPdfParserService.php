@@ -170,7 +170,8 @@ class ListadoMaterialesPdfParserService
             );
             $nativoSuficiente = count($lineasNativas) >= 1
                 && ! $this->mapeoEsFilaUnicaPegoteada($lineasNativas)
-                && ! $this->mapeoPareceFragmentado($lineasNativas);
+                && ! $this->mapeoPareceFragmentado($lineasNativas)
+                && ! $this->mapeoBasesPareceCorrupto($lineasNativas);
 
             if ($nativoSuficiente) {
                 Log::info('Import PDF: mapeo nativo suficiente; se omite Mistral/Paddle', [
@@ -428,6 +429,7 @@ class ListadoMaterialesPdfParserService
             if (
                 $desdeListado !== []
                 && ! $this->mapeoPareceFragmentado($desdeListado)
+                && ! $this->mapeoBasesPareceCorrupto($desdeListado)
                 && in_array($this->detectarFormato($textoCabecera), [
                     self::FORMATO_LISTADO,
                     self::FORMATO_DETALLE,
@@ -529,6 +531,28 @@ class ListadoMaterialesPdfParserService
         }
 
         return $fragmentos >= (int) max(2, ceil(count($lineas) * 0.4));
+    }
+
+    /**
+     * Catálogo bases mal armado: ruido de encabezado de página o códigos tomados como cantidad.
+     *
+     * @param  array<int, array{cantidad: int, descripcion: string}>  $lineas
+     */
+    private function mapeoBasesPareceCorrupto(array $lineas): bool
+    {
+        if ($lineas === []) {
+            return false;
+        }
+
+        $ruido = 0;
+        foreach ($lineas as $linea) {
+            $desc = (string) ($linea['descripcion'] ?? '');
+            if (preg_match('/corporaci|municipalidad|las condes|ecucaci|p[aá]gina\s+\d+/iu', $desc) === 1) {
+                $ruido++;
+            }
+        }
+
+        return $ruido >= 2;
     }
 
     /**
@@ -3123,6 +3147,14 @@ class ListadoMaterialesPdfParserService
             'COMISIÓN EVALUADORA',
             'COMISION EVALUADORA',
             'MERCADOPUBLICO.CL',
+            'CORPORACIÓN DE',
+            'CORPORACION DE',
+            'EDUCACIÓN Y SALUD',
+            'EDUCACION Y SALUD',
+            'ECUCACIÓN Y SALUD',
+            'ECUCACION Y SALUD',
+            'LAS CONDES',
+            'MUNICIPALIDAD',
         ] as $marcador) {
             if (str_contains($upper, $marcador)) {
                 return true;
@@ -3457,6 +3489,16 @@ class ListadoMaterialesPdfParserService
                 continue;
             }
 
+            // Cantidad + monto en línea aparte (celdas partidas del PDF nativo).
+            if ($buffer !== '' && $this->esLineaSoloUnidadesMontoBases($linea)) {
+                $buffer = trim($buffer.' '.$linea);
+                if ($tryFlush($buffer)) {
+                    $buffer = '';
+                }
+
+                continue;
+            }
+
             if (preg_match('/^\d{1,3}\s+/u', $linea) === 1) {
                 if ($buffer !== '' && ! $tryFlush($buffer)) {
                     if (! $this->esOrphanAdministrativo($buffer)) {
@@ -3498,6 +3540,19 @@ class ListadoMaterialesPdfParserService
     }
 
     /**
+     * Segunda celda partida: solo "UNIDADES MONTO" (ej. "23 119.114").
+     */
+    private function esLineaSoloUnidadesMontoBases(string $linea): bool
+    {
+        $linea = trim($linea);
+
+        return preg_match(
+            '/^\d{1,3}(?:\.\d{3})*\s+\d{1,3}(?:\.\d{3})+(?:[a-z]{0,2})?$/u',
+            $linea,
+        ) === 1;
+    }
+
+    /**
      * Una fila del catálogo bases: LÍNEA + DESCRIPCIÓN + UNIDADES (+ monto opcional).
      *
      * @return array{cantidad: int, descripcion: string}|null
@@ -3519,9 +3574,20 @@ class ListadoMaterialesPdfParserService
             return $this->construirFilaBasesLinea(trim($m[2]), '1');
         }
 
+        // Sin monto: solo si la "cantidad" no parece código de producto al final (3 dígitos
+        // típicos de catálogo de color) — esas filas suelen continuar en la línea siguiente.
         $patronSoloReferencia = '/^(\d{1,3})\s+(.+)\s+(\d{1,4})$/u';
         if (preg_match($patronSoloReferencia, $text, $m) === 1 && ! str_contains($m[3], '.')) {
-            return $this->construirFilaBasesLinea(trim($m[2]), $m[3]);
+            $cantidadCandidata = $m[3];
+            $desc = trim($m[2]);
+            if (
+                preg_match('/^\d{3}$/u', $cantidadCandidata) === 1
+                && preg_match('/\b(?:ML|METAL|SERIE|COLORES?|ARTEL|AMSTERDAM|STANDARD)\b/iu', $desc) === 1
+            ) {
+                return null;
+            }
+
+            return $this->construirFilaBasesLinea($desc, $cantidadCandidata);
         }
 
         return null;
@@ -3582,9 +3648,20 @@ class ListadoMaterialesPdfParserService
     private function limpiarRuidoBases(string $catalogo): string
     {
         $catalogo = preg_replace('/P[aá]gina\s+\d+\s+de\s+\d+/iu', "\n", $catalogo) ?? $catalogo;
-        $catalogo = preg_replace('/Corporaci[oó]n de\s+E[do]ucaci[oó]n y Salud/iu', "\n", $catalogo) ?? $catalogo;
+        $catalogo = preg_replace(
+            '/Corporaci[oó]n de\s*E[do]ucaci[oó]n y Salud/iu',
+            "\n",
+            $catalogo,
+        ) ?? $catalogo;
+        $catalogo = preg_replace(
+            '/Corporaci[oó]n de\s*\R\s*E[do]ucaci[oó]n y Salud/iu',
+            "\n",
+            $catalogo,
+        ) ?? $catalogo;
         $catalogo = preg_replace('/\bLAS CONDES\b/u', "\n", $catalogo) ?? $catalogo;
         $catalogo = preg_replace('/\bMUNICIPALIDAD\b/u', "\n", $catalogo) ?? $catalogo;
+        $catalogo = preg_replace('/^Corporaci[oó]n de\s*$/imu', "\n", $catalogo) ?? $catalogo;
+        $catalogo = preg_replace('/^E[dc]ucaci[oó]n y Salud\s*$/imu', "\n", $catalogo) ?? $catalogo;
         $catalogo = preg_replace('/LINEA DESCRIPCION REQUERIMIENTO/iu', "\n", $catalogo) ?? $catalogo;
         $catalogo = preg_replace(
             '/UNIDADES\*\s*POR\s*A[ÑN]O\s*Monto Total\s*\(\$\)\s*POR\s*A[ÑN]O/iu',
