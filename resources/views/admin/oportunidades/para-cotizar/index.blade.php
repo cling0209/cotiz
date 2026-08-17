@@ -806,6 +806,8 @@
         let tickTimer = null;
         let buscando = false;
         let cancelado = false;
+        /** Código en «Ir a cotizar»: se mantiene «Vinculando…» hasta navegar (el re-render no debe quitarlo). */
+        let cotizarEnCursoCodigo = '';
         let pollTimer = null;
         let ultimaCorridaId = null;
         let intentosCambioDia = 0;
@@ -1029,6 +1031,13 @@
         }
 
         function htmlEstadoVinculoListado(item) {
+            const codigoItem = String(item?.codigo || '').toUpperCase();
+            if (cotizarEnCursoCodigo && codigoItem === cotizarEnCursoCodigo) {
+                return '<div class="mt-1"><span class="badge text-bg-info">'
+                    + '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>'
+                    + 'Vinculando…</span></div>'
+                    + (puedeBuscar ? htmlEstadoSyncParListado(item) : '');
+            }
             const estado = String(item?.vinculo_estado || '').trim();
             let html = '';
             if (itemVinculoProcesado(item)) {
@@ -1566,6 +1575,9 @@
                     const mapa = leerVisitasLocales();
                     mapa[codigoNorm] = Math.max(Number(mapa[codigoNorm]) || 0, veces);
                     guardarVisitasLocales(mapa);
+                    if (cotizarEnCursoCodigo && cotizarEnCursoCodigo === codigoNorm) {
+                        return;
+                    }
                     renderTabla(false);
                 }
             }).catch(() => {
@@ -2150,10 +2162,15 @@
                         <i class="bi bi-list-ul"></i> Productos
                     </button>`
                     : '';
+                const cotizando = cotizarEnCursoCodigo !== '' && codigo === cotizarEnCursoCodigo;
                 const btnCotizar = href
-                    ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
-                        <i class="bi bi-cart-plus"></i> Ir a cotizar
+                    ? (cotizando
+                        ? `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar disabled" data-no-loader data-codigo="${escapeHtml(codigo)}" aria-disabled="true">
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Vinculando…
                    </a>`
+                        : `<a href="${escapeHtml(href)}" class="btn btn-primary btn-sm text-nowrap btn-ir-cotizar" data-no-loader data-codigo="${escapeHtml(codigo)}">
+                        <i class="bi bi-cart-plus"></i> Ir a cotizar
+                   </a>`)
                     : '';
                 const btnEliminar = (puedeEliminar && codigo && urls.eliminar)
                     ? `<button type="button" class="btn btn-outline-danger btn-sm text-nowrap btn-eliminar-oportunidad" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Eliminar oportunidad (también en el sitio par)">
@@ -2426,6 +2443,9 @@
             const cod = String(item.codigo).toUpperCase();
             const prev = porCodigo.get(cod) || {};
             porCodigo.set(cod, { ...prev, ...item, codigo: cod });
+            if (cotizarEnCursoCodigo && cotizarEnCursoCodigo === cod) {
+                return;
+            }
             renderTabla(false);
         }
 
@@ -2652,13 +2672,18 @@
         }
 
         if (tbody) {
-            // Ir a cotizar: vincular solo si aún no está procesada (sin refresco por frases).
+            // Ir a cotizar: vincular si falta; «Vinculando…» permanece hasta navegar.
             tbody.addEventListener('click', async (e) => {
                 const link = e.target.closest('a.btn-ir-cotizar');
                 if (!link) {
                     return;
                 }
                 const cod = String(link.getAttribute('data-codigo') || '').trim().toUpperCase();
+                if (cotizarEnCursoCodigo && cotizarEnCursoCodigo === cod) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 incrementarVisitaLocal(cod);
                 registrarVisitaServidor(cod);
                 e.preventDefault();
@@ -2669,15 +2694,12 @@
                     window.location.href = href;
                     return;
                 }
-                const labelPrev = link.innerHTML;
-                link.classList.add('disabled');
-                link.setAttribute('aria-disabled', 'true');
-                link.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando vínculo…';
+                cotizarEnCursoCodigo = cod;
+                renderTabla(false);
                 const prev = await asegurarVinculoAntes(cod);
                 if (!prev.ok) {
-                    link.classList.remove('disabled');
-                    link.removeAttribute('aria-disabled');
-                    link.innerHTML = labelPrev;
+                    cotizarEnCursoCodigo = '';
+                    renderTabla(false);
                     if (bsModalVinculo && modalVinculoLabel && modalVinculoError) {
                         modalVinculoLabel.textContent = `Vinculación — ${cod}`;
                         if (modalVinculoResumen) modalVinculoResumen.textContent = '';
