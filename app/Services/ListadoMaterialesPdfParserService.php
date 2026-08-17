@@ -420,7 +420,7 @@ class ListadoMaterialesPdfParserService
             }
         }
 
-        // Listado "Cantidad / NOMBRE DEL PRODUCTO" nativo: parseTexto une continuaciónes.
+        // Nativo fiable: listados y catálogos bases (prefijo multilínea + ítem).
         if ($textoCabecera !== '') {
             $desdeListado = $this->deduplicarLineasMapeo(
                 $this->filtrarLineasPieMapeo($this->parseTexto($textoCabecera)),
@@ -432,6 +432,7 @@ class ListadoMaterialesPdfParserService
                     self::FORMATO_LISTADO,
                     self::FORMATO_DETALLE,
                     self::FORMATO_TABLA_PRODUCTO_CANTIDAD,
+                    self::FORMATO_BASES,
                 ], true)
             ) {
                 return $desdeListado;

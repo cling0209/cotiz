@@ -170,8 +170,33 @@ class PdfMistralOcrServiceTest extends TestCase
         $this->assertStringContainsString('Descripción', $prompt);
         $this->assertStringContainsString('acentos', $prompt);
         $this->assertStringContainsString('CONCATENA', $prompt);
+        $this->assertStringContainsString('ANTEPÓN', $prompt);
+        $this->assertStringContainsString('Prefijo ARRIBA', $prompt);
         $this->assertStringContainsString('12 COLORES', $prompt);
         $this->assertStringContainsString('lado a lado', $prompt);
+        $this->assertStringContainsString('UNA sola cadena', $prompt);
+    }
+
+    public function test_anotacion_normaliza_saltos_de_linea_en_descripcion(): void
+    {
+        $paginas = (new PdfMistralOcrService)->paginasDesdeRespuesta([
+            'document_annotation' => json_encode([
+                'items' => [
+                    [
+                        'cantidad' => 1,
+                        'descripcion' => "ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE\nSTANDARD 105\nBLANCO TITANIO 600 ML",
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'pages' => [],
+        ], 'UNIDADES* POR AÑO', 'DESCRIPCION REQUERIMIENTO');
+
+        $this->assertCount(1, $paginas[0]['items']);
+        $this->assertSame(1, $paginas[0]['items'][0]['cantidad']);
+        $this->assertSame(
+            'ACRÍLICO (TIPO AMSTERDAM EQUIVALENTE) SERIE STANDARD 105 BLANCO TITANIO 600 ML',
+            $paginas[0]['items'][0]['descripcion'],
+        );
     }
 
     public function test_mapea_encabezado_descripcion_con_acento(): void

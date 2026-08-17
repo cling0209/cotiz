@@ -199,9 +199,12 @@ Extracción:
 1. Recorre todas las páginas y todas las tablas/listados donde aparezcan esas columnas.
 2. Si el mismo par de columnas aparece dos veces (tablas lado a lado o bloques repetidos en una fila), emite un ítem por cada bloque. No fusiones izquierda y derecha en un solo ítem.
 3. Una fila de producto = una cantidad en la columna de cantidad + su descripción completa.
-4. Si el nombre del producto continúa en la línea siguiente SIN una nueva cantidad en la columna de cantidad, CONCATENA ese texto a la descripción anterior. No crees un ítem nuevo.
-5. Nunca uses como cantidad un número que forme parte del nombre del producto (ej. "12 COLORES", "N° 180", "1/8", "500 HOJAS").
-6. "descripcion" = texto completo del producto (limpia, una sola cadena).
+4. Descripciones multilínea (muy importante; aplica a cualquier PDF):
+   a) Continuación ABAJO: si el nombre sigue en la línea/celda siguiente SIN cantidad nueva en la columna de cantidad, CONCATENA ese texto a la descripción del ítem actual. No crees un ítem nuevo.
+   b) Prefijo ARRIBA: si hay una línea/celda de producto SIN cantidad (título, serie, categoría o inicio del nombre) y la SIGUIENTE fila sí tiene cantidad, ANTEPÓN ese texto a la descripción de esa fila con cantidad. Ejemplo: "ACRÍLICO … SERIE" + "STANDARD 105 BLANCO TITANIO 600 ML" → un solo ítem con descripción completa.
+   c) Varios renglones de la misma celda o fila = una sola descripción (une con espacios).
+5. Nunca uses como cantidad un número que forme parte del nombre del producto (ej. "12 COLORES", "N° 180", "1/8", "500 HOJAS", índices de línea del catálogo).
+6. "descripcion" = texto completo del producto en UNA sola cadena (sin saltos de línea); incluye prefijos y continuaciones ya unidos.
 7. "cantidad" = entero de la columna de cantidad. Si no hay número usable en esa columna, usa 1.
 8. Omite pies (subtotal, IVA, total), notas, lugar de entrega, distribución/logística e imágenes referenciales.
 9. No inventes productos. Prefiere omitir una fila dudosa antes que inventarla.
@@ -234,7 +237,7 @@ PROMPT;
                                     ],
                                     'descripcion' => [
                                         'type' => 'string',
-                                        'description' => 'Descripción del producto',
+                                        'description' => 'Descripción completa del producto en una sola línea (prefijos y continuaciones ya unidos)',
                                     ],
                                 ],
                                 'required' => ['cantidad', 'descripcion'],
@@ -280,6 +283,7 @@ PROMPT;
                 continue;
             }
             $descripcion = trim((string) ($row['descripcion'] ?? $row['description'] ?? $row['producto'] ?? ''));
+            $descripcion = trim(preg_replace('/\s+/u', ' ', $descripcion) ?? $descripcion);
             if (mb_strlen($descripcion) < 2) {
                 continue;
             }
