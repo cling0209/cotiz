@@ -1098,7 +1098,7 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
-    public function test_pendientes_incluye_oc_emitida_sin_ocompra_aunque_finalizado_y_consultada_hoy(): void
+    public function test_pendientes_omite_oc_emitida_sin_ocompra_si_ya_consultada_hoy(): void
     {
         config([
             'app.timezone' => 'America/Santiago',
@@ -1106,7 +1106,48 @@ class CompraAgilResultadosTest extends TestCase
             'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
         ]);
 
-        Carbon::setTestNow(Carbon::parse('2026-07-12 15:00:00', 'America/Santiago'));
+        Carbon::setTestNow(Carbon::parse('2026-07-12 19:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 705,
+            'descripcion' => 'OC emitida sin ocompra',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '705-1-COT26',
+            'ocompra' => '',
+            'nota_softland' => 70500,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 705,
+            'codigo_proceso' => '705-1-COT26',
+            'estado_mp_codigo' => 'oc_emitida',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+            'id_orden_compra' => 55258095,
+            'rut_ganador' => '76356855-5',
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 10:30:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(0, $pendientes->count());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_oc_emitida_sin_ocompra_al_dia_siguiente(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.empresa_rut' => '76.356.855-5',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-13 10:00:00', 'America/Santiago'));
 
         Nota::query()->create([
             'nronota' => 705,
@@ -1136,6 +1177,48 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertSame(1, $pendientes->count());
         $this->assertSame(705, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_omite_consultada_en_corrida_de_la_manana_en_la_tarde(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+            'cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio' => true,
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 720,
+            'descripcion' => 'Procesada a las 10; no repetir a las 19',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '720-1-COT26',
+            'nota_softland' => 72000,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 720,
+            'codigo_proceso' => '720-1-COT26',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'fecha_ultimo_cambio' => Carbon::parse('2026-07-12 09:15:00', 'America/Santiago'),
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 10:30:00', 'America/Santiago'),
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 19:00:00', 'America/Santiago'));
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertSame(0, $service->notasPendientesConsulta()->count());
+
+        Carbon::setTestNow(Carbon::parse('2026-07-13 10:00:00', 'America/Santiago'));
+        $pendientes = $service->notasPendientesConsulta();
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(720, $pendientes->first()['nronota']);
 
         Carbon::setTestNow();
     }

@@ -726,8 +726,9 @@ class NotaMpResultadosService
      * - pendientes de seguimiento (resultado_propio = pendiente), o
      * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún), o
      * - OC emitida en MP pero falta notas.ocompra alfanumérica (ganador = empresa de esta instancia).
-     * Opcionalmente omite las ya consultadas hoy con éxito (SKIP_MISMO_DIA),
-     * salvo reintento por fallo o pendiente de ocompra.
+     * Omite las ya consultadas hoy (SKIP_MISMO_DIA): la siguiente corrida del
+     * mismo día no las vuelve a procesar; entran al día siguiente.
+     * Excepción: último detalle con fallo (exito=false) sí reintenta.
      * El filtro por horario de último cambio se aplica en notasPendientesConsulta().
      *
      * @return \Illuminate\Database\Eloquent\Builder<Nota>
@@ -772,11 +773,7 @@ class NotaMpResultadosService
                             ->whereRaw(
                                 'd.id = (SELECT MAX(d2.id) FROM nota_mp_corrida_detalle d2 WHERE d2.nronota = notas.nronota)',
                             );
-                    })
-                    ->orWhere(function ($sub) {
-                        $this->aplicarFiltroPendienteOcompraAlfanumerica($sub);
-                    })
-                    ->orWhereRaw('COALESCE(seg.finalizado, false) = false');
+                    });
             });
         }
 
