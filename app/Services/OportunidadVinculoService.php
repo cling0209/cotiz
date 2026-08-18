@@ -70,6 +70,7 @@ class OportunidadVinculoService
     }
 
     /**
+     * @param  bool  $encadenada  Reintento automático tras una corrida que dejó pendientes.
      * @return array{
      *   ok: bool,
      *   corrida: ?OportunidadVinculoCorrida,
@@ -77,7 +78,7 @@ class OportunidadVinculoService
      *   pendientes: int
      * }
      */
-    public function iniciarConDetalle(mixed $fechaBusqueda, string $usuario = 'sistema'): array
+    public function iniciarConDetalle(mixed $fechaBusqueda, string $usuario = 'sistema', bool $encadenada = false): array
     {
         if (! $this->oportunidades->apiConfigurada()) {
             return [
@@ -133,8 +134,10 @@ class OportunidadVinculoService
                 'pasos_procesados' => 0,
                 'pasos_fallidos' => 0,
                 'plan_json' => $pasos,
-                'errores_json' => [],
-                'mensaje' => 'Vinculación interna encolada ('.$this->formatearFecha($dia).').',
+                'errores_json' => $encadenada ? [['encadenada' => true]] : [],
+                'mensaje' => $encadenada
+                    ? 'Vinculación encadenada: pendientes de la corrida anterior ('.$this->formatearFecha($dia).').'
+                    : 'Vinculación interna encolada ('.$this->formatearFecha($dia).').',
             ]);
         } catch (Throwable $e) {
             Log::error('OportunidadVinculoService: no se pudo crear corrida', [
@@ -218,7 +221,7 @@ class OportunidadVinculoService
         return [
             'pendientes' => $pendientes,
             'mensaje' => 'Hay '.$pendientes.' cotización(es) vigente(s) sin vincular al maestro. '
-                .'Pulse «Iniciar vinculación» para arrancar el 2.º proceso.',
+                .'El 2.º proceso se arranca solo; el botón queda como respaldo si no parte.',
             'puede_iniciar' => true,
         ];
     }
@@ -1214,19 +1217,64 @@ class OportunidadVinculoService
             ]);
         }
 
-        // Catch-up multi-día: recién ahora el siguiente día de búsqueda.
+        $this->continuarPipelineTrasVinculo($corrida);
+    }
+
+    /**
+     * No dejar el 2.º proceso idle: si aún hay vigentes sin vincular, encola otra corrida
+     * (un reintento). Recién después sigue el catch-up del día siguiente.
+     */
+    private function continuarPipelineTrasVinculo(OportunidadVinculoCorrida $corrida): void
+    {
+        $usuario = trim((string) ($corrida->usuario ?? 'sistema')) ?: 'sistema';
+        $fecha = $corrida->fecha_busqueda;
+
+        if (! $this->corridaEsEncadenada($corrida)) {
+            $pendientes = $this->contarPendientesSafe($fecha);
+            if ($pendientes > 0) {
+                try {
+                    $detalle = $this->iniciarConDetalle($fecha, $usuario, true);
+                    if ($detalle['ok'] && $detalle['corrida'] !== null) {
+                        return;
+                    }
+                    Log::warning('No se encadenó vinculación de pendientes', [
+                        'corrida_id' => $corrida->id,
+                        'motivo' => $detalle['motivo'] ?? null,
+                        'pendientes' => $detalle['pendientes'] ?? $pendientes,
+                    ]);
+                } catch (Throwable $e) {
+                    Log::warning('No se pudo encadenar vinculación de pendientes', [
+                        'corrida_id' => $corrida->id,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         try {
             app(OportunidadBusquedaService::class)->continuarCatchUpTrasVinculacion(
-                $corrida->fecha_busqueda,
-                (string) ($corrida->usuario ?? 'sistema'),
+                $fecha,
+                $usuario,
             );
         } catch (Throwable $e) {
             Log::warning('No se pudo encolar búsqueda del día siguiente tras vinculación', [
                 'corrida_id' => $corrida->id,
-                'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                'fecha_busqueda' => (string) $fecha,
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function corridaEsEncadenada(OportunidadVinculoCorrida $corrida): bool
+    {
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        foreach ($errores as $item) {
+            if (is_array($item) && ! empty($item['encadenada'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

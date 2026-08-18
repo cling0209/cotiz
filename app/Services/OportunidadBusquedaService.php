@@ -2209,10 +2209,22 @@ class OportunidadBusquedaService
         // Pipeline: tras búsqueda → vinculación. Si no hay pendientes de vincular,
         // sync solo cotizaciones al par (vinculaciones quedan para post-vinculación o schedule).
         try {
+            $usuario = (string) ($corrida->usuario ?? 'sistema');
             $detalle = $this->vinculos->iniciarConDetalle(
                 $corrida->fecha_busqueda,
-                (string) ($corrida->usuario ?? 'sistema'),
+                $usuario,
             );
+            if (! ($detalle['ok'] ?? false) && ($detalle['motivo'] ?? '') !== OportunidadVinculoService::MOTIVO_SIN_PENDIENTES) {
+                Log::warning('No se encoló vinculación tras búsqueda; se reintenta una vez', [
+                    'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                    'motivo' => $detalle['motivo'] ?? null,
+                    'pendientes' => $detalle['pendientes'] ?? 0,
+                ]);
+                $detalle = $this->vinculos->iniciarConDetalle(
+                    $corrida->fecha_busqueda,
+                    $usuario,
+                );
+            }
             if ($detalle['ok'] && $detalle['corrida'] !== null) {
                 return;
             }

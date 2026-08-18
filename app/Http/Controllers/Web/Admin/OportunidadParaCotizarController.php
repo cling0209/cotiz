@@ -302,8 +302,8 @@ class OportunidadParaCotizarController extends Controller
             'ok' => true,
             'corrida' => $this->busqueda->estado(null, [
                 'incluir_items' => $incluirItems,
-                // Solo retomar vínculo en polls “completos” (con items), no en cada tick liviano.
-                'retomar_vinculo' => $incluirItems,
+                // Retomar el 2.º proceso si la búsqueda ya terminó y quedaron pendientes.
+                'retomar_vinculo' => true,
             ]),
             'sync_par' => $incluirSync ? $this->encontradaRelay->resumenSyncPar() : null,
         ]);

@@ -134,6 +134,102 @@ class OportunidadVinculoTest extends TestCase
         Queue::assertPushed(ProcessOportunidadVinculoJob::class);
     }
 
+    public function test_finalizar_vinculo_encadena_si_quedan_pendientes(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'CHAIN-NEW-001',
+            'nombre' => 'Pendiente nueva',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'ALREADY-OK',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'ok',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculadas 1/1…',
+        ]);
+
+        $continua = $this->app->make(OportunidadVinculoService::class)->procesarPaso($corrida);
+
+        $this->assertFalse($continua);
+        $corrida->refresh();
+        $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
+
+        $encadenada = OportunidadVinculoCorrida::query()
+            ->where('id', '>', $corrida->id)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($encadenada);
+        $this->assertSame(OportunidadVinculoService::ESTADO_RUNNING, $encadenada->estado);
+        $this->assertSame('CHAIN-NEW-001', $encadenada->plan_json[0]['codigo'] ?? null);
+        $this->assertTrue((bool) ($encadenada->errores_json[0]['encadenada'] ?? false));
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $encadenada->id);
+    }
+
+    public function test_finalizar_vinculo_encadenado_no_abre_tercera_corrida(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'CHAIN-STUCK-001',
+            'nombre' => 'Sigue pendiente',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                [
+                    'codigo' => 'CHAIN-STUCK-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'failed',
+                    'error' => 'timeout',
+                ],
+            ],
+            'errores_json' => [['encadenada' => true]],
+            'mensaje' => 'Vinculadas 1/1…',
+        ]);
+
+        $antes = OportunidadVinculoCorrida::query()->count();
+        $continua = $this->app->make(OportunidadVinculoService::class)->procesarPaso($corrida);
+
+        $this->assertFalse($continua);
+        $this->assertSame($antes, OportunidadVinculoCorrida::query()->count());
+        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
+    }
+
     public function test_iniciar_vinculo_endpoint_manual(): void
     {
         Queue::fake();
@@ -644,9 +740,9 @@ class OportunidadVinculoTest extends TestCase
         $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $this->assertSame('failed', $plan[1]['estado'] ?? null);
         $this->assertTrue((bool) OportunidadEncontrada::query()->where('codigo', '2324-684-COT26')->value('vinculo_completo'));
-        // Último paso fallido → corrida finaliza (no quedan pending).
+        // Último paso fallido → corrida finaliza (no reencola la misma).
         $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
-        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
+        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $corrida->id);
     }
 
     public function test_estado_reencola_vinculo_con_pasos_pendientes(): void
