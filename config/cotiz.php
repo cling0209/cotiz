@@ -203,8 +203,9 @@ return [
         'api_low_speed_limit_bytes' => max(0, (int) env('MERCADOPUBLICO_API_LOW_SPEED_LIMIT_BYTES', 10)),
         'api_reintentos_http' => max(1, (int) env('MERCADOPUBLICO_API_REINTENTOS', 3)),
         'api_espera_reintento_seg' => max(1, (int) env('MERCADOPUBLICO_API_ESPERA_REINTENTO_SEG', 5)),
-        // Tope de páginas MP por región en búsqueda de oportunidades (Metropolitana puede ser lenta).
-        'oportunidad_max_paginas' => max(1, min(20, (int) env('MERCADOPUBLICO_OPORTUNIDAD_MAX_PAGINAS', 8))),
+        // Tope de seguridad. La búsqueda sigue mientras MP traiga página llena (50);
+        // el piso 200 ignora un env viejo de 8/20 que cortaba Metropolitana.
+        'oportunidad_max_paginas' => max(200, min(500, (int) env('MERCADOPUBLICO_OPORTUNIDAD_MAX_PAGINAS', 200))),
         // Segundos sin update_at para considerar la corrida colgada (worker caído o HTTP trabado).
         // Con 1 job = 1 página, 90s era agresivo y reencolaba mientras aún procesaba.
         'oportunidad_corrida_stalled_segundos' => max(60, (int) env('MERCADOPUBLICO_OPORTUNIDAD_STALLED_SEG', 180)),

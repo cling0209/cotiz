@@ -86,4 +86,15 @@ class OportunidadParaCotizarHoyTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_max_paginas_region_sigue_si_mercado_publico_trae_mas_de_20(): void
+    {
+        config(['cotiz.mercadopublico.oportunidad_max_paginas' => 200]);
+
+        $this->assertSame(200, OportunidadParaCotizarService::maxPaginasRegion());
+        $this->assertGreaterThan(20, OportunidadParaCotizarService::maxPaginasRegion());
+
+        config(['cotiz.mercadopublico.oportunidad_max_paginas' => 8]);
+        $this->assertSame(8, OportunidadParaCotizarService::maxPaginasRegion());
+    }
 }

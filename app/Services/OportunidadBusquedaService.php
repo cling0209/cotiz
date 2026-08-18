@@ -360,6 +360,7 @@ class OportunidadBusquedaService
         $eventos = $this->eventosDeCorrida($corrida);
         $cursor = (int) $corrida->pasos_procesados;
         $pasos = $this->asegurarEstadosPlan($pasos, $cursor, $errores);
+        $this->reabrirPasosCortadosPorTopeViejo($pasos);
 
         $seleccion = $this->seleccionarSiguiente($pasos);
         if ($seleccion === null) {
@@ -391,7 +392,7 @@ class OportunidadBusquedaService
         $cambioDesde = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
         $cambioDesde = $cambioDesde !== '' ? $cambioDesde : null;
         $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
-        $maxPaginasPaso = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', 8)));
+        $maxPaginasPaso = OportunidadParaCotizarService::maxPaginasRegion();
 
         // Checkpoint: retomar la página pendiente; no reiniciar Metropolitana desde 1.
         $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
@@ -421,7 +422,8 @@ class OportunidadBusquedaService
 
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
         $pasos[$indice]['pagina'] = $pagina;
-        $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+        $paginasUi = max($pagina, (int) ($paso['paginas_max'] ?? $pagina));
+        $pasos[$indice]['paginas_max'] = $paginasUi;
         $pasos[$indice]['siguiente_pagina'] = $pagina;
         $pasos[$indice]['items_leidos'] = $itemsLeidosPrevios;
         $pasos[$indice]['items_pagina'] = 0;
@@ -447,7 +449,7 @@ class OportunidadBusquedaService
             $this->contarTerminados($pasos) + 1,
             count($pasos),
             $pagina,
-            $maxPaginasPaso,
+            $paginasUi,
         );
         if ($esInicioRegion) {
             $this->pushEvento(
@@ -491,7 +493,7 @@ class OportunidadBusquedaService
             $assertCorridaActiva,
             $inicioPaso,
             $duracionPrevia,
-            $maxPaginasPaso,
+            &$paginasUi,
             $encontradasPrevias,
             $porFraseBase,
             $codigosEncontradosBase,
@@ -506,7 +508,8 @@ class OportunidadBusquedaService
             $pasos[$indice]['estado'] = self::PASO_RUNNING;
             $pasos[$indice]['consulta'] = $consulta;
             $pasos[$indice]['pagina'] = max(1, $paginaActual);
-            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+            $paginasUi = max($paginasUi, (int) $paginaActual);
+            $pasos[$indice]['paginas_max'] = $paginasUi;
             $pasos[$indice]['items_pagina'] = max(0, $itemsPagina);
             $pasos[$indice]['items_leidos'] = max(0, $itemsAcumulados);
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
@@ -569,7 +572,7 @@ class OportunidadBusquedaService
                     'Procesando match %s — pág %d/%d · %d/%d ítems · %d cotiz.%s (%ds)…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaActual,
-                    $maxPaginasPaso,
+                    max((int) ($pasos[$indice]['paginas_max'] ?? $paginaActual), $paginaActual),
                     $matchRevisados > 0 ? $matchRevisados : $itemsPagina,
                     $matchTotal > 0 ? $matchTotal : max(1, $itemsPagina),
                     (int) $pasos[$indice]['encontradas'],
@@ -585,7 +588,7 @@ class OportunidadBusquedaService
                     'Consultando %s — página %d/%d (%d en página, %d acumulados)…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaActual,
-                    $maxPaginasPaso,
+                    max((int) ($pasos[$indice]['paginas_max'] ?? $paginaActual), $paginaActual),
                     $itemsPagina,
                     $itemsAcumulados,
                 );
@@ -596,7 +599,7 @@ class OportunidadBusquedaService
                         '%s · pág %d/%d · %d en página · %d acum. (Mercado Público)',
                         $regionNombre !== '' ? $regionNombre : ('región '.$region),
                         $paginaActual,
-                        $maxPaginasPaso,
+                        max((int) ($pasos[$indice]['paginas_max'] ?? $paginaActual), $paginaActual),
                         $itemsPagina,
                         $itemsAcumulados,
                     ),
@@ -655,7 +658,9 @@ class OportunidadBusquedaService
             $continuarPaginas = (bool) ($resultado['continuar'] ?? false);
 
             $pasos[$indice]['pagina'] = $paginaHecha;
-            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
+            $pasos[$indice]['paginas_max'] = $continuarPaginas
+                ? max($paginasUi, $paginaHecha + 1)
+                : max($paginasUi, $paginaHecha);
             $pasos[$indice]['items_pagina'] = max(0, (int) ($resultado['items_pagina'] ?? 0));
             $pasos[$indice]['items_leidos'] = $itemsLeidos;
             $pasos[$indice]['encontradas'] = $encontradas;
@@ -724,6 +729,7 @@ class OportunidadBusquedaService
                 $siguiente = $paginaHecha + 1;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
                 $pasos[$indice]['siguiente_pagina'] = $siguiente;
+                $pasos[$indice]['paginas_max'] = max((int) ($pasos[$indice]['paginas_max'] ?? $siguiente), $siguiente);
                 // Anticipar UI/debug a la próxima página (antes quedaba pegado en la consulta de pág N).
                 $pasos[$indice]['pagina'] = $siguiente;
                 $pasos[$indice]['fase'] = 'esperando_mp';
@@ -759,7 +765,7 @@ class OportunidadBusquedaService
                     'Consultando %s — página %d/%d hecha (%d ítems; %d cotiz.). Siguiente página %d…',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $paginaHecha,
-                    $maxPaginasPaso,
+                    (int) ($pasos[$indice]['paginas_max'] ?? $siguiente),
                     $itemsLeidos,
                     $encontradas,
                     $siguiente,
@@ -771,7 +777,7 @@ class OportunidadBusquedaService
                         '%s · pág %d/%d OK · siguiente %d',
                         $regionNombre !== '' ? $regionNombre : ('región '.$region),
                         $paginaHecha,
-                        $maxPaginasPaso,
+                        (int) ($pasos[$indice]['paginas_max'] ?? $siguiente),
                         $siguiente,
                     ),
                 );
@@ -829,7 +835,6 @@ class OportunidadBusquedaService
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = $consultaError;
             $pasos[$indice]['pagina'] = $pagina;
-            $pasos[$indice]['paginas_max'] = $maxPaginasPaso;
 
             $esRegionPaginada = $frase === '' || $frase === '(todas)';
             $puedeSeguirPagina = $esRegionPaginada && $pagina < $maxPaginasPaso;
@@ -854,6 +859,7 @@ class OportunidadBusquedaService
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
                 $pasos[$indice]['siguiente_pagina'] = $siguiente;
                 $pasos[$indice]['pagina'] = $siguiente;
+                $pasos[$indice]['paginas_max'] = max((int) ($pasos[$indice]['paginas_max'] ?? $siguiente), $siguiente);
                 $pasos[$indice]['fase'] = 'esperando_mp';
                 $pasos[$indice]['items_pagina'] = 0;
                 $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
@@ -876,7 +882,7 @@ class OportunidadBusquedaService
                     '%s — pág %d/%d con error (%s); se sigue con pág %d. %s',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $pagina,
-                    $maxPaginasPaso,
+                    (int) ($pasos[$indice]['paginas_max'] ?? $siguiente),
                     $tipoError,
                     $siguiente,
                     mb_substr($mensajeError, 0, 180),
@@ -888,7 +894,7 @@ class OportunidadBusquedaService
                         '%s · pág %d/%d error (%s) → siguiente %d: %s',
                         $regionNombre !== '' ? $regionNombre : ('región '.$region),
                         $pagina,
-                        $maxPaginasPaso,
+                        (int) ($pasos[$indice]['paginas_max'] ?? $siguiente),
                         $tipoError,
                         $siguiente,
                         mb_substr($mensajeError, 0, 160),
@@ -1140,8 +1146,7 @@ class OportunidadBusquedaService
             $frase = trim((string) ($paso['frase'] ?? ''));
             $region = (int) ($paso['region'] ?? 0);
             $regionNombre = (string) ($paso['region_nombre'] ?? CompraAgilRegionScope::nombreRegion($region));
-            $maxPaginas = max(1, min(20, (int) ($paso['paginas_max']
-                ?? config('cotiz.mercadopublico.oportunidad_max_paginas', 8))));
+            $topeSeguridad = OportunidadParaCotizarService::maxPaginasRegion();
             $pagina = max(1, (int) ($paso['pagina'] ?? $paso['siguiente_pagina'] ?? 1));
             $esRegionPaginada = $frase === '' || $frase === '(todas)';
             $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
@@ -1176,13 +1181,16 @@ class OportunidadBusquedaService
                 'fecha' => now()->toIso8601String(),
             ];
 
-            if ($esRegionPaginada && $pagina < $maxPaginas) {
+            if ($esRegionPaginada && $pagina < $topeSeguridad) {
                 $siguiente = $pagina + 1;
                 $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
                 $pasos[$indice]['estado'] = self::PASO_RUNNING;
                 $pasos[$indice]['siguiente_pagina'] = $siguiente;
                 $pasos[$indice]['pagina'] = $siguiente;
-                $pasos[$indice]['paginas_max'] = $maxPaginas;
+                $pasos[$indice]['paginas_max'] = max(
+                    $siguiente,
+                    (int) ($paso['paginas_max'] ?? $pagina),
+                );
                 $pasos[$indice]['items_pagina'] = 0;
                 $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
                 $pasos[$indice]['fase'] = 'esperando_mp';
@@ -1204,7 +1212,7 @@ class OportunidadBusquedaService
                     'Worker timeout en %s pág %d/%d; se sigue con pág %d.',
                     $regionNombre !== '' ? $regionNombre : ('región '.$region),
                     $pagina,
-                    $maxPaginas,
+                    (int) ($pasos[$indice]['paginas_max'] ?? $siguiente),
                     $siguiente,
                 );
                 if ($detalleTxt !== '') {
@@ -1879,6 +1887,46 @@ class OportunidadBusquedaService
         }
 
         return null;
+    }
+
+    /**
+     * Corridas viejas marcaban la región OK al llegar a 8/20 aunque la página viniera llena.
+     * Si MP aún puede tener más, se retoma desde la página siguiente.
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function reabrirPasosCortadosPorTopeViejo(array &$pasos): void
+    {
+        $tope = OportunidadParaCotizarService::maxPaginasRegion();
+        $tamano = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
+        $topesViejos = [8, 20];
+
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso) || ($paso['estado'] ?? '') !== self::PASO_OK) {
+                continue;
+            }
+            $frase = trim((string) ($paso['frase'] ?? ''));
+            if ($frase !== '' && $frase !== '(todas)') {
+                continue;
+            }
+            $pagina = max(1, (int) ($paso['pagina'] ?? 0));
+            $paginasMax = max(1, (int) ($paso['paginas_max'] ?? 0));
+            $itemsPagina = (int) ($paso['items_pagina'] ?? 0);
+            if ($itemsPagina < $tamano || $pagina !== $paginasMax) {
+                continue;
+            }
+            if (! in_array($paginasMax, $topesViejos, true) || $pagina >= $tope) {
+                continue;
+            }
+
+            $siguiente = $pagina + 1;
+            $pasos[$i]['estado'] = self::PASO_RUNNING;
+            $pasos[$i]['siguiente_pagina'] = $siguiente;
+            $pasos[$i]['pagina'] = $siguiente;
+            $pasos[$i]['paginas_max'] = $siguiente;
+            $pasos[$i]['fase'] = 'esperando_mp';
+            $pasos[$i]['items_pagina'] = 0;
+        }
     }
 
     /**

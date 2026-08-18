@@ -18,8 +18,15 @@ class OportunidadParaCotizarService
 
     public const REGION_TAMANO_PAGINA = 50;
 
-    /** Tope de páginas por región (evita colgarse 10+ min en Metropolitana). */
-    private const REGION_MAX_PAGINAS = 8;
+    /** Tope de seguridad (10.000 ítems). Se para antes si la página viene incompleta. */
+    public const REGION_MAX_PAGINAS_SEGURIDAD = 500;
+
+    public static function maxPaginasRegion(): int
+    {
+        $n = (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS_SEGURIDAD);
+
+        return max(1, min(self::REGION_MAX_PAGINAS_SEGURIDAD, $n));
+    }
 
     public function __construct(
         protected CompraAgilApiService $api,
@@ -1023,7 +1030,7 @@ class OportunidadParaCotizarService
         ?callable $onProgreso = null,
         mixed $cambioDesde = null,
     ): array {
-        $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
+        $maxPaginas = self::maxPaginasRegion();
         $items = [];
         $crudosTotal = 0;
         $guardadas = 0;
@@ -1087,7 +1094,7 @@ class OportunidadParaCotizarService
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $pagina = max(1, $pagina);
         $palabras = $this->palabrasClaveParaRegion($region);
-        $maxPaginas = max(1, min(20, (int) config('cotiz.mercadopublico.oportunidad_max_paginas', self::REGION_MAX_PAGINAS)));
+        $maxPaginas = self::maxPaginasRegion();
         $vacio = [
             'items' => [],
             'consulta' => $this->metaConsultaPaso('(todas)', $region, $itemsLeidosPrevios, 0, $dia, null, $cambioDesde, $pagina),
@@ -1336,8 +1343,9 @@ class OportunidadParaCotizarService
         // Con ventana cambio_*: el API filtra por cambio, no por publicación. No cortar
         // porque la página traiga ítems publicados antes del día (antes se quedaba en 1/N).
         // Sin ventana: si toda la página es anterior al día (orden FechaPublicacion), parar.
+        // Página llena ⇒ hay (o puede haber) más; no cortar en 20/20.
         $continuar = $paginaLlena
-            && $pagina < $maxPaginas
+            && $pagina < self::maxPaginasRegion()
             && ($ventanaCambio !== null || ! $algunaFechaParseable || ! $todasAnterioresAlDia);
 
         ksort($porFrase);
