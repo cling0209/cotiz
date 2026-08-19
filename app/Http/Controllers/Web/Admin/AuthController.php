@@ -93,13 +93,17 @@ class AuthController extends Controller
     }
 
     /**
-     * Catch-up secuencial al login: resultados MP primero; si no encola corrida,
-     * continúa el pipeline (búsqueda). Si encola, la búsqueda arranca al finalizar resultados.
+     * Catch-up secuencial al login (Render): resultados MP primero; si no encola corrida,
+     * continúa el pipeline (búsqueda). En VPS el scheduler dispara a la hora configurada.
      */
     private function dispararCatchUpMpSiCorresponde(
         NotaMpResultadosService $resultadosMp,
         OportunidadBusquedaService $oportunidades,
     ): void {
+        if (! config('cotiz.mercadopublico.resultados_catchup_login', false)) {
+            return;
+        }
+
         try {
             $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde(
                 'sistema',

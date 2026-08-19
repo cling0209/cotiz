@@ -14,7 +14,8 @@ $tz = config('app.timezone', 'America/Santiago');
 Schedule::command('oportunidad:sync-encontradas-par')
     ->everyThirtyMinutes()
     ->timezone($tz)
-    ->withoutOverlapping(10);
+    ->withoutOverlapping(10)
+    ->runInBackground();
 
 if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
     $horas = collect(explode(',', (string) config('cotiz.mercadopublico.resultados_schedule_hours', '10,19')))
@@ -29,12 +30,14 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
         Schedule::command('compra-agil:consultar-resultados')
             ->cron('0 '.$horas->implode(',').' * * *')
             ->timezone($tz)
-            ->withoutOverlapping(120);
+            ->withoutOverlapping(120)
+            ->runInBackground();
 
         Schedule::command('producto-mp:buscar')
             ->cron('15 '.$horas->implode(',').' * * *')
             ->timezone($tz)
-            ->withoutOverlapping(120);
+            ->withoutOverlapping(120)
+            ->runInBackground();
     }
 }
 
@@ -42,4 +45,5 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
 Schedule::command('organismo:analizar-perfiles')
     ->weeklyOn(0, '6:00')
     ->timezone($tz)
-    ->withoutOverlapping(120);
+    ->withoutOverlapping(120)
+    ->runInBackground();

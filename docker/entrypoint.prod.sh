@@ -81,14 +81,19 @@ if [ "${MERCADOPUBLICO_RESULTADOS_SCHEDULE:-true}" = "true" ]; then
   run_as_www 'php artisan compra-agil:consultar-resultados --catch-up --no-interaction 2>&1' || true
 fi
 
-# Scheduler Laravel (consulta MP a las 10 y 19, u horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
+# Scheduler Laravel (horas en MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS).
+# schedule:work alinea al minuto de reloj; el loop sleep 60 se desfasaba y saltaba el :00.
 # La búsqueda/vinculación/sync se encadenan al terminar resultados (no en paralelo).
 if [ "${RUN_SCHEDULER:-true}" = "true" ]; then
-  echo "Iniciando Laravel scheduler (cada 60s)..." >&2
+  echo "Iniciando Laravel scheduler (schedule:work)..." >&2
   (
+    set +e
     while true; do
-      run_as_www 'php artisan schedule:run --verbose --no-interaction 2>&1' || true
-      sleep 60
+      echo "[$(date)] schedule:work arrancando..." >&2
+      run_as_www 'php artisan schedule:work --no-interaction'
+      code=$?
+      echo "[$(date)] Scheduler terminó (exit ${code}). Reiniciando en 2s..." >&2
+      sleep 2
     done
   ) &
   echo "Scheduler loop PID: $!" >&2

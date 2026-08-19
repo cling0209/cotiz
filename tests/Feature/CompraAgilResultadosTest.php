@@ -1043,6 +1043,48 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_login_en_vps_no_encola_catch_up(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_hours' => '5,16,21',
+            'cotiz.mercadopublico.resultados_catchup_login' => false,
+            'queue.default' => 'sync',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-19 07:47:00', 'America/Santiago'));
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'ejecutivo-vps',
+            'perfil' => User::PERFIL_EJECUTIVO,
+            'password' => 'Ejec123!Secure',
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 88002,
+            'descripcion' => 'Pendiente MP',
+            'fecha' => '2026-08-01',
+            'empresa' => 'Test SA',
+            'encargado' => '88002-1-COT26',
+            'usuario' => 'admin',
+            'nota_softland' => 8800200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $this->post(route('admin.login.store'), [
+            'username' => $user->username,
+            'password' => 'Ejec123!Secure',
+        ])->assertRedirect(route('admin.cotizaciones.index'));
+
+        $this->assertSame(0, NotaMpCorrida::query()->count());
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+
+        Carbon::setTestNow();
+    }
+
     public function test_pendientes_omite_consultadas_hoy(): void
     {
         config([

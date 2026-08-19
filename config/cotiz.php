@@ -225,6 +225,12 @@ return [
         // Consulta masiva automática («Consultar ahora») vía scheduler.
         'resultados_schedule_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_SCHEDULE', true), FILTER_VALIDATE_BOOL),
         'resultados_schedule_hours' => env('MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS', '10,19'),
+        // Catch-up al login: solo Render (el contenedor duerme). En VPS el scheduler dispara a la hora.
+        // RENDER lo inyecta la plataforma; en Hetzner no existe → false.
+        'resultados_catchup_login' => filter_var(
+            env('MERCADOPUBLICO_RESULTADOS_CATCHUP_LOGIN', env('RENDER') ? 'true' : 'false'),
+            FILTER_VALIDATE_BOOL,
+        ),
         // No reconsultar en la corrida masiva (10/19) si ya se consultó hoy.
         // La siguiente corrida del mismo día las omite; vuelven al día siguiente.
         'resultados_skip_consultadas_mismo_dia' => filter_var(
