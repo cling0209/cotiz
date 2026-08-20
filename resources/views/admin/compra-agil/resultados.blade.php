@@ -28,7 +28,8 @@
 
     <div class="alert alert-info border small mb-3 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $corridaActiva ? '' : 'd-none' }}" id="banner-corrida-activa">
         <span>
-            Consulta en curso iniciada por <strong id="banner-corrida-usuario">{{ $estadoCorrida['usuario'] ?? '—' }}</strong>.
+            Consulta en curso iniciada por <strong id="banner-corrida-usuario">{{ $estadoCorrida['usuario'] ?? '—' }}</strong>
+            el <strong id="banner-corrida-inicio">{{ $estadoCorrida['inicio'] ?? '—' }}</strong> (hora Chile).
             Puede salir de esta pantalla; el proceso continúa en segundo plano.
         </span>
         <button type="button" class="btn btn-outline-danger btn-sm" id="btn-cancelar-mp">
@@ -38,10 +39,10 @@
 
     @if($ultimaCorrida)
         <div class="alert alert-light border small mb-2 py-2" id="banner-ultima-corrida">
-            <strong>Última consulta</strong><br>
+            <strong>Última consulta terminada</strong> <span class="text-muted">(hora Chile)</span><br>
             Usuario: <span id="ultima-usuario">{{ $ultimaCorrida->usuario }}</span>
-            · Inicio: {{ $ultimaCorrida->inicio->format('d/m/Y H:i:s') }}
-            · Fin: {{ $ultimaCorrida->fin?->format('d/m/Y H:i:s') ?? '—' }}
+            · Inicio: {{ \App\Support\HoraChile::format($ultimaCorrida->inicio) }}
+            · Fin: {{ \App\Support\HoraChile::format($ultimaCorrida->fin) }}
             · Procesadas: {{ $ultimaCorrida->notas_procesadas }}
             · Con cambio: {{ $ultimaCorrida->notas_con_cambio }}
             @if($ultimaCorrida->estado === 'error')
@@ -129,7 +130,7 @@
                     Hasta 40 cotizaciones (una fila por nota con su último cambio en MP), ordenadas por fecha de último cambio.
                     @if($ultimaCorrida)
                         Las marcadas como <span class="badge text-bg-info">Nueva</span> cambiaron en la última consulta
-                        ({{ $ultimaCorrida->fin?->format('d/m/Y H:i') ?? $ultimaCorrida->inicio->format('d/m/Y H:i') }}).
+                        ({{ \App\Support\HoraChile::format($ultimaCorrida->fin ?? $ultimaCorrida->inicio, 'd/m/Y H:i') }} hora Chile).
                     @endif
                     Filas en verde: ganador propio ({{ config('cotiz.sistema') }}).
                     Use «Consultar MP» en filas pendientes para actualizar sin recargar la página.
@@ -366,8 +367,22 @@
         progresoTexto.textContent = `Consultando ${estado.procesadas ?? 0} / ${estado.total ?? 0}`
             + (concurrencia > 1 ? ` · ${Math.min(concurrencia, Math.max(enCurso.length, 1))} en paralelo` : '')
             + (codigo && concurrencia <= 1 ? ` — ${codigo}` : '');
+        const inicioChile = estado.inicio ? (estado.inicio + ' (hora Chile)') : '';
+        const partesUsuario = [];
+        if (inicioChile) {
+            partesUsuario.push('Inicio: ' + inicioChile);
+        }
         if (estado.usuario) {
-            progresoUsuario.textContent = 'Ejecutado por: ' + estado.usuario;
+            partesUsuario.push('Ejecutado por: ' + estado.usuario);
+        }
+        progresoUsuario.textContent = partesUsuario.join(' · ');
+        const bannerInicio = document.getElementById('banner-corrida-inicio');
+        if (bannerInicio && estado.inicio) {
+            bannerInicio.textContent = estado.inicio;
+        }
+        const bannerUsuario = document.getElementById('banner-corrida-usuario');
+        if (bannerUsuario && estado.usuario) {
+            bannerUsuario.textContent = estado.usuario;
         }
         if (progresoAlerta) {
             if (estado.alerta) {

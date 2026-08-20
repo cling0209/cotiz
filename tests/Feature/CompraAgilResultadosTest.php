@@ -1750,6 +1750,30 @@ class CompraAgilResultadosTest extends TestCase
         $this->assertSame('lenta', $estado['stats']['estado_nota'] ?? null);
     }
 
+    public function test_estado_corrida_inicio_en_hora_chile(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+        Carbon::setTestNow(Carbon::parse('2026-08-20 10:45:00', 'America/Santiago'));
+
+        NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => Carbon::parse('2026-08-20 05:00:01', 'America/Santiago'),
+            'estado' => 'running',
+            'total_notas' => 460,
+            'notas_procesadas' => 134,
+            'pendientes_json' => [
+                ['nronota' => 1, 'codigo' => '4294-49-COT26'],
+            ],
+        ]);
+
+        $estado = $this->app->make(NotaMpResultadosService::class)->estadoCorrida();
+
+        $this->assertTrue($estado['en_curso']);
+        $this->assertSame('20/08/2026 05:00:01', $estado['inicio']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_push_reciente_acumula_stats_corrida(): void
     {
         $corrida = NotaMpCorrida::query()->create([

@@ -11,6 +11,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Support\HoraChile;
 use App\Support\RenderKeepAlive;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -1269,7 +1270,7 @@ class NotaMpResultadosService
             'en_curso' => $corrida->estado === 'running',
             'corrida_id' => $corrida->id,
             'usuario' => $corrida->usuario,
-            'inicio' => $corrida->inicio->format('d/m/Y H:i:s'),
+            'inicio' => HoraChile::format($corrida->inicio),
             'procesadas' => $procesadas,
             'total' => (int) $corrida->total_notas,
             'porcentaje' => (int) round(($procesadas / $total) * 100),

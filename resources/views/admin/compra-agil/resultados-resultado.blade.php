@@ -13,10 +13,10 @@
 
     @if($ultimaCorrida)
         <div class="alert alert-light border small mb-3 py-2">
-            <strong>Última consulta</strong><br>
+            <strong>Última consulta terminada</strong> <span class="text-muted">(hora Chile)</span><br>
             Usuario: {{ $ultimaCorrida->usuario }}
-            · Inicio: {{ $ultimaCorrida->inicio->format('d/m/Y H:i:s') }}
-            · Fin: {{ $ultimaCorrida->fin?->format('d/m/Y H:i:s') ?? '—' }}
+            · Inicio: {{ \App\Support\HoraChile::format($ultimaCorrida->inicio) }}
+            · Fin: {{ \App\Support\HoraChile::format($ultimaCorrida->fin) }}
             · Procesadas: {{ $ultimaCorrida->notas_procesadas }}
             · Con cambio: {{ $ultimaCorrida->notas_con_cambio }}
         </div>
