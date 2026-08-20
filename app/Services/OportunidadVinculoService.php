@@ -1335,7 +1335,7 @@ class OportunidadVinculoService
      * Reencola la corrida de vinculación si el worker se detuvo o el job quedó colgado.
      * Si hay un paso en "running" demasiado tiempo, lo marca fallido y sigue con el siguiente.
      */
-    public function liberarCorridaColgadaIfNeeded(?OportunidadVinculoCorrida $corrida = null): bool
+    public function liberarCorridaColgadaIfNeeded(?OportunidadVinculoCorrida $corrida = null, bool $forzar = false): bool
     {
         $corrida ??= $this->corridaEnCurso();
         if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
@@ -1343,14 +1343,25 @@ class OportunidadVinculoService
         }
 
         $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 90));
-        if ($corrida->updated_at === null || ! $corrida->updated_at->lt(now()->subSeconds($stalledSeg))) {
+        $jobReservadoSeg = max(
+            15,
+            (int) config('cotiz.mercadopublico.oportunidad_job_reservado_stalled_segundos', 45),
+        );
+        $corridaStalled = $this->corridaEstaStalled($corrida);
+        $jobReservadoColgado = $this->jobVinculoReservadoColgado($corrida->id, $forzar ? 0 : $jobReservadoSeg);
+
+        if (! $forzar && ! $corridaStalled && ! $jobReservadoColgado) {
             return false;
         }
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
         $fallidosExtra = 0;
-        [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, $stalledSeg, $corrida);
+        if ($forzar || ($jobReservadoColgado && ! $corridaStalled)) {
+            $pasos = $this->reiniciarPasosRunningPendientes($pasos);
+        } else {
+            [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, $stalledSeg, $corrida);
+        }
 
         $pendientes = $this->contarJobsVinculoPendientes($corrida->id);
         $reservados = $this->contarJobsVinculoReservados($corrida->id);
@@ -1381,7 +1392,7 @@ class OportunidadVinculoService
             $this->eliminarJobsVinculo($corrida->id);
         }
 
-        if ($this->jobVinculoEncolado($corrida->id)) {
+        if ($this->jobVinculoEncolado($corrida->id) && ! $forzar && ! $jobReservadoColgado) {
             if ($fallidosExtra > 0) {
                 $corrida->fill([
                     'plan_json' => $pasos,
@@ -1396,7 +1407,7 @@ class OportunidadVinculoService
 
         $terminados = $this->contarTerminados($pasos);
         $siguiente = $terminados + 1;
-        $mensaje = 'Vinculación retomada automáticamente tras detectar worker detenido (paso '
+        $mensaje = ($forzar ? 'Vinculación retomada tras deploy (paso ' : 'Vinculación retomada automáticamente tras detectar worker detenido (paso ')
             .$siguiente.'/'.max(1, (int) $corrida->total_pasos).').';
 
         $corrida->fill([
@@ -1423,6 +1434,71 @@ class OportunidadVinculoService
         ]);
 
         return true;
+    }
+
+    /**
+     * Tras deploy: libera jobs huérfanos y reencola de inmediato (sin esperar stalled).
+     *
+     * @return array{accion: string, mensaje: string, corrida_id: ?int}
+     */
+    public function retomarCorridaActiva(bool $forzar = false): array
+    {
+        $corrida = $this->corridaEnCurso();
+        if ($corrida === null) {
+            return [
+                'accion' => 'omitido',
+                'mensaje' => 'Sin vinculación en curso.',
+                'corrida_id' => null,
+            ];
+        }
+
+        $reanudada = $this->liberarCorridaColgadaIfNeeded($corrida, $forzar);
+        if (! $reanudada && ! $this->jobVinculoEncolado($corrida->id)) {
+            ProcessOportunidadVinculoJob::dispatch($corrida->id);
+            $reanudada = true;
+        }
+
+        return [
+            'accion' => $reanudada ? 'reanudada' : 'en_curso',
+            'mensaje' => $reanudada
+                ? 'Vinculación reanudada'.($forzar ? ' tras deploy' : '').'.'
+                : 'Vinculación en curso.',
+            'corrida_id' => $corrida->id,
+        ];
+    }
+
+    public function jobVinculoReservadoColgado(int $corridaId, int $segundos): bool
+    {
+        if (! Schema::hasTable('jobs') || $segundos < 0) {
+            return false;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadVinculoJob%')
+            ->whereNotNull('reserved_at');
+
+        if ($segundos > 0) {
+            $query->where('reserved_at', '<', now()->subSeconds($segundos)->getTimestamp());
+        }
+
+        return (int) $this->filtrarJobsVinculoPorCorrida($query, $corridaId)->count() > 0;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     * @return list<array<string, mixed>>
+     */
+    private function reiniciarPasosRunningPendientes(array $pasos): array
+    {
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso) || ($paso['estado'] ?? '') !== self::PASO_RUNNING) {
+                continue;
+            }
+            $pasos[$i]['estado'] = self::PASO_PENDING;
+            unset($pasos[$i]['inicio'], $pasos[$i]['fin'], $pasos[$i]['error']);
+        }
+
+        return $pasos;
     }
 
     public function jobVinculoEncolado(int $corridaId): bool

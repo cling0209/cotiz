@@ -209,6 +209,11 @@ return [
         // Segundos sin update_at para considerar la corrida colgada (worker caído o HTTP trabado).
         // Con 1 job = 1 página, 90s era agresivo y reencolaba mientras aún procesaba.
         'oportunidad_corrida_stalled_segundos' => max(60, (int) env('MERCADOPUBLICO_OPORTUNIDAD_STALLED_SEG', 180)),
+        // Job reservado sin worker (típico tras deploy): retomar antes que updated_at de la corrida.
+        'oportunidad_job_reservado_stalled_segundos' => max(
+            15,
+            (int) env('MERCADOPUBLICO_OPORTUNIDAD_JOB_RESERVADO_SEG', 45),
+        ),
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 500)),

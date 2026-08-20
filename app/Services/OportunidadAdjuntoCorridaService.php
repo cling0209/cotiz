@@ -383,7 +383,7 @@ class OportunidadAdjuntoCorridaService
         return $corrida->fresh() ?? $corrida;
     }
 
-    public function liberarCorridaColgadaIfNeeded(?OportunidadAdjuntoCorrida $corrida = null): bool
+    public function liberarCorridaColgadaIfNeeded(?OportunidadAdjuntoCorrida $corrida = null, bool $forzar = false): bool
     {
         $corrida ??= $this->corridaEnCurso();
         if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
@@ -391,13 +391,23 @@ class OportunidadAdjuntoCorridaService
         }
 
         $stalledSeg = max(60, (int) config('cotiz.mercadopublico.oportunidad_corrida_stalled_segundos', 180));
-        if ($corrida->updated_at === null || ! $corrida->updated_at->lt(now()->subSeconds($stalledSeg))) {
+        $jobReservadoSeg = max(
+            15,
+            (int) config('cotiz.mercadopublico.oportunidad_job_reservado_stalled_segundos', 45),
+        );
+        $corridaStalled = $corrida->updated_at !== null
+            && $corrida->updated_at->lt(now()->subSeconds($stalledSeg));
+        $jobReservadoColgado = $this->jobAdjuntoReservadoColgado($corrida->id, $forzar ? 0 : $jobReservadoSeg);
+
+        if (! $forzar && ! $corridaStalled && ! $jobReservadoColgado) {
             return false;
         }
 
-        if ($this->jobAdjuntoEncolado($corrida->id)) {
+        if ($this->jobAdjuntoEncolado($corrida->id) && ! $forzar && ! $jobReservadoColgado) {
             return false;
         }
+
+        $this->eliminarJobsAdjunto($corrida->id);
 
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         foreach ($pasos as $i => $paso) {
@@ -411,7 +421,9 @@ class OportunidadAdjuntoCorridaService
         $corrida->fill([
             'plan_json' => $pasos,
             'pasos_procesados' => $terminados,
-            'mensaje' => 'Adjuntos retomados automáticamente (paso '.($terminados + 1).'/'.max(1, (int) $corrida->total_pasos).').',
+            'mensaje' => $forzar
+                ? 'Adjuntos retomados tras deploy (paso '.($terminados + 1).'/'.max(1, (int) $corrida->total_pasos).').'
+                : 'Adjuntos retomados automáticamente (paso '.($terminados + 1).'/'.max(1, (int) $corrida->total_pasos).').',
         ])->save();
 
         if ($this->indiceSiguientePendiente($pasos) === null) {
@@ -423,6 +435,52 @@ class OportunidadAdjuntoCorridaService
         ProcessOportunidadAdjuntoJob::dispatch($corrida->id);
 
         return true;
+    }
+
+    /**
+     * @return array{accion: string, mensaje: string, corrida_id: ?int}
+     */
+    public function retomarCorridaActiva(bool $forzar = false): array
+    {
+        $corrida = $this->corridaEnCurso();
+        if ($corrida === null) {
+            return [
+                'accion' => 'omitido',
+                'mensaje' => 'Sin corrida de adjuntos en curso.',
+                'corrida_id' => null,
+            ];
+        }
+
+        $reanudada = $this->liberarCorridaColgadaIfNeeded($corrida, $forzar);
+        if (! $reanudada && ! $this->jobAdjuntoEncolado($corrida->id)) {
+            ProcessOportunidadAdjuntoJob::dispatch($corrida->id);
+            $reanudada = true;
+        }
+
+        return [
+            'accion' => $reanudada ? 'reanudada' : 'en_curso',
+            'mensaje' => $reanudada
+                ? 'Adjuntos reanudados'.($forzar ? ' tras deploy' : '').'.'
+                : 'Adjuntos en curso.',
+            'corrida_id' => $corrida->id,
+        ];
+    }
+
+    public function jobAdjuntoReservadoColgado(int $corridaId, int $segundos): bool
+    {
+        if (! Schema::hasTable('jobs') || $segundos < 0) {
+            return false;
+        }
+
+        $query = DB::table('jobs')
+            ->where('payload', 'like', '%ProcessOportunidadAdjuntoJob%')
+            ->whereNotNull('reserved_at');
+
+        if ($segundos > 0) {
+            $query->where('reserved_at', '<', now()->subSeconds($segundos)->getTimestamp());
+        }
+
+        return (int) $this->filtrarJobsAdjuntoPorCorrida($query, $corridaId)->count() > 0;
     }
 
     /**

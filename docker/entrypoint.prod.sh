@@ -43,6 +43,10 @@ if [ "$RUN_MIGRATIONS" = "true" ]; then
   run_as_www 'php artisan migrate --force'
 fi
 
+# Tras deploy: jobs reservados huérfanos + corridas running sin worker → reencolar con código nuevo.
+run_as_www 'php artisan oportunidad:retomar-corridas --boot --no-interaction 2>&1' || true
+run_as_www 'php artisan queue:restart 2>/dev/null || true'
+
 if [ "$RUN_SEED" = "true" ]; then
   run_as_www 'php artisan db:seed --force'
 fi
