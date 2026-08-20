@@ -4922,18 +4922,52 @@
         return Math.round(Number(n) || 0).toLocaleString('es-CL');
     }
 
+    function terminoBusquedaVincularPorDefecto(fila, btn) {
+        const descAgile = descripcionAgileVincular(fila, btn);
+        if (descAgile) {
+            return descAgile;
+        }
+
+        let codigo = String(btn.dataset.prodItem || '').trim();
+        const hiddenProd = fila?.querySelector('input[name*="[prod_item]"]');
+        if (!codigo) {
+            codigo = String(fila?.dataset.prod || hiddenProd?.value || '').trim();
+        }
+        if (!codigo) {
+            codigo = String(fila?.querySelector('.linea-codigo-interno')?.textContent || '').trim();
+        }
+        if (codigo && codigo !== '0') {
+            return codigo;
+        }
+
+        return String(btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '').trim();
+    }
+
+    function descripcionAgileVincular(fila, btn) {
+        return String(btn.dataset.descripcionAgile || '').trim()
+            || String(fila?.querySelector('.linea-desc-agile')?.textContent || '').trim();
+    }
+
     function abrirPopupVincularAgile(btn) {
         const fila = btn.closest('tr[data-linea]');
         vincularFilaActual = fila?.dataset.linea ?? btn.dataset.fila ?? null;
         vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
-        vincularAgileIdActual = btn.dataset.prodItemAgile || '';
+        vincularAgileIdActual = btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '';
         vincularSortVenta = null;
-        const desc = btn.dataset.descripcionAgile || '';
-        if (popupVincularDesc) popupVincularDesc.textContent = desc;
-        if (popupVincularBusqueda) popupVincularBusqueda.value = desc;
+        const descAgile = descripcionAgileVincular(fila, btn);
+        const terminoBusqueda = terminoBusquedaVincularPorDefecto(fila, btn);
+        if (popupVincularDesc) {
+            popupVincularDesc.textContent = descAgile || '—';
+        }
+        if (popupVincularBusqueda) popupVincularBusqueda.value = terminoBusqueda;
         if (popupVincularResultados) popupVincularResultados.innerHTML = '';
         const modoSimilitud = document.getElementById('popupVincularModoSimilitud');
-        if (modoSimilitud) modoSimilitud.checked = true;
+        const modoTexto = document.getElementById('popupVincularModoTexto');
+        if (descAgile && modoSimilitud) {
+            modoSimilitud.checked = true;
+        } else if (modoTexto) {
+            modoTexto.checked = true;
+        }
         actualizarAyudaModoVincular();
         if (popupVincularEl) popupVincularEl.style.display = 'flex';
         buscarProductosVincularPopup();

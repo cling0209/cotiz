@@ -64,6 +64,7 @@
                     class="btn btn-outline-primary btn-sm btn-buscar-linea-agile text-nowrap flex-shrink-0"
                     data-fila="{{ $idx }}"
                     data-orden="{{ $linea->orden }}"
+                    data-prod-item="{{ $linea->prod_item }}"
                     data-prod-item-agile="{{ $row['prod_item_agile'] }}"
                     data-descripcion-agile="{{ $row['prod_descripcion_agile'] }}"
                     title="Buscar o cambiar producto del maestro"
