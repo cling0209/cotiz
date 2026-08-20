@@ -371,7 +371,7 @@
                                 Buscar
                             </button>
                         </div>
-                        <div class="d-flex align-items-center gap-1">
+                        <div class="d-flex align-items-center gap-1" id="modal-buscar-cantidad-wrap">
                             <label for="modal-cantidad" class="small text-nowrap mb-0">Cantidad</label>
                             <input type="number" id="modal-cantidad" class="form-control form-control-sm" value="1" min="1" style="width:4.5rem">
                         </div>
@@ -398,7 +398,7 @@
                     </div>
                 </div>
                 <div class="modal-footer py-2">
-                    <span class="small text-muted me-auto">Marque productos y pulse &laquo;Agregar seleccionados&raquo;.</span>
+                    <span class="small text-muted me-auto" id="modal-buscar-footer-hint">Marque productos y pulse &laquo;Agregar seleccionados&raquo;.</span>
                     <button type="button" class="btn btn-success btn-sm" id="btn-modal-agregar-seleccionados" disabled>
                         <i class="bi bi-plus-circle"></i> Agregar seleccionados
                     </button>
@@ -2167,7 +2167,33 @@
     const btnModalBuscar = document.getElementById('btn-modal-buscar');
     const btnModalAgregarSeleccionados = document.getElementById('btn-modal-agregar-seleccionados');
     const chkSeleccionarTodos = document.getElementById('modal-buscar-seleccionar-todos');
+    const modalBuscarCantidadWrap = document.getElementById('modal-buscar-cantidad-wrap');
+    const modalBuscarFooterHint = document.getElementById('modal-buscar-footer-hint');
+    const modalBuscarTitulo = document.getElementById('modal-buscar-producto-label');
+    const modalBuscarChkHeader = document.querySelector('#tabla-buscar-productos thead th:first-child');
     const productosMarcados = new Set();
+    let modalBuscarVincularActivo = false;
+
+    function setModalBuscarModoVincular(activo) {
+        modalBuscarVincularActivo = !!activo;
+        modalBuscarChkHeader?.classList.toggle('d-none', modalBuscarVincularActivo);
+        modalBuscarCantidadWrap?.classList.toggle('d-none', modalBuscarVincularActivo);
+        btnModalAgregarSeleccionados?.classList.toggle('d-none', modalBuscarVincularActivo);
+        if (modalBuscarTitulo) {
+            modalBuscarTitulo.textContent = modalBuscarVincularActivo
+                ? 'Cambiar producto de la línea'
+                : 'Buscar producto';
+        }
+        if (modalBuscarFooterHint) {
+            modalBuscarFooterHint.textContent = modalBuscarVincularActivo
+                ? 'Pulse una fila para reemplazar el producto de la línea (excepto la imagen).'
+                : 'Marque productos y pulse «Agregar seleccionados».';
+        }
+    }
+
+    function colsModalBuscar() {
+        return modalBuscarVincularActivo ? 5 : 6;
+    }
 
     function setModalBuscarEstado(texto, cargando) {
         if (!modalEstado) return;
@@ -2373,7 +2399,7 @@
         if (!modalBody) return;
 
         if (!resultadosActuales.length) {
-            modalBody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-3">Sin resultados.</td></tr>';
+            modalBody.innerHTML = '<tr><td colspan="' + colsModalBuscar() + '" class="text-muted text-center py-3">Sin resultados.</td></tr>';
             limpiarProductosMarcados();
             if (modalEstado) {
                 setModalBuscarEstado(meta?.q
@@ -2389,24 +2415,41 @@
             const tr = document.createElement('tr');
             tr.dataset.idx = String(idx);
             tr.dataset.prodItem = String(p.prod_item || '');
-            tr.className = 'cotiz-buscar-fila';
+            tr.className = 'cotiz-buscar-fila' + (modalBuscarVincularActivo ? ' cotiz-buscar-fila-vincular' : '');
             tr.tabIndex = 0;
-            tr.innerHTML =
-                '<td class="text-center align-middle">' +
-                    '<input type="checkbox" class="form-check-input cotiz-buscar-check" aria-label="Seleccionar producto">' +
-                '</td>' +
-                '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
-                '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
-                '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
-                '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
-                '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            if (modalBuscarVincularActivo) {
+                tr.style.cursor = 'pointer';
+                tr.innerHTML =
+                    '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
+                    '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
+                    '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
+                    '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
+                    '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            } else {
+                tr.innerHTML =
+                    '<td class="text-center align-middle">' +
+                        '<input type="checkbox" class="form-check-input cotiz-buscar-check" aria-label="Seleccionar producto">' +
+                    '</td>' +
+                    '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
+                    '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
+                    '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
+                    '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
+                    '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            }
 
             const chk = tr.querySelector('.cotiz-buscar-check');
             chk?.addEventListener('change', () => togglearProductoMarcado(p.prod_item, chk.checked));
             chk?.addEventListener('click', e => e.stopPropagation());
 
             tr.addEventListener('click', e => {
-                if (e.target.closest('.product-image-zoom-trigger') || e.target.closest('.cotiz-buscar-check')) {
+                if (e.target.closest('.product-image-zoom-trigger')) {
+                    return;
+                }
+                if (modalBuscarVincularActivo) {
+                    seleccionarVinculoAgileDesdeModal(p);
+                    return;
+                }
+                if (e.target.closest('.cotiz-buscar-check')) {
                     return;
                 }
                 if (!chk) {
@@ -2418,6 +2461,10 @@
             tr.addEventListener('keydown', e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
+                    if (modalBuscarVincularActivo) {
+                        seleccionarVinculoAgileDesdeModal(p);
+                        return;
+                    }
                     if (!chk) {
                         return;
                     }
@@ -2439,10 +2486,11 @@
         marcarFilaActiva(0);
     }
 
-    async function ejecutarBusqueda(q) {
+    async function ejecutarBusqueda(q, modoBusqueda) {
         if (buscarAbort) buscarAbort.abort();
         buscarAbort = new AbortController();
         const signal = buscarAbort.signal;
+        const modo = modoBusqueda === 'texto' ? 'texto' : 'similitud';
 
         if (q.length < buscarConfig.minChars) {
             renderResultados([], { q });
@@ -2458,8 +2506,11 @@
         try {
             const params = new URLSearchParams({
                 q,
-                limit: String(buscarConfig.limit),
+                modo,
             });
+            if (modo === 'similitud') {
+                params.set('limit', String(buscarConfig.limit));
+            }
             const res = await fetch(buscarConfig.url + '?' + params.toString(), {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 signal,
@@ -2482,6 +2533,7 @@
             mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de agregar productos.',
         })) return;
         if (!bsModal || !modalInput) return;
+        setModalBuscarModoVincular(false);
         modalInput.value = '';
         limpiarProductosMarcados();
         renderResultados([], {});
@@ -2552,6 +2604,8 @@
     modalEl?.addEventListener('hidden.bs.modal', () => {
         if (buscarAbort) buscarAbort.abort();
         limpiarProductosMarcados();
+        setModalBuscarModoVincular(false);
+        cerrarPopupVincularAgile();
     });
 
     function idAgileParaMercadoPublico(codigoInterno) {
@@ -4956,21 +5010,27 @@
         vincularSortVenta = null;
         const descAgile = descripcionAgileVincular(fila, btn);
         const terminoBusqueda = terminoBusquedaVincularPorDefecto(fila, btn);
-        if (popupVincularDesc) {
-            popupVincularDesc.textContent = descAgile || '—';
+        setModalBuscarModoVincular(true);
+        if (modalInput) modalInput.value = terminoBusqueda;
+        limpiarProductosMarcados();
+        renderResultados([], {});
+        if (modalEstado) {
+            setModalBuscarEstado('Buscando...', true);
         }
-        if (popupVincularBusqueda) popupVincularBusqueda.value = terminoBusqueda;
-        if (popupVincularResultados) popupVincularResultados.innerHTML = '';
-        const modoSimilitud = document.getElementById('popupVincularModoSimilitud');
-        const modoTexto = document.getElementById('popupVincularModoTexto');
-        if (descAgile && modoSimilitud) {
-            modoSimilitud.checked = true;
-        } else if (modoTexto) {
-            modoTexto.checked = true;
-        }
-        actualizarAyudaModoVincular();
-        if (popupVincularEl) popupVincularEl.style.display = 'flex';
-        buscarProductosVincularPopup();
+        bsModal?.show();
+        ejecutarBusqueda(terminoBusqueda, descAgile ? 'similitud' : 'texto');
+    }
+
+    function seleccionarVinculoAgileDesdeModal(p) {
+        if (!p || vincularOrdenActual == null) return;
+        seleccionarVinculoAgile(
+            p.prod_item,
+            parseInt(p.prod_valor_costo, 10) || 0,
+            parseInt(p.prod_valor, 10) || 0,
+            p.prod_nombre || '',
+            null,
+            p.prod_item_softland,
+        );
     }
 
     function cerrarPopupVincularAgile() {
@@ -5216,6 +5276,7 @@
             }
 
             const actualizado = actualizarFilaVinculada(filaIdx, ordenEnvio, agileId, linea);
+            bsModal?.hide();
             cerrarPopupVincularAgile();
 
             if (!actualizado) {
