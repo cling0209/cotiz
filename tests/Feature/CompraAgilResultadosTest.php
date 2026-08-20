@@ -525,7 +525,7 @@ class CompraAgilResultadosTest extends TestCase
         ]);
     }
 
-    public function test_corrida_masiva_reintenta_errores_http_recuperables_como_consulta_individual(): void
+    public function test_corrida_masiva_no_reintenta_502_503_504_en_el_acto(): void
     {
         config([
             'cotiz.mercadopublico.api_reintentos_http' => 3,
@@ -536,7 +536,7 @@ class CompraAgilResultadosTest extends TestCase
 
         Nota::query()->create([
             'nronota' => 5031,
-            'descripcion' => 'Test reintento MP masivo',
+            'descripcion' => 'Test 503 sin reintento inmediato',
             'fecha' => now()->toDateString(),
             'usuario' => 'admin',
             'empresa' => 'Cliente test',
@@ -548,7 +548,6 @@ class CompraAgilResultadosTest extends TestCase
 
         Http::fake([
             'api2.mercadopublico.cl/v2/compra-agil/5031-1-COT26' => Http::sequence()
-                ->push([], 503)
                 ->push([], 503)
                 ->push([
                     'success' => 'OK',
@@ -566,19 +565,15 @@ class CompraAgilResultadosTest extends TestCase
             ->assertOk()
             ->assertJsonPath('estado.en_curso', false);
 
-        $this->assertDatabaseHas('nota_mp_corridas', [
-            'estado' => 'ok',
-            'notas_procesadas' => 1,
-            'total_notas' => 1,
-        ]);
+        Http::assertSentCount(1);
 
-        $this->assertDatabaseHas('nota_mp_seguimientos', [
+        $this->assertDatabaseHas('nota_mp_corrida_detalle', [
             'nronota' => 5031,
-            'estado_mp_glosa' => 'Publicada',
-            'resultado_propio' => 'pendiente',
+            'exito' => false,
         ]);
-
-        Http::assertSentCount(3);
+        $this->assertDatabaseMissing('nota_mp_seguimientos', [
+            'nronota' => 5031,
+        ]);
     }
 
     public function test_corrida_masiva_no_reintenta_codigo_ruta_invalido_en_mp(): void
@@ -1048,7 +1043,7 @@ class CompraAgilResultadosTest extends TestCase
         config([
             'app.timezone' => 'America/Santiago',
             'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
-            'cotiz.mercadopublico.resultados_schedule_hours' => '5,16,21',
+            'cotiz.mercadopublico.resultados_schedule_hours' => '4,16,21',
             'cotiz.mercadopublico.resultados_catchup_login' => false,
             'queue.default' => 'sync',
         ]);

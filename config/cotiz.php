@@ -223,7 +223,7 @@ return [
         'resultados_concurrencia' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA', 5)),
         // Tope superior configurable (evita valores accidentales muy altos).
         'resultados_concurrencia_max' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA_MAX', 200)),
-        // Espera entre disparos sucesivos (no entre fin de lote).
+        // Espera entre disparos sucesivos (no entre fin de lote). VPS: 5s (antes 20s).
         'resultados_stagger_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_STAGGER_MS', 2000)),
         'resultados_nota_max_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_MAX_SEG', 180)),
         'resultados_nota_alerta_segundos' => max(60, (int) env('MERCADOPUBLICO_RESULTADOS_NOTA_ALERTA_SEG', 180)),

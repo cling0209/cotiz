@@ -586,7 +586,9 @@ class CompraAgilApiService
                 throw new RuntimeException($mensaje);
             }
 
-            throw new RuntimeException($mensaje, 1);
+            // 502/503/504: un intento. Reintentar al tiro duplica carga a MP y alarga la corrida.
+            // El siguiente slot (fallo en detalle) las vuelve a tomar.
+            throw new RuntimeException($mensaje, 0);
         }
 
         if ($status === 429) {
@@ -630,6 +632,14 @@ class CompraAgilApiService
     private function esHttpRecuperable(?int $status): bool
     {
         return in_array($status, [502, 503, 504], true);
+    }
+
+    /** 502/503/504: no reintentar HTTP en el mismo request. */
+    public static function esErrorGatewayMp(string $mensaje): bool
+    {
+        return str_contains($mensaje, 'HTTP 502')
+            || str_contains($mensaje, 'HTTP 503')
+            || str_contains($mensaje, 'HTTP 504');
     }
 
     private function mensajeErrorConexion(ConnectionException $e): string

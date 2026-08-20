@@ -1742,7 +1742,9 @@ class NotaMpResultadosService
                 $mensajeReciente = mb_substr((string) $ultimoError, 0, 120);
                 $sufijo = CompraAgilApiService::esErrorDefinitivoMp((string) $ultimoError)
                     ? 'sin reintento'
-                    : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)).' intentos HTTP');
+                    : (CompraAgilApiService::esErrorGatewayMp((string) $ultimoError)
+                        ? 'sin reintento inmediato'
+                        : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)).' intentos HTTP'));
                 $this->registrarDetalleFallo(
                     $corrida,
                     $nronota,
