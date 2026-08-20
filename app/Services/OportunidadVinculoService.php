@@ -44,7 +44,6 @@ class OportunidadVinculoService
         protected OportunidadParaCotizarService $oportunidades,
         protected OportunidadEncontradaRelayService $encontradaRelay,
         protected AgileVinculoAprendizajeService $vinculoAprendizaje,
-        protected OportunidadAdjuntoService $adjuntos,
     ) {}
 
     public function corridaEnCurso(): ?OportunidadVinculoCorrida
@@ -480,8 +479,6 @@ class OportunidadVinculoService
                 ],
             ], OportunidadEncontradaRelayService::ACCION_VINCULO);
         }
-
-        $this->adjuntos->buscarSiPendiente($codigo);
 
         return [
             'total' => $total,
@@ -1208,13 +1205,33 @@ class OportunidadVinculoService
         ])->save();
 
         // Pipeline: sync cotizaciones al par, luego sync vinculaciones (+ reenvío).
+        $syncOk = true;
         try {
-            $this->encontradaRelay->sincronizarPipelineTrasVinculacion('vinculación');
+            $sync = $this->encontradaRelay->sincronizarPipelineTrasVinculacion('vinculación');
+            $syncOk = (bool) ($sync['ok'] ?? false);
         } catch (Throwable $e) {
+            $syncOk = false;
             Log::warning('Pipeline sync al par tras vinculación falló', [
                 'corrida_id' => $corrida->id,
                 'message' => $e->getMessage(),
             ]);
+        }
+
+        $encadenaraVinculo = ! $this->corridaEsEncadenada($corrida)
+            && $this->contarPendientesSafe($corrida->fecha_busqueda) > 0;
+
+        if ($syncOk && ! $encadenaraVinculo) {
+            try {
+                app(OportunidadAdjuntoCorridaService::class)->iniciarTrasSyncVinculacion(
+                    $corrida->fecha_busqueda,
+                    trim((string) ($corrida->usuario ?? 'sistema')) ?: 'sistema',
+                );
+            } catch (Throwable $e) {
+                Log::warning('No se pudo encolar corrida de adjuntos tras sync al par', [
+                    'corrida_id' => $corrida->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         $this->continuarPipelineTrasVinculo($corrida);

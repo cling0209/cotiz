@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\CompraAgilRegionScope;
+use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadEncontradaRelayService;
@@ -23,6 +24,7 @@ class OportunidadParaCotizarController extends Controller
         protected OportunidadVinculoService $vinculos,
         protected OportunidadEncontradaRelayService $encontradaRelay,
         protected OportunidadAdjuntoService $adjuntos,
+        protected OportunidadAdjuntoCorridaService $adjuntosCorrida,
     ) {}
 
     public function index(Request $request): View
@@ -133,6 +135,8 @@ class OportunidadParaCotizarController extends Controller
                 'consultados' => [],
                 'resumen' => $resumen,
                 'fallos' => $resumen['fallos'],
+                'corrida' => null,
+                'pendientes_corrida' => 0,
             ]);
         }
 
@@ -157,6 +161,47 @@ class OportunidadParaCotizarController extends Controller
             'consultados' => $indice['consultados'],
             'resumen' => $resumen,
             'fallos' => $resumen['fallos'],
+            'corrida' => $this->adjuntosCorrida->estado(),
+            'pendientes_corrida' => $this->adjuntosCorrida->contarPendientesSafe(),
+        ]);
+    }
+
+    public function iniciarAdjuntos(Request $request): JsonResponse
+    {
+        $fecha = $request->input('fecha_busqueda');
+        if ($fecha === null || trim((string) $fecha) === '') {
+            $fecha = $this->busqueda->ultimaCorrida()?->fecha_busqueda
+                ?? $this->servicio->fechaBusquedaHoy();
+        }
+
+        $resultado = $this->adjuntosCorrida->iniciarConDetalle(
+            $fecha,
+            (string) ($request->user()?->username ?? 'sistema'),
+        );
+
+        if (! $resultado['ok']) {
+            return response()->json([
+                'ok' => false,
+                'error' => $resultado['motivo'] ?? 'No se pudo iniciar adjuntos.',
+                'pendientes' => $resultado['pendientes'],
+                'corrida' => $this->adjuntosCorrida->estado(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'pendientes' => $resultado['pendientes'],
+            'corrida' => $this->adjuntosCorrida->estado($resultado['corrida']),
+        ]);
+    }
+
+    public function cancelarAdjuntos(): JsonResponse
+    {
+        $corrida = $this->adjuntosCorrida->cancelar();
+
+        return response()->json([
+            'ok' => true,
+            'corrida' => $corrida !== null ? $this->adjuntosCorrida->estado($corrida) : null,
         ]);
     }
 

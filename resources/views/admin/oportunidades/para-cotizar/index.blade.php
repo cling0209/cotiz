@@ -363,6 +363,18 @@
                         <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
                     </div>
                     <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        @if($puedeBuscar ?? false)
+                        <button type="button" id="btn-iniciar-adjuntos" class="btn btn-success btn-sm d-none" data-no-loader
+                            title="Proceso aparte de vinculaci&oacute;n; arranca tras sync al par o manualmente">
+                            <i class="bi bi-play-fill"></i> Procesar adjuntos
+                        </button>
+                        <button type="button" id="btn-cancelar-adjuntos" class="btn btn-outline-danger btn-sm d-none" data-no-loader
+                            title="Detiene la corrida de adjuntos">
+                            <i class="bi bi-stop-fill"></i> Cancelar
+                        </button>
+                        @endif
+                    </div>
                     <div class="progress mb-2" style="height: 0.45rem;" id="sync-adj-progreso-wrap">
                         <div id="sync-adj-progreso-bar" class="progress-bar bg-success" role="progressbar"
                             style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
@@ -714,6 +726,8 @@
             cotizarBase: @json(route('admin.cotizaciones.create')),
             adjuntosEstado: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
             adjuntosBuscar: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
+            iniciarAdjuntos: @json(($puedeBuscar ?? false) ? route('admin.oportunidades.para-cotizar.iniciar-adjuntos') : ''),
+            cancelarAdjuntos: @json(($puedeBuscar ?? false) ? route('admin.oportunidades.para-cotizar.cancelar-adjuntos') : ''),
             adjuntosListarBase: @json(($puedeAdjuntos ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
             adjuntosVerBase: @json(($puedeAdjuntos ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
         };
@@ -1674,18 +1688,26 @@
             const errorEl = document.getElementById('sync-adj-error');
             const contador = document.getElementById('sync-adj-detalle-contador');
             const tbody = document.getElementById('sync-adj-fallos-tbody');
+            const corrida = (data && data.corrida && typeof data.corrida === 'object') ? data.corrida : null;
             const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
             const total = Number(r.total) || 0;
             const consultados = Number(r.consultados) || 0;
             const conArchivos = Number(r.con_archivos) || 0;
             const sinAdjuntos = Number(r.sin_adjuntos) || 0;
-            const pendientes = Number(r.pendientes) || 0;
+            const pendientes = Number(r.pendientes) || Number(data?.pendientes_corrida) || 0;
             const fallos = Array.isArray(r.fallos) ? r.fallos : (Array.isArray(data?.fallos) ? data.fallos : []);
             const fallosCount = Number(r.fallos_count) || fallos.length;
-            const pct = total > 0 ? Math.min(100, Math.round((consultados / total) * 100)) : (consultados > 0 ? 100 : 0);
+            const corridaRunning = corrida && corrida.estado === 'running';
+            adjuntosCorridaActiva = corridaRunning;
+            const pct = corridaRunning
+                ? Math.min(100, Number(corrida.progreso) || 0)
+                : (total > 0 ? Math.min(100, Math.round((consultados / total) * 100)) : (consultados > 0 ? 100 : 0));
 
             if (badge) {
-                if (r.configurado === false) {
+                if (corridaRunning) {
+                    badge.textContent = 'en curso';
+                    badge.className = 'badge text-bg-primary';
+                } else if (r.configurado === false) {
                     badge.textContent = 'sin R2';
                     badge.className = 'badge text-bg-secondary';
                 } else if (fallosCount > 0) {
@@ -1700,7 +1722,12 @@
                 }
             }
             if (resumenEl) {
-                if (r.configurado === false) {
+                if (corridaRunning) {
+                    const proc = Number(corrida.pasos_procesados) || 0;
+                    const tot = Number(corrida.total_pasos) || 0;
+                    const msg = String(corrida.mensaje || 'Procesando adjuntos…').trim();
+                    resumenEl.textContent = `${msg} (${proc}/${tot})`;
+                } else if (r.configurado === false) {
                     resumenEl.textContent = 'R2 adjuntos no configurado.';
                 } else if (total === 0 && consultados === 0) {
                     resumenEl.textContent = 'Sin cotizaciones vigentes.';
@@ -1714,9 +1741,19 @@
             if (bar) {
                 bar.style.width = `${pct}%`;
                 bar.setAttribute('aria-valuenow', String(pct));
-                bar.classList.toggle('bg-danger', fallosCount > 0 && pendientes > 0);
-                bar.classList.toggle('bg-success', fallosCount === 0);
-                bar.classList.toggle('bg-warning', fallosCount > 0 && pendientes === 0);
+                bar.classList.toggle('progress-bar-animated', corridaRunning);
+                bar.classList.toggle('bg-danger', !corridaRunning && fallosCount > 0 && pendientes > 0);
+                bar.classList.toggle('bg-success', !corridaRunning && fallosCount === 0);
+                bar.classList.toggle('bg-warning', !corridaRunning && fallosCount > 0 && pendientes === 0);
+                bar.classList.toggle('bg-primary', corridaRunning);
+            }
+            if (btnIniciarAdjuntos) {
+                const mostrar = !corridaRunning && pendientes > 0 && r.configurado !== false && Boolean(urls.iniciarAdjuntos);
+                btnIniciarAdjuntos.classList.toggle('d-none', !mostrar);
+                btnIniciarAdjuntos.disabled = corridaRunning;
+            }
+            if (btnCancelarAdjuntos) {
+                btnCancelarAdjuntos.classList.toggle('d-none', !corridaRunning);
             }
             if (contador) {
                 contador.textContent = String(fallosCount);
@@ -1748,15 +1785,28 @@
                     }).join('');
                 }
             }
+            if (adjuntosPollTimer) {
+                clearTimeout(adjuntosPollTimer);
+                adjuntosPollTimer = null;
+            }
+            if (corridaRunning) {
+                adjuntosPollTimer = setTimeout(() => maybeRefreshAdjuntos(true), 3000);
+            }
         }
 
         let adjuntosEstadoAt = 0;
         let adjuntosEstadoEnCurso = false;
+        let adjuntosPollTimer = null;
+        let adjuntosCorridaActiva = false;
+        let vinculoEstadoPrev = null;
+        const btnIniciarAdjuntos = document.getElementById('btn-iniciar-adjuntos');
+        const btnCancelarAdjuntos = document.getElementById('btn-cancelar-adjuntos');
 
         async function maybeRefreshAdjuntos(forzar) {
             if (!puedeAdjuntos) return;
             const now = Date.now();
-            if (!forzar && now - adjuntosEstadoAt < 8000) return;
+            const intervalo = adjuntosCorridaActiva ? 3000 : 8000;
+            if (!forzar && now - adjuntosEstadoAt < intervalo) return;
             if (adjuntosEstadoEnCurso) return;
             adjuntosEstadoAt = now;
             await cargarConteosAdjuntos();
@@ -4104,9 +4154,11 @@
             if (corrida.sync_par) {
                 aplicarSyncPar(corrida.sync_par);
             }
-            if (corrida.vinculo && corrida.vinculo.estado === 'running') {
-                maybeRefreshAdjuntos(false);
+            const vinEst = corrida.vinculo?.estado || null;
+            if (vinculoEstadoPrev === 'running' && vinEst === 'completed') {
+                maybeRefreshAdjuntos(true);
             }
+            vinculoEstadoPrev = vinEst;
             const activo = corrida.estado === 'running';
             const esperandoWorker = corridaEsperandoWorker(corrida);
             const cambiandoDia = corrida.estado === 'completed' &&
@@ -4426,6 +4478,55 @@
             }
         }
 
+        let iniciandoAdjuntos = false;
+        let cancelandoAdjuntos = false;
+        async function iniciarAdjuntosManual() {
+            if (!urls.iniciarAdjuntos || iniciandoAdjuntos || cancelandoAdjuntos) return;
+            iniciandoAdjuntos = true;
+            if (btnIniciarAdjuntos) btnIniciarAdjuntos.disabled = true;
+            try {
+                const data = await postJson(urls.iniciarAdjuntos, {});
+                if (data && data.corrida) {
+                    await maybeRefreshAdjuntos(true);
+                } else {
+                    await cargarConteosAdjuntos();
+                }
+            } catch (e) {
+                pintarPanelAdjuntos({
+                    ok: false,
+                    error: e.message || String(e),
+                    resumen: {},
+                    fallos: [],
+                });
+                if (btnIniciarAdjuntos) {
+                    btnIniciarAdjuntos.classList.remove('d-none');
+                    btnIniciarAdjuntos.disabled = false;
+                }
+            } finally {
+                iniciandoAdjuntos = false;
+            }
+        }
+
+        async function cancelarAdjuntosManual() {
+            if (!urls.cancelarAdjuntos || cancelandoAdjuntos) return;
+            cancelandoAdjuntos = true;
+            if (btnCancelarAdjuntos) btnCancelarAdjuntos.disabled = true;
+            try {
+                await postJson(urls.cancelarAdjuntos, {});
+                await maybeRefreshAdjuntos(true);
+            } catch (e) {
+                pintarPanelAdjuntos({
+                    ok: false,
+                    error: e.message || String(e),
+                    resumen: {},
+                    fallos: [],
+                });
+                if (btnCancelarAdjuntos) btnCancelarAdjuntos.disabled = false;
+            } finally {
+                cancelandoAdjuntos = false;
+            }
+        }
+
         let pollEstadoCount = 0;
         let ultimaEncontradasPoll = -1;
         let itemsCargadosEsperaWorker = false;
@@ -4588,6 +4689,8 @@
             btnCancelar?.addEventListener('click', cancelarBusqueda);
             btnIniciarVinculo?.addEventListener('click', iniciarVinculoManual);
             btnCancelarVinculo?.addEventListener('click', cancelarVinculoManual);
+            btnIniciarAdjuntos?.addEventListener('click', iniciarAdjuntosManual);
+            btnCancelarAdjuntos?.addEventListener('click', cancelarAdjuntosManual);
             document.getElementById('btn-sync-cotizaciones')?.addEventListener('click', () => sincronizarParManual('cotizaciones'));
             document.getElementById('btn-sync-vinculaciones')?.addEventListener('click', () => sincronizarParManual('vinculaciones'));
             document.getElementById('sync-cot-detalle-toggle')?.addEventListener('click', () => {

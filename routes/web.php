@@ -190,6 +190,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->name('oportunidades.para-cotizar.iniciar-vinculo');
             Route::post('oportunidades/para-cotizar/cancelar-vinculo', [OportunidadParaCotizarController::class, 'cancelarVinculo'])
                 ->name('oportunidades.para-cotizar.cancelar-vinculo');
+            Route::post('oportunidades/para-cotizar/iniciar-adjuntos', [OportunidadParaCotizarController::class, 'iniciarAdjuntos'])
+                ->name('oportunidades.para-cotizar.iniciar-adjuntos');
+            Route::post('oportunidades/para-cotizar/cancelar-adjuntos', [OportunidadParaCotizarController::class, 'cancelarAdjuntos'])
+                ->name('oportunidades.para-cotizar.cancelar-adjuntos');
             Route::post('oportunidades/para-cotizar/paso', [OportunidadParaCotizarController::class, 'paso'])
                 ->name('oportunidades.para-cotizar.paso');
         });

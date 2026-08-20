@@ -212,6 +212,8 @@ return [
         'alerta_desvio_pct' => (float) env('MERCADOPUBLICO_ALERTA_DESVIO_PCT', 15),
         'resultados_admin_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_ADMIN', true), FILTER_VALIDATE_BOOL),
         'resultados_delay_ms' => max(0, (int) env('MERCADOPUBLICO_RESULTADOS_DELAY_MS', 500)),
+        // Pausa entre cotizaciones en la corrida de adjuntos (3.er proceso, tras sync al par).
+        'adjuntos_delay_ms' => max(0, (int) env('MERCADOPUBLICO_ADJUNTOS_DELAY_MS', 500)),
         // Máx. consultas MP en vuelo (Http async). El siguiente se dispara sin esperar respuesta.
         'resultados_concurrencia' => max(1, (int) env('MERCADOPUBLICO_RESULTADOS_CONCURRENCIA', 5)),
         // Tope superior configurable (evita valores accidentales muy altos).
