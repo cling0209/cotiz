@@ -2208,7 +2208,9 @@
             + (texto || 'Buscando...') + '</p>';
     }
 
-    const bsModal = modalEl ? new bootstrap.Modal(modalEl) : null;
+    const bsModal = modalEl && typeof bootstrap !== 'undefined'
+        ? bootstrap.Modal.getOrCreateInstance(modalEl)
+        : null;
     let buscarAbort = null;
     let resultadosActuales = [];
     let filaActiva = -1;
@@ -2605,7 +2607,6 @@
         if (buscarAbort) buscarAbort.abort();
         limpiarProductosMarcados();
         setModalBuscarModoVincular(false);
-        cerrarPopupVincularAgile();
     });
 
     function idAgileParaMercadoPublico(codigoInterno) {
@@ -4998,8 +4999,15 @@
     }
 
     function descripcionAgileVincular(fila, btn) {
-        return String(btn.dataset.descripcionAgile || '').trim()
-            || String(fila?.querySelector('.linea-desc-agile')?.textContent || '').trim();
+        const desdeBtn = String(btn.dataset.descripcionAgile || '').trim();
+        if (desdeBtn) {
+            return desdeBtn;
+        }
+        const desdeCelda = String(fila?.querySelector('.linea-desc-agile')?.textContent || '').trim();
+        if (desdeCelda && desdeCelda !== '—' && desdeCelda !== '-') {
+            return desdeCelda;
+        }
+        return '';
     }
 
     function abrirPopupVincularAgile(btn) {
@@ -5008,17 +5016,26 @@
         vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
         vincularAgileIdActual = btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '';
         vincularSortVenta = null;
+
+        if (!bsModal || !modalInput) {
+            dlgAlert('No se puede abrir el buscador de productos en esta vista.', { title: 'Aviso', type: 'warning' });
+            return;
+        }
+
         const descAgile = descripcionAgileVincular(fila, btn);
         const terminoBusqueda = terminoBusquedaVincularPorDefecto(fila, btn);
+        const modo = descAgile ? 'similitud' : 'texto';
+
         setModalBuscarModoVincular(true);
-        if (modalInput) modalInput.value = terminoBusqueda;
+        modalInput.value = terminoBusqueda;
         limpiarProductosMarcados();
         renderResultados([], {});
         if (modalEstado) {
-            setModalBuscarEstado('Buscando...', true);
+            setModalBuscarEstado('Buscando…', true);
         }
-        bsModal?.show();
-        ejecutarBusqueda(terminoBusqueda, descAgile ? 'similitud' : 'texto');
+        bsModal.show();
+        setTimeout(() => modalInput.focus(), 200);
+        ejecutarBusqueda(terminoBusqueda, modo);
     }
 
     function seleccionarVinculoAgileDesdeModal(p) {
@@ -5035,6 +5052,7 @@
 
     function cerrarPopupVincularAgile() {
         if (popupVincularEl) popupVincularEl.style.display = 'none';
+        bsModal?.hide();
         vincularFilaActual = null;
         vincularOrdenActual = null;
         vincularAgileIdActual = null;
@@ -5295,7 +5313,10 @@
 
     document.getElementById('tabla_detalle')?.addEventListener('click', e => {
         const btn = e.target.closest('.btn-buscar-linea-agile');
-        if (btn) abrirPopupVincularAgile(btn);
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        abrirPopupVincularAgile(btn);
     });
     document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
     document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
