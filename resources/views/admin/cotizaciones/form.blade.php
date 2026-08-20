@@ -5145,6 +5145,9 @@
         const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
         if (buscarBtn) {
             buscarBtn.dataset.prodItem = codigoRaw;
+            if (linea.prod_descripcion_agile) {
+                buscarBtn.dataset.descripcionAgile = linea.prod_descripcion_agile;
+            }
         }
 
         const codigoSpan = tr.querySelector('.linea-codigo-interno');
@@ -5193,11 +5196,6 @@
         if (descAgileTd && linea.prod_descripcion_agile) {
             descAgileTd.innerHTML = '<span class="nv-fill linea-desc-agile small">'
                 + escHtml(linea.prod_descripcion_agile) + '</span>';
-        }
-
-        const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
-        if (buscarBtn && linea.prod_descripcion_agile) {
-            buscarBtn.dataset.descripcionAgile = linea.prod_descripcion_agile;
         }
 
         const costoInput = tr.querySelector('.nv-precio-costo-sololectura');
