@@ -4988,9 +4988,14 @@
             if (porIndice) return porIndice;
         }
 
-        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-prod-item-agile]'))
-            .find(tr => String(tr.dataset.orden) === String(orden)
-                && String(tr.dataset.prodItemAgile || '') === String(agileId)) || null;
+        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'))
+            .find(tr => {
+                if (String(tr.dataset.orden) !== String(orden)) return false;
+                if (agileId) {
+                    return String(tr.dataset.prodItemAgile || '') === String(agileId);
+                }
+                return !tr.dataset.prodItemAgile;
+            }) || null;
     }
 
     function actualizarImagenLinea(tr, imageUrl, titulo) {
@@ -5058,6 +5063,11 @@
 
         tr.dataset.prod = codigoRaw;
         tr.classList.remove('linea-pendiente-vinculo');
+
+        const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
+        if (buscarBtn) {
+            buscarBtn.dataset.prodItem = codigoRaw;
+        }
 
         const codigoSpan = tr.querySelector('.linea-codigo-interno');
         if (codigoSpan) {
@@ -5145,12 +5155,14 @@
     }
 
     async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl, softland) {
-        if (vincularOrdenActual == null || !vincularAgileIdActual) return;
+        if (vincularOrdenActual == null) return;
 
         const filaIdx = vincularFilaActual;
         const orden = parseInt(vincularOrdenActual, 10);
-        const agileId = vincularAgileIdActual;
-        const filaOrden = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]')?.dataset.orden;
+        const agileId = vincularAgileIdActual || '';
+        const filaTr = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
+        const prodAnterior = filaTr?.dataset.prod || filaTr?.querySelector('input[name*="[prod_item]"]')?.value || '';
+        const filaOrden = filaTr?.dataset.orden;
         const ordenEnvio = filaOrden ? parseInt(filaOrden, 10) : orden;
 
         if (btnEl) {
@@ -5173,8 +5185,9 @@
                 },
                 body: JSON.stringify({
                     orden: ordenEnvio,
-                    prod_item_agile: agileId,
+                    prod_item_agile: agileId || null,
                     prod_item: codigo,
+                    prod_item_anterior: prodAnterior || null,
                     factor_precio_venta: factorInput?.value || formatFactorChile(factorActualCotiz()),
                 }),
             });

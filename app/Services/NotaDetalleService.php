@@ -702,19 +702,32 @@ class NotaDetalleService
         ?string $usuarioUpd = null,
         ?int $prodValor = null,
         ?float $factorOverride = null,
+        ?string $prodItemAnterior = null,
     ): array {
         $agileId = trim($prodItemAgile);
         $codigo = trim($prodItemInterno);
+        $prodItemAnterior = trim((string) $prodItemAnterior);
 
         if ($codigo === '' || $codigo === '0') {
             throw new \InvalidArgumentException('Debe seleccionar un producto del maestro.');
         }
 
-        $linea = NotaDetalle::query()
-            ->where('nronota', $nota->nronota)
-            ->where('orden', $orden)
-            ->where('prod_item_agile', $agileId)
-            ->firstOrFail();
+        if ($agileId !== '') {
+            $linea = NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('orden', $orden)
+                ->where('prod_item_agile', $agileId)
+                ->first();
+            if (! $linea) {
+                throw new \InvalidArgumentException('Línea Agile no encontrada.');
+            }
+        } else {
+            $linea = $this->resolverLineaPorOrden(
+                $nota,
+                $orden,
+                $prodItemAnterior !== '' ? $prodItemAnterior : null,
+            );
+        }
 
         $producto = Maeprod::query()->find($codigo);
         if (! $producto) {
@@ -777,10 +790,17 @@ class NotaDetalleService
             $actualizada = NotaDetalle::query()
                 ->where('nronota', $nota->nronota)
                 ->where('orden', (int) $linea->orden)
-                ->where('prod_item_agile', $agileId)
-                ->firstOrFail();
+                ->where('prod_item', $codigo)
+                ->first();
+            if (! $actualizada) {
+                throw new \InvalidArgumentException('No se pudo actualizar la línea del detalle.');
+            }
 
-            $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Vinculación de línea Agile');
+            $this->auditoria->registrarModificar(
+                $nota,
+                $usuarioUpd,
+                $agileId !== '' ? 'Vinculación de línea Agile' : 'Cambio de producto en línea',
+            );
 
             // Aprendizaje se confirma al grabar o al generar PDF (no al seleccionar).
             // Precios de la nota no se vuelcan a maeprod.

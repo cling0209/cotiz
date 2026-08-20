@@ -58,18 +58,18 @@
     <td>
         <div class="d-flex flex-wrap gap-1 align-items-center">
             <span class="linea-codigo-interno @if($row['pendiente_vinculo']) text-warning fw-semibold @endif">{{ \App\Support\ProductCodeNormalizer::normalize($linea->prod_item) }}</span>
-            @if($row['prod_item_agile'] !== '')
-                <button
-                    type="button"
-                    class="btn btn-outline-primary btn-sm btn-buscar-linea-agile text-nowrap flex-shrink-0"
-                    data-fila="{{ $idx }}"
-                    data-orden="{{ $linea->orden }}"
-                    data-prod-item="{{ $linea->prod_item }}"
-                    data-prod-item-agile="{{ $row['prod_item_agile'] }}"
-                    data-descripcion-agile="{{ $row['prod_descripcion_agile'] }}"
-                    title="Buscar o cambiar producto del maestro"
-                >Buscar</button>
-            @endif
+            <button
+                type="button"
+                class="btn btn-outline-primary btn-sm btn-buscar-linea-agile text-nowrap flex-shrink-0"
+                data-fila="{{ $idx }}"
+                data-orden="{{ $linea->orden }}"
+                data-prod-item="{{ $linea->prod_item }}"
+                @if($row['prod_item_agile'] !== '')
+                data-prod-item-agile="{{ $row['prod_item_agile'] }}"
+                data-descripcion-agile="{{ $row['prod_descripcion_agile'] }}"
+                @endif
+                title="Buscar o cambiar producto del maestro"
+            >Buscar</button>
         </div>
         <input type="hidden" name="lineas[{{ $idx }}][prod_item]" value="{{ $linea->prod_item }}">
         <input type="hidden" name="lineas[{{ $idx }}][orden]" value="{{ $linea->orden }}">

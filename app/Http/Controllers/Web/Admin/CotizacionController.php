@@ -1329,8 +1329,9 @@ class CotizacionController extends Controller
 
         $datos = $request->validate([
             'orden' => ['required', 'integer', 'min:1'],
-            'prod_item_agile' => ['required', 'string', 'max:50'],
+            'prod_item_agile' => ['nullable', 'string', 'max:50'],
             'prod_item' => ['required', 'string', 'max:50'],
+            'prod_item_anterior' => ['nullable', 'string', 'max:50'],
             'prod_valor' => ['nullable', 'integer', 'min:0'],
             'factor_precio_venta' => ['nullable', 'string'],
         ]);
@@ -1349,11 +1350,12 @@ class CotizacionController extends Controller
             $resultado = $this->detalleService->vincularLineaAgile(
                 $nota,
                 (int) $datos['orden'],
-                $datos['prod_item_agile'],
+                trim((string) ($datos['prod_item_agile'] ?? '')),
                 $datos['prod_item'],
                 $request->user()->username,
                 null,
                 $factorOverride,
+                trim((string) ($datos['prod_item_anterior'] ?? '')),
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
