@@ -464,6 +464,50 @@ class OportunidadAdjuntoService
         }
     }
 
+    public function carpetaTieneObjetos(string $codigo): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return false;
+        }
+        try {
+            $disk = Storage::disk($this->disk());
+            $carpeta = $this->carpeta($codigo);
+
+            return $disk->exists($carpeta.'/manifest.json')
+                || $disk->exists($carpeta.'/error.json')
+                || $disk->allFiles($carpeta) !== [];
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public function eliminarCarpeta(string $codigo): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+        $codigo = $this->normalizarCodigo($codigo);
+        if ($codigo === '') {
+            return false;
+        }
+        try {
+            Storage::disk($this->disk())->deleteDirectory($this->carpeta($codigo));
+
+            return true;
+        } catch (Throwable $e) {
+            Log::warning('OportunidadAdjunto: no se pudo eliminar carpeta de adjuntos', [
+                'codigo' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     /**
      * @return array{codigo: string, guardados: int, omitidos: int, archivos: list<array{nombre: string, bytes: int, mime: string}>, consultado: true, sin_adjuntos: bool}
      */

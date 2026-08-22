@@ -2768,9 +2768,34 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Tras adjuntos (o si no había pendientes): catch-up del día siguiente, o cambios de estado.
+     * Tras adjuntos (o si no había pendientes): limpia R2 de cerradas y sigue el pipeline.
      */
-    public function continuarPipelineTrasAdjuntos(mixed $fechaBusqueda, string $usuario = 'sistema'): void
+    public function continuarPipelineTrasAdjuntos(
+        mixed $fechaBusqueda,
+        string $usuario = 'sistema',
+        ?int $adjuntoCorridaId = null,
+    ): void {
+        $usuario = trim($usuario) ?: 'sistema';
+
+        try {
+            app(OportunidadAdjuntoCorridaService::class)->encolarPurgeYContinuarPipeline(
+                $fechaBusqueda,
+                $usuario,
+                $adjuntoCorridaId,
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo encolar limpieza de adjuntos cerrados', [
+                'fecha_busqueda' => (string) $fechaBusqueda,
+                'message' => $e->getMessage(),
+            ]);
+            $this->continuarPipelineTrasPurge($fechaBusqueda, $usuario);
+        }
+    }
+
+    /**
+     * Tras purge (o si no había R2): catch-up del día siguiente, o cambios de estado.
+     */
+    public function continuarPipelineTrasPurge(mixed $fechaBusqueda, string $usuario = 'sistema'): void
     {
         $usuario = trim($usuario) ?: 'sistema';
 
@@ -2821,7 +2846,9 @@ class OportunidadBusquedaService
         }
 
         try {
-            return app(OportunidadAdjuntoCorridaService::class)->corridaEnCurso() !== null;
+            $adjuntos = app(OportunidadAdjuntoCorridaService::class);
+
+            return $adjuntos->corridaEnCurso() !== null || $adjuntos->purgeEnCurso();
         } catch (Throwable) {
             return false;
         }

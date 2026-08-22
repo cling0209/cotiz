@@ -1,0 +1,142 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Jobs\ProcessOportunidadAdjuntoPurgeJob;
+use App\Models\OportunidadAdjuntoCorrida;
+use App\Models\OportunidadEncontrada;
+use App\Models\OportunidadTomada;
+use App\Services\OportunidadAdjuntoCorridaService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class OportunidadAdjuntoPurgeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-14',
+            'cotiz.mercadopublico.adjuntos_disk' => 'r2_adjuntos',
+            'cotiz.mercadopublico.adjuntos_prefix' => '',
+            'filesystems.disks.r2_adjuntos.bucket' => 'mp-adjuntos',
+            'filesystems.disks.r2_adjuntos.key' => 'test-key',
+            'filesystems.disks.r2_adjuntos.secret' => 'test-secret',
+        ]);
+        Storage::fake('r2_adjuntos');
+        Carbon::setTestNow(Carbon::parse('2026-07-16 19:42:00', 'America/Santiago'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    public function test_purge_borra_cerradas_y_respeta_vigentes_y_tomadas(): void
+    {
+        $this->crearOportunidad('CERRADA-001', now()->subDay());
+        $this->crearOportunidad('VIGENTE-001', now()->addDays(2));
+        $this->crearOportunidad('TOMADA-001', now()->subDay());
+        OportunidadTomada::query()->create([
+            'codigo' => 'TOMADA-001',
+            'usuario' => 'admin',
+            'tomada_at' => now(),
+        ]);
+
+        Storage::disk('r2_adjuntos')->put('CERRADA-001/bases.pdf', '%PDF-1.4');
+        Storage::disk('r2_adjuntos')->put('CERRADA-001/manifest.json', '{}');
+        Storage::disk('r2_adjuntos')->put('VIGENTE-001/bases.pdf', '%PDF-1.4');
+        Storage::disk('r2_adjuntos')->put('VIGENTE-001/manifest.json', '{}');
+        Storage::disk('r2_adjuntos')->put('TOMADA-001/bases.pdf', '%PDF-1.4');
+        Storage::disk('r2_adjuntos')->put('TOMADA-001/manifest.json', '{}');
+
+        $corrida = $this->crearCorridaCompletada();
+        $resultado = $this->app->make(OportunidadAdjuntoCorridaService::class)
+            ->ejecutarPurgeCerrados($corrida);
+
+        $this->assertSame(1, $resultado['eliminados']);
+        $this->assertSame(1, $resultado['omitidos']);
+        Storage::disk('r2_adjuntos')->assertMissing('CERRADA-001/bases.pdf');
+        Storage::disk('r2_adjuntos')->assertExists('VIGENTE-001/bases.pdf');
+        Storage::disk('r2_adjuntos')->assertExists('TOMADA-001/bases.pdf');
+
+        $corrida->refresh();
+        $this->assertSame(OportunidadAdjuntoCorridaService::PURGE_COMPLETED, $corrida->purge_json['estado'] ?? null);
+        $this->assertSame(1, $corrida->purge_json['eliminados'] ?? null);
+        $this->assertStringContainsString('Inicio 19:42', (string) ($corrida->purge_json['mensaje'] ?? ''));
+        $this->assertStringContainsString('Fin 19:42', (string) ($corrida->purge_json['mensaje'] ?? ''));
+
+        $estado = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida);
+        $this->assertSame(1, $estado['purge']['eliminados'] ?? null);
+        $this->assertSame('19:42', $estado['purge']['inicio_hora'] ?? null);
+        $this->assertSame('19:42', $estado['purge']['fin_hora'] ?? null);
+    }
+
+    public function test_finalizar_adjuntos_encola_purge(): void
+    {
+        Queue::fake();
+
+        $corrida = OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'ADJ-DONE-002',
+                    'estado' => 'ok',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Adjuntos 1/1…',
+        ]);
+
+        $this->app->make(OportunidadAdjuntoCorridaService::class)->procesarPaso($corrida);
+
+        Queue::assertPushed(ProcessOportunidadAdjuntoPurgeJob::class);
+        $corrida->refresh();
+        $this->assertSame(OportunidadAdjuntoCorridaService::PURGE_PENDING, $corrida->purge_json['estado'] ?? null);
+    }
+
+    private function crearOportunidad(string $codigo, mixed $fechaCierre): OportunidadEncontrada
+    {
+        return OportunidadEncontrada::query()->create([
+            'codigo' => $codigo,
+            'nombre' => 'Demo',
+            'organismo' => 'Hospital Demo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_cierre' => $fechaCierre,
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+        ]);
+    }
+
+    private function crearCorridaCompletada(): OportunidadAdjuntoCorrida
+    {
+        return OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(10),
+            'fin' => now()->subMinute(),
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_COMPLETED,
+            'total_pasos' => 0,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 0,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Adjuntos terminados.',
+        ]);
+    }
+}

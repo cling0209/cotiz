@@ -1269,7 +1269,8 @@ class OportunidadVinculoService
         }
 
         try {
-            if (app(OportunidadAdjuntoCorridaService::class)->corridaEnCurso() !== null) {
+            $adjuntos = app(OportunidadAdjuntoCorridaService::class);
+            if ($adjuntos->corridaEnCurso() !== null || $adjuntos->purgeEnCurso()) {
                 return;
             }
         } catch (Throwable) {

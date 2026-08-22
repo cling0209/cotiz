@@ -72,6 +72,7 @@ class SyncOportunidadEncontradasParCommand extends Command
 
         return OportunidadAdjuntoCorrida::query()
             ->where('estado', OportunidadAdjuntoCorridaService::ESTADO_RUNNING)
-            ->exists();
+            ->exists()
+            || app(OportunidadAdjuntoCorridaService::class)->purgeEnCurso();
     }
 }

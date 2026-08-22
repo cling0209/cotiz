@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessOportunidadAdjuntoJob;
+use App\Jobs\ProcessOportunidadAdjuntoPurgeJob;
 use App\Jobs\ProcessOportunidadVinculoJob;
 use App\Models\OportunidadAdjuntoCorrida;
 use App\Models\OportunidadEncontrada;
@@ -238,5 +239,6 @@ class OportunidadAdjuntoCorridaTest extends TestCase
 
         $corrida->refresh();
         $this->assertSame(OportunidadAdjuntoCorridaService::ESTADO_COMPLETED, $corrida->estado);
+        Queue::assertPushed(ProcessOportunidadAdjuntoPurgeJob::class);
     }
 }

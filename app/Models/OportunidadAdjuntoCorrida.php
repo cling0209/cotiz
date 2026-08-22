@@ -20,6 +20,7 @@ class OportunidadAdjuntoCorrida extends Model
         'plan_json',
         'errores_json',
         'mensaje',
+        'purge_json',
     ];
 
     protected function casts(): array
@@ -33,6 +34,7 @@ class OportunidadAdjuntoCorrida extends Model
             'pasos_fallidos' => 'integer',
             'plan_json' => 'array',
             'errores_json' => 'array',
+            'purge_json' => 'array',
         ];
     }
 }

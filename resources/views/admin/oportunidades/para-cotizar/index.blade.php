@@ -363,6 +363,7 @@
                         <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
                     </div>
                     <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div id="sync-adj-limpieza" class="small text-muted mb-2 d-none"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         @if($puedeBuscar ?? false)
                         <button type="button" id="btn-iniciar-adjuntos" class="btn btn-success btn-sm d-none" data-no-loader
@@ -1851,11 +1852,14 @@
             if (!card) return;
             const badge = document.getElementById('sync-adj-badge');
             const resumenEl = document.getElementById('sync-adj-resumen');
+            const limpiezaEl = document.getElementById('sync-adj-limpieza');
             const bar = document.getElementById('sync-adj-progreso-bar');
             const errorEl = document.getElementById('sync-adj-error');
             const contador = document.getElementById('sync-adj-detalle-contador');
             const tbody = document.getElementById('sync-adj-fallos-tbody');
             const corrida = (data && data.corrida && typeof data.corrida === 'object') ? data.corrida : null;
+            const purge = (corrida && corrida.purge && typeof corrida.purge === 'object') ? corrida.purge : null;
+            const purgeActivo = purge && (purge.estado === 'pending' || purge.estado === 'running');
             const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
             const total = Number(r.total) || 0;
             const consultados = Number(r.consultados) || 0;
@@ -1865,7 +1869,7 @@
             const fallos = Array.isArray(r.fallos) ? r.fallos : (Array.isArray(data?.fallos) ? data.fallos : []);
             const fallosCount = Number(r.fallos_count) || fallos.length;
             const corridaRunning = corrida && corrida.estado === 'running';
-            adjuntosCorridaActiva = corridaRunning;
+            adjuntosCorridaActiva = Boolean(corridaRunning || purgeActivo);
             const pct = corridaRunning
                 ? Math.min(100, Number(corrida.progreso) || 0)
                 : (total > 0 ? Math.min(100, Math.round((consultados / total) * 100)) : (consultados > 0 ? 100 : 0));
@@ -1874,6 +1878,9 @@
                 if (corridaRunning) {
                     badge.textContent = 'en curso';
                     badge.className = 'badge text-bg-primary';
+                } else if (purgeActivo) {
+                    badge.textContent = 'limpieza';
+                    badge.className = 'badge text-bg-info';
                 } else if (r.configurado === false) {
                     badge.textContent = 'sin R2';
                     badge.className = 'badge text-bg-secondary';
@@ -1905,14 +1912,28 @@
                         + (fallosCount > 0 ? ` · ${fallosCount} fallida${fallosCount === 1 ? '' : 's'}` : '');
                 }
             }
+            if (limpiezaEl) {
+                const purgeMsg = String(purge?.mensaje || '').trim();
+                if (purgeActivo) {
+                    limpiezaEl.textContent = purgeMsg || 'Eliminando adjuntos de cotizaciones cerradas…';
+                    limpiezaEl.classList.remove('d-none');
+                } else if (purgeMsg) {
+                    limpiezaEl.textContent = purgeMsg;
+                    limpiezaEl.classList.remove('d-none');
+                } else {
+                    limpiezaEl.textContent = '';
+                    limpiezaEl.classList.add('d-none');
+                }
+            }
             if (bar) {
                 bar.style.width = `${pct}%`;
                 bar.setAttribute('aria-valuenow', String(pct));
-                bar.classList.toggle('progress-bar-animated', corridaRunning);
-                bar.classList.toggle('bg-danger', !corridaRunning && fallosCount > 0 && pendientes > 0);
-                bar.classList.toggle('bg-success', !corridaRunning && fallosCount === 0);
-                bar.classList.toggle('bg-warning', !corridaRunning && fallosCount > 0 && pendientes === 0);
+                bar.classList.toggle('progress-bar-animated', corridaRunning || purgeActivo);
+                bar.classList.toggle('bg-danger', !corridaRunning && !purgeActivo && fallosCount > 0 && pendientes > 0);
+                bar.classList.toggle('bg-success', !corridaRunning && !purgeActivo && fallosCount === 0);
+                bar.classList.toggle('bg-warning', !corridaRunning && !purgeActivo && fallosCount > 0 && pendientes === 0);
                 bar.classList.toggle('bg-primary', corridaRunning);
+                bar.classList.toggle('bg-info', !corridaRunning && purgeActivo);
             }
             if (btnIniciarAdjuntos) {
                 const mostrar = !corridaRunning && pendientes > 0 && r.configurado !== false && Boolean(urls.iniciarAdjuntos);
@@ -1956,7 +1977,7 @@
                 clearTimeout(adjuntosPollTimer);
                 adjuntosPollTimer = null;
             }
-            if (corridaRunning) {
+            if (corridaRunning || purgeActivo) {
                 adjuntosPollTimer = setTimeout(() => maybeRefreshAdjuntos(true), 3000);
             }
         }

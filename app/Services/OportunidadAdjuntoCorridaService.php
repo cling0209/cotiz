@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Jobs\ProcessOportunidadAdjuntoJob;
+use App\Jobs\ProcessOportunidadAdjuntoPurgeJob;
 use App\Models\OportunidadAdjuntoCorrida;
 use App\Models\OportunidadEncontrada;
+use App\Support\HoraChile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +25,16 @@ class OportunidadAdjuntoCorridaService
     public const ESTADO_ERROR = 'error';
 
     public const MOTIVO_SIN_PENDIENTES = 'No hay cotizaciones vigentes pendientes de adjuntos.';
+
+    public const PURGE_PENDING = 'pending';
+
+    public const PURGE_RUNNING = 'running';
+
+    public const PURGE_COMPLETED = 'completed';
+
+    public const PURGE_SKIPPED = 'skipped';
+
+    public const PURGE_ERROR = 'error';
 
     private const PASO_PENDING = 'pending';
 
@@ -444,10 +456,14 @@ class OportunidadAdjuntoCorridaService
     {
         $corrida = $this->corridaEnCurso();
         if ($corrida === null) {
+            $purge = $this->retomarPurgeSiQuedoColgado($forzar);
+
             return [
-                'accion' => 'omitido',
-                'mensaje' => 'Sin corrida de adjuntos en curso.',
-                'corrida_id' => null,
+                'accion' => $purge ? 'reanudada' : 'omitido',
+                'mensaje' => $purge
+                    ? 'Limpieza de adjuntos cerrados reanudada'.($forzar ? ' tras deploy' : '').'.'
+                    : 'Sin corrida de adjuntos en curso.',
+                'corrida_id' => $this->ultimaCorrida()?->id,
             ];
         }
 
@@ -527,7 +543,196 @@ class OportunidadAdjuntoCorridaService
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'mensaje' => $corrida->mensaje,
+            'purge' => $this->serializarPurge($corrida),
         ];
+    }
+
+    public function purgeEnCurso(): bool
+    {
+        if ($this->jobPurgeEncolado()) {
+            return true;
+        }
+
+        $corrida = $this->ultimaCorrida();
+        if ($corrida === null) {
+            return false;
+        }
+        $estado = (string) (($corrida->purge_json ?? [])['estado'] ?? '');
+
+        return in_array($estado, [self::PURGE_PENDING, self::PURGE_RUNNING], true);
+    }
+
+    /**
+     * Encola la limpieza de adjuntos cerrados y, al terminar el job, sigue el pipeline.
+     */
+    public function encolarPurgeYContinuarPipeline(
+        mixed $fechaBusqueda,
+        string $usuario = 'sistema',
+        ?int $corridaId = null,
+    ): void {
+        $usuario = trim($usuario) ?: 'sistema';
+        $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
+        $corrida = $corridaId !== null ? $this->findCorrida($corridaId) : $this->ultimaCorrida();
+
+        if (! $this->adjuntos->isConfigured()) {
+            $this->persistirPurge($corrida, [
+                'estado' => self::PURGE_SKIPPED,
+                'inicio' => now()->toIso8601String(),
+                'fin' => now()->toIso8601String(),
+                'eliminados' => 0,
+                'omitidos' => 0,
+                'fallos' => 0,
+                'mensaje' => 'Limpieza omitida: R2 adjuntos no configurado.',
+            ]);
+            app(OportunidadBusquedaService::class)->continuarPipelineTrasPurge($dia, $usuario);
+
+            return;
+        }
+
+        if ($this->jobPurgeEncolado($corrida?->id)) {
+            return;
+        }
+
+        $this->persistirPurge($corrida, [
+            'estado' => self::PURGE_PENDING,
+            'inicio' => null,
+            'fin' => null,
+            'eliminados' => 0,
+            'omitidos' => 0,
+            'fallos' => 0,
+            'mensaje' => 'Limpieza de adjuntos cerrados encolada.',
+        ]);
+
+        ProcessOportunidadAdjuntoPurgeJob::dispatch($dia, $usuario, $corrida?->id);
+    }
+
+    /**
+     * @return array{
+     *   eliminados: int,
+     *   omitidos: int,
+     *   fallos: int,
+     *   revisados: int
+     * }
+     */
+    public function ejecutarPurgeCerrados(?OportunidadAdjuntoCorrida $corrida = null): array
+    {
+        $inicio = now();
+        $this->persistirPurge($corrida, [
+            'estado' => self::PURGE_RUNNING,
+            'inicio' => $inicio->toIso8601String(),
+            'fin' => null,
+            'eliminados' => 0,
+            'omitidos' => 0,
+            'fallos' => 0,
+            'mensaje' => 'Eliminando adjuntos de cotizaciones cerradas…',
+        ]);
+
+        $protegidos = array_fill_keys(
+            array_merge(
+                $this->oportunidades->codigosVigentesUnicos(),
+                $this->oportunidades->codigosTomadosNormalizados(),
+            ),
+            true,
+        );
+
+        $cerradas = OportunidadEncontrada::query()
+            ->whereNotNull('fecha_cierre')
+            ->where('fecha_cierre', '<=', now())
+            ->pluck('codigo')
+            ->map(fn ($c) => strtoupper(trim((string) $c)))
+            ->filter(fn ($c) => $c !== '')
+            ->unique()
+            ->values();
+
+        $eliminados = 0;
+        $omitidos = 0;
+        $fallos = 0;
+        $revisados = 0;
+
+        foreach ($cerradas as $codigo) {
+            if (isset($protegidos[$codigo])) {
+                if ($this->adjuntos->carpetaTieneObjetos($codigo)) {
+                    $omitidos++;
+                }
+
+                continue;
+            }
+            if (! $this->adjuntos->carpetaTieneObjetos($codigo)) {
+                continue;
+            }
+            $revisados++;
+            if ($this->adjuntos->eliminarCarpeta($codigo)) {
+                $eliminados++;
+            } else {
+                $fallos++;
+            }
+        }
+
+        $fin = now();
+        $mensaje = $this->mensajePurge($eliminados, $omitidos, $fallos, $inicio, $fin);
+        $this->persistirPurge($corrida, [
+            'estado' => $fallos > 0 ? self::PURGE_ERROR : self::PURGE_COMPLETED,
+            'inicio' => $inicio->toIso8601String(),
+            'fin' => $fin->toIso8601String(),
+            'eliminados' => $eliminados,
+            'omitidos' => $omitidos,
+            'fallos' => $fallos,
+            'revisados' => $revisados,
+            'mensaje' => $mensaje,
+        ]);
+
+        Log::info('OportunidadAdjunto: purge de cerradas', [
+            'corrida_id' => $corrida?->id,
+            'eliminados' => $eliminados,
+            'omitidos' => $omitidos,
+            'fallos' => $fallos,
+        ]);
+
+        return [
+            'eliminados' => $eliminados,
+            'omitidos' => $omitidos,
+            'fallos' => $fallos,
+            'revisados' => $revisados,
+        ];
+    }
+
+    public function marcarPurgeError(?OportunidadAdjuntoCorrida $corrida, string $mensaje): void
+    {
+        $actual = is_array($corrida?->purge_json) ? $corrida->purge_json : [];
+        $inicio = $actual['inicio'] ?? now()->toIso8601String();
+        $fin = now();
+        $this->persistirPurge($corrida, [
+            'estado' => self::PURGE_ERROR,
+            'inicio' => $inicio,
+            'fin' => $fin->toIso8601String(),
+            'eliminados' => (int) ($actual['eliminados'] ?? 0),
+            'omitidos' => (int) ($actual['omitidos'] ?? 0),
+            'fallos' => (int) ($actual['fallos'] ?? 0) + 1,
+            'mensaje' => 'Limpieza con error: '.mb_substr(trim($mensaje), 0, 200)
+                .'. Inicio '.HoraChile::format($inicio, 'H:i')
+                .' — Fin '.HoraChile::format($fin, 'H:i').'.',
+        ]);
+    }
+
+    public function retomarPurgeSiQuedoColgado(bool $forzar = false): bool
+    {
+        $corrida = $this->ultimaCorrida();
+        if ($corrida === null) {
+            return false;
+        }
+        $estado = (string) (($corrida->purge_json ?? [])['estado'] ?? '');
+        if (! in_array($estado, [self::PURGE_PENDING, self::PURGE_RUNNING], true)) {
+            return false;
+        }
+        if (! $forzar && $this->jobPurgeEncolado($corrida->id)) {
+            return false;
+        }
+
+        $usuario = trim((string) ($corrida->usuario ?? 'sistema')) ?: 'sistema';
+        $dia = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
+        ProcessOportunidadAdjuntoPurgeJob::dispatch($dia, $usuario, $corrida->id);
+
+        return true;
     }
 
     private function finalizar(OportunidadAdjuntoCorrida $corrida): void
@@ -556,6 +761,7 @@ class OportunidadAdjuntoCorridaService
             app(OportunidadBusquedaService::class)->continuarPipelineTrasAdjuntos(
                 $corrida->fecha_busqueda,
                 trim((string) ($corrida->usuario ?? 'sistema')) ?: 'sistema',
+                $corrida->id,
             );
         } catch (Throwable $e) {
             Log::warning('No se pudo continuar el pipeline tras adjuntos', [
@@ -695,5 +901,77 @@ class OportunidadAdjuntoCorridaService
         } catch (Throwable) {
             return $dia;
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function persistirPurge(?OportunidadAdjuntoCorrida $corrida, array $payload): void
+    {
+        if ($corrida === null || ! Schema::hasColumn($corrida->getTable(), 'purge_json')) {
+            return;
+        }
+
+        $corrida->fill(['purge_json' => $payload])->save();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serializarPurge(OportunidadAdjuntoCorrida $corrida): ?array
+    {
+        if (! Schema::hasColumn($corrida->getTable(), 'purge_json')) {
+            return null;
+        }
+        $purge = $corrida->purge_json;
+        if (! is_array($purge) || $purge === []) {
+            return null;
+        }
+
+        $inicio = $purge['inicio'] ?? null;
+        $fin = $purge['fin'] ?? null;
+        $duracionSegundos = $this->duracionSegundos($inicio, $fin);
+
+        return [
+            'estado' => (string) ($purge['estado'] ?? ''),
+            'inicio' => $inicio,
+            'fin' => $fin,
+            'inicio_hora' => $inicio ? HoraChile::format($inicio, 'H:i') : null,
+            'fin_hora' => $fin ? HoraChile::format($fin, 'H:i') : null,
+            'eliminados' => (int) ($purge['eliminados'] ?? 0),
+            'omitidos' => (int) ($purge['omitidos'] ?? 0),
+            'fallos' => (int) ($purge['fallos'] ?? 0),
+            'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
+            'mensaje' => (string) ($purge['mensaje'] ?? ''),
+        ];
+    }
+
+    private function mensajePurge(int $eliminados, int $omitidos, int $fallos, mixed $inicio, mixed $fin): string
+    {
+        $horaInicio = HoraChile::format($inicio, 'H:i');
+        $horaFin = HoraChile::format($fin, 'H:i');
+        $tiempo = $this->formatearDuracion($inicio, $fin);
+        $msg = 'Limpieza: eliminó '.$eliminados
+            .($eliminados === 1 ? ' carpeta' : ' carpetas')
+            .'. Inicio '.$horaInicio.' — Fin '.$horaFin.' ('.$tiempo.')';
+        if ($omitidos > 0) {
+            $msg .= '. '.$omitidos.' omitida'.($omitidos === 1 ? '' : 's').' (tomada/vigente)';
+        }
+        if ($fallos > 0) {
+            $msg .= '. '.$fallos.' fallo'.($fallos === 1 ? '' : 's');
+        }
+
+        return $msg;
+    }
+
+    public function jobPurgeEncolado(?int $corridaId = null): bool
+    {
+        if (! Schema::hasTable('jobs')) {
+            return false;
+        }
+
+        $query = DB::table('jobs')->where('payload', 'like', '%ProcessOportunidadAdjuntoPurgeJob%');
+
+        return (int) $this->filtrarJobsAdjuntoPorCorrida($query, $corridaId)->count() > 0;
     }
 }
