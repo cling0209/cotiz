@@ -138,7 +138,7 @@
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
-                                <th class="text-nowrap">Últ. cotización</th>
+                                <th class="text-nowrap">Ref. incremental</th>
                                 <th class="text-nowrap text-end">P&aacute;gina</th>
                                 <th class="text-nowrap text-end">T. match</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
@@ -4149,14 +4149,40 @@
                 }
 
                 const tdUltimaCotiz = document.createElement('td');
-                tdUltimaCotiz.className = 'text-nowrap tabular-nums';
-                const ultimaCotizTxt = paso.ultimo_cambio_visto_texto
+                tdUltimaCotiz.className = 'text-nowrap';
+                const refCodigo = paso.ultimo_cambio_visto_codigo
+                    ? String(paso.ultimo_cambio_visto_codigo).trim()
+                    : '';
+                const refFechaTxt = paso.ultimo_cambio_visto_texto
                     || (paso.ultimo_cambio_visto ? formatearFechaHora(paso.ultimo_cambio_visto) : null);
-                if (ultimaCotizTxt && ultimaCotizTxt !== '—') {
-                    tdUltimaCotiz.textContent = ultimaCotizTxt;
-                    if (paso.ultimo_cambio_visto) {
-                        tdUltimaCotiz.title = 'Última cotización obtenida en esta región';
+                const proximaTxt = paso.proxima_corrida_desde_texto
+                    || (paso.proxima_corrida_desde ? formatearFechaHora(paso.proxima_corrida_desde) : null);
+                if ((refCodigo && refCodigo !== '—') || (refFechaTxt && refFechaTxt !== '—')) {
+                    tdUltimaCotiz.classList.add('tabular-nums');
+                    if (refCodigo && refCodigo !== '—') {
+                        const codigoEl = document.createElement('div');
+                        codigoEl.className = 'font-monospace small fw-semibold';
+                        codigoEl.textContent = refCodigo;
+                        tdUltimaCotiz.appendChild(codigoEl);
                     }
+                    if (refFechaTxt && refFechaTxt !== '—') {
+                        const fechaEl = document.createElement('div');
+                        fechaEl.className = 'small text-muted';
+                        fechaEl.textContent = refFechaTxt;
+                        tdUltimaCotiz.appendChild(fechaEl);
+                    }
+                    let tooltip = 'Última cotización revisada en Mercado Público para esta región.';
+                    if (proximaTxt && proximaTxt !== '—') {
+                        tooltip += ` Próxima corrida desde ${proximaTxt}.`;
+                    }
+                    tdUltimaCotiz.title = tooltip;
+                } else if (proximaTxt && proximaTxt !== '—') {
+                    tdUltimaCotiz.classList.add('tabular-nums');
+                    const fechaEl = document.createElement('div');
+                    fechaEl.className = 'small text-muted';
+                    fechaEl.textContent = paso.tomado_at_texto || '—';
+                    tdUltimaCotiz.appendChild(fechaEl);
+                    tdUltimaCotiz.title = `Sin referencia MP en esta corrida. Próxima corrida desde ${proximaTxt}.`;
                 } else {
                     tdUltimaCotiz.textContent = '—';
                     tdUltimaCotiz.classList.add('text-muted');

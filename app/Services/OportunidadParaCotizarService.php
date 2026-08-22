@@ -1014,7 +1014,29 @@ class OportunidadParaCotizarService
      */
     public function maxFechaUltimoCambioDeItems(array $items): ?Carbon
     {
-        $max = null;
+        $referencia = $this->referenciaUltimoCambioDeItems($items);
+        if ($referencia === null) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($referencia['fecha'])->timezone((string) config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Ítem del lote con la fecha de último cambio/publicación más reciente (cursor incremental).
+     *
+     * @param  list<mixed>  $items
+     * @return array{codigo: string, fecha: string}|null
+     */
+    public function referenciaUltimoCambioDeItems(array $items): ?array
+    {
+        $mejorFecha = null;
+        $mejorCodigo = null;
+
         foreach ($items as $item) {
             if (! is_array($item)) {
                 continue;
@@ -1023,12 +1045,20 @@ class OportunidadParaCotizarService
             if ($fecha === null) {
                 continue;
             }
-            if ($max === null || $fecha->greaterThan($max)) {
-                $max = $fecha;
+            if ($mejorFecha === null || $fecha->greaterThan($mejorFecha)) {
+                $mejorFecha = $fecha;
+                $mejorCodigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
             }
         }
 
-        return $max;
+        if ($mejorFecha === null) {
+            return null;
+        }
+
+        return [
+            'codigo' => $mejorCodigo !== '' ? $mejorCodigo : '—',
+            'fecha' => $mejorFecha->toIso8601String(),
+        ];
     }
 
     /**
@@ -1195,6 +1225,7 @@ class OportunidadParaCotizarService
             'items_leidos' => $itemsLeidosPrevios,
             'continuar' => false,
             'ultimo_cambio_visto' => null,
+            'ultimo_cambio_visto_codigo' => null,
         ];
 
         if ($region < 1 || $palabras === [] || $pagina > $maxPaginas) {
@@ -1282,6 +1313,7 @@ class OportunidadParaCotizarService
                 'items_leidos' => $itemsLeidosPrevios,
                 'continuar' => false,
                 'ultimo_cambio_visto' => null,
+                'ultimo_cambio_visto_codigo' => null,
             ];
         }
 
@@ -1431,7 +1463,10 @@ class OportunidadParaCotizarService
         if ($items !== []) {
             $guardadas = $this->guardarEncontradas($items, $userId, $dia);
         }
-        $ultimoCambioVisto = $this->maxFechaUltimoCambioDeItems($lote);
+        $referenciaUltimoCambio = $this->referenciaUltimoCambioDeItems($lote);
+        $ultimoCambioVisto = $referenciaUltimoCambio !== null
+            ? Carbon::parse($referenciaUltimoCambio['fecha'])->timezone((string) config('app.timezone'))
+            : null;
         $paginaLlena = count($lote) >= self::REGION_TAMANO_PAGINA;
         $ventanaCambio = $this->ventanaCambioParaDia($dia, $cambioDesde);
         // Con ventana cambio_*: el API filtra por cambio, no por publicación. No cortar
@@ -1488,6 +1523,7 @@ class OportunidadParaCotizarService
             'items_leidos' => $itemsLeidos,
             'continuar' => $continuar,
             'ultimo_cambio_visto' => $ultimoCambioVisto?->toIso8601String(),
+            'ultimo_cambio_visto_codigo' => $referenciaUltimoCambio['codigo'] ?? null,
         ];
     }
 

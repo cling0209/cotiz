@@ -53,6 +53,14 @@ class OportunidadParaCotizarHoyTest extends TestCase
         ]);
         $this->assertNotNull($max);
         $this->assertSame('2026-08-21 12:35:00', $max->format('Y-m-d H:i:s'));
+
+        $referencia = $svc->referenciaUltimoCambioDeItems([
+            ['codigo' => '100-1-COT26', 'fechas' => ['fecha_ultimo_cambio' => '2026-08-21 10:20']],
+            ['codigo' => '200-2-COT26', 'fechas' => ['fecha_ultimo_cambio' => '2026-08-21 12:35']],
+        ]);
+        $this->assertNotNull($referencia);
+        $this->assertSame('200-2-COT26', $referencia['codigo']);
+        $this->assertSame('2026-08-21 12:35:00', Carbon::parse($referencia['fecha'])->format('Y-m-d H:i:s'));
     }
 
     public function test_frase_debe_aparecer_en_nombre_u_organismo(): void

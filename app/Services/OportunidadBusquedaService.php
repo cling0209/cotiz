@@ -383,6 +383,48 @@ class OportunidadBusquedaService
         }
     }
 
+    /**
+     * @return array{codigo: ?string, fecha: ?string}
+     */
+    private function fusionarUltimoCambioReferencia(
+        ?string $codigoPrevio,
+        ?string $fechaPrevio,
+        ?string $codigoNuevo,
+        ?string $fechaNuevo,
+    ): array {
+        $fechaFusionada = $this->fusionarUltimoCambioVisto($fechaPrevio, $fechaNuevo);
+        if ($fechaFusionada === null) {
+            return ['codigo' => null, 'fecha' => null];
+        }
+
+        $previo = $fechaPrevio !== null ? trim($fechaPrevio) : '';
+        $nuevo = $fechaNuevo !== null ? trim($fechaNuevo) : '';
+        $codigo = $codigoPrevio !== null && trim($codigoPrevio) !== '' ? trim($codigoPrevio) : null;
+
+        if ($nuevo !== '') {
+            try {
+                $nuevoDt = Carbon::parse($nuevo);
+                if ($previo === '') {
+                    $codigoNuevoLimpio = $codigoNuevo !== null ? trim($codigoNuevo) : '';
+                    $codigo = $codigoNuevoLimpio !== '' ? $codigoNuevoLimpio : $codigo;
+                } else {
+                    $previoDt = Carbon::parse($previo);
+                    if ($nuevoDt->greaterThanOrEqualTo($previoDt)) {
+                        $codigoNuevoLimpio = $codigoNuevo !== null ? trim($codigoNuevo) : '';
+                        $codigo = $codigoNuevoLimpio !== '' ? $codigoNuevoLimpio : $codigo;
+                    }
+                }
+            } catch (\Throwable) {
+                // Mantener código previo.
+            }
+        }
+
+        return [
+            'codigo' => $codigo,
+            'fecha' => $fechaFusionada,
+        ];
+    }
+
     private function formatearFechaHoraMensaje(string $iso): string
     {
         try {
@@ -753,6 +795,7 @@ class OportunidadBusquedaService
         }
         if ($esInicioRegion) {
             unset($pasos[$indice]['ultimo_cambio_visto']);
+            unset($pasos[$indice]['ultimo_cambio_visto_codigo']);
             unset($pasos[$indice]['paginas_omitidas']);
             unset($pasos[$indice]['reintentos_pagina']);
             unset($pasos[$indice]['reencolar_delay_seg']);
@@ -1003,10 +1046,14 @@ class OportunidadBusquedaService
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = is_array($resultado['consulta'] ?? null) ? $resultado['consulta'] : null;
             $pasos[$indice]['tomado_at'] = $this->isoAhora();
-            $pasos[$indice]['ultimo_cambio_visto'] = $this->fusionarUltimoCambioVisto(
+            $referenciaFusionada = $this->fusionarUltimoCambioReferencia(
+                $esInicioRegion ? null : (isset($paso['ultimo_cambio_visto_codigo']) ? trim((string) $paso['ultimo_cambio_visto_codigo']) : null),
                 $esInicioRegion ? null : (isset($paso['ultimo_cambio_visto']) ? trim((string) $paso['ultimo_cambio_visto']) : null),
+                isset($resultado['ultimo_cambio_visto_codigo']) ? trim((string) $resultado['ultimo_cambio_visto_codigo']) : null,
                 isset($resultado['ultimo_cambio_visto']) ? trim((string) $resultado['ultimo_cambio_visto']) : null,
             );
+            $pasos[$indice]['ultimo_cambio_visto'] = $referenciaFusionada['fecha'];
+            $pasos[$indice]['ultimo_cambio_visto_codigo'] = $referenciaFusionada['codigo'];
 
             $porFrasePagina = is_array($resultado['encontradas_por_frase'] ?? null)
                 ? $resultado['encontradas_por_frase']
@@ -2157,6 +2204,23 @@ class OportunidadBusquedaService
             $tomadoAt = $tomadoAt !== '' ? $tomadoAt : null;
             $ultimoCambioVisto = trim((string) ($paso['ultimo_cambio_visto'] ?? ''));
             $ultimoCambioVisto = $ultimoCambioVisto !== '' ? $ultimoCambioVisto : null;
+            $ultimoCambioVistoCodigo = trim((string) ($paso['ultimo_cambio_visto_codigo'] ?? ''));
+            $ultimoCambioVistoCodigo = $ultimoCambioVistoCodigo !== '' ? $ultimoCambioVistoCodigo : null;
+            $cursorIncremental = $ultimoCambioVisto ?? $tomadoAt;
+            $proximaCorridaDesde = null;
+            $proximaCorridaDesdeTexto = null;
+            if ($cursorIncremental !== null) {
+                try {
+                    $proximaCorridaDesde = Carbon::parse($cursorIncremental)
+                        ->timezone((string) config('app.timezone'))
+                        ->addMinute()
+                        ->toIso8601String();
+                    $proximaCorridaDesdeTexto = $this->formatearFechaHoraMensaje($proximaCorridaDesde);
+                } catch (\Throwable) {
+                    $proximaCorridaDesde = null;
+                    $proximaCorridaDesdeTexto = null;
+                }
+            }
             $matchRevisados = array_key_exists('match_revisados', $paso) && $paso['match_revisados'] !== null
                 ? max(0, (int) $paso['match_revisados'])
                 : null;
@@ -2199,6 +2263,9 @@ class OportunidadBusquedaService
                 'ultimo_cambio_visto_texto' => $ultimoCambioVisto !== null
                     ? $this->formatearFechaHoraMensaje($ultimoCambioVisto)
                     : null,
+                'ultimo_cambio_visto_codigo' => $ultimoCambioVistoCodigo,
+                'proxima_corrida_desde' => $proximaCorridaDesde,
+                'proxima_corrida_desde_texto' => $proximaCorridaDesdeTexto,
                 'region' => (int) ($paso['region'] ?? 0),
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'frase' => (string) ($paso['frase'] ?? ''),
