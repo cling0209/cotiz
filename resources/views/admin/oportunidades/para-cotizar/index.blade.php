@@ -2248,6 +2248,8 @@
             if (purgeElimLista) {
                 if (ultimosElim.length > 0) {
                     pintarListaRecientes(purgeElimLista, ultimosElim, 'purge');
+                } else if (purgeActivo) {
+                    purgeElimLista.innerHTML = '<li class="text-muted fst-italic">Eliminando… aún sin registros en esta corrida.</li>';
                 } else {
                     purgeElimLista.innerHTML = '<li class="text-muted fst-italic">Aún sin eliminaciones en esta corrida.</li>';
                 }
@@ -2259,9 +2261,32 @@
                 card?.classList.remove('border', 'border-primary', 'border-2');
             }
             if (corridaRunning || purgeActivo) {
-                adjuntosPollTimer = setTimeout(() => maybeRefreshAdjuntos(true), 3000);
+                adjuntosPollTimer = setTimeout(() => cargarEstadoAdjuntosLiviano(), 3000);
             }
             asegurarTickDuracion();
+        }
+
+        async function cargarEstadoAdjuntosLiviano() {
+            if (!puedeAdjuntos || !urls.adjuntosEstado || adjuntosEstadoEnCurso) {
+                return;
+            }
+            adjuntosEstadoEnCurso = true;
+            const fetchOpts = {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            };
+            try {
+                const metaUrl = urls.adjuntosEstado + (urls.adjuntosEstado.includes('?') ? '&' : '?') + 'meta=1';
+                const metaRes = await fetch(metaUrl, fetchOpts);
+                const metaData = await metaRes.json().catch(() => ({}));
+                if (metaRes.ok && metaData.ok) {
+                    pintarPanelAdjuntos(metaData);
+                }
+            } catch (_e) {
+                // El siguiente poll reintenta.
+            } finally {
+                adjuntosEstadoEnCurso = false;
+            }
         }
 
         let adjuntosEstadoAt = 0;
@@ -2310,6 +2335,17 @@
                     if (metaRes.ok && metaData.ok) {
                         adjuntosMetaCargada = true;
                         pintarPanelAdjuntos(metaData);
+                        const corridaMeta = metaData.corrida && typeof metaData.corrida === 'object'
+                            ? metaData.corrida
+                            : null;
+                        const purgeMeta = corridaMeta?.purge && typeof corridaMeta.purge === 'object'
+                            ? corridaMeta.purge
+                            : null;
+                        const activoMeta = (corridaMeta && corridaMeta.estado === 'running')
+                            || (purgeMeta && (purgeMeta.estado === 'pending' || purgeMeta.estado === 'running'));
+                        if (activoMeta) {
+                            return;
+                        }
                     }
                 } catch (_metaErr) {
                     // La carga completa sigue abajo.

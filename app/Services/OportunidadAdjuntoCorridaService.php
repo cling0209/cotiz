@@ -688,30 +688,22 @@ class OportunidadAdjuntoCorridaService
             true,
         );
 
-        $cerradas = OportunidadEncontrada::query()
-            ->whereNotNull('fecha_cierre')
-            ->where('fecha_cierre', '<=', now())
-            ->pluck('codigo')
-            ->map(fn ($c) => strtoupper(trim((string) $c)))
-            ->filter(fn ($c) => $c !== '')
-            ->unique()
-            ->values();
+        $this->persistirPurge($corrida, [
+            'estado' => self::PURGE_RUNNING,
+            'inicio' => $inicio->toIso8601String(),
+            'fin' => null,
+            'eliminados' => 0,
+            'omitidos' => 0,
+            'fallos' => 0,
+            'revisados' => 0,
+            'total' => 0,
+            'indice' => 0,
+            'codigo_actual' => null,
+            'ultimos_eliminados' => [],
+            'mensaje' => 'Preparando limpieza de adjuntos cerrados…',
+        ]);
 
-        $omitidos = 0;
-        $candidatos = [];
-        foreach ($cerradas as $codigo) {
-            if (isset($protegidos[$codigo])) {
-                if ($this->adjuntos->carpetaTieneObjetos($codigo)) {
-                    $omitidos++;
-                }
-
-                continue;
-            }
-            if (! $this->adjuntos->carpetaTieneObjetos($codigo)) {
-                continue;
-            }
-            $candidatos[] = $codigo;
-        }
+        [$candidatos, $omitidos] = $this->resolverCandidatosPurge($protegidos);
 
         $total = count($candidatos);
         $this->persistirPurge($corrida, [
@@ -786,6 +778,20 @@ class OportunidadAdjuntoCorridaService
                     'at' => now()->toIso8601String(),
                 ]);
                 $ultimosEliminados = array_slice($ultimosEliminados, 0, 5);
+                $this->persistirPurge($corrida, [
+                    'estado' => self::PURGE_RUNNING,
+                    'inicio' => $inicio->toIso8601String(),
+                    'fin' => null,
+                    'eliminados' => $eliminados,
+                    'omitidos' => $omitidos,
+                    'fallos' => $fallos,
+                    'revisados' => $revisados,
+                    'total' => $total,
+                    'indice' => $i + 1,
+                    'codigo_actual' => $codigo,
+                    'ultimos_eliminados' => $ultimosEliminados,
+                    'mensaje' => 'Eliminó '.$codigo.' ('.($i + 1).'/'.$total.')',
+                ]);
             } else {
                 $fallos++;
             }
@@ -1116,6 +1122,112 @@ class OportunidadAdjuntoCorridaService
         } catch (Throwable) {
             return $dia;
         }
+    }
+
+    /**
+     * @param  array<string, true>  $protegidos
+     * @return array{0: list<string>, 1: int}
+     */
+    private function resolverCandidatosPurge(array $protegidos): array
+    {
+        $cerradas = OportunidadEncontrada::query()
+            ->whereNotNull('fecha_cierre')
+            ->where('fecha_cierre', '<=', now())
+            ->pluck('codigo')
+            ->map(fn ($c) => strtoupper(trim((string) $c)))
+            ->filter(fn ($c) => $c !== '')
+            ->unique()
+            ->values();
+
+        $conAdjuntos = $this->codigosConAdjuntosEnIndice();
+        if ($conAdjuntos !== []) {
+            $omitidos = 0;
+            $candidatos = [];
+            foreach ($cerradas as $codigo) {
+                if (isset($protegidos[$codigo])) {
+                    if (isset($conAdjuntos[$codigo])) {
+                        $omitidos++;
+                    }
+
+                    continue;
+                }
+                if (! isset($conAdjuntos[$codigo])) {
+                    continue;
+                }
+                $candidatos[] = $codigo;
+            }
+
+            return [$candidatos, $omitidos];
+        }
+
+        return $this->resolverCandidatosPurgeLento($protegidos, $cerradas);
+    }
+
+    /**
+     * @param  array<string, true>  $protegidos
+     * @param  \Illuminate\Support\Collection<int, string>  $cerradas
+     * @return array{0: list<string>, 1: int}
+     */
+    private function resolverCandidatosPurgeLento(array $protegidos, $cerradas): array
+    {
+        $omitidos = 0;
+        $candidatos = [];
+        foreach ($cerradas as $codigo) {
+            if (isset($protegidos[$codigo])) {
+                if ($this->adjuntos->carpetaTieneObjetos($codigo)) {
+                    $omitidos++;
+                }
+
+                continue;
+            }
+            if (! $this->adjuntos->carpetaTieneObjetos($codigo)) {
+                continue;
+            }
+            $candidatos[] = $codigo;
+        }
+
+        return [$candidatos, $omitidos];
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function codigosConAdjuntosEnIndice(): array
+    {
+        if (! $this->adjuntos->isConfigured()) {
+            return [];
+        }
+
+        try {
+            $indice = $this->adjuntos->indicePorCodigo();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $set = [];
+        foreach ($indice['consultados'] ?? [] as $codigo) {
+            $codigo = strtoupper(trim((string) $codigo));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+        foreach (array_keys($indice['archivos'] ?? []) as $codigo) {
+            $codigo = strtoupper(trim((string) $codigo));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+        foreach ($indice['fallos'] ?? [] as $fallo) {
+            if (! is_array($fallo)) {
+                continue;
+            }
+            $codigo = strtoupper(trim((string) ($fallo['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+
+        return $set;
     }
 
     /**
