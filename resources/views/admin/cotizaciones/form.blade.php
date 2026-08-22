@@ -500,7 +500,7 @@
                         <div class="tab-pane fade" id="panel-ca-excel" role="tabpanel">
                             <p class="small text-muted mb-2">
                                 Suba un Excel (.xlsx / .xls / .csv) e indique las columnas de <strong>cantidad</strong> y <strong>producto</strong>
-                                (letra A, B, C&hellip; o n&uacute;mero). Por defecto: A = cantidad, B = producto.
+                                (letra A, B, C&hellip; o n&uacute;mero). Si las letras no coinciden, se detectan encabezados como DESCRIPCI&Oacute;N y CANTIDAD.
                                 Se omiten filas vac&iacute;as, t&iacute;tulos y totales; cada fila v&aacute;lida se importa como l&iacute;nea aparte.
                             </p>
                             @if($requiereNumeroCotizacion)
@@ -3386,10 +3386,16 @@
             return String(opciones[clave]).trim();
         }
         const tab = String(valorTab || '').trim();
+        const adj = String(valorAdjunto || '').trim();
+        const usaAdjunto = !!(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel'
+            && !(importarExcelInput?.files && importarExcelInput.files[0]));
+        if (usaAdjunto && adj !== '') {
+            return adj;
+        }
         if (tab !== '') {
             return tab;
         }
-        return String(valorAdjunto || '').trim();
+        return adj;
     }
 
     async function resolverArchivoAdjuntoSiFalta(file, tipoEsperado) {
@@ -4871,6 +4877,14 @@
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
     btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
     btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
+    ['importar-adjunto-excel-col-cant', 'importar-adjunto-excel-col-desc'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', () => {
+            const cantAdj = document.getElementById('importar-adjunto-excel-col-cant')?.value;
+            const descAdj = document.getElementById('importar-adjunto-excel-col-desc')?.value;
+            if (importarExcelColCant && String(cantAdj || '').trim() !== '') importarExcelColCant.value = String(cantAdj).trim().toUpperCase();
+            if (importarExcelColDesc && String(descAdj || '').trim() !== '') importarExcelColDesc.value = String(descAdj).trim().toUpperCase();
+        });
+    });
 
     modalImportarEl?.addEventListener('hidden.bs.modal', () => {
         if (desdeOportunidades && codigoImportarCompraAgil) {
