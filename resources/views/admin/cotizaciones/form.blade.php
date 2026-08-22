@@ -3321,10 +3321,10 @@
                     abrirPreviewAdjuntoImportar(nom);
                 });
                 const dl = document.createElement('a');
-                dl.className = 'btn btn-outline-secondary btn-sm py-0';
+                dl.className = 'btn btn-outline-secondary btn-sm py-0 flex-shrink-0';
                 dl.href = urlDescargarAdjuntoImportar(nom);
                 dl.setAttribute('data-no-loader', '');
-                dl.innerHTML = '<i class="bi bi-download"></i> Descargar';
+                dl.textContent = 'Descargar';
                 row.appendChild(btn);
                 row.appendChild(dl);
                 wrapImportarAdjuntosLinks.appendChild(row);
@@ -3496,17 +3496,15 @@
             if (!res.ok || !data.ok) {
                 adjuntosImportarConsultado = false;
                 adjuntosImportarArchivos = [];
-                renderAdjuntosImportar();
-                return;
+            } else {
+                adjuntosImportarConsultado = !!data.consultado;
+                adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
             }
-            adjuntosImportarConsultado = !!data.consultado;
-            adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
-            renderAdjuntosImportar();
         } catch (_e) {
             adjuntosImportarConsultado = false;
             adjuntosImportarArchivos = [];
-            renderAdjuntosImportar();
         }
+        renderAdjuntosImportar();
     }
 
     async function buscarAdjuntosImportar() {
