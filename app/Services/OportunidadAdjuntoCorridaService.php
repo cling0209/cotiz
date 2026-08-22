@@ -205,6 +205,7 @@ class OportunidadAdjuntoCorridaService
         );
         $hasta = $this->oportunidades->normalizarFechaBusqueda($dia);
         $codigosTomados = $this->oportunidades->codigosTomadosNormalizados();
+        $consultadosIndice = $this->consultadosIndiceSet();
 
         $rows = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', '>=', $desde)
@@ -231,7 +232,10 @@ class OportunidadAdjuntoCorridaService
             if ($codigo === '' || isset($vistos[$codigo])) {
                 continue;
             }
-            if ($this->adjuntos->yaConsultado($codigo)) {
+            if (isset($consultadosIndice[$codigo])) {
+                continue;
+            }
+            if ($consultadosIndice === [] && $this->adjuntos->yaConsultado($codigo)) {
                 continue;
             }
             $vistos[$codigo] = true;
@@ -242,6 +246,47 @@ class OportunidadAdjuntoCorridaService
         }
 
         return $pasos;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function consultadosIndiceSet(): array
+    {
+        if (! $this->adjuntos->isConfigured()) {
+            return [];
+        }
+
+        try {
+            $indice = $this->adjuntos->indicePorCodigo();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $set = [];
+        foreach ($indice['consultados'] ?? [] as $codigo) {
+            $codigo = strtoupper(trim((string) $codigo));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+        foreach (array_keys($indice['archivos'] ?? []) as $codigo) {
+            $codigo = strtoupper(trim((string) $codigo));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+        foreach ($indice['fallos'] ?? [] as $fallo) {
+            if (! is_array($fallo)) {
+                continue;
+            }
+            $codigo = strtoupper(trim((string) ($fallo['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $set[$codigo] = true;
+            }
+        }
+
+        return $set;
     }
 
     private function agregarPasosPendientes(OportunidadAdjuntoCorrida $corrida, string $dia): void

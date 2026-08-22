@@ -2281,11 +2281,14 @@
             await cargarConteosAdjuntos();
         }
 
+        let adjuntosMetaCargada = false;
+
         async function cargarConteosAdjuntos() {
             if (!puedeAdjuntos || !urls.adjuntosEstado) {
                 return;
             }
             adjuntosEstadoEnCurso = true;
+            adjuntosMetaCargada = false;
             const resumenEl = document.getElementById('sync-adj-resumen');
             const badgeEl = document.getElementById('sync-adj-badge');
             if (resumenEl) {
@@ -2305,21 +2308,31 @@
                     const metaRes = await fetch(metaUrl, fetchOpts);
                     const metaData = await metaRes.json().catch(() => ({}));
                     if (metaRes.ok && metaData.ok) {
+                        adjuntosMetaCargada = true;
                         pintarPanelAdjuntos(metaData);
                     }
                 } catch (_metaErr) {
                     // La carga completa sigue abajo.
                 }
 
-                const res = await fetch(urls.adjuntosEstado, fetchOpts);
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+                let res;
+                try {
+                    res = await fetch(urls.adjuntosEstado, { ...fetchOpts, signal: controller.signal });
+                } finally {
+                    window.clearTimeout(timeoutId);
+                }
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok) {
-                    pintarPanelAdjuntos({
-                        ok: false,
-                        error: (data && data.error) ? data.error : 'No se pudo cargar el estado de adjuntos.',
-                        resumen: data.resumen || {},
-                        fallos: data.fallos || [],
-                    });
+                    if (!adjuntosMetaCargada) {
+                        pintarPanelAdjuntos({
+                            ok: false,
+                            error: (data && data.error) ? data.error : 'No se pudo cargar el estado de adjuntos.',
+                            resumen: data.resumen || {},
+                            fallos: data.fallos || [],
+                        });
+                    }
                     return;
                 }
                 const nuevosConteos = {};
@@ -2350,13 +2363,22 @@
                 guardarAdjuntosLocales();
                 pintarPanelAdjuntos(data);
                 renderTabla(false);
-            } catch (_e) {
-                pintarPanelAdjuntos({
-                    ok: false,
-                    error: 'No se pudo cargar el estado de adjuntos.',
-                    resumen: {},
-                    fallos: [],
-                });
+            } catch (e) {
+                if (!adjuntosMetaCargada) {
+                    pintarPanelAdjuntos({
+                        ok: false,
+                        error: e && e.name === 'AbortError'
+                            ? 'El índice de adjuntos tardó demasiado. Recargue en unos segundos.'
+                            : 'No se pudo cargar el estado de adjuntos.',
+                        resumen: {},
+                        fallos: [],
+                    });
+                } else if (e && e.name === 'AbortError' && resumenEl) {
+                    const base = resumenEl.textContent || '';
+                    if (!base.includes('índice completo')) {
+                        resumenEl.textContent = base + ' · índice completo aún cargando…';
+                    }
+                }
             } finally {
                 adjuntosEstadoEnCurso = false;
                 hidratarAdjuntosPagina(ultimaPaginaItemsAdjuntos);

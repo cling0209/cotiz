@@ -126,7 +126,6 @@ class OportunidadParaCotizarController extends Controller
     {
         $codigosVigentes = $this->servicio->codigosVigentesUnicos();
         $corrida = $this->adjuntosCorrida->estado();
-        $pendientesCorrida = $this->adjuntosCorrida->contarPendientesSafe();
 
         if ($request->boolean('meta')) {
             $resumen = $this->adjuntos->resumen($codigosVigentes, $this->adjuntos->indiceMetaLiviano());
@@ -140,9 +139,11 @@ class OportunidadParaCotizarController extends Controller
                 'resumen' => $resumen,
                 'fallos' => $resumen['fallos'],
                 'corrida' => $corrida,
-                'pendientes_corrida' => $pendientesCorrida,
+                'pendientes_corrida' => (int) ($resumen['pendientes'] ?? 0),
             ]);
         }
+
+        $pendientesCorrida = $this->adjuntosCorrida->contarPendientesSafe();
 
         if (! $this->adjuntos->isConfigured()) {
             $resumen = $this->adjuntos->resumen($codigosVigentes);
