@@ -3305,6 +3305,7 @@
         const BADGE_PASO = {
             ok: 'text-bg-success',
             ok_reintento: 'text-bg-success',
+            ok_con_hueco: 'text-bg-warning',
             fallo_reintentara: 'text-bg-warning',
             fallo_definitivo: 'text-bg-danger',
             en_curso: 'text-bg-primary',
@@ -3710,6 +3711,8 @@
                 case 'mp_pagina_timeout':
                 case 'mp_pagina_error':
                     return 'text-bg-warning';
+                case 'mp_pagina_retry':
+                    return 'text-bg-info';
                 case 'region_error':
                     return 'text-bg-danger';
                 case 'region_ok':

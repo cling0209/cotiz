@@ -11,6 +11,7 @@ use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadParaCotizarService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -940,5 +941,186 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertStringContainsString('Reintento completo', (string) $corrida->mensaje);
 
         Carbon::setTestNow();
+    }
+
+    public function test_timeout_mp_reintenta_la_misma_pagina_antes_de_saltar(): void
+    {
+        Queue::fake();
+        Cache::flush();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.api_reintentos_http' => 1,
+            'cotiz.mercadopublico.oportunidad_pagina_reintentos' => 1,
+            'cotiz.mercadopublico.oportunidad_pagina_reintento_seg' => 8,
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'oficina',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $llamadasPagina2 = 0;
+        Http::fake(function ($request) use (&$llamadasPagina2) {
+            $pagina = (int) ($request->data()['numero_pagina'] ?? 1);
+            if ($pagina === 1) {
+                return Http::response($this->payloadPaginaLlenaMp(13, '2026-07-16'), 200);
+            }
+            if ($pagina === 2) {
+                $llamadasPagina2++;
+
+                return Http::response('timeout', 504);
+            }
+
+            return Http::response($this->payloadPaginaVaciaMp(), 200);
+        });
+
+        $servicio = $this->app->make(OportunidadBusquedaService::class);
+        $corrida = $servicio->iniciar('admin');
+        $this->assertTrue($servicio->procesarPaso($corrida));
+        $corrida->refresh();
+        $this->assertTrue($servicio->procesarPaso($corrida));
+        $corrida->refresh();
+
+        $paso = $corrida->plan_json[0];
+        $this->assertSame(1, $llamadasPagina2);
+        $this->assertSame(2, (int) ($paso['siguiente_pagina'] ?? 0));
+        $this->assertSame(1, (int) ($paso['reintentos_pagina'] ?? 0));
+        $this->assertSame(8, $servicio->delayReencoladoSegundos($corrida));
+        $this->assertSame('running', $paso['estado'] ?? null);
+
+        $servicio->procesar($corrida);
+        $corrida->refresh();
+
+        $this->assertSame(2, $llamadasPagina2);
+        $this->assertSame(OportunidadBusquedaService::ESTADO_COMPLETED, $corrida->estado);
+        $this->assertSame([2], $corrida->plan_json[0]['paginas_omitidas'] ?? null);
+        $this->assertSame('ok', $corrida->plan_json[0]['estado'] ?? null);
+
+        $estado = $servicio->estado($corrida);
+        $this->assertSame('ok_con_hueco', $estado['pasos_resumen'][0]['resultado']);
+        $this->assertSame([2], $estado['pasos_resumen'][0]['paginas_omitidas']);
+
+        $siguiente = $servicio->iniciar('sistema');
+        $this->assertTrue((bool) ($siguiente->plan_json[0]['reintento_fallo_previo'] ?? false));
+        $this->assertFalse((bool) ($siguiente->plan_json[0]['incremental'] ?? false));
+        $this->assertArrayNotHasKey('cambio_desde', $siguiente->plan_json[0]);
+        $this->assertStringContainsString('Reintento completo', (string) $siguiente->mensaje);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_timeout_mp_recuperado_en_reintento_no_omite_la_pagina(): void
+    {
+        Queue::fake();
+        Cache::flush();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.api_reintentos_http' => 1,
+            'cotiz.mercadopublico.oportunidad_pagina_reintentos' => 1,
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'oficina',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $llamadasPagina2 = 0;
+        Http::fake(function ($request) use (&$llamadasPagina2) {
+            $pagina = (int) ($request->data()['numero_pagina'] ?? 1);
+            if ($pagina === 1) {
+                return Http::response($this->payloadPaginaLlenaMp(13, '2026-07-16'), 200);
+            }
+            if ($pagina === 2) {
+                $llamadasPagina2++;
+                if ($llamadasPagina2 === 1) {
+                    return Http::response('timeout', 504);
+                }
+
+                return Http::response($this->payloadPaginaVaciaMp(), 200);
+            }
+
+            return Http::response($this->payloadPaginaVaciaMp(), 200);
+        });
+
+        $servicio = $this->app->make(OportunidadBusquedaService::class);
+        $corrida = $servicio->iniciar('admin');
+        $servicio->procesar($corrida);
+        $corrida->refresh();
+
+        $this->assertSame(2, $llamadasPagina2);
+        $this->assertSame(OportunidadBusquedaService::ESTADO_COMPLETED, $corrida->estado);
+        $this->assertSame('ok', $corrida->plan_json[0]['estado'] ?? null);
+        $this->assertSame([], $corrida->plan_json[0]['paginas_omitidas'] ?? []);
+
+        $estado = $servicio->estado($corrida);
+        $this->assertSame('ok', $estado['pasos_resumen'][0]['resultado']);
+
+        $siguiente = $servicio->iniciar('sistema');
+        $this->assertFalse((bool) ($siguiente->plan_json[0]['reintento_fallo_previo'] ?? false));
+        $this->assertTrue((bool) ($siguiente->plan_json[0]['incremental'] ?? false));
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * @return array{success: string, payload: array{items: list<array<string, mixed>>, paginacion: array<string, mixed>}}
+     */
+    private function payloadPaginaLlenaMp(int $region, string $dia): array
+    {
+        $items = [];
+        for ($i = 1; $i <= OportunidadParaCotizarService::REGION_TAMANO_PAGINA; $i++) {
+            $items[] = [
+                'codigo' => sprintf('1000-%d-COT26', $i),
+                'nombre' => 'Material de oficina '.$i,
+                'fechas' => [
+                    'fecha_publicacion' => $dia.'T09:00:00-04:00',
+                    'fecha_cierre' => $dia.'T18:00:00-04:00',
+                ],
+                'montos' => ['monto_disponible_clp' => 100000],
+                'institucion' => ['region' => $region, 'comuna' => 'Santiago'],
+            ];
+        }
+
+        return [
+            'success' => 'OK',
+            'payload' => [
+                'items' => $items,
+                'paginacion' => [],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{success: string, payload: array{items: list<array<string, mixed>>, paginacion: array<string, mixed>}}
+     */
+    private function payloadPaginaVaciaMp(): array
+    {
+        return [
+            'success' => 'OK',
+            'payload' => [
+                'items' => [],
+                'paginacion' => [],
+            ],
+        ];
     }
 }

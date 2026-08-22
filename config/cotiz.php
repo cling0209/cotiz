@@ -203,6 +203,9 @@ return [
         'api_low_speed_limit_bytes' => max(0, (int) env('MERCADOPUBLICO_API_LOW_SPEED_LIMIT_BYTES', 10)),
         'api_reintentos_http' => max(1, (int) env('MERCADOPUBLICO_API_REINTENTOS', 3)),
         'api_espera_reintento_seg' => max(1, (int) env('MERCADOPUBLICO_API_ESPERA_REINTENTO_SEG', 5)),
+        // Tras 504/timeout de una página: reintentar esa misma página (no al tiro) antes de saltar.
+        'oportunidad_pagina_reintentos' => max(0, min(3, (int) env('MERCADOPUBLICO_PAGINA_REINTENTOS', 1))),
+        'oportunidad_pagina_reintento_seg' => max(3, min(60, (int) env('MERCADOPUBLICO_PAGINA_REINTENTO_SEG', 8))),
         // Tope de seguridad. La búsqueda sigue mientras MP traiga página llena (50);
         // el piso 200 ignora un env viejo de 8/20 que cortaba Metropolitana.
         'oportunidad_max_paginas' => max(200, min(500, (int) env('MERCADOPUBLICO_OPORTUNIDAD_MAX_PAGINAS', 200))),

@@ -66,10 +66,16 @@ class ProcessOportunidadBusquedaJob implements ShouldQueue
 
         $continua = $busqueda->procesarPaso($corrida);
         if ($continua) {
-            $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+            $corrida->refresh();
+            $delaySeg = $busqueda->delayReencoladoSegundos($corrida);
             $siguiente = self::dispatch($corrida->id);
-            if ($delayMs > 0) {
-                $siguiente->delay(now()->addMilliseconds($delayMs));
+            if ($delaySeg > 0) {
+                $siguiente->delay(now()->addSeconds($delaySeg));
+            } else {
+                $delayMs = max(0, (int) config('cotiz.mercadopublico.resultados_delay_ms', 350));
+                if ($delayMs > 0) {
+                    $siguiente->delay(now()->addMilliseconds($delayMs));
+                }
             }
         }
     }

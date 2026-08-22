@@ -118,8 +118,8 @@ class OportunidadBusquedaService
         $cursorsRegion = (! $ventanaCompleta && $cambioDesdeForzadoIso === null)
             ? $this->cursorsIncrementalPorRegion($dia)
             : [];
-        $regionesReintento = $this->regionesFallidasDefinitivasUltimaCorrida($dia);
-        if ($cambioDesdeFallback !== null || $cursorsRegion !== []) {
+        $regionesReintento = $this->regionesParaReintentoCompletoUltimaCorrida($dia);
+        if ($cambioDesdeFallback !== null || $cursorsRegion !== [] || $regionesReintento !== []) {
             $pasos = array_map(function (array $paso) use (
                 $cambioDesdeForzadoIso,
                 $cambioDesdeFallback,
@@ -390,11 +390,12 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Regiones con Falló (definitivo) en la última corrida completada del día.
+     * Regiones a releer con ventana completa en la siguiente corrida del día:
+     * fallo definitivo, o OK con páginas omitidas tras timeout/504.
      *
      * @return list<int>
      */
-    private function regionesFallidasDefinitivasUltimaCorrida(string $dia): array
+    private function regionesParaReintentoCompletoUltimaCorrida(string $dia): array
     {
         $ultima = OportunidadBusquedaCorrida::query()
             ->whereDate('fecha_busqueda', $dia)
@@ -408,10 +409,7 @@ class OportunidadBusquedaService
 
         $regiones = [];
         foreach (is_array($ultima->plan_json) ? $ultima->plan_json : [] as $paso) {
-            if (! is_array($paso)) {
-                continue;
-            }
-            if (($paso['estado'] ?? '') !== self::PASO_RETRY_FAILED) {
+            if (! is_array($paso) || ! $this->pasoRequiereReintentoCompleto($paso)) {
                 continue;
             }
             $region = (int) ($paso['region'] ?? 0);
@@ -421,6 +419,188 @@ class OportunidadBusquedaService
         }
 
         return $regiones;
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     */
+    private function pasoRequiereReintentoCompleto(array $paso): bool
+    {
+        if (($paso['estado'] ?? '') === self::PASO_RETRY_FAILED) {
+            return true;
+        }
+
+        return ($paso['estado'] ?? '') === self::PASO_OK
+            && $this->paginasOmitidasDePaso($paso) !== [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     * @return list<int>
+     */
+    private function paginasOmitidasDePaso(array $paso): array
+    {
+        $omitidas = $paso['paginas_omitidas'] ?? [];
+        if (! is_array($omitidas)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($omitidas as $n) {
+            $pagina = (int) $n;
+            if ($pagina > 0 && ! in_array($pagina, $out, true)) {
+                $out[] = $pagina;
+            }
+        }
+        sort($out);
+
+        return array_values($out);
+    }
+
+    /**
+     * Segundos extra para reencolar el job (reintento de la misma página). 0 = delay normal.
+     */
+    public function delayReencoladoSegundos(OportunidadBusquedaCorrida $corrida): int
+    {
+        foreach (is_array($corrida->plan_json) ? $corrida->plan_json : [] as $paso) {
+            if (! is_array($paso) || ($paso['estado'] ?? '') !== self::PASO_RUNNING) {
+                continue;
+            }
+            $delay = (int) ($paso['reencolar_delay_seg'] ?? 0);
+            if ($delay > 0) {
+                return $delay;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     * @return 'reintentar'|'saltar'|'fallar'
+     */
+    private function accionTrasErrorPagina(
+        array $paso,
+        bool $esRegionPaginada,
+        bool $puedeSeguirPagina,
+        int $pagina,
+    ): string {
+        // Pág. 1: si MP no responde, tumbar la región (reintento de región), no barrer 200 páginas.
+        if ($pagina <= 1) {
+            return 'fallar';
+        }
+
+        if ($esRegionPaginada && $this->debeReintentarMismaPagina($paso)) {
+            return 'reintentar';
+        }
+
+        if ($puedeSeguirPagina) {
+            return 'saltar';
+        }
+
+        return 'fallar';
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     */
+    private function debeReintentarMismaPagina(array $paso): bool
+    {
+        $max = max(0, min(3, (int) config('cotiz.mercadopublico.oportunidad_pagina_reintentos', 1)));
+
+        return (int) ($paso['reintentos_pagina'] ?? 0) < $max;
+    }
+
+    private function delayReintentoPaginaSegundos(): int
+    {
+        return max(3, min(60, (int) config('cotiz.mercadopublico.oportunidad_pagina_reintento_seg', 8)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     */
+    private function aplicarReintentoMismaPagina(
+        array &$paso,
+        int $pagina,
+        string $frase,
+        int $region,
+        int $encontradasPrevias,
+        string $fechaBusqueda,
+        ?string $cambioDesde,
+        string $mensajeError,
+        string $tipoError,
+    ): void {
+        $pagina = max(1, $pagina);
+        $paso['estado'] = self::PASO_RUNNING;
+        $paso['reintentos_pagina'] = (int) ($paso['reintentos_pagina'] ?? 0) + 1;
+        $paso['reencolar_delay_seg'] = $this->delayReintentoPaginaSegundos();
+        $paso['siguiente_pagina'] = $pagina;
+        $paso['pagina'] = $pagina;
+        $paso['paginas_max'] = max((int) ($paso['paginas_max'] ?? $pagina), $pagina);
+        $paso['fase'] = 'esperando_mp';
+        $paso['items_pagina'] = 0;
+        $paso['match_revisados'] = 0;
+        $paso['match_total'] = 0;
+        $paso['match_segundos'] = 0;
+        $paso['encontradas'] = $encontradasPrevias;
+        $paso['consulta'] = $this->oportunidades->consultaDebugPaso(
+            $frase !== '' ? $frase : '(todas)',
+            $region,
+            max(0, (int) ($paso['items_leidos'] ?? (($pagina - 1) * OportunidadParaCotizarService::REGION_TAMANO_PAGINA))),
+            $encontradasPrevias,
+            $fechaBusqueda,
+            $cambioDesde,
+            $pagina,
+            $mensajeError,
+            $tipoError,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     */
+    private function aplicarSaltoPaginaConHueco(
+        array &$paso,
+        int $pagina,
+        string $frase,
+        int $region,
+        int $encontradasPrevias,
+        string $fechaBusqueda,
+        ?string $cambioDesde,
+        string $mensajeError,
+        string $tipoError,
+    ): int {
+        $pagina = max(1, $pagina);
+        $siguiente = $pagina + 1;
+        $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
+        $paso['estado'] = self::PASO_RUNNING;
+        $paso['paginas_omitidas'] = $this->paginasOmitidasDePaso($paso);
+        $paso['paginas_omitidas'][] = $pagina;
+        $paso['paginas_omitidas'] = $this->paginasOmitidasDePaso($paso);
+        unset($paso['reintentos_pagina'], $paso['reencolar_delay_seg']);
+        $paso['siguiente_pagina'] = $siguiente;
+        $paso['pagina'] = $siguiente;
+        $paso['paginas_max'] = max((int) ($paso['paginas_max'] ?? $siguiente), $siguiente);
+        $paso['fase'] = 'esperando_mp';
+        $paso['items_pagina'] = 0;
+        $paso['items_leidos'] = $pagina * $tamanoPagina;
+        $paso['encontradas'] = $encontradasPrevias;
+        $paso['match_revisados'] = 0;
+        $paso['match_total'] = 0;
+        $paso['match_segundos'] = 0;
+        $paso['consulta'] = $this->oportunidades->consultaDebugPaso(
+            $frase !== '' ? $frase : '(todas)',
+            $region,
+            $pagina * $tamanoPagina,
+            $encontradasPrevias,
+            $fechaBusqueda,
+            $cambioDesde,
+            $siguiente,
+            $mensajeError,
+            $tipoError,
+        );
+
+        return $siguiente;
     }
 
     /**
@@ -570,6 +750,9 @@ class OportunidadBusquedaService
         }
         if ($esInicioRegion) {
             unset($pasos[$indice]['ultimo_cambio_visto']);
+            unset($pasos[$indice]['paginas_omitidas']);
+            unset($pasos[$indice]['reintentos_pagina']);
+            unset($pasos[$indice]['reencolar_delay_seg']);
         }
         $pasos[$indice]['pagina'] = $pagina;
         $paginasUi = max($pagina, (int) ($paso['paginas_max'] ?? $pagina));
@@ -879,6 +1062,8 @@ class OportunidadBusquedaService
             }
             $pasos[$indice]['match_segundos_acum'] = max(0, (int) ($pasos[$indice]['match_segundos_acum'] ?? 0)) + $matchHecho;
             $pasos[$indice]['match_segundos'] = $matchHecho;
+            unset($pasos[$indice]['reintentos_pagina']);
+            unset($pasos[$indice]['reencolar_delay_seg']);
 
             if ($continuarPaginas) {
                 $siguiente = $paginaHecha + 1;
@@ -942,6 +1127,10 @@ class OportunidadBusquedaService
                 $pasos[$indice]['intentos'] = (int) ($pasos[$indice]['intentos'] ?? 0) + 1;
                 unset($pasos[$indice]['siguiente_pagina']);
                 $fallidos = $this->contarFallidosDefinitivos($pasos);
+                $omitidas = $this->paginasOmitidasDePaso($pasos[$indice]);
+                $huecoTxt = $omitidas !== []
+                    ? ' Páginas omitidas: '.implode(', ', $omitidas).' (se reintentará la región completa).'
+                    : '';
                 $mensaje = $fase === 'reintento'
                     ? sprintf(
                         'Reintento OK región %d: %d cotización(es) (%d/%d pasos).',
@@ -957,13 +1146,15 @@ class OportunidadBusquedaService
                         $this->contarTerminados($pasos),
                         count($pasos),
                     );
+                $mensaje .= $huecoTxt;
                 $this->pushEvento(
                     $eventos,
                     'region_ok',
                     sprintf(
-                        '%s terminada: %d cotización(es).',
+                        '%s terminada: %d cotización(es).%s',
                         $regionNombre !== '' ? $regionNombre : ('región '.$region),
                         $encontradas,
+                        $huecoTxt,
                     ),
                 );
             }
@@ -1006,30 +1197,58 @@ class OportunidadBusquedaService
                 'fecha' => now()->toIso8601String(),
             ];
 
-            if ($puedeSeguirPagina) {
-                // Timeout/lento/BD/HTTP en una página: no tumbar la región; seguir con la siguiente.
-                $siguiente = $pagina + 1;
-                $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
+            $accionPagina = $this->accionTrasErrorPagina(
+                $pasos[$indice],
+                $esRegionPaginada,
+                $puedeSeguirPagina,
+                $pagina,
+            );
+            if ($accionPagina === 'reintentar') {
                 $regionTerminada = false;
-                $pasos[$indice]['estado'] = self::PASO_RUNNING;
-                $pasos[$indice]['siguiente_pagina'] = $siguiente;
-                $pasos[$indice]['pagina'] = $siguiente;
-                $pasos[$indice]['paginas_max'] = max((int) ($pasos[$indice]['paginas_max'] ?? $siguiente), $siguiente);
-                $pasos[$indice]['fase'] = 'esperando_mp';
-                $pasos[$indice]['items_pagina'] = 0;
-                $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
-                $pasos[$indice]['encontradas'] = $encontradasPrevias;
-                $pasos[$indice]['match_revisados'] = 0;
-                $pasos[$indice]['match_total'] = 0;
-                $pasos[$indice]['match_segundos'] = 0;
-                $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
-                    $frase !== '' ? $frase : '(todas)',
+                $this->aplicarReintentoMismaPagina(
+                    $pasos[$indice],
+                    $pagina,
+                    $frase,
                     $region,
-                    $pagina * $tamanoPagina,
                     $encontradasPrevias,
                     $fechaBusqueda,
                     $cambioDesde,
-                    $siguiente,
+                    $mensajeError,
+                    $tipoError,
+                );
+                $delaySeg = (int) ($pasos[$indice]['reencolar_delay_seg'] ?? $this->delayReintentoPaginaSegundos());
+                $mensaje = sprintf(
+                    '%s — pág %d/%d con error (%s); se reintenta esa página en %ds. %s',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $pagina,
+                    (int) ($pasos[$indice]['paginas_max'] ?? $pagina),
+                    $tipoError,
+                    $delaySeg,
+                    mb_substr($mensajeError, 0, 180),
+                );
+                $this->pushEvento(
+                    $eventos,
+                    'mp_pagina_retry',
+                    sprintf(
+                        '%s · pág %d/%d error (%s) → reintento en %ds: %s',
+                        $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                        $pagina,
+                        (int) ($pasos[$indice]['paginas_max'] ?? $pagina),
+                        $tipoError,
+                        $delaySeg,
+                        mb_substr($mensajeError, 0, 160),
+                    ),
+                );
+            } elseif ($accionPagina === 'saltar') {
+                $regionTerminada = false;
+                $siguiente = $this->aplicarSaltoPaginaConHueco(
+                    $pasos[$indice],
+                    $pagina,
+                    $frase,
+                    $region,
+                    $encontradasPrevias,
+                    $fechaBusqueda,
+                    $cambioDesde,
                     $mensajeError,
                     $tipoError,
                 );
@@ -1336,31 +1555,70 @@ class OportunidadBusquedaService
                 'fecha' => now()->toIso8601String(),
             ];
 
-            if ($esRegionPaginada && $pagina < $topeSeguridad) {
-                $siguiente = $pagina + 1;
-                $tamanoPagina = OportunidadParaCotizarService::REGION_TAMANO_PAGINA;
-                $pasos[$indice]['estado'] = self::PASO_RUNNING;
-                $pasos[$indice]['siguiente_pagina'] = $siguiente;
-                $pasos[$indice]['pagina'] = $siguiente;
-                $pasos[$indice]['paginas_max'] = max(
-                    $siguiente,
-                    (int) ($paso['paginas_max'] ?? $pagina),
-                );
-                $pasos[$indice]['items_pagina'] = 0;
-                $pasos[$indice]['items_leidos'] = $pagina * $tamanoPagina;
-                $pasos[$indice]['fase'] = 'esperando_mp';
-                $pasos[$indice]['match_revisados'] = 0;
-                $pasos[$indice]['match_total'] = 0;
-                $pasos[$indice]['match_segundos'] = 0;
-                $pasos[$indice]['consulta'] = $this->oportunidades->consultaDebugPaso(
-                    $frase !== '' ? $frase : '(todas)',
+            $mensajeWorker = $detalleTxt !== '' ? $detalleTxt : 'Worker interrumpido (timeout o kill del proceso).';
+            $encontradasPrevias = max(0, (int) ($pasos[$indice]['encontradas'] ?? $paso['encontradas'] ?? 0));
+            $puedeSeguirPagina = $esRegionPaginada && $pagina < $topeSeguridad;
+            $accionPagina = $this->accionTrasErrorPagina(
+                $pasos[$indice],
+                $esRegionPaginada,
+                $puedeSeguirPagina,
+                $pagina,
+            );
+
+            if ($accionPagina === 'reintentar') {
+                $this->aplicarReintentoMismaPagina(
+                    $pasos[$indice],
+                    $pagina,
+                    $frase,
                     $region,
-                    $pagina * $tamanoPagina,
-                    max(0, (int) ($paso['encontradas'] ?? 0)),
+                    $encontradasPrevias,
                     $fechaBusqueda,
                     $cambioDesde,
-                    $siguiente,
-                    $detalleTxt !== '' ? $detalleTxt : 'Worker interrumpido (timeout o kill del proceso).',
+                    $mensajeWorker,
+                    $tipoError,
+                );
+                $delaySeg = (int) ($pasos[$indice]['reencolar_delay_seg'] ?? $this->delayReintentoPaginaSegundos());
+                $texto = sprintf(
+                    'Worker timeout en %s pág %d/%d; se reintenta esa página en %ds.',
+                    $regionNombre !== '' ? $regionNombre : ('región '.$region),
+                    $pagina,
+                    (int) ($pasos[$indice]['paginas_max'] ?? $pagina),
+                    $delaySeg,
+                );
+                if ($detalleTxt !== '') {
+                    $texto .= ' '.mb_substr($detalleTxt, 0, 120);
+                }
+                $this->pushEvento($eventos, 'mp_pagina_retry', $texto);
+                try {
+                    $this->persistirPlan(
+                        $corrida,
+                        $pasos,
+                        $errores,
+                        $this->contarFallidosDefinitivos($pasos),
+                        $texto,
+                        $eventos,
+                    );
+                } catch (Throwable $persistError) {
+                    Log::warning('OportunidadBusqueda: no se pudo persistir reintento de página tras timeout worker', [
+                        'corrida_id' => $corrida->id,
+                        'message' => $persistError->getMessage(),
+                    ]);
+                    $this->guardarMensajeYEvento($corrida, $texto, 'mp_pagina_retry', $texto);
+                }
+
+                return;
+            }
+
+            if ($accionPagina === 'saltar') {
+                $siguiente = $this->aplicarSaltoPaginaConHueco(
+                    $pasos[$indice],
+                    $pagina,
+                    $frase,
+                    $region,
+                    $encontradasPrevias,
+                    $fechaBusqueda,
+                    $cambioDesde,
+                    $mensajeWorker,
                     $tipoError,
                 );
                 $texto = sprintf(
@@ -1837,7 +2095,11 @@ class OportunidadBusquedaService
             $estado = (string) ($paso['estado'] ?? self::PASO_PENDING);
             $intentos = (int) ($paso['intentos'] ?? 0);
 
+            $omitidas = $this->paginasOmitidasDePaso($paso);
+            $tieneHueco = $estado === self::PASO_OK && $omitidas !== [];
+
             [$resultado, $etiqueta] = match (true) {
+                $estado === self::PASO_OK && $tieneHueco => ['ok_con_hueco', 'OK (páginas omitidas)'],
                 $estado === self::PASO_OK && $intentos > 1 => ['ok_reintento', 'OK (reintento)'],
                 $estado === self::PASO_OK => ['ok', 'OK (1.er intento)'],
                 $estado === self::PASO_RETRY_FAILED => ['fallo_definitivo', 'Falló (definitivo)'],
@@ -1920,6 +2182,7 @@ class OportunidadBusquedaService
                 'encontradas_muestra' => $encontradasMuestra,
                 'pagina' => $pagina,
                 'paginas_max' => $paginasMax,
+                'paginas_omitidas' => $omitidas !== [] ? $omitidas : null,
                 'items_pagina' => $itemsPagina,
                 'items_leidos' => $itemsLeidos,
                 'fase' => $fase !== '' ? $fase : null,
@@ -1932,7 +2195,7 @@ class OportunidadBusquedaService
                 'consulta' => $consulta,
                 'resultado' => $resultado,
                 'etiqueta' => $etiqueta,
-                'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED
+                'error' => $estado === self::PASO_FAILED || $estado === self::PASO_RETRY_FAILED || $tieneHueco
                     ? ($ultimoErrorPorIndice[$i] ?? null)
                     : null,
             ];
