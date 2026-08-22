@@ -612,6 +612,9 @@
                 <div class="modal-footer py-2">
                     <div class="d-flex w-100 flex-wrap align-items-end gap-2">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                        <a class="btn btn-outline-secondary btn-sm d-none" id="btn-descargar-adjunto-importar" href="#" data-no-loader>
+                            <i class="bi bi-download"></i> Descargar
+                        </a>
                         <div id="modal-adjuntos-importar-analizar" class="d-none d-flex flex-wrap align-items-end gap-2 flex-grow-1">
                             <div id="importar-adjunto-cols-pdf" class="d-none d-flex flex-wrap align-items-end gap-2">
                                 <div>
@@ -3246,6 +3249,14 @@
         return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
     }
 
+    function urlDescargarAdjuntoImportar(nombre) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        if (!importarMpUrls.adjuntosVerBase || !codigo || !nombre) {
+            return '#';
+        }
+        return `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&descargar=1`;
+    }
+
     function tipoAdjuntoImportar(nombre) {
         const n = String(nombre || '').toLowerCase();
         if (/\.(xlsx|xls|csv)$/i.test(n)) return 'excel';
@@ -3296,6 +3307,8 @@
             adjuntosImportarArchivos.forEach((a) => {
                 const nom = String(a.nombre || a || '');
                 if (!nom) return;
+                const row = document.createElement('div');
+                row.className = 'd-flex flex-wrap align-items-center gap-2';
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-link btn-sm p-0 text-start';
@@ -3307,7 +3320,14 @@
                     seleccionarAdjuntoImportar(nom);
                     abrirPreviewAdjuntoImportar(nom);
                 });
-                wrapImportarAdjuntosLinks.appendChild(btn);
+                const dl = document.createElement('a');
+                dl.className = 'btn btn-outline-secondary btn-sm py-0';
+                dl.href = urlDescargarAdjuntoImportar(nom);
+                dl.setAttribute('data-no-loader', '');
+                dl.innerHTML = '<i class="bi bi-download"></i> Descargar';
+                row.appendChild(btn);
+                row.appendChild(dl);
+                wrapImportarAdjuntosLinks.appendChild(row);
             });
         }
     }
@@ -3412,8 +3432,18 @@
         const convirtiendo = document.getElementById('modal-adjuntos-importar-convirtiendo');
         const errBox = document.getElementById('modal-adjuntos-importar-error');
         const frame = document.getElementById('modal-adjuntos-importar-frame');
+        const btnDescargar = document.getElementById('btn-descargar-adjunto-importar');
         if (!modalEl || !importarMpUrls.adjuntosVerBase) {
             return;
+        }
+        if (btnDescargar) {
+            if (nombre) {
+                btnDescargar.href = urlDescargarAdjuntoImportar(nombre);
+                btnDescargar.classList.remove('d-none');
+            } else {
+                btnDescargar.href = '#';
+                btnDescargar.classList.add('d-none');
+            }
         }
         const bs = typeof bootstrap !== 'undefined'
             ? bootstrap.Modal.getOrCreateInstance(modalEl)
