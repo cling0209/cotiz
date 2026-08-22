@@ -298,4 +298,35 @@ class OportunidadAdjuntoCorridaTest extends TestCase
         $this->assertTrue($estado['cierre']['sin_mas_automatico'] ?? false);
         $this->assertStringContainsString('Limpieza', $estado['cierre']['siguiente_proceso_label'] ?? '');
     }
+
+    public function test_estado_adjuntos_expone_paso_actual_en_running(): void
+    {
+        $corrida = OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(3),
+            'fin' => null,
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_RUNNING,
+            'total_pasos' => 3,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                ['codigo' => 'ADJ-001', 'estado' => 'ok', 'fin' => now()->subMinutes(2)->toIso8601String()],
+                ['codigo' => 'ADJ-002', 'estado' => 'running', 'inicio' => now()->subMinute()->toIso8601String()],
+                ['codigo' => 'ADJ-003', 'estado' => 'pending'],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Adjuntos ADJ-002 (2/3)…',
+        ]);
+
+        $estado = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida);
+
+        $this->assertSame('ADJ-002', $estado['paso_actual']['codigo'] ?? null);
+        $this->assertSame(2, $estado['paso_actual']['indice'] ?? null);
+        $this->assertSame(3, $estado['paso_actual']['total'] ?? null);
+        $this->assertSame('running', $estado['paso_actual']['estado'] ?? null);
+        $this->assertNotNull($estado['inicio']);
+        $this->assertNull($estado['fin']);
+        $this->assertNotNull($estado['ultima_actividad']);
+    }
 }

@@ -373,6 +373,12 @@
                         <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
                     </div>
                     <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div id="sync-adj-actual" class="small mb-2 d-none" role="status">
+                        <i class="bi bi-arrow-right-circle text-primary"></i>
+                        Cotizaci&oacute;n en curso:
+                        <strong id="sync-adj-actual-codigo" class="font-monospace tabular-nums">—</strong>
+                        <span id="sync-adj-actual-progreso" class="text-muted ms-1 tabular-nums">(0/0)</span>
+                    </div>
                     <div id="sync-adj-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2 d-none">
                         <div class="text-nowrap">
                             <i class="bi bi-clock"></i>
@@ -385,6 +391,10 @@
                         <div class="text-nowrap">
                             <i class="bi bi-hourglass-split"></i>
                             Tiempo: <strong id="sync-adj-duracion" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-activity"></i>
+                            &Uacute;ltima: <strong id="sync-adj-ultima" class="tabular-nums">—</strong>
                         </div>
                     </div>
                     <div id="sync-adj-limpieza" class="small text-muted mb-2 d-none"></div>
@@ -1903,6 +1913,13 @@
             const inicioEl = document.getElementById('sync-adj-inicio');
             const finEl = document.getElementById('sync-adj-fin');
             const duracionEl = document.getElementById('sync-adj-duracion');
+            const ultimaEl = document.getElementById('sync-adj-ultima');
+            const actualEl = document.getElementById('sync-adj-actual');
+            const actualCodigoEl = document.getElementById('sync-adj-actual-codigo');
+            const actualProgresoEl = document.getElementById('sync-adj-actual-progreso');
+            const pasoActual = (corrida && corrida.paso_actual && typeof corrida.paso_actual === 'object')
+                ? corrida.paso_actual
+                : null;
             const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
             const total = Number(r.total) || 0;
             const consultados = Number(r.consultados) || 0;
@@ -1942,8 +1959,13 @@
                 if (corridaRunning) {
                     const proc = Number(corrida.pasos_procesados) || 0;
                     const tot = Number(corrida.total_pasos) || 0;
+                    const codActual = String(pasoActual?.codigo || '').trim();
                     const msg = String(corrida.mensaje || 'Procesando adjuntos…').trim();
-                    resumenEl.textContent = `${msg} (${proc}/${tot})`;
+                    if (codActual) {
+                        resumenEl.textContent = `Descargando adjuntos de ${codActual} (${proc}/${tot})`;
+                    } else {
+                        resumenEl.textContent = `${msg} (${proc}/${tot})`;
+                    }
                 } else if (r.configurado === false) {
                     resumenEl.textContent = 'R2 adjuntos no configurado.';
                 } else if (total === 0 && consultados === 0) {
@@ -1956,23 +1978,57 @@
                 }
             }
             adjInicioMs = corrida ? msDeIso(corrida.inicio) : null;
-            adjFinMs = corrida ? msDeIso(corrida.fin) : null;
+            adjFinMs = corrida && corrida.estado !== 'running' ? msDeIso(corrida.fin) : null;
             purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
             purgeFinMs = purge ? msDeIso(purge.fin) : null;
             if (metaEl) {
-                const mostrarMeta = Boolean(adjInicioMs || corridaRunning || adjFinMs);
+                const mostrarMeta = Boolean(
+                    corrida && (adjInicioMs || adjFinMs || corridaRunning || corrida.estado === 'completed'),
+                );
                 metaEl.classList.toggle('d-none', !mostrarMeta);
             }
             if (inicioEl) {
                 inicioEl.textContent = adjInicioMs ? formatearFechaHora(corrida.inicio) : '—';
             }
             if (finEl) {
-                finEl.textContent = adjFinMs ? formatearFechaHora(corrida.fin) : '—';
+                if (corridaRunning) {
+                    finEl.textContent = '—';
+                } else {
+                    finEl.textContent = adjFinMs ? formatearFechaHora(corrida.fin) : '—';
+                }
             }
             if (duracionEl) {
-                const duracionTexto = corrida && (corrida.duracion_texto
-                    || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null));
-                duracionEl.textContent = duracionTexto || '—';
+                if (corridaRunning && adjInicioMs) {
+                    duracionEl.textContent = formatearDuracionSegs(
+                        Math.max(0, Math.floor((Date.now() - adjInicioMs) / 1000)),
+                    );
+                } else {
+                    const duracionTexto = corrida && (corrida.duracion_texto
+                        || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null));
+                    duracionEl.textContent = duracionTexto || '—';
+                }
+            }
+            if (ultimaEl) {
+                const ultima = corrida?.ultima_actividad ? new Date(corrida.ultima_actividad) : null;
+                ultimaEl.textContent = ultima && !Number.isNaN(ultima.getTime())
+                    ? ultima.toLocaleTimeString('es-CL', { hour12: false })
+                    : '—';
+            }
+            if (actualEl && actualCodigoEl && actualProgresoEl) {
+                const cod = String(pasoActual?.codigo || '').trim();
+                const indice = Number(pasoActual?.indice) || 0;
+                const totalPaso = Number(pasoActual?.total) || Number(corrida?.total_pasos) || 0;
+                if (corridaRunning && cod) {
+                    actualEl.classList.remove('d-none');
+                    actualCodigoEl.textContent = cod;
+                    actualProgresoEl.textContent = totalPaso > 0
+                        ? `(${indice > 0 ? indice : (Number(corrida.pasos_procesados) || 0) + 1}/${totalPaso})`
+                        : '';
+                } else {
+                    actualEl.classList.add('d-none');
+                    actualCodigoEl.textContent = '—';
+                    actualProgresoEl.textContent = '';
+                }
             }
             if (limpiezaEl) {
                 const purgeMsg = String(purge?.mensaje || '').trim();

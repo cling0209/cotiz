@@ -535,6 +535,11 @@ class OportunidadAdjuntoCorridaService
         if ($corrida->estado === self::ESTADO_COMPLETED && $this->indiceSiguientePendiente($pasos) === null) {
             $cierre = OportunidadPipelineEtapa::cierreAdjuntos((int) $corrida->pasos_fallidos);
         }
+        $pasoActual = $this->pasoActualEnPlan(
+            $pasos,
+            $corrida->estado === self::ESTADO_RUNNING,
+        );
+        $ultimaActividad = $this->ultimaActividadIso($pasos, $corrida);
 
         return [
             'id' => $corrida->id,
@@ -549,6 +554,8 @@ class OportunidadAdjuntoCorridaService
             'pasos_procesados' => $terminados,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
+            'paso_actual' => $pasoActual,
+            'ultima_actividad' => $ultimaActividad,
             'mensaje' => $corrida->mensaje,
             'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
             'recientes' => $recientes,
@@ -872,6 +879,90 @@ class OportunidadAdjuntoCorridaService
         }
 
         return $n;
+    }
+
+    /**
+     * Paso en curso (running) o siguiente pendiente si la corrida sigue activa.
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     * @return array{codigo: string, indice: int, total: int, inicio: string|null, estado: string}|null
+     */
+    private function pasoActualEnPlan(array $pasos, bool $corridaRunning): ?array
+    {
+        if ($pasos === []) {
+            return null;
+        }
+
+        $total = count($pasos);
+        foreach ($pasos as $i => $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            if (($paso['estado'] ?? '') === self::PASO_RUNNING) {
+                return [
+                    'codigo' => strtoupper(trim((string) ($paso['codigo'] ?? ''))),
+                    'indice' => (int) $i + 1,
+                    'total' => $total,
+                    'inicio' => isset($paso['inicio']) ? (string) $paso['inicio'] : null,
+                    'estado' => self::PASO_RUNNING,
+                ];
+            }
+        }
+
+        if (! $corridaRunning) {
+            return null;
+        }
+
+        $indice = $this->indiceSiguientePendiente($pasos);
+        if ($indice === null) {
+            return null;
+        }
+
+        $paso = $pasos[$indice];
+
+        return [
+            'codigo' => strtoupper(trim((string) ($paso['codigo'] ?? ''))),
+            'indice' => $indice + 1,
+            'total' => $total,
+            'inicio' => null,
+            'estado' => self::PASO_PENDING,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function ultimaActividadIso(array $pasos, OportunidadAdjuntoCorrida $corrida): ?string
+    {
+        $mejor = null;
+        $mejorTs = null;
+
+        foreach ($pasos as $paso) {
+            if (! is_array($paso)) {
+                continue;
+            }
+            foreach (['fin', 'inicio'] as $campo) {
+                $iso = $paso[$campo] ?? null;
+                if (! is_string($iso) || trim($iso) === '') {
+                    continue;
+                }
+                try {
+                    $ts = Carbon::parse($iso)->getTimestamp();
+                } catch (Throwable) {
+                    continue;
+                }
+                if ($mejorTs === null || $ts > $mejorTs) {
+                    $mejorTs = $ts;
+                    $mejor = $iso;
+                }
+            }
+        }
+
+        if ($mejor !== null) {
+            return $mejor;
+        }
+
+        return $corrida->updated_at?->toIso8601String();
     }
 
     private function duracionSegundos(mixed $inicio, mixed $fin): ?int
