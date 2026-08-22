@@ -19,6 +19,8 @@ class OportunidadAdjuntoService
 {
     private const CACHE_FALLOS = 'oportunidad_adjuntos.fallos';
 
+    private const CACHE_INDICE = 'oportunidad_adjuntos.indice';
+
     private ?string $compraAgilUserKeyMemo = null;
 
     public function __construct(
@@ -108,6 +110,50 @@ class OportunidadAdjuntoService
     public function indicePorCodigo(): array
     {
         $this->assertConfigurado();
+
+        return Cache::remember(
+            $this->cacheIndiceKey(),
+            now()->addSeconds(45),
+            fn (): array => $this->construirIndicePorCodigo(),
+        );
+    }
+
+    public function olvidarCacheIndice(): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        Cache::forget($this->cacheIndiceKey());
+    }
+
+    /**
+     * Índice liviano para pintar el panel sin listar todo R2.
+     *
+     * @return array{
+     *   archivos: array<string, list<string>>,
+     *   consultados: list<string>,
+     *   fallos: list<array{codigo: string, error: string, at: string|null}>
+     * }
+     */
+    public function indiceMetaLiviano(): array
+    {
+        return [
+            'archivos' => [],
+            'consultados' => [],
+            'fallos' => $this->fallosDesdeCache(),
+        ];
+    }
+
+    /**
+     * @return array{
+     *   archivos: array<string, list<string>>,
+     *   consultados: list<string>,
+     *   fallos: list<array{codigo: string, error: string, at: string|null}>
+     * }
+     */
+    private function construirIndicePorCodigo(): array
+    {
         $prefix = $this->prefix();
         $porCodigo = [];
         $consultados = [];
@@ -440,6 +486,7 @@ class OportunidadAdjuntoService
                 $this->carpeta($codigo).'/error.json',
                 json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
             );
+            $this->olvidarCacheIndice();
         } catch (Throwable) {
         }
     }
@@ -459,6 +506,7 @@ class OportunidadAdjuntoService
             $key = $this->carpeta($codigo).'/error.json';
             if ($disk->exists($key)) {
                 $disk->delete($key);
+                $this->olvidarCacheIndice();
             }
         } catch (Throwable) {
         }
@@ -496,6 +544,7 @@ class OportunidadAdjuntoService
         }
         try {
             Storage::disk($this->disk())->deleteDirectory($this->carpeta($codigo));
+            $this->olvidarCacheIndice();
 
             return true;
         } catch (Throwable $e) {
@@ -572,6 +621,12 @@ class OportunidadAdjuntoService
             'actualizado_at' => now()->toIso8601String(),
             'archivos' => $nombres,
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $this->olvidarCacheIndice();
+    }
+
+    private function cacheIndiceKey(): string
+    {
+        return self::CACHE_INDICE.'.'.$this->disk().'.'.sha1($this->prefix());
     }
 
     /**

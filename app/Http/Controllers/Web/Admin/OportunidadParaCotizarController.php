@@ -122,9 +122,27 @@ class OportunidadParaCotizarController extends Controller
         ]);
     }
 
-    public function adjuntosEstado(): JsonResponse
+    public function adjuntosEstado(Request $request): JsonResponse
     {
         $codigosVigentes = $this->servicio->codigosVigentesUnicos();
+        $corrida = $this->adjuntosCorrida->estado();
+        $pendientesCorrida = $this->adjuntosCorrida->contarPendientesSafe();
+
+        if ($request->boolean('meta')) {
+            $resumen = $this->adjuntos->resumen($codigosVigentes, $this->adjuntos->indiceMetaLiviano());
+
+            return response()->json([
+                'ok' => true,
+                'meta' => true,
+                'conteos' => new \stdClass,
+                'archivos' => new \stdClass,
+                'consultados' => [],
+                'resumen' => $resumen,
+                'fallos' => $resumen['fallos'],
+                'corrida' => $corrida,
+                'pendientes_corrida' => $pendientesCorrida,
+            ]);
+        }
 
         if (! $this->adjuntos->isConfigured()) {
             $resumen = $this->adjuntos->resumen($codigosVigentes);
@@ -136,8 +154,8 @@ class OportunidadParaCotizarController extends Controller
                 'consultados' => [],
                 'resumen' => $resumen,
                 'fallos' => $resumen['fallos'],
-                'corrida' => null,
-                'pendientes_corrida' => 0,
+                'corrida' => $corrida,
+                'pendientes_corrida' => $pendientesCorrida,
             ]);
         }
 
@@ -162,8 +180,8 @@ class OportunidadParaCotizarController extends Controller
             'consultados' => $indice['consultados'],
             'resumen' => $resumen,
             'fallos' => $resumen['fallos'],
-            'corrida' => $this->adjuntosCorrida->estado(),
-            'pendientes_corrida' => $this->adjuntosCorrida->contarPendientesSafe(),
+            'corrida' => $corrida,
+            'pendientes_corrida' => $pendientesCorrida,
         ]);
     }
 

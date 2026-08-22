@@ -372,7 +372,7 @@
                         </div>
                         <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
                     </div>
-                    <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div id="sync-adj-resumen" class="small text-muted mb-2">Consultando estado de adjuntos…</div>
                     <div id="sync-adj-actual" class="small mb-2 d-none" role="status">
                         <i class="bi bi-arrow-right-circle text-primary"></i>
                         Cotizaci&oacute;n en curso:
@@ -1993,7 +1993,9 @@
                 }
             }
             if (resumenEl) {
-                if (corridaRunning) {
+                if (data && data.ok === false) {
+                    resumenEl.textContent = String(data.error || 'No se pudo cargar el estado de adjuntos.');
+                } else if (corridaRunning) {
                     const proc = Number(corrida.pasos_procesados) || 0;
                     const tot = Number(corrida.total_pasos) || 0;
                     const codActual = String(pasoActual?.codigo || '').trim();
@@ -2016,6 +2018,9 @@
                     resumenEl.textContent = 'R2 adjuntos no configurado.';
                 } else if (total === 0 && consultados === 0) {
                     resumenEl.textContent = 'Sin cotizaciones vigentes.';
+                } else if (data?.meta && consultados === 0 && total > 0) {
+                    resumenEl.textContent = `${total} cotización${total === 1 ? '' : 'es'} vigente${total === 1 ? '' : 's'}`
+                        + ` · indexando adjuntos en almacenamiento…`;
                 } else {
                     resumenEl.textContent = `Consultadas ${consultados} de ${total}`
                         + ` · ${conArchivos} con archivo`
@@ -2281,11 +2286,32 @@
                 return;
             }
             adjuntosEstadoEnCurso = true;
+            const resumenEl = document.getElementById('sync-adj-resumen');
+            const badgeEl = document.getElementById('sync-adj-badge');
+            if (resumenEl) {
+                resumenEl.textContent = 'Consultando estado de adjuntos…';
+            }
+            if (badgeEl) {
+                badgeEl.textContent = 'consultando';
+                badgeEl.className = 'badge text-bg-secondary';
+            }
+            const fetchOpts = {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            };
             try {
-                const res = await fetch(urls.adjuntosEstado, {
-                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                });
+                const metaUrl = urls.adjuntosEstado + (urls.adjuntosEstado.includes('?') ? '&' : '?') + 'meta=1';
+                try {
+                    const metaRes = await fetch(metaUrl, fetchOpts);
+                    const metaData = await metaRes.json().catch(() => ({}));
+                    if (metaRes.ok && metaData.ok) {
+                        pintarPanelAdjuntos(metaData);
+                    }
+                } catch (_metaErr) {
+                    // La carga completa sigue abajo.
+                }
+
+                const res = await fetch(urls.adjuntosEstado, fetchOpts);
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok) {
                     pintarPanelAdjuntos({
