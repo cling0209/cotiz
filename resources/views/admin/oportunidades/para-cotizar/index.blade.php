@@ -453,7 +453,7 @@
                         </div>
                         <div id="sync-adj-limpieza" class="small text-muted mb-2">Pendiente — inicia autom&aacute;ticamente tras procesar adjuntos MP.</div>
                         <div id="sync-adj-purge-eliminados" class="small mb-0">
-                            <div class="fw-semibold mb-1">Últimos eliminados</div>
+                            <div id="sync-adj-purge-eliminados-titulo" class="fw-semibold mb-1">Últimos eliminados</div>
                             <ul id="sync-adj-purge-eliminados-lista" class="list-unstyled mb-0 font-monospace">
                                 <li id="sync-adj-purge-eliminados-vacio" class="text-muted fst-italic">Aún sin eliminaciones en esta corrida.</li>
                             </ul>
@@ -2264,17 +2264,37 @@
                 }
             }
             const purgeElimLista = document.getElementById('sync-adj-purge-eliminados-lista');
+            const purgeElimTitulo = document.getElementById('sync-adj-purge-eliminados-titulo');
             const ultimosElim = Array.isArray(purge?.ultimos_eliminados) ? purge.ultimos_eliminados : [];
+            const ultimosElimHistorial = Boolean(purge?.ultimos_eliminados_es_historial);
+            const purgeTerminada = purge && ['completed', 'skipped', 'error'].includes(String(purge.estado || ''));
+            if (purgeElimTitulo) {
+                purgeElimTitulo.textContent = ultimosElimHistorial
+                    ? 'Últimos eliminados (corrida anterior)'
+                    : 'Últimos eliminados';
+            }
             if (purgeElimLista) {
                 if (ultimosElim.length > 0) {
                     pintarListaRecientes(purgeElimLista, ultimosElim, 'purge');
                 } else if (purgeActivo) {
                     purgeElimLista.innerHTML = '<li class="text-muted fst-italic">Eliminando… aún sin registros en esta corrida.</li>';
+                } else if (purgeTerminada) {
+                    const omitidas = Number(purge?.omitidos) || 0;
+                    const eliminadas = Number(purge?.eliminados) || 0;
+                    let vacio = 'Sin eliminaciones en esta corrida';
+                    if (eliminadas === 0 && omitidas > 0) {
+                        vacio += ` (${omitidas} omitida${omitidas === 1 ? '' : 's'} por vigente/tomada)`;
+                    }
+                    purgeElimLista.innerHTML = `<li class="text-muted fst-italic">${vacio}.</li>`;
                 } else {
                     purgeElimLista.innerHTML = '<li class="text-muted fst-italic">Aún sin eliminaciones en esta corrida.</li>';
                 }
             }
-            pintarCierrePipeline(document.getElementById('sync-adj-siguiente-proceso'), corrida?.cierre || purge?.cierre || null);
+            const purgeFinalizada = purge && ['completed', 'skipped', 'error'].includes(String(purge.estado || ''));
+            const cierreAdjuntos = purgeFinalizada
+                ? (purge?.cierre || corrida?.cierre || null)
+                : (corrida?.cierre || purge?.cierre || null);
+            pintarCierrePipeline(document.getElementById('sync-adj-siguiente-proceso'), cierreAdjuntos);
             if (corridaRunning || purgeActivo) {
                 card?.classList.add('border', 'border-primary', 'border-2');
             } else if (!adjuntosCorridaActiva) {

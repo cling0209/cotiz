@@ -119,6 +119,32 @@ class OportunidadAdjuntoPurgeTest extends TestCase
         $this->assertNotNull($purge['ultima_actividad'] ?? null);
     }
 
+    public function test_estado_purge_muestra_historial_si_corrida_actual_sin_eliminados(): void
+    {
+        $corrida = $this->crearCorridaCompletada();
+        $corrida->fill([
+            'purge_json' => [
+                'estado' => OportunidadAdjuntoCorridaService::PURGE_COMPLETED,
+                'inicio' => now()->subMinute()->toIso8601String(),
+                'fin' => now()->toIso8601String(),
+                'eliminados' => 0,
+                'omitidos' => 2,
+                'fallos' => 0,
+                'ultimos_eliminados' => [],
+                'ultimos_eliminados_guardados' => [
+                    ['codigo' => 'CERRADA-OLD', 'at' => now()->subHour()->toIso8601String()],
+                ],
+                'mensaje' => 'Limpieza sin carpetas.',
+            ],
+        ])->save();
+
+        $purge = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida)['purge'];
+
+        $this->assertSame('CERRADA-OLD', $purge['ultimos_eliminados'][0]['codigo'] ?? null);
+        $this->assertTrue($purge['ultimos_eliminados_es_historial'] ?? false);
+        $this->assertNotNull($purge['cierre'] ?? null);
+    }
+
     public function test_finalizar_adjuntos_encola_purge(): void
     {
         Queue::fake();

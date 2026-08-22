@@ -799,7 +799,7 @@ class OportunidadAdjuntoCorridaService
 
         $fin = now();
         $mensaje = $this->mensajePurge($eliminados, $omitidos, $fallos, $inicio, $fin);
-        $this->persistirPurge($corrida, [
+        $payloadFin = [
             'estado' => $fallos > 0 ? self::PURGE_ERROR : self::PURGE_COMPLETED,
             'inicio' => $inicio->toIso8601String(),
             'fin' => $fin->toIso8601String(),
@@ -815,7 +815,11 @@ class OportunidadAdjuntoCorridaService
             'ultimo_error' => $fallos > 0
                 ? 'No se pudo eliminar '.$fallos.' carpeta'.($fallos === 1 ? '' : 's').' de adjuntos cerrados.'
                 : null,
-        ]);
+        ];
+        if ($eliminados > 0) {
+            $payloadFin['ultimos_eliminados_guardados'] = array_slice($ultimosEliminados, 0, 5);
+        }
+        $this->persistirPurge($corrida, $payloadFin);
 
         Log::info('OportunidadAdjunto: purge de cerradas', [
             'corrida_id' => $corrida?->id,
@@ -1239,7 +1243,32 @@ class OportunidadAdjuntoCorridaService
             return;
         }
 
-        $corrida->fill(['purge_json' => $payload])->save();
+        $actual = is_array($corrida->purge_json) ? $corrida->purge_json : [];
+        $corrida->fill(['purge_json' => array_merge($actual, $payload)])->save();
+    }
+
+    /**
+     * @param  array<string, mixed>  $purge
+     * @return array{0: list<array{codigo: string, at: string|null}>, 1: bool}
+     */
+    private function ultimosEliminadosPurgeParaUi(array $purge, string $estadoPurge): array
+    {
+        $corrida = is_array($purge['ultimos_eliminados'] ?? null)
+            ? array_values($purge['ultimos_eliminados'])
+            : [];
+        $guardados = is_array($purge['ultimos_eliminados_guardados'] ?? null)
+            ? array_values($purge['ultimos_eliminados_guardados'])
+            : [];
+
+        if (in_array($estadoPurge, [self::PURGE_PENDING, self::PURGE_RUNNING], true)) {
+            return [$corrida, false];
+        }
+
+        if ($corrida !== []) {
+            return [$corrida, false];
+        }
+
+        return [$guardados, $guardados !== []];
     }
 
     /**
@@ -1268,9 +1297,7 @@ class OportunidadAdjuntoCorridaService
             $ultimoError = trim((string) ($purge['mensaje'] ?? ''));
         }
 
-        $ultimosEliminados = is_array($purge['ultimos_eliminados'] ?? null)
-            ? array_values($purge['ultimos_eliminados'])
-            : [];
+        [$ultimosEliminados, $ultimosEliminadosHistorial] = $this->ultimosEliminadosPurgeParaUi($purge, $estadoPurge);
         $cierre = null;
         if (in_array($estadoPurge, [self::PURGE_COMPLETED, self::PURGE_SKIPPED, self::PURGE_ERROR], true)) {
             $cierre = OportunidadPipelineEtapa::cierrePurge();
@@ -1298,6 +1325,7 @@ class OportunidadAdjuntoCorridaService
             'mensaje' => (string) ($purge['mensaje'] ?? ''),
             'ultimo_error' => $ultimoError !== '' ? $ultimoError : null,
             'ultimos_eliminados' => $ultimosEliminados,
+            'ultimos_eliminados_es_historial' => $ultimosEliminadosHistorial,
             'cierre' => $cierre,
         ];
     }
