@@ -236,7 +236,7 @@ class OportunidadParaCotizarController extends Controller
     public function listarAdjuntos(Request $request, string $codigo): JsonResponse
     {
         try {
-            $archivos = $this->adjuntos->listar($codigo);
+            $archivos = $this->adjuntos->listar($codigo, ! $request->boolean('nombres_solo'));
         } catch (RuntimeException $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }

@@ -736,6 +736,10 @@
         const adjuntosConsultados = {};
         const adjuntosListarEnCurso = {};
         const adjuntosListarHecho = {};
+        const ADJUNTOS_LISTAR_CONCURRENCIA = 3;
+        let ultimaPaginaItemsAdjuntos = [];
+        let adjuntosEstadoEnCurso = false;
+        let hidratacionAdjuntosEnCurso = false;
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
@@ -1759,6 +1763,9 @@
             if (!puedeAdjuntos || !urls.adjuntosListarBase || !Array.isArray(itemsPagina)) {
                 return;
             }
+            if (adjuntosEstadoEnCurso || hidratacionAdjuntosEnCurso) {
+                return;
+            }
             const faltantes = itemsPagina
                 .map((item) => String(item?.codigo || '').toUpperCase().trim())
                 .filter((cod) => {
@@ -1771,36 +1778,53 @@
             if (faltantes.length === 0) {
                 return;
             }
+            hidratacionAdjuntosEnCurso = true;
             let cambio = false;
-            await Promise.all(faltantes.map(async (cod) => {
-                adjuntosListarEnCurso[cod] = true;
-                try {
-                    const res = await fetch(urlAdjuntos(urls.adjuntosListarBase, cod), {
-                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                        credentials: 'same-origin',
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    adjuntosListarHecho[cod] = true;
-                    if (!res.ok || !data.ok) {
-                        return;
+            try {
+                const consultarUno = async (cod) => {
+                    adjuntosListarEnCurso[cod] = true;
+                    try {
+                        const res = await fetch(urlAdjuntos(urls.adjuntosListarBase, cod) + '?nombres_solo=1', {
+                            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            credentials: 'same-origin',
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        adjuntosListarHecho[cod] = true;
+                        if (!res.ok || !data.ok) {
+                            return;
+                        }
+                        const nombres = (Array.isArray(data.archivos) ? data.archivos : [])
+                            .map((a) => String(a && a.nombre ? a.nombre : a || ''))
+                            .filter(Boolean);
+                        adjuntosArchivosPorCodigo[cod] = nombres;
+                        adjuntosPorCodigo[cod] = nombres.length;
+                        if (data.consultado || nombres.length > 0) {
+                            adjuntosConsultados[cod] = true;
+                        }
+                        if (nombres.length > 0) {
+                            cambio = true;
+                        }
+                    } catch (_e) {
+                        // se reintenta al cambiar de página
+                    } finally {
+                        delete adjuntosListarEnCurso[cod];
                     }
-                    const nombres = (Array.isArray(data.archivos) ? data.archivos : [])
-                        .map((a) => String(a && a.nombre ? a.nombre : a || ''))
-                        .filter(Boolean);
-                    adjuntosArchivosPorCodigo[cod] = nombres;
-                    adjuntosPorCodigo[cod] = nombres.length;
-                    if (data.consultado || nombres.length > 0) {
-                        adjuntosConsultados[cod] = true;
+                };
+                let siguiente = 0;
+                const trabajadores = Array.from(
+                    { length: Math.min(ADJUNTOS_LISTAR_CONCURRENCIA, faltantes.length) },
+                    async () => {
+                        while (siguiente < faltantes.length) {
+                            const i = siguiente;
+                            siguiente += 1;
+                            await consultarUno(faltantes[i]);
+                        }
                     }
-                    if (nombres.length > 0) {
-                        cambio = true;
-                    }
-                } catch (_e) {
-                    // se reintenta al cambiar de página
-                } finally {
-                    delete adjuntosListarEnCurso[cod];
-                }
-            }));
+                );
+                await Promise.all(trabajadores);
+            } finally {
+                hidratacionAdjuntosEnCurso = false;
+            }
             if (cambio) {
                 guardarAdjuntosLocales();
                 renderTabla(false);
@@ -1923,7 +1947,6 @@
         }
 
         let adjuntosEstadoAt = 0;
-        let adjuntosEstadoEnCurso = false;
         let adjuntosPollTimer = null;
         let adjuntosCorridaActiva = false;
         let vinculoEstadoPrev = null;
@@ -2012,6 +2035,7 @@
                 });
             } finally {
                 adjuntosEstadoEnCurso = false;
+                hidratarAdjuntosPagina(ultimaPaginaItemsAdjuntos);
             }
         }
 
@@ -2448,6 +2472,7 @@
             if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
 
             actualizarPaginadores(totalPaginas);
+            ultimaPaginaItemsAdjuntos = paginaItems;
             hidratarAdjuntosPagina(paginaItems);
         }
 

@@ -61,7 +61,7 @@ class OportunidadAdjuntoService
     /**
      * @return list<array{nombre: string, bytes: int, mime: string}>
      */
-    public function listar(string $codigo): array
+    public function listar(string $codigo, bool $incluirTamano = true): array
     {
         $this->assertConfigurado();
         $codigo = $this->normalizarCodigo($codigo);
@@ -78,7 +78,7 @@ class OportunidadAdjuntoService
             }
             $out[] = [
                 'nombre' => $nombre,
-                'bytes' => (int) $disk->size($key),
+                'bytes' => $incluirTamano ? (int) $disk->size($key) : 0,
                 'mime' => $this->mimeDesdeNombre($nombre),
             ];
         }
