@@ -271,4 +271,31 @@ class OportunidadAdjuntoCorridaTest extends TestCase
         $this->assertSame(180, (int) $estado['duracion_segundos']);
         $this->assertNotEmpty($estado['duracion_texto']);
     }
+
+    public function test_estado_adjuntos_expone_recientes_y_cierre(): void
+    {
+        $corrida = OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(2),
+            'fin' => now(),
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_COMPLETED,
+            'total_pasos' => 2,
+            'pasos_procesados' => 2,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                ['codigo' => 'ADJ-001', 'estado' => 'ok', 'fin' => now()->subMinute()->toIso8601String()],
+                ['codigo' => 'ADJ-002', 'estado' => 'ok', 'fin' => now()->toIso8601String()],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Adjuntos 2/2 completados.',
+        ]);
+
+        $estado = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida);
+
+        $this->assertCount(2, $estado['recientes']);
+        $this->assertSame('ADJ-002', $estado['recientes'][1]['codigo']);
+        $this->assertTrue($estado['cierre']['sin_mas_automatico'] ?? false);
+        $this->assertStringContainsString('Limpieza', $estado['cierre']['siguiente_proceso_label'] ?? '');
+    }
 }

@@ -192,6 +192,13 @@
         <div id="vinculo-aviso-texto" class="small mb-0"></div>
     </div>
 
+    <div id="pipeline-activo" class="alert alert-info py-2 px-3 small d-none mb-3" role="status">
+        <i class="bi bi-play-circle"></i>
+        <strong>Proceso en curso:</strong>
+        <span id="pipeline-activo-label">—</span>
+        <span id="pipeline-activo-detalle" class="text-muted ms-1"></span>
+    </div>
+
     <div id="vinculo-estado" class="card shadow-sm mb-3">
         <div class="card-body py-3">
             <div id="vinculo-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2">
@@ -233,6 +240,7 @@
                     role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="vin-detalle" class="small text-muted mb-0">Pulse <strong>Procesar vinculaciones</strong> para vincular cotizaciones al maestro.</div>
+            <div id="vin-siguiente-proceso" class="alert alert-info py-2 px-3 small mt-2 mb-0 d-none" role="status"></div>
             <div id="vin-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
             <div id="vin-regiones-wrap" class="mt-3 d-none">
                 <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-outline-secondary mb-2"
@@ -380,6 +388,15 @@
                         </div>
                     </div>
                     <div id="sync-adj-limpieza" class="small text-muted mb-2 d-none"></div>
+                    <div id="sync-adj-recientes" class="small mb-2 d-none">
+                        <div class="fw-semibold mb-1">Últimos procesados</div>
+                        <ul id="sync-adj-recientes-lista" class="list-unstyled mb-0 font-monospace"></ul>
+                    </div>
+                    <div id="sync-adj-purge-eliminados" class="small mb-2 d-none">
+                        <div class="fw-semibold mb-1">Últimos eliminados (purge)</div>
+                        <ul id="sync-adj-purge-eliminados-lista" class="list-unstyled mb-0 font-monospace"></ul>
+                    </div>
+                    <div id="sync-adj-siguiente-proceso" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status"></div>
                     <div id="sync-adj-error" class="alert alert-danger py-1 px-2 small d-none mb-2"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         @if($puedeBuscar ?? false)
@@ -2041,6 +2058,35 @@
             if (adjuntosPollTimer) {
                 clearTimeout(adjuntosPollTimer);
                 adjuntosPollTimer = null;
+            }
+            const recientesWrap = document.getElementById('sync-adj-recientes');
+            const recientesLista = document.getElementById('sync-adj-recientes-lista');
+            const recientes = Array.isArray(corrida?.recientes) ? corrida.recientes : [];
+            if (recientesWrap && recientesLista) {
+                const mostrarRecientes = recientes.length > 0 && (corridaRunning || corrida?.estado === 'completed');
+                recientesWrap.classList.toggle('d-none', !mostrarRecientes);
+                if (mostrarRecientes) {
+                    pintarListaRecientes(recientesLista, recientes, 'adjunto');
+                } else {
+                    recientesLista.innerHTML = '';
+                }
+            }
+            const purgeElimWrap = document.getElementById('sync-adj-purge-eliminados');
+            const purgeElimLista = document.getElementById('sync-adj-purge-eliminados-lista');
+            const ultimosElim = Array.isArray(purge?.ultimos_eliminados) ? purge.ultimos_eliminados : [];
+            if (purgeElimWrap && purgeElimLista) {
+                purgeElimWrap.classList.toggle('d-none', ultimosElim.length === 0);
+                if (ultimosElim.length > 0) {
+                    pintarListaRecientes(purgeElimLista, ultimosElim, 'purge');
+                } else {
+                    purgeElimLista.innerHTML = '';
+                }
+            }
+            pintarCierrePipeline(document.getElementById('sync-adj-siguiente-proceso'), corrida?.cierre || purge?.cierre || null);
+            if (corridaRunning || purgeActivo) {
+                card?.classList.add('border', 'border-primary', 'border-2');
+            } else if (!adjuntosCorridaActiva) {
+                card?.classList.remove('border', 'border-primary', 'border-2');
             }
             if (corridaRunning || purgeActivo) {
                 adjuntosPollTimer = setTimeout(() => maybeRefreshAdjuntos(true), 3000);
@@ -4164,6 +4210,79 @@
                 .replace(/"/g, '&quot;');
         }
 
+        function pintarCierrePipeline(el, cierre) {
+            if (!el) return;
+            const c = cierre && typeof cierre === 'object' ? cierre : null;
+            if (!c || !c.sin_mas_automatico) {
+                el.innerHTML = '';
+                el.classList.add('d-none');
+                return;
+            }
+            const msg = String(c.mensaje || 'Sin más elementos por procesar.').trim();
+            const siguiente = String(c.siguiente_proceso_label || '').trim();
+            let html = `<i class="bi bi-check-circle"></i> ${escapeHtmlSync(msg)}`;
+            if (siguiente) {
+                html += `<br><span class="text-muted">Siguiente proceso:</span> <strong>${escapeHtmlSync(siguiente)}</strong>`;
+            }
+            el.innerHTML = html;
+            el.classList.remove('d-none');
+        }
+
+        function pintarListaRecientes(ul, items, tipo) {
+            if (!ul) return;
+            const lista = Array.isArray(items) ? items : [];
+            if (lista.length === 0) {
+                ul.innerHTML = '';
+                return;
+            }
+            ul.innerHTML = lista.map((item) => {
+                const cod = escapeHtmlSync(String(item.codigo || '').toUpperCase());
+                const cuando = formatearFechaSync(item.at) || '—';
+                if (tipo === 'purge') {
+                    return `<li class="small"><span class="text-success">${cod}</span> <span class="text-muted tabular-nums">${escapeHtmlSync(cuando)}</span></li>`;
+                }
+                const ok = String(item.estado || '') === 'ok';
+                const badge = ok ? 'text-success' : 'text-danger';
+                const icon = ok ? 'bi-check-lg' : 'bi-x-lg';
+                return `<li class="small"><i class="bi ${icon} ${badge}"></i> <span class="${badge}">${cod}</span> <span class="text-muted tabular-nums">${escapeHtmlSync(cuando)}</span></li>`;
+            }).join('');
+        }
+
+        function aplicarPipelineActivo(pipeline) {
+            const banner = document.getElementById('pipeline-activo');
+            const labelEl = document.getElementById('pipeline-activo-label');
+            const detalleEl = document.getElementById('pipeline-activo-detalle');
+            const cards = {
+                busqueda: document.getElementById('oportunidad-estado'),
+                vinculo: document.getElementById('vinculo-estado'),
+                adjuntos: document.getElementById('sync-adjuntos-estado'),
+                purge: document.getElementById('sync-adjuntos-estado'),
+            };
+            Object.values(cards).forEach((card) => {
+                if (card) {
+                    card.classList.remove('border', 'border-primary', 'border-2');
+                }
+            });
+            const p = pipeline && typeof pipeline === 'object' ? pipeline : null;
+            if (!p || !p.proceso) {
+                if (banner) banner.classList.add('d-none');
+                return;
+            }
+            if (banner) banner.classList.remove('d-none');
+            if (labelEl) labelEl.textContent = String(p.label || p.proceso);
+            if (detalleEl) {
+                const det = String(p.detalle || '').trim();
+                detalleEl.textContent = det ? `(${det})` : '';
+            }
+            const cardActiva = cards[p.proceso] || cards.adjuntos;
+            if (cardActiva && (p.proceso === 'adjuntos' || p.proceso === 'purge' || p.proceso === 'busqueda' || p.proceso === 'vinculo')) {
+                const target = p.proceso === 'purge' ? cards.adjuntos : (cards[p.proceso] || null);
+                if (target) {
+                    target.classList.add('border', 'border-primary', 'border-2');
+                }
+            }
+        }
+
         function pintarPanelSync(prefijo, bloque, peer) {
             const badge = document.getElementById(`sync-${prefijo}-badge`);
             const resumen = document.getElementById(`sync-${prefijo}-resumen`);
@@ -4523,6 +4642,7 @@
                 sincronizarVisitasLocalesEnMapa();
             }
             aplicarEstadoVinculo(corrida.vinculo || null);
+            aplicarPipelineActivo(corrida.pipeline || null);
             actualizarBotonProcesarVinculo(corrida.vinculo || null, corrida.vinculo_aviso || null, corrida.vinculo_pendientes);
             if (corrida.sync_par) {
                 aplicarSyncPar(corrida.sync_par);
@@ -4678,6 +4798,8 @@
                 document.querySelectorAll('.vin-meta-extra').forEach((el) => el.classList.add('d-none'));
                 if (vinWrap) vinWrap.classList.add('d-none');
                 pintarUltimoError(document.getElementById('vin-error'), null);
+                pintarCierrePipeline(document.getElementById('vin-siguiente-proceso'), null);
+                card?.classList.remove('border', 'border-primary', 'border-2');
                 if (vinDetalle) {
                     vinDetalle.textContent = 'Pulse Procesar vinculaciones para vincular cotizaciones al maestro.';
                     vinDetalle.classList.add('text-muted');
@@ -4764,6 +4886,12 @@
                 }
             }
             pintarUltimoError(document.getElementById('vin-error'), vinculo.ultimo_error);
+            pintarCierrePipeline(document.getElementById('vin-siguiente-proceso'), vinculo.cierre || null);
+            if (vinculo.estado === 'running') {
+                card?.classList.add('border', 'border-primary', 'border-2');
+            } else {
+                card?.classList.remove('border', 'border-primary', 'border-2');
+            }
             renderVinculoRegiones(vinculo);
             asegurarTickDuracion();
         }

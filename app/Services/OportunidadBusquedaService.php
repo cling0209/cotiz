@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\ProcessOportunidadBusquedaJob;
 use App\Models\OportunidadBusquedaCorrida;
+use App\Support\OportunidadPipelineEtapa;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -1962,6 +1963,7 @@ class OportunidadBusquedaService
         $fechaBusqueda = $this->oportunidades->normalizarFechaBusqueda($corrida->fecha_busqueda);
         $duracionSegundos = $this->duracionSegundos($corrida->inicio, $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null));
         $vinculoEstado = $this->vinculos->estado();
+        $adjuntoEstado = app(OportunidadAdjuntoCorridaService::class)->estado();
         $pasosResumen = $this->resumirPasosCorrida($pasos, $errores, $fechaBusqueda);
         $ultimaConsulta = null;
         foreach (array_reverse($pasosResumen) as $pasoResumen) {
@@ -2010,6 +2012,16 @@ class OportunidadBusquedaService
                 || ($vinculoEstado['estado'] ?? null) === OportunidadVinculoService::ESTADO_RUNNING)
                 ? null
                 : $this->vinculos->avisoPendientes($fechaBusqueda),
+            'pipeline' => OportunidadPipelineEtapa::resolverActivo(
+                [
+                    'estado' => $corrida->estado,
+                    'total_pasos' => $total,
+                    'pasos_procesados' => $terminados,
+                    'mensaje' => $corrida->mensaje,
+                ],
+                $vinculoEstado,
+                $adjuntoEstado,
+            ),
         ];
 
         if ($incluirItems) {

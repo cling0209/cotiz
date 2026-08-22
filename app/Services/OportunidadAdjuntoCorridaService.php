@@ -8,6 +8,7 @@ use App\Models\OportunidadAdjuntoCorrida;
 use App\Models\OportunidadEncontrada;
 use App\Support\CorridaEstado;
 use App\Support\HoraChile;
+use App\Support\OportunidadPipelineEtapa;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -529,6 +530,11 @@ class OportunidadAdjuntoCorridaService
             $corrida->inicio,
             $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null),
         );
+        $recientes = OportunidadPipelineEtapa::ultimosPasosDelPlan($pasos);
+        $cierre = null;
+        if ($corrida->estado === self::ESTADO_COMPLETED && $this->indiceSiguientePendiente($pasos) === null) {
+            $cierre = OportunidadPipelineEtapa::cierreAdjuntos((int) $corrida->pasos_fallidos);
+        }
 
         return [
             'id' => $corrida->id,
@@ -545,6 +551,8 @@ class OportunidadAdjuntoCorridaService
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'mensaje' => $corrida->mensaje,
             'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
+            'recientes' => $recientes,
+            'cierre' => $cierre,
             'purge' => $this->serializarPurge($corrida),
         ];
     }
@@ -650,6 +658,7 @@ class OportunidadAdjuntoCorridaService
         $omitidos = 0;
         $fallos = 0;
         $revisados = 0;
+        $ultimosEliminados = [];
 
         foreach ($cerradas as $codigo) {
             if (isset($protegidos[$codigo])) {
@@ -665,6 +674,11 @@ class OportunidadAdjuntoCorridaService
             $revisados++;
             if ($this->adjuntos->eliminarCarpeta($codigo)) {
                 $eliminados++;
+                array_unshift($ultimosEliminados, [
+                    'codigo' => $codigo,
+                    'at' => now()->toIso8601String(),
+                ]);
+                $ultimosEliminados = array_slice($ultimosEliminados, 0, 5);
             } else {
                 $fallos++;
             }
@@ -680,6 +694,7 @@ class OportunidadAdjuntoCorridaService
             'omitidos' => $omitidos,
             'fallos' => $fallos,
             'revisados' => $revisados,
+            'ultimos_eliminados' => $ultimosEliminados,
             'mensaje' => $mensaje,
             'ultimo_error' => $fallos > 0
                 ? 'No se pudo eliminar '.$fallos.' carpeta'.($fallos === 1 ? '' : 's').' de adjuntos cerrados.'
@@ -947,6 +962,14 @@ class OportunidadAdjuntoCorridaService
             $ultimoError = trim((string) ($purge['mensaje'] ?? ''));
         }
 
+        $ultimosEliminados = is_array($purge['ultimos_eliminados'] ?? null)
+            ? array_values($purge['ultimos_eliminados'])
+            : [];
+        $cierre = null;
+        if (in_array($estadoPurge, [self::PURGE_COMPLETED, self::PURGE_SKIPPED, self::PURGE_ERROR], true)) {
+            $cierre = OportunidadPipelineEtapa::cierrePurge();
+        }
+
         return [
             'estado' => $estadoPurge,
             'inicio' => $inicio,
@@ -962,6 +985,8 @@ class OportunidadAdjuntoCorridaService
             'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
             'mensaje' => (string) ($purge['mensaje'] ?? ''),
             'ultimo_error' => $ultimoError !== '' ? $ultimoError : null,
+            'ultimos_eliminados' => $ultimosEliminados,
+            'cierre' => $cierre,
         ];
     }
 

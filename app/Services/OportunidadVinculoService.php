@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\ProcessOportunidadVinculoJob;
 use App\Support\CorridaEstado;
+use App\Support\OportunidadPipelineEtapa;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
@@ -1801,6 +1802,19 @@ class OportunidadVinculoService
 
         $workerStalled = $this->corridaEstaStalled($corrida);
 
+        $fallidasMpTotal = array_sum(array_map(
+            static fn (array $s): int => (int) ($s['no_vinculadas_mp'] ?? 0),
+            $progresoPorRegion,
+        ));
+        $cierre = null;
+        if (in_array($corrida->estado, [self::ESTADO_COMPLETED, self::ESTADO_CANCELLED], true)) {
+            $pendientes = $this->contarPendientesSafe($corrida->fecha_busqueda);
+            $fallidasReintento = $this->contarFallidasMpReintentoSafe($corrida->fecha_busqueda);
+            if ($pendientes === 0 && $fallidasReintento === 0) {
+                $cierre = OportunidadPipelineEtapa::cierreVinculo($fallidasMpTotal);
+            }
+        }
+
         return [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
@@ -1819,10 +1833,8 @@ class OportunidadVinculoService
             // Lista 0..n: conserva el orden de MERCADOPUBLICO_REGIONES (JSON no reordena).
             'progreso_regiones' => array_values($progresoPorRegion),
             'progreso_por_region' => $progresoPorRegion,
-            'fallidas_mp_total' => array_sum(array_map(
-                static fn (array $s): int => (int) ($s['no_vinculadas_mp'] ?? 0),
-                $progresoPorRegion,
-            )),
+            'fallidas_mp_total' => $fallidasMpTotal,
+            'cierre' => $cierre,
             'mensaje' => $corrida->mensaje,
             'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
             'worker_stalled' => $workerStalled,
