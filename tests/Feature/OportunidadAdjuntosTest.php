@@ -459,6 +459,23 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('archivos.0.nombre', 'Pedido.xlsx');
     }
 
+    public function test_estado_lee_nombres_desde_manifest_si_no_lista_el_archivo(): void
+    {
+        $user = $this->superadmin();
+        $this->crearOportunidad('1000-1-COT26');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/manifest.json', json_encode([
+            'codigo' => '1000-1-COT26',
+            'archivos' => ['Pedido utiles de aseo 2026.xlsx'],
+        ]));
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('conteos.1000-1-COT26', 1)
+            ->assertJsonPath('archivos.1000-1-COT26.0', 'Pedido utiles de aseo 2026.xlsx');
+    }
+
     private function superadmin(): User
     {
         return User::factory()->create([

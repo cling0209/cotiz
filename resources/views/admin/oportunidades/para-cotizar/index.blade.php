@@ -1580,14 +1580,33 @@
             }
         }
 
-        function aplicarMapaAdjuntos(destino, fuente) {
-            Object.keys(fuente).forEach((k) => {
-                destino[k] = fuente[k];
-            });
-            Object.keys(destino).forEach((k) => {
-                if (!Object.prototype.hasOwnProperty.call(fuente, k)) {
-                    delete destino[k];
+        function fusionarAdjuntosDesdeEstado(nuevosConteos, nuevosArchivos, nuevosConsultados) {
+            Object.entries(nuevosArchivos || {}).forEach(([cod, lista]) => {
+                const limpios = Array.isArray(lista)
+                    ? lista.map((x) => String(x || '')).filter(Boolean)
+                    : [];
+                const actuales = adjuntosArchivosPorCodigo[cod];
+                const yaHay = Array.isArray(actuales) && actuales.length > 0;
+                if (limpios.length > 0) {
+                    adjuntosArchivosPorCodigo[cod] = limpios;
+                    adjuntosPorCodigo[cod] = limpios.length;
+                } else if (! yaHay && adjuntosArchivosPorCodigo[cod] == null) {
+                    adjuntosArchivosPorCodigo[cod] = [];
                 }
+            });
+            Object.entries(nuevosConteos || {}).forEach(([cod, n]) => {
+                const nombres = adjuntosArchivosPorCodigo[cod];
+                if (Array.isArray(nombres) && nombres.length > 0) {
+                    adjuntosPorCodigo[cod] = nombres.length;
+                    return;
+                }
+                const num = Number(n) || 0;
+                if (num > 0 || adjuntosPorCodigo[cod] == null) {
+                    adjuntosPorCodigo[cod] = num;
+                }
+            });
+            Object.keys(nuevosConsultados || {}).forEach((cod) => {
+                adjuntosConsultados[cod] = true;
             });
         }
 
@@ -1755,15 +1774,11 @@
             return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
         }
 
-        function mapaAdjuntosTieneNombres(mapa) {
-            return Object.values(mapa || {}).some((v) => Array.isArray(v) && v.length > 0);
-        }
-
         async function hidratarAdjuntosPagina(itemsPagina) {
             if (!puedeAdjuntos || !urls.adjuntosListarBase || !Array.isArray(itemsPagina)) {
                 return;
             }
-            if (adjuntosEstadoEnCurso || hidratacionAdjuntosEnCurso) {
+            if (hidratacionAdjuntosEnCurso) {
                 return;
             }
             const faltantes = itemsPagina
@@ -1789,10 +1804,10 @@
                             credentials: 'same-origin',
                         });
                         const data = await res.json().catch(() => ({}));
-                        adjuntosListarHecho[cod] = true;
                         if (!res.ok || !data.ok) {
                             return;
                         }
+                        adjuntosListarHecho[cod] = true;
                         const nombres = (Array.isArray(data.archivos) ? data.archivos : [])
                             .map((a) => String(a && a.nombre ? a.nombre : a || ''))
                             .filter(Boolean);
@@ -2007,22 +2022,7 @@
                 Object.keys(nuevosConteos).forEach((cod) => {
                     nuevosConsultados[cod] = true;
                 });
-                const estadoTraeNombres = mapaAdjuntosTieneNombres(nuevosArchivos);
-                const yaHayNombres = mapaAdjuntosTieneNombres(adjuntosArchivosPorCodigo);
-                if (estadoTraeNombres || !yaHayNombres) {
-                    aplicarMapaAdjuntos(adjuntosPorCodigo, nuevosConteos);
-                    aplicarMapaAdjuntos(adjuntosArchivosPorCodigo, nuevosArchivos);
-                    aplicarMapaAdjuntos(adjuntosConsultados, nuevosConsultados);
-                } else {
-                    Object.keys(nuevosConsultados).forEach((cod) => {
-                        adjuntosConsultados[cod] = true;
-                    });
-                    Object.entries(nuevosConteos).forEach(([cod, n]) => {
-                        if ((Number(n) || 0) > 0 || adjuntosPorCodigo[cod] == null) {
-                            adjuntosPorCodigo[cod] = Number(n) || 0;
-                        }
-                    });
-                }
+                fusionarAdjuntosDesdeEstado(nuevosConteos, nuevosArchivos, nuevosConsultados);
                 guardarAdjuntosLocales();
                 pintarPanelAdjuntos(data);
                 renderTabla(false);

@@ -112,11 +112,12 @@ class OportunidadAdjuntoService
         $porCodigo = [];
         $consultados = [];
         $fallosPorCodigo = [];
+        $manifestsPorCodigo = [];
         $disk = Storage::disk($this->disk());
         $root = $prefix === '' ? '' : $prefix;
 
         foreach ($disk->allFiles($root) as $key) {
-            $rel = str_replace('\\', '/', $key);
+            $rel = ltrim(str_replace('\\', '/', $key), '/');
             if ($prefix !== '') {
                 $rel = ltrim(substr($rel, strlen($prefix)), '/');
             }
@@ -132,6 +133,9 @@ class OportunidadAdjuntoService
                 continue;
             }
             $codigo = strtoupper($partes[0]);
+            if ($codigo === '') {
+                continue;
+            }
             if ($nombre === 'error.json') {
                 $parsed = $this->leerErrorDesdeDisco($disk, $key, $codigo);
                 if ($parsed !== null) {
@@ -142,6 +146,7 @@ class OportunidadAdjuntoService
             }
             if ($nombre === 'manifest.json') {
                 $consultados[$codigo] = true;
+                $manifestsPorCodigo[$codigo] = $key;
 
                 continue;
             }
@@ -152,6 +157,18 @@ class OportunidadAdjuntoService
             $porCodigo[$codigo] ??= [];
             if (! in_array($nombre, $porCodigo[$codigo], true)) {
                 $porCodigo[$codigo][] = $nombre;
+            }
+        }
+
+        foreach ($manifestsPorCodigo as $codigo => $manifestKey) {
+            if (! empty($porCodigo[$codigo])) {
+                continue;
+            }
+            foreach ($this->nombresDesdeManifestDisco($disk, $manifestKey) as $nombreManifest) {
+                $porCodigo[$codigo] ??= [];
+                if (! in_array($nombreManifest, $porCodigo[$codigo], true)) {
+                    $porCodigo[$codigo][] = $nombreManifest;
+                }
             }
         }
 
