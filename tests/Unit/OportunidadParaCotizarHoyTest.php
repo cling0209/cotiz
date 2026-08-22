@@ -24,6 +24,37 @@ class OportunidadParaCotizarHoyTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_fecha_ultimo_cambio_de_item_usa_cambio_y_cae_a_publicacion(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+        $svc = $this->app->make(OportunidadParaCotizarService::class);
+
+        $conCambio = $svc->fechaUltimoCambioDeItem([
+            'fechas' => [
+                'fecha_publicacion' => '2026-08-21 12:30',
+                'fecha_ultimo_cambio' => '2026-08-21 12:35',
+            ],
+        ]);
+        $this->assertNotNull($conCambio);
+        $this->assertSame('2026-08-21 12:35:00', $conCambio->format('Y-m-d H:i:s'));
+
+        $soloPub = $svc->fechaUltimoCambioDeItem([
+            'fechas' => [
+                'fecha_publicacion' => '2026-08-21 12:30',
+            ],
+        ]);
+        $this->assertNotNull($soloPub);
+        $this->assertSame('2026-08-21 12:30:00', $soloPub->format('Y-m-d H:i:s'));
+
+        $max = $svc->maxFechaUltimoCambioDeItems([
+            ['fechas' => ['fecha_ultimo_cambio' => '2026-08-21 10:20']],
+            ['fechas' => ['fecha_ultimo_cambio' => '2026-08-21 12:35']],
+            ['nombre' => 'sin fechas'],
+        ]);
+        $this->assertNotNull($max);
+        $this->assertSame('2026-08-21 12:35:00', $max->format('Y-m-d H:i:s'));
+    }
+
     public function test_frase_debe_aparecer_en_nombre_u_organismo(): void
     {
         $svc = $this->app->make(OportunidadParaCotizarService::class);

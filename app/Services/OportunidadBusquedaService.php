@@ -113,10 +113,19 @@ class OportunidadBusquedaService
         }
 
         $pasos = $this->enriquecerPlan($pasos);
-        $cambioDesdeIso = $this->resolverCambioDesdeParaInicio($dia, $ventanaCompleta, $cambioDesdeForzado);
+        $cambioDesdeForzadoIso = $this->resolverCambioDesdeForzado($dia, $ventanaCompleta, $cambioDesdeForzado);
+        $cambioDesdeFallback = $cambioDesdeForzadoIso ?? $this->resolverCambioDesdeIncremental($dia, $ventanaCompleta);
+        $cursorsRegion = (! $ventanaCompleta && $cambioDesdeForzadoIso === null)
+            ? $this->cursorsIncrementalPorRegion($dia)
+            : [];
         $regionesReintento = $this->regionesFallidasDefinitivasUltimaCorrida($dia);
-        if ($cambioDesdeIso !== null) {
-            $pasos = array_map(static function (array $paso) use ($cambioDesdeIso, $regionesReintento): array {
+        if ($cambioDesdeFallback !== null || $cursorsRegion !== []) {
+            $pasos = array_map(function (array $paso) use (
+                $cambioDesdeForzadoIso,
+                $cambioDesdeFallback,
+                $cursorsRegion,
+                $regionesReintento,
+            ): array {
                 $region = (int) ($paso['region'] ?? 0);
                 // Fallo definitivo previo: ventana completa del día (no desde última pub.).
                 if ($region > 0 && in_array($region, $regionesReintento, true)) {
@@ -125,7 +134,14 @@ class OportunidadBusquedaService
                     return $paso;
                 }
 
-                $paso['cambio_desde'] = $cambioDesdeIso;
+                $iso = $cambioDesdeForzadoIso
+                    ?? ($cursorsRegion[$region] ?? null)
+                    ?? $cambioDesdeFallback;
+                if ($iso === null) {
+                    return $paso;
+                }
+
+                $paso['cambio_desde'] = $iso;
                 $paso['incremental'] = true;
 
                 return $paso;
@@ -133,13 +149,15 @@ class OportunidadBusquedaService
             $pasos = $this->priorizarPasosReintentoFallidos($pasos);
         }
 
+        $cambioDesdeIso = $this->isoCambioDesdeResumen($pasos, $cambioDesdeFallback);
         $mensajeInicio = $this->mensajeInicioCorrida($dia, $cambioDesdeIso, $regionesReintento, $ventanaCompleta);
         $eventos = [];
         $eventoTxt = 'Búsqueda encolada ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
         if ($ventanaCompleta) {
             $eventoTxt = 'Búsqueda encolada con ventana completa del día ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
         } elseif ($cambioDesdeIso !== null) {
-            $eventoTxt = 'Búsqueda incremental encolada desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso)
+            $eventoTxt = 'Búsqueda incremental encolada desde último cambio visto '
+                .$this->formatearFechaHoraMensaje($cambioDesdeIso)
                 .' ('.$this->formatearFechaMensaje($dia).', '.count($pasos).' pasos). Esperando worker…';
         }
         $this->pushEvento($eventos, 'encolada', $eventoTxt);
@@ -172,9 +190,10 @@ class OportunidadBusquedaService
      * Resuelve cambio_desde al iniciar:
      * - ventana completa → null (00:00 del día)
      * - forzado → timestamp indicado (p. ej. recuperar un salto)
-     * - default → última pub. conocida + 1 min
+     * - default → por región: último cambio visto en el barrido + 1 min
+     *   (fallback: última pub. conocida + 1 min)
      */
-    private function resolverCambioDesdeParaInicio(
+    private function resolverCambioDesdeForzado(
         string $dia,
         bool $ventanaCompleta,
         mixed $cambioDesdeForzado = null,
@@ -184,33 +203,38 @@ class OportunidadBusquedaService
         }
 
         $forzado = trim((string) ($cambioDesdeForzado ?? ''));
-        if ($forzado !== '') {
-            try {
-                $desde = Carbon::parse($forzado)->timezone((string) config('app.timezone'));
-                $finDia = Carbon::parse($dia, (string) config('app.timezone'))->endOfDay();
-                if ($desde->greaterThan($finDia)) {
-                    throw new RuntimeException(
-                        'cambio_desde no puede ser posterior al fin del día de búsqueda.'
-                    );
-                }
-
-                return $desde->toIso8601String();
-            } catch (RuntimeException $e) {
-                throw $e;
-            } catch (\Throwable) {
-                throw new RuntimeException('cambio_desde inválido. Use una fecha/hora reconocible.');
-            }
+        if ($forzado === '') {
+            return null;
         }
 
-        return $this->resolverCambioDesdeIncremental($dia);
+        try {
+            $desde = Carbon::parse($forzado)->timezone((string) config('app.timezone'));
+            $finDia = Carbon::parse($dia, (string) config('app.timezone'))->endOfDay();
+            if ($desde->greaterThan($finDia)) {
+                throw new RuntimeException(
+                    'cambio_desde no puede ser posterior al fin del día de búsqueda.'
+                );
+            }
+
+            return $desde->toIso8601String();
+        } catch (RuntimeException $e) {
+            throw $e;
+        } catch (\Throwable) {
+            throw new RuntimeException('cambio_desde inválido. Use una fecha/hora reconocible.');
+        }
     }
 
     /**
      * Para el día vigente (hoy): retoma desde la última publicación conocida + 1 minuto
      * (aunque esa pub. sea de un día anterior). Catch-up histórico (días pasados) usa el día completo.
+     * Solo se usa si la región no tiene último cambio visto de un barrido previo.
      */
-    private function resolverCambioDesdeIncremental(string $dia): ?string
+    private function resolverCambioDesdeIncremental(string $dia, bool $ventanaCompleta = false): ?string
     {
+        if ($ventanaCompleta) {
+            return null;
+        }
+
         $hoy = $this->oportunidades->fechaBusquedaHoy();
         if ($dia !== $hoy) {
             return null;
@@ -234,6 +258,126 @@ class OportunidadBusquedaService
         }
 
         return $desde->toIso8601String();
+    }
+
+    /**
+     * Por región: último cambio visto (o hora en que se tomó el paso) + 1 minuto.
+     *
+     * @return array<int, string> region => ISO8601
+     */
+    private function cursorsIncrementalPorRegion(string $dia): array
+    {
+        $corridas = OportunidadBusquedaCorrida::query()
+            ->whereDate('fecha_busqueda', $dia)
+            ->where('estado', self::ESTADO_COMPLETED)
+            ->latest('id')
+            ->get(['id', 'plan_json']);
+
+        $out = [];
+        foreach ($corridas as $corrida) {
+            foreach (is_array($corrida->plan_json) ? $corrida->plan_json : [] as $paso) {
+                if (! is_array($paso)) {
+                    continue;
+                }
+                $region = (int) ($paso['region'] ?? 0);
+                if ($region < 1 || isset($out[$region])) {
+                    continue;
+                }
+                if ((string) ($paso['estado'] ?? '') !== self::PASO_OK) {
+                    continue;
+                }
+                $cursor = $this->cursorDesdePaso($paso, $dia);
+                if ($cursor !== null) {
+                    $out[$region] = $cursor;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $paso
+     */
+    private function cursorDesdePaso(array $paso, string $dia): ?string
+    {
+        $raw = trim((string) ($paso['ultimo_cambio_visto'] ?? $paso['tomado_at'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $desde = Carbon::parse($raw)
+                ->timezone((string) config('app.timezone'))
+                ->addMinute();
+            $finDia = Carbon::parse($dia, (string) config('app.timezone'))->endOfDay();
+            if ($desde->greaterThan($finDia)) {
+                return null;
+            }
+
+            return $desde->toIso8601String();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * ISO más temprano de los pasos incrementales (para el mensaje de la corrida).
+     *
+     * @param  list<array<string, mixed>>  $pasos
+     */
+    private function isoCambioDesdeResumen(array $pasos, ?string $fallback): ?string
+    {
+        $min = null;
+        foreach ($pasos as $paso) {
+            if (! is_array($paso) || empty($paso['incremental'])) {
+                continue;
+            }
+            $iso = trim((string) ($paso['cambio_desde'] ?? ''));
+            if ($iso === '') {
+                continue;
+            }
+            try {
+                $dt = Carbon::parse($iso);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($min === null || $dt->lessThan($min)) {
+                $min = $dt;
+            }
+        }
+
+        if ($min !== null) {
+            return $min->toIso8601String();
+        }
+
+        return $fallback;
+    }
+
+    private function isoAhora(): string
+    {
+        return now()->timezone((string) config('app.timezone'))->toIso8601String();
+    }
+
+    private function fusionarUltimoCambioVisto(?string $previo, ?string $nuevo): ?string
+    {
+        $previo = $previo !== null ? trim($previo) : '';
+        $nuevo = $nuevo !== null ? trim($nuevo) : '';
+        if ($previo === '') {
+            return $nuevo !== '' ? $nuevo : null;
+        }
+        if ($nuevo === '') {
+            return $previo;
+        }
+
+        try {
+            $a = Carbon::parse($previo);
+            $b = Carbon::parse($nuevo);
+
+            return $b->greaterThan($a) ? $nuevo : $previo;
+        } catch (\Throwable) {
+            return $nuevo !== '' ? $nuevo : $previo;
+        }
     }
 
     private function formatearFechaHoraMensaje(string $iso): string
@@ -325,7 +469,7 @@ class OportunidadBusquedaService
 
         if ($cambioDesdeIso !== null) {
             $msg = 'Búsqueda incremental encolada para '.$fecha
-                .' desde '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.';
+                .' desde último cambio visto '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.';
             if ($nReintento > 0) {
                 $msg .= ' Reintento completo de '.$nReintento
                     .' región(es) fallida(s) en la corrida previa.';
@@ -421,6 +565,12 @@ class OportunidadBusquedaService
         }
 
         $pasos[$indice]['estado'] = self::PASO_RUNNING;
+        if (trim((string) ($pasos[$indice]['tomado_at'] ?? '')) === '' || $esInicioRegion) {
+            $pasos[$indice]['tomado_at'] = $this->isoAhora();
+        }
+        if ($esInicioRegion) {
+            unset($pasos[$indice]['ultimo_cambio_visto']);
+        }
         $pasos[$indice]['pagina'] = $pagina;
         $paginasUi = max($pagina, (int) ($paso['paginas_max'] ?? $pagina));
         $pasos[$indice]['paginas_max'] = $paginasUi;
@@ -666,6 +816,11 @@ class OportunidadBusquedaService
             $pasos[$indice]['encontradas'] = $encontradas;
             $pasos[$indice]['duracion_segundos'] = $duracionPrevia + max(0, (int) $inicioPaso->diffInSeconds(now()));
             $pasos[$indice]['consulta'] = is_array($resultado['consulta'] ?? null) ? $resultado['consulta'] : null;
+            $pasos[$indice]['tomado_at'] = $this->isoAhora();
+            $pasos[$indice]['ultimo_cambio_visto'] = $this->fusionarUltimoCambioVisto(
+                $esInicioRegion ? null : (isset($paso['ultimo_cambio_visto']) ? trim((string) $paso['ultimo_cambio_visto']) : null),
+                isset($resultado['ultimo_cambio_visto']) ? trim((string) $resultado['ultimo_cambio_visto']) : null,
+            );
 
             $porFrasePagina = is_array($resultado['encontradas_por_frase'] ?? null)
                 ? $resultado['encontradas_por_frase']
@@ -1713,6 +1868,10 @@ class OportunidadBusquedaService
                 ? max(0, (int) $paso['items_pagina'])
                 : null;
             $fase = trim((string) ($paso['fase'] ?? ''));
+            $tomadoAt = trim((string) ($paso['tomado_at'] ?? ''));
+            $tomadoAt = $tomadoAt !== '' ? $tomadoAt : null;
+            $ultimoCambioVisto = trim((string) ($paso['ultimo_cambio_visto'] ?? ''));
+            $ultimoCambioVisto = $ultimoCambioVisto !== '' ? $ultimoCambioVisto : null;
             $matchRevisados = array_key_exists('match_revisados', $paso) && $paso['match_revisados'] !== null
                 ? max(0, (int) $paso['match_revisados'])
                 : null;
@@ -1749,6 +1908,9 @@ class OportunidadBusquedaService
             $out[] = [
                 'indice' => $i,
                 'fecha_busqueda' => $fechaBusqueda,
+                'tomado_at' => $tomadoAt,
+                'tomado_at_texto' => $tomadoAt !== null ? $this->formatearFechaHoraMensaje($tomadoAt) : null,
+                'ultimo_cambio_visto' => $ultimoCambioVisto,
                 'region' => (int) ($paso['region'] ?? 0),
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'frase' => (string) ($paso['frase'] ?? ''),

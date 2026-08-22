@@ -670,6 +670,133 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_segunda_corrida_usa_ultimo_cambio_visto_por_region_no_ultima_publicacion(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-08-21',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-08-21 19:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'escritorio',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'sistema',
+            'fecha_busqueda' => '2026-08-21',
+            'inicio' => Carbon::parse('2026-08-21 10:00:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-08-21 10:30:00', 'America/Santiago'),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [
+                [
+                    'frase' => '(todas)',
+                    'region' => 13,
+                    'region_nombre' => 'Metropolitana',
+                    'estado' => 'ok',
+                    'intentos' => 1,
+                    'encontradas' => 1,
+                    'tomado_at' => Carbon::parse('2026-08-21 10:28:00', 'America/Santiago')->toIso8601String(),
+                    'ultimo_cambio_visto' => Carbon::parse('2026-08-21 10:20:00', 'America/Santiago')->toIso8601String(),
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada correctamente.',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '900-1-COT26',
+            'nombre' => 'Oficina tarde',
+            'organismo' => 'SAG',
+            'region' => 5,
+            'nombre_region' => 'Valparaíso',
+            'monto_presupuesto_clp' => 100000,
+            'fecha_publicacion' => Carbon::parse('2026-08-21 18:00:00', 'America/Santiago'),
+            'fecha_cierre' => Carbon::parse('2026-08-24 11:00:00', 'America/Santiago'),
+            'palabras_coinciden' => ['escritorio'],
+            'fecha_busqueda' => '2026-08-21',
+            'indice_region_config' => 1,
+        ]);
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('sistema');
+
+        $this->assertTrue((bool) ($corrida->plan_json[0]['incremental'] ?? false));
+        $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
+            ->timezone('America/Santiago');
+        // Último cambio visto 10:20 → +1 min. No usar la pub. 18:00 de otro match.
+        $this->assertSame('2026-08-21 10:21:00', $cambioDesde->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_cursor_incremental_cae_a_tomado_at_si_no_hay_ultimo_cambio_visto(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-08-21',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-08-21 19:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'escritorio',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'sistema',
+            'fecha_busqueda' => '2026-08-21',
+            'inicio' => Carbon::parse('2026-08-21 10:00:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-08-21 10:30:00', 'America/Santiago'),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 0,
+            'plan_json' => [
+                [
+                    'frase' => '(todas)',
+                    'region' => 13,
+                    'region_nombre' => 'Metropolitana',
+                    'estado' => 'ok',
+                    'intentos' => 1,
+                    'encontradas' => 0,
+                    'tomado_at' => Carbon::parse('2026-08-21 10:28:00', 'America/Santiago')->toIso8601String(),
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada correctamente.',
+        ]);
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('sistema');
+
+        $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
+            ->timezone('America/Santiago');
+        $this->assertSame('2026-08-21 10:29:00', $cambioDesde->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
+    }
+
     public function test_cambio_desde_incremental_usa_ultima_pub_de_dia_anterior_mas_un_minuto(): void
     {
         Queue::fake();

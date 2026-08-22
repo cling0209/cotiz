@@ -133,7 +133,7 @@
                         <thead class="table-light" style="position: sticky; top: 0;">
                             <tr>
                                 <th class="text-nowrap">#</th>
-                                <th class="text-nowrap">D&iacute;a</th>
+                                <th class="text-nowrap">D&iacute;a / hora</th>
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
@@ -3414,7 +3414,10 @@
 
                 const tdDia = document.createElement('td');
                 tdDia.className = 'text-nowrap tabular-nums';
-                tdDia.textContent = formatearDia(paso.fecha_busqueda);
+                tdDia.textContent = paso.tomado_at_texto || formatearDia(paso.fecha_busqueda);
+                if (paso.tomado_at_texto) {
+                    tdDia.title = 'Tomado ' + paso.tomado_at_texto;
+                }
 
                 const tdRegion = document.createElement('td');
                 tdRegion.className = 'text-nowrap';

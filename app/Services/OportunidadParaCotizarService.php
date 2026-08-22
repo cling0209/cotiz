@@ -921,7 +921,8 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Última fecha_publicacion guardada (cualquier día). Base del cambio_desde incremental.
+     * Última fecha_publicacion guardada (cualquier día). Fallback del cambio_desde
+     * incremental si aún no hay último cambio visto en un barrido de región.
      */
     public function ultimaFechaPublicacionConocida(): ?Carbon
     {
@@ -938,6 +939,60 @@ class OportunidadParaCotizarService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Último cambio de un ítem crudo de MP (listado o detalle).
+     * Si no viene fecha_ultimo_cambio, usa fecha_publicacion.
+     */
+    public function fechaUltimoCambioDeItem(array $item): ?Carbon
+    {
+        $fechas = is_array($item['fechas'] ?? null) ? $item['fechas'] : [];
+        $raw = trim((string) (
+            $fechas['fecha_ultimo_cambio']
+            ?? $item['fechaUltimoCambio']
+            ?? $item['fecha_ultimo_cambio']
+            ?? ''
+        ));
+        if ($raw === '') {
+            $raw = trim((string) (
+                $fechas['fecha_publicacion']
+                ?? $item['fechaPublicacion']
+                ?? $item['fecha_publicacion']
+                ?? ''
+            ));
+        }
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($raw)->timezone((string) config('app.timezone'));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<mixed>  $items
+     */
+    public function maxFechaUltimoCambioDeItems(array $items): ?Carbon
+    {
+        $max = null;
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $fecha = $this->fechaUltimoCambioDeItem($item);
+            if ($fecha === null) {
+                continue;
+            }
+            if ($max === null || $fecha->greaterThan($max)) {
+                $max = $fecha;
+            }
+        }
+
+        return $max;
     }
 
     /**
@@ -1103,6 +1158,7 @@ class OportunidadParaCotizarService
             'items_pagina' => 0,
             'items_leidos' => $itemsLeidosPrevios,
             'continuar' => false,
+            'ultimo_cambio_visto' => null,
         ];
 
         if ($region < 1 || $palabras === [] || $pagina > $maxPaginas) {
@@ -1189,6 +1245,7 @@ class OportunidadParaCotizarService
                 'items_pagina' => 0,
                 'items_leidos' => $itemsLeidosPrevios,
                 'continuar' => false,
+                'ultimo_cambio_visto' => null,
             ];
         }
 
@@ -1338,6 +1395,7 @@ class OportunidadParaCotizarService
         if ($items !== []) {
             $guardadas = $this->guardarEncontradas($items, $userId, $dia);
         }
+        $ultimoCambioVisto = $this->maxFechaUltimoCambioDeItems($lote);
         $paginaLlena = count($lote) >= self::REGION_TAMANO_PAGINA;
         $ventanaCambio = $this->ventanaCambioParaDia($dia, $cambioDesde);
         // Con ventana cambio_*: el API filtra por cambio, no por publicación. No cortar
@@ -1393,6 +1451,7 @@ class OportunidadParaCotizarService
             'items_pagina' => count($lote),
             'items_leidos' => $itemsLeidos,
             'continuar' => $continuar,
+            'ultimo_cambio_visto' => $ultimoCambioVisto?->toIso8601String(),
         ];
     }
 
