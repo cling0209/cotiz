@@ -138,6 +138,7 @@
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
+                                <th class="text-nowrap">Últ. cotización</th>
                                 <th class="text-nowrap text-end">P&aacute;gina</th>
                                 <th class="text-nowrap text-end">T. match</th>
                                 <th class="text-nowrap text-end">Tiempo</th>
@@ -4147,6 +4148,20 @@
                     }
                 }
 
+                const tdUltimaCotiz = document.createElement('td');
+                tdUltimaCotiz.className = 'text-nowrap tabular-nums';
+                const ultimaCotizTxt = paso.ultimo_cambio_visto_texto
+                    || (paso.ultimo_cambio_visto ? formatearFechaHora(paso.ultimo_cambio_visto) : null);
+                if (ultimaCotizTxt && ultimaCotizTxt !== '—') {
+                    tdUltimaCotiz.textContent = ultimaCotizTxt;
+                    if (paso.ultimo_cambio_visto) {
+                        tdUltimaCotiz.title = 'Última cotización obtenida en esta región';
+                    }
+                } else {
+                    tdUltimaCotiz.textContent = '—';
+                    tdUltimaCotiz.classList.add('text-muted');
+                }
+
                 const tdPagina = document.createElement('td');
                 tdPagina.className = 'text-end text-nowrap tabular-nums';
                 const pagina = Number(paso.pagina);
@@ -4223,7 +4238,7 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdPagina, tdMatchTiempo, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdUltimaCotiz, tdPagina, tdMatchTiempo, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }

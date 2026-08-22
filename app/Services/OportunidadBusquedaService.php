@@ -2196,6 +2196,9 @@ class OportunidadBusquedaService
                 'tomado_at' => $tomadoAt,
                 'tomado_at_texto' => $tomadoAt !== null ? $this->formatearFechaHoraMensaje($tomadoAt) : null,
                 'ultimo_cambio_visto' => $ultimoCambioVisto,
+                'ultimo_cambio_visto_texto' => $ultimoCambioVisto !== null
+                    ? $this->formatearFechaHoraMensaje($ultimoCambioVisto)
+                    : null,
                 'region' => (int) ($paso['region'] ?? 0),
                 'region_nombre' => (string) ($paso['region_nombre'] ?? ''),
                 'frase' => (string) ($paso['frase'] ?? ''),
