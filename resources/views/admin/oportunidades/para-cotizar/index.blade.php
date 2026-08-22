@@ -379,15 +379,40 @@
                         <strong id="sync-adj-actual-codigo" class="font-monospace tabular-nums">—</strong>
                         <span id="sync-adj-actual-progreso" class="text-muted ms-1 tabular-nums">(0/0)</span>
                     </div>
-                    <div id="sync-adj-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2 d-none">
-                        <div class="text-nowrap">
-                            <i class="bi bi-clock"></i>
-                            Inicio: <strong id="sync-adj-inicio" class="tabular-nums">—</strong>
-                        </div>
-                        <div class="text-nowrap">
-                            <i class="bi bi-flag"></i>
-                            Fin: <strong id="sync-adj-fin" class="tabular-nums">—</strong>
-                        </div>
+                    <div id="sync-adj-meta-resumen" class="small text-muted mb-2 d-none">
+                        <i class="bi bi-clock"></i>
+                        Inicio: <strong id="sync-adj-inicio" class="tabular-nums">—</strong>
+                        <span class="mx-1">·</span>
+                        <i class="bi bi-flag"></i>
+                        Fin: <strong id="sync-adj-fin" class="tabular-nums">—</strong>
+                    </div>
+                    <div id="sync-adj-error" class="alert alert-danger py-1 px-2 small d-none mb-2"></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        @if($puedeBuscar ?? false)
+                        <button type="button" id="btn-iniciar-adjuntos" class="btn btn-success btn-sm d-none" data-no-loader
+                            title="Proceso aparte de vinculaci&oacute;n; arranca tras sync al par o manualmente">
+                            <i class="bi bi-play-fill"></i> Procesar adjuntos
+                        </button>
+                        <button type="button" id="btn-cancelar-adjuntos" class="btn btn-outline-danger btn-sm d-none" data-no-loader
+                            title="Detiene la corrida de adjuntos">
+                            <i class="bi bi-stop-fill"></i> Cancelar
+                        </button>
+                        @endif
+                    </div>
+                    <div class="progress mb-2" style="height: 0.45rem;" id="sync-adj-progreso-wrap">
+                        <div id="sync-adj-progreso-bar" class="progress-bar bg-success" role="progressbar"
+                            style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <button type="button" id="sync-adj-mas-toggle" class="btn btn-sm btn-outline-secondary"
+                            aria-expanded="false" aria-controls="sync-adj-mas-panel" data-no-loader>
+                            <i class="bi bi-info-circle"></i>
+                            M&aacute;s detalle
+                            <i id="sync-adj-mas-chevron" class="bi bi-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <div id="sync-adj-mas-panel" class="d-none">
+                    <div id="sync-adj-meta-extra" class="d-flex flex-wrap gap-3 align-items-center small mb-2">
                         <div class="text-nowrap">
                             <i class="bi bi-hourglass-split"></i>
                             Tiempo: <strong id="sync-adj-duracion" class="tabular-nums">—</strong>
@@ -439,22 +464,6 @@
                         <ul id="sync-adj-recientes-lista" class="list-unstyled mb-0 font-monospace"></ul>
                     </div>
                     <div id="sync-adj-siguiente-proceso" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status"></div>
-                    <div id="sync-adj-error" class="alert alert-danger py-1 px-2 small d-none mb-2"></div>
-                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                        @if($puedeBuscar ?? false)
-                        <button type="button" id="btn-iniciar-adjuntos" class="btn btn-success btn-sm d-none" data-no-loader
-                            title="Proceso aparte de vinculaci&oacute;n; arranca tras sync al par o manualmente">
-                            <i class="bi bi-play-fill"></i> Procesar adjuntos
-                        </button>
-                        <button type="button" id="btn-cancelar-adjuntos" class="btn btn-outline-danger btn-sm d-none" data-no-loader
-                            title="Detiene la corrida de adjuntos">
-                            <i class="bi bi-stop-fill"></i> Cancelar
-                        </button>
-                        @endif
-                    </div>
-                    <div class="progress mb-2" style="height: 0.45rem;" id="sync-adj-progreso-wrap">
-                        <div id="sync-adj-progreso-bar" class="progress-bar bg-success" role="progressbar"
-                            style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <button type="button" id="sync-adj-detalle-toggle" class="btn btn-sm btn-outline-secondary"
@@ -1943,7 +1952,7 @@
             const corrida = (data && data.corrida && typeof data.corrida === 'object') ? data.corrida : null;
             const purge = (corrida && corrida.purge && typeof corrida.purge === 'object') ? corrida.purge : null;
             const purgeActivo = purge && (purge.estado === 'pending' || purge.estado === 'running');
-            const metaEl = document.getElementById('sync-adj-meta');
+            const metaEl = document.getElementById('sync-adj-meta-resumen');
             const inicioEl = document.getElementById('sync-adj-inicio');
             const finEl = document.getElementById('sync-adj-fin');
             const duracionEl = document.getElementById('sync-adj-duracion');
@@ -4452,6 +4461,21 @@
             }
         }
 
+        function setAdjuntosMasAbierto(abierto) {
+            const panel = document.getElementById('sync-adj-mas-panel');
+            const toggle = document.getElementById('sync-adj-mas-toggle');
+            const chevron = document.getElementById('sync-adj-mas-chevron');
+            if (!panel) return;
+            panel.classList.toggle('d-none', !abierto);
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+            }
+            if (chevron) {
+                chevron.classList.toggle('bi-chevron-down', !abierto);
+                chevron.classList.toggle('bi-chevron-up', abierto);
+            }
+        }
+
         function escapeHtmlSync(valor) {
             return String(valor ?? '')
                 .replace(/&/g, '&amp;')
@@ -5456,9 +5480,14 @@
                 const panel = document.getElementById('sync-adj-detalle-panel');
                 setSyncDetalleAbierto('adj', !!panel?.classList.contains('d-none'));
             });
+            document.getElementById('sync-adj-mas-toggle')?.addEventListener('click', () => {
+                const panel = document.getElementById('sync-adj-mas-panel');
+                setAdjuntosMasAbierto(!!panel?.classList.contains('d-none'));
+            });
             setSyncDetalleAbierto('cot', false);
             setSyncDetalleAbierto('vin', false);
             setSyncDetalleAbierto('adj', false);
+            setAdjuntosMasAbierto(false);
         }
         if (puedeAdjuntos) {
             restaurarAdjuntosLocales();
