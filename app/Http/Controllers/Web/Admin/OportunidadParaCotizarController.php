@@ -124,11 +124,12 @@ class OportunidadParaCotizarController extends Controller
 
     public function adjuntosEstado(Request $request): JsonResponse
     {
-        $codigosVigentes = $this->servicio->codigosVigentesUnicos();
+        $codigosAdjuntos = $this->servicio->codigosVigentesConVinculoUnicos();
         $corrida = $this->adjuntosCorrida->estado();
+        $pendientesCorrida = $this->adjuntosCorrida->contarPendientesSafe();
 
         if ($request->boolean('meta')) {
-            $resumen = $this->adjuntos->resumen($codigosVigentes, $this->adjuntos->indiceMetaLiviano());
+            $resumen = $this->adjuntos->resumen($codigosAdjuntos, $this->adjuntos->indiceMetaLiviano());
 
             return response()->json([
                 'ok' => true,
@@ -139,14 +140,12 @@ class OportunidadParaCotizarController extends Controller
                 'resumen' => $resumen,
                 'fallos' => $resumen['fallos'],
                 'corrida' => $corrida,
-                'pendientes_corrida' => (int) ($resumen['pendientes'] ?? 0),
+                'pendientes_corrida' => $pendientesCorrida,
             ]);
         }
 
-        $pendientesCorrida = $this->adjuntosCorrida->contarPendientesSafe();
-
         if (! $this->adjuntos->isConfigured()) {
-            $resumen = $this->adjuntos->resumen($codigosVigentes);
+            $resumen = $this->adjuntos->resumen($codigosAdjuntos);
 
             return response()->json([
                 'ok' => true,
@@ -172,7 +171,7 @@ class OportunidadParaCotizarController extends Controller
             $conteos[$codigo] = count($nombres);
         }
 
-        $resumen = $this->adjuntos->resumen($codigosVigentes, $indice);
+        $resumen = $this->adjuntos->resumen($codigosAdjuntos, $indice);
 
         return response()->json([
             'ok' => true,

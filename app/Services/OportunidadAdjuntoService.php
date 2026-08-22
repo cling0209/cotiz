@@ -378,6 +378,7 @@ class OportunidadAdjuntoService
      *   con_archivos: int,
      *   sin_adjuntos: int,
      *   pendientes: int,
+     *   pendientes_codigos: list<string>,
      *   fallos_count: int,
      *   fallos: list<array{codigo: string, error: string, at: string|null}>
      * }
@@ -401,6 +402,7 @@ class OportunidadAdjuntoService
                 'con_archivos' => 0,
                 'sin_adjuntos' => 0,
                 'pendientes' => $total,
+                'pendientes_codigos' => $total > 0 ? array_keys($vigentes) : [],
                 'fallos_count' => 0,
                 'fallos' => [],
             ];
@@ -417,6 +419,7 @@ class OportunidadAdjuntoService
                     'con_archivos' => 0,
                     'sin_adjuntos' => 0,
                     'pendientes' => $total,
+                    'pendientes_codigos' => $total > 0 ? array_keys($vigentes) : [],
                     'fallos_count' => 0,
                     'fallos' => [],
                 ];
@@ -438,6 +441,7 @@ class OportunidadAdjuntoService
             }
         }
 
+        $fallosPorCodigo = [];
         $fallos = [];
         foreach ($indice['fallos'] ?? [] as $fallo) {
             if (! is_array($fallo)) {
@@ -447,12 +451,24 @@ class OportunidadAdjuntoService
             if ($codigo === '' || isset($consultadosSet[$codigo])) {
                 continue;
             }
-            $fallos[] = [
+            $fallosPorCodigo[$codigo] = [
                 'codigo' => $codigo,
                 'error' => (string) ($fallo['error'] ?? 'Error al buscar adjuntos.'),
                 'at' => isset($fallo['at']) ? (string) $fallo['at'] : null,
             ];
+            if (isset($vigentes[$codigo])) {
+                $fallos[] = $fallosPorCodigo[$codigo];
+            }
         }
+
+        $pendientesCodigos = [];
+        foreach ($vigentes as $codigo => $_) {
+            if (isset($consultadosSet[$codigo]) || isset($fallosPorCodigo[$codigo])) {
+                continue;
+            }
+            $pendientesCodigos[] = $codigo;
+        }
+        sort($pendientesCodigos);
 
         return [
             'configurado' => true,
@@ -460,7 +476,8 @@ class OportunidadAdjuntoService
             'consultados' => $consultados,
             'con_archivos' => $conArchivos,
             'sin_adjuntos' => max(0, $consultados - $conArchivos),
-            'pendientes' => max(0, $total - $consultados),
+            'pendientes' => count($pendientesCodigos),
+            'pendientes_codigos' => $pendientesCodigos,
             'fallos_count' => count($fallos),
             'fallos' => $fallos,
         ];

@@ -221,6 +221,42 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Vigentes con vínculo (mismo universo que el plan de adjuntos MP).
+     *
+     * @return list<string>
+     */
+    public function codigosVigentesConVinculoUnicos(?string $desde = null): array
+    {
+        $desde = $this->normalizarFechaBusqueda(
+            $desde ?? config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
+        );
+        $hasta = $this->fechaBusquedaHoy();
+        $codigosTomados = $this->codigosTomadosNormalizados();
+
+        return OportunidadEncontrada::query()
+            ->whereDate('fecha_busqueda', '>=', $desde)
+            ->whereDate('fecha_busqueda', '<=', $hasta)
+            ->where(function ($query) {
+                $query->whereRaw('vinculo_completo IS TRUE')
+                    ->orWhereNotNull('vinculo_preview_json');
+            })
+            ->where(function ($query) {
+                $query->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>', now());
+            })
+            ->when(
+                $codigosTomados !== [],
+                fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
+            )
+            ->pluck('codigo')
+            ->map(fn ($c) => strtoupper(trim((string) $c)))
+            ->filter(fn ($c) => $c !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Registra una visita del usuario a una oportunidad (Ir a cotizar).
      */
     public function registrarVisita(int $userId, string $codigo): int

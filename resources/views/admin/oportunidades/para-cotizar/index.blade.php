@@ -1971,7 +1971,11 @@
             const consultados = Number(r.consultados) || 0;
             const conArchivos = Number(r.con_archivos) || 0;
             const sinAdjuntos = Number(r.sin_adjuntos) || 0;
-            const pendientes = Number(r.pendientes) || Number(data?.pendientes_corrida) || 0;
+            const pendientesCorrida = data?.pendientes_corrida != null ? Number(data.pendientes_corrida) : null;
+            const pendientes = pendientesCorrida != null && !Number.isNaN(pendientesCorrida)
+                ? pendientesCorrida
+                : (Number(r.pendientes) || 0);
+            const pendientesCodigos = Array.isArray(r.pendientes_codigos) ? r.pendientes_codigos : [];
             const fallos = Array.isArray(r.fallos) ? r.fallos : (Array.isArray(data?.fallos) ? data.fallos : []);
             const fallosCount = Number(r.fallos_count) || fallos.length;
             const corridaRunning = corrida && corrida.estado === 'running';
@@ -2031,10 +2035,17 @@
                     resumenEl.textContent = `${total} cotización${total === 1 ? '' : 'es'} vigente${total === 1 ? '' : 's'}`
                         + ` · indexando adjuntos en almacenamiento…`;
                 } else {
-                    resumenEl.textContent = `Consultadas ${consultados} de ${total}`
+                    let texto = `Consultadas ${consultados} de ${total}`
                         + ` · ${conArchivos} con archivo`
                         + ` · ${sinAdjuntos} sin adjuntos`
                         + (fallosCount > 0 ? ` · ${fallosCount} fallida${fallosCount === 1 ? '' : 's'}` : '');
+                    if (pendientes > 0 && pendientesCodigos.length > 0) {
+                        texto += ` · pendiente: ${pendientesCodigos.slice(0, 3).join(', ')}`;
+                        if (pendientesCodigos.length > 3) {
+                            texto += ` (+${pendientesCodigos.length - 3})`;
+                        }
+                    }
+                    resumenEl.textContent = texto;
                 }
             }
             adjInicioMs = corrida ? msDeIso(corrida.inicio) : null;

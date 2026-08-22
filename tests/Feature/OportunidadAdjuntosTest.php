@@ -500,6 +500,36 @@ class OportunidadAdjuntosTest extends TestCase
             'cantidad_productos' => 3,
             'fecha_busqueda' => now()->toDateString(),
             'indice_region_config' => 0,
+            'vinculo_preview_json' => ['productos' => 1],
         ]);
+    }
+
+    public function test_estado_excluye_vigente_sin_vinculo_del_resumen(): void
+    {
+        $user = $this->superadmin();
+        $this->crearOportunidad('1000-1-COT26');
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '2000-2-COT26',
+            'nombre' => 'Sin vinculo',
+            'organismo' => 'Hospital Demo',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'monto_presupuesto_clp' => 100000,
+            'moneda' => 'CLP',
+            'fecha_publicacion' => now()->subDay(),
+            'fecha_cierre' => now()->addDays(5),
+            'palabras_coinciden' => ['demo'],
+            'cantidad_productos' => 1,
+            'fecha_busqueda' => now()->toDateString(),
+            'indice_region_config' => 0,
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('resumen.total', 1)
+            ->assertJsonPath('resumen.pendientes', 1)
+            ->assertJsonPath('resumen.pendientes_codigos.0', '1000-1-COT26');
     }
 }
