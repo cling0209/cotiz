@@ -546,7 +546,46 @@ class OportunidadVinculoTest extends TestCase
         $this->assertSame('SIGUIENTE-001', $plan[0]['codigo']);
     }
 
-    public function test_finalizar_vinculo_no_encadena_si_solo_quedan_fallidas(): void
+    public function test_corrida_encadenada_incluye_fallidas_mp_reintento(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAIL-ENC-001',
+            'nombre' => 'Fallida MP',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'PEND-ENC-001',
+            'nombre' => 'Pendiente normal',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 1,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $detalle = $this->app->make(OportunidadVinculoService::class)
+            ->iniciarConDetalle('2026-07-16', 'admin', true);
+
+        $corrida = $detalle['corrida'];
+        $this->assertNotNull($corrida);
+        $codigos = array_column($corrida->plan_json, 'codigo');
+        $this->assertContains('PEND-ENC-001', $codigos);
+        $this->assertContains('FAIL-ENC-001', $codigos);
+        $this->assertCount(2, $codigos);
+        $this->assertTrue((bool) ($corrida->errores_json[0]['encadenada'] ?? false));
+    }
+
+    public function test_finalizar_vinculo_encadena_si_solo_quedan_fallidas(): void
     {
         Queue::fake();
 
@@ -572,14 +611,66 @@ class OportunidadVinculoTest extends TestCase
             'pasos_fallidos' => 1,
             'plan_json' => [
                 [
-                    'codigo' => 'ONLY-FAIL-001',
+                    'codigo' => 'OTHER-OK-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'ok',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculadas 1/1…',
+        ]);
+
+        $continua = $this->app->make(OportunidadVinculoService::class)->procesarPaso($corrida);
+
+        $this->assertFalse($continua);
+        $corrida->refresh();
+        $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
+
+        $encadenada = OportunidadVinculoCorrida::query()
+            ->where('id', '>', $corrida->id)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($encadenada);
+        $this->assertSame('ONLY-FAIL-001', $encadenada->plan_json[0]['codigo'] ?? null);
+        $this->assertTrue((bool) ($encadenada->errores_json[0]['encadenada'] ?? false));
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $encadenada->id);
+    }
+
+    public function test_finalizar_vinculo_encadenado_no_abre_tercera_corrida_con_solo_fallidas(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'ONLY-FAIL-002',
+            'nombre' => 'Solo fallida tras reintento',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(3),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                [
+                    'codigo' => 'ONLY-FAIL-002',
                     'region' => 3,
                     'region_nombre' => 'Atacama',
                     'estado' => 'failed',
                     'error' => '504',
                 ],
             ],
-            'errores_json' => [],
+            'errores_json' => [['encadenada' => true]],
             'mensaje' => 'Vinculadas 1/1…',
         ]);
 
