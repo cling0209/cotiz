@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\OportunidadEncontrada;
+use App\Support\MaterialesImportArchivo;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -122,8 +124,7 @@ class OportunidadAdjuntoService
             if (count($partes) < 2) {
                 continue;
             }
-            $relNorm = str_replace('\\', '/', $rel);
-            if (str_contains($relNorm, '/_preview/')) {
+            if (str_contains($rel, '/_preview/')) {
                 continue;
             }
             $nombre = basename($partes[1]);
@@ -141,13 +142,6 @@ class OportunidadAdjuntoService
             }
             if ($nombre === 'manifest.json') {
                 $consultados[$codigo] = true;
-                $desdeManifest = $this->nombresDesdeManifestDisco($disk, $key);
-                if ($desdeManifest !== []) {
-                    $porCodigo[$codigo] = array_values(array_unique(array_merge(
-                        $porCodigo[$codigo] ?? [],
-                        $desdeManifest,
-                    )));
-                }
 
                 continue;
             }
@@ -223,6 +217,43 @@ class OportunidadAdjuntoService
         }
 
         return (string) $disk->get($key);
+    }
+
+    public function tamano(string $codigo, string $nombre): int
+    {
+        $this->assertConfigurado();
+        $key = $this->claveArchivo($codigo, $nombre);
+        $disk = Storage::disk($this->disk());
+        if (! $disk->exists($key)) {
+            throw new RuntimeException('Archivo no encontrado.');
+        }
+
+        return (int) $disk->size($key);
+    }
+
+    public function asUploadedFile(string $codigo, string $nombre): UploadedFile
+    {
+        $safe = $this->nombreSeguro($nombre);
+        $size = $this->tamano($codigo, $nombre);
+        if (MaterialesImportArchivo::superaLimite($size)) {
+            throw new RuntimeException(MaterialesImportArchivo::mensajeSuperaLimite($safe));
+        }
+
+        $binario = $this->contenido($codigo, $nombre);
+        $ext = strtolower((string) pathinfo($safe, PATHINFO_EXTENSION));
+        $tmp = tempnam(sys_get_temp_dir(), 'cotiz_adj_');
+        if ($tmp === false) {
+            throw new RuntimeException('No se pudo crear un archivo temporal para el adjunto.');
+        }
+        $path = $ext !== '' ? $tmp.'.'.$ext : $tmp;
+        if ($path !== $tmp) {
+            @unlink($tmp);
+        }
+        if (file_put_contents($path, $binario) === false) {
+            throw new RuntimeException('No se pudo guardar el adjunto temporalmente.');
+        }
+
+        return new UploadedFile($path, $safe, $this->mimeDesdeNombre($safe), UPLOAD_ERR_OK, true);
     }
 
     public function claveArchivo(string $codigo, string $nombre): string

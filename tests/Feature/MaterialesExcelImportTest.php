@@ -7,6 +7,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\ListadoMaterialesExcelParserService;
+use App\Services\OportunidadAdjuntoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
@@ -153,6 +154,56 @@ class MaterialesExcelImportTest extends TestCase
         $this->assertSame('ACUARELAS DE 12 COLORES C/U', $response->json('lineas.0.descripcion'));
     }
 
+    public function test_preview_excel_desde_adjunto_sin_subir_archivo(): void
+    {
+        $nota = $this->crearNota();
+        $excel = UploadedFile::fake()->create(
+            'Pedido utiles de aseo Semestre 2.xlsx',
+            20,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+        $adjuntos = Mockery::mock(OportunidadAdjuntoService::class);
+        $adjuntos->shouldReceive('asUploadedFile')
+            ->once()
+            ->with('1274565-82-COT26', 'Pedido utiles de aseo Semestre 2.xlsx')
+            ->andReturn($excel);
+        $this->app->instance(OportunidadAdjuntoService::class, $adjuntos);
+
+        $mock = Mockery::mock(ListadoMaterialesExcelParserService::class);
+        $mock->shouldReceive('parseDocumentoCompleto')
+            ->once()
+            ->andReturn([
+                'cabecera' => [
+                    'codigo_cotizacion' => '',
+                    'empresa' => '',
+                    'rutempresa' => '',
+                    'nombre' => '',
+                ],
+                'lineas' => [
+                    ['cantidad' => 200, 'descripcion' => 'JABON LIQUIDO MARCA TORK HAIR BODY 1LITRO'],
+                ],
+                'omitidas' => 1,
+            ]);
+        $this->app->instance(ListadoMaterialesExcelParserService::class, $mock);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-excel.preview', $nota->nronota),
+            [
+                'adjunto_codigo' => '1274565-82-COT26',
+                'adjunto_nombre' => 'Pedido utiles de aseo Semestre 2.xlsx',
+                'columna_descripcion' => 'C',
+                'columna_cantidad' => 'D',
+                'lock_id' => (string) Str::uuid(),
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('resumen.total', 1);
+        $response->assertJsonPath('lineas.0.cantidad', 200);
+        $response->assertJsonPath('lineas.0.descripcion', 'JABON LIQUIDO MARCA TORK HAIR BODY 1LITRO');
+    }
+
     public function test_importar_excel_desde_preview(): void
     {
         $nota = $this->crearNota();
@@ -195,6 +246,57 @@ class MaterialesExcelImportTest extends TestCase
         $this->assertCount(1, $lineas);
         $this->assertSame('ART001', $lineas->first()->prod_item);
         $this->assertSame(25, (int) $lineas->first()->cantidad);
+    }
+
+    public function test_preview_excel_rechaza_archivo_sobre_el_limite(): void
+    {
+        $nota = $this->crearNota();
+        $excel = UploadedFile::fake()->create(
+            'pedido.xlsx',
+            51201,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-excel.preview', $nota->nronota),
+            [
+                'excel' => $excel,
+                'columna_descripcion' => 'C',
+                'columna_cantidad' => 'D',
+                'lock_id' => (string) Str::uuid(),
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['excel']);
+        $this->assertStringContainsString(
+            'supera el límite de 50 MB',
+            (string) $response->json('errors.excel.0'),
+        );
+    }
+
+    public function test_preview_excel_adjunto_rechaza_si_supera_el_limite(): void
+    {
+        $nota = $this->crearNota();
+        $adjuntos = Mockery::mock(OportunidadAdjuntoService::class);
+        $adjuntos->shouldReceive('asUploadedFile')
+            ->once()
+            ->andThrow(new \RuntimeException('El archivo «grande.xlsx» supera el límite de 50 MB.'));
+        $this->app->instance(OportunidadAdjuntoService::class, $adjuntos);
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-excel.preview', $nota->nronota),
+            [
+                'adjunto_codigo' => '1274565-82-COT26',
+                'adjunto_nombre' => 'grande.xlsx',
+                'columna_descripcion' => 'C',
+                'columna_cantidad' => 'D',
+                'lock_id' => (string) Str::uuid(),
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'El archivo «grande.xlsx» supera el límite de 50 MB.');
     }
 
     private function crearNota(array $attrs = []): Nota

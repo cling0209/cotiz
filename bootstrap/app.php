@@ -13,6 +13,7 @@ use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 
@@ -57,4 +58,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        $exceptions->render(function (PostTooLargeException $e, Request $request) {
+            $mensaje = \App\Support\MaterialesImportArchivo::mensajeSuperaLimite();
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['error' => $mensaje, 'message' => $mensaje], 413);
+            }
+
+            return null;
+        });
     })->create();

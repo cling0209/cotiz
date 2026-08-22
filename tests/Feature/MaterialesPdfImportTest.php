@@ -254,6 +254,56 @@ class MaterialesPdfImportTest extends TestCase
         $this->assertStringContainsString('Hay un análisis en curso', (string) $response->json('error'));
     }
 
+    public function test_preview_pdf_rechaza_archivo_sobre_el_limite(): void
+    {
+        $nota = $this->crearNota();
+        $pdf = UploadedFile::fake()->create('listado.pdf', 51201, 'application/pdf');
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
+            [
+                'pdf' => $pdf,
+                'lock_id' => $this->lockId(),
+                'columna_cantidad' => 'CANTIDAD',
+                'columna_producto' => 'PRODUCTO',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['pdf']);
+        $this->assertStringContainsString(
+            'supera el límite de 50 MB',
+            (string) $response->json('errors.pdf.0'),
+        );
+    }
+
+    public function test_preview_word_rechaza_archivo_sobre_el_limite(): void
+    {
+        $nota = $this->crearNota();
+        $docx = UploadedFile::fake()->create(
+            'bases.docx',
+            51201,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        );
+
+        $response = $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.importar-pdf.preview', $nota->nronota),
+            [
+                'pdf' => $docx,
+                'lock_id' => $this->lockId(),
+                'columna_cantidad' => 'CANTIDAD',
+                'columna_producto' => 'PRODUCTO',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['pdf']);
+        $this->assertStringContainsString(
+            'supera el límite de 50 MB',
+            (string) $response->json('errors.pdf.0'),
+        );
+    }
+
     private function lockId(): string
     {
         return (string) Str::uuid();

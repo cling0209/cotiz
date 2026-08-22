@@ -10,6 +10,7 @@ use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadEncontradaRelayService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
+use App\Support\MaterialesImportArchivo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -156,8 +157,8 @@ class OportunidadParaCotizarController extends Controller
 
         return response()->json([
             'ok' => true,
-            'conteos' => $conteos,
-            'archivos' => $archivos,
+            'conteos' => $conteos === [] ? new \stdClass : $conteos,
+            'archivos' => $archivos === [] ? new \stdClass : $archivos,
             'consultados' => $indice['consultados'],
             'resumen' => $resumen,
             'fallos' => $resumen['fallos'],
@@ -258,8 +259,18 @@ class OportunidadParaCotizarController extends Controller
         ]);
 
         $nombre = $data['archivo'];
+        $analizar = (bool) ($data['analizar'] ?? false);
 
         try {
+            if ($analizar) {
+                $size = $this->adjuntos->tamano($codigo, $nombre);
+                if (MaterialesImportArchivo::superaLimite($size)) {
+                    return response()->json([
+                        'ok' => false,
+                        'error' => MaterialesImportArchivo::mensajeSuperaLimite($nombre),
+                    ], 422);
+                }
+            }
             $bin = $this->adjuntos->contenido($codigo, $nombre);
         } catch (RuntimeException $e) {
             abort(404, $e->getMessage());
@@ -267,7 +278,6 @@ class OportunidadParaCotizarController extends Controller
 
         $descargar = (bool) ($data['descargar'] ?? false);
         $preview = (bool) ($data['preview'] ?? false);
-        $analizar = (bool) ($data['analizar'] ?? false);
 
         if ($analizar) {
             try {

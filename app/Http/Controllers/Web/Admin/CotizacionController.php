@@ -15,13 +15,16 @@ use App\Services\MaterialesPdfImportService;
 use App\Services\NotaDetalleService;
 use App\Services\NotaService;
 use App\Services\OrganismoObservacionService;
+use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
 use App\Support\CotizacionListadoRetorno;
+use App\Support\MaterialesImportArchivo;
 use RuntimeException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\View\View;
 use Throwable;
 
@@ -36,6 +39,7 @@ class CotizacionController extends Controller
         protected CompraAgilOportunidadService $compraAgilOportunidad,
         protected MaterialesPdfImportService $materialesPdfImport,
         protected MaterialesExcelImportService $materialesExcelImport,
+        protected OportunidadAdjuntoService $oportunidadAdjunto,
         protected OportunidadParaCotizarService $oportunidadParaCotizar,
         protected OportunidadVinculoService $oportunidadVinculo,
         protected OrganismoObservacionService $organismoObservacion,
@@ -1002,12 +1006,15 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
+            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:'.MaterialesImportArchivo::maxKb()],
             'columna_cantidad' => ['required', 'string', 'max:80'],
             'columna_producto' => ['required', 'string', 'max:80'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
             'lock_id' => ['required', 'string', 'max:64'],
+        ], [
+            'pdf.max' => MaterialesImportArchivo::mensajeSuperaLimite(),
+            'pdf.uploaded' => MaterialesImportArchivo::mensajeSuperaLimite(),
         ]);
 
         $lockId = (string) $datos['lock_id'];
@@ -1018,6 +1025,9 @@ class CotizacionController extends Controller
         $columnaProducto = trim((string) $datos['columna_producto']);
 
         try {
+            if ($archivo instanceof UploadedFile) {
+                $this->assertArchivoImportDentroDelLimite($archivo);
+            }
             $this->gestionarLockAnalisisMateriales($request, $lockId, 'pdf', $nombreArchivo, $desde);
 
             if (isset($datos['desde'], $datos['hasta'])) {
@@ -1126,16 +1136,23 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:10240'],
+            'pdf' => ['required', 'file', 'mimes:pdf,docx', 'max:'.MaterialesImportArchivo::maxKb()],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
+        ], [
+            'pdf.max' => MaterialesImportArchivo::mensajeSuperaLimite(),
+            'pdf.uploaded' => MaterialesImportArchivo::mensajeSuperaLimite(),
         ]);
 
         try {
+            $pdf = $request->file('pdf');
+            if ($pdf instanceof UploadedFile) {
+                $this->assertArchivoImportDentroDelLimite($pdf);
+            }
             if (isset($datos['desde'], $datos['hasta'])) {
                 $resultado = $this->materialesPdfImport->aplicarLote(
                     $nota,
-                    $request->file('pdf'),
+                    $pdf,
                     $request->user()->username,
                     (int) $datos['desde'],
                     (int) $datos['hasta'],
@@ -1143,7 +1160,7 @@ class CotizacionController extends Controller
             } else {
                 $resultado = $this->materialesPdfImport->aplicar(
                     $nota,
-                    $request->file('pdf'),
+                    $pdf,
                     $request->user()->username,
                 );
             }
@@ -1173,20 +1190,26 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'excel' => ['required', 'file', 'extensions:xlsx,xls,csv', 'max:51200'],
+            'excel' => ['required_without:adjunto_nombre', 'nullable', 'file', 'extensions:xlsx,xls,csv', 'max:'.MaterialesImportArchivo::maxKb()],
+            'adjunto_codigo' => ['required_with:adjunto_nombre', 'nullable', 'string', 'max:40'],
+            'adjunto_nombre' => ['required_without:excel', 'nullable', 'string', 'max:180'],
             'columna_descripcion' => ['required', 'string', 'max:10'],
             'columna_cantidad' => ['required', 'string', 'max:10'],
             'desde' => ['nullable', 'integer', 'min:0'],
             'hasta' => ['nullable', 'integer', 'min:0'],
             'lock_id' => ['required', 'string', 'max:64'],
+        ], [
+            'excel.max' => MaterialesImportArchivo::mensajeSuperaLimite(),
+            'excel.uploaded' => MaterialesImportArchivo::mensajeSuperaLimite(),
         ]);
 
         $lockId = (string) $datos['lock_id'];
         $desde = (int) ($datos['desde'] ?? 0);
-        $archivo = $request->file('excel');
-        $nombreArchivo = $archivo?->getClientOriginalName() ?: 'archivo.xlsx';
 
         try {
+            $archivo = $this->archivoExcelDesdeRequest($request);
+            $nombreArchivo = $archivo->getClientOriginalName() ?: 'archivo.xlsx';
+
             $this->gestionarLockAnalisisMateriales($request, $lockId, 'excel', $nombreArchivo, $desde);
 
             if (isset($datos['desde'], $datos['hasta'])) {
@@ -1670,6 +1693,32 @@ class CotizacionController extends Controller
         }
 
         return $fallback;
+    }
+
+    private function archivoExcelDesdeRequest(Request $request): UploadedFile
+    {
+        $codigo = strtoupper(trim((string) $request->input('adjunto_codigo', '')));
+        $nombre = trim((string) $request->input('adjunto_nombre', ''));
+        if ($codigo !== '' && $nombre !== '') {
+            return $this->oportunidadAdjunto->asUploadedFile($codigo, $nombre);
+        }
+
+        $archivo = $request->file('excel');
+        if (! $archivo instanceof UploadedFile) {
+            throw new RuntimeException('Seleccione un archivo Excel o un adjunto de Compra Ágil.');
+        }
+        $this->assertArchivoImportDentroDelLimite($archivo);
+
+        return $archivo;
+    }
+
+    private function assertArchivoImportDentroDelLimite(UploadedFile $archivo): void
+    {
+        if (MaterialesImportArchivo::superaLimite((int) $archivo->getSize())) {
+            throw new RuntimeException(
+                MaterialesImportArchivo::mensajeSuperaLimite((string) $archivo->getClientOriginalName()),
+            );
+        }
     }
 
     private function esInterna(Request $request, ?Nota $nota = null): bool

@@ -470,7 +470,7 @@
                             </button>
                         </div>
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
-                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx), o pinche un adjunto abajo. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el t&iacute;tulo se repite en otras p&aacute;ginas, se omite autom&aacute;ticamente.</p>
+                            <p class="small text-muted mb-2">Suba un PDF o Word (.docx), o pinche un adjunto abajo. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el t&iacute;tulo se repite en otras p&aacute;ginas, se omite autom&aacute;ticamente. M&aacute;ximo {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }} MB.</p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
                                     Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
@@ -502,6 +502,7 @@
                                 Suba un Excel (.xlsx / .xls / .csv) e indique las columnas de <strong>cantidad</strong> y <strong>producto</strong>
                                 (letra A, B, C&hellip; o n&uacute;mero). Si las letras no coinciden, se detectan encabezados como DESCRIPCI&Oacute;N y CANTIDAD.
                                 Se omiten filas vac&iacute;as, t&iacute;tulos y totales; cada fila v&aacute;lida se importa como l&iacute;nea aparte.
+                                M&aacute;ximo {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }} MB.
                             </p>
                             @if($requiereNumeroCotizacion)
                                 <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
@@ -2824,6 +2825,33 @@
 
     const IMPORT_LOTE_SIZE = 40;
     const PREVIEW_LOTE_SIZE = 40;
+    const IMPORT_MAX_ARCHIVO_MB = {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }};
+    const IMPORT_MAX_ARCHIVO_BYTES = IMPORT_MAX_ARCHIVO_MB * 1024 * 1024;
+
+    function mensajeArchivoSuperaLimite(nombre) {
+        const nom = String(nombre || '').trim();
+        const limite = IMPORT_MAX_ARCHIVO_MB + ' MB';
+        if (nom) {
+            return 'El archivo «' + nom + '» supera el límite de ' + limite + '.';
+        }
+        return 'El archivo supera el límite de ' + limite + '.';
+    }
+
+    function archivoSuperaLimiteImport(fileOrBytes, nombre) {
+        let bytes = 0;
+        let nom = String(nombre || '');
+        if (fileOrBytes && typeof fileOrBytes === 'object' && typeof fileOrBytes.size === 'number') {
+            bytes = Number(fileOrBytes.size) || 0;
+            if (!nom) nom = String(fileOrBytes.name || '');
+        } else {
+            bytes = Number(fileOrBytes) || 0;
+        }
+        if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
+            mostrarImportError(mensajeArchivoSuperaLimite(nom));
+            return true;
+        }
+        return false;
+    }
 
     function tamanoLoteImportar(total) {
         const n = Math.max(0, Number(total) || 0);
@@ -2920,6 +2948,9 @@
         const status = Number(res?.status) || 0;
         if (status === 504 || status === 502) {
             return `Tiempo de espera agotado (HTTP ${status}). El archivo puede ser muy grande; intente de nuevo en unos minutos.`;
+        }
+        if (status === 413) {
+            return mensajeArchivoSuperaLimite();
         }
         if (status === 419) {
             return 'Sesión expirada. Recargue la página e inicie sesión de nuevo.';
@@ -3318,6 +3349,10 @@
                 }
                 btn.addEventListener('click', () => {
                     seleccionarAdjuntoImportar(nom);
+                    const bytes = Number(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes) || 0;
+                    if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
+                        return;
+                    }
                     abrirPreviewAdjuntoImportar(nom);
                 });
                 const dl = document.createElement('a');
@@ -3334,7 +3369,20 @@
 
     function seleccionarAdjuntoImportar(nombre) {
         const nom = String(nombre || '');
-        adjuntoImportarSeleccionado = { nombre: nom, tipo: tipoAdjuntoImportar(nom) };
+        const meta = adjuntosImportarArchivos.find((a) => String(a.nombre || a || '') === nom);
+        adjuntoImportarSeleccionado = {
+            nombre: nom,
+            tipo: tipoAdjuntoImportar(nom),
+            bytes: Number(meta && meta.bytes) || 0,
+        };
+        if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado.bytes, nom)) {
+            wrapImportarAdjuntosAnalizar?.classList.add('d-none');
+            if (btnImportarAnalizarAdjunto) {
+                btnImportarAnalizarAdjunto.classList.add('d-none');
+            }
+            renderAdjuntosImportar();
+            return;
+        }
         const tipo = adjuntoImportarSeleccionado.tipo;
         const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
         const colsExcel = document.getElementById('importar-adjunto-cols-excel');
@@ -3662,6 +3710,9 @@
             }
             return;
         }
+        if (archivoSuperaLimiteImport(sel.bytes, sel.nombre)) {
+            return;
+        }
         const colCant = tipo === 'excel'
             ? document.getElementById('importar-adjunto-excel-col-cant')?.value
             : document.getElementById('importar-adjunto-pdf-col-cant')?.value;
@@ -3672,6 +3723,15 @@
         if (modalEl && typeof bootstrap !== 'undefined') {
             bootstrap.Modal.getInstance(modalEl)?.hide();
         }
+        if (tipo === 'excel') {
+            if (importarEstado) importarEstado.textContent = 'Analizando adjunto Excel…';
+            await analizarImportExcel({
+                colCant,
+                colDesc,
+                desdeAdjunto: true,
+            });
+            return;
+        }
         if (importarEstado) {
             importarEstado.textContent = tipo === 'doc'
                 ? 'Convirtiendo .doc a PDF…'
@@ -3680,14 +3740,6 @@
         setAdjuntoAnalizarBusy(true);
         try {
             const file = await descargarAdjuntoComoFile(sel.nombre, tipo);
-            if (tipo === 'excel') {
-                await analizarImportExcel({
-                    file,
-                    colCant,
-                    colDesc,
-                });
-                return;
-            }
             await analizarImportPdf({
                 file,
                 colCant,
@@ -4047,6 +4099,9 @@
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx), o pinche un adjunto.';
             return;
         }
+        if (archivoSuperaLimiteImport(file)) {
+            return;
+        }
         if (!colCant || !colDesc) {
             if (importarEstado) importarEstado.textContent = 'Indique el nombre de las columnas cantidad y producto (como en el encabezado del PDF).';
             return;
@@ -4171,13 +4226,21 @@
         importCodigoApi = null;
         importPdfFile = null;
         let file = opciones.file || importarExcelInput?.files?.[0] || null;
-        try {
-            file = await resolverArchivoAdjuntoSiFalta(file, 'excel');
-        } catch (e) {
-            if (importarEstado) {
-                importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+        const adjuntoCodigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const adjuntoNombre = adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel'
+            ? String(adjuntoImportarSeleccionado.nombre || '')
+            : '';
+        const desdeAdjunto = opciones.desdeAdjunto === true
+            || (!file && adjuntoCodigo !== '' && adjuntoNombre !== '');
+        if (!desdeAdjunto) {
+            try {
+                file = await resolverArchivoAdjuntoSiFalta(file, 'excel');
+            } catch (e) {
+                if (importarEstado) {
+                    importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+                }
+                return;
             }
-            return;
         }
         const colDesc = valorColumnaImport(
             opciones,
@@ -4191,8 +4254,15 @@
             importarExcelColCant?.value,
             document.getElementById('importar-adjunto-excel-col-cant')?.value,
         ).toUpperCase();
-        if (!file) {
+        if (!file && !desdeAdjunto) {
             if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv), o pinche un adjunto.';
+            return;
+        }
+        if (desdeAdjunto) {
+            if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes, adjuntoNombre)) {
+                return;
+            }
+        } else if (archivoSuperaLimiteImport(file)) {
             return;
         }
         if (!colDesc || !colCant) {
@@ -4249,7 +4319,12 @@
                     () => {
                         const body = new FormData();
                         body.append('_token', csrf);
-                        body.append('excel', importExcelFile);
+                        if (desdeAdjunto && adjuntoCodigo && adjuntoNombre) {
+                            body.append('adjunto_codigo', adjuntoCodigo);
+                            body.append('adjunto_nombre', adjuntoNombre);
+                        } else {
+                            body.append('excel', importExcelFile);
+                        }
                         body.append('columna_descripcion', colDesc);
                         body.append('columna_cantidad', colCant);
                         body.append('desde', String(desde));
@@ -4300,7 +4375,9 @@
 
             if (importarEstado) {
                 const n = previewFinal.resumen.total || 0;
-                const nom = importExcelFile && importExcelFile.name ? String(importExcelFile.name) : 'el archivo';
+                const nom = (importExcelFile && importExcelFile.name)
+                    ? String(importExcelFile.name)
+                    : (adjuntoNombre || 'el archivo');
                 let msg = n > 0
                     ? 'Análisis listo (Excel): ' + nom
                     : 'No se detectaron productos en «' + nom + '».';
@@ -4924,8 +5001,22 @@
     btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
     btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
     btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
-    importarPdfInput?.addEventListener('change', () => actualizarHintAdjuntoImportar());
-    importarExcelInput?.addEventListener('change', () => actualizarHintAdjuntoImportar());
+    importarPdfInput?.addEventListener('change', () => {
+        const f = importarPdfInput.files && importarPdfInput.files[0];
+        if (f && archivoSuperaLimiteImport(f)) {
+            importarPdfInput.value = '';
+            return;
+        }
+        actualizarHintAdjuntoImportar();
+    });
+    importarExcelInput?.addEventListener('change', () => {
+        const f = importarExcelInput.files && importarExcelInput.files[0];
+        if (f && archivoSuperaLimiteImport(f)) {
+            importarExcelInput.value = '';
+            return;
+        }
+        actualizarHintAdjuntoImportar();
+    });
     btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
     btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
     btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
