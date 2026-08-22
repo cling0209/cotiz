@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use DOMDocument;
+use DOMElement;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use RuntimeException;
+use ZipArchive;
 
 class ListadoMaterialesExcelParserService
 {
@@ -39,6 +42,72 @@ class ListadoMaterialesExcelParserService
             throw new RuntimeException('La columna de descripción y de cantidad deben ser distintas.');
         }
 
+        $lineas = [];
+        $omitidas = 0;
+
+        if ($extension === 'xlsx') {
+            $desdeXml = $this->parseTodasLasHojasXml($path, $idxDescripcion, $idxCantidad);
+            $lineas = $desdeXml['lineas'];
+            $omitidas = $desdeXml['omitidas'];
+        }
+
+        if ($lineas === []) {
+            try {
+                $desdeLibro = $this->parseConPhpSpreadsheet($path, $idxDescripcion, $idxCantidad);
+                $lineas = $desdeLibro['lineas'];
+                $omitidas = $desdeLibro['omitidas'];
+            } catch (RuntimeException $e) {
+                if ($extension !== 'xlsx' || $lineas !== []) {
+                    throw $e;
+                }
+            }
+        }
+
+        if ($lineas === []) {
+            throw new RuntimeException(
+                'No se detectaron productos con descripción y cantidad válidas. Revise las columnas indicadas y el archivo.',
+            );
+        }
+
+        return [
+            'cabecera' => [
+                'codigo_cotizacion' => '',
+                'empresa' => '',
+                'rutempresa' => '',
+                'nombre' => '',
+            ],
+            'lineas' => $lineas,
+            'omitidas' => $omitidas,
+        ];
+    }
+
+    public function indiceColumna(string $valor): int
+    {
+        $valor = strtoupper(trim($valor));
+        if ($valor === '') {
+            return 0;
+        }
+
+        if (ctype_digit($valor)) {
+            return max(0, (int) $valor);
+        }
+
+        if (preg_match('/^[A-Z]{1,3}$/', $valor) !== 1) {
+            return 0;
+        }
+
+        try {
+            return Coordinate::columnIndexFromString($valor);
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * @return array{lineas: array<int, array{cantidad: int, descripcion: string}>, omitidas: int}
+     */
+    private function parseConPhpSpreadsheet(string $path, int $idxDescripcion, int $idxCantidad): array
+    {
         try {
             $reader = IOFactory::createReaderForFile($path);
             if (method_exists($reader, 'setReadDataOnly')) {
@@ -85,44 +154,336 @@ class ListadoMaterialesExcelParserService
         $spreadsheet->disconnectWorksheets();
         unset($spreadsheet);
 
-        if ($lineas === []) {
-            throw new RuntimeException(
-                'No se detectaron productos con descripción y cantidad válidas. Revise las columnas indicadas y el archivo.',
-            );
-        }
-
-        return [
-            'cabecera' => [
-                'codigo_cotizacion' => '',
-                'empresa' => '',
-                'rutempresa' => '',
-                'nombre' => '',
-            ],
-            'lineas' => $lineas,
-            'omitidas' => $omitidas,
-        ];
+        return ['lineas' => $lineas, 'omitidas' => $omitidas];
     }
 
-    public function indiceColumna(string $valor): int
+    /**
+     * Lee celdas directo del XML del .xlsx (ignora dimensión mal grabada e imágenes).
+     *
+     * @return array{lineas: array<int, array{cantidad: int, descripcion: string}>, omitidas: int}
+     */
+    private function parseTodasLasHojasXml(string $path, int $idxDescripcion, int $idxCantidad): array
     {
-        $valor = strtoupper(trim($valor));
-        if ($valor === '') {
-            return 0;
-        }
-
-        if (ctype_digit($valor)) {
-            return max(0, (int) $valor);
-        }
-
-        if (preg_match('/^[A-Z]{1,3}$/', $valor) !== 1) {
-            return 0;
+        $zip = new ZipArchive;
+        if ($zip->open($path) !== true) {
+            return ['lineas' => [], 'omitidas' => 0];
         }
 
         try {
-            return Coordinate::columnIndexFromString($valor);
-        } catch (\Throwable) {
-            return 0;
+            $strings = $this->leerSharedStringsXlsx($zip);
+            $lineas = [];
+            $omitidas = 0;
+            $mapeoPorLetra = $idxDescripcion >= 1 && $idxCantidad >= 1;
+
+            foreach ($this->rutasHojasXlsx($zip) as $ruta) {
+                $grid = $this->grillaDesdeHojaXml($zip, $ruta, $strings);
+                if ($grid === []) {
+                    continue;
+                }
+
+                $parse = ['lineas' => [], 'omitidas' => 0];
+                if ($mapeoPorLetra) {
+                    $parse = $this->parseGrilla($grid, $idxDescripcion, $idxCantidad);
+                }
+                if ($parse['lineas'] === []) {
+                    $detectadas = $this->detectarColumnasEnGrilla($grid);
+                    if ($detectadas !== null
+                        && ! ($mapeoPorLetra
+                            && $detectadas['descripcion'] === $idxDescripcion
+                            && $detectadas['cantidad'] === $idxCantidad)
+                    ) {
+                        $parse = $this->parseGrilla($grid, $detectadas['descripcion'], $detectadas['cantidad']);
+                    }
+                }
+
+                $lineas = array_merge($lineas, $parse['lineas']);
+                $omitidas += $parse['omitidas'];
+            }
+
+            return ['lineas' => $lineas, 'omitidas' => $omitidas];
+        } finally {
+            $zip->close();
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rutasHojasXlsx(ZipArchive $zip): array
+    {
+        $rutas = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $nombre = (string) $zip->getNameIndex($i);
+            if (preg_match('#^xl/worksheets/sheet\d+\.xml$#', str_replace('\\', '/', $nombre)) === 1) {
+                $rutas[] = $nombre;
+            }
+        }
+        sort($rutas, SORT_NATURAL);
+
+        return $rutas;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function leerSharedStringsXlsx(ZipArchive $zip): array
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        if (! is_string($xml) || $xml === '') {
+            return [];
+        }
+
+        $dom = new DOMDocument;
+        if (! @$dom->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            return [];
+        }
+
+        $strings = [];
+        foreach ($dom->getElementsByTagName('si') as $si) {
+            $partes = [];
+            foreach ($si->getElementsByTagName('t') as $nodo) {
+                $partes[] = (string) $nodo->textContent;
+            }
+            $strings[] = trim(implode('', $partes));
+        }
+
+        return $strings;
+    }
+
+    /**
+     * @param  list<string>  $strings
+     * @return array<int, array<int, string>>
+     */
+    private function grillaDesdeHojaXml(ZipArchive $zip, string $ruta, array $strings): array
+    {
+        $xml = $zip->getFromName($ruta);
+        if (! is_string($xml) || $xml === '') {
+            return [];
+        }
+
+        $dom = new DOMDocument;
+        if (! @$dom->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            return [];
+        }
+
+        $grid = [];
+        foreach ($dom->getElementsByTagName('c') as $celda) {
+            if (! $celda instanceof DOMElement) {
+                continue;
+            }
+            $ref = strtoupper(trim($celda->getAttribute('r')));
+            if (preg_match('/^([A-Z]+)(\d+)$/', $ref, $m) !== 1) {
+                continue;
+            }
+            try {
+                $col = Coordinate::columnIndexFromString($m[1]);
+            } catch (\Throwable) {
+                continue;
+            }
+            $row = (int) $m[2];
+            $valor = $this->valorCeldaXml($celda, $celda->getAttribute('t'), $strings);
+            if ($valor === '') {
+                continue;
+            }
+            $grid[$row][$col] = $valor;
+        }
+
+        return $grid;
+    }
+
+    /**
+     * @param  list<string>  $strings
+     */
+    private function valorCeldaXml(DOMElement $celda, string $tipo, array $strings): string
+    {
+        $tipo = strtolower(trim($tipo));
+        if ($tipo === 's') {
+            $idx = (int) $this->textoHijoXml($celda, 'v');
+
+            return $this->valorATexto($strings[$idx] ?? '');
+        }
+        if ($tipo === 'inlineStr' || $tipo === 'inlinestr') {
+            $partes = [];
+            foreach ($celda->getElementsByTagName('t') as $nodo) {
+                $partes[] = (string) $nodo->textContent;
+            }
+
+            return $this->valorATexto(trim(implode('', $partes)));
+        }
+        if ($tipo === 'b') {
+            $raw = $this->textoHijoXml($celda, 'v');
+
+            return $raw === '1' || strtolower($raw) === 'true' ? '1' : '0';
+        }
+
+        return $this->valorATexto($this->textoHijoXml($celda, 'v'));
+    }
+
+    private function textoHijoXml(DOMElement $celda, string $tag): string
+    {
+        foreach ($celda->childNodes as $hijo) {
+            if ($hijo instanceof DOMElement && strtolower($hijo->localName) === strtolower($tag)) {
+                return trim((string) $hijo->textContent);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $grid
+     * @return array{lineas: array<int, array{cantidad: int, descripcion: string}>, omitidas: int}
+     */
+    private function parseGrilla(array $grid, int $idxDescripcion, int $idxCantidad): array
+    {
+        $lineas = [];
+        $omitidas = 0;
+        $maxRow = $grid === [] ? 0 : (int) max(array_keys($grid));
+
+        for ($row = 1; $row <= $maxRow; $row++) {
+            $descripcionRaw = (string) ($grid[$row][$idxDescripcion] ?? '');
+            $cantidadRaw = (string) ($grid[$row][$idxCantidad] ?? '');
+            $linea = $this->lineaDesdeCeldas($descripcionRaw, $cantidadRaw);
+            if ($linea === null) {
+                $omitidas++;
+
+                continue;
+            }
+            $lineas[] = $linea;
+        }
+
+        return ['lineas' => $lineas, 'omitidas' => $omitidas];
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $grid
+     * @return array{descripcion: int, cantidad: int}|null
+     */
+    private function detectarColumnasEnGrilla(array $grid): ?array
+    {
+        $maxCol = 1;
+        $maxRow = 1;
+        foreach ($grid as $row => $cols) {
+            $maxRow = max($maxRow, (int) $row);
+            foreach (array_keys($cols) as $col) {
+                $maxCol = max($maxCol, (int) $col);
+            }
+        }
+        if ($maxCol < 2 || $maxRow < 1) {
+            return null;
+        }
+
+        $limite = min($maxRow, 25);
+        for ($row = 1; $row <= $limite; $row++) {
+            $idxCantidad = 0;
+            $idxDescripcion = 0;
+            $scoreCantidad = 0;
+            $scoreDescripcion = 0;
+            for ($col = 1; $col <= $maxCol; $col++) {
+                $texto = $this->normalizarEncabezado((string) ($grid[$row][$col] ?? ''));
+                if ($texto === '') {
+                    continue;
+                }
+                $scoreCant = $this->puntajeEncabezadoCantidad($texto);
+                $scoreDesc = $this->puntajeEncabezadoProducto($texto);
+                if ($scoreCant > $scoreCantidad) {
+                    $scoreCantidad = $scoreCant;
+                    $idxCantidad = $col;
+                }
+                if ($scoreDesc > $scoreDescripcion) {
+                    $scoreDescripcion = $scoreDesc;
+                    $idxDescripcion = $col;
+                }
+            }
+            if ($idxCantidad >= 1 && $idxDescripcion >= 1 && $idxCantidad !== $idxDescripcion
+                && $scoreCantidad > 0 && $scoreDescripcion > 0
+            ) {
+                return [
+                    'descripcion' => $idxDescripcion,
+                    'cantidad' => $idxCantidad,
+                ];
+            }
+        }
+
+        $mejorDesc = 0;
+        $mejorCant = 0;
+        $scoreDesc = 0;
+        $scoreCant = 0;
+        for ($col = 1; $col <= $maxCol; $col++) {
+            $textos = 0;
+            $numeros = 0;
+            $unidad = 0;
+            $muestras = 0;
+            for ($row = 1; $row <= min($maxRow, 80); $row++) {
+                $valor = (string) ($grid[$row][$col] ?? '');
+                if (trim($valor) === '') {
+                    continue;
+                }
+                $muestras++;
+                $upper = mb_strtoupper(trim($valor));
+                if (in_array($upper, ['UNIDAD', 'UNID', 'U', 'UND'], true)) {
+                    $unidad++;
+
+                    continue;
+                }
+                if ($this->puntajeEncabezadoCantidad($this->normalizarEncabezado($valor)) > 0
+                    || $this->puntajeEncabezadoProducto($this->normalizarEncabezado($valor)) > 0
+                ) {
+                    continue;
+                }
+                if ($this->parseCantidad($valor) !== null && mb_strlen($valor) <= 12) {
+                    $numeros++;
+
+                    continue;
+                }
+                if (mb_strlen($this->normalizarDescripcion($valor)) >= 8) {
+                    $textos++;
+                }
+            }
+            if ($muestras === 0 || $unidad >= max(2, (int) floor($muestras * 0.6))) {
+                continue;
+            }
+            if ($numeros > $scoreCant && $numeros >= 2 && $numeros >= $textos) {
+                $scoreCant = $numeros;
+                $mejorCant = $col;
+            }
+            if ($textos > $scoreDesc && $textos >= 2 && $textos > $numeros) {
+                $scoreDesc = $textos;
+                $mejorDesc = $col;
+            }
+        }
+
+        if ($mejorDesc >= 1 && $mejorCant >= 1 && $mejorDesc !== $mejorCant) {
+            return [
+                'descripcion' => $mejorDesc,
+                'cantidad' => $mejorCant,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{descripcion: string, cantidad: int}|null
+     */
+    private function lineaDesdeCeldas(string $descripcionRaw, string $cantidadRaw): ?array
+    {
+        if ($this->filaVacia($descripcionRaw, $cantidadRaw) || $this->esFilaBasura($descripcionRaw, $cantidadRaw)) {
+            return null;
+        }
+        $cantidad = $this->parseCantidad($cantidadRaw);
+        if ($cantidad === null) {
+            return null;
+        }
+        $descripcion = $this->normalizarDescripcion($descripcionRaw);
+        if ($descripcion === '') {
+            return null;
+        }
+
+        return [
+            'descripcion' => $descripcion,
+            'cantidad' => max(1, $cantidad),
+        ];
     }
 
     /**

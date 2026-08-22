@@ -1173,7 +1173,7 @@ class CotizacionController extends Controller
         }
 
         $datos = $request->validate([
-            'excel' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
+            'excel' => ['required', 'file', 'extensions:xlsx,xls,csv', 'max:51200'],
             'columna_descripcion' => ['required', 'string', 'max:10'],
             'columna_cantidad' => ['required', 'string', 'max:10'],
             'desde' => ['nullable', 'integer', 'min:0'],

@@ -3595,7 +3595,10 @@
             const pdfName = String(nombre).replace(/\.doc$/i, '.pdf');
             return new File([blob], pdfName, { type: 'application/pdf' });
         }
-        return new File([blob], nombre, { type: blob.type || mimeAdjuntoImportar(nombre) });
+        const mime = tipoAdj === 'excel'
+            ? (mimeAdjuntoImportar(nombre) || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            : (blob.type || mimeAdjuntoImportar(nombre));
+        return new File([blob], nombre, { type: mime });
     }
 
     async function analizarAdjuntoImportar() {

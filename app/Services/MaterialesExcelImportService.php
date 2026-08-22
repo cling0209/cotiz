@@ -138,7 +138,7 @@ class MaterialesExcelImportService
         $colsKey = strtoupper(trim($columnaDescripcion)).'|'.strtoupper(trim($columnaCantidad));
         $cacheKey = null;
         if (is_string($path) && is_readable($path)) {
-            $cacheKey = 'cotiz.excel_import.v3.'.hash_file('sha1', $path).'.'.md5($colsKey);
+            $cacheKey = 'cotiz.excel_import.v4.'.hash_file('sha1', $path).'.'.md5($colsKey);
             $cached = Cache::get($cacheKey);
             if (is_array($cached) && isset($cached['cabecera'], $cached['lineas'])) {
                 return $cached;
