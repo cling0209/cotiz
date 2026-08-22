@@ -25,6 +25,16 @@ class OportunidadPipelineEtapaTest extends TestCase
         $this->assertSame('COD7', $recientes[4]['codigo']);
     }
 
+    public function test_cierre_busqueda_incluye_siguiente_vinculo(): void
+    {
+        $cierre = OportunidadPipelineEtapa::cierreBusqueda(0);
+
+        $this->assertTrue($cierre['sin_mas_automatico']);
+        $this->assertSame(OportunidadPipelineEtapa::VINCULO, $cierre['siguiente_proceso']);
+        $this->assertStringContainsString('Vinculaciones internas', $cierre['siguiente_proceso_label']);
+        $this->assertStringContainsString('Búsqueda terminada', $cierre['mensaje']);
+    }
+
     public function test_cierre_vinculo_incluye_siguiente_adjuntos(): void
     {
         $cierre = OportunidadPipelineEtapa::cierreVinculo(2);

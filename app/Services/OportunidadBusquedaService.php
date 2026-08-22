@@ -1979,6 +1979,15 @@ class OportunidadBusquedaService
             ? $this->proximaFechaPendienteDespues($fechaBusqueda)
             : null;
 
+        $cierre = null;
+        if ($corrida->estado === self::ESTADO_COMPLETED) {
+            $vinEst = is_array($vinculoEstado) ? ($vinculoEstado['estado'] ?? null) : null;
+            if ($vinEst !== OportunidadVinculoService::ESTADO_RUNNING
+                && $vinEst !== OportunidadVinculoService::ESTADO_COMPLETED) {
+                $cierre = OportunidadPipelineEtapa::cierreBusqueda((int) $corrida->pasos_fallidos);
+            }
+        }
+
         $payload = [
             'id' => $corrida->id,
             'estado' => $corrida->estado,
@@ -2004,6 +2013,7 @@ class OportunidadBusquedaService
             'reanudada_auto' => $reanudadaAuto,
             'eventos' => $this->eventosParaUi($corrida),
             'pasos_resumen' => $pasosResumen,
+            'cierre' => $cierre,
             'vinculo' => $vinculoEstado,
             'vinculo_pendientes' => $corrida->estado === self::ESTADO_RUNNING
                 ? 0

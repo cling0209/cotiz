@@ -120,6 +120,7 @@
                     role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="rel-detalle" class="small text-muted">Preparando consulta…</div>
+            <div id="busqueda-siguiente-proceso" class="alert alert-info py-2 px-3 small mt-2 mb-0 d-none" role="status"></div>
             <div id="rel-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
             <div id="rel-pasos" class="mt-3 d-none">
                 <button type="button" id="rel-pasos-toggle" class="btn btn-sm btn-outline-secondary mb-2"
@@ -4963,6 +4964,14 @@
                 Boolean(corrida.fecha_siguiente_pendiente) &&
                 intentosCambioDia < 30;
             const vinculoActivo = corrida.vinculo && corrida.vinculo.estado === 'running';
+            if (activo || cambiandoDia) {
+                busquedaCompletadaAt = 0;
+            } else if (corrida.estado === 'completed' && busquedaCompletadaAt === 0) {
+                busquedaCompletadaAt = Date.now();
+            }
+            const vinRunning = vinculoActivo;
+            const cierreBusquedaPanel = !activo && !cambiandoDia && !vinRunning ? (corrida.cierre || null) : null;
+            pintarCierrePipeline(document.getElementById('busqueda-siguiente-proceso'), cierreBusquedaPanel);
             // Mostrar el listado si hay filas o si la búsqueda está en curso (antes quedaba oculto
             // cuando listarGuardadasHoy() venía vacío en catch-up de días anteriores).
             if (resultados && (porCodigo.size > 0 || activo)) {
@@ -5063,7 +5072,11 @@
                 relError.classList.add('d-none');
             }
 
-            const pollActivo = activo || cambiandoDia || vinculoActivo || adjuntosCorridaActiva;
+            const esperandoSiguienteEtapa = busquedaCompletadaAt > 0
+                && (Date.now() - busquedaCompletadaAt) < 60000
+                && !vinculoActivo
+                && !adjuntosCorridaActiva;
+            const pollActivo = activo || cambiandoDia || vinculoActivo || adjuntosCorridaActiva || esperandoSiguienteEtapa;
             if (pollActivo) {
                 setRenderKeepAliveProceso(!esperandoWorker);
                 detenerPolling();
@@ -5336,6 +5349,7 @@
         let pollEstadoCount = 0;
         let ultimaEncontradasPoll = -1;
         let itemsCargadosEsperaWorker = false;
+        let busquedaCompletadaAt = 0;
 
         function corridaEsperandoWorker(corrida) {
             if (!corrida || corrida.estado !== 'running') {
@@ -5412,6 +5426,8 @@
             relBar.classList.add('progress-bar-animated');
             if (relProgresoWrap) relProgresoWrap.classList.remove('d-none');
             relDetalle.textContent = 'Iniciando consulta a Mercado Público…';
+            pintarCierrePipeline(document.getElementById('busqueda-siguiente-proceso'), null);
+            busquedaCompletadaAt = 0;
             renderTabla();
 
             try {
