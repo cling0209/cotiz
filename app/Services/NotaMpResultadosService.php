@@ -1507,45 +1507,21 @@ class NotaMpResultadosService
             'stats_json' => null,
         ]);
 
-        $fresh = $corrida->fresh() ?? $corrida;
-
-        // Pipeline secuencial: al cerrar una corrida masiva (ok/error) → búsqueda cotizaciones.
-        if ($estado !== 'cancelled' && $fresh->esMasiva()) {
-            $this->continuarPipelineOportunidadesTrasResultados(
-                trim((string) ($fresh->usuario ?? '')) ?: 'sistema',
-            );
-        }
-
-        return $fresh;
+        return $corrida->fresh() ?? $corrida;
     }
 
     /**
-     * Etapa 2 del pipeline: encola búsqueda de oportunidades (solo ANALISIS_ADMIN).
+     * @deprecated El pipeline ya no continúa desde resultados (ahora es la última etapa).
      *
      * @return array{accion: string, mensaje: string, corrida_id: int|null}
      */
     public function continuarPipelineOportunidadesTrasResultados(string $usuario = 'sistema'): array
     {
-        try {
-            /** @var OportunidadBusquedaService $busqueda */
-            $busqueda = app(OportunidadBusquedaService::class);
-            $resultado = $busqueda->iniciarTrasResultados($usuario);
-            if (in_array($resultado['accion'] ?? '', ['encolada', 'en_curso'], true)) {
-                Log::info('Pipeline tras resultados MP: búsqueda de oportunidades', $resultado);
-            }
-
-            return $resultado;
-        } catch (\Throwable $e) {
-            Log::warning('Pipeline tras resultados MP: no se pudo encolar búsqueda', [
-                'message' => $e->getMessage(),
-            ]);
-
-            return [
-                'accion' => 'error',
-                'mensaje' => $e->getMessage(),
-                'corrida_id' => null,
-            ];
-        }
+        return [
+            'accion' => 'omitido',
+            'mensaje' => 'Cambios de estado es la última etapa del pipeline; no encola búsqueda.',
+            'corrida_id' => null,
+        ];
     }
 
     public function finalizarCorridaDesdeJob(
@@ -1581,7 +1557,7 @@ class NotaMpResultadosService
         return $this->finalizarCorrida($corrida, 'ok');
     }
 
-    public function cancelarCorridaEnCurso(string $usuario): NotaMpCorrida
+    public function cancelarCorridaEnCurso(string $usuario, ?string $motivo = null): NotaMpCorrida
     {
         $corrida = $this->corridaEnCurso();
         if ($corrida === null) {
@@ -1590,11 +1566,12 @@ class NotaMpResultadosService
 
         $this->eliminarJobsResultadosMpPendientes($corrida->id);
 
-        return $this->finalizarCorrida(
-            $corrida,
-            'cancelled',
-            'Cancelada por '.trim($usuario).'.',
-        );
+        $mensaje = trim((string) $motivo);
+        if ($mensaje === '') {
+            $mensaje = 'Cancelada por '.trim($usuario).'.';
+        }
+
+        return $this->finalizarCorrida($corrida, 'cancelled', $mensaje);
     }
 
     /**

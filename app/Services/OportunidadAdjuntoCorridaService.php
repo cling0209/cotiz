@@ -551,6 +551,18 @@ class OportunidadAdjuntoCorridaService
                 ? 'Adjuntos terminados con '.$fallidos.' fallo(s). Tiempo: '.$tiempo
                 : 'Adjuntos terminados correctamente. Tiempo: '.$tiempo,
         ])->save();
+
+        try {
+            app(OportunidadBusquedaService::class)->continuarPipelineTrasAdjuntos(
+                $corrida->fecha_busqueda,
+                trim((string) ($corrida->usuario ?? 'sistema')) ?: 'sistema',
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo continuar el pipeline tras adjuntos', [
+                'corrida_id' => $corrida->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function jobAdjuntoEncolado(int $corridaId): bool

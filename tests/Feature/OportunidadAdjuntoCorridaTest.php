@@ -12,6 +12,7 @@ use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -28,9 +29,18 @@ class OportunidadAdjuntoCorridaTest extends TestCase
             'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-14',
             'cotiz.mercadopublico.adjuntos_disk' => 'r2_adjuntos',
             'cotiz.mercadopublico.adjuntos_prefix' => '',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.api_oportunidad_encontrada.url' => '',
+            'cotiz.api_oportunidad_encontrada.sync_wake_poll_max_seg' => 0,
+            'cotiz.api_oportunidad_encontrada.sync_wake_espera_seg' => 0,
+            'cotiz.api_usuario.url' => '',
             'filesystems.disks.r2_adjuntos.bucket' => 'mp-adjuntos',
             'filesystems.disks.r2_adjuntos.key' => 'test-key',
             'filesystems.disks.r2_adjuntos.secret' => 'test-secret',
+        ]);
+        Http::fake([
+            '*' => Http::response(['resultado' => 'OK', 'recibidos' => 0], 200),
         ]);
         Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
     }
@@ -70,6 +80,15 @@ class OportunidadAdjuntoCorridaTest extends TestCase
     {
         Queue::fake();
 
+        $this->mock(\App\Services\OportunidadEncontradaRelayService::class, function ($mock) {
+            $mock->shouldReceive('sincronizarPipelineTrasVinculacion')->andReturn([
+                'ok' => true,
+                'pendientes_ok' => 0,
+                'pendientes_fail' => 0,
+                'mensaje' => 'Sync omitido en test.',
+            ]);
+        });
+
         OportunidadEncontrada::query()->create([
             'codigo' => 'VIN-OK-001',
             'nombre' => 'Vinculada',
@@ -78,6 +97,7 @@ class OportunidadAdjuntoCorridaTest extends TestCase
             'fecha_busqueda' => '2026-07-16',
             'indice_region_config' => 0,
             'vinculo_completo' => true,
+            'vinculo_preview_json' => ['productos' => 1],
             'fecha_cierre' => now()->addDays(2),
         ]);
 
@@ -190,5 +210,33 @@ class OportunidadAdjuntoCorridaTest extends TestCase
             ->assertJsonPath('corrida.total_pasos', 1);
 
         Queue::assertPushed(ProcessOportunidadAdjuntoJob::class);
+    }
+
+    public function test_finalizar_adjuntos_continúa_pipeline_sin_error(): void
+    {
+        Queue::fake();
+
+        $corrida = OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'ADJ-DONE-001',
+                    'estado' => 'ok',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Adjuntos 1/1…',
+        ]);
+
+        $this->app->make(OportunidadAdjuntoCorridaService::class)->procesarPaso($corrida);
+
+        $corrida->refresh();
+        $this->assertSame(OportunidadAdjuntoCorridaService::ESTADO_COMPLETED, $corrida->estado);
     }
 }

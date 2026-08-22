@@ -84,6 +84,8 @@ class OportunidadBusquedaService
             );
         }
 
+        $this->interrumpirCambiosEstadoSiCorre($usuario);
+
         $existente = $this->corridaEnCurso();
         if ($existente !== null) {
             return $existente;
@@ -1811,8 +1813,7 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Continúa el pipeline tras terminar (o omitir) la consulta de resultados MP:
-     * encola la búsqueda de cotizaciones si este sitio es ANALISIS_ADMIN.
+     * Entrada de búsqueda (paso 1). Si hay cambios de estado en curso, los cancela.
      *
      * @return array{accion: string, mensaje: string, corrida_id: int|null}
      */
@@ -2723,10 +2724,24 @@ class OportunidadBusquedaService
                     'message' => $e->getMessage(),
                 ]);
             }
-            $this->continuarCatchUpTrasVinculacion(
-                $corrida->fecha_busqueda,
-                (string) ($corrida->usuario ?? 'sistema'),
-            );
+
+            $usuarioPipeline = (string) ($corrida->usuario ?? 'sistema');
+            try {
+                $adjuntos = app(OportunidadAdjuntoCorridaService::class)->iniciarTrasSyncVinculacion(
+                    $corrida->fecha_busqueda,
+                    $usuarioPipeline,
+                );
+                if ($adjuntos !== null) {
+                    return;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('No se pudo encolar corrida de adjuntos tras búsqueda sin vínculo', [
+                    'fecha_busqueda' => (string) $corrida->fecha_busqueda,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            $this->continuarPipelineTrasAdjuntos($corrida->fecha_busqueda, $usuarioPipeline);
         } catch (\Throwable $e) {
             Log::warning('No se pudo encolar vinculación de oportunidades', [
                 'fecha_busqueda' => (string) $corrida->fecha_busqueda,
@@ -2750,5 +2765,96 @@ class OportunidadBusquedaService
         }
 
         $this->iniciar(trim($usuario) ?: 'sistema', $siguienteFecha);
+    }
+
+    /**
+     * Tras adjuntos (o si no había pendientes): catch-up del día siguiente, o cambios de estado.
+     */
+    public function continuarPipelineTrasAdjuntos(mixed $fechaBusqueda, string $usuario = 'sistema'): void
+    {
+        $usuario = trim($usuario) ?: 'sistema';
+
+        try {
+            $this->continuarCatchUpTrasVinculacion($fechaBusqueda, $usuario);
+        } catch (Throwable $e) {
+            Log::warning('No se pudo encolar búsqueda del día siguiente tras adjuntos', [
+                'fecha_busqueda' => (string) $fechaBusqueda,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        if ($this->pipelineAnteriorAEstadosEnCurso()) {
+            return;
+        }
+
+        $this->encolarCambiosEstadoTrasPipeline($usuario);
+    }
+
+    public function interrumpirCambiosEstadoSiCorre(string $usuario = 'sistema'): void
+    {
+        try {
+            $resultados = app(NotaMpResultadosService::class);
+            if ($resultados->corridaEnCurso() === null) {
+                return;
+            }
+
+            $resultados->cancelarCorridaEnCurso(
+                trim($usuario) ?: 'sistema',
+                'Cancelada: el pipeline reinicia desde búsqueda de cotizaciones.',
+            );
+            Log::info('Pipeline: cambios de estado cancelados para iniciar búsqueda de cotizaciones');
+        } catch (Throwable $e) {
+            Log::warning('Pipeline: no se pudo cancelar cambios de estado antes de buscar', [
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function pipelineAnteriorAEstadosEnCurso(): bool
+    {
+        if ($this->corridaEnCurso() !== null) {
+            return true;
+        }
+
+        if ($this->vinculos->corridaEnCurso() !== null) {
+            return true;
+        }
+
+        try {
+            return app(OportunidadAdjuntoCorridaService::class)->corridaEnCurso() !== null;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function encolarCambiosEstadoTrasPipeline(string $usuario): void
+    {
+        try {
+            $resultados = app(NotaMpResultadosService::class);
+            if (! $resultados->apiConfigurada() || $resultados->corridaEnCurso() !== null) {
+                return;
+            }
+
+            $corrida = $resultados->encolarCorrida($usuario);
+            Log::info('Pipeline: cambios de estado encolados tras adjuntos', [
+                'corrida_id' => $corrida->id,
+            ]);
+        } catch (RuntimeException $e) {
+            $msg = $e->getMessage();
+            if (
+                str_contains($msg, 'No hay cotizaciones pendientes')
+                || str_contains($msg, 'Ya hay una consulta en curso')
+            ) {
+                return;
+            }
+
+            Log::warning('Pipeline: no se pudo encolar cambios de estado', [
+                'message' => $msg,
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Pipeline: no se pudo encolar cambios de estado', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 }

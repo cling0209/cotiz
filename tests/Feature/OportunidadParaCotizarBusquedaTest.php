@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessOportunidadBusquedaJob;
+use App\Models\NotaMpCorrida;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
@@ -55,6 +56,50 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $estado = $this->app->make(OportunidadBusquedaService::class)->estado($corrida);
 
         $this->assertSame('2026-07-15', $estado['fecha_siguiente_pendiente']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_iniciar_busqueda_cancela_cambios_de_estado_en_curso(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.ticket' => 'ticket-test',
+            'cotiz.mercadopublico.base_url' => 'https://api2.mercadopublico.cl',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-07-16',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-07-16 12:00:00', 'America/Santiago'));
+        Queue::fake();
+
+        $estados = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subMinutes(20),
+            'estado' => 'running',
+            'total_notas' => 2,
+            'notas_procesadas' => 0,
+            'pendientes_json' => [
+                ['nronota' => 1, 'codigo' => '1-1-COT26'],
+                ['nronota' => 2, 'codigo' => '2-1-COT26'],
+            ],
+        ]);
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'papel',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $corrida = $this->app->make(OportunidadBusquedaService::class)->iniciar('admin');
+
+        $estados->refresh();
+        $this->assertSame('cancelled', $estados->estado);
+        $this->assertStringContainsString('búsqueda de cotizaciones', (string) $estados->mensaje);
+        $this->assertSame(OportunidadBusquedaService::ESTADO_RUNNING, $corrida->estado);
 
         Carbon::setTestNow();
     }

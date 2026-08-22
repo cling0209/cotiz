@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\NotaMpResultadosService;
 use App\Services\OportunidadBusquedaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,7 +28,6 @@ class AuthController extends Controller
 
     public function login(
         Request $request,
-        NotaMpResultadosService $resultadosMp,
         OportunidadBusquedaService $oportunidades,
     ): RedirectResponse
     {
@@ -55,7 +53,7 @@ class AuthController extends Controller
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
-        $this->dispararCatchUpMpSiCorresponde($resultadosMp, $oportunidades);
+        $this->dispararCatchUpMpSiCorresponde($oportunidades);
 
         return redirect()->intended(route('admin.cotizaciones.index'));
     }
@@ -93,11 +91,10 @@ class AuthController extends Controller
     }
 
     /**
-     * Catch-up secuencial al login (Render): resultados MP primero; si no encola corrida,
-     * continúa el pipeline (búsqueda). En VPS el scheduler dispara a la hora configurada.
+     * Catch-up al login (Render): arranca desde búsqueda de cotizaciones (paso 1).
+     * Si hay cambios de estado en curso, la búsqueda los cancela.
      */
     private function dispararCatchUpMpSiCorresponde(
-        NotaMpResultadosService $resultadosMp,
         OportunidadBusquedaService $oportunidades,
     ): void {
         if (! config('cotiz.mercadopublico.resultados_catchup_login', false)) {
@@ -105,28 +102,12 @@ class AuthController extends Controller
         }
 
         try {
-            $resultado = $resultadosMp->asegurarCorridaProgramadaSiCorresponde(
-                'sistema',
-                NotaMpResultadosService::CATCHUP_ORIGEN_LOGIN,
-            );
-            if (($resultado['accion'] ?? '') === 'encolada') {
-                Log::info('Catch-up MP encolado al login admin', $resultado);
-
-                return;
-            }
-
-            $mensaje = (string) ($resultado['mensaje'] ?? '');
-            if (str_contains($mensaje, 'en curso')) {
-                return;
-            }
-
-            // Sin corrida de resultados pendiente: retoma búsqueda omitida (no en paralelo con MP).
             $busqueda = $oportunidades->catchUp('sistema', true);
-            if (in_array($busqueda['accion'] ?? '', ['encolada', 'reanudada'], true)) {
-                Log::info('Catch-up de oportunidades encolado al login admin (tras omitir MP)', $busqueda);
+            if (in_array($busqueda['accion'] ?? '', ['encolada', 'reanudada', 'en_curso'], true)) {
+                Log::info('Catch-up de oportunidades encolado al login admin', $busqueda);
             }
         } catch (Throwable $e) {
-            Log::warning('Catch-up MP/oportunidades al login falló', [
+            Log::warning('Catch-up de oportunidades al login falló', [
                 'message' => $e->getMessage(),
             ]);
         }

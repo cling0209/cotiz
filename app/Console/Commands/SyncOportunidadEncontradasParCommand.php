@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\NotaMpCorrida;
+use App\Models\OportunidadAdjuntoCorrida;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadVinculoCorrida;
+use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadEncontradaRelayService;
 use App\Services\OportunidadVinculoService;
@@ -20,7 +22,7 @@ class SyncOportunidadEncontradasParCommand extends Command
     public function handle(OportunidadEncontradaRelayService $relay): int
     {
         if ($this->pipelineEnCurso()) {
-            $this->info('Pipeline en curso (resultados / búsqueda / vinculación); sync periódico omitido.');
+            $this->info('Pipeline en curso (búsqueda / vinculación / adjuntos / estados); sync periódico omitido.');
 
             return self::SUCCESS;
         }
@@ -62,8 +64,14 @@ class SyncOportunidadEncontradasParCommand extends Command
             return true;
         }
 
-        return OportunidadVinculoCorrida::query()
+        if (OportunidadVinculoCorrida::query()
             ->where('estado', OportunidadVinculoService::ESTADO_RUNNING)
+            ->exists()) {
+            return true;
+        }
+
+        return OportunidadAdjuntoCorrida::query()
+            ->where('estado', OportunidadAdjuntoCorridaService::ESTADO_RUNNING)
             ->exists();
     }
 }

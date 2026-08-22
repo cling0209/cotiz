@@ -26,8 +26,9 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
         ->values();
 
     if ($horas->isNotEmpty()) {
-        // Solo etapa 1: resultados. Al finalizar → buscar → vincular → sync cotizaciones → sync vinculaciones.
-        Schedule::command('compra-agil:consultar-resultados')
+        // Pipeline: buscar → vincular → sync cotizaciones → sync vinculaciones → adjuntos → cambios de estado.
+        // Si cambios de estado sigue corriendo al disparar el ciclo, se cancela y se parte del paso 1.
+        Schedule::command('oportunidad:buscar')
             ->cron('0 '.$horas->implode(',').' * * *')
             ->timezone($tz)
             ->withoutOverlapping(120)

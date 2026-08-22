@@ -1239,7 +1239,7 @@ class OportunidadVinculoService
 
     /**
      * No dejar el 2.º proceso idle: si aún hay vigentes sin vincular, encola otra corrida
-     * (un reintento). Recién después sigue el catch-up del día siguiente.
+     * (un reintento). Si hay adjuntos en curso, espera; si no, catch-up o cambios de estado.
      */
     private function continuarPipelineTrasVinculo(OportunidadVinculoCorrida $corrida): void
     {
@@ -1269,12 +1269,20 @@ class OportunidadVinculoService
         }
 
         try {
-            app(OportunidadBusquedaService::class)->continuarCatchUpTrasVinculacion(
+            if (app(OportunidadAdjuntoCorridaService::class)->corridaEnCurso() !== null) {
+                return;
+            }
+        } catch (Throwable) {
+            // Si adjuntos no está disponible, sigue el pipeline (catch-up o estados).
+        }
+
+        try {
+            app(OportunidadBusquedaService::class)->continuarPipelineTrasAdjuntos(
                 $fecha,
                 $usuario,
             );
         } catch (Throwable $e) {
-            Log::warning('No se pudo encolar búsqueda del día siguiente tras vinculación', [
+            Log::warning('No se pudo continuar el pipeline tras vinculación', [
                 'corrida_id' => $corrida->id,
                 'fecha_busqueda' => (string) $fecha,
                 'message' => $e->getMessage(),
