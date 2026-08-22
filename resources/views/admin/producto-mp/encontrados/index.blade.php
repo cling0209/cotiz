@@ -33,6 +33,18 @@
     <div id="producto-mp-estado" class="card shadow-sm mb-3 {{ ($corridaEstado['hay_corrida'] ?? false) ? '' : 'd-none' }}">
         <div class="card-body py-3">
             <div class="d-flex flex-wrap gap-3 align-items-center small mb-2">
+                <div class="text-nowrap">
+                    <i class="bi bi-clock"></i>
+                    Inicio: <strong id="pmp-inicio" class="tabular-nums">—</strong>
+                </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-flag"></i>
+                    Fin: <strong id="pmp-fin" class="tabular-nums">—</strong>
+                </div>
+                <div class="text-nowrap">
+                    <i class="bi bi-hourglass-split"></i>
+                    Tiempo: <strong id="pmp-duracion" class="tabular-nums">—</strong>
+                </div>
                 <div>Estado: <strong id="pmp-estado">{{ $corridaEstado['estado'] ?? '—' }}</strong></div>
                 <div>CA revisadas: <strong id="pmp-cas" class="tabular-nums">{{ $corridaEstado['cas_revisadas'] ?? 0 }}</strong></div>
                 <div>Matches: <strong id="pmp-matches" class="tabular-nums">{{ $corridaEstado['matches_encontrados'] ?? 0 }}</strong></div>
@@ -44,6 +56,7 @@
                     {{ (int) ($corridaEstado['porcentaje'] ?? 0) }}%
                 </div>
             </div>
+            <div id="pmp-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
         </div>
     </div>
     @endif
@@ -141,6 +154,68 @@
     const btnCancelar = document.getElementById('btn-cancelar-producto-mp');
     const card = document.getElementById('producto-mp-estado');
     let timer = null;
+    let tickTimer = null;
+    let inicioMs = null;
+    let finMs = null;
+
+    function formatearDuracionSegs(segs) {
+        const total = Math.max(0, Math.floor(Number(segs) || 0));
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+        if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+        return `${s}s`;
+    }
+
+    function formatearFechaHora(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleString('es-CL', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        });
+    }
+
+    function textoUltimoError(ultimo) {
+        if (!ultimo) return '';
+        if (typeof ultimo === 'string') return ultimo.trim();
+        if (typeof ultimo !== 'object') return '';
+        const base = String(ultimo.mensaje || ultimo.error || ultimo.message || '').trim();
+        const region = ultimo.region != null ? String(ultimo.region).trim() : '';
+        if (region && base) return 'región ' + region + ': ' + base;
+        return base;
+    }
+
+    function actualizarDuracion() {
+        const el = document.getElementById('pmp-duracion');
+        if (!el) return;
+        if (!inicioMs) {
+            el.textContent = '—';
+            return;
+        }
+        const segs = Math.max(0, Math.floor(((finMs || Date.now()) - inicioMs) / 1000));
+        el.textContent = formatearDuracionSegs(segs);
+    }
+
+    function asegurarTick(running) {
+        if (running && inicioMs && !finMs) {
+            if (!tickTimer) tickTimer = setInterval(actualizarDuracion, 250);
+            actualizarDuracion();
+            return;
+        }
+        if (tickTimer) {
+            clearInterval(tickTimer);
+            tickTimer = null;
+        }
+        actualizarDuracion();
+    }
 
     function pintar(corrida) {
         if (!corrida || !corrida.hay_corrida) {
@@ -151,6 +226,26 @@
         document.getElementById('pmp-cas').textContent = corrida.cas_revisadas ?? 0;
         document.getElementById('pmp-matches').textContent = corrida.matches_encontrados ?? 0;
         document.getElementById('pmp-mensaje').textContent = corrida.mensaje || '';
+        const inicio = corrida.inicio ? new Date(corrida.inicio) : null;
+        const fin = corrida.fin ? new Date(corrida.fin) : null;
+        inicioMs = inicio && !Number.isNaN(inicio.getTime()) ? inicio.getTime() : null;
+        finMs = fin && !Number.isNaN(fin.getTime()) ? fin.getTime() : null;
+        document.getElementById('pmp-inicio').textContent = inicioMs ? formatearFechaHora(corrida.inicio) : '—';
+        document.getElementById('pmp-fin').textContent = finMs ? formatearFechaHora(corrida.fin) : '—';
+        const duracionTexto = corrida.duracion_texto
+            || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null);
+        document.getElementById('pmp-duracion').textContent = duracionTexto || '—';
+        const errorEl = document.getElementById('pmp-error');
+        const errTxt = textoUltimoError(corrida.ultimo_error);
+        if (errorEl) {
+            if (errTxt) {
+                errorEl.textContent = 'Último error: ' + errTxt;
+                errorEl.classList.remove('d-none');
+            } else {
+                errorEl.textContent = '';
+                errorEl.classList.add('d-none');
+            }
+        }
         const pct = Number(corrida.porcentaje) || 0;
         const barra = document.getElementById('pmp-barra');
         barra.style.width = pct + '%';
@@ -158,6 +253,7 @@
         const running = corrida.running === true;
         btnBuscar.disabled = running;
         btnCancelar.classList.toggle('d-none', !running);
+        asegurarTick(running);
         if (running) {
             programarPoll();
         } else if (timer) {

@@ -233,6 +233,7 @@
                     role="progressbar" style="width: 0%">0%</div>
             </div>
             <div id="vin-detalle" class="small text-muted mb-0">Pulse <strong>Procesar vinculaciones</strong> para vincular cotizaciones al maestro.</div>
+            <div id="vin-error" class="alert alert-danger mt-2 mb-0 py-2 d-none"></div>
             <div id="vin-regiones-wrap" class="mt-3 d-none">
                 <button type="button" id="vin-regiones-toggle" class="btn btn-sm btn-outline-secondary mb-2"
                     aria-expanded="false" aria-controls="vin-regiones-panel">
@@ -248,6 +249,7 @@
                                 <th class="text-nowrap text-end">Cotizaciones</th>
                                 <th class="text-nowrap text-end">Procesadas</th>
                                 <th class="text-nowrap text-end">Proceso %</th>
+                                <th class="text-nowrap text-end">Sin vinc. MP</th>
                                 <th class="text-nowrap text-end">Productos vinc.</th>
                                 <th class="text-nowrap text-end">Vinc. %</th>
                             </tr>
@@ -363,7 +365,22 @@
                         <span id="sync-adj-badge" class="badge text-bg-secondary">—</span>
                     </div>
                     <div id="sync-adj-resumen" class="small text-muted mb-2">Cargando adjuntos…</div>
+                    <div id="sync-adj-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2 d-none">
+                        <div class="text-nowrap">
+                            <i class="bi bi-clock"></i>
+                            Inicio: <strong id="sync-adj-inicio" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-flag"></i>
+                            Fin: <strong id="sync-adj-fin" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-hourglass-split"></i>
+                            Tiempo: <strong id="sync-adj-duracion" class="tabular-nums">—</strong>
+                        </div>
+                    </div>
                     <div id="sync-adj-limpieza" class="small text-muted mb-2 d-none"></div>
+                    <div id="sync-adj-error" class="alert alert-danger py-1 px-2 small d-none mb-2"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         @if($puedeBuscar ?? false)
                         <button type="button" id="btn-iniciar-adjuntos" class="btn btn-success btn-sm d-none" data-no-loader
@@ -389,7 +406,6 @@
                         </button>
                     </div>
                     <div id="sync-adj-detalle-panel" class="d-none">
-                        <div id="sync-adj-error" class="alert alert-warning py-1 px-2 small d-none mb-2"></div>
                         <div class="table-responsive" style="max-height: 220px; overflow-y: auto;">
                             <table class="table table-sm table-striped align-middle small mb-0">
                                 <thead class="table-light" style="position: sticky; top: 0;">
@@ -827,6 +843,12 @@
         let porCodigo = new Map();
         let inicioMs = null;
         let finMs = null;
+        let vinInicioMs = null;
+        let vinFinMs = null;
+        let adjInicioMs = null;
+        let adjFinMs = null;
+        let purgeInicioMs = null;
+        let purgeFinMs = null;
         let tickTimer = null;
         let buscando = false;
         let cancelado = false;
@@ -1860,6 +1882,10 @@
             const corrida = (data && data.corrida && typeof data.corrida === 'object') ? data.corrida : null;
             const purge = (corrida && corrida.purge && typeof corrida.purge === 'object') ? corrida.purge : null;
             const purgeActivo = purge && (purge.estado === 'pending' || purge.estado === 'running');
+            const metaEl = document.getElementById('sync-adj-meta');
+            const inicioEl = document.getElementById('sync-adj-inicio');
+            const finEl = document.getElementById('sync-adj-fin');
+            const duracionEl = document.getElementById('sync-adj-duracion');
             const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
             const total = Number(r.total) || 0;
             const consultados = Number(r.consultados) || 0;
@@ -1912,13 +1938,49 @@
                         + (fallosCount > 0 ? ` · ${fallosCount} fallida${fallosCount === 1 ? '' : 's'}` : '');
                 }
             }
+            adjInicioMs = corrida ? msDeIso(corrida.inicio) : null;
+            adjFinMs = corrida ? msDeIso(corrida.fin) : null;
+            purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
+            purgeFinMs = purge ? msDeIso(purge.fin) : null;
+            if (metaEl) {
+                const mostrarMeta = Boolean(adjInicioMs || corridaRunning || adjFinMs);
+                metaEl.classList.toggle('d-none', !mostrarMeta);
+            }
+            if (inicioEl) {
+                inicioEl.textContent = adjInicioMs ? formatearFechaHora(corrida.inicio) : '—';
+            }
+            if (finEl) {
+                finEl.textContent = adjFinMs ? formatearFechaHora(corrida.fin) : '—';
+            }
+            if (duracionEl) {
+                const duracionTexto = corrida && (corrida.duracion_texto
+                    || (corrida.duracion_segundos != null ? formatearDuracionSegs(corrida.duracion_segundos) : null));
+                duracionEl.textContent = duracionTexto || '—';
+            }
             if (limpiezaEl) {
                 const purgeMsg = String(purge?.mensaje || '').trim();
+                const purgeInicio = purge?.inicio_texto || (purge?.inicio ? formatearFechaHora(purge.inicio) : '');
+                const purgeFin = purge?.fin_texto || (purge?.fin ? formatearFechaHora(purge.fin) : '');
+                const purgeTiempo = String(purge?.duracion_texto || '').trim();
+                const partesPurge = [];
                 if (purgeActivo) {
-                    limpiezaEl.textContent = purgeMsg || 'Eliminando adjuntos de cotizaciones cerradas…';
-                    limpiezaEl.classList.remove('d-none');
+                    partesPurge.push(purgeMsg || 'Eliminando adjuntos de cotizaciones cerradas…');
                 } else if (purgeMsg) {
-                    limpiezaEl.textContent = purgeMsg;
+                    partesPurge.push(purgeMsg);
+                }
+                if (purgeInicio) {
+                    partesPurge.push('Inicio ' + purgeInicio);
+                }
+                if (purgeFin) {
+                    partesPurge.push('Fin ' + purgeFin);
+                } else if (purgeActivo && purgeInicio) {
+                    partesPurge.push('Fin —');
+                }
+                if (purgeTiempo) {
+                    partesPurge.push('Tiempo ' + purgeTiempo);
+                }
+                if (partesPurge.length > 0) {
+                    limpiezaEl.textContent = partesPurge.join(' · ');
                     limpiezaEl.classList.remove('d-none');
                 } else {
                     limpiezaEl.textContent = '';
@@ -1948,9 +2010,12 @@
                 contador.className = 'badge ms-1 ' + (fallosCount > 0 ? 'text-bg-danger' : 'text-bg-secondary');
             }
             if (errorEl) {
-                const err = String(data?.error || '').trim();
+                const errCorrida = textoUltimoError(corrida?.ultimo_error);
+                const errPurge = textoUltimoError(purge?.ultimo_error);
+                const errData = String(data?.error || '').trim();
+                const err = errCorrida || errPurge || errData;
                 if (err) {
-                    errorEl.textContent = err;
+                    errorEl.textContent = 'Último error: ' + err;
                     errorEl.classList.remove('d-none');
                 } else {
                     errorEl.textContent = '';
@@ -1980,6 +2045,7 @@
             if (corridaRunning || purgeActivo) {
                 adjuntosPollTimer = setTimeout(() => maybeRefreshAdjuntos(true), 3000);
             }
+            asegurarTickDuracion();
         }
 
         let adjuntosEstadoAt = 0;
@@ -3074,13 +3140,94 @@
             return `${s}s`;
         }
 
+        function formatearFechaHora(iso) {
+            if (!iso) return '—';
+            const d = iso instanceof Date ? iso : new Date(iso);
+            if (Number.isNaN(d.getTime())) return '—';
+            return d.toLocaleString('es-CL', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+            });
+        }
+
+        function textoUltimoError(ultimo) {
+            if (!ultimo) return '';
+            if (typeof ultimo === 'string') return ultimo.trim();
+            if (typeof ultimo !== 'object') return '';
+            const base = String(ultimo.mensaje || ultimo.error || ultimo.message || '').trim();
+            const codigo = String(ultimo.codigo || '').trim();
+            const region = ultimo.region != null ? String(ultimo.region).trim() : '';
+            const partes = [];
+            if (codigo) partes.push(codigo);
+            else if (region) partes.push('región ' + region);
+            if (base) partes.push(base);
+            return partes.join(': ');
+        }
+
+        function pintarUltimoError(el, ultimo) {
+            if (!el) return;
+            const txt = textoUltimoError(ultimo);
+            if (txt) {
+                el.textContent = 'Último error: ' + txt;
+                el.classList.remove('d-none');
+            } else {
+                el.textContent = '';
+                el.classList.add('d-none');
+            }
+        }
+
+        function msDeIso(iso) {
+            if (!iso) return null;
+            const d = new Date(iso);
+            return Number.isNaN(d.getTime()) ? null : d.getTime();
+        }
+
+        function actualizarDuracionCampo(el, inicioMsCampo, finMsCampo) {
+            if (!el) return;
+            if (!inicioMsCampo) {
+                el.textContent = '—';
+                return;
+            }
+            const segs = Math.max(0, Math.floor(((finMsCampo || Date.now()) - inicioMsCampo) / 1000));
+            el.textContent = formatearDuracionSegs(segs);
+        }
+
         function actualizarDuracion() {
             if (!inicioMs) {
                 relDuracion.textContent = '—';
+            } else {
+                const segs = Math.max(0, Math.floor(((finMs || Date.now()) - inicioMs) / 1000));
+                relDuracion.textContent = formatearDuracionSegs(segs);
+            }
+            actualizarDuracionCampo(document.getElementById('vin-duracion'), vinInicioMs, vinFinMs);
+            actualizarDuracionCampo(document.getElementById('sync-adj-duracion'), adjInicioMs, adjFinMs);
+        }
+
+        function hayCorridaEnCurso() {
+            return (inicioMs && !finMs)
+                || (vinInicioMs && !vinFinMs)
+                || (adjInicioMs && !adjFinMs)
+                || (purgeInicioMs && !purgeFinMs);
+        }
+
+        function asegurarTickDuracion() {
+            if (hayCorridaEnCurso()) {
+                if (!tickTimer) {
+                    tickTimer = setInterval(actualizarDuracion, 250);
+                }
+                actualizarDuracion();
                 return;
             }
-            const segs = Math.max(0, Math.floor(((finMs || Date.now()) - inicioMs) / 1000));
-            relDuracion.textContent = formatearDuracionSegs(segs);
+            if (tickTimer) {
+                clearInterval(tickTimer);
+                tickTimer = null;
+            }
+            actualizarDuracion();
         }
 
         function mensajeConTiempo(mensaje, duracionTexto) {
@@ -3756,13 +3903,13 @@
         function listaProgresoRegiones(vinculo) {
             // Preferir lista ordenada del servidor (evita que JSON reordene claves "3","13",…).
             if (vinculo && Array.isArray(vinculo.progreso_regiones) && vinculo.progreso_regiones.length > 0) {
-                return vinculo.progreso_regiones.filter((s) => s && Number(s.total) > 0);
+                return vinculo.progreso_regiones.filter((s) => s && (Number(s.total) > 0 || Number(s.no_vinculadas_mp) > 0));
             }
             const porRegion = vinculo && vinculo.progreso_por_region && typeof vinculo.progreso_por_region === 'object'
                 ? vinculo.progreso_por_region
                 : {};
             return Object.values(porRegion)
-                .filter((s) => s && Number(s.total) > 0)
+                .filter((s) => s && (Number(s.total) > 0 || Number(s.no_vinculadas_mp) > 0))
                 .sort((a, b) => {
                     const ia = indiceRegionConfig(a.region);
                     const ib = indiceRegionConfig(b.region);
@@ -3789,11 +3936,18 @@
             // El panel queda cerrado: el usuario lo abre con el botón (mismo diseño que la búsqueda).
             let totalCotiz = 0;
             let hechosCotiz = 0;
+            let fallidasMp = 0;
             regiones.forEach((s) => {
                 totalCotiz += Number(s.total) || 0;
                 hechosCotiz += Number(s.hechos) || 0;
+                fallidasMp += Number(s.no_vinculadas_mp) || 0;
             });
-            if (contador) contador.textContent = `${hechosCotiz}/${totalCotiz}`;
+            if (contador) {
+                const base = `${hechosCotiz}/${totalCotiz}`;
+                contador.textContent = fallidasMp > 0 ? `${base} · ${fallidasMp} sin vinc. MP` : base;
+                contador.classList.toggle('text-bg-danger', fallidasMp > 0);
+                contador.classList.toggle('text-bg-secondary', fallidasMp <= 0);
+            }
             tbody.innerHTML = '';
             regiones.forEach((stats) => {
                 const tr = document.createElement('tr');
@@ -3803,6 +3957,7 @@
                 const prodVinc = Number(stats.productos_vinculados) || 0;
                 const prodTotal = Number(stats.productos_total) || 0;
                 const pctVinc = Number(stats.porcentaje_vinculados) || 0;
+                const sinVincMp = Number(stats.no_vinculadas_mp) || 0;
 
                 const tdRegion = document.createElement('td');
                 tdRegion.className = 'text-nowrap';
@@ -3821,6 +3976,16 @@
                 tdPct.className = 'text-end tabular-nums';
                 tdPct.textContent = `${pct}%`;
                 tdPct.classList.add(pct >= 100 ? 'text-success' : (hechos > 0 ? 'text-primary' : 'text-muted'));
+
+                const tdSinVincMp = document.createElement('td');
+                tdSinVincMp.className = 'text-end tabular-nums';
+                tdSinVincMp.textContent = sinVincMp > 0 ? String(sinVincMp) : '—';
+                if (sinVincMp > 0) {
+                    tdSinVincMp.classList.add('text-danger', 'fw-semibold');
+                    tdSinVincMp.title = 'Cotizaciones donde Mercado Público no respondió o falló la vinculación';
+                } else {
+                    tdSinVincMp.classList.add('text-muted');
+                }
 
                 const tdProd = document.createElement('td');
                 tdProd.className = 'text-end tabular-nums';
@@ -3841,7 +4006,7 @@
                     tdPctVinc.classList.add('text-muted');
                 }
 
-                tr.append(tdRegion, tdCotiz, tdProc, tdPct, tdProd, tdPctVinc);
+                tr.append(tdRegion, tdCotiz, tdProc, tdPct, tdSinVincMp, tdProd, tdPctVinc);
                 tbody.appendChild(tr);
             });
         }
@@ -4334,12 +4499,8 @@
             const fin = corrida.fin ? new Date(corrida.fin) : null;
             inicioMs = inicio && !Number.isNaN(inicio.getTime()) ? inicio.getTime() : inicioMs;
             finMs = fin && !Number.isNaN(fin.getTime()) ? fin.getTime() : null;
-            relInicio.textContent = inicio ? inicio.toLocaleTimeString('es-CL', {
-                hour12: false
-            }) : '—';
-            relFin.textContent = fin ? fin.toLocaleTimeString('es-CL', {
-                hour12: false
-            }) : '—';
+            relInicio.textContent = inicio && !Number.isNaN(inicio.getTime()) ? formatearFechaHora(inicio) : '—';
+            relFin.textContent = fin && !Number.isNaN(fin.getTime()) ? formatearFechaHora(fin) : '—';
             if (relUsuario) {
                 const usuario = String(corrida.usuario || '').trim();
                 relUsuario.textContent = usuario !== '' ? usuario : 'sistema';
@@ -4465,15 +4626,19 @@
                 } else {
                     relError.classList.add('d-none');
                 }
-            } else if (!activo && fallidos > 0) {
-                mostrarErrorFatal(`La búsqueda terminó con ${fallidos} paso(s) fallido(s). Los demás pasos sí fueron procesados.`);
+            } else if (!activo && (fallidos > 0 || ultimoError)) {
+                const txt = textoUltimoError(ultimoError);
+                const base = fallidos > 0
+                    ? `La búsqueda terminó con ${fallidos} paso(s) fallido(s).`
+                    : 'La búsqueda terminó con error.';
+                mostrarErrorFatal(txt ? `${base} Último error: ${txt}` : base);
             } else if (activo) {
                 relError.classList.add('d-none');
             } else {
                 relError.classList.add('d-none');
             }
 
-            const pollActivo = activo || cambiandoDia || vinculoActivo;
+            const pollActivo = activo || cambiandoDia || vinculoActivo || adjuntosCorridaActiva;
             if (pollActivo) {
                 setRenderKeepAliveProceso(!esperandoWorker);
                 detenerPolling();
@@ -4486,12 +4651,8 @@
             } else {
                 setRenderKeepAliveProceso(false);
                 detenerPolling();
-                if (tickTimer) {
-                    clearInterval(tickTimer);
-                    tickTimer = null;
-                }
-                actualizarDuracion();
             }
+            asegurarTickDuracion();
         }
 
         let ultimaVinculoId = null;
@@ -4512,14 +4673,18 @@
             }
             if (!vinculo) {
                 ultimaVinculoId = null;
+                vinInicioMs = null;
+                vinFinMs = null;
                 document.querySelectorAll('.vin-meta-extra').forEach((el) => el.classList.add('d-none'));
                 if (vinWrap) vinWrap.classList.add('d-none');
+                pintarUltimoError(document.getElementById('vin-error'), null);
                 if (vinDetalle) {
                     vinDetalle.textContent = 'Pulse Procesar vinculaciones para vincular cotizaciones al maestro.';
                     vinDetalle.classList.add('text-muted');
                     vinDetalle.classList.remove('text-warning', 'text-danger');
                 }
                 renderVinculoRegiones(null);
+                asegurarTickDuracion();
                 return;
             }
 
@@ -4531,19 +4696,13 @@
             document.querySelectorAll('.vin-meta-extra').forEach((el) => el.classList.remove('d-none'));
             const inicio = vinculo.inicio ? new Date(vinculo.inicio) : null;
             const fin = vinculo.fin ? new Date(vinculo.fin) : null;
+            vinInicioMs = inicio && !Number.isNaN(inicio.getTime()) ? inicio.getTime() : null;
+            vinFinMs = fin && !Number.isNaN(fin.getTime()) ? fin.getTime() : null;
             if (vinInicio) {
-                vinInicio.textContent = inicio && !Number.isNaN(inicio.getTime()) ?
-                    inicio.toLocaleTimeString('es-CL', {
-                        hour12: false
-                    }) :
-                    '—';
+                vinInicio.textContent = vinInicioMs ? formatearFechaHora(inicio) : '—';
             }
             if (vinFin) {
-                vinFin.textContent = fin && !Number.isNaN(fin.getTime()) ?
-                    fin.toLocaleTimeString('es-CL', {
-                        hour12: false
-                    }) :
-                    '—';
+                vinFin.textContent = vinFinMs ? formatearFechaHora(fin) : '—';
             }
             const duracionTexto = vinculo.duracion_texto ||
                 (vinculo.duracion_segundos != null ? formatearDuracionSegs(vinculo.duracion_segundos) : null);
@@ -4604,7 +4763,9 @@
                     vinDetalle.classList.remove('text-warning', 'text-danger');
                 }
             }
+            pintarUltimoError(document.getElementById('vin-error'), vinculo.ultimo_error);
             renderVinculoRegiones(vinculo);
+            asegurarTickDuracion();
         }
 
         function actualizarBotonProcesarVinculo(vinculo, aviso, pendientesRaw) {
@@ -4804,8 +4965,7 @@
             setModoBusqueda(true);
             inicioMs = Date.now();
             finMs = null;
-            if (tickTimer) clearInterval(tickTimer);
-            tickTimer = setInterval(actualizarDuracion, 250);
+            asegurarTickDuracion();
 
             estado.classList.remove('d-none');
             placeholder.classList.add('d-none');
@@ -4870,9 +5030,7 @@
 
         if (corridaInicial) {
             aplicarEstadoCorrida(corridaInicial);
-            if (corridaInicial.estado === 'running' && !tickTimer) {
-                tickTimer = setInterval(actualizarDuracion, 250);
-            }
+            asegurarTickDuracion();
         } else if (puedeBuscar) {
             actualizarBotonProcesarVinculo(null, null, vinculoPendientesInicial);
         }

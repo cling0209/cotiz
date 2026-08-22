@@ -78,6 +78,11 @@ class OportunidadAdjuntoPurgeTest extends TestCase
         $this->assertSame(1, $estado['purge']['eliminados'] ?? null);
         $this->assertSame('19:42', $estado['purge']['inicio_hora'] ?? null);
         $this->assertSame('19:42', $estado['purge']['fin_hora'] ?? null);
+        $this->assertNotEmpty($estado['purge']['inicio_texto'] ?? null);
+        $this->assertNotEmpty($estado['purge']['fin_texto'] ?? null);
+        $this->assertNotNull($estado['purge']['duracion_texto'] ?? null);
+        $this->assertNull($estado['purge']['ultimo_error'] ?? null);
+        $this->assertNull($estado['ultimo_error'] ?? null);
     }
 
     public function test_finalizar_adjuntos_encola_purge(): void

@@ -406,4 +406,35 @@ class ProductoMpBusquedaTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('ok', false);
     }
+
+    public function test_estado_expone_inicio_duracion_y_ultimo_error(): void
+    {
+        \App\Models\ProductoMpBusquedaCorrida::query()->create([
+            'usuario' => 'superadmin',
+            'fecha_busqueda' => now()->toDateString(),
+            'inicio' => now()->subMinutes(2),
+            'estado' => ProductoMpBusquedaService::ESTADO_RUNNING,
+            'total_pasos' => 2,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'matches_encontrados' => 0,
+            'cas_revisadas' => 3,
+            'plan_json' => [],
+            'errores_json' => [
+                ['region' => 13, 'mensaje' => 'ticket inválido', 'at' => now()->toIso8601String()],
+            ],
+            'mensaje' => 'Error en región Metropolitana: ticket inválido',
+        ]);
+
+        $estado = $this->app->make(ProductoMpBusquedaService::class)->estado();
+
+        $this->assertTrue($estado['hay_corrida']);
+        $this->assertTrue($estado['running']);
+        $this->assertNotNull($estado['inicio']);
+        $this->assertNull($estado['fin']);
+        $this->assertGreaterThanOrEqual(110, (int) $estado['duracion_segundos']);
+        $this->assertNotEmpty($estado['duracion_texto']);
+        $this->assertSame('ticket inválido', $estado['ultimo_error']['mensaje'] ?? null);
+        $this->assertSame(13, $estado['ultimo_error']['region'] ?? null);
+    }
 }

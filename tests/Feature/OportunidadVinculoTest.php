@@ -510,6 +510,87 @@ class OportunidadVinculoTest extends TestCase
         $this->assertSame('FAKE-0PCT-001', $plan[0]['codigo']);
     }
 
+    public function test_plan_excluye_fallidas_con_vinculo_error(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAIL-504-001',
+            'nombre' => 'Fallida MP',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'SIGUIENTE-001',
+            'nombre' => 'Siguiente pendiente',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = $this->app->make(OportunidadVinculoService::class)
+            ->iniciarTrasBusqueda('2026-07-16', 'admin');
+
+        $this->assertNotNull($corrida);
+        $plan = $corrida->plan_json;
+        $this->assertCount(1, $plan);
+        $this->assertSame('SIGUIENTE-001', $plan[0]['codigo']);
+    }
+
+    public function test_finalizar_vinculo_no_encadena_si_solo_quedan_fallidas(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'ONLY-FAIL-001',
+            'nombre' => 'Solo fallida',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(3),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                [
+                    'codigo' => 'ONLY-FAIL-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'failed',
+                    'error' => '504',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculadas 1/1…',
+        ]);
+
+        $antes = OportunidadVinculoCorrida::query()->count();
+        $continua = $this->app->make(OportunidadVinculoService::class)->procesarPaso($corrida);
+
+        $this->assertFalse($continua);
+        $this->assertSame($antes, OportunidadVinculoCorrida::query()->count());
+        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
+    }
+
     public function test_asegurar_vinculo_codigo_marca_fallida_si_mp_falla(): void
     {
         Http::fake([
@@ -656,7 +737,105 @@ class OportunidadVinculoTest extends TestCase
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.region_nombre', 'Atacama')
             ->assertJsonPath('corrida.vinculo.progreso_por_region.3.indice_region_config', 0)
             ->assertJsonPath('corrida.vinculo.progreso_regiones.0.region', 3)
-            ->assertJsonPath('corrida.vinculo.progreso_regiones.0.indice_region_config', 0);
+            ->assertJsonPath('corrida.vinculo.progreso_regiones.0.indice_region_config', 0)
+            ->assertJsonPath('corrida.vinculo.ultimo_error', null);
+    }
+
+    public function test_estado_vinculo_incluye_contador_fallidas_mp_por_region(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(10),
+            'fin' => now()->subMinutes(5),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAIL-RM-001',
+            'nombre' => 'Fallida RM',
+            'region' => 13,
+            'nombre_region' => 'Región Metropolitana de Santiago',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinute(),
+            'fin' => now(),
+            'estado' => OportunidadVinculoService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                [
+                    'codigo' => 'FAIL-RM-001',
+                    'region' => 13,
+                    'region_nombre' => 'Región Metropolitana de Santiago',
+                    'estado' => 'failed',
+                    'error' => '504',
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Vinculación terminada con 1 fallo(s).',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.estado'))
+            ->assertOk()
+            ->assertJsonPath('corrida.vinculo.fallidas_mp_total', 1)
+            ->assertJsonPath('corrida.vinculo.progreso_por_region.13.no_vinculadas_mp', 1)
+            ->assertJsonPath('corrida.vinculo.progreso_regiones.0.no_vinculadas_mp', 1);
+    }
+
+    public function test_estado_vinculo_expone_ultimo_error_y_duracion(): void
+    {
+        $inicio = now()->subMinutes(3);
+        $fin = now()->subMinute();
+        OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => $inicio,
+            'fin' => $fin,
+            'estado' => OportunidadVinculoService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                ['codigo' => 'ERR-1-COT26', 'region' => 3, 'estado' => 'failed'],
+            ],
+            'errores_json' => [
+                ['codigo' => 'ERR-1-COT26', 'error' => 'timeout MP', 'at' => now()->toIso8601String()],
+            ],
+            'mensaje' => 'Vinculación terminada con errores.',
+        ]);
+
+        $estado = $this->app->make(OportunidadVinculoService::class)->estado();
+
+        $this->assertSame('timeout MP', $estado['ultimo_error']['mensaje'] ?? null);
+        $this->assertSame('ERR-1-COT26', $estado['ultimo_error']['codigo'] ?? null);
+        $this->assertSame(120, (int) $estado['duracion_segundos']);
+        $this->assertNotEmpty($estado['duracion_texto']);
+        $this->assertNotNull($estado['fin']);
     }
 
     public function test_estado_reencola_vinculo_colgado_sin_job(): void

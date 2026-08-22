@@ -6,6 +6,7 @@ use App\Jobs\ProcessOportunidadAdjuntoJob;
 use App\Jobs\ProcessOportunidadAdjuntoPurgeJob;
 use App\Models\OportunidadAdjuntoCorrida;
 use App\Models\OportunidadEncontrada;
+use App\Support\CorridaEstado;
 use App\Support\HoraChile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -543,6 +544,7 @@ class OportunidadAdjuntoCorridaService
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,
             'progreso' => $total > 0 ? min(100, (int) round(($terminados / $total) * 100)) : 0,
             'mensaje' => $corrida->mensaje,
+            'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
             'purge' => $this->serializarPurge($corrida),
         ];
     }
@@ -679,6 +681,9 @@ class OportunidadAdjuntoCorridaService
             'fallos' => $fallos,
             'revisados' => $revisados,
             'mensaje' => $mensaje,
+            'ultimo_error' => $fallos > 0
+                ? 'No se pudo eliminar '.$fallos.' carpeta'.($fallos === 1 ? '' : 's').' de adjuntos cerrados.'
+                : null,
         ]);
 
         Log::info('OportunidadAdjunto: purge de cerradas', [
@@ -711,6 +716,7 @@ class OportunidadAdjuntoCorridaService
             'mensaje' => 'Limpieza con error: '.mb_substr(trim($mensaje), 0, 200)
                 .'. Inicio '.HoraChile::format($inicio, 'H:i')
                 .' — Fin '.HoraChile::format($fin, 'H:i').'.',
+            'ultimo_error' => mb_substr(trim($mensaje), 0, 400),
         ]);
     }
 
@@ -930,19 +936,32 @@ class OportunidadAdjuntoCorridaService
 
         $inicio = $purge['inicio'] ?? null;
         $fin = $purge['fin'] ?? null;
-        $duracionSegundos = $this->duracionSegundos($inicio, $fin);
+        $estadoPurge = (string) ($purge['estado'] ?? '');
+        $finParaDuracion = $fin;
+        if ($finParaDuracion === null && in_array($estadoPurge, [self::PURGE_PENDING, self::PURGE_RUNNING], true) && $inicio) {
+            $finParaDuracion = now();
+        }
+        $duracionSegundos = $this->duracionSegundos($inicio, $finParaDuracion);
+        $ultimoError = trim((string) ($purge['ultimo_error'] ?? ''));
+        if ($ultimoError === '' && (int) ($purge['fallos'] ?? 0) > 0) {
+            $ultimoError = trim((string) ($purge['mensaje'] ?? ''));
+        }
 
         return [
-            'estado' => (string) ($purge['estado'] ?? ''),
+            'estado' => $estadoPurge,
             'inicio' => $inicio,
             'fin' => $fin,
             'inicio_hora' => $inicio ? HoraChile::format($inicio, 'H:i') : null,
             'fin_hora' => $fin ? HoraChile::format($fin, 'H:i') : null,
+            'inicio_texto' => $inicio ? HoraChile::format($inicio) : null,
+            'fin_texto' => $fin ? HoraChile::format($fin) : null,
             'eliminados' => (int) ($purge['eliminados'] ?? 0),
             'omitidos' => (int) ($purge['omitidos'] ?? 0),
             'fallos' => (int) ($purge['fallos'] ?? 0),
+            'duracion_segundos' => $duracionSegundos,
             'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
             'mensaje' => (string) ($purge['mensaje'] ?? ''),
+            'ultimo_error' => $ultimoError !== '' ? $ultimoError : null,
         ];
     }
 

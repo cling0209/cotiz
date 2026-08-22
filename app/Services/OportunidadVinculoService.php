@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\ProcessOportunidadVinculoJob;
+use App\Support\CorridaEstado;
 use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
@@ -112,7 +113,9 @@ class OportunidadVinculoService
             ];
         }
 
-        $pasos = $this->construirPlan($dia);
+        $pasos = $encadenada
+            ? $this->construirPlanEncadenado($dia)
+            : $this->construirPlan($dia);
         $pendientes = count($pasos);
         if ($pasos === []) {
             return [
@@ -135,7 +138,7 @@ class OportunidadVinculoService
                 'plan_json' => $pasos,
                 'errores_json' => $encadenada ? [['encadenada' => true]] : [],
                 'mensaje' => $encadenada
-                    ? 'Vinculación encadenada: pendientes de la corrida anterior ('.$this->formatearFecha($dia).').'
+                    ? 'Vinculación encadenada: reintento de pendientes y fallidas MP ('.$this->formatearFecha($dia).').'
                     : 'Vinculación interna encolada ('.$this->formatearFecha($dia).').',
             ]);
         } catch (Throwable $e) {
@@ -234,6 +237,24 @@ class OportunidadVinculoService
         return count($this->construirPlan($dia));
     }
 
+    public function contarFallidasMpReintento(mixed $fechaBusqueda = null): int
+    {
+        $dia = $this->oportunidades->normalizarFechaBusqueda(
+            $fechaBusqueda ?? $this->oportunidades->fechaBusquedaHoy(),
+        );
+
+        return count($this->construirPlan($dia, soloFallidasMp: true));
+    }
+
+    public function contarFallidasMpReintentoSafe(mixed $fechaBusqueda = null): int
+    {
+        try {
+            return $this->contarFallidasMpReintento($fechaBusqueda);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
     public function contarPendientesSafe(mixed $fechaBusqueda = null): int
     {
         try {
@@ -282,9 +303,47 @@ class OportunidadVinculoService
     }
 
     /**
+     * Plan de la corrida encadenada: pendientes normales + un reintento de fallidas MP.
+     *
      * @return list<array<string, mixed>>
      */
-    private function construirPlan(string $dia): array
+    private function construirPlanEncadenado(string $dia): array
+    {
+        return $this->fusionarPasosPlan(
+            $this->construirPlan($dia),
+            $this->construirPlan($dia, soloFallidasMp: true),
+        );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  ...$listas
+     * @return list<array<string, mixed>>
+     */
+    private function fusionarPasosPlan(array ...$listas): array
+    {
+        $pasos = [];
+        $vistos = [];
+        foreach ($listas as $lista) {
+            foreach ($lista as $paso) {
+                if (! is_array($paso)) {
+                    continue;
+                }
+                $codigo = strtoupper(trim((string) ($paso['codigo'] ?? '')));
+                if ($codigo === '' || isset($vistos[$codigo])) {
+                    continue;
+                }
+                $vistos[$codigo] = true;
+                $pasos[] = $paso;
+            }
+        }
+
+        return $pasos;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function construirPlan(string $dia, bool $soloFallidasMp = false): array
     {
         // Vigentes pendientes desde fecha de inicio (catch-up): sin cerrar, sin vincular, sin tomadas.
         $desde = $this->oportunidades->normalizarFechaBusqueda(
@@ -293,17 +352,9 @@ class OportunidadVinculoService
         $hasta = $this->oportunidades->normalizarFechaBusqueda($dia);
         $codigosTomados = $this->oportunidades->codigosTomadosNormalizados();
 
-        $rows = OportunidadEncontrada::query()
+        $query = OportunidadEncontrada::query()
             ->whereDate('fecha_busqueda', '>=', $desde)
             ->whereDate('fecha_busqueda', '<=', $hasta)
-            // Pendientes reales, o “0% falso” (cerrado sin preview: MP no respondió).
-            ->where(function ($query) {
-                $query->whereRaw('vinculo_completo IS NOT TRUE')
-                    ->orWhere(function ($q) {
-                        $q->whereRaw('vinculo_completo IS TRUE')
-                            ->whereNull('vinculo_preview_json');
-                    });
-            })
             ->where(function ($query) {
                 $query->whereNull('fecha_cierre')
                     ->orWhere('fecha_cierre', '>', now());
@@ -311,7 +362,31 @@ class OportunidadVinculoService
             ->when(
                 $codigosTomados !== [],
                 fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
-            )
+            );
+
+        if ($soloFallidasMp) {
+            // Reintento único en corrida encadenada: solo cotizaciones con fallo MP previo.
+            $query->whereRaw('vinculo_completo IS NOT TRUE')
+                ->whereNotNull('vinculo_error')
+                ->whereRaw("TRIM(vinculo_error) <> ''");
+        } else {
+            $query
+                // Pendientes reales, o “0% falso” (cerrado sin preview: MP no respondió).
+                ->where(function ($query) {
+                    $query->whereRaw('vinculo_completo IS NOT TRUE')
+                        ->orWhere(function ($q) {
+                            $q->whereRaw('vinculo_completo IS TRUE')
+                                ->whereNull('vinculo_preview_json');
+                        });
+                })
+                // Sin fallo MP: las fallidas van en la corrida encadenada (un reintento).
+                ->where(function ($query) {
+                    $query->whereNull('vinculo_error')
+                        ->orWhereRaw("TRIM(vinculo_error) = ''");
+                });
+        }
+
+        $rows = $query
             ->orderBy('indice_region_config')
             ->orderBy('fecha_busqueda')
             ->orderBy('codigo')
@@ -367,6 +442,7 @@ class OportunidadVinculoService
         $inicioMs = microtime(true);
         try {
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
+            $this->limpiarFalloVinculoParaReintento((string) ($paso['codigo'] ?? ''), $fechaPaso);
             $resultado = $this->vincularCodigo((string) $paso['codigo'], $fechaPaso);
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_OK;
@@ -1067,6 +1143,44 @@ class OportunidadVinculoService
         return $row?->toResumen();
     }
 
+    /**
+     * Errores de transporte/timeout: no volver a llamar a MP en intentarCerrarTrasFallo.
+     */
+    private function falloMpNoReintentarEnCierre(string $mensaje): bool
+    {
+        $m = mb_strtolower($mensaje);
+
+        return str_contains($m, '504')
+            || str_contains($m, 'gateway timeout')
+            || str_contains($m, 'timeout')
+            || str_contains($m, 'no respondió')
+            || str_contains($m, 'connection refused')
+            || str_contains($m, 'could not resolve');
+    }
+
+    private function limpiarFalloVinculoParaReintento(string $codigo, mixed $fechaBusqueda = null): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return;
+        }
+
+        foreach ($this->encontrarFilasParaCodigo($codigo, $fechaBusqueda) as $row) {
+            if (trim((string) ($row->vinculo_error ?? '')) === '') {
+                continue;
+            }
+            try {
+                $row->fill(['vinculo_error' => null])->save();
+            } catch (Throwable $e) {
+                Log::warning('OportunidadVinculo: no se pudo limpiar fallo para reintento', [
+                    'codigo' => $codigo,
+                    'id' => $row->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     private function marcarFalloVinculo(string $codigo, mixed $fechaBusqueda, string $mensaje): void
     {
         $codigo = strtoupper(trim($codigo));
@@ -1118,6 +1232,13 @@ class OportunidadVinculoService
                 $fechaBusqueda,
                 $mensajeError !== '' ? $mensajeError : 'API Mercado Público no configurada (falta ticket).',
             );
+
+            return;
+        }
+
+        $mensajeError = trim($mensajeError);
+        if ($mensajeError !== '' && $this->falloMpNoReintentarEnCierre($mensajeError)) {
+            $this->marcarFalloVinculo($codigo, $fechaBusqueda, $mensajeError);
 
             return;
         }
@@ -1218,7 +1339,10 @@ class OportunidadVinculoService
         }
 
         $encadenaraVinculo = ! $this->corridaEsEncadenada($corrida)
-            && $this->contarPendientesSafe($corrida->fecha_busqueda) > 0;
+            && (
+                $this->contarPendientesSafe($corrida->fecha_busqueda) > 0
+                || $this->contarFallidasMpReintentoSafe($corrida->fecha_busqueda) > 0
+            );
 
         if ($syncOk && ! $encadenaraVinculo) {
             try {
@@ -1248,7 +1372,8 @@ class OportunidadVinculoService
 
         if (! $this->corridaEsEncadenada($corrida)) {
             $pendientes = $this->contarPendientesSafe($fecha);
-            if ($pendientes > 0) {
+            $fallidasReintento = $this->contarFallidasMpReintentoSafe($fecha);
+            if ($pendientes > 0 || $fallidasReintento > 0) {
                 try {
                     $detalle = $this->iniciarConDetalle($fecha, $usuario, true);
                     if ($detalle['ok'] && $detalle['corrida'] !== null) {
@@ -1656,7 +1781,10 @@ class OportunidadVinculoService
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $total = max(0, (int) $corrida->total_pasos);
         $terminados = $this->contarTerminados($pasos);
-        $progresoPorRegion = $this->progresoPorRegion($pasos);
+        $progresoPorRegion = $this->fusionarFallidasMpEnProgreso(
+            $this->progresoPorRegion($pasos),
+            $this->fallidasMpPorRegion($corrida->fecha_busqueda),
+        );
         $duracionSegundos = $this->duracionSegundos(
             $corrida->inicio,
             $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null),
@@ -1691,7 +1819,12 @@ class OportunidadVinculoService
             // Lista 0..n: conserva el orden de MERCADOPUBLICO_REGIONES (JSON no reordena).
             'progreso_regiones' => array_values($progresoPorRegion),
             'progreso_por_region' => $progresoPorRegion,
+            'fallidas_mp_total' => array_sum(array_map(
+                static fn (array $s): int => (int) ($s['no_vinculadas_mp'] ?? 0),
+                $progresoPorRegion,
+            )),
             'mensaje' => $corrida->mensaje,
+            'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
             'worker_stalled' => $workerStalled,
             'reanudada_auto' => $reanudadaAuto,
         ];
@@ -1751,7 +1884,8 @@ class OportunidadVinculoService
      *     productos_total: int,
      *     porcentaje_vinculados: int,
      *     ok: int,
-     *     failed: int
+     *     failed: int,
+     *     no_vinculadas_mp: int
      * }>
      */
     private function progresoPorRegion(array $pasos): array
@@ -1780,6 +1914,7 @@ class OportunidadVinculoService
                     'porcentaje_vinculados' => 0,
                     'ok' => 0,
                     'failed' => 0,
+                    'no_vinculadas_mp' => 0,
                 ];
             }
 
@@ -1811,9 +1946,120 @@ class OportunidadVinculoService
             if ($stats['region_nombre'] === '') {
                 $stats['region_nombre'] = 'Región '.$stats['region'];
             }
+            $stats['no_vinculadas_mp'] = (int) ($stats['failed'] ?? 0);
         }
         unset($stats);
 
+        return $this->ordenarProgresoPorRegion($byRegion);
+    }
+
+    /**
+     * Cotizaciones vigentes con fallo de MP (vinculo_error), agrupadas por región.
+     *
+     * @return array<string, array{region: int, region_nombre: string, indice_region_config: int, no_vinculadas_mp: int}>
+     */
+    private function fallidasMpPorRegion(mixed $fechaBusqueda): array
+    {
+        $desde = $this->oportunidades->normalizarFechaBusqueda(
+            config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
+        );
+        $hasta = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
+        $codigosTomados = $this->oportunidades->codigosTomadosNormalizados();
+
+        $rows = OportunidadEncontrada::query()
+            ->whereDate('fecha_busqueda', '>=', $desde)
+            ->whereDate('fecha_busqueda', '<=', $hasta)
+            ->whereNotNull('vinculo_error')
+            ->whereRaw("TRIM(vinculo_error) <> ''")
+            ->where(function ($query) {
+                $query->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>', now());
+            })
+            ->when(
+                $codigosTomados !== [],
+                fn ($query) => $query->whereNotIn('codigo', $codigosTomados),
+            )
+            ->orderBy('indice_region_config')
+            ->orderBy('fecha_busqueda')
+            ->orderBy('codigo')
+            ->get(['codigo', 'region', 'nombre_region', 'indice_region_config']);
+
+        $byRegion = [];
+        $vistos = [];
+        foreach ($rows as $row) {
+            $codigo = strtoupper(trim((string) $row->codigo));
+            if ($codigo === '' || isset($vistos[$codigo])) {
+                continue;
+            }
+            $vistos[$codigo] = true;
+
+            $region = (int) ($row->region ?? 0);
+            $key = (string) $region;
+            if (! isset($byRegion[$key])) {
+                $nombre = trim((string) ($row->nombre_region ?? ''));
+                $byRegion[$key] = [
+                    'region' => $region,
+                    'region_nombre' => $nombre !== ''
+                        ? $nombre
+                        : CompraAgilRegionScope::nombreRegion($region),
+                    'indice_region_config' => CompraAgilRegionScope::indiceEnConfig($region > 0 ? $region : null),
+                    'no_vinculadas_mp' => 0,
+                ];
+            }
+            $byRegion[$key]['no_vinculadas_mp']++;
+        }
+
+        return $byRegion;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $progreso
+     * @param  array<string, array{region: int, region_nombre: string, indice_region_config: int, no_vinculadas_mp: int}>  $fallidasMp
+     * @return array<string, array<string, mixed>>
+     */
+    private function fusionarFallidasMpEnProgreso(array $progreso, array $fallidasMp): array
+    {
+        foreach ($fallidasMp as $key => $extra) {
+            $cantidad = max(0, (int) ($extra['no_vinculadas_mp'] ?? 0));
+            if ($cantidad <= 0) {
+                continue;
+            }
+
+            if (! isset($progreso[$key])) {
+                $region = (int) ($extra['region'] ?? 0);
+                $progreso[$key] = [
+                    'region' => $region,
+                    'region_nombre' => (string) ($extra['region_nombre'] ?? ('Región '.$region)),
+                    'indice_region_config' => (int) ($extra['indice_region_config'] ?? 999),
+                    'total' => 0,
+                    'hechos' => 0,
+                    'porcentaje' => 0,
+                    'productos_vinculados' => 0,
+                    'productos_total' => 0,
+                    'porcentaje_vinculados' => 0,
+                    'ok' => 0,
+                    'failed' => 0,
+                    'no_vinculadas_mp' => $cantidad,
+                ];
+
+                continue;
+            }
+
+            $progreso[$key]['no_vinculadas_mp'] = max(
+                (int) ($progreso[$key]['no_vinculadas_mp'] ?? 0),
+                $cantidad,
+            );
+        }
+
+        return $this->ordenarProgresoPorRegion($progreso);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $byRegion
+     * @return array<string, array<string, mixed>>
+     */
+    private function ordenarProgresoPorRegion(array $byRegion): array
+    {
         uasort($byRegion, static function (array $a, array $b): int {
             $cmp = ((int) ($a['indice_region_config'] ?? 999)) <=> ((int) ($b['indice_region_config'] ?? 999));
             if ($cmp !== 0) {

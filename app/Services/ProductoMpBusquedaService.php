@@ -8,6 +8,7 @@ use App\Models\MaeprodFraseBusqueda;
 use App\Models\OportunidadEncontrada;
 use App\Models\ProductoMpBusquedaCorrida;
 use App\Models\ProductoMpEncontrado;
+use App\Support\CorridaEstado;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -139,6 +140,10 @@ class ProductoMpBusquedaService
         $total = max(1, (int) $corrida->total_pasos);
         $hechos = (int) $corrida->pasos_procesados;
         $pct = (int) min(100, round(($hechos / $total) * 100));
+        $duracionSegundos = CorridaEstado::duracionSegundos(
+            $corrida->inicio,
+            $corrida->fin ?? ($corrida->estado === self::ESTADO_RUNNING ? now() : null),
+        );
 
         return [
             'hay_corrida' => true,
@@ -150,6 +155,9 @@ class ProductoMpBusquedaService
             'fecha_busqueda' => $corrida->fecha_busqueda?->toDateString(),
             'inicio' => $corrida->inicio?->toIso8601String(),
             'fin' => $corrida->fin?->toIso8601String(),
+            'duracion_segundos' => $duracionSegundos,
+            'duracion_texto' => CorridaEstado::formatearSegundos($duracionSegundos),
+            'ultimo_error' => CorridaEstado::ultimoError($corrida->errores_json),
             'total_pasos' => (int) $corrida->total_pasos,
             'pasos_procesados' => $hechos,
             'pasos_fallidos' => (int) $corrida->pasos_fallidos,

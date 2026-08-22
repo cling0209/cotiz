@@ -241,4 +241,34 @@ class OportunidadAdjuntoCorridaTest extends TestCase
         $this->assertSame(OportunidadAdjuntoCorridaService::ESTADO_COMPLETED, $corrida->estado);
         Queue::assertPushed(ProcessOportunidadAdjuntoPurgeJob::class);
     }
+
+    public function test_estado_adjuntos_expone_ultimo_error_inicio_y_duracion(): void
+    {
+        $corrida = OportunidadAdjuntoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(4),
+            'fin' => now()->subMinute(),
+            'estado' => OportunidadAdjuntoCorridaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                ['codigo' => 'ADJ-ERR-001', 'estado' => 'failed'],
+            ],
+            'errores_json' => [
+                ['codigo' => 'ADJ-ERR-001', 'error' => 'R2 timeout', 'at' => now()->toIso8601String()],
+            ],
+            'mensaje' => 'Adjuntos 0/1…',
+        ]);
+
+        $estado = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida);
+
+        $this->assertSame('R2 timeout', $estado['ultimo_error']['mensaje'] ?? null);
+        $this->assertSame('ADJ-ERR-001', $estado['ultimo_error']['codigo'] ?? null);
+        $this->assertNotNull($estado['inicio']);
+        $this->assertNotNull($estado['fin']);
+        $this->assertSame(180, (int) $estado['duracion_segundos']);
+        $this->assertNotEmpty($estado['duracion_texto']);
+    }
 }
