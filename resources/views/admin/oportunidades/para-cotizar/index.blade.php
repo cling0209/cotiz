@@ -734,6 +734,8 @@
         const adjuntosPorCodigo = {};
         const adjuntosArchivosPorCodigo = {};
         const adjuntosConsultados = {};
+        const adjuntosListarEnCurso = {};
+        const adjuntosListarHecho = {};
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
@@ -1749,6 +1751,62 @@
             return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
         }
 
+        function mapaAdjuntosTieneNombres(mapa) {
+            return Object.values(mapa || {}).some((v) => Array.isArray(v) && v.length > 0);
+        }
+
+        async function hidratarAdjuntosPagina(itemsPagina) {
+            if (!puedeAdjuntos || !urls.adjuntosListarBase || !Array.isArray(itemsPagina)) {
+                return;
+            }
+            const faltantes = itemsPagina
+                .map((item) => String(item?.codigo || '').toUpperCase().trim())
+                .filter((cod) => {
+                    if (!cod || adjuntosListarHecho[cod] || adjuntosListarEnCurso[cod]) {
+                        return false;
+                    }
+                    const nombres = adjuntosArchivosPorCodigo[cod];
+                    return !(Array.isArray(nombres) && nombres.length > 0);
+                });
+            if (faltantes.length === 0) {
+                return;
+            }
+            let cambio = false;
+            await Promise.all(faltantes.map(async (cod) => {
+                adjuntosListarEnCurso[cod] = true;
+                try {
+                    const res = await fetch(urlAdjuntos(urls.adjuntosListarBase, cod), {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    adjuntosListarHecho[cod] = true;
+                    if (!res.ok || !data.ok) {
+                        return;
+                    }
+                    const nombres = (Array.isArray(data.archivos) ? data.archivos : [])
+                        .map((a) => String(a && a.nombre ? a.nombre : a || ''))
+                        .filter(Boolean);
+                    adjuntosArchivosPorCodigo[cod] = nombres;
+                    adjuntosPorCodigo[cod] = nombres.length;
+                    if (data.consultado || nombres.length > 0) {
+                        adjuntosConsultados[cod] = true;
+                    }
+                    if (nombres.length > 0) {
+                        cambio = true;
+                    }
+                } catch (_e) {
+                    // se reintenta al cambiar de página
+                } finally {
+                    delete adjuntosListarEnCurso[cod];
+                }
+            }));
+            if (cambio) {
+                guardarAdjuntosLocales();
+                renderTabla(false);
+            }
+        }
+
         function pintarPanelAdjuntos(data) {
             const card = document.getElementById('sync-adjuntos-estado');
             if (!card) return;
@@ -1905,26 +1963,43 @@
                 const nuevosConteos = {};
                 const nuevosArchivos = {};
                 const nuevosConsultados = {};
-                Object.entries(data.conteos || {}).forEach(([cod, n]) => {
+                const conteosResp = data.conteos && typeof data.conteos === 'object' && !Array.isArray(data.conteos)
+                    ? data.conteos
+                    : {};
+                const archivosResp = data.archivos && typeof data.archivos === 'object' && !Array.isArray(data.archivos)
+                    ? data.archivos
+                    : {};
+                Object.entries(conteosResp).forEach(([cod, n]) => {
                     nuevosConteos[String(cod).toUpperCase()] = Number(n) || 0;
                 });
-                if (data.archivos && typeof data.archivos === 'object') {
-                    Object.entries(data.archivos).forEach(([cod, lista]) => {
-                        const codigo = String(cod).toUpperCase();
-                        nuevosArchivos[codigo] = Array.isArray(lista)
-                            ? lista.map((x) => String(x || '')).filter(Boolean)
-                            : [];
-                    });
-                }
+                Object.entries(archivosResp).forEach(([cod, lista]) => {
+                    const codigo = String(cod).toUpperCase();
+                    nuevosArchivos[codigo] = Array.isArray(lista)
+                        ? lista.map((x) => String(x || '')).filter(Boolean)
+                        : [];
+                });
                 (Array.isArray(data.consultados) ? data.consultados : []).forEach((cod) => {
                     nuevosConsultados[String(cod).toUpperCase()] = true;
                 });
                 Object.keys(nuevosConteos).forEach((cod) => {
                     nuevosConsultados[cod] = true;
                 });
-                aplicarMapaAdjuntos(adjuntosPorCodigo, nuevosConteos);
-                aplicarMapaAdjuntos(adjuntosArchivosPorCodigo, nuevosArchivos);
-                aplicarMapaAdjuntos(adjuntosConsultados, nuevosConsultados);
+                const estadoTraeNombres = mapaAdjuntosTieneNombres(nuevosArchivos);
+                const yaHayNombres = mapaAdjuntosTieneNombres(adjuntosArchivosPorCodigo);
+                if (estadoTraeNombres || !yaHayNombres) {
+                    aplicarMapaAdjuntos(adjuntosPorCodigo, nuevosConteos);
+                    aplicarMapaAdjuntos(adjuntosArchivosPorCodigo, nuevosArchivos);
+                    aplicarMapaAdjuntos(adjuntosConsultados, nuevosConsultados);
+                } else {
+                    Object.keys(nuevosConsultados).forEach((cod) => {
+                        adjuntosConsultados[cod] = true;
+                    });
+                    Object.entries(nuevosConteos).forEach(([cod, n]) => {
+                        if ((Number(n) || 0) > 0 || adjuntosPorCodigo[cod] == null) {
+                            adjuntosPorCodigo[cod] = Number(n) || 0;
+                        }
+                    });
+                }
                 guardarAdjuntosLocales();
                 pintarPanelAdjuntos(data);
                 renderTabla(false);
@@ -2373,6 +2448,7 @@
             if (btnDescargarCsv) btnDescargarCsv.disabled = items.length === 0;
 
             actualizarPaginadores(totalPaginas);
+            hidratarAdjuntosPagina(paginaItems);
         }
 
         /** Ventana de páginas con elipsis (mismo criterio visual que Laravel/Bootstrap). */
