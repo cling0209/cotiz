@@ -85,6 +85,40 @@ class OportunidadAdjuntoPurgeTest extends TestCase
         $this->assertNull($estado['ultimo_error'] ?? null);
     }
 
+    public function test_estado_purge_expone_paso_actual_y_tiempos(): void
+    {
+        $corrida = $this->crearCorridaCompletada();
+        $inicio = now()->subMinutes(2);
+        $corrida->fill([
+            'purge_json' => [
+                'estado' => OportunidadAdjuntoCorridaService::PURGE_RUNNING,
+                'inicio' => $inicio->toIso8601String(),
+                'fin' => null,
+                'eliminados' => 1,
+                'omitidos' => 0,
+                'fallos' => 0,
+                'revisados' => 1,
+                'total' => 3,
+                'indice' => 2,
+                'codigo_actual' => 'CERRADA-002',
+                'ultimos_eliminados' => [
+                    ['codigo' => 'CERRADA-001', 'at' => now()->subMinute()->toIso8601String()],
+                ],
+                'mensaje' => 'Eliminando CERRADA-002 (2/3)…',
+            ],
+        ])->save();
+
+        $purge = $this->app->make(OportunidadAdjuntoCorridaService::class)->estado($corrida)['purge'];
+
+        $this->assertSame('CERRADA-002', $purge['paso_actual']['codigo'] ?? null);
+        $this->assertSame(2, $purge['paso_actual']['indice'] ?? null);
+        $this->assertSame(3, $purge['paso_actual']['total'] ?? null);
+        $this->assertSame('running', $purge['paso_actual']['estado'] ?? null);
+        $this->assertNotNull($purge['inicio_hora'] ?? null);
+        $this->assertNull($purge['fin_hora'] ?? null);
+        $this->assertNotNull($purge['ultima_actividad'] ?? null);
+    }
+
     public function test_finalizar_adjuntos_encola_purge(): void
     {
         Queue::fake();

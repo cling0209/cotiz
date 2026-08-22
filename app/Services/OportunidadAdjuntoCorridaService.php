@@ -634,15 +634,6 @@ class OportunidadAdjuntoCorridaService
     public function ejecutarPurgeCerrados(?OportunidadAdjuntoCorrida $corrida = null): array
     {
         $inicio = now();
-        $this->persistirPurge($corrida, [
-            'estado' => self::PURGE_RUNNING,
-            'inicio' => $inicio->toIso8601String(),
-            'fin' => null,
-            'eliminados' => 0,
-            'omitidos' => 0,
-            'fallos' => 0,
-            'mensaje' => 'Eliminando adjuntos de cotizaciones cerradas…',
-        ]);
 
         $protegidos = array_fill_keys(
             array_merge(
@@ -661,12 +652,8 @@ class OportunidadAdjuntoCorridaService
             ->unique()
             ->values();
 
-        $eliminados = 0;
         $omitidos = 0;
-        $fallos = 0;
-        $revisados = 0;
-        $ultimosEliminados = [];
-
+        $candidatos = [];
         foreach ($cerradas as $codigo) {
             if (isset($protegidos[$codigo])) {
                 if ($this->adjuntos->carpetaTieneObjetos($codigo)) {
@@ -678,6 +665,74 @@ class OportunidadAdjuntoCorridaService
             if (! $this->adjuntos->carpetaTieneObjetos($codigo)) {
                 continue;
             }
+            $candidatos[] = $codigo;
+        }
+
+        $total = count($candidatos);
+        $this->persistirPurge($corrida, [
+            'estado' => self::PURGE_RUNNING,
+            'inicio' => $inicio->toIso8601String(),
+            'fin' => null,
+            'eliminados' => 0,
+            'omitidos' => $omitidos,
+            'fallos' => 0,
+            'revisados' => 0,
+            'total' => $total,
+            'indice' => 0,
+            'codigo_actual' => null,
+            'ultimos_eliminados' => [],
+            'mensaje' => $total > 0
+                ? 'Limpieza de adjuntos cerrados (0/'.$total.')…'
+                : 'Sin carpetas cerradas para eliminar.',
+        ]);
+
+        $eliminados = 0;
+        $fallos = 0;
+        $revisados = 0;
+        $ultimosEliminados = [];
+
+        if ($total === 0) {
+            $fin = now();
+            $mensaje = $this->mensajePurge($eliminados, $omitidos, $fallos, $inicio, $fin);
+            $this->persistirPurge($corrida, [
+                'estado' => self::PURGE_COMPLETED,
+                'inicio' => $inicio->toIso8601String(),
+                'fin' => $fin->toIso8601String(),
+                'eliminados' => 0,
+                'omitidos' => $omitidos,
+                'fallos' => 0,
+                'revisados' => 0,
+                'total' => 0,
+                'indice' => 0,
+                'codigo_actual' => null,
+                'ultimos_eliminados' => [],
+                'mensaje' => $mensaje,
+            ]);
+
+            return [
+                'eliminados' => 0,
+                'omitidos' => $omitidos,
+                'fallos' => 0,
+                'revisados' => 0,
+            ];
+        }
+
+        foreach ($candidatos as $i => $codigo) {
+            $this->persistirPurge($corrida, [
+                'estado' => self::PURGE_RUNNING,
+                'inicio' => $inicio->toIso8601String(),
+                'fin' => null,
+                'eliminados' => $eliminados,
+                'omitidos' => $omitidos,
+                'fallos' => $fallos,
+                'revisados' => $revisados,
+                'total' => $total,
+                'indice' => $i + 1,
+                'codigo_actual' => $codigo,
+                'ultimos_eliminados' => $ultimosEliminados,
+                'mensaje' => 'Eliminando '.$codigo.' ('.($i + 1).'/'.$total.')…',
+            ]);
+
             $revisados++;
             if ($this->adjuntos->eliminarCarpeta($codigo)) {
                 $eliminados++;
@@ -701,6 +756,9 @@ class OportunidadAdjuntoCorridaService
             'omitidos' => $omitidos,
             'fallos' => $fallos,
             'revisados' => $revisados,
+            'total' => $total,
+            'indice' => $total,
+            'codigo_actual' => null,
             'ultimos_eliminados' => $ultimosEliminados,
             'mensaje' => $mensaje,
             'ultimo_error' => $fallos > 0
@@ -1060,6 +1118,8 @@ class OportunidadAdjuntoCorridaService
         if (in_array($estadoPurge, [self::PURGE_COMPLETED, self::PURGE_SKIPPED, self::PURGE_ERROR], true)) {
             $cierre = OportunidadPipelineEtapa::cierrePurge();
         }
+        $pasoActual = $this->pasoActualPurge($purge, $estadoPurge);
+        $ultimaActividad = $this->ultimaActividadPurge($purge, $fin);
 
         return [
             'estado' => $estadoPurge,
@@ -1072,6 +1132,10 @@ class OportunidadAdjuntoCorridaService
             'eliminados' => (int) ($purge['eliminados'] ?? 0),
             'omitidos' => (int) ($purge['omitidos'] ?? 0),
             'fallos' => (int) ($purge['fallos'] ?? 0),
+            'revisados' => (int) ($purge['revisados'] ?? 0),
+            'total_pasos' => (int) ($purge['total'] ?? 0),
+            'paso_actual' => $pasoActual,
+            'ultima_actividad' => $ultimaActividad,
             'duracion_segundos' => $duracionSegundos,
             'duracion_texto' => $duracionSegundos !== null ? $this->formatearSegundos($duracionSegundos) : null,
             'mensaje' => (string) ($purge['mensaje'] ?? ''),
@@ -1079,6 +1143,58 @@ class OportunidadAdjuntoCorridaService
             'ultimos_eliminados' => $ultimosEliminados,
             'cierre' => $cierre,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $purge
+     * @return array{codigo: string, indice: int, total: int, estado: string}|null
+     */
+    private function pasoActualPurge(array $purge, string $estadoPurge): ?array
+    {
+        if (! in_array($estadoPurge, [self::PURGE_PENDING, self::PURGE_RUNNING], true)) {
+            return null;
+        }
+
+        $codigo = strtoupper(trim((string) ($purge['codigo_actual'] ?? '')));
+        $total = (int) ($purge['total'] ?? 0);
+        $indice = (int) ($purge['indice'] ?? 0);
+
+        if ($codigo === '' && $estadoPurge === self::PURGE_PENDING) {
+            return null;
+        }
+
+        if ($codigo === '' && $total === 0) {
+            return null;
+        }
+
+        return [
+            'codigo' => $codigo !== '' ? $codigo : '—',
+            'indice' => max(0, $indice),
+            'total' => max(0, $total),
+            'estado' => $estadoPurge === self::PURGE_RUNNING ? 'running' : 'pending',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $purge
+     */
+    private function ultimaActividadPurge(array $purge, mixed $fin): ?string
+    {
+        $ultimos = is_array($purge['ultimos_eliminados'] ?? null) ? $purge['ultimos_eliminados'] : [];
+        if ($ultimos !== [] && is_array($ultimos[0])) {
+            $at = $ultimos[0]['at'] ?? null;
+            if (is_string($at) && trim($at) !== '') {
+                return $at;
+            }
+        }
+
+        if ($fin !== null && $fin !== '') {
+            return is_string($fin) ? $fin : null;
+        }
+
+        $inicio = $purge['inicio'] ?? null;
+
+        return is_string($inicio) && trim($inicio) !== '' ? $inicio : null;
     }
 
     private function mensajePurge(int $eliminados, int $omitidos, int $fallos, mixed $inicio, mixed $fin): string

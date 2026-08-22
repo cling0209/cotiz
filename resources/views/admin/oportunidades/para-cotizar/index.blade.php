@@ -397,7 +397,37 @@
                             &Uacute;ltima: <strong id="sync-adj-ultima" class="tabular-nums">—</strong>
                         </div>
                     </div>
-                    <div id="sync-adj-limpieza" class="small text-muted mb-2 d-none"></div>
+                    <div id="sync-adj-limpieza-wrap" class="border-top pt-2 mt-2 d-none">
+                        <div class="fw-semibold small mb-2">
+                            <i class="bi bi-trash"></i> Limpieza adjuntos cerrados
+                            <span id="sync-adj-purge-badge" class="badge text-bg-secondary ms-1">—</span>
+                        </div>
+                        <div id="sync-adj-purge-actual" class="small mb-2 d-none" role="status">
+                            <i class="bi bi-arrow-right-circle text-info"></i>
+                            Eliminando cotizaci&oacute;n:
+                            <strong id="sync-adj-purge-actual-codigo" class="font-monospace tabular-nums">—</strong>
+                            <span id="sync-adj-purge-actual-progreso" class="text-muted ms-1 tabular-nums">(0/0)</span>
+                        </div>
+                        <div id="sync-adj-purge-meta" class="d-flex flex-wrap gap-3 align-items-center small mb-2 d-none">
+                            <div class="text-nowrap">
+                                <i class="bi bi-clock"></i>
+                                Inicio: <strong id="sync-adj-purge-inicio" class="tabular-nums">—</strong>
+                            </div>
+                            <div class="text-nowrap">
+                                <i class="bi bi-flag"></i>
+                                Fin: <strong id="sync-adj-purge-fin" class="tabular-nums">—</strong>
+                            </div>
+                            <div class="text-nowrap">
+                                <i class="bi bi-hourglass-split"></i>
+                                Tiempo: <strong id="sync-adj-purge-duracion" class="tabular-nums">—</strong>
+                            </div>
+                            <div class="text-nowrap">
+                                <i class="bi bi-activity"></i>
+                                &Uacute;ltima: <strong id="sync-adj-purge-ultima" class="tabular-nums">—</strong>
+                            </div>
+                        </div>
+                        <div id="sync-adj-limpieza" class="small text-muted mb-2"></div>
+                    </div>
                     <div id="sync-adj-recientes" class="small mb-2 d-none">
                         <div class="fw-semibold mb-1">Últimos procesados</div>
                         <ul id="sync-adj-recientes-lista" class="list-unstyled mb-0 font-monospace"></ul>
@@ -1920,6 +1950,9 @@
             const pasoActual = (corrida && corrida.paso_actual && typeof corrida.paso_actual === 'object')
                 ? corrida.paso_actual
                 : null;
+            const purgePasoActual = (purge && purge.paso_actual && typeof purge.paso_actual === 'object')
+                ? purge.paso_actual
+                : null;
             const r = (data && data.resumen && typeof data.resumen === 'object') ? data.resumen : {};
             const total = Number(r.total) || 0;
             const consultados = Number(r.consultados) || 0;
@@ -1966,6 +1999,15 @@
                     } else {
                         resumenEl.textContent = `${msg} (${proc}/${tot})`;
                     }
+                } else if (purgeActivo) {
+                    const codPurge = String(purgePasoActual?.codigo || '').trim();
+                    const idxPurge = Number(purgePasoActual?.indice) || 0;
+                    const totPurge = Number(purgePasoActual?.total) || Number(purge?.total_pasos) || 0;
+                    if (codPurge && codPurge !== '—') {
+                        resumenEl.textContent = `Limpieza: eliminando ${codPurge} (${idxPurge}/${totPurge})`;
+                    } else {
+                        resumenEl.textContent = String(purge?.mensaje || 'Limpieza de adjuntos cerrados…');
+                    }
                 } else if (r.configurado === false) {
                     resumenEl.textContent = 'R2 adjuntos no configurado.';
                 } else if (total === 0 && consultados === 0) {
@@ -1979,8 +2021,6 @@
             }
             adjInicioMs = corrida ? msDeIso(corrida.inicio) : null;
             adjFinMs = corrida && corrida.estado !== 'running' ? msDeIso(corrida.fin) : null;
-            purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
-            purgeFinMs = purge ? msDeIso(purge.fin) : null;
             if (metaEl) {
                 const mostrarMeta = Boolean(
                     corrida && (adjInicioMs || adjFinMs || corridaRunning || corrida.estado === 'completed'),
@@ -2031,34 +2071,105 @@
                 }
             }
             if (limpiezaEl) {
+                const purgeWrap = document.getElementById('sync-adj-limpieza-wrap');
+                const purgeBadge = document.getElementById('sync-adj-purge-badge');
+                const purgeActualEl = document.getElementById('sync-adj-purge-actual');
+                const purgeActualCodigoEl = document.getElementById('sync-adj-purge-actual-codigo');
+                const purgeActualProgresoEl = document.getElementById('sync-adj-purge-actual-progreso');
+                const purgeMetaEl = document.getElementById('sync-adj-purge-meta');
+                const purgeInicioEl = document.getElementById('sync-adj-purge-inicio');
+                const purgeFinEl = document.getElementById('sync-adj-purge-fin');
+                const purgeDuracionEl = document.getElementById('sync-adj-purge-duracion');
+                const purgeUltimaEl = document.getElementById('sync-adj-purge-ultima');
+                const purgeTieneDatos = Boolean(
+                    purge && (
+                        purgeActivo
+                        || purge.inicio
+                        || purge.fin
+                        || String(purge.mensaje || '').trim() !== ''
+                    ),
+                );
+
+                if (purgeWrap) {
+                    purgeWrap.classList.toggle('d-none', !purgeTieneDatos);
+                }
+                if (purgeBadge) {
+                    if (purgeActivo) {
+                        purgeBadge.textContent = purge.estado === 'pending' ? 'encolada' : 'en curso';
+                        purgeBadge.className = 'badge ms-1 ' + (purge.estado === 'pending' ? 'text-bg-secondary' : 'text-bg-info');
+                    } else if (purge?.estado === 'error') {
+                        purgeBadge.textContent = 'con error';
+                        purgeBadge.className = 'badge ms-1 text-bg-danger';
+                    } else if (purge?.estado === 'completed' || purge?.estado === 'skipped') {
+                        purgeBadge.textContent = 'terminada';
+                        purgeBadge.className = 'badge ms-1 text-bg-success';
+                    } else {
+                        purgeBadge.textContent = '—';
+                        purgeBadge.className = 'badge ms-1 text-bg-secondary';
+                    }
+                }
+
+                purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
+                purgeFinMs = purge && !purgeActivo ? msDeIso(purge.fin) : null;
+
+                if (purgeMetaEl) {
+                    purgeMetaEl.classList.toggle('d-none', !purgeInicioMs && !purgeActivo && !purgeFinMs);
+                }
+                if (purgeInicioEl) {
+                    purgeInicioEl.textContent = purgeInicioMs ? formatearFechaHora(purge.inicio) : '—';
+                }
+                if (purgeFinEl) {
+                    purgeFinEl.textContent = purgeActivo ? '—' : (purgeFinMs ? formatearFechaHora(purge.fin) : '—');
+                }
+                if (purgeDuracionEl) {
+                    if (purgeActivo && purgeInicioMs) {
+                        purgeDuracionEl.textContent = formatearDuracionSegs(
+                            Math.max(0, Math.floor((Date.now() - purgeInicioMs) / 1000)),
+                        );
+                    } else {
+                        const purgeDuracionTexto = purge && (purge.duracion_texto
+                            || (purge.duracion_segundos != null ? formatearDuracionSegs(purge.duracion_segundos) : null));
+                        purgeDuracionEl.textContent = purgeDuracionTexto || '—';
+                    }
+                }
+                if (purgeUltimaEl) {
+                    const ultimaPurge = purge?.ultima_actividad ? new Date(purge.ultima_actividad) : null;
+                    purgeUltimaEl.textContent = ultimaPurge && !Number.isNaN(ultimaPurge.getTime())
+                        ? ultimaPurge.toLocaleTimeString('es-CL', { hour12: false })
+                        : '—';
+                }
+                if (purgeActualEl && purgeActualCodigoEl && purgeActualProgresoEl) {
+                    const codPurge = String(purgePasoActual?.codigo || '').trim();
+                    const indicePurge = Number(purgePasoActual?.indice) || 0;
+                    const totalPurge = Number(purgePasoActual?.total) || Number(purge?.total_pasos) || 0;
+                    if (purgeActivo && codPurge && codPurge !== '—') {
+                        purgeActualEl.classList.remove('d-none');
+                        purgeActualCodigoEl.textContent = codPurge;
+                        purgeActualProgresoEl.textContent = totalPurge > 0
+                            ? `(${indicePurge > 0 ? indicePurge : 1}/${totalPurge})`
+                            : '';
+                    } else if (purgeActivo && purge.estado === 'pending') {
+                        purgeActualEl.classList.remove('d-none');
+                        purgeActualCodigoEl.textContent = '—';
+                        purgeActualProgresoEl.textContent = '(esperando worker)';
+                    } else {
+                        purgeActualEl.classList.add('d-none');
+                        purgeActualCodigoEl.textContent = '—';
+                        purgeActualProgresoEl.textContent = '';
+                    }
+                }
+
                 const purgeMsg = String(purge?.mensaje || '').trim();
-                const purgeInicio = purge?.inicio_texto || (purge?.inicio ? formatearFechaHora(purge.inicio) : '');
-                const purgeFin = purge?.fin_texto || (purge?.fin ? formatearFechaHora(purge.fin) : '');
-                const purgeTiempo = String(purge?.duracion_texto || '').trim();
-                const partesPurge = [];
-                if (purgeActivo) {
-                    partesPurge.push(purgeMsg || 'Eliminando adjuntos de cotizaciones cerradas…');
-                } else if (purgeMsg) {
-                    partesPurge.push(purgeMsg);
-                }
-                if (purgeInicio) {
-                    partesPurge.push('Inicio ' + purgeInicio);
-                }
-                if (purgeFin) {
-                    partesPurge.push('Fin ' + purgeFin);
-                } else if (purgeActivo && purgeInicio) {
-                    partesPurge.push('Fin —');
-                }
-                if (purgeTiempo) {
-                    partesPurge.push('Tiempo ' + purgeTiempo);
-                }
-                if (partesPurge.length > 0) {
-                    limpiezaEl.textContent = partesPurge.join(' · ');
+                if (purgeMsg) {
+                    limpiezaEl.textContent = purgeMsg;
                     limpiezaEl.classList.remove('d-none');
                 } else {
                     limpiezaEl.textContent = '';
                     limpiezaEl.classList.add('d-none');
                 }
+            } else {
+                purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
+                purgeFinMs = purge && !purgeActivo ? msDeIso(purge.fin) : null;
             }
             if (bar) {
                 bar.style.width = `${pct}%`;
@@ -3308,6 +3419,7 @@
             }
             actualizarDuracionCampo(document.getElementById('vin-duracion'), vinInicioMs, vinFinMs);
             actualizarDuracionCampo(document.getElementById('sync-adj-duracion'), adjInicioMs, adjFinMs);
+            actualizarDuracionCampo(document.getElementById('sync-adj-purge-duracion'), purgeInicioMs, purgeFinMs);
         }
 
         function hayCorridaEnCurso() {
