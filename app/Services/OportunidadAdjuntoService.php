@@ -67,7 +67,9 @@ class OportunidadAdjuntoService
         $disk = Storage::disk($this->disk());
         $out = [];
 
-        foreach ($disk->files($carpeta) as $key) {
+        // allFiles: en R2, files() (no recursivo) a veces no lista el archivo
+        // si ya existe la carpeta _preview/ (delimiter / CommonPrefixes).
+        foreach ($disk->allFiles($carpeta) as $key) {
             $nombre = basename(str_replace('\\', '/', $key));
             if ($this->esArchivoInterno($key, $nombre)) {
                 continue;
@@ -77,6 +79,16 @@ class OportunidadAdjuntoService
                 'bytes' => (int) $disk->size($key),
                 'mime' => $this->mimeDesdeNombre($nombre),
             ];
+        }
+
+        if ($out === []) {
+            foreach ($this->nombresDesdeManifestDisco($disk, $carpeta.'/manifest.json') as $nombre) {
+                $out[] = [
+                    'nombre' => $nombre,
+                    'bytes' => 0,
+                    'mime' => $this->mimeDesdeNombre($nombre),
+                ];
+            }
         }
 
         usort($out, fn ($a, $b) => strcasecmp($a['nombre'], $b['nombre']));
@@ -110,6 +122,10 @@ class OportunidadAdjuntoService
             if (count($partes) < 2) {
                 continue;
             }
+            $relNorm = str_replace('\\', '/', $rel);
+            if (str_contains($relNorm, '/_preview/')) {
+                continue;
+            }
             $nombre = basename($partes[1]);
             if ($nombre === '') {
                 continue;
@@ -125,15 +141,24 @@ class OportunidadAdjuntoService
             }
             if ($nombre === 'manifest.json') {
                 $consultados[$codigo] = true;
+                $desdeManifest = $this->nombresDesdeManifestDisco($disk, $key);
+                if ($desdeManifest !== []) {
+                    $porCodigo[$codigo] = array_values(array_unique(array_merge(
+                        $porCodigo[$codigo] ?? [],
+                        $desdeManifest,
+                    )));
+                }
 
                 continue;
             }
-            if ($this->esArchivoInterno($key, $nombre) || str_starts_with($partes[1], '_preview/')) {
+            if ($this->esArchivoInterno($key, $nombre)) {
                 continue;
             }
             $consultados[$codigo] = true;
             $porCodigo[$codigo] ??= [];
-            $porCodigo[$codigo][] = $nombre;
+            if (! in_array($nombre, $porCodigo[$codigo], true)) {
+                $porCodigo[$codigo][] = $nombre;
+            }
         }
 
         foreach ($porCodigo as &$nombres) {
@@ -593,6 +618,35 @@ class OportunidadAdjuntoService
         }
 
         return str_contains(str_replace('\\', '/', $key), '/_preview/');
+    }
+
+    /**
+     * @param  \Illuminate\Contracts\Filesystem\Filesystem  $disk
+     * @return list<string>
+     */
+    private function nombresDesdeManifestDisco($disk, string $key): array
+    {
+        try {
+            if (! $disk->exists($key)) {
+                return [];
+            }
+            $raw = json_decode((string) $disk->get($key), true);
+        } catch (Throwable) {
+            return [];
+        }
+        if (! is_array($raw) || ! isset($raw['archivos']) || ! is_array($raw['archivos'])) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw['archivos'] as $nombre) {
+            $n = basename(str_replace('\\', '/', (string) $nombre));
+            if ($n === '' || $n === 'manifest.json' || $n === 'error.json') {
+                continue;
+            }
+            $out[] = $n;
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

@@ -3488,11 +3488,51 @@
         }
     }
 
+    function claveAdjuntosImportarCache(codigo) {
+        return 'cotiz.importar.adjuntos.' + String(codigo || '').toUpperCase();
+    }
+
+    function guardarAdjuntosImportarCache(codigo, archivos, consultado) {
+        try {
+            sessionStorage.setItem(claveAdjuntosImportarCache(codigo), JSON.stringify({
+                archivos,
+                consultado: !!consultado,
+            }));
+        } catch (_e) {
+            // sessionStorage no disponible
+        }
+    }
+
+    function restaurarAdjuntosImportarCache(codigo) {
+        try {
+            const raw = sessionStorage.getItem(claveAdjuntosImportarCache(codigo));
+            if (!raw) {
+                return false;
+            }
+            const data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.archivos) || data.archivos.length === 0) {
+                return false;
+            }
+            adjuntosImportarArchivos = data.archivos;
+            adjuntosImportarConsultado = !!data.consultado;
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
     async function cargarAdjuntosImportar() {
         if (!puedeAdjuntosImportar()) {
             return;
         }
         const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const teniaArchivos = adjuntosImportarArchivos.length > 0;
+        if (!teniaArchivos) {
+            restaurarAdjuntosImportarCache(codigo);
+            if (adjuntosImportarArchivos.length > 0) {
+                renderAdjuntosImportar();
+            }
+        }
         try {
             const res = await fetch(urlAdjuntosImportar(importarMpUrls.adjuntosListarBase, codigo), {
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -3500,15 +3540,23 @@
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.ok) {
-                adjuntosImportarConsultado = false;
-                adjuntosImportarArchivos = [];
+                if (adjuntosImportarArchivos.length === 0) {
+                    adjuntosImportarConsultado = false;
+                }
             } else {
                 adjuntosImportarConsultado = !!data.consultado;
-                adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
+                const archivos = Array.isArray(data.archivos) ? data.archivos : [];
+                if (archivos.length > 0 || adjuntosImportarArchivos.length === 0) {
+                    adjuntosImportarArchivos = archivos;
+                }
+                if (adjuntosImportarArchivos.length > 0) {
+                    guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, adjuntosImportarConsultado);
+                }
             }
         } catch (_e) {
-            adjuntosImportarConsultado = false;
-            adjuntosImportarArchivos = [];
+            if (adjuntosImportarArchivos.length === 0) {
+                adjuntosImportarConsultado = false;
+            }
         }
         renderAdjuntosImportar();
     }
@@ -3545,6 +3593,7 @@
             }
             adjuntosImportarConsultado = true;
             adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
+            guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, true);
             renderAdjuntosImportar();
             if (data.sin_adjuntos) {
                 await dlgAlert('No hay adjuntos en Mercado Público para esta cotización.', {

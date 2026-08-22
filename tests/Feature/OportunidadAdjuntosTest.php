@@ -133,7 +133,8 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('consultados.0', '1000-1-COT26')
             ->assertJsonPath('resumen.consultados', 1)
             ->assertJsonPath('resumen.con_archivos', 1)
-            ->assertJsonPath('resumen.fallos_count', 0);
+            ->assertJsonPath('resumen.fallos_count', 0)
+            ->assertJsonPath('archivos.1000-1-COT26.0', 'bases.pdf');
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
@@ -431,6 +432,31 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonCount(1, 'archivos')
             ->assertJsonPath('archivos.0.nombre', 'bases.pdf')
             ->assertJsonPath('consultado', true);
+    }
+
+    public function test_estado_conserva_nombres_si_existe_carpeta_preview(): void
+    {
+        $user = $this->superadmin();
+        $this->crearOportunidad('1000-1-COT26');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/Pedido.xlsx', 'xlsx-bytes');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/_preview/Pedido.xlsx.pdf', '%PDF-1.4 y');
+        Storage::disk('r2_adjuntos')->put('1000-1-COT26/manifest.json', json_encode([
+            'codigo' => '1000-1-COT26',
+            'archivos' => ['Pedido.xlsx'],
+        ]));
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.estado'))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('conteos.1000-1-COT26', 1)
+            ->assertJsonPath('archivos.1000-1-COT26.0', 'Pedido.xlsx');
+
+        $this->actingAs($user)
+            ->getJson(route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '1000-1-COT26']))
+            ->assertOk()
+            ->assertJsonCount(1, 'archivos')
+            ->assertJsonPath('archivos.0.nombre', 'Pedido.xlsx');
     }
 
     private function superadmin(): User

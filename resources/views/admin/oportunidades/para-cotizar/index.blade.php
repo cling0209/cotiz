@@ -742,6 +742,9 @@
         const VISITAS_STORAGE_KEY = filtrosUserId > 0 ?
             `cotiz.oportunidades.visitas.${filtrosUserId}` :
             '';
+        const ADJUNTOS_STORAGE_KEY = filtrosUserId > 0 ?
+            `cotiz.oportunidades.adjuntos.${filtrosUserId}` :
+            '';
         const mpApi = {
             baseUrl: @json($mpBaseUrl ?? ''),
             path: @json($mpPath ?? '/v2/compra-agil'),
@@ -1540,6 +1543,73 @@
             }
         }
 
+        function leerAdjuntosLocales() {
+            if (!ADJUNTOS_STORAGE_KEY) {
+                return null;
+            }
+            try {
+                const raw = sessionStorage.getItem(ADJUNTOS_STORAGE_KEY);
+                if (!raw) {
+                    return null;
+                }
+                const data = JSON.parse(raw);
+                return data && typeof data === 'object' ? data : null;
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        function guardarAdjuntosLocales() {
+            if (!ADJUNTOS_STORAGE_KEY) {
+                return;
+            }
+            try {
+                sessionStorage.setItem(ADJUNTOS_STORAGE_KEY, JSON.stringify({
+                    conteos: { ...adjuntosPorCodigo },
+                    archivos: { ...adjuntosArchivosPorCodigo },
+                    consultados: Object.keys(adjuntosConsultados).filter((k) => adjuntosConsultados[k]),
+                }));
+            } catch (_e) {
+                // sessionStorage no disponible
+            }
+        }
+
+        function aplicarMapaAdjuntos(destino, fuente) {
+            Object.keys(fuente).forEach((k) => {
+                destino[k] = fuente[k];
+            });
+            Object.keys(destino).forEach((k) => {
+                if (!Object.prototype.hasOwnProperty.call(fuente, k)) {
+                    delete destino[k];
+                }
+            });
+        }
+
+        function restaurarAdjuntosLocales() {
+            const data = leerAdjuntosLocales();
+            if (!data) {
+                return false;
+            }
+            const conteos = data.conteos && typeof data.conteos === 'object' ? data.conteos : {};
+            const archivos = data.archivos && typeof data.archivos === 'object' ? data.archivos : {};
+            Object.entries(conteos).forEach(([cod, n]) => {
+                adjuntosPorCodigo[String(cod).toUpperCase()] = Number(n) || 0;
+            });
+            Object.entries(archivos).forEach(([cod, lista]) => {
+                adjuntosArchivosPorCodigo[String(cod).toUpperCase()] = Array.isArray(lista)
+                    ? lista.map((x) => String(x || '')).filter(Boolean)
+                    : [];
+            });
+            (Array.isArray(data.consultados) ? data.consultados : []).forEach((cod) => {
+                adjuntosConsultados[String(cod).toUpperCase()] = true;
+            });
+            Object.keys(adjuntosPorCodigo).forEach((cod) => {
+                adjuntosConsultados[cod] = true;
+            });
+            return Object.keys(adjuntosPorCodigo).length > 0
+                || Object.keys(adjuntosArchivosPorCodigo).length > 0;
+        }
+
         function incrementarVisitaLocal(codigo) {
             const codigoNorm = String(codigo || '').toUpperCase().trim();
             if (!codigoNorm || !VISITAS_STORAGE_KEY || !filtrosUserId) {
@@ -1832,25 +1902,30 @@
                     });
                     return;
                 }
-                Object.keys(adjuntosPorCodigo).forEach((k) => { delete adjuntosPorCodigo[k]; });
-                Object.keys(adjuntosArchivosPorCodigo).forEach((k) => { delete adjuntosArchivosPorCodigo[k]; });
-                Object.keys(adjuntosConsultados).forEach((k) => { delete adjuntosConsultados[k]; });
+                const nuevosConteos = {};
+                const nuevosArchivos = {};
+                const nuevosConsultados = {};
                 Object.entries(data.conteos || {}).forEach(([cod, n]) => {
-                    adjuntosPorCodigo[String(cod).toUpperCase()] = Number(n) || 0;
+                    nuevosConteos[String(cod).toUpperCase()] = Number(n) || 0;
                 });
                 if (data.archivos && typeof data.archivos === 'object') {
                     Object.entries(data.archivos).forEach(([cod, lista]) => {
-                        adjuntosArchivosPorCodigo[String(cod).toUpperCase()] = Array.isArray(lista)
+                        const codigo = String(cod).toUpperCase();
+                        nuevosArchivos[codigo] = Array.isArray(lista)
                             ? lista.map((x) => String(x || '')).filter(Boolean)
                             : [];
                     });
                 }
                 (Array.isArray(data.consultados) ? data.consultados : []).forEach((cod) => {
-                    adjuntosConsultados[String(cod).toUpperCase()] = true;
+                    nuevosConsultados[String(cod).toUpperCase()] = true;
                 });
-                Object.keys(adjuntosPorCodigo).forEach((cod) => {
-                    adjuntosConsultados[cod] = true;
+                Object.keys(nuevosConteos).forEach((cod) => {
+                    nuevosConsultados[cod] = true;
                 });
+                aplicarMapaAdjuntos(adjuntosPorCodigo, nuevosConteos);
+                aplicarMapaAdjuntos(adjuntosArchivosPorCodigo, nuevosArchivos);
+                aplicarMapaAdjuntos(adjuntosConsultados, nuevosConsultados);
+                guardarAdjuntosLocales();
                 pintarPanelAdjuntos(data);
                 renderTabla(false);
             } catch (_e) {
@@ -1902,6 +1977,7 @@
                 adjuntosArchivosPorCodigo[codigo] = nombresResp;
                 adjuntosPorCodigo[codigo] = nombresResp.length || (Number(data.guardados) || 0);
                 adjuntosConsultados[codigo] = true;
+                guardarAdjuntosLocales();
                 renderTabla(false);
                 if (data.sin_adjuntos) {
                     if (window.AdminDialog?.alert) {
@@ -2007,6 +2083,8 @@
                 const archivos = Array.isArray(data.archivos) ? data.archivos : [];
                 adjuntosPorCodigo[codigo] = archivos.length;
                 adjuntosArchivosPorCodigo[codigo] = archivos.map((a) => String(a.nombre || '')).filter(Boolean);
+                adjuntosConsultados[codigo] = true;
+                guardarAdjuntosLocales();
                 renderTabla(false);
                 if (archivos.length === 0) {
                     if (vacio) {
@@ -2237,9 +2315,15 @@
                     </button>`
                     : '';
                 const listaAdjuntos = (puedeAdjuntos && codigo && nombresAdj.length > 0)
-                    ? `<div class="d-flex flex-column align-items-start gap-0 mt-1">${nombresAdj.map((nom) =>
-                        `<button type="button" class="btn btn-link btn-sm p-0 text-start text-break btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" data-archivo="${escapeHtml(nom)}" title="${escapeHtml(nom)}">${escapeHtml(nom)}</button>`
-                    ).join('')}</div>`
+                    ? `<div class="d-flex flex-column align-items-start gap-1 mt-1">${nombresAdj.map((nom) => {
+                        const dl = urls.adjuntosVerBase
+                            ? `${urlAdjuntos(urls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nom)}&descargar=1`
+                            : '';
+                        return `<div class="d-flex flex-wrap align-items-center gap-2">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-start text-break btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}" data-archivo="${escapeHtml(nom)}" title="${escapeHtml(nom)}">${escapeHtml(nom)}</button>
+                            ${dl ? `<a class="btn btn-outline-secondary btn-sm py-0 flex-shrink-0" href="${escapeHtml(dl)}" data-no-loader title="Descargar ${escapeHtml(nom)}"><i class="bi bi-download"></i> Descargar</a>` : ''}
+                        </div>`;
+                    }).join('')}</div>`
                     : ((puedeAdjuntos && codigo && nAdj > 0)
                         ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
                         : '');
@@ -4641,6 +4725,9 @@
 
         // Al abrir: UI liviana; listado/items se piden por AJAX (no bloquean el HTML).
         restaurarFiltros();
+        if (puedeAdjuntos) {
+            restaurarAdjuntosLocales();
+        }
         if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
             cargarItems(guardadasIniciales);
             sincronizarVisitasLocalesEnMapa();
@@ -4716,6 +4803,7 @@
             setSyncDetalleAbierto('adj', false);
         }
         if (puedeAdjuntos) {
+            restaurarAdjuntosLocales();
             cargarConteosAdjuntos();
         }
     })();
