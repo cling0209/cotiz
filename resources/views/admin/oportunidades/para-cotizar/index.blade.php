@@ -397,10 +397,10 @@
                             &Uacute;ltima: <strong id="sync-adj-ultima" class="tabular-nums">—</strong>
                         </div>
                     </div>
-                    <div id="sync-adj-limpieza-wrap" class="border-top pt-2 mt-2 d-none">
+                    <div id="sync-adj-limpieza-wrap" class="border-top pt-2 mt-2">
                         <div class="fw-semibold small mb-2">
                             <i class="bi bi-trash"></i> Limpieza adjuntos cerrados
-                            <span id="sync-adj-purge-badge" class="badge text-bg-secondary ms-1">—</span>
+                            <span id="sync-adj-purge-badge" class="badge text-bg-secondary ms-1">pendiente</span>
                         </div>
                         <div id="sync-adj-purge-actual" class="small mb-2 d-none" role="status">
                             <i class="bi bi-arrow-right-circle text-info"></i>
@@ -426,15 +426,17 @@
                                 &Uacute;ltima: <strong id="sync-adj-purge-ultima" class="tabular-nums">—</strong>
                             </div>
                         </div>
-                        <div id="sync-adj-limpieza" class="small text-muted mb-2"></div>
+                        <div id="sync-adj-limpieza" class="small text-muted mb-2">Pendiente — inicia autom&aacute;ticamente tras procesar adjuntos MP.</div>
+                        <div id="sync-adj-purge-eliminados" class="small mb-0">
+                            <div class="fw-semibold mb-1">Últimos eliminados</div>
+                            <ul id="sync-adj-purge-eliminados-lista" class="list-unstyled mb-0 font-monospace">
+                                <li id="sync-adj-purge-eliminados-vacio" class="text-muted fst-italic">Aún sin eliminaciones en esta corrida.</li>
+                            </ul>
+                        </div>
                     </div>
                     <div id="sync-adj-recientes" class="small mb-2 d-none">
                         <div class="fw-semibold mb-1">Últimos procesados</div>
                         <ul id="sync-adj-recientes-lista" class="list-unstyled mb-0 font-monospace"></ul>
-                    </div>
-                    <div id="sync-adj-purge-eliminados" class="small mb-2 d-none">
-                        <div class="fw-semibold mb-1">Últimos eliminados (purge)</div>
-                        <ul id="sync-adj-purge-eliminados-lista" class="list-unstyled mb-0 font-monospace"></ul>
                     </div>
                     <div id="sync-adj-siguiente-proceso" class="alert alert-info py-2 px-3 small mb-2 d-none" role="status"></div>
                     <div id="sync-adj-error" class="alert alert-danger py-1 px-2 small d-none mb-2"></div>
@@ -1926,6 +1928,8 @@
             }
         }
 
+        const PURGE_MENSAJE_PENDIENTE = 'Pendiente — inicia automáticamente tras procesar adjuntos MP.';
+
         function pintarPanelAdjuntos(data) {
             const card = document.getElementById('sync-adjuntos-estado');
             if (!card) return;
@@ -2081,17 +2085,8 @@
                 const purgeFinEl = document.getElementById('sync-adj-purge-fin');
                 const purgeDuracionEl = document.getElementById('sync-adj-purge-duracion');
                 const purgeUltimaEl = document.getElementById('sync-adj-purge-ultima');
-                const purgeTieneDatos = Boolean(
-                    purge && (
-                        purgeActivo
-                        || purge.inicio
-                        || purge.fin
-                        || String(purge.mensaje || '').trim() !== ''
-                    ),
-                );
-
                 if (purgeWrap) {
-                    purgeWrap.classList.toggle('d-none', !purgeTieneDatos);
+                    purgeWrap.classList.remove('d-none');
                 }
                 if (purgeBadge) {
                     if (purgeActivo) {
@@ -2104,7 +2099,7 @@
                         purgeBadge.textContent = 'terminada';
                         purgeBadge.className = 'badge ms-1 text-bg-success';
                     } else {
-                        purgeBadge.textContent = '—';
+                        purgeBadge.textContent = 'pendiente';
                         purgeBadge.className = 'badge ms-1 text-bg-secondary';
                     }
                 }
@@ -2162,11 +2157,16 @@
                 const purgeMsg = String(purge?.mensaje || '').trim();
                 if (purgeMsg) {
                     limpiezaEl.textContent = purgeMsg;
-                    limpiezaEl.classList.remove('d-none');
+                } else if (purgeActivo) {
+                    limpiezaEl.textContent = purge?.estado === 'pending'
+                        ? 'Limpieza encolada; esperando worker…'
+                        : 'Eliminando adjuntos de cotizaciones cerradas…';
+                } else if (corridaRunning) {
+                    limpiezaEl.textContent = 'En espera — corre al terminar la descarga de adjuntos MP.';
                 } else {
-                    limpiezaEl.textContent = '';
-                    limpiezaEl.classList.add('d-none');
+                    limpiezaEl.textContent = PURGE_MENSAJE_PENDIENTE;
                 }
+                limpiezaEl.classList.remove('d-none');
             } else {
                 purgeInicioMs = purge ? msDeIso(purge.inicio) : null;
                 purgeFinMs = purge && !purgeActivo ? msDeIso(purge.fin) : null;
@@ -2238,15 +2238,13 @@
                     recientesLista.innerHTML = '';
                 }
             }
-            const purgeElimWrap = document.getElementById('sync-adj-purge-eliminados');
             const purgeElimLista = document.getElementById('sync-adj-purge-eliminados-lista');
             const ultimosElim = Array.isArray(purge?.ultimos_eliminados) ? purge.ultimos_eliminados : [];
-            if (purgeElimWrap && purgeElimLista) {
-                purgeElimWrap.classList.toggle('d-none', ultimosElim.length === 0);
+            if (purgeElimLista) {
                 if (ultimosElim.length > 0) {
                     pintarListaRecientes(purgeElimLista, ultimosElim, 'purge');
                 } else {
-                    purgeElimLista.innerHTML = '';
+                    purgeElimLista.innerHTML = '<li class="text-muted fst-italic">Aún sin eliminaciones en esta corrida.</li>';
                 }
             }
             pintarCierrePipeline(document.getElementById('sync-adj-siguiente-proceso'), corrida?.cierre || purge?.cierre || null);
