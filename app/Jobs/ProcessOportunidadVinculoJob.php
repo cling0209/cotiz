@@ -18,11 +18,11 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 43200;
+    public int $timeout = 180;
 
-    public int $tries = 5;
+    public int $tries = 1;
 
-    public int $maxExceptions = 5;
+    public int $maxExceptions = 1;
 
     public function __construct(
         public int $corridaId,
@@ -36,13 +36,13 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
         return [
             (new WithoutOverlapping('oportunidad-vinculo-'.$this->corridaId))
                 ->releaseAfter(30)
-                ->expireAfter(300),
+                ->expireAfter(180),
         ];
     }
 
     public function retryUntil(): \DateTime
     {
-        return now()->addHours(12);
+        return now()->addMinutes(10);
     }
 
     public function handle(OportunidadVinculoService $vinculos): void
@@ -89,16 +89,16 @@ class ProcessOportunidadVinculoJob implements ShouldQueue
             'message' => $exception?->getMessage(),
         ]);
 
-        $corrida = OportunidadVinculoCorrida::query()->find($this->corridaId);
-        if ($corrida === null || $corrida->estado !== OportunidadVinculoService::ESTADO_RUNNING) {
-            return;
+        try {
+            app(OportunidadVinculoService::class)->continuarTrasInterrupcionWorker(
+                $this->corridaId,
+                $exception?->getMessage() ?: 'Worker interrumpido; se continúa con la siguiente cotización.',
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo continuar la vinculación tras fallo del worker', [
+                'corrida_id' => $this->corridaId,
+                'message' => $e->getMessage(),
+            ]);
         }
-
-        $corrida->fill([
-            'mensaje' => 'Worker interrumpido; la vinculación se retomará desde el paso '
-                .((int) $corrida->pasos_procesados + 1).'.',
-        ])->save();
-
-        self::dispatch($corrida->id)->delay(now()->addMinute());
     }
 }

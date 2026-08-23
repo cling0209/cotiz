@@ -18,19 +18,28 @@ class CorridaEstado
             return null;
         }
 
-        $ultimo = $errores[array_key_last($errores)];
-        if (! is_array($ultimo)) {
-            $txt = trim((string) $ultimo);
+        foreach (array_reverse(array_values($errores)) as $item) {
+            if (! is_array($item)) {
+                $txt = trim((string) $item);
+                if ($txt === '') {
+                    continue;
+                }
 
-            return $txt === '' ? null : ['mensaje' => $txt];
+                return ['mensaje' => $txt];
+            }
+
+            $mensaje = trim((string) ($item['mensaje'] ?? $item['error'] ?? $item['message'] ?? ''));
+            if ($mensaje === '' && ! empty($item['encadenada'])) {
+                continue;
+            }
+            if ($mensaje === '') {
+                $mensaje = 'Error sin detalle';
+            }
+
+            return array_merge($item, ['mensaje' => $mensaje]);
         }
 
-        $mensaje = trim((string) ($ultimo['mensaje'] ?? $ultimo['error'] ?? $ultimo['message'] ?? ''));
-        if ($mensaje === '') {
-            $mensaje = 'Error sin detalle';
-        }
-
-        return array_merge($ultimo, ['mensaje' => $mensaje]);
+        return null;
     }
 
     public static function duracionSegundos(mixed $inicio, mixed $fin): ?int

@@ -178,6 +178,7 @@ class OportunidadVinculoService
     /**
      * Si la búsqueda ya terminó y aún hay cotizaciones sin vincular, encola (o retoma) el 2.º proceso.
      * Sirve de recuperación cuando el encolado al finalizar falló o el plan del día quedó vacío.
+     * No reabre una corrida encadenada solo por fallidas MP: eso loopearía el mismo error.
      */
     public function asegurarTrasBusquedaCompletada(mixed $fechaBusqueda, string $usuario = 'sistema'): ?OportunidadVinculoCorrida
     {
@@ -186,6 +187,25 @@ class OportunidadVinculoService
             $this->liberarCorridaColgadaIfNeeded($enCurso);
 
             return $this->corridaEnCurso() ?? $enCurso->fresh() ?? $enCurso;
+        }
+
+        $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
+        $ultima = $this->ultimaCorrida();
+        if ($ultima !== null
+            && $this->oportunidades->normalizarFechaBusqueda($ultima->fecha_busqueda) === $dia) {
+            if ($ultima->estado === self::ESTADO_COMPLETED) {
+                if ($this->corridaEsEncadenada($ultima)) {
+                    if ($this->contarPendientesSafe($dia) === 0) {
+                        return null;
+                    }
+
+                    return $this->iniciarConDetalle($dia, $usuario, false)['corrida'];
+                }
+
+                return $this->iniciarConDetalle($dia, $usuario, true)['corrida'];
+            }
+
+            return null;
         }
 
         return $this->iniciarTrasBusqueda($fechaBusqueda, $usuario);
@@ -443,7 +463,6 @@ class OportunidadVinculoService
         $inicioMs = microtime(true);
         try {
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            $this->limpiarFalloVinculoParaReintento((string) ($paso['codigo'] ?? ''), $fechaPaso);
             $resultado = $this->vincularCodigo((string) $paso['codigo'], $fechaPaso);
             $pasos = is_array($corrida->fresh()?->plan_json) ? $corrida->fresh()->plan_json : $pasos;
             $pasos[$indice]['estado'] = self::PASO_OK;
@@ -1156,7 +1175,8 @@ class OportunidadVinculoService
             || str_contains($m, 'timeout')
             || str_contains($m, 'no respondió')
             || str_contains($m, 'connection refused')
-            || str_contains($m, 'could not resolve');
+            || str_contains($m, 'could not resolve')
+            || str_contains($m, 'paso colgado');
     }
 
     private function limpiarFalloVinculoParaReintento(string $codigo, mixed $fechaBusqueda = null): void
@@ -1430,6 +1450,43 @@ class OportunidadVinculoService
     }
 
     /**
+     * El worker murió a mitad de un paso: márcarlo fallido y seguir con la siguiente cotización
+     * (o el siguiente proceso si no queda nada en el plan).
+     */
+    public function continuarTrasInterrupcionWorker(int $corridaId, ?string $mensaje = null): void
+    {
+        $corrida = OportunidadVinculoCorrida::query()->find($corridaId);
+        if ($corrida === null || $corrida->estado !== self::ESTADO_RUNNING) {
+            return;
+        }
+
+        $mensaje = trim((string) $mensaje);
+        if ($mensaje === '') {
+            $mensaje = 'Worker interrumpido; se marcó el paso fallido para continuar.';
+        }
+
+        $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
+        [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, 0, $corrida);
+
+        $corrida->fill([
+            'plan_json' => $pasos,
+            'errores_json' => $errores,
+            'pasos_procesados' => $this->contarTerminados($pasos),
+            'pasos_fallidos' => (int) $corrida->pasos_fallidos + $fallidosExtra,
+            'mensaje' => mb_substr($mensaje, 0, 500),
+        ])->save();
+
+        if ($this->indiceSiguientePendiente($pasos) === null) {
+            $this->finalizar($corrida->fresh() ?? $corrida);
+
+            return;
+        }
+
+        ProcessOportunidadVinculoJob::dispatch($corrida->id);
+    }
+
+    /**
      * Cancela la corrida de vinculación en curso para poder iniciar otra.
      * Los pasos ya ok/failed se conservan; pending/running quedan cancelled (siguen pendientes de vincular).
      */
@@ -1492,11 +1549,13 @@ class OportunidadVinculoService
         $pasos = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $errores = is_array($corrida->errores_json) ? $corrida->errores_json : [];
         $fallidosExtra = 0;
-        if ($forzar || ($jobReservadoColgado && ! $corridaStalled)) {
-            $pasos = $this->reiniciarPasosRunningPendientes($pasos);
-        } else {
-            [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, $stalledSeg, $corrida);
+        if ($jobReservadoColgado && ! $corridaStalled && ! $forzar) {
+            // El worker sigue en el paso (p. ej. llamada a MP). No resetear a pending:
+            // eso reintenta la misma cotización en loop.
+            return false;
         }
+
+        [$pasos, $fallidosExtra, $errores] = $this->marcarPasosRunningColgados($pasos, $errores, $forzar ? 0 : $stalledSeg, $corrida);
 
         $pendientes = $this->contarJobsVinculoPendientes($corrida->id);
         $reservados = $this->contarJobsVinculoReservados($corrida->id);
@@ -1619,23 +1678,6 @@ class OportunidadVinculoService
         return (int) $this->filtrarJobsVinculoPorCorrida($query, $corridaId)->count() > 0;
     }
 
-    /**
-     * @param  list<array<string, mixed>>  $pasos
-     * @return list<array<string, mixed>>
-     */
-    private function reiniciarPasosRunningPendientes(array $pasos): array
-    {
-        foreach ($pasos as $i => $paso) {
-            if (! is_array($paso) || ($paso['estado'] ?? '') !== self::PASO_RUNNING) {
-                continue;
-            }
-            $pasos[$i]['estado'] = self::PASO_PENDING;
-            unset($pasos[$i]['inicio'], $pasos[$i]['fin'], $pasos[$i]['error']);
-        }
-
-        return $pasos;
-    }
-
     public function jobVinculoEncolado(int $corridaId): bool
     {
         return $this->contarJobsVinculoPendientes($corridaId) > 0
@@ -1715,17 +1757,13 @@ class OportunidadVinculoService
                 }
             }
 
-            if (! $colgado) {
-                // Worker murió entre pasos: devolver a pending para reintentar.
-                $pasos[$i]['estado'] = self::PASO_PENDING;
-                unset($pasos[$i]['inicio']);
-
+            if (! $colgado && $stalledSeg > 0) {
                 continue;
             }
 
             $codigo = (string) ($paso['codigo'] ?? '');
             $fechaPaso = $paso['fecha_busqueda'] ?? $corrida->fecha_busqueda;
-            $this->intentarCerrarTrasFallo(
+            $this->marcarFalloVinculo(
                 $codigo,
                 $fechaPaso,
                 'Paso colgado (sin avance); se marcó fallido para continuar.',

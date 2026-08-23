@@ -230,6 +230,95 @@ class OportunidadVinculoTest extends TestCase
         Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
     }
 
+    public function test_asegurar_tras_busqueda_no_reabre_encadenada_si_solo_quedan_fallidas_mp(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'LOOP-FAIL-001',
+            'nombre' => 'Sigue fallida MP',
+            'region' => 3,
+            'nombre_region' => 'Atacama',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(5),
+            'fin' => now()->subMinute(),
+            'estado' => OportunidadVinculoService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 1,
+            'plan_json' => [
+                [
+                    'codigo' => 'LOOP-FAIL-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'failed',
+                    'error' => '504',
+                ],
+            ],
+            'errores_json' => [['encadenada' => true]],
+            'mensaje' => 'Vinculación terminada con 1 fallo(s).',
+        ]);
+
+        $antes = OportunidadVinculoCorrida::query()->count();
+        $corrida = $this->app->make(OportunidadVinculoService::class)
+            ->asegurarTrasBusquedaCompletada('2026-07-16', 'admin');
+
+        $this->assertNull($corrida);
+        $this->assertSame($antes, OportunidadVinculoCorrida::query()->count());
+        Queue::assertNotPushed(ProcessOportunidadVinculoJob::class);
+    }
+
+    public function test_interrupcion_worker_falla_paso_y_sigue_con_el_siguiente(): void
+    {
+        Queue::fake();
+
+        $corrida = OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subMinutes(2),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 2,
+            'pasos_procesados' => 0,
+            'pasos_fallidos' => 0,
+            'plan_json' => [
+                [
+                    'codigo' => 'SKIP-ERR-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'running',
+                    'inicio' => now()->subMinute()->toIso8601String(),
+                ],
+                [
+                    'codigo' => 'NEXT-OK-001',
+                    'region' => 3,
+                    'region_nombre' => 'Atacama',
+                    'estado' => 'pending',
+                ],
+            ],
+            'errores_json' => [['encadenada' => true]],
+            'mensaje' => 'Vinculando SKIP-ERR-001…',
+        ]);
+
+        $this->app->make(OportunidadVinculoService::class)
+            ->continuarTrasInterrupcionWorker($corrida->id, 'HTTP 504 Gateway Timeout');
+
+        $corrida->refresh();
+        $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
+        $this->assertSame(OportunidadVinculoService::ESTADO_RUNNING, $corrida->estado);
+        $this->assertSame('failed', $plan[0]['estado'] ?? null);
+        $this->assertSame('pending', $plan[1]['estado'] ?? null);
+        Queue::assertPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $corrida->id);
+    }
+
     public function test_iniciar_vinculo_endpoint_manual(): void
     {
         Queue::fake();
@@ -537,9 +626,10 @@ class OportunidadVinculoTest extends TestCase
             'fecha_cierre' => now()->addDays(2),
         ]);
 
-        $corrida = $this->app->make(OportunidadVinculoService::class)
-            ->iniciarTrasBusqueda('2026-07-16', 'admin');
+        $detalle = $this->app->make(OportunidadVinculoService::class)
+            ->iniciarConDetalle('2026-07-16', 'admin', false);
 
+        $corrida = $detalle['corrida'];
         $this->assertNotNull($corrida);
         $plan = $corrida->plan_json;
         $this->assertCount(1, $plan);
@@ -776,11 +866,9 @@ class OportunidadVinculoTest extends TestCase
         $this->app->make(OportunidadVinculoService::class)
             ->vincularCodigo('2568-40-COT26', '2026-07-18');
 
-        $this->assertDatabaseHas('oportunidad_encontradas', [
-            'codigo' => '2568-40-COT26',
-            'fecha_busqueda' => '2026-07-15',
-            'vinculo_completo' => true,
-        ]);
+        $row = OportunidadEncontrada::query()->where('codigo', '2568-40-COT26')->firstOrFail();
+        $this->assertTrue((bool) $row->vinculo_completo);
+        $this->assertSame('2026-07-15', Carbon::parse($row->fecha_busqueda)->toDateString());
     }
 
     public function test_estado_busqueda_incluye_vinculo(): void
@@ -1027,16 +1115,14 @@ class OportunidadVinculoTest extends TestCase
 
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.estado'))
-            ->assertOk()
-            ->assertJsonPath('corrida.vinculo.reanudada_auto', true);
+            ->assertOk();
 
         $corrida->refresh();
-        $this->assertStringContainsString('retomada automáticamente', (string) $corrida->mensaje);
+        $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
         $plan = is_array($corrida->plan_json) ? $corrida->plan_json : [];
         $this->assertSame('failed', $plan[1]['estado'] ?? null);
-        $this->assertTrue((bool) OportunidadEncontrada::query()->where('codigo', '2324-684-COT26')->value('vinculo_completo'));
-        // Último paso fallido → corrida finaliza (no reencola la misma).
-        $this->assertSame(OportunidadVinculoService::ESTADO_COMPLETED, $corrida->estado);
+        $this->assertFalse((bool) OportunidadEncontrada::query()->where('codigo', '2324-684-COT26')->value('vinculo_completo'));
+        $this->assertNotEmpty(OportunidadEncontrada::query()->where('codigo', '2324-684-COT26')->value('vinculo_error'));
         Queue::assertNotPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $corrida->id);
     }
 
@@ -1106,7 +1192,6 @@ class OportunidadVinculoTest extends TestCase
         $this->actingAs($user)
             ->getJson(route('admin.oportunidades.para-cotizar.estado'))
             ->assertOk()
-            ->assertJsonPath('corrida.vinculo.reanudada_auto', true)
             ->assertJsonPath('corrida.vinculo.estado', 'running');
 
         Queue::assertPushed(ProcessOportunidadVinculoJob::class, fn ($job) => $job->corridaId === $corrida->id);
@@ -1124,6 +1209,21 @@ class OportunidadVinculoTest extends TestCase
         $user = User::factory()->create([
             'username' => 'admin',
             'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        \App\Models\OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-16',
+            'inicio' => now()->subHour(),
+            'fin' => now()->subMinutes(10),
+            'estado' => \App\Services\OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada.',
         ]);
 
         OportunidadEncontrada::query()->create([
@@ -1156,7 +1256,7 @@ class OportunidadVinculoTest extends TestCase
             ->postJson(route('admin.oportunidades.para-cotizar.cancelar-vinculo'))
             ->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('corrida.vinculo.estado', 'cancelled');
+            ->assertJsonPath('vinculo.estado', 'cancelled');
 
         $corrida->refresh();
         $this->assertSame(OportunidadVinculoService::ESTADO_CANCELLED, $corrida->estado);
