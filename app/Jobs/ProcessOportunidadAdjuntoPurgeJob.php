@@ -5,13 +5,14 @@ namespace App\Jobs;
 use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadBusquedaService;
 use App\Support\RenderKeepAlive;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class ProcessOportunidadAdjuntoPurgeJob implements ShouldQueue
+class ProcessOportunidadAdjuntoPurgeJob implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
@@ -20,6 +21,8 @@ class ProcessOportunidadAdjuntoPurgeJob implements ShouldQueue
     public int $tries = 3;
 
     public int $maxExceptions = 3;
+
+    public int $uniqueFor = 3600;
 
     public function __construct(
         public string $fechaBusqueda,
@@ -34,14 +37,19 @@ class ProcessOportunidadAdjuntoPurgeJob implements ShouldQueue
     {
         return [
             (new WithoutOverlapping('oportunidad-adjunto-purge'))
-                ->releaseAfter(30)
-                ->expireAfter(300),
+                ->releaseAfter(60)
+                ->expireAfter(3600),
         ];
     }
 
     public function retryUntil(): \DateTime
     {
-        return now()->addHours(3);
+        return now()->addHour();
+    }
+
+    public function uniqueId(): string
+    {
+        return 'oportunidad-adjunto-purge';
     }
 
     public function handle(
@@ -53,6 +61,13 @@ class ProcessOportunidadAdjuntoPurgeJob implements ShouldQueue
         $corrida = $this->corridaId !== null
             ? $adjuntosCorrida->findCorrida($this->corridaId)
             : $adjuntosCorrida->ultimaCorrida();
+
+        if ($adjuntosCorrida->purgeEstadoTerminal($corrida)) {
+            $adjuntosCorrida->eliminarJobsPurge();
+            $busqueda->continuarPipelineTrasPurge($this->fechaBusqueda, $this->usuario);
+
+            return;
+        }
 
         $adjuntosCorrida->ejecutarPurgeCerrados($corrida);
 

@@ -26,16 +26,35 @@ if (config('cotiz.mercadopublico.resultados_schedule_habilitado', true)) {
         ->values();
 
     if ($horas->isNotEmpty()) {
-        // Pipeline: buscar → vincular → sync cotizaciones → sync vinculaciones → adjuntos → cambios de estado.
-        // Si cambios de estado sigue corriendo al disparar el ciclo, se cancela y se parte del paso 1.
-        Schedule::command('oportunidad:buscar')
-            ->cron('0 '.$horas->implode(',').' * * *')
-            ->timezone($tz)
-            ->withoutOverlapping(120)
-            ->runInBackground();
+        $cronHoras = $horas->implode(',');
+        $esAnalisisAdmin = (bool) config('cotiz.mercadopublico.analisis_admin_habilitado', false);
+
+        if ($esAnalisisAdmin) {
+            // Pipeline: buscar → vincular → sync → adjuntos → cambios de estado.
+            // Si cambios de estado sigue corriendo al disparar el ciclo, se cancela y se parte del paso 1.
+            Schedule::command('oportunidad:buscar')
+                ->cron('0 '.$cronHoras.' * * *')
+                ->timezone($tz)
+                ->withoutOverlapping(120)
+                ->runInBackground();
+
+            // Red de seguridad: si el pipeline no llegó a resultados (purge zombie, cola colgada),
+            // encola la consulta masiva media hora después del slot.
+            Schedule::command('compra-agil:consultar-resultados --catch-up')
+                ->cron('30 '.$cronHoras.' * * *')
+                ->timezone($tz)
+                ->withoutOverlapping(120)
+                ->runInBackground();
+        } else {
+            Schedule::command('compra-agil:consultar-resultados')
+                ->cron('0 '.$cronHoras.' * * *')
+                ->timezone($tz)
+                ->withoutOverlapping(120)
+                ->runInBackground();
+        }
 
         Schedule::command('producto-mp:buscar')
-            ->cron('15 '.$horas->implode(',').' * * *')
+            ->cron('15 '.$cronHoras.' * * *')
             ->timezone($tz)
             ->withoutOverlapping(120)
             ->runInBackground();

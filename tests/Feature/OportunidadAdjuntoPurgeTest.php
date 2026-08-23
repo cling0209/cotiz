@@ -9,7 +9,9 @@ use App\Models\OportunidadTomada;
 use App\Services\OportunidadAdjuntoCorridaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -172,6 +174,78 @@ class OportunidadAdjuntoPurgeTest extends TestCase
         Queue::assertPushed(ProcessOportunidadAdjuntoPurgeJob::class);
         $corrida->refresh();
         $this->assertSame(OportunidadAdjuntoCorridaService::PURGE_PENDING, $corrida->purge_json['estado'] ?? null);
+    }
+
+    public function test_purge_en_curso_es_falso_si_ya_termino_aunque_queden_jobs(): void
+    {
+        $corrida = $this->crearCorridaCompletada();
+        $corrida->fill([
+            'purge_json' => [
+                'estado' => OportunidadAdjuntoCorridaService::PURGE_COMPLETED,
+                'inicio' => now()->toIso8601String(),
+                'fin' => now()->toIso8601String(),
+            ],
+        ])->save();
+        $this->insertarJobPurgeZombie();
+
+        $this->assertFalse($this->app->make(OportunidadAdjuntoCorridaService::class)->purgeEnCurso());
+    }
+
+    public function test_encolar_purge_ya_terminado_continua_pipeline_sin_nuevo_job(): void
+    {
+        Queue::fake();
+
+        $corrida = $this->crearCorridaCompletada();
+        $corrida->fill([
+            'purge_json' => [
+                'estado' => OportunidadAdjuntoCorridaService::PURGE_COMPLETED,
+                'inicio' => now()->toIso8601String(),
+                'fin' => now()->toIso8601String(),
+            ],
+        ])->save();
+
+        $this->app->make(OportunidadAdjuntoCorridaService::class)
+            ->encolarPurgeYContinuarPipeline('2026-07-16', 'sistema', $corrida->id);
+
+        Queue::assertNotPushed(ProcessOportunidadAdjuntoPurgeJob::class);
+    }
+
+    public function test_libera_purge_colgado_y_deja_de_bloquear_el_pipeline(): void
+    {
+        $corrida = $this->crearCorridaCompletada();
+        $inicio = now()->subHours(2);
+        $corrida->fill([
+            'purge_json' => [
+                'estado' => OportunidadAdjuntoCorridaService::PURGE_RUNNING,
+                'inicio' => $inicio->toIso8601String(),
+                'fin' => null,
+                'mensaje' => 'Eliminando adjuntos…',
+            ],
+        ])->save();
+        OportunidadAdjuntoCorrida::query()->whereKey($corrida->id)->update(['updated_at' => $inicio]);
+        $this->insertarJobPurgeZombie();
+
+        $service = $this->app->make(OportunidadAdjuntoCorridaService::class);
+        $this->assertTrue($service->liberarPurgeColgadoIfNeeded());
+        $this->assertFalse($service->purgeEnCurso());
+        $corrida->refresh();
+        $this->assertSame(OportunidadAdjuntoCorridaService::PURGE_ERROR, $corrida->purge_json['estado'] ?? null);
+    }
+
+    private function insertarJobPurgeZombie(): void
+    {
+        if (! Schema::hasTable('jobs')) {
+            $this->markTestSkipped('Tabla jobs no disponible.');
+        }
+
+        DB::table('jobs')->insert([
+            'queue' => 'default',
+            'payload' => '{"displayName":"App\\\\Jobs\\\\ProcessOportunidadAdjuntoPurgeJob"}',
+            'attempts' => 5,
+            'reserved_at' => time() - 3600,
+            'available_at' => time() - 3600,
+            'created_at' => time() - 3600,
+        ]);
     }
 
     private function crearOportunidad(string $codigo, mixed $fechaCierre): OportunidadEncontrada

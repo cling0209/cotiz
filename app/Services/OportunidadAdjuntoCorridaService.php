@@ -611,15 +611,18 @@ class OportunidadAdjuntoCorridaService
 
     public function purgeEnCurso(): bool
     {
+        $this->liberarPurgeColgadoIfNeeded();
+
+        $corrida = $this->ultimaCorrida();
+        if ($this->purgeEstadoTerminal($corrida)) {
+            return false;
+        }
+
         if ($this->jobPurgeEncolado()) {
             return true;
         }
 
-        $corrida = $this->ultimaCorrida();
-        if ($corrida === null) {
-            return false;
-        }
-        $estado = (string) (($corrida->purge_json ?? [])['estado'] ?? '');
+        $estado = (string) (($corrida?->purge_json ?? [])['estado'] ?? '');
 
         return in_array($estado, [self::PURGE_PENDING, self::PURGE_RUNNING], true);
     }
@@ -636,6 +639,8 @@ class OportunidadAdjuntoCorridaService
         $dia = $this->oportunidades->normalizarFechaBusqueda($fechaBusqueda);
         $corrida = $corridaId !== null ? $this->findCorrida($corridaId) : $this->ultimaCorrida();
 
+        $this->liberarPurgeColgadoIfNeeded();
+
         if (! $this->adjuntos->isConfigured()) {
             $this->persistirPurge($corrida, [
                 'estado' => self::PURGE_SKIPPED,
@@ -651,7 +656,14 @@ class OportunidadAdjuntoCorridaService
             return;
         }
 
-        if ($this->jobPurgeEncolado($corrida?->id)) {
+        if ($this->purgeEstadoTerminal($corrida)) {
+            $this->eliminarJobsPurge();
+            app(OportunidadBusquedaService::class)->continuarPipelineTrasPurge($dia, $usuario);
+
+            return;
+        }
+
+        if ($this->jobPurgeEncolado()) {
             return;
         }
 
@@ -834,6 +846,54 @@ class OportunidadAdjuntoCorridaService
             'fallos' => $fallos,
             'revisados' => $revisados,
         ];
+    }
+
+    public function purgeEstadoTerminal(?OportunidadAdjuntoCorrida $corrida): bool
+    {
+        $estado = (string) (($corrida?->purge_json ?? [])['estado'] ?? '');
+
+        return in_array($estado, [self::PURGE_COMPLETED, self::PURGE_SKIPPED, self::PURGE_ERROR], true);
+    }
+
+    /**
+     * Si la limpieza quedó pending/running sin avance, la marca error y quita jobs zombie
+     * para no bloquear cambios de estado (resultados MP).
+     */
+    public function liberarPurgeColgadoIfNeeded(): bool
+    {
+        $corrida = $this->ultimaCorrida();
+        if ($corrida === null || $this->purgeEstadoTerminal($corrida)) {
+            return false;
+        }
+
+        $purge = is_array($corrida->purge_json) ? $corrida->purge_json : [];
+        $estado = (string) ($purge['estado'] ?? '');
+        if (! in_array($estado, [self::PURGE_PENDING, self::PURGE_RUNNING], true)) {
+            return false;
+        }
+
+        $staleSeg = max(300, (int) config('cotiz.mercadopublico.resultados_corrida_colgada_segundos', 1800));
+        $referencia = $corrida->updated_at ?? ($purge['inicio'] ?? null);
+        try {
+            $desde = $referencia ? Carbon::parse($referencia) : null;
+        } catch (Throwable) {
+            $desde = null;
+        }
+        if ($desde !== null && $desde->gt(now()->subSeconds($staleSeg))) {
+            return false;
+        }
+
+        $this->marcarPurgeError(
+            $corrida,
+            'Limpieza de adjuntos colgada; se continúa el pipeline de resultados.',
+        );
+        $this->eliminarJobsPurge();
+        Log::warning('OportunidadAdjunto: purge colgado liberado para continuar pipeline', [
+            'corrida_id' => $corrida->id,
+            'estado_previo' => $estado,
+        ]);
+
+        return true;
     }
 
     public function marcarPurgeError(?OportunidadAdjuntoCorrida $corrida, string $mensaje): void
@@ -1409,5 +1469,16 @@ class OportunidadAdjuntoCorridaService
         $query = DB::table('jobs')->where('payload', 'like', '%ProcessOportunidadAdjuntoPurgeJob%');
 
         return (int) $this->filtrarJobsAdjuntoPorCorrida($query, $corridaId)->count() > 0;
+    }
+
+    public function eliminarJobsPurge(?int $corridaId = null): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $query = DB::table('jobs')->where('payload', 'like', '%ProcessOportunidadAdjuntoPurgeJob%');
+
+        return $this->filtrarJobsAdjuntoPorCorrida($query, $corridaId)->delete();
     }
 }
