@@ -282,6 +282,20 @@
                         <span id="sync-cot-badge" class="badge text-bg-secondary">0 pendientes</span>
                         <span id="sync-cot-peer" class="text-muted ms-auto"></span>
                     </div>
+                    <div class="d-flex flex-wrap gap-3 align-items-center small mb-2" id="sync-cot-meta">
+                        <div class="text-nowrap">
+                            <i class="bi bi-clock"></i>
+                            Inicio: <strong id="sync-cot-inicio" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-flag"></i>
+                            Fin: <strong id="sync-cot-fin" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-hourglass-split"></i>
+                            Tiempo: <strong id="sync-cot-duracion" class="tabular-nums">—</strong>
+                        </div>
+                    </div>
                     <div id="sync-cot-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
                     <div id="sync-cot-ultimo-proceso" class="small mb-2 d-none"></div>
                     <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
@@ -327,6 +341,20 @@
                         </div>
                         <span id="sync-vin-badge" class="badge text-bg-secondary">0 pendientes</span>
                         <span id="sync-vin-peer" class="text-muted ms-auto"></span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-3 align-items-center small mb-2" id="sync-vin-meta">
+                        <div class="text-nowrap">
+                            <i class="bi bi-clock"></i>
+                            Inicio: <strong id="sync-vin-inicio" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-flag"></i>
+                            Fin: <strong id="sync-vin-fin" class="tabular-nums">—</strong>
+                        </div>
+                        <div class="text-nowrap">
+                            <i class="bi bi-hourglass-split"></i>
+                            Tiempo: <strong id="sync-vin-duracion" class="tabular-nums">—</strong>
+                        </div>
                     </div>
                     <div id="sync-vin-resumen" class="small text-muted mb-2">Cola vac&iacute;a.</div>
                     <div id="sync-vin-ultimo-proceso" class="small mb-2 d-none"></div>
@@ -919,6 +947,10 @@
         let adjFinMs = null;
         let purgeInicioMs = null;
         let purgeFinMs = null;
+        let syncCotInicioMs = null;
+        let syncCotFinMs = null;
+        let syncVinInicioMs = null;
+        let syncVinFinMs = null;
         let tickTimer = null;
         let buscando = false;
         let cancelado = false;
@@ -3544,13 +3576,17 @@
             actualizarDuracionCampo(document.getElementById('vin-duracion'), vinInicioMs, vinFinMs);
             actualizarDuracionCampo(document.getElementById('sync-adj-duracion'), adjInicioMs, adjFinMs);
             actualizarDuracionCampo(document.getElementById('sync-adj-purge-duracion'), purgeInicioMs, purgeFinMs);
+            actualizarDuracionCampo(document.getElementById('sync-cot-duracion'), syncCotInicioMs, syncCotFinMs);
+            actualizarDuracionCampo(document.getElementById('sync-vin-duracion'), syncVinInicioMs, syncVinFinMs);
         }
 
         function hayCorridaEnCurso() {
             return (inicioMs && !finMs)
                 || (vinInicioMs && !vinFinMs)
                 || (adjInicioMs && !adjFinMs)
-                || (purgeInicioMs && !purgeFinMs);
+                || (purgeInicioMs && !purgeFinMs)
+                || (syncCotInicioMs && !syncCotFinMs)
+                || (syncVinInicioMs && !syncVinFinMs);
         }
 
         function asegurarTickDuracion() {
@@ -4630,6 +4666,37 @@
             }
         }
 
+        function pintarMetaSyncPar(prefijo, ultimoProceso) {
+            const inicioEl = document.getElementById(`sync-${prefijo}-inicio`);
+            const finEl = document.getElementById(`sync-${prefijo}-fin`);
+            const up = ultimoProceso && typeof ultimoProceso === 'object' ? ultimoProceso : null;
+            const enProgreso = up ? up.en_progreso === true : false;
+            const inicioMsCampo = up ? msDeIso(up.inicio || up.at) : null;
+            const finMsCampo = enProgreso ? null : (up ? msDeIso(up.fin || (!up.en_progreso ? up.at : null)) : null);
+            if (prefijo === 'cot') {
+                syncCotInicioMs = inicioMsCampo;
+                syncCotFinMs = finMsCampo;
+            } else {
+                syncVinInicioMs = inicioMsCampo;
+                syncVinFinMs = finMsCampo;
+            }
+            if (inicioEl) {
+                inicioEl.textContent = inicioMsCampo && up
+                    ? formatearFechaHora(up.inicio || up.at)
+                    : '—';
+            }
+            if (finEl) {
+                finEl.textContent = finMsCampo && up
+                    ? formatearFechaHora(up.fin || up.at)
+                    : '—';
+            }
+            actualizarDuracionCampo(
+                document.getElementById(`sync-${prefijo}-duracion`),
+                inicioMsCampo,
+                finMsCampo,
+            );
+        }
+
         function pintarPanelSync(prefijo, bloque, peer) {
             const badge = document.getElementById(`sync-${prefijo}-badge`);
             const resumen = document.getElementById(`sync-${prefijo}-resumen`);
@@ -4695,6 +4762,8 @@
                 resumen.textContent = partesResumen.join(' · ');
                 resumen.classList.toggle('text-muted', pendientes === 0 && !ultimoError);
             }
+
+            pintarMetaSyncPar(prefijo, bloque.ultimo_proceso);
 
             if (ultimoProcesoEl) {
                 const up = bloque.ultimo_proceso && typeof bloque.ultimo_proceso === 'object'
@@ -4803,6 +4872,7 @@
             const peer = String(syncPar.peer || '').trim();
             pintarPanelSync('cot', syncPar.cotizaciones || {}, peer);
             pintarPanelSync('vin', syncPar.vinculaciones || {}, peer);
+            asegurarTickDuracion();
 
             const paneles = document.getElementById('sync-par-paneles');
             if (paneles) {

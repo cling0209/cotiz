@@ -942,4 +942,55 @@ class OportunidadEncontradaRelayTest extends TestCase
             'accion' => OportunidadEncontradaRelayService::ACCION_VINCULO,
         ]);
     }
+
+    public function test_ultimo_proceso_sync_par_expone_inicio_fin_y_duracion(): void
+    {
+        config([
+            'cotiz.sistema' => 'Romulo',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-22 23:00:00', 'America/Santiago'));
+
+        $relay = $this->app->make(OportunidadEncontradaRelayService::class);
+        $relay->iniciarProcesoAcumulado(OportunidadEncontradaRelayService::ACCION_GRABA);
+
+        $enCurso = $relay->resumenSyncPar()['cotizaciones']['ultimo_proceso'];
+        $this->assertTrue($enCurso['en_progreso']);
+        $this->assertNotEmpty($enCurso['inicio']);
+        $this->assertNull($enCurso['fin']);
+        $inicio = $enCurso['inicio'];
+
+        Carbon::setTestNow(Carbon::parse('2026-08-22 23:01:00', 'America/Santiago'));
+        $relay->registrarLoteProcesado(
+            OportunidadEncontradaRelayService::ACCION_GRABA,
+            2,
+            0,
+            ['2721-385-COT26'],
+            false,
+        );
+
+        $parcial = $relay->resumenSyncPar()['cotizaciones']['ultimo_proceso'];
+        $this->assertTrue($parcial['en_progreso']);
+        $this->assertSame($inicio, $parcial['inicio']);
+        $this->assertNull($parcial['fin']);
+        $this->assertSame(60, $parcial['duracion_segundos']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-22 23:02:30', 'America/Santiago'));
+        $relay->registrarLoteProcesado(
+            OportunidadEncontradaRelayService::ACCION_GRABA,
+            1,
+            0,
+            ['2721-386-COT26'],
+            true,
+        );
+
+        $cerrado = $relay->resumenSyncPar()['cotizaciones']['ultimo_proceso'];
+        $this->assertFalse($cerrado['en_progreso']);
+        $this->assertSame($inicio, $cerrado['inicio']);
+        $this->assertNotEmpty($cerrado['fin']);
+        $this->assertSame(150, $cerrado['duracion_segundos']);
+        $this->assertSame('2m 30s', $cerrado['duracion_texto']);
+        $this->assertSame(3, $cerrado['procesados']);
+    }
 }

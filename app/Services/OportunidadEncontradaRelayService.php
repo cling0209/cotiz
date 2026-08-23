@@ -229,6 +229,7 @@ class OportunidadEncontradaRelayService
             $this->despertarSitioPar();
         }
 
+        $inicioCorrida = now()->toIso8601String();
         $pendientesOk = 0;
         $pendientesFail = 0;
         $stats = $this->nuevoAcumuladoProcesoPorCola();
@@ -279,7 +280,7 @@ class OportunidadEncontradaRelayService
         $ok = $pendientesFail === 0;
         $peer = $this->nombreInstanciaPar($this->urlDestino());
 
-        $this->registrarUltimoProcesoDesdeStats($stats, [self::ACCION_GRABA, self::ACCION_VINCULO]);
+        $this->registrarUltimoProcesoDesdeStats($stats, [self::ACCION_GRABA, self::ACCION_VINCULO], $inicioCorrida);
 
         return [
             'ok' => $ok,
@@ -697,6 +698,7 @@ class OportunidadEncontradaRelayService
             $this->esperarSitioParDespierto();
         }
 
+        $inicioCorrida = now()->toIso8601String();
         $pendientesOk = 0;
         $pendientesFail = 0;
         $stats = $this->nuevoAcumuladoProcesoPorCola();
@@ -792,7 +794,7 @@ class OportunidadEncontradaRelayService
         $colasARegistrar = $tipo === 'all'
             ? [self::ACCION_GRABA, self::ACCION_VINCULO]
             : [$tipo];
-        $this->registrarUltimoProcesoDesdeStats($stats, $colasARegistrar);
+        $this->registrarUltimoProcesoDesdeStats($stats, $colasARegistrar, $inicioCorrida);
 
         return [
             'ok' => $ok,
@@ -1352,7 +1354,7 @@ class OportunidadEncontradaRelayService
      *   ultimo_error: string|null,
      *   ultimo_ok_at: string|null,
      *   ultimo_ok_count: int|null,
-     *   ultimo_proceso: array{at: string, ok: bool, procesados: int, fallos: int, codigos: list<string>, ultimo_error: string|null, mensaje: string|null}|null,
+     *   ultimo_proceso: array{at: string, ok: bool, procesados: int, fallos: int, codigos: list<string>, ultimo_error: string|null, mensaje: string|null, en_progreso?: bool, inicio?: string|null, fin?: string|null, duracion_segundos?: int|null, duracion_texto?: string|null}|null,
      *   lotes: list<array{
      *     id: int,
      *     intentos: int,
@@ -1418,7 +1420,9 @@ class OportunidadEncontradaRelayService
             'ultimo_ok_count' => is_array($ultimoOk) && isset($ultimoOk['count'])
                 ? (int) $ultimoOk['count']
                 : null,
-            'ultimo_proceso' => is_array($ultimoProceso) ? $ultimoProceso : null,
+            'ultimo_proceso' => is_array($ultimoProceso)
+                ? $this->enriquecerTiemposUltimoProceso($ultimoProceso)
+                : null,
             'lotes' => $lotes,
         ];
     }
@@ -1529,7 +1533,7 @@ class OportunidadEncontradaRelayService
      * @param  array<string, array{ok: int, fail: int, codigos: list<string>, error: string|null}>  $stats
      * @param  list<string>  $colas
      */
-    private function registrarUltimoProcesoDesdeStats(array $stats, array $colas): void
+    private function registrarUltimoProcesoDesdeStats(array $stats, array $colas, ?string $inicioCorrida = null): void
     {
         foreach ($colas as $cola) {
             $cola = $this->normalizarColaAccion($cola);
@@ -1542,19 +1546,23 @@ class OportunidadEncontradaRelayService
             $ok = $fallos === 0;
             $mensaje = $procesados.' procesado(s)'
                 .($fallos > 0 ? ', '.$fallos.' con error' : ' sin errores');
-            $this->registrarUltimoProceso($cola, [
+            $payload = [
                 'ok' => $ok,
                 'procesados' => $procesados,
                 'fallos' => $fallos,
                 'codigos' => is_array($s['codigos'] ?? null) ? $s['codigos'] : [],
                 'ultimo_error' => $s['error'] ?? null,
                 'mensaje' => $mensaje,
-            ]);
+            ];
+            if ($inicioCorrida !== null && $inicioCorrida !== '' && ($procesados > 0 || $fallos > 0)) {
+                $payload['inicio'] = $inicioCorrida;
+            }
+            $this->registrarUltimoProceso($cola, $payload);
         }
     }
 
     /**
-     * @param  array{ok?: bool, procesados?: int, fallos?: int, codigos?: list<string>, ultimo_error?: string|null, mensaje?: string|null, en_progreso?: bool}  $datos
+     * @param  array{ok?: bool, procesados?: int, fallos?: int, codigos?: list<string>, ultimo_error?: string|null, mensaje?: string|null, en_progreso?: bool, inicio?: string|null}  $datos
      */
     private function registrarUltimoProceso(string $colaAccion, array $datos): void
     {
@@ -1566,17 +1574,112 @@ class OportunidadEncontradaRelayService
         )))), 0, 60);
         $error = isset($datos['ultimo_error']) ? trim((string) $datos['ultimo_error']) : '';
         $mensaje = isset($datos['mensaje']) ? trim((string) $datos['mensaje']) : '';
+        $ahora = now()->toIso8601String();
+        $enProgreso = (bool) ($datos['en_progreso'] ?? false);
+        $procesados = max(0, (int) ($datos['procesados'] ?? 0));
+        $fallos = max(0, (int) ($datos['fallos'] ?? 0));
+
+        $prev = Cache::get(self::CACHE_ULTIMO_PROCESO_PREFIX.$colaAccion);
+        $prev = is_array($prev) ? $prev : [];
+        $prevEnProgreso = (bool) ($prev['en_progreso'] ?? false);
+        $inicioForzado = isset($datos['inicio']) ? trim((string) $datos['inicio']) : '';
+
+        $cierreVacioSinCorridaPrevia = ! $enProgreso
+            && $procesados === 0
+            && $fallos === 0
+            && ! $prevEnProgreso
+            && $inicioForzado === ''
+            && ! empty($prev['inicio']);
+
+        if ($cierreVacioSinCorridaPrevia) {
+            $inicio = (string) $prev['inicio'];
+            $fin = isset($prev['fin']) && is_string($prev['fin']) && $prev['fin'] !== ''
+                ? $prev['fin']
+                : (isset($prev['at']) && is_string($prev['at']) ? $prev['at'] : $ahora);
+        } elseif ($inicioForzado !== '') {
+            $inicio = $inicioForzado;
+            $fin = $enProgreso ? null : $ahora;
+        } elseif ($enProgreso) {
+            $inicio = $prevEnProgreso && ! empty($prev['inicio'])
+                ? (string) $prev['inicio']
+                : $ahora;
+            $fin = null;
+        } elseif ($prevEnProgreso && ! empty($prev['inicio'])) {
+            $inicio = (string) $prev['inicio'];
+            $fin = $ahora;
+        } else {
+            $inicio = ! empty($prev['inicio']) ? (string) $prev['inicio'] : $ahora;
+            $fin = $ahora;
+        }
 
         Cache::put(self::CACHE_ULTIMO_PROCESO_PREFIX.$colaAccion, [
-            'at' => now()->toIso8601String(),
+            'at' => $ahora,
             'ok' => (bool) ($datos['ok'] ?? false),
-            'procesados' => max(0, (int) ($datos['procesados'] ?? 0)),
-            'fallos' => max(0, (int) ($datos['fallos'] ?? 0)),
+            'procesados' => $procesados,
+            'fallos' => $fallos,
             'codigos' => $codigos,
             'ultimo_error' => $error !== '' ? mb_substr($error, 0, 500) : null,
             'mensaje' => $mensaje !== '' ? mb_substr($mensaje, 0, 500) : null,
-            'en_progreso' => (bool) ($datos['en_progreso'] ?? false),
+            'en_progreso' => $enProgreso,
+            'inicio' => $inicio,
+            'fin' => $fin,
         ], now()->addDays(30));
+    }
+
+    /**
+     * Completa inicio/fin/duración para la UI (Inicio · Tiempo · Fin).
+     *
+     * @param  array<string, mixed>  $up
+     * @return array<string, mixed>
+     */
+    private function enriquecerTiemposUltimoProceso(array $up): array
+    {
+        $enProgreso = (bool) ($up['en_progreso'] ?? false);
+        $inicio = isset($up['inicio']) ? trim((string) $up['inicio']) : '';
+        $fin = isset($up['fin']) ? trim((string) $up['fin']) : '';
+        $at = isset($up['at']) ? trim((string) $up['at']) : '';
+
+        if ($inicio === '' && $at !== '') {
+            $inicio = $at;
+        }
+        if ($enProgreso) {
+            $fin = '';
+        } elseif ($fin === '') {
+            $fin = $at !== '' ? $at : $inicio;
+        }
+
+        $hasta = $fin !== '' ? $fin : now()->toIso8601String();
+        $segundos = null;
+        if ($inicio !== '') {
+            try {
+                $segundos = max(0, (int) (Carbon::parse($hasta)->getTimestamp() - Carbon::parse($inicio)->getTimestamp()));
+            } catch (\Throwable) {
+                $segundos = null;
+            }
+        }
+
+        $up['inicio'] = $inicio !== '' ? $inicio : null;
+        $up['fin'] = $enProgreso ? null : ($fin !== '' ? $fin : null);
+        $up['duracion_segundos'] = $segundos;
+        $up['duracion_texto'] = $segundos !== null ? $this->formatearDuracionSegundosSync($segundos) : null;
+
+        return $up;
+    }
+
+    private function formatearDuracionSegundosSync(int $segundos): string
+    {
+        $segundos = max(0, $segundos);
+        $h = intdiv($segundos, 3600);
+        $m = intdiv($segundos % 3600, 60);
+        $s = $segundos % 60;
+        if ($h > 0) {
+            return sprintf('%dh %02dm %02ds', $h, $m, $s);
+        }
+        if ($m > 0) {
+            return sprintf('%dm %02ds', $m, $s);
+        }
+
+        return $s.'s';
     }
 
     private function resetProcesoAcumulado(string $colaAccion): void
@@ -1929,6 +2032,15 @@ class OportunidadEncontradaRelayService
     public function iniciarProcesoAcumulado(string $colaAccion): void
     {
         $this->resetProcesoAcumulado($colaAccion);
+        $this->registrarUltimoProceso($colaAccion, [
+            'ok' => true,
+            'procesados' => 0,
+            'fallos' => 0,
+            'codigos' => [],
+            'mensaje' => 'Procesando…',
+            'en_progreso' => true,
+            'inicio' => now()->toIso8601String(),
+        ]);
     }
 
     /**
