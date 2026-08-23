@@ -585,6 +585,31 @@ class OportunidadVinculoTest extends TestCase
         $this->assertTrue((bool) ($corrida->errores_json[0]['encadenada'] ?? false));
     }
 
+    public function test_iniciar_tras_busqueda_incluye_fallidas_mp(): void
+    {
+        Queue::fake();
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => 'FAIL-AFTER-SEARCH-001',
+            'nombre' => 'Fallida MP tras búsqueda',
+            'region' => 13,
+            'nombre_region' => 'Metropolitana',
+            'fecha_busqueda' => '2026-07-16',
+            'indice_region_config' => 0,
+            'vinculo_completo' => false,
+            'vinculo_error' => 'Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).',
+            'fecha_cierre' => now()->addDays(2),
+        ]);
+
+        $corrida = $this->app->make(OportunidadVinculoService::class)
+            ->iniciarTrasBusqueda('2026-07-16', 'admin');
+
+        $this->assertNotNull($corrida);
+        $codigos = array_column($corrida->plan_json, 'codigo');
+        $this->assertContains('FAIL-AFTER-SEARCH-001', $codigos);
+        $this->assertTrue((bool) ($corrida->errores_json[0]['encadenada'] ?? false));
+    }
+
     public function test_finalizar_vinculo_encadena_si_solo_quedan_fallidas(): void
     {
         Queue::fake();

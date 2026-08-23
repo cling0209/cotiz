@@ -35,6 +35,14 @@ class OportunidadPipelineEtapaTest extends TestCase
         $this->assertStringContainsString('Búsqueda terminada', $cierre['mensaje']);
     }
 
+    public function test_cierre_busqueda_puede_apuntar_a_cambios_de_estado(): void
+    {
+        $cierre = OportunidadPipelineEtapa::cierreBusqueda(0, OportunidadPipelineEtapa::CAMBIOS_ESTADO);
+
+        $this->assertSame(OportunidadPipelineEtapa::CAMBIOS_ESTADO, $cierre['siguiente_proceso']);
+        $this->assertStringContainsString('Cambios de estado', $cierre['siguiente_proceso_label']);
+    }
+
     public function test_cierre_vinculo_incluye_siguiente_adjuntos(): void
     {
         $cierre = OportunidadPipelineEtapa::cierreVinculo(2);

@@ -95,17 +95,18 @@ final class OportunidadPipelineEtapa
     /**
      * @return array{sin_mas_automatico: bool, mensaje: string, siguiente_proceso: string, siguiente_proceso_label: string}
      */
-    public static function cierreBusqueda(int $fallidos): array
+    public static function cierreBusqueda(int $fallidos, ?string $siguienteProceso = null): array
     {
         $mensaje = $fallidos > 0
             ? 'Búsqueda terminada ('.$fallidos.' paso'.($fallidos === 1 ? '' : 's').' con fallo).'
             : 'Búsqueda terminada.';
+        $siguiente = $siguienteProceso ?: self::VINCULO;
 
         return [
             'sin_mas_automatico' => true,
             'mensaje' => $mensaje,
-            'siguiente_proceso' => self::VINCULO,
-            'siguiente_proceso_label' => self::label(self::VINCULO),
+            'siguiente_proceso' => $siguiente,
+            'siguiente_proceso_label' => self::label($siguiente),
         ];
     }
 

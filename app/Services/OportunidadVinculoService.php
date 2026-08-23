@@ -67,11 +67,11 @@ class OportunidadVinculoService
      */
     public function iniciarTrasBusqueda(mixed $fechaBusqueda, string $usuario = 'sistema'): ?OportunidadVinculoCorrida
     {
-        return $this->iniciarConDetalle($fechaBusqueda, $usuario)['corrida'];
+        return $this->iniciarConDetalle($fechaBusqueda, $usuario, true)['corrida'];
     }
 
     /**
-     * @param  bool  $encadenada  Reintento automático tras una corrida que dejó pendientes.
+     * @param  bool  $encadenada  Incluye pendientes y fallidas MP (tras búsqueda o tras una corrida de vínculo).
      * @return array{
      *   ok: bool,
      *   corrida: ?OportunidadVinculoCorrida,

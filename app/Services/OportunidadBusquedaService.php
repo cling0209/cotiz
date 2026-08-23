@@ -2029,9 +2029,14 @@ class OportunidadBusquedaService
         $cierre = null;
         if ($corrida->estado === self::ESTADO_COMPLETED) {
             $vinEst = is_array($vinculoEstado) ? ($vinculoEstado['estado'] ?? null) : null;
-            if ($vinEst !== OportunidadVinculoService::ESTADO_RUNNING
-                && $vinEst !== OportunidadVinculoService::ESTADO_COMPLETED) {
-                $cierre = OportunidadPipelineEtapa::cierreBusqueda((int) $corrida->pasos_fallidos);
+            if ($vinEst !== OportunidadVinculoService::ESTADO_RUNNING) {
+                $cierre = OportunidadPipelineEtapa::cierreBusqueda(
+                    (int) $corrida->pasos_fallidos,
+                    $this->siguienteProcesoTrasBusqueda(
+                        $fechaBusqueda,
+                        is_array($adjuntoEstado) ? $adjuntoEstado : null,
+                    ),
+                );
             }
         }
 
@@ -2703,6 +2708,26 @@ class OportunidadBusquedaService
         return $this->primeraFechaPendiente($siguiente);
     }
 
+    private function siguienteProcesoTrasBusqueda(string $fechaBusqueda, ?array $adjuntoEstado): string
+    {
+        $pendientes = $this->vinculos->contarPendientesSafe($fechaBusqueda);
+        $fallidas = $this->vinculos->contarFallidasMpReintentoSafe($fechaBusqueda);
+        if ($pendientes > 0 || $fallidas > 0) {
+            return OportunidadPipelineEtapa::VINCULO;
+        }
+
+        $adjEst = (string) ($adjuntoEstado['estado'] ?? '');
+        $purgeEst = (string) (($adjuntoEstado['purge']['estado'] ?? null) ?: '');
+        if ($adjEst === 'running') {
+            return OportunidadPipelineEtapa::ADJUNTOS;
+        }
+        if (in_array($purgeEst, ['pending', 'running'], true)) {
+            return OportunidadPipelineEtapa::PURGE;
+        }
+
+        return OportunidadPipelineEtapa::CAMBIOS_ESTADO;
+    }
+
     private function fechaTieneCorridaCompleta(string $fecha): bool
     {
         return OportunidadBusquedaCorrida::query()
@@ -2779,6 +2804,7 @@ class OportunidadBusquedaService
             $detalle = $this->vinculos->iniciarConDetalle(
                 $corrida->fecha_busqueda,
                 $usuario,
+                true,
             );
             if (! ($detalle['ok'] ?? false) && ($detalle['motivo'] ?? '') !== OportunidadVinculoService::MOTIVO_SIN_PENDIENTES) {
                 Log::warning('No se encoló vinculación tras búsqueda; se reintenta una vez', [
@@ -2789,6 +2815,7 @@ class OportunidadBusquedaService
                 $detalle = $this->vinculos->iniciarConDetalle(
                     $corrida->fecha_busqueda,
                     $usuario,
+                    true,
                 );
             }
             if ($detalle['ok'] && $detalle['corrida'] !== null) {
