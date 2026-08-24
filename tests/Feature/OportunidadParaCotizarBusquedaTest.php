@@ -371,6 +371,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertNotNull($estado['pasos_resumen'][0]['duracion_texto']);
         $this->assertIsArray($estado['pasos_resumen'][0]['consulta']);
         $this->assertArrayHasKey('url_completa', $estado['pasos_resumen'][0]['consulta']);
+        $this->assertNotNull($estado['pasos_resumen'][0]['cambio_desde_texto']);
         $this->assertSame('ok', $estado['pasos_resumen'][1]['resultado']);
         $this->assertSame('OK (1.er intento)', $estado['pasos_resumen'][1]['etiqueta']);
         $this->assertSame(0, $estado['pasos_resumen'][1]['encontradas']);
@@ -707,6 +708,11 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertTrue((bool) ($corrida->plan_json[0]['incremental'] ?? false));
         $this->assertNotEmpty($corrida->plan_json[0]['cambio_desde'] ?? null);
         $this->assertStringContainsString('incremental', (string) $corrida->mensaje);
+
+        $estadoEncolada = $this->app->make(OportunidadBusquedaService::class)->estado($corrida);
+        $this->assertTrue($estadoEncolada['pasos_resumen'][0]['consulta_incremental']);
+        $this->assertNotNull($estadoEncolada['pasos_resumen'][0]['cambio_desde_texto']);
+        $this->assertStringContainsString('10:18', $estadoEncolada['pasos_resumen'][0]['cambio_desde_texto']);
 
         $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
             ->timezone('America/Santiago');

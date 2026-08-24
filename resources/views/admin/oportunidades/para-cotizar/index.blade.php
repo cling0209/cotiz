@@ -138,6 +138,7 @@
                                 <th class="text-nowrap">Regi&oacute;n</th>
                                 <th class="text-nowrap">Match</th>
                                 <th class="text-nowrap text-end">Cotizaciones</th>
+                                <th class="text-nowrap">Consulta desde</th>
                                 <th class="text-nowrap">Ref. incremental</th>
                                 <th class="text-nowrap text-end">P&aacute;gina</th>
                                 <th class="text-nowrap text-end">T. match</th>
@@ -4184,6 +4185,36 @@
                     }
                 }
 
+                const tdConsultaDesde = document.createElement('td');
+                tdConsultaDesde.className = 'text-nowrap';
+                const consultaDesdeTxt = paso.cambio_desde_texto
+                    || (paso.cambio_desde ? formatearFechaHora(paso.cambio_desde) : null);
+                if (consultaDesdeTxt && consultaDesdeTxt !== '—') {
+                    tdConsultaDesde.classList.add('tabular-nums');
+                    const fechaConsultaEl = document.createElement('div');
+                    fechaConsultaEl.className = 'small';
+                    fechaConsultaEl.textContent = consultaDesdeTxt;
+                    tdConsultaDesde.appendChild(fechaConsultaEl);
+                    const modoParts = [];
+                    if (paso.reintento_fallo_previo) {
+                        modoParts.push('reintento completo');
+                    } else if (paso.consulta_incremental) {
+                        modoParts.push('incremental');
+                    }
+                    if (modoParts.length > 0) {
+                        const modoEl = document.createElement('div');
+                        modoEl.className = 'text-muted';
+                        modoEl.style.fontSize = '0.7rem';
+                        modoEl.textContent = modoParts.join(' · ');
+                        tdConsultaDesde.appendChild(modoEl);
+                    }
+                    tdConsultaDesde.title = 'Inicio de la ventana cambio_desde enviada a Mercado Público para esta región.';
+                } else {
+                    tdConsultaDesde.textContent = '—';
+                    tdConsultaDesde.classList.add('text-muted');
+                    tdConsultaDesde.title = 'Ventana completa del día (desde 00:00) o paso aún sin parámetros.';
+                }
+
                 const tdUltimaCotiz = document.createElement('td');
                 tdUltimaCotiz.className = 'text-nowrap';
                 const refCodigo = paso.ultimo_cambio_visto_codigo
@@ -4213,12 +4244,9 @@
                     }
                     tdUltimaCotiz.title = tooltip;
                 } else if (proximaTxt && proximaTxt !== '—') {
-                    tdUltimaCotiz.classList.add('tabular-nums');
-                    const fechaEl = document.createElement('div');
-                    fechaEl.className = 'small text-muted';
-                    fechaEl.textContent = paso.tomado_at_texto || '—';
-                    tdUltimaCotiz.appendChild(fechaEl);
-                    tdUltimaCotiz.title = `Sin referencia MP en esta corrida. Próxima corrida desde ${proximaTxt}.`;
+                    tdUltimaCotiz.textContent = '—';
+                    tdUltimaCotiz.classList.add('text-muted');
+                    tdUltimaCotiz.title = `Sin cotización revisada en esta corrida. Próxima corrida desde ${proximaTxt}.`;
                 } else {
                     tdUltimaCotiz.textContent = '—';
                     tdUltimaCotiz.classList.add('text-muted');
@@ -4300,7 +4328,7 @@
                     tdResultado.appendChild(err);
                 }
 
-                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdUltimaCotiz, tdPagina, tdMatchTiempo, tdTiempo, tdResultado);
+                tr.append(tdNum, tdDia, tdRegion, tdFrase, tdEncontradas, tdConsultaDesde, tdUltimaCotiz, tdPagina, tdMatchTiempo, tdTiempo, tdResultado);
                 relPasosTbody.appendChild(tr);
             });
         }

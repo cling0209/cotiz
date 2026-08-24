@@ -2245,9 +2245,10 @@ class OportunidadBusquedaService
                 ? array_values($paso['encontradas_muestra'])
                 : null;
 
+            $cambioDesdePaso = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
+
             $consulta = is_array($paso['consulta'] ?? null) ? $paso['consulta'] : null;
             if ($consulta === null) {
-                $cambioDesdePaso = isset($paso['cambio_desde']) ? trim((string) $paso['cambio_desde']) : '';
                 $consulta = $this->oportunidades->consultaDebugPaso(
                     (string) ($paso['frase'] ?? '(todas)'),
                     (int) ($paso['region'] ?? 0),
@@ -2259,11 +2260,17 @@ class OportunidadBusquedaService
                 );
             }
 
+            $cambioDesdeResumen = $this->resolverCambioDesdeResumenPaso($paso, $consulta, $cambioDesdePaso);
+
             $out[] = [
                 'indice' => $i,
                 'fecha_busqueda' => $fechaBusqueda,
                 'tomado_at' => $tomadoAt,
                 'tomado_at_texto' => $tomadoAt !== null ? $this->formatearFechaHoraMensaje($tomadoAt) : null,
+                'cambio_desde' => $cambioDesdeResumen['iso'],
+                'cambio_desde_texto' => $cambioDesdeResumen['texto'],
+                'consulta_incremental' => ! empty($paso['incremental']),
+                'reintento_fallo_previo' => ! empty($paso['reintento_fallo_previo']),
                 'ultimo_cambio_visto' => $ultimoCambioVisto,
                 'ultimo_cambio_visto_texto' => $ultimoCambioVisto !== null
                     ? $this->formatearFechaHoraMensaje($ultimoCambioVisto)
@@ -2300,6 +2307,35 @@ class OportunidadBusquedaService
         }
 
         return $out;
+    }
+
+    /**
+     * Ventana MP (cambio_desde) que usa o usará el paso, para la UI de detalle por región.
+     *
+     * @param  array<string, mixed>  $paso
+     * @param  array<string, mixed>|null  $consulta
+     * @return array{iso: ?string, texto: ?string}
+     */
+    private function resolverCambioDesdeResumenPaso(array $paso, ?array $consulta, string $cambioDesdePaso = ''): array
+    {
+        $iso = $cambioDesdePaso;
+        if ($iso === '' && is_array($consulta)) {
+            $params = is_array($consulta['parametros'] ?? null) ? $consulta['parametros'] : [];
+            $iso = trim((string) ($params['cambio_desde'] ?? ''));
+        }
+
+        if ($iso === '') {
+            return ['iso' => null, 'texto' => null];
+        }
+
+        try {
+            return [
+                'iso' => Carbon::parse($iso)->timezone((string) config('app.timezone'))->toIso8601String(),
+                'texto' => $this->formatearFechaHoraMensaje($iso),
+            ];
+        } catch (\Throwable) {
+            return ['iso' => $iso, 'texto' => $iso];
+        }
     }
 
     /**
