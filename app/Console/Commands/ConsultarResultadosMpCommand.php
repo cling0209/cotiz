@@ -42,6 +42,7 @@ class ConsultarResultadosMpCommand extends Command
             if (
                 str_contains($msg, 'No hay cotizaciones pendientes')
                 || str_contains($msg, 'Ya hay una consulta en curso')
+                || str_contains($msg, 'proceso anterior del pipeline')
             ) {
                 $this->info($msg);
 

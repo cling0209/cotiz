@@ -943,6 +943,15 @@ class NotaMpResultadosService
             ]);
         }
 
+        $postergado = $this->motivoPostergarCambiosEstadoPorOrdenPipeline();
+        if ($postergado !== null) {
+            return $this->registrarYDevolverCatchUp($origen, [
+                'accion' => 'omitido',
+                'slot' => $slot->toIso8601String(),
+                'mensaje' => $postergado,
+            ]);
+        }
+
         try {
             $corrida = $this->encolarCorrida($usuario);
         } catch (RuntimeException $e) {
@@ -1052,10 +1061,33 @@ class NotaMpResultadosService
         return $resultado;
     }
 
+    /**
+     * En Rómulo (analisis_admin), cambios de estado van al final del pipeline.
+     */
+    private function motivoPostergarCambiosEstadoPorOrdenPipeline(): ?string
+    {
+        if (! config('cotiz.mercadopublico.analisis_admin_habilitado', false)) {
+            return null;
+        }
+
+        $busqueda = app(OportunidadBusquedaService::class);
+        if (! $busqueda->pipelineAnteriorEnCurso()) {
+            return null;
+        }
+
+        return 'Hay un proceso anterior del pipeline en curso (búsqueda, vinculación, adjuntos o limpieza). '
+            .'Los cambios de estado se encolarán al terminar ese proceso.';
+    }
+
     public function encolarCorrida(string $usuario): NotaMpCorrida
     {
         if ($this->corridaEnCurso() !== null) {
             throw new RuntimeException('Ya hay una consulta en curso.');
+        }
+
+        $postergado = $this->motivoPostergarCambiosEstadoPorOrdenPipeline();
+        if ($postergado !== null) {
+            throw new RuntimeException($postergado);
         }
 
         $pendientes = $this->notasPendientesConsulta();

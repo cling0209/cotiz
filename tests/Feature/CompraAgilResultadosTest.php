@@ -11,8 +11,10 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Models\OportunidadVinculoCorrida;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
+use App\Services\OportunidadVinculoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -1009,6 +1011,52 @@ class CompraAgilResultadosTest extends TestCase
             'estado' => 'running',
         ]);
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessNotaMpCorridaJob::class);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_catch_up_schedule_omite_si_vinculacion_en_curso_en_romulo(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_habilitado' => true,
+            'cotiz.mercadopublico.resultados_schedule_hours' => '10,19',
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-12 14:00:00', 'America/Santiago'));
+
+        OportunidadVinculoCorrida::query()->create([
+            'usuario' => 'admin',
+            'fecha_busqueda' => '2026-07-12',
+            'inicio' => now()->subMinutes(5),
+            'estado' => OportunidadVinculoService::ESTADO_RUNNING,
+            'total_pasos' => 49,
+            'pasos_procesados' => 13,
+            'pasos_fallidos' => 0,
+            'plan_json' => [],
+            'errores_json' => [],
+            'mensaje' => 'Vinculadas 13/49…',
+        ]);
+
+        Nota::query()->create([
+            'nronota' => 88002,
+            'descripcion' => 'Catch-up bloqueado por vinculo',
+            'fecha' => '2026-07-01',
+            'empresa' => 'Test SA',
+            'encargado' => '88002-1-COT26',
+            'usuario' => 'admin',
+            'nota_softland' => 8800200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $resultado = $this->app->make(NotaMpResultadosService::class)
+            ->asegurarCorridaProgramadaSiCorresponde('sistema');
+
+        $this->assertSame('omitido', $resultado['accion']);
+        $this->assertStringContainsString('proceso anterior del pipeline', $resultado['mensaje'] ?? '');
+        $this->assertDatabaseMissing('nota_mp_corridas', ['estado' => 'running']);
 
         Carbon::setTestNow();
     }

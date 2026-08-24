@@ -2927,11 +2927,34 @@ class OportunidadBusquedaService
             ]);
         }
 
-        if ($this->pipelineAnteriorAEstadosEnCurso()) {
+        if ($this->pipelineAnteriorEnCurso()) {
             return;
         }
 
         $this->encolarCambiosEstadoTrasPipeline($usuario);
+    }
+
+    /**
+     * En Rómulo, cambios de estado (resultados MP) es la última etapa: no debe arrancar
+     * mientras búsqueda, vinculación, adjuntos o limpieza sigan en curso.
+     */
+    public function pipelineAnteriorEnCurso(): bool
+    {
+        if ($this->corridaEnCurso() !== null) {
+            return true;
+        }
+
+        if ($this->vinculos->corridaEnCurso() !== null) {
+            return true;
+        }
+
+        try {
+            $adjuntos = app(OportunidadAdjuntoCorridaService::class);
+
+            return $adjuntos->corridaEnCurso() !== null || $adjuntos->purgeEnCurso();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public function interrumpirCambiosEstadoSiCorre(string $usuario = 'sistema'): void
@@ -2951,25 +2974,6 @@ class OportunidadBusquedaService
             Log::warning('Pipeline: no se pudo cancelar cambios de estado antes de buscar', [
                 'message' => $e->getMessage(),
             ]);
-        }
-    }
-
-    private function pipelineAnteriorAEstadosEnCurso(): bool
-    {
-        if ($this->corridaEnCurso() !== null) {
-            return true;
-        }
-
-        if ($this->vinculos->corridaEnCurso() !== null) {
-            return true;
-        }
-
-        try {
-            $adjuntos = app(OportunidadAdjuntoCorridaService::class);
-
-            return $adjuntos->corridaEnCurso() !== null || $adjuntos->purgeEnCurso();
-        } catch (Throwable) {
-            return false;
         }
     }
 
