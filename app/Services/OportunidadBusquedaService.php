@@ -2023,7 +2023,7 @@ class OportunidadBusquedaService
         $workerStalled = $this->corridaEstaStalled($corrida);
         $esperandoWorker = $this->corridaEsperandoWorker($corrida);
         $siguienteFecha = $corrida->estado === self::ESTADO_COMPLETED
-            ? $this->proximaFechaPendienteDespues($fechaBusqueda)
+            ? $this->primeraFechaPendiente()
             : null;
 
         $cierre = null;
@@ -2719,7 +2719,7 @@ class OportunidadBusquedaService
 
         for ($dia = $inicio->copy(); $dia->lessThanOrEqualTo($hoy); $dia->addDay()) {
             $fecha = $dia->toDateString();
-            if (! $this->fechaTieneCorridaCompleta($fecha)) {
+            if (! $this->fechaTieneBusquedaSatisfactoria($fecha)) {
                 return $fecha;
             }
 
@@ -2730,18 +2730,6 @@ class OportunidadBusquedaService
         }
 
         return null;
-    }
-
-    private function proximaFechaPendienteDespues(mixed $fecha): ?string
-    {
-        $dia = $this->normalizarFechaCorrida($fecha);
-        if ($dia === null) {
-            return $this->primeraFechaPendiente();
-        }
-
-        $siguiente = Carbon::parse($dia, config('app.timezone'))->addDay()->toDateString();
-
-        return $this->primeraFechaPendiente($siguiente);
     }
 
     private function siguienteProcesoTrasBusqueda(string $fechaBusqueda, ?array $adjuntoEstado): string
@@ -2770,6 +2758,34 @@ class OportunidadBusquedaService
             ->whereDate('fecha_busqueda', $fecha)
             ->where('estado', self::ESTADO_COMPLETED)
             ->exists();
+    }
+
+    /**
+     * Día listo para catch-up: corrida completed sin regiones que requieran reintento completo.
+     */
+    private function fechaTieneBusquedaSatisfactoria(string $fecha): bool
+    {
+        if (! $this->fechaTieneCorridaCompleta($fecha)) {
+            return false;
+        }
+
+        $ultima = OportunidadBusquedaCorrida::query()
+            ->whereDate('fecha_busqueda', $fecha)
+            ->where('estado', self::ESTADO_COMPLETED)
+            ->latest('id')
+            ->first();
+
+        if ($ultima === null) {
+            return false;
+        }
+
+        foreach (is_array($ultima->plan_json) ? $ultima->plan_json : [] as $paso) {
+            if (is_array($paso) && $this->pasoRequiereReintentoCompleto($paso)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function formatearFechaMensaje(string $fecha): string
@@ -2914,8 +2930,12 @@ class OportunidadBusquedaService
             return;
         }
 
-        $siguienteFecha = $this->proximaFechaPendienteDespues($fechaBusqueda);
-        if ($siguienteFecha === null || $this->corridaEnCurso() !== null) {
+        if ($this->corridaEnCurso() !== null) {
+            return;
+        }
+
+        $siguienteFecha = $this->primeraFechaPendiente();
+        if ($siguienteFecha === null) {
             return;
         }
 
