@@ -354,6 +354,19 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="d-flex flex-wrap gap-3 mb-2 small" role="radiogroup" aria-label="Modo de búsqueda">
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="radio" name="modalBuscarModo" id="modalBuscarModoSimilitud" value="similitud" checked>
+                            <label class="form-check-label" for="modalBuscarModoSimilitud">B&uacute;squeda por similitud</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="radio" name="modalBuscarModo" id="modalBuscarModoTexto" value="texto">
+                            <label class="form-check-label" for="modalBuscarModoTexto">B&uacute;squeda por texto</label>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-2 d-none" id="modalBuscarModoTextoAyuda">
+                        Por texto: cada palabra debe existir en el producto (c&oacute;digo o nombre), sin importar el orden. Sin l&iacute;mite de 50.
+                    </p>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="input-group input-group-sm flex-grow-1">
                             <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -2178,6 +2191,25 @@
     const productosMarcados = new Set();
     let modalBuscarVincularActivo = false;
 
+    function obtenerModoBusquedaModal() {
+        const checked = document.querySelector('input[name="modalBuscarModo"]:checked');
+        return checked?.value === 'texto' ? 'texto' : 'similitud';
+    }
+
+    function setModoBusquedaModal(modo) {
+        const value = modo === 'texto' ? 'texto' : 'similitud';
+        const radio = document.querySelector('input[name="modalBuscarModo"][value="' + value + '"]');
+        if (radio) radio.checked = true;
+        actualizarAyudaModoBusquedaModal();
+    }
+
+    function actualizarAyudaModoBusquedaModal() {
+        const ayuda = document.getElementById('modalBuscarModoTextoAyuda');
+        if (ayuda) {
+            ayuda.classList.toggle('d-none', obtenerModoBusquedaModal() !== 'texto');
+        }
+    }
+
     function setModalBuscarModoVincular(activo) {
         modalBuscarVincularActivo = !!activo;
         modalBuscarChkHeader?.classList.toggle('d-none', modalBuscarVincularActivo);
@@ -2408,9 +2440,17 @@
             modalBody.innerHTML = '<tr><td colspan="' + colsModalBuscar() + '" class="text-muted text-center py-3">Sin resultados.</td></tr>';
             limpiarProductosMarcados();
             if (modalEstado) {
-                setModalBuscarEstado(meta?.q
-                    ? 'No se encontraron productos similares para «' + meta.q + '».'
-                    : 'Escriba el texto del cliente o descripción y pulse Buscar.', false);
+                const modo = meta?.modo === 'texto' ? 'texto' : 'similitud';
+                if (meta?.q) {
+                    setModalBuscarEstado(
+                        modo === 'texto'
+                            ? 'No se encontraron productos con el texto «' + meta.q + '».'
+                            : 'No se encontraron productos similares para «' + meta.q + '».',
+                        false
+                    );
+                } else {
+                    setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
+                }
             }
             return;
         }
@@ -2486,7 +2526,13 @@
         sincronizarSeleccionarTodos();
 
         if (modalEstado && meta) {
-            setModalBuscarEstado(meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).', false);
+            const modo = meta.modo === 'texto' ? 'texto' : 'similitud';
+            setModalBuscarEstado(
+                modo === 'texto'
+                    ? meta.count + ' producto(s) — búsqueda por texto (sin límite de 50).'
+                    : meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).',
+                false
+            );
         }
 
         marcarFilaActiva(0);
@@ -2540,6 +2586,7 @@
         })) return;
         if (!bsModal || !modalInput) return;
         setModalBuscarModoVincular(false);
+        setModoBusquedaModal('similitud');
         modalInput.value = '';
         limpiarProductosMarcados();
         renderResultados([], {});
@@ -2554,7 +2601,7 @@
 
     function lanzarBusquedaModal() {
         if (!modalInput) return;
-        ejecutarBusqueda(modalInput.value.trim());
+        ejecutarBusqueda(modalInput.value.trim(), obtenerModoBusquedaModal());
     }
 
     function limpiarBusquedaModal() {
@@ -2570,6 +2617,14 @@
 
     btnAbrirBuscar?.addEventListener('click', () => abrirModalBuscar());
     btnModalBuscar?.addEventListener('click', () => lanzarBusquedaModal());
+    document.querySelectorAll('input[name="modalBuscarModo"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            actualizarAyudaModoBusquedaModal();
+            if (modalInput?.value.trim()) {
+                lanzarBusquedaModal();
+            }
+        });
+    });
     btnModalAgregarSeleccionados?.addEventListener('click', () => agregarProductosSeleccionados());
     document.getElementById('btn-modal-buscar-limpiar')?.addEventListener('click', limpiarBusquedaModal);
 
@@ -5212,6 +5267,7 @@
         const modo = descAgile ? 'similitud' : 'texto';
 
         setModalBuscarModoVincular(true);
+        setModoBusquedaModal(modo);
         modalInput.value = terminoBusqueda;
         limpiarProductosMarcados();
         renderResultados([], {});
