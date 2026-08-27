@@ -12,14 +12,18 @@ use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
 use App\Models\OportunidadEncontrada;
+use App\Models\OportunidadPalabraClave;
+use App\Models\OportunidadBusquedaCorrida;
 use App\Models\OportunidadVinculoCorrida;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
+use App\Services\OportunidadBusquedaService;
 use App\Services\OportunidadVinculoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class CompraAgilResultadosTest extends TestCase
@@ -569,6 +573,97 @@ class CompraAgilResultadosTest extends TestCase
 
         $cancelada->refresh();
         $this->assertStringContainsString('Retomada en corrida #'.$nueva->id, (string) $cancelada->mensaje);
+    }
+
+    public function test_continuar_pipeline_tras_purge_retoma_estados_antes_de_catch_up_oportunidades(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.analisis_admin_habilitado' => true,
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.mercadopublico.regiones' => [13],
+            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-08-24',
+        ]);
+        Carbon::setTestNow(Carbon::parse('2026-08-25 12:00:00', 'America/Santiago'));
+
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'oficina',
+            'orden' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        OportunidadBusquedaCorrida::query()->create([
+            'usuario' => 'sistema',
+            'fecha_busqueda' => '2026-08-24',
+            'inicio' => Carbon::parse('2026-08-24 09:00:00', 'America/Santiago'),
+            'fin' => Carbon::parse('2026-08-24 10:00:00', 'America/Santiago'),
+            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
+            'total_pasos' => 1,
+            'pasos_procesados' => 1,
+            'pasos_fallidos' => 0,
+            'oportunidades_encontradas' => 1,
+            'plan_json' => [
+                [
+                    'frase' => '(todas)',
+                    'region' => 13,
+                    'region_nombre' => 'Metropolitana',
+                    'estado' => 'ok',
+                    'intentos' => 1,
+                    'encontradas' => 1,
+                ],
+            ],
+            'errores_json' => [],
+            'mensaje' => 'Búsqueda terminada correctamente.',
+        ]);
+
+        foreach ([801, 802] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Retomo purge '.$nronota,
+                'fecha' => '2026-08-26',
+                'usuario' => 'admin',
+                'empresa' => 'A',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => $nronota * 100,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        $cancelada = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subHours(2),
+            'fin' => now()->subHour(),
+            'estado' => 'cancelled',
+            'mensaje' => NotaMpResultadosService::MENSAJE_CANCELADA_POR_PIPELINE,
+            'total_notas' => 2,
+            'notas_procesadas' => 0,
+            'pendientes_json' => [
+                ['nronota' => 801, 'codigo' => '801-1-COT26', 'empresa' => 'A'],
+                ['nronota' => 802, 'codigo' => '802-1-COT26', 'empresa' => 'A'],
+            ],
+        ]);
+
+        $busquedasAntes = OportunidadBusquedaCorrida::query()->count();
+        $corridasMpAntes = NotaMpCorrida::query()->count();
+
+        $this->app->make(OportunidadBusquedaService::class)
+            ->continuarPipelineTrasPurge('2026-08-24', 'sistema');
+
+        $this->assertSame($busquedasAntes, OportunidadBusquedaCorrida::query()->count());
+        $this->assertSame($corridasMpAntes + 1, NotaMpCorrida::query()->count());
+
+        $nueva = NotaMpCorrida::query()->latest('id')->first();
+        $this->assertNotNull($nueva);
+        $this->assertNotSame($cancelada->id, $nueva->id);
+        $this->assertStringContainsString('Retomada desde corrida #'.$cancelada->id, (string) $nueva->mensaje);
+
+        Carbon::setTestNow();
     }
 
     public function test_corrida_cancelada_manual_no_es_retomable_por_pipeline(): void

@@ -2968,11 +2968,18 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Tras purge (o si no había R2): catch-up del día siguiente, o cambios de estado.
+     * Tras purge (o si no había R2): retoma cambios de estado cancelados; si no hay pendientes,
+     * catch-up del día siguiente y luego cambios de estado.
      */
     public function continuarPipelineTrasPurge(mixed $fechaBusqueda, string $usuario = 'sistema'): void
     {
         $usuario = trim($usuario) ?: 'sistema';
+
+        if (! $this->pipelineAnteriorEnCurso()) {
+            if ($this->encolarCambiosEstadoTrasPipeline($usuario)) {
+                return;
+            }
+        }
 
         try {
             $this->continuarCatchUpTrasVinculacion($fechaBusqueda, $usuario);
@@ -3033,12 +3040,15 @@ class OportunidadBusquedaService
         }
     }
 
-    private function encolarCambiosEstadoTrasPipeline(string $usuario): void
+    /**
+     * @return bool true si se encoló una corrida de cambios de estado
+     */
+    private function encolarCambiosEstadoTrasPipeline(string $usuario): bool
     {
         try {
             $resultados = app(NotaMpResultadosService::class);
             if (! $resultados->apiConfigurada() || $resultados->corridaEnCurso() !== null) {
-                return;
+                return false;
             }
 
             $corrida = $resultados->encolarCorridaTrasPipeline($usuario);
@@ -3046,13 +3056,15 @@ class OportunidadBusquedaService
                 'corrida_id' => $corrida->id,
                 'mensaje' => $corrida->mensaje,
             ]);
+
+            return true;
         } catch (RuntimeException $e) {
             $msg = $e->getMessage();
             if (
                 str_contains($msg, 'No hay cotizaciones pendientes')
                 || str_contains($msg, 'Ya hay una consulta en curso')
             ) {
-                return;
+                return false;
             }
 
             Log::warning('Pipeline: no se pudo encolar cambios de estado', [
@@ -3063,5 +3075,7 @@ class OportunidadBusquedaService
                 'message' => $e->getMessage(),
             ]);
         }
+
+        return false;
     }
 }
