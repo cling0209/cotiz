@@ -11,6 +11,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadVinculoCorrida;
 use App\Models\User;
 use App\Services\NotaMpResultadosService;
@@ -1124,6 +1125,142 @@ class CompraAgilResultadosTest extends TestCase
 
         $this->assertSame(0, NotaMpCorrida::query()->count());
         \Illuminate\Support\Facades\Queue::assertNothingPushed();
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_omite_oportunidad_hoy_sin_seguimiento_mp(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-26 21:45:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 901,
+            'descripcion' => 'Oportunidad de hoy sin seguimiento',
+            'fecha' => '2026-08-26',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '901-1-COT26',
+            'nota_softland' => 90100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+        Nota::query()->create([
+            'nronota' => 902,
+            'descripcion' => 'Antigua sin seguimiento',
+            'fecha' => '2026-08-20',
+            'usuario' => 'admin',
+            'empresa' => 'B',
+            'encargado' => '902-1-COT26',
+            'nota_softland' => 90200,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '901-1-COT26',
+            'nombre' => 'Cotizacion hoy',
+            'fecha_busqueda' => '2026-08-26',
+        ]);
+        OportunidadEncontrada::query()->create([
+            'codigo' => '902-1-COT26',
+            'nombre' => 'Cotizacion ayer',
+            'fecha_busqueda' => '2026-08-25',
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $pendientes = $service->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(902, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_oportunidad_hoy_con_seguimiento_mp(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-26 21:45:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 903,
+            'descripcion' => 'Oportunidad de hoy ya con seguimiento',
+            'fecha' => '2026-08-26',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '903-1-COT26',
+            'nota_softland' => 90300,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '903-1-COT26',
+            'nombre' => 'Cotizacion hoy',
+            'fecha_busqueda' => '2026-08-26',
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 903,
+            'codigo_proceso' => '903-1-COT26',
+            'finalizado' => false,
+            'ultimo_consultado_en' => Carbon::parse('2026-08-25 19:00:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(903, $pendientes->first()['nronota']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_pendientes_incluye_oportunidad_hoy_sin_seguimiento_si_fallo_previo(): void
+    {
+        config(['app.timezone' => 'America/Santiago']);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-26 21:45:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 904,
+            'descripcion' => 'Oportunidad hoy con fallo previo',
+            'fecha' => '2026-08-26',
+            'usuario' => 'admin',
+            'empresa' => 'A',
+            'encargado' => '904-1-COT26',
+            'nota_softland' => 90400,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        OportunidadEncontrada::query()->create([
+            'codigo' => '904-1-COT26',
+            'nombre' => 'Cotizacion hoy',
+            'fecha_busqueda' => '2026-08-26',
+        ]);
+
+        $corrida = NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subHour(),
+            'estado' => 'ok',
+            'total_notas' => 1,
+            'notas_procesadas' => 1,
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $corrida->id,
+            'nronota' => 904,
+            'codigo_proceso' => '904-1-COT26',
+            'exito' => false,
+            'mensaje' => 'Timeout MP',
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(1, $pendientes->count());
+        $this->assertSame(904, $pendientes->first()['nronota']);
 
         Carbon::setTestNow();
     }

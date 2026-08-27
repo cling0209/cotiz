@@ -11,6 +11,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Models\OportunidadEncontrada;
 use App\Support\HoraChile;
 use App\Support\RenderKeepAlive;
 use Carbon\Carbon;
@@ -604,11 +605,15 @@ class NotaMpResultadosService
 
         $nronotas = $rows->pluck('nronota')->map(fn ($n) => (int) $n)->all();
         $reintentosTrasFallo = $this->nronotasConUltimoDetalleFallido($nronotas);
+        $codigosOportunidadHoy = $this->codigosOportunidadEncontradaHoy();
         $momento = $this->cutoffUltimoCambioCorrida();
         $filtrarHorario = (bool) config('cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio', true);
 
         $filtered = $rows
             ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
+            ->filter(function (Nota $nota) use ($codigosOportunidadHoy, $reintentosTrasFallo) {
+                return ! $this->omitirCotizacionDelDiaSinSeguimientoMp($nota, $codigosOportunidadHoy, $reintentosTrasFallo);
+            })
             ->filter(function (Nota $nota) use ($filtrarHorario, $momento, $reintentosTrasFallo) {
                 if (! $filtrarHorario) {
                     return true;
@@ -698,10 +703,60 @@ class NotaMpResultadosService
     }
 
     /**
+     * Códigos COT de oportunidades encontradas en la búsqueda de hoy (corrida masiva).
+     *
+     * @return array<string, true> codigo upper => true
+     */
+    public function codigosOportunidadEncontradaHoy(?Carbon $ahora = null): array
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $hoy = ($ahora ?? now())->copy()->timezone($tz)->toDateString();
+
+        $codigos = OportunidadEncontrada::query()
+            ->whereDate('fecha_busqueda', $hoy)
+            ->pluck('codigo');
+
+        $map = [];
+        foreach ($codigos as $codigo) {
+            $norm = strtoupper(trim((string) $codigo));
+            if ($norm !== '') {
+                $map[$norm] = true;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Corrida masiva: omitir oportunidades de hoy aún sin seguimiento MP (aún no cambian de estado).
+     *
+     * @param  array<string, true>  $codigosOportunidadHoy
+     * @param  array<int, true>  $reintentosTrasFallo
+     */
+    public function omitirCotizacionDelDiaSinSeguimientoMp(
+        Nota $nota,
+        array $codigosOportunidadHoy,
+        array $reintentosTrasFallo,
+    ): bool {
+        $nronota = (int) $nota->nronota;
+        if (isset($reintentosTrasFallo[$nronota])) {
+            return false;
+        }
+
+        if ($nota->getAttribute('mp_seg_nronota') !== null) {
+            return false;
+        }
+
+        $codigo = strtoupper(trim((string) $nota->encargado));
+
+        return $codigo !== '' && isset($codigosOportunidadHoy[$codigo]);
+    }
+
+    /**
      * @param  list<int>  $nronotas
      * @return array<int, true> nronota => true
      */
-    public function nronotasConUltimoDetalleFallido(array $nronotas): array
+    private function nronotasConUltimoDetalleFallido(array $nronotas): array
     {
         if ($nronotas === []) {
             return [];
@@ -729,6 +784,7 @@ class NotaMpResultadosService
      * - OC emitida en MP pero falta notas.ocompra alfanumérica (ganador = empresa de esta instancia).
      * Omite las ya consultadas hoy (SKIP_MISMO_DIA): la siguiente corrida del
      * mismo día no las vuelve a procesar; entran al día siguiente.
+     * Omite oportunidades encontradas hoy sin seguimiento MP (aún no cambian de estado).
      * Excepción: último detalle con fallo (exito=false) sí reintenta.
      * El filtro por horario de último cambio se aplica en notasPendientesConsulta().
      *
@@ -742,6 +798,7 @@ class NotaMpResultadosService
                 'notas.encargado',
                 'notas.fecha',
                 'notas.empresa',
+                'seg.nronota as mp_seg_nronota',
                 'seg.fecha_ultimo_cambio as mp_fecha_ultimo_cambio',
             ])
             ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
