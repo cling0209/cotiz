@@ -487,6 +487,110 @@ class CompraAgilResultadosTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_encolar_tras_pipeline_retoma_corrida_cancelada(): void
+    {
+        config([
+            'queue.default' => 'sync',
+            'cotiz.mercadopublico.resultados_delay_ms' => 0,
+        ]);
+
+        $payloadMp = [
+            'success' => 'OK',
+            'payload' => [
+                'codigo' => 'X',
+                'estado' => ['codigo' => 'publicada', 'glosa' => 'Publicada'],
+                'id_orden_compra' => null,
+                'fechas' => [
+                    'fecha_publicacion' => '2026-03-20 16:19',
+                    'fecha_cierre' => '2026-03-25 09:00',
+                    'fecha_ultimo_cambio' => '2026-03-25 11:00',
+                    'fecha_cancelacion' => null,
+                ],
+                'convocatoria' => [
+                    'estado_convocatoria' => 1,
+                    'descripcion' => 'Primer llamado',
+                    'fecha_cierre_primer_llamado' => '2026-03-25 09:00',
+                    'fecha_cierre_segundo_llamado' => null,
+                ],
+                'proveedores_cotizando' => [],
+            ],
+        ];
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/702-1-COT26' => Http::response($payloadMp),
+            'api2.mercadopublico.cl/v2/compra-agil/703-1-COT26' => Http::response($payloadMp),
+        ]);
+
+        foreach ([701, 702, 703] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Retomo pipeline '.$nronota,
+                'fecha' => '2026-08-26',
+                'usuario' => 'admin',
+                'empresa' => 'A',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => $nronota * 100,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        $cancelada = NotaMpCorrida::query()->create([
+            'usuario' => 'sistema',
+            'inicio' => now()->subHours(2),
+            'fin' => now()->subHour(),
+            'estado' => 'cancelled',
+            'mensaje' => NotaMpResultadosService::MENSAJE_CANCELADA_POR_PIPELINE,
+            'total_notas' => 3,
+            'notas_procesadas' => 1,
+            'pendientes_json' => [
+                ['nronota' => 701, 'codigo' => '701-1-COT26', 'empresa' => 'A'],
+                ['nronota' => 702, 'codigo' => '702-1-COT26', 'empresa' => 'A'],
+                ['nronota' => 703, 'codigo' => '703-1-COT26', 'empresa' => 'A'],
+            ],
+        ]);
+
+        NotaMpCorridaDetalle::query()->create([
+            'corrida_id' => $cancelada->id,
+            'nronota' => 701,
+            'codigo_proceso' => '701-1-COT26',
+            'exito' => true,
+            'mensaje' => 'OK',
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $nueva = $service->encolarCorridaTrasPipeline('sistema');
+
+        $this->assertStringContainsString('Retomada desde corrida #'.$cancelada->id, (string) $nueva->mensaje);
+
+        $pendientes = is_array($nueva->fresh()?->pendientes_json) ? $nueva->fresh()->pendientes_json : [];
+        $this->assertSame(702, (int) ($pendientes[0]['nronota'] ?? 0));
+        $this->assertSame(703, (int) ($pendientes[1]['nronota'] ?? 0));
+
+        $cancelada->refresh();
+        $this->assertStringContainsString('Retomada en corrida #'.$nueva->id, (string) $cancelada->mensaje);
+    }
+
+    public function test_corrida_cancelada_manual_no_es_retomable_por_pipeline(): void
+    {
+        NotaMpCorrida::query()->create([
+            'usuario' => 'admin',
+            'inicio' => now()->subHour(),
+            'fin' => now(),
+            'estado' => 'cancelled',
+            'mensaje' => 'Cancelada por admin.',
+            'total_notas' => 2,
+            'notas_procesadas' => 1,
+            'pendientes_json' => [
+                ['nronota' => 711, 'codigo' => '711-1-COT26'],
+                ['nronota' => 712, 'codigo' => '712-1-COT26'],
+            ],
+        ]);
+
+        $service = $this->app->make(NotaMpResultadosService::class);
+        $this->assertNull($service->corridaCanceladaPorPipelineRetomable());
+    }
+
     public function test_corrida_marca_error_si_codigo_no_existe_en_mp(): void
     {
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);

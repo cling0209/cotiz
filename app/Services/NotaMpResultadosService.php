@@ -32,6 +32,8 @@ class NotaMpResultadosService
 
     public const CATCHUP_ORIGEN_BOOT = 'boot';
 
+    public const MENSAJE_CANCELADA_POR_PIPELINE = 'Cancelada: el pipeline reinicia desde búsqueda de cotizaciones.';
+
     public function __construct(
         protected CompraAgilApiService $api,
         protected CompraAgilGanadorResolver $ganador,
@@ -1156,7 +1158,159 @@ class NotaMpResultadosService
             );
         }
 
-        $lista = $pendientes->values()->all();
+        return $this->encolarCorridaConLista($usuario, $pendientes->values()->all());
+    }
+
+    /**
+     * Tras cerrar el pipeline: retoma la corrida cancelada por :00 si quedó pendiente;
+     * si no, encola una corrida nueva como encolarCorrida().
+     */
+    public function encolarCorridaTrasPipeline(string $usuario): NotaMpCorrida
+    {
+        if ($this->corridaEnCurso() !== null) {
+            throw new RuntimeException('Ya hay una consulta en curso.');
+        }
+
+        $postergado = $this->motivoPostergarCambiosEstadoPorOrdenPipeline();
+        if ($postergado !== null) {
+            throw new RuntimeException($postergado);
+        }
+
+        $origen = $this->corridaCanceladaPorPipelineRetomable();
+        if ($origen !== null) {
+            $lista = $this->pendientesRestantesDesdeCorridaCancelada($origen);
+            if ($lista !== []) {
+                $procesadas = (int) $origen->notas_procesadas;
+                $total = (int) $origen->total_notas;
+                $corrida = $this->encolarCorridaConLista(
+                    $usuario,
+                    $lista,
+                    'Retomada desde corrida #'.$origen->id.' ('.$procesadas.'/'.$total.' procesadas).',
+                );
+
+                $origen->update([
+                    'mensaje' => trim((string) $origen->mensaje).' Retomada en corrida #'.$corrida->id.'.',
+                ]);
+
+                Log::info('Pipeline: cambios de estado retomados desde corrida cancelada', [
+                    'corrida_origen_id' => $origen->id,
+                    'corrida_id' => $corrida->id,
+                    'procesadas_antes' => $procesadas,
+                    'pendientes_restantes' => count($lista),
+                ]);
+
+                return $corrida;
+            }
+        }
+
+        return $this->encolarCorrida($usuario);
+    }
+
+    /**
+     * Última corrida masiva cancelada por el pipeline con trabajo pendiente y sin retomar aún.
+     */
+    public function corridaCanceladaPorPipelineRetomable(): ?NotaMpCorrida
+    {
+        return NotaMpCorrida::query()
+            ->masivas()
+            ->where('estado', 'cancelled')
+            ->where('mensaje', 'like', '%'.self::MENSAJE_CANCELADA_POR_PIPELINE.'%')
+            ->where('mensaje', 'not like', '%Retomada en corrida #%')
+            ->whereColumn('notas_procesadas', '<', 'total_notas')
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * @return list<array{nronota: int, codigo: string, empresa?: string|null}>
+     */
+    public function pendientesRestantesDesdeCorridaCancelada(NotaMpCorrida $origen): array
+    {
+        $pendientes = is_array($origen->pendientes_json) ? $origen->pendientes_json : [];
+        $indice = max(0, (int) $origen->notas_procesadas);
+        $restantes = array_slice($pendientes, $indice);
+
+        return $this->filtrarPendientesJsonRetomables($restantes, $origen);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lista
+     * @return list<array{nronota: int, codigo: string, empresa?: string|null}>
+     */
+    private function filtrarPendientesJsonRetomables(array $lista, NotaMpCorrida $corridaOrigen): array
+    {
+        if ($lista === []) {
+            return [];
+        }
+
+        $nronotas = [];
+        foreach ($lista as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $nronota = (int) ($item['nronota'] ?? 0);
+            if ($nronota > 0) {
+                $nronotas[] = $nronota;
+            }
+        }
+
+        $notasByNronota = $nronotas === []
+            ? collect()
+            : Nota::query()
+                ->select([
+                    'notas.nronota',
+                    'notas.encargado',
+                    'seg.nronota as mp_seg_nronota',
+                ])
+                ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+                ->whereIn('notas.nronota', $nronotas)
+                ->get()
+                ->keyBy('nronota');
+
+        $codigosOportunidadHoy = $this->codigosOportunidadEncontradaHoy();
+        $reintentosTrasFallo = $this->nronotasConUltimoDetalleFallido($nronotas);
+
+        $filtrados = [];
+        foreach ($lista as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $nronota = (int) ($item['nronota'] ?? 0);
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($nronota <= 0 || $codigo === '') {
+                continue;
+            }
+
+            if ($this->notaYaTieneDetalleEnCorrida($corridaOrigen, $nronota)) {
+                continue;
+            }
+
+            /** @var Nota|null $nota */
+            $nota = $notasByNronota->get($nronota);
+            if ($nota !== null
+                && $this->omitirCotizacionDelDiaSinSeguimientoMp($nota, $codigosOportunidadHoy, $reintentosTrasFallo)) {
+                continue;
+            }
+
+            $filtrados[] = [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'empresa' => isset($item['empresa']) ? trim((string) $item['empresa']) : null,
+            ];
+        }
+
+        return $filtrados;
+    }
+
+    /**
+     * @param  list<array{nronota: int, codigo: string, empresa?: string|null}>  $lista
+     */
+    private function encolarCorridaConLista(string $usuario, array $lista, ?string $mensajeInicio = null): NotaMpCorrida
+    {
+        if ($lista === []) {
+            throw new RuntimeException('No hay cotizaciones pendientes de consultar a MP.');
+        }
 
         $this->assertColaBackgroundDisponible();
 
@@ -1168,6 +1322,7 @@ class NotaMpResultadosService
             'pendientes_json' => $lista,
             'notas_procesadas' => 0,
             'notas_con_cambio' => 0,
+            'mensaje' => $mensajeInicio,
         ]);
 
         $this->marcarSiguienteNotaPendiente($corrida);

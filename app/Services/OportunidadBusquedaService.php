@@ -3023,7 +3023,7 @@ class OportunidadBusquedaService
 
             $resultados->cancelarCorridaEnCurso(
                 trim($usuario) ?: 'sistema',
-                'Cancelada: el pipeline reinicia desde búsqueda de cotizaciones.',
+                NotaMpResultadosService::MENSAJE_CANCELADA_POR_PIPELINE,
             );
             Log::info('Pipeline: cambios de estado cancelados para iniciar búsqueda de cotizaciones');
         } catch (Throwable $e) {
@@ -3041,9 +3041,10 @@ class OportunidadBusquedaService
                 return;
             }
 
-            $corrida = $resultados->encolarCorrida($usuario);
+            $corrida = $resultados->encolarCorridaTrasPipeline($usuario);
             Log::info('Pipeline: cambios de estado encolados tras adjuntos', [
                 'corrida_id' => $corrida->id,
+                'mensaje' => $corrida->mensaje,
             ]);
         } catch (RuntimeException $e) {
             $msg = $e->getMessage();
