@@ -794,7 +794,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         Carbon::setTestNow();
     }
 
-    public function test_cursor_incremental_cae_a_tomado_at_si_no_hay_ultimo_cambio_visto(): void
+    public function test_sin_ultimo_cambio_visto_no_usa_tomado_at_sino_ultima_publicacion_conocida(): void
     {
         Queue::fake();
         config([
@@ -813,6 +813,19 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
             'frase' => 'escritorio',
             'orden' => 1,
             'created_by' => $user->id,
+        ]);
+        OportunidadEncontrada::query()->create([
+            'codigo' => '517-999-COT26',
+            'nombre' => 'Licitación base',
+            'fecha_publicacion' => Carbon::parse('2026-08-21 08:30:00', 'America/Santiago'),
+            'fecha_creacion' => Carbon::parse('2026-08-21 08:30:00', 'America/Santiago'),
+            'organismo' => 'Organismo',
+            'region' => '13',
+            'monto_estimado' => 1000,
+            'estado' => 'Publicada',
+            'tipo' => 'COT',
+            'moneda' => 'CLP',
+            'raw_json' => [],
         ]);
 
         OportunidadBusquedaCorrida::query()->create([
@@ -844,7 +857,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         $cambioDesde = Carbon::parse((string) $corrida->plan_json[0]['cambio_desde'])
             ->timezone('America/Santiago');
-        $this->assertSame('2026-08-21 10:29:00', $cambioDesde->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-08-21 08:31:00', $cambioDesde->format('Y-m-d H:i:s'));
 
         Carbon::setTestNow();
     }

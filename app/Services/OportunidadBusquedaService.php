@@ -300,7 +300,7 @@ class OportunidadBusquedaService
      */
     private function cursorDesdePaso(array $paso, string $dia): ?string
     {
-        $raw = trim((string) ($paso['ultimo_cambio_visto'] ?? $paso['tomado_at'] ?? ''));
+        $raw = trim((string) ($paso['ultimo_cambio_visto'] ?? ''));
         if ($raw === '') {
             return null;
         }
