@@ -55,7 +55,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         $estado = $this->app->make(OportunidadBusquedaService::class)->estado($corrida);
 
-        $this->assertSame('2026-07-15', $estado['fecha_siguiente_pendiente']);
+        $this->assertNull($estado['fecha_siguiente_pendiente']);
 
         Carbon::setTestNow();
     }
@@ -1189,72 +1189,16 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $servicio = $this->app->make(OportunidadBusquedaService::class);
         $nueva = $servicio->iniciar('sistema');
 
-        $this->assertSame('2026-08-24', $nueva->fecha_busqueda->toDateString());
+        $this->assertSame('2026-08-25', $nueva->fecha_busqueda->toDateString());
         $this->assertNotSame($corrida->id, $nueva->id);
 
         $estado = $servicio->estado($corrida);
-        $this->assertSame('2026-08-24', $estado['fecha_siguiente_pendiente']);
+        $this->assertNull($estado['fecha_siguiente_pendiente']);
 
         Carbon::setTestNow();
     }
 
-    public function test_catch_up_reintenta_dia_con_fallos_antes_de_avanzar(): void
-    {
-        Queue::fake();
-        config([
-            'app.timezone' => 'America/Santiago',
-            'cotiz.mercadopublico.ticket' => 'ticket-test',
-            'cotiz.mercadopublico.regiones' => [13, 10],
-            'cotiz.mercadopublico.fecha_inicio_busqueda' => '2026-08-24',
-        ]);
-        Carbon::setTestNow(Carbon::parse('2026-08-25 10:00:00', 'America/Santiago'));
-
-        $user = User::factory()->create([
-            'username' => 'admin',
-            'perfil' => User::PERFIL_SUPERADMIN,
-        ]);
-        OportunidadPalabraClave::query()->create([
-            'frase' => 'oficina',
-            'orden' => 1,
-            'created_by' => $user->id,
-        ]);
-
-        OportunidadBusquedaCorrida::query()->create([
-            'usuario' => 'sistema',
-            'fecha_busqueda' => '2026-08-24',
-            'inicio' => Carbon::parse('2026-08-24 09:00:00', 'America/Santiago'),
-            'fin' => Carbon::parse('2026-08-24 10:00:00', 'America/Santiago'),
-            'estado' => OportunidadBusquedaService::ESTADO_COMPLETED,
-            'total_pasos' => 1,
-            'pasos_procesados' => 1,
-            'pasos_fallidos' => 1,
-            'oportunidades_encontradas' => 0,
-            'plan_json' => [
-                [
-                    'frase' => '(todas)',
-                    'region' => 10,
-                    'region_nombre' => 'Los Lagos',
-                    'estado' => 'retry_failed',
-                    'intentos' => 2,
-                    'encontradas' => 0,
-                ],
-            ],
-            'errores_json' => [],
-            'mensaje' => 'Búsqueda terminada con 1 paso(s) fallido(s).',
-        ]);
-
-        $servicio = $this->app->make(OportunidadBusquedaService::class);
-        $servicio->continuarCatchUpTrasVinculacion('2026-08-24', 'sistema');
-
-        $nueva = OportunidadBusquedaCorrida::query()->latest('id')->first();
-        $this->assertNotNull($nueva);
-        $this->assertSame('2026-08-24', $nueva->fecha_busqueda->toDateString());
-        $this->assertSame(OportunidadBusquedaService::ESTADO_RUNNING, $nueva->estado);
-
-        Carbon::setTestNow();
-    }
-
-    public function test_catch_up_avanza_al_dia_siguiente_si_busqueda_satisfactoria(): void
+    public function test_siguiente_corrida_usa_cursores_de_corridas_previas(): void
     {
         Queue::fake();
         config([
@@ -1293,6 +1237,7 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
                     'estado' => 'ok',
                     'intentos' => 1,
                     'encontradas' => 1,
+                    'ultimo_cambio_visto' => '2026-08-24T21:05:00-04:00',
                 ],
             ],
             'errores_json' => [],
@@ -1300,12 +1245,11 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         ]);
 
         $servicio = $this->app->make(OportunidadBusquedaService::class);
-        $servicio->continuarCatchUpTrasVinculacion('2026-08-24', 'sistema');
+        $nueva = $servicio->iniciar('sistema');
 
-        $nueva = OportunidadBusquedaCorrida::query()->latest('id')->first();
-        $this->assertNotNull($nueva);
         $this->assertSame('2026-08-25', $nueva->fecha_busqueda->toDateString());
-        $this->assertSame(OportunidadBusquedaService::ESTADO_RUNNING, $nueva->estado);
+        $this->assertTrue((bool) ($nueva->plan_json[0]['incremental'] ?? false));
+        $this->assertSame('2026-08-24T21:06:00-04:00', $nueva->plan_json[0]['cambio_desde']);
 
         Carbon::setTestNow();
     }

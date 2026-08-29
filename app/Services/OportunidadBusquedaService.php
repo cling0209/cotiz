@@ -93,7 +93,7 @@ class OportunidadBusquedaService
         }
 
         $dia = $fechaBusqueda === null
-            ? $this->primeraFechaPendiente()
+            ? $this->oportunidades->fechaBusquedaHoy()
             : $this->normalizarFechaCorrida($fechaBusqueda);
 
         if ($dia === null) {
@@ -228,18 +228,13 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Para el día vigente (hoy): retoma desde la última publicación conocida + 1 minuto
-     * (aunque esa pub. sea de un día anterior). Catch-up histórico (días pasados) usa el día completo.
+     * Retoma desde la última publicación conocida + 1 minuto
+     * (aunque esa pub. sea de un día anterior).
      * Solo se usa si la región no tiene último cambio visto de un barrido previo.
      */
     private function resolverCambioDesdeIncremental(string $dia, bool $ventanaCompleta = false): ?string
     {
         if ($ventanaCompleta) {
-            return null;
-        }
-
-        $hoy = $this->oportunidades->fechaBusquedaHoy();
-        if ($dia !== $hoy) {
             return null;
         }
 
@@ -264,17 +259,18 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Por región: último cambio visto (o hora en que se tomó el paso) + 1 minuto.
+     * Por región: último cambio visto (o hora en que se tomó el paso) de la corrida previa + 1 minuto.
+     * Busca a través de las últimas corridas completadas sin limitarse al mismo día calendario.
      *
      * @return array<int, string> region => ISO8601
      */
     private function cursorsIncrementalPorRegion(string $dia): array
     {
         $corridas = OportunidadBusquedaCorrida::query()
-            ->whereDate('fecha_busqueda', $dia)
             ->where('estado', self::ESTADO_COMPLETED)
             ->latest('id')
-            ->get(['id', 'plan_json']);
+            ->limit(50)
+            ->get(['id', 'plan_json', 'fecha_busqueda']);
 
         $out = [];
         foreach ($corridas as $corrida) {
@@ -443,7 +439,6 @@ class OportunidadBusquedaService
     private function regionesParaReintentoCompletoUltimaCorrida(string $dia): array
     {
         $ultima = OportunidadBusquedaCorrida::query()
-            ->whereDate('fecha_busqueda', $dia)
             ->where('estado', self::ESTADO_COMPLETED)
             ->latest('id')
             ->first();
@@ -1939,28 +1934,25 @@ class OportunidadBusquedaService
             return ['accion' => 'omitido', 'mensaje' => 'No hay horarios programados válidos.', 'corrida_id' => null];
         }
 
-        $fechaPendiente = $this->primeraFechaPendiente();
-        if ($fechaPendiente === null) {
-            return ['accion' => 'omitido', 'mensaje' => 'Todas las fechas hasta hoy ya tienen corrida.', 'corrida_id' => null];
-        }
+        $hoy = $this->oportunidades->fechaBusquedaHoy();
 
         $yaEjecutada = OportunidadBusquedaCorrida::query()
             ->where('inicio', '>=', $slot)
-            ->whereDate('fecha_busqueda', $fechaPendiente)
+            ->whereDate('fecha_busqueda', $hoy)
             ->exists();
         if ($yaEjecutada) {
             return [
                 'accion' => 'omitido',
-                'mensaje' => 'El último horario programado ya tiene corrida para '.$this->formatearFechaMensaje($fechaPendiente).'.',
+                'mensaje' => 'El último horario programado ya tiene corrida para '.$this->formatearFechaMensaje($hoy).'.',
                 'corrida_id' => null,
             ];
         }
 
-        $corrida = $this->iniciar($usuario, $fechaPendiente);
+        $corrida = $this->iniciar($usuario, $hoy);
 
         return [
             'accion' => 'encolada',
-            'mensaje' => 'Catch-up de oportunidades encolado para '.$this->formatearFechaMensaje($fechaPendiente).'.',
+            'mensaje' => 'Catch-up de oportunidades encolado para '.$this->formatearFechaMensaje($hoy).'.',
             'corrida_id' => $corrida->id,
         ];
     }
@@ -2022,9 +2014,7 @@ class OportunidadBusquedaService
 
         $workerStalled = $this->corridaEstaStalled($corrida);
         $esperandoWorker = $this->corridaEsperandoWorker($corrida);
-        $siguienteFecha = $corrida->estado === self::ESTADO_COMPLETED
-            ? $this->primeraFechaPendiente()
-            : null;
+        $siguienteFecha = null;
 
         $cierre = null;
         if ($corrida->estado === self::ESTADO_COMPLETED) {
@@ -2710,26 +2700,7 @@ class OportunidadBusquedaService
 
     private function primeraFechaPendiente(?string $desde = null): ?string
     {
-        $inicio = Carbon::parse($desde ?? $this->fechaInicioBusqueda(), config('app.timezone'))->startOfDay();
-        $hoy = Carbon::parse($this->oportunidades->fechaBusquedaHoy(), config('app.timezone'))->startOfDay();
-
-        if ($inicio->greaterThan($hoy)) {
-            return null;
-        }
-
-        for ($dia = $inicio->copy(); $dia->lessThanOrEqualTo($hoy); $dia->addDay()) {
-            $fecha = $dia->toDateString();
-            if (! $this->fechaTieneBusquedaSatisfactoria($fecha)) {
-                return $fecha;
-            }
-
-            // Día en curso ya completo: permite otra corrida incremental (nuevas pubs. del día).
-            if ($dia->equalTo($hoy)) {
-                return $fecha;
-            }
-        }
-
-        return null;
+        return $this->oportunidades->fechaBusquedaHoy();
     }
 
     private function siguienteProcesoTrasBusqueda(string $fechaBusqueda, ?array $adjuntoEstado): string
@@ -2922,24 +2893,11 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Tras vincular+sync del día D, encola la búsqueda del día D+1 si el catch-up lo requiere.
+     * Tras vincular+sync del día D: la búsqueda continua ya procesó el tramo completo hasta hoy.
      */
     public function continuarCatchUpTrasVinculacion(mixed $fechaBusqueda, string $usuario = 'sistema'): void
     {
-        if (! $this->habilitada()) {
-            return;
-        }
-
-        if ($this->corridaEnCurso() !== null) {
-            return;
-        }
-
-        $siguienteFecha = $this->primeraFechaPendiente();
-        if ($siguienteFecha === null) {
-            return;
-        }
-
-        $this->iniciar(trim($usuario) ?: 'sistema', $siguienteFecha);
+        // No se requiere encadenar días calendario históricos uno a uno.
     }
 
     /**

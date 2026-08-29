@@ -5099,8 +5099,10 @@
             vinculoEstadoPrev = vinEst;
             const activo = corrida.estado === 'running';
             const esperandoWorker = corridaEsperandoWorker(corrida);
+            const tieneSiguienteDiaDiferente = Boolean(corrida.fecha_siguiente_pendiente) &&
+                String(corrida.fecha_siguiente_pendiente).slice(0, 10) !== String(corrida.fecha_busqueda || '').slice(0, 10);
             const cambiandoDia = corrida.estado === 'completed' &&
-                Boolean(corrida.fecha_siguiente_pendiente) &&
+                tieneSiguienteDiaDiferente &&
                 intentosCambioDia < 30;
             const vinculoActivo = corrida.vinculo && corrida.vinculo.estado === 'running';
             if (activo || cambiandoDia) {
