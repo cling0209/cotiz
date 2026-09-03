@@ -69,6 +69,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/asignar', [CotizacionListadoController::class, 'asignar'])->name('cotizaciones.asignar.store')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/duplicar', [CotizacionListadoController::class, 'duplicar'])->name('cotizaciones.duplicar')->whereNumber('nronota');
         Route::get('cotizaciones/export/sin-codigo-softland', [CotizacionListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.export.sin-codigo-softland');
+        Route::get('cotizaciones/export/detalle-sin-codigo-softland', [CotizacionListadoController::class, 'exportDetalleSinCodigoSoftland'])->name('cotizaciones.export.detalle-sin-codigo-softland');
         Route::get('cotizaciones/export/aceptadas', [CotizacionListadoController::class, 'exportAceptadas'])->name('cotizaciones.export.aceptadas');
         Route::get('cotizaciones/export/aceptadas-totales-producto', [CotizacionListadoController::class, 'exportAceptadasTotalesPorProducto'])->name('cotizaciones.export.aceptadas-totales-producto');
         Route::get('cotizaciones/export/aceptadas-detalle-producto', [CotizacionListadoController::class, 'exportAceptadasDetallePorProducto'])->name('cotizaciones.export.aceptadas-detalle-producto');
@@ -237,6 +238,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('cotizaciones/adjudicadas', [AdjudicadaListadoController::class, 'index'])->name('cotizaciones.adjudicadas.index');
             Route::get('cotizaciones/adjudicadas/export/detalle', [AdjudicadaListadoController::class, 'exportDetalle'])->name('cotizaciones.adjudicadas.export.detalle');
             Route::get('cotizaciones/adjudicadas/export/sin-codigo-softland', [AdjudicadaListadoController::class, 'exportSinCodigoSoftland'])->name('cotizaciones.adjudicadas.export.sin-codigo-softland');
+            Route::get('cotizaciones/adjudicadas/export/detalle-sin-codigo-softland', [AdjudicadaListadoController::class, 'exportDetalleSinCodigoSoftland'])->name('cotizaciones.adjudicadas.export.detalle-sin-codigo-softland');
 
             Route::middleware('compra-agil-analisis')->group(function () {
                 Route::get('compra-agil/analisis', [CompraAgilAnalisisController::class, 'index'])->name('compra-agil.analisis.index');

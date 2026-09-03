@@ -496,6 +496,74 @@ class CotizacionListadoAccionesTest extends TestCase
         $this->assertStringContainsString('PRODUCTO SIN SOFTLAND', $contenido);
     }
 
+    public function test_export_detalle_sin_codigo_softland_vacio_sin_aceptadas(): void
+    {
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => null]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'DETSOFT02',
+            'prod_nombre' => 'PRODUCTO PENDIENTE DETALLE',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'prod_item_softland' => null,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DETSOFT02',
+            'prod_valor' => 1000,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 800,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.export.detalle-sin-codigo-softland'))
+            ->assertRedirect(route('admin.cotizaciones.index'))
+            ->assertSessionHas('warning');
+    }
+
+    public function test_export_detalle_sin_codigo_softland_csv_incluye_columnas_y_cotizacion(): void
+    {
+        $nota = $this->crearNota([
+            'usuario' => 'ejecutivo',
+            'estado' => 'aceptada',
+            'empresa' => 'EMPRESA DETALLE SOFTLAND',
+            'encargado' => '9999-1-COT26',
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'DETSOFT01',
+            'prod_nombre' => 'PRODUCTO DETALLE SOFTLAND',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'prod_item_softland' => null,
+        ]);
+
+        DB::table('notasdetalle')->insert([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'DETSOFT01',
+            'prod_valor' => 1000,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 800,
+        ]);
+
+        $response = $this->actingAs($this->admin)->get(route('admin.cotizaciones.export.detalle-sin-codigo-softland'));
+
+        $response->assertOk();
+        $contenido = $response->streamedContent();
+        $this->assertStringContainsString('Código producto', $contenido);
+        $this->assertStringContainsString('Nro.Cotización', $contenido);
+        $this->assertStringContainsString('DETSOFT01', $contenido);
+        $this->assertStringContainsString('PRODUCTO DETALLE SOFTLAND', $contenido);
+        $this->assertStringContainsString('EMPRESA DETALLE SOFTLAND', $contenido);
+        $this->assertStringContainsString('9999-1-COT26', $contenido);
+        $this->assertStringContainsString('1190', $contenido);
+    }
+
     public function test_listado_muestra_alerta_segundo_llamado_solo_del_ejecutivo_logueado(): void
     {
         $propia = $this->crearNota([

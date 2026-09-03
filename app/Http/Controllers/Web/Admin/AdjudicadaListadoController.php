@@ -65,4 +65,18 @@ class AdjudicadaListadoController extends Controller
 
         return $this->exportService->respuestaSinCodigoSoftlandTxt($request->user()->username);
     }
+
+    public function exportDetalleSinCodigoSoftland(Request $request): StreamedResponse|RedirectResponse
+    {
+        if ($this->exportService->detalleProductosSinCodigoSoftland()->isEmpty()) {
+            return redirect()
+                ->route('admin.cotizaciones.adjudicadas.index')
+                ->with(
+                    'warning',
+                    'No hay productos sin código Softland en cotizaciones aceptadas.',
+                );
+        }
+
+        return $this->exportService->respuestaDetalleSinCodigoSoftlandCsv($request->user()->username);
+    }
 }

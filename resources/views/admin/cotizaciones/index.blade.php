@@ -306,6 +306,10 @@
                    title="Solo productos de cotizaciones aceptadas sin código Softland en el maestro">
                     Descargar sin c&oacute;digo Softland
                 </a>
+                <a href="{{ route('admin.cotizaciones.export.detalle-sin-codigo-softland') }}" class="btn btn-secondary btn-sm" data-no-loader
+                   title="Detalle CSV para comparar productos aceptados sin código Softland">
+                    Detalle sin c&oacute;digo Softland
+                </a>
                 @php
                     $exportFechaQuery = array_filter([
                         'fechadesde' => $filtros['fechadesde'] ?? null,

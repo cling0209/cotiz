@@ -65,6 +65,88 @@ class CotizacionListadoExportService
     }
 
     /**
+     * Detalle legible (CSV) de productos sin código Softland en cotizaciones aceptadas.
+     * Una fila por producto × cotización, para comparar con Softland.
+     *
+     * @return Collection<int, object{
+     *     prod_item: string,
+     *     prod_nombre: string,
+     *     prod_valor: int,
+     *     valorconimpuesto: int,
+     *     nronota: int,
+     *     fecha: mixed,
+     *     empresa: ?string,
+     *     encargado: ?string
+     * }>
+     */
+    public function detalleProductosSinCodigoSoftland(): Collection
+    {
+        $rows = DB::select("
+            SELECT
+                nd.prod_item,
+                m.prod_nombre,
+                nd.prod_valor,
+                ROUND(nd.prod_valor * 1.19)::int AS valorconimpuesto,
+                n.nronota,
+                n.fecha,
+                n.empresa,
+                n.encargado
+            FROM notasdetalle nd
+            INNER JOIN notas n ON n.nronota = nd.nronota
+            INNER JOIN maeprod m ON m.prod_item = nd.prod_item
+            WHERE LOWER(COALESCE(n.estado, '')) = 'aceptada'
+              AND COALESCE(m.prod_item_softland, '') = ''
+              AND m.prod_item <> ''
+            ORDER BY nd.prod_item, n.nronota DESC
+        ");
+
+        return collect($rows);
+    }
+
+    public function respuestaDetalleSinCodigoSoftlandCsv(string $username): StreamedResponse
+    {
+        $nombre = 'detalle_sin_codigo_softland_'.$username.'_'.now()->format('YmdHis').'.csv';
+        $filas = $this->detalleProductosSinCodigoSoftland();
+
+        return response()->streamDownload(function () use ($filas) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                'Código producto',
+                'Nombre',
+                'Precio neto',
+                'Precio c/IVA',
+                'Nota',
+                'Fecha',
+                'Empresa',
+                'Nro.Cotización',
+            ], ';');
+
+            foreach ($filas as $row) {
+                fputcsv($out, [
+                    $row->prod_item,
+                    $row->prod_nombre,
+                    (int) $row->prod_valor,
+                    (int) $row->valorconimpuesto,
+                    $row->nronota,
+                    $row->fecha ? date('d/m/Y', strtotime((string) $row->fecha)) : '',
+                    $row->empresa ?? '',
+                    $row->encargado ?? '',
+                ], ';');
+            }
+
+            fclose($out);
+        }, $nombre, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
      * @param  array{fechadesde?: ?string, fechahasta?: ?string}  $filtros
      */
     public function respuestaAceptadasCsv(array $filtros = []): StreamedResponse

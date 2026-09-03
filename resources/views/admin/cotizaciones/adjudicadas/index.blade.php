@@ -83,6 +83,10 @@
                title="Productos de cotizaciones aceptadas sin código Softland">
                 Descargar sin c&oacute;digo Softland
             </a>
+            <a href="{{ route('admin.cotizaciones.adjudicadas.export.detalle-sin-codigo-softland') }}" class="btn btn-secondary btn-sm" data-no-loader
+               title="Detalle CSV para comparar productos aceptados sin código Softland">
+                Detalle sin c&oacute;digo Softland
+            </a>
             <a href="{{ route('admin.cotizaciones.adjudicadas.export.detalle', array_filter([
                 'nronota' => $filtros['nronota'] ?: null,
                 'fechaentregadesde' => $filtros['fechaentregadesde'],

@@ -210,6 +210,25 @@ class CotizacionListadoController extends Controller
         return $this->exportService->respuestaSinCodigoSoftlandTxt($request->user()->username);
     }
 
+    public function exportDetalleSinCodigoSoftland(Request $request): StreamedResponse|RedirectResponse
+    {
+        if (! $this->listadoService->puedeGestionar($request->user())) {
+            abort(403);
+        }
+
+        if ($this->exportService->detalleProductosSinCodigoSoftland()->isEmpty()) {
+            return redirect()
+                ->route('admin.cotizaciones.index')
+                ->with(
+                    'warning',
+                    'No hay productos sin código Softland en cotizaciones aceptadas. '
+                    .'Use el botón Aceptar en la cotización y vuelva a descargar.',
+                );
+        }
+
+        return $this->exportService->respuestaDetalleSinCodigoSoftlandCsv($request->user()->username);
+    }
+
     public function exportAceptadas(Request $request): StreamedResponse
     {
         if (! $this->listadoService->puedeGestionar($request->user())) {
