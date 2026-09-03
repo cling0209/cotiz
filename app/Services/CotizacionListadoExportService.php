@@ -74,6 +74,7 @@ class CotizacionListadoExportService
      *     prod_valor: int,
      *     valorconimpuesto: int,
      *     nronota: int,
+     *     orden: int,
      *     fecha: mixed,
      *     empresa: ?string,
      *     encargado: ?string
@@ -88,6 +89,7 @@ class CotizacionListadoExportService
                 nd.prod_valor,
                 ROUND(nd.prod_valor * 1.19)::int AS valorconimpuesto,
                 n.nronota,
+                nd.orden,
                 n.fecha,
                 n.empresa,
                 n.encargado
@@ -97,7 +99,7 @@ class CotizacionListadoExportService
             WHERE LOWER(COALESCE(n.estado, '')) = 'aceptada'
               AND COALESCE(m.prod_item_softland, '') = ''
               AND m.prod_item <> ''
-            ORDER BY nd.prod_item, n.nronota DESC
+            ORDER BY nd.prod_item, n.nronota DESC, nd.orden
         ");
 
         return collect($rows);
@@ -122,6 +124,7 @@ class CotizacionListadoExportService
                 'Precio neto',
                 'Precio c/IVA',
                 'Nota',
+                'Línea',
                 'Fecha',
                 'Empresa',
                 'Nro.Cotización',
@@ -134,6 +137,7 @@ class CotizacionListadoExportService
                     (int) $row->prod_valor,
                     (int) $row->valorconimpuesto,
                     $row->nronota,
+                    (int) $row->orden,
                     $row->fecha ? date('d/m/Y', strtotime((string) $row->fecha)) : '',
                     $row->empresa ?? '',
                     $row->encargado ?? '',

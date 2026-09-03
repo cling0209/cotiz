@@ -556,12 +556,14 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertOk();
         $contenido = $response->streamedContent();
         $this->assertStringContainsString('Código producto', $contenido);
+        $this->assertStringContainsString('Línea', $contenido);
         $this->assertStringContainsString('Nro.Cotización', $contenido);
         $this->assertStringContainsString('DETSOFT01', $contenido);
         $this->assertStringContainsString('PRODUCTO DETALLE SOFTLAND', $contenido);
         $this->assertStringContainsString('EMPRESA DETALLE SOFTLAND', $contenido);
         $this->assertStringContainsString('9999-1-COT26', $contenido);
         $this->assertStringContainsString('1190', $contenido);
+        $this->assertStringContainsString(';'.$nota->nronota.';1;', $contenido);
     }
 
     public function test_listado_muestra_alerta_segundo_llamado_solo_del_ejecutivo_logueado(): void
