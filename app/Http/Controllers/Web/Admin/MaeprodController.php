@@ -16,6 +16,7 @@ use App\Services\MaeprodImportProgressService;
 use App\Services\MaeprodImportRunService;
 use App\Services\MaeprodImportService;
 use App\Services\MaeprodImportStagingService;
+use App\Services\MaeprodSoftlandService;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportOptions;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +32,7 @@ class MaeprodController extends Controller
         protected MaeprodAdminService $maeprodService,
         protected MaeprodImportService $importService,
         protected MaeprodFraseRelayService $fraseRelay,
+        protected MaeprodSoftlandService $softlandService,
     ) {}
 
     public function index(Request $request): View
@@ -78,6 +80,7 @@ class MaeprodController extends Controller
             'puedeEditarSoftland' => $request->user()->isSuperAdmin(),
             'puedeModificarProducto' => true,
             'puedeGestionarFrases' => false,
+            'historialSoftland' => collect(),
             'listadoQuery' => $this->listadoQuery($request),
         ]);
     }
@@ -182,6 +185,7 @@ class MaeprodController extends Controller
             'puedeEditarSoftland' => $puedeModificarProducto,
             'puedeModificarProducto' => $puedeModificarProducto,
             'puedeGestionarFrases' => true,
+            'historialSoftland' => $this->softlandService->historial((string) $producto->prod_item),
             'listadoQuery' => $this->listadoQuery($request),
         ]);
     }

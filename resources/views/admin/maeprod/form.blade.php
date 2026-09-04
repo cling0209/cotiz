@@ -187,6 +187,65 @@ Frases Agile
                                        value="{{ $producto->prod_item_softland }}" readonly>
                             </div>
                             @endif
+                            @php
+                                $historialSoftland = $historialSoftland ?? collect();
+                                $ultimoSoftland = $historialSoftland->first();
+                            @endphp
+                            @if($producto && $ultimoSoftland)
+                            <div class="col-12">
+                                <p class="small text-muted mb-1">
+                                    &Uacute;ltima act. Softland:
+                                    {{ $ultimoSoftland->fechahora?->format('d/m/Y H:i') }}
+                                    — {{ $ultimoSoftland->usuario }}
+                                    — {{ $ultimoSoftland->origen?->label() ?? $ultimoSoftland->origen }}
+                                    @if($ultimoSoftland->nronota)
+                                        (cotiz. #{{ $ultimoSoftland->nronota }})
+                                    @endif
+                                    @if($ultimoSoftland->valor_nuevo === null || $ultimoSoftland->valor_nuevo === '')
+                                        — <span class="text-danger">borrado</span>
+                                    @endif
+                                </p>
+                            </div>
+                            @endif
+                            @if($producto && $historialSoftland->isNotEmpty())
+                            <div class="col-12">
+                                <details class="mb-2">
+                                    <summary class="small" style="cursor: pointer;">Historial Softland ({{ $historialSoftland->count() }})</summary>
+                                    <div class="table-responsive mt-2">
+                                        <table class="table table-sm table-bordered mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Usuario</th>
+                                                    <th>Anterior</th>
+                                                    <th>Nuevo</th>
+                                                    <th>Origen</th>
+                                                    <th>Cotiz.</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach($historialSoftland as $row)
+                                                <tr>
+                                                    <td class="text-nowrap">{{ $row->fechahora?->format('d/m/Y H:i') }}</td>
+                                                    <td>{{ $row->usuario }}</td>
+                                                    <td>{{ $row->valor_anterior !== null && $row->valor_anterior !== '' ? $row->valor_anterior : '—' }}</td>
+                                                    <td>
+                                                        @if($row->valor_nuevo === null || $row->valor_nuevo === '')
+                                                            <span class="text-danger">borrado</span>
+                                                        @else
+                                                            {{ $row->valor_nuevo }}
+                                                        @endif
+                                                    </td>
+                                                    <td>{{ $row->origen?->label() ?? $row->origen }}</td>
+                                                    <td>{{ $row->nronota ?: '—' }}</td>
+                                                </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </details>
+                            </div>
+                            @endif
                             @if($producto)
                             <div class="col-12">
                                 <p class="small mb-0">

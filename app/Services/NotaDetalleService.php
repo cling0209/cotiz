@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\MaeprodSoftlandOrigen;
 use App\Enums\VinculoOrigen;
 use App\Models\AgileMaeprod;
 use App\Models\Maeprod;
@@ -18,6 +19,7 @@ class NotaDetalleService
         protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
         protected AgileMaeprodService $agileMaeprodService,
         protected NotaAuditoriaService $auditoria,
+        protected MaeprodSoftlandService $softlandService,
     ) {}
 
     public function lineasDeNota(Nota $nota): Collection
@@ -164,16 +166,15 @@ class NotaDetalleService
             $costo = (int) ($datos['prod_valor_costo'] ?? $linea->prod_valor_costo);
 
             $softlandCambio = false;
-            // Precios solo en la nota; el maestro se edita en Productos / import.
+            // Precios solo en la nota; Softland sí actualiza el maestro (con auditoría).
             if ($producto && array_key_exists('prod_item_softland', $datos)) {
-                $softland = trim((string) $datos['prod_item_softland']);
-                if ($softland !== (string) ($producto->prod_item_softland ?? '')) {
-                    $producto->update([
-                        'prod_item_softland' => $softland,
-                        'prod_item_softland_fecha' => now(),
-                    ]);
-                    $softlandCambio = true;
-                }
+                $softlandCambio = $this->softlandService->aplicar(
+                    $producto,
+                    (string) $datos['prod_item_softland'],
+                    $usuarioUpd,
+                    MaeprodSoftlandOrigen::COTIZACION,
+                    (int) $nota->nronota,
+                );
             }
 
             $lineaUpdates = [

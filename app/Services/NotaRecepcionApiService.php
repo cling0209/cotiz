@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\MaeprodSoftlandOrigen;
 use App\Enums\VinculoOrigen;
 use App\Models\Maeprod;
 use App\Models\Nota;
@@ -14,6 +15,7 @@ class NotaRecepcionApiService
 {
     public function __construct(
         protected NotaDetalleService $detalleService,
+        protected MaeprodSoftlandService $softlandService,
     ) {}
 
     /**
@@ -103,6 +105,11 @@ class NotaRecepcionApiService
 
         DB::transaction(function () use ($payload, $nronota, $prodItem) {
             if (! Maeprod::query()->where('prod_item', $prodItem)->exists()) {
+                $softland = $this->softlandService->normalizar(
+                    (string) ($payload['prod_item_softland'] ?? ''),
+                );
+                $usuarioUpd = trim((string) ($payload['prod_user_upd'] ?? ''));
+
                 Maeprod::query()->create([
                     'prod_item' => $prodItem,
                     'prod_nombre' => trim((string) ($payload['prod_nombre'] ?? $prodItem)),
@@ -111,11 +118,23 @@ class NotaRecepcionApiService
                     'prod_stock_real' => null,
                     'prod_gramaje' => trim((string) ($payload['prod_gramaje'] ?? '')),
                     'prod_familia' => trim((string) ($payload['prod_familia'] ?? '')),
-                    'prod_item_softland' => trim((string) ($payload['prod_item_softland'] ?? '')),
+                    'prod_item_softland' => $softland,
+                    'prod_item_softland_fecha' => $softland !== null ? now() : null,
                     'prod_valor_fecha' => now(),
                     'prod_valor_costo' => (int) ($payload['prod_valor_costo'] ?? 0),
-                    'prod_user_upd' => trim((string) ($payload['prod_user_upd'] ?? '')),
+                    'prod_user_upd' => $usuarioUpd,
                 ]);
+
+                if ($softland !== null) {
+                    $this->softlandService->registrar(
+                        $prodItem,
+                        null,
+                        $softland,
+                        $usuarioUpd !== '' ? $usuarioUpd : 'api',
+                        MaeprodSoftlandOrigen::API,
+                        $nronota,
+                    );
+                }
             }
 
             $orden = (int) ($payload['orden'] ?? 0);

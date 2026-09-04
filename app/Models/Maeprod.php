@@ -47,6 +47,13 @@ class Maeprod extends Model
             ->orderBy('frase');
     }
 
+    public function softlandAuditorias(): HasMany
+    {
+        return $this->hasMany(MaeprodSoftlandAuditoria::class, 'prod_item', 'prod_item')
+            ->orderByDesc('fechahora')
+            ->orderByDesc('id');
+    }
+
     public function imageUrl(): string
     {
         return $this->resolveImageUrl();

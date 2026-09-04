@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\MaeprodSoftlandOrigen;
 use App\Models\Maeprod;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
@@ -17,6 +18,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodImportService
 {
+    public function __construct(
+        protected MaeprodSoftlandService $softlandService,
+    ) {}
+
     public const UPSERT_CHUNK_SIZE = 5000;
     /** @var array<string, string> */
     private const HEADER_ALIASES = [
@@ -598,6 +603,7 @@ class MaeprodImportService
 
         $upsertRows = [];
         $updateColumns = $this->resolveUpsertUpdateColumns($options);
+        $softlandCambios = [];
 
         foreach ($chunk as $row) {
             $item = trim((string) $row['prod_item']);
@@ -644,6 +650,18 @@ class MaeprodImportService
                 $result['updated']++;
             }
 
+            if (array_key_exists('prod_item_softland', $atributos)) {
+                $softlandAnterior = $this->softlandService->normalizar($producto?->prod_item_softland);
+                $softlandNuevo = $this->softlandService->normalizar($atributos['prod_item_softland'] ?? null);
+                if ($softlandAnterior !== $softlandNuevo) {
+                    $softlandCambios[] = [
+                        'prod_item' => $item,
+                        'valor_anterior' => $softlandAnterior,
+                        'valor_nuevo' => $softlandNuevo,
+                    ];
+                }
+            }
+
             $upsertRows[] = $this->normalizeUpsertRecord($record);
         }
 
@@ -652,12 +670,20 @@ class MaeprodImportService
         }
 
         try {
-            DB::transaction(function () use ($upsertRows, $updateColumns) {
+            DB::transaction(function () use ($upsertRows, $updateColumns, $softlandCambios, $usuarioUpd) {
                 Maeprod::query()->upsert(
                     $upsertRows,
                     ['prod_item'],
                     $updateColumns,
                 );
+
+                if ($softlandCambios !== []) {
+                    $this->softlandService->registrarMuchos(
+                        $softlandCambios,
+                        $usuarioUpd,
+                        MaeprodSoftlandOrigen::IMPORT,
+                    );
+                }
             });
         } catch (\Throwable $exception) {
             $codigos = implode(', ', array_slice($items, 0, 5));

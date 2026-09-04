@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\MaeprodSoftlandOrigen;
 use App\Models\Famprod;
 use App\Models\Gramaje;
 use App\Models\Maeprod;
@@ -17,6 +18,7 @@ class MaeprodAdminService
     public function __construct(
         protected ProductImageStorageService $imageStorage,
         protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
+        protected MaeprodSoftlandService $softlandService,
     ) {}
 
     public function listado(?string $term, ?string $familia, int $perPage = 20): LengthAwarePaginator
@@ -102,8 +104,13 @@ class MaeprodAdminService
     public function crear(array $datos, ?string $usuarioUpd = null): Maeprod
     {
         $item = trim((string) $datos['prod_item']);
+        $softland = $this->softlandService->normalizar(
+            array_key_exists('prod_item_softland', $datos)
+                ? (string) $datos['prod_item_softland']
+                : null,
+        );
 
-        return Maeprod::query()->create([
+        $producto = Maeprod::query()->create([
             'prod_item' => $item,
             'prod_nombre' => mb_strtoupper(trim((string) ($datos['prod_nombre'] ?? ''))),
             'prod_imagen' => trim((string) ($datos['prod_imagen'] ?? '')) ?: null,
@@ -113,10 +120,23 @@ class MaeprodAdminService
             'prod_gramaje' => trim((string) ($datos['prod_gramaje'] ?? '')) ?: null,
             'peso_kg' => $this->nullablePesoKg($datos['peso_kg'] ?? null),
             'prod_familia' => trim((string) ($datos['prod_familia'] ?? '')) ?: null,
-            'prod_item_softland' => trim((string) ($datos['prod_item_softland'] ?? '')) ?: null,
+            'prod_item_softland' => $softland,
+            'prod_item_softland_fecha' => $softland !== null ? now() : null,
             'prod_valor_fecha' => now(),
             'prod_user_upd' => $usuarioUpd,
         ]);
+
+        if ($softland !== null) {
+            $this->softlandService->registrar(
+                $item,
+                null,
+                $softland,
+                $usuarioUpd,
+                MaeprodSoftlandOrigen::PRODUCTO,
+            );
+        }
+
+        return $producto;
     }
 
     public function actualizar(Maeprod $producto, array $datos, ?string $usuarioUpd = null): Maeprod
@@ -129,7 +149,6 @@ class MaeprodAdminService
                 ? $this->nullablePesoKg($datos['peso_kg'])
                 : $producto->peso_kg,
             'prod_familia' => trim((string) ($datos['prod_familia'] ?? '')) ?: null,
-            'prod_item_softland' => trim((string) ($datos['prod_item_softland'] ?? '')) ?: null,
             'prod_stock_real' => isset($datos['prod_stock_real']) ? (int) $datos['prod_stock_real'] : $producto->prod_stock_real,
         ];
 
@@ -146,13 +165,16 @@ class MaeprodAdminService
             $updates['prod_valor_costo'] = $nuevoCosto;
         }
 
-        $softlandAnterior = (string) ($producto->prod_item_softland ?? '');
-        $softlandNuevo = (string) ($updates['prod_item_softland'] ?? '');
-        if ($softlandNuevo !== $softlandAnterior) {
-            $updates['prod_item_softland_fecha'] = now();
-        }
-
         $producto->update($updates);
+
+        if (array_key_exists('prod_item_softland', $datos)) {
+            $this->softlandService->aplicar(
+                $producto->fresh(),
+                (string) $datos['prod_item_softland'],
+                $usuarioUpd,
+                MaeprodSoftlandOrigen::PRODUCTO,
+            );
+        }
 
         return $producto->fresh();
     }
