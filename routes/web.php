@@ -83,6 +83,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
         Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
+
+        // Rutas estáticas de productos ANTES de productos/{prod_item} (evita que "carga-masiva"/"exportar" se tomen como código).
+        Route::middleware('superadmin')->group(function () {
+            Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
+            Route::get('productos/carga-masiva/estado', [MaeprodController::class, 'importStatus'])->name('productos.import.status');
+            Route::post('productos/carga-masiva/liberar', [MaeprodController::class, 'releaseImportLock'])->name('productos.import.unlock');
+            Route::get('productos/carga-masiva/resultado/{run}', [MaeprodController::class, 'importResult'])->name('productos.import.resultado')->whereNumber('run');
+            Route::get('productos/carga-masiva/errores/{run}', [MaeprodController::class, 'importErrors'])->name('productos.import.errores')->whereNumber('run');
+            Route::get('productos/carga-masiva/errores/{run}/exportar', [MaeprodController::class, 'exportImportErrors'])->name('productos.import.errores.exportar')->whereNumber('run');
+            Route::get('productos/carga-masiva/plantilla', [MaeprodController::class, 'downloadImportTemplate'])->name('productos.import.template');
+            Route::get('productos/carga-masiva/plantilla-excel', [MaeprodController::class, 'downloadImportTemplateExcel'])->name('productos.import.template.excel');
+            Route::post('productos/carga-masiva/chunk', [MaeprodController::class, 'storeImportChunk'])->name('productos.import.chunk');
+            Route::post('productos/carga-masiva/inicializar', [MaeprodController::class, 'initializeCustomImport'])->name('productos.import.initialize');
+            Route::post('productos/carga-masiva/vista-previa', [MaeprodController::class, 'previewImportMapping'])->name('productos.import.preview');
+            Route::post('productos/carga-masiva/preparar-plantilla', [MaeprodController::class, 'prepareTemplateImport'])->name('productos.import.prepare.template');
+            Route::post('productos/carga-masiva/preparar', [MaeprodController::class, 'prepareCustomImport'])->name('productos.import.prepare');
+            Route::post('productos/carga-masiva/procesar', [MaeprodController::class, 'processImportBatch'])->name('productos.import.process');
+            Route::post('productos/carga-masiva/procesar-background', [MaeprodController::class, 'startBackgroundImport'])->name('productos.import.background');
+            Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
+            Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
+        });
+
         Route::get('productos/{prod_item}/imagen', [MaeprodController::class, 'editImagen'])->name('productos.imagen.edit')->where('prod_item', '[^/]+');
         Route::put('productos/{prod_item}/imagen', [MaeprodController::class, 'updateImagen'])->name('productos.imagen.update')->where('prod_item', '[^/]+');
         Route::get('productos/{prod_item}', [MaeprodController::class, 'edit'])->name('productos.edit')->where('prod_item', '[^/]+');
@@ -245,24 +267,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::post('compra-agil/analisis/sync', [CompraAgilAnalisisController::class, 'sincronizar'])->name('compra-agil.analisis.sync');
                 Route::get('compra-agil/analisis/producto/{prodItem}', [CompraAgilAnalisisController::class, 'detalleProducto'])->name('compra-agil.analisis.producto')->where('prodItem', '[^/]+');
             });
-
-            Route::get('productos/carga-masiva', [MaeprodController::class, 'importForm'])->name('productos.import');
-            Route::get('productos/carga-masiva/estado', [MaeprodController::class, 'importStatus'])->name('productos.import.status');
-            Route::post('productos/carga-masiva/liberar', [MaeprodController::class, 'releaseImportLock'])->name('productos.import.unlock');
-            Route::get('productos/carga-masiva/resultado/{run}', [MaeprodController::class, 'importResult'])->name('productos.import.resultado')->whereNumber('run');
-            Route::get('productos/carga-masiva/errores/{run}', [MaeprodController::class, 'importErrors'])->name('productos.import.errores')->whereNumber('run');
-            Route::get('productos/carga-masiva/errores/{run}/exportar', [MaeprodController::class, 'exportImportErrors'])->name('productos.import.errores.exportar')->whereNumber('run');
-            Route::get('productos/carga-masiva/plantilla', [MaeprodController::class, 'downloadImportTemplate'])->name('productos.import.template');
-            Route::get('productos/carga-masiva/plantilla-excel', [MaeprodController::class, 'downloadImportTemplateExcel'])->name('productos.import.template.excel');
-            Route::post('productos/carga-masiva/chunk', [MaeprodController::class, 'storeImportChunk'])->name('productos.import.chunk');
-            Route::post('productos/carga-masiva/inicializar', [MaeprodController::class, 'initializeCustomImport'])->name('productos.import.initialize');
-            Route::post('productos/carga-masiva/vista-previa', [MaeprodController::class, 'previewImportMapping'])->name('productos.import.preview');
-            Route::post('productos/carga-masiva/preparar-plantilla', [MaeprodController::class, 'prepareTemplateImport'])->name('productos.import.prepare.template');
-            Route::post('productos/carga-masiva/preparar', [MaeprodController::class, 'prepareCustomImport'])->name('productos.import.prepare');
-            Route::post('productos/carga-masiva/procesar', [MaeprodController::class, 'processImportBatch'])->name('productos.import.process');
-            Route::post('productos/carga-masiva/procesar-background', [MaeprodController::class, 'startBackgroundImport'])->name('productos.import.background');
-            Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
-            Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
 
             Route::put('productos/{prod_item}', [MaeprodController::class, 'update'])->name('productos.update')->where('prod_item', '[^/]+');
             Route::delete('productos/{prod_item}', [MaeprodController::class, 'destroy'])->name('productos.destroy')->where('prod_item', '[^/]+');

@@ -606,6 +606,18 @@ class MaeprodImportTest extends TestCase
         $this->assertSame(0, MaeprodImportErrorLog::query()->count());
     }
 
+    public function test_superadmin_can_open_bulk_import_form(): void
+    {
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+
+        $this->withMiddleware()
+            ->actingAs($admin)
+            ->get(route('admin.productos.import'))
+            ->assertOk()
+            ->assertSee('Carga masiva de productos')
+            ->assertDontSee('El producto ya no existe o fue eliminado.');
+    }
+
     public function test_ejecutivo_cannot_access_bulk_import(): void
     {
         $user = User::factory()->create(['perfil' => User::PERFIL_EJECUTIVO]);
