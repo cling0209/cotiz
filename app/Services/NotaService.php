@@ -381,6 +381,10 @@ class NotaService
         if (array_key_exists('comuna', $datos)) {
             $payload['comuna'] = mb_substr(trim((string) $datos['comuna']), 0, 120) ?: null;
         }
+        if (array_key_exists('observacion_ejecutivo', $datos)) {
+            $obs = trim((string) $datos['observacion_ejecutivo']);
+            $payload['observacion_ejecutivo'] = $obs !== '' ? $obs : null;
+        }
 
         $nota->update($payload);
 

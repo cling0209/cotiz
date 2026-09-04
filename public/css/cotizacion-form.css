@@ -47,7 +47,8 @@
 }
 
 .cotizacion-ingreso #tabla_datos1 input,
-.cotizacion-ingreso #tabla_datos1 input[type="date"] {
+.cotizacion-ingreso #tabla_datos1 input[type="date"],
+.cotizacion-ingreso #tabla_datos1 textarea {
     width: 100%;
     min-width: 0;
     font-size: 11px;

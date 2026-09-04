@@ -147,6 +147,7 @@
                         </th>
                         <th>Cotizaci&oacute;n</th>
                         <th>Usuario</th>
+                        <th>Obs. ejecutivo</th>
                         <th>Estado</th>
                             @if($puedeVerEstadoMp ?? false)
                                 <th>Estado MP</th>
@@ -157,7 +158,7 @@
                 </thead>
                 <tbody>
                     @php
-                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 11 : 9;
+                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 12 : 10;
                     @endphp
                     @forelse($cotizaciones as $nota)
                         @php
@@ -212,6 +213,21 @@
                                 @endif
                             </td>
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
+                            <td>
+                                @php
+                                    $obsEjecutivo = trim((string) ($nota->observacion_ejecutivo ?? ''));
+                                    $obsEjecutivoTitle = $obsEjecutivo !== ''
+                                        ? \Illuminate\Support\Str::of($obsEjecutivo)->replace(["\r\n", "\n", "\r"], ' ')->trim()->toString()
+                                        : '';
+                                @endphp
+                                @if($obsEjecutivo === '')
+                                    —
+                                @else
+                                    <span class="d-inline-block text-truncate align-middle" style="max-width: 9rem;" title="{{ $obsEjecutivoTitle }}">
+                                        {{ \Illuminate\Support\Str::limit($obsEjecutivo, 40) }}
+                                    </span>
+                                @endif
+                            </td>
                             <td>{{ $nota->estado ?: '—' }}</td>
                             @if($puedeVerEstadoMp ?? false)
                                 <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>

@@ -187,6 +187,7 @@ class CotizacionController extends Controller
             'cotizacionListadoLabel' => CotizacionListadoRetorno::label($request),
             'cotizacionListadoQuery' => $cotizacionListadoQuery,
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
+            'puedeEditarObservacionEjecutivo' => $this->puedeEditarObservacionEjecutivo($request, $nota),
             'observacionesOrganismo' => $this->organismoObservacion->observacionesParaRut($nota->rutempresa),
         ]);
     }
@@ -443,6 +444,8 @@ class CotizacionController extends Controller
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
+        $datos = $this->filtrarObservacionEjecutivoSegunPermiso($request, $nota, $datos);
+
         try {
             $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
         } catch (RuntimeException $e) {
@@ -510,6 +513,8 @@ class CotizacionController extends Controller
         }
 
         $eraSinNumero = $nota->requiereNumeroCotizacion();
+
+        $datos = $this->filtrarObservacionEjecutivoSegunPermiso($request, $nota, $datos);
 
         try {
             $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
@@ -1482,6 +1487,7 @@ class CotizacionController extends Controller
             'region' => ['nullable', 'integer', 'min:1', 'max:16'],
             'nombre_region' => ['nullable', 'string', 'max:100'],
             'comuna' => ['nullable', 'string', 'max:120'],
+            'observacion_ejecutivo' => ['nullable', 'string', 'max:5000'],
         ];
     }
 
@@ -1619,6 +1625,29 @@ class CotizacionController extends Controller
         }
 
         return $nota->usuario === $user->username;
+    }
+
+    private function puedeEditarObservacionEjecutivo(Request $request, Nota $nota): bool
+    {
+        $user = $request->user();
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return strcasecmp(trim((string) $nota->usuario), trim((string) $user->username)) === 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function filtrarObservacionEjecutivoSegunPermiso(Request $request, Nota $nota, array $datos): array
+    {
+        if (! $this->puedeEditarObservacionEjecutivo($request, $nota)) {
+            unset($datos['observacion_ejecutivo']);
+        }
+
+        return $datos;
     }
 
     private function gestionarLockAnalisisMateriales(

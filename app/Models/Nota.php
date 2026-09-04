@@ -25,6 +25,7 @@ class Nota extends Model
         'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
         'estadofecha', 'estadousuario', 'ocompra', 'fechaentrega', 'factor_precio_venta',
         'direccion_entrega', 'region', 'nombre_region', 'comuna',
+        'observacion_ejecutivo',
         'es_compra_agil',
     ];
 

@@ -145,6 +145,24 @@
                     <th>Comuna</th>
                     <td colspan="3"><input type="text" name="comuna" id="comuna" maxlength="120" value="{{ old('comuna', $nota->comuna) }}" placeholder="Comuna de entrega"></td>
                 </tr>
+                <tr>
+                    <th>Obs. ejecutivo</th>
+                    <td colspan="5">
+                        @php
+                            $puedeEditarObsEjecutivo = $puedeEditarObservacionEjecutivo ?? true;
+                            $obsEjecutivoValor = old('observacion_ejecutivo', $nota->observacion_ejecutivo);
+                        @endphp
+                        <textarea
+                            name="observacion_ejecutivo"
+                            id="observacion_ejecutivo"
+                            rows="2"
+                            maxlength="5000"
+                            placeholder="Comentario interno del ejecutivo"
+                            @if(! $puedeEditarObsEjecutivo) readonly @endif
+                        >{{ $obsEjecutivoValor }}</textarea>
+                        <div class="small text-muted mt-1">Solo uso interno (no sale en PDF ni al cliente).</div>
+                    </td>
+                </tr>
             </table>
 
             @if($requiereNumeroCotizacion)
@@ -1140,6 +1158,7 @@
             region: val('region') !== '' ? parseInt(val('region'), 10) : null,
             nombre_region: val('nombre_region'),
             comuna: val('comuna'),
+            observacion_ejecutivo: val('observacion_ejecutivo'),
         };
         if (factorInput && String(factorInput.value || '').trim() !== '') {
             payload.factor_precio_venta = factorInput.value;
