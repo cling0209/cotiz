@@ -21,12 +21,14 @@ class ProcessMaeprodImportJob implements ShouldBeUnique, ShouldQueue
 
     /**
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      */
     public function __construct(
         public string $uploadId,
         public int $userId,
         public string $mode = 'template',
         public ?array $columnMapping = null,
+        public ?array $importOptions = null,
     ) {}
 
     public function uniqueId(): string
@@ -43,6 +45,7 @@ class ProcessMaeprodImportJob implements ShouldBeUnique, ShouldQueue
             $this->userId,
             $this->mode,
             $this->columnMapping,
+            $this->importOptions,
         );
     }
 

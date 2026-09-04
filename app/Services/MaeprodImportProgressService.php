@@ -27,18 +27,21 @@ class MaeprodImportProgressService
 
     /**
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      */
     public function beginQueued(
         string $uploadId,
         int $userId,
         string $mode,
         ?array $columnMapping = null,
+        ?array $importOptions = null,
     ): void {
         $this->write($uploadId, [
             'upload_id' => $uploadId,
             'user_id' => $userId,
             'mode' => $mode,
             'column_mapping' => $columnMapping,
+            'import_options' => $importOptions,
             'phase' => self::PHASE_QUEUED,
             'stage' => 'En cola',
             'detail' => 'Esperando worker en segundo plano...',

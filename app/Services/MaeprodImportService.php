@@ -6,6 +6,7 @@ use App\Models\Maeprod;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportError;
 use App\Support\MaeprodImportFileTypes;
+use App\Support\MaeprodImportOptions;
 use App\Support\MaeprodSchemaSupport;
 use App\Support\ProductCodeNormalizer;
 use Illuminate\Http\UploadedFile;
@@ -194,10 +195,16 @@ class MaeprodImportService
     }
 
     /**
+     * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importFromUploadedFile(UploadedFile $file, ?string $usuarioUpd = null, ?array $columnMapping = null): array
-    {
+    public function importFromUploadedFile(
+        UploadedFile $file,
+        ?string $usuarioUpd = null,
+        ?array $columnMapping = null,
+        ?array $importOptions = null,
+    ): array {
         $rows = $this->parseRowsFromUploadedFile($file);
 
         if ($rows === []) {
@@ -206,14 +213,20 @@ class MaeprodImportService
             ]);
         }
 
-        return $this->importRows($rows, $usuarioUpd, $columnMapping);
+        return $this->importRows($rows, $usuarioUpd, $columnMapping, $importOptions);
     }
 
     /**
+     * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importFromPath(string $path, ?string $usuarioUpd = null, ?array $columnMapping = null): array
-    {
+    public function importFromPath(
+        string $path,
+        ?string $usuarioUpd = null,
+        ?array $columnMapping = null,
+        ?array $importOptions = null,
+    ): array {
         $rows = $this->parseRowsFromPath($path);
 
         if ($rows === []) {
@@ -222,13 +235,15 @@ class MaeprodImportService
             ]);
         }
 
-        return $this->importRows($rows, $usuarioUpd, $columnMapping);
+        return $this->importRows($rows, $usuarioUpd, $columnMapping, $importOptions);
     }
 
     /**
      * Lee un tramo del CSV e importa fila a fila sin cargar el archivo completo en memoria.
      *
      * @param  list<string>  $dataHeaders
+     * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{
      *     chunk_result: array{created: int, updated: int, skipped: int, errors: list<array<string, mixed>>},
      *     rows_read: int,
@@ -244,6 +259,7 @@ class MaeprodImportService
         ?array $columnMapping = null,
         array $dataHeaders = [],
         string $delimiter = ';',
+        ?array $importOptions = null,
     ): array {
         if ($maxRows < 1) {
             throw new \InvalidArgumentException('El tamaño del tramo de importación debe ser mayor que cero.');
@@ -310,7 +326,7 @@ class MaeprodImportService
             }
 
             return [
-                'chunk_result' => $this->importRows($rows, $usuarioUpd, $columnMapping),
+                'chunk_result' => $this->importRows($rows, $usuarioUpd, $columnMapping, $importOptions),
                 'rows_read' => $rowsRead,
                 'next_physical_row' => $physicalLine + 1,
                 'exhausted' => $exhausted,
@@ -322,15 +338,21 @@ class MaeprodImportService
 
     /**
      * @param  array<string, string|null>  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{
      *     rows: list<array<string, mixed>>,
-     *     summary: array{crear: int, actualizar: int, error: int},
+     *     summary: array{crear: int, actualizar: int, omitido: int, error: int},
      *     total_rows: int,
      *     preview_limit: int
      * }
      */
-    public function previewFromPath(string $path, array $columnMapping, int $limit = 10, ?string $originalName = null): array
-    {
+    public function previewFromPath(
+        string $path,
+        array $columnMapping,
+        int $limit = 10,
+        ?string $originalName = null,
+        ?array $importOptions = null,
+    ): array {
         $extension = MaeprodImportFileTypes::extensionFromName($originalName ?? basename($path));
 
         if (in_array($extension, MaeprodImportFileTypes::SPREADSHEET_EXTENSIONS, true)) {
@@ -344,50 +366,62 @@ class MaeprodImportService
             );
             $rows = array_slice($rows, 0, $limit);
 
-            return $this->previewRows($rows, $columnMapping, $limit, max(0, (int) $metadata['highest_row'] - 1));
+            return $this->previewRows($rows, $columnMapping, $limit, max(0, (int) $metadata['highest_row'] - 1), $importOptions);
         }
 
         $rows = $this->parseCsvFromPathLimited($path, $limit + 20);
 
-        return $this->previewRows($rows, $columnMapping, $limit);
+        return $this->previewRows($rows, $columnMapping, $limit, null, $importOptions);
     }
 
     /**
      * @param  array<string, string|null>  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{
      *     rows: list<array<string, mixed>>,
-     *     summary: array{crear: int, actualizar: int, error: int},
+     *     summary: array{crear: int, actualizar: int, omitido: int, error: int},
      *     total_rows: int,
      *     preview_limit: int
      * }
      */
-    public function previewFromContent(string $content, array $columnMapping, int $limit = 10): array
-    {
+    public function previewFromContent(
+        string $content,
+        array $columnMapping,
+        int $limit = 10,
+        ?array $importOptions = null,
+    ): array {
         $rows = $this->parseCsvText($content);
 
-        return $this->previewRows($rows, $columnMapping, $limit);
+        return $this->previewRows($rows, $columnMapping, $limit, null, $importOptions);
     }
 
     /**
      * @param  list<array<string, string>>  $rows
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{
      *     rows: list<array<string, mixed>>,
-     *     summary: array{crear: int, actualizar: int, error: int},
+     *     summary: array{crear: int, actualizar: int, omitido: int, error: int},
      *     total_rows: int,
      *     preview_limit: int
      * }
      */
-    public function previewRows(array $rows, ?array $columnMapping, int $limit = 10, ?int $totalRows = null): array
-    {
+    public function previewRows(
+        array $rows,
+        ?array $columnMapping,
+        int $limit = 10,
+        ?int $totalRows = null,
+        ?array $importOptions = null,
+    ): array {
+        $options = MaeprodImportOptions::normalize($importOptions ?? MaeprodImportOptions::defaults());
         $preview = [];
-        $summary = ['crear' => 0, 'actualizar' => 0, 'error' => 0];
+        $summary = ['crear' => 0, 'actualizar' => 0, 'omitido' => 0, 'error' => 0];
         $limit = max(1, min($limit, 50));
 
         foreach (array_slice($rows, 0, $limit) as $lineNumber => $rawRow) {
             $csvLine = (int) ($rawRow['_csv_line'] ?? ($lineNumber + 2));
             $row = $this->mapRow($rawRow, $columnMapping);
-            $validation = $this->validateRow($row, $csvLine);
+            $validation = $this->validateRowLight($row, $csvLine);
 
             if ($validation !== null) {
                 $preview[] = [
@@ -407,6 +441,42 @@ class MaeprodImportService
 
             $codigo = trim((string) $row['prod_item']);
             $existe = Maeprod::query()->where('prod_item', $codigo)->exists();
+
+            if (! $existe && ! $options['allow_create']) {
+                $preview[] = [
+                    'fila' => $csvLine,
+                    'accion' => 'omitido',
+                    'codigo' => $codigo,
+                    'nombre' => mb_strtoupper(trim((string) ($row['prod_nombre'] ?? ''))),
+                    'familia' => trim((string) ($row['prod_familia'] ?? '')),
+                    'precio' => is_numeric($row['prod_valor'] ?? null) ? (int) $row['prod_valor'] : ($row['prod_valor'] ?? ''),
+                    'mensaje' => 'Producto nuevo omitido: creación deshabilitada.',
+                    'detalle' => null,
+                ];
+                $summary['omitido']++;
+
+                continue;
+            }
+
+            if (! $existe) {
+                $createValidation = $this->validateRowForCreate($row, $csvLine);
+                if ($createValidation !== null) {
+                    $preview[] = [
+                        'fila' => $csvLine,
+                        'accion' => 'error',
+                        'codigo' => $codigo,
+                        'nombre' => $row['prod_nombre'] ?? '',
+                        'familia' => $row['prod_familia'] ?? '',
+                        'precio' => $row['prod_valor'] ?? '',
+                        'mensaje' => $createValidation['mensaje'],
+                        'detalle' => $createValidation['detalle'],
+                    ];
+                    $summary['error']++;
+
+                    continue;
+                }
+            }
+
             $accion = $existe ? 'actualizar' : 'crear';
             $summary[$accion]++;
 
@@ -414,11 +484,13 @@ class MaeprodImportService
                 'fila' => $csvLine,
                 'accion' => $accion,
                 'codigo' => $codigo,
-                'nombre' => mb_strtoupper(trim((string) $row['prod_nombre'])),
-                'familia' => trim((string) $row['prod_familia']),
-                'precio' => (int) $row['prod_valor'],
-                'costo' => $row['prod_valor_costo'] !== '' ? (int) $row['prod_valor_costo'] : null,
-                'mensaje' => null,
+                'nombre' => mb_strtoupper(trim((string) ($row['prod_nombre'] ?? ''))),
+                'familia' => trim((string) ($row['prod_familia'] ?? '')),
+                'precio' => is_numeric($row['prod_valor'] ?? null) ? (int) $row['prod_valor'] : ($row['prod_valor'] ?? ''),
+                'costo' => ($row['prod_valor_costo'] ?? '') !== '' ? (int) $row['prod_valor_costo'] : null,
+                'mensaje' => $existe
+                    ? 'Campos a actualizar: '.implode(', ', $options['updatable_fields'])
+                    : null,
                 'detalle' => null,
             ];
         }
@@ -428,18 +500,25 @@ class MaeprodImportService
             'summary' => $summary,
             'total_rows' => $totalRows ?? count($rows),
             'preview_limit' => $limit,
+            'import_options' => $options,
         ];
     }
 
     /**
      * @param  list<array<string, string>>  $rows
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      * @return array{created: int, updated: int, skipped: int, errors: list<array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}>}
      */
-    public function importRows(array $rows, ?string $usuarioUpd = null, ?array $columnMapping = null): array
-    {
+    public function importRows(
+        array $rows,
+        ?string $usuarioUpd = null,
+        ?array $columnMapping = null,
+        ?array $importOptions = null,
+    ): array {
         MaeprodSchemaSupport::ensurePostgresStringColumnWidths();
 
+        $options = MaeprodImportOptions::normalize($importOptions ?? MaeprodImportOptions::defaults());
         $result = $this->emptyResult();
 
         $pending = [];
@@ -448,7 +527,7 @@ class MaeprodImportService
             $csvLine = (int) ($rawRow['_csv_line'] ?? ($lineNumber + 2));
             $row = $this->mapRow($rawRow, $columnMapping);
 
-            $validation = $this->validateRow($row, $csvLine);
+            $validation = $this->validateRowLight($row, $csvLine);
             if ($validation !== null) {
                 $this->pushError($result, $validation);
                 $result['skipped']++;
@@ -456,13 +535,14 @@ class MaeprodImportService
                 continue;
             }
 
+            $row['_csv_line'] = (string) $csvLine;
             $pending[] = $row;
         }
 
         $pending = $this->deduplicateRowsByItem($pending, $result);
 
         foreach (array_chunk($pending, self::UPSERT_CHUNK_SIZE) as $chunk) {
-            $this->persistChunk($chunk, $usuarioUpd, $result);
+            $this->persistChunk($chunk, $usuarioUpd, $result, $options);
         }
 
         return $result;
@@ -501,8 +581,9 @@ class MaeprodImportService
     /**
      * @param  list<array<string, string>>  $chunk
      * @param  array{created: int, updated: int, skipped: int, errors: list<string>}  $result
+     * @param  array{allow_create: bool, updatable_fields: list<string>}  $options
      */
-    private function persistChunk(array $chunk, ?string $usuarioUpd, array &$result): void
+    private function persistChunk(array $chunk, ?string $usuarioUpd, array &$result, array $options): void
     {
         $items = array_map(
             fn (array $row) => trim((string) $row['prod_item']),
@@ -516,14 +597,41 @@ class MaeprodImportService
             ->keyBy('prod_item');
 
         $upsertRows = [];
+        $updateColumns = $this->resolveUpsertUpdateColumns($options);
 
         foreach ($chunk as $row) {
             $item = trim((string) $row['prod_item']);
+            $csvLine = (int) ($row['_csv_line'] ?? 0);
             $producto = $existing->get($item);
-            $atributos = $this->buildAttributes($row, $usuarioUpd, $producto);
-            $record = array_merge(['prod_item' => $item], $atributos);
 
-            if ($producto) {
+            if (! $producto && ! $options['allow_create']) {
+                $this->pushError(
+                    $result,
+                    $csvLine > 0
+                        ? MaeprodImportError::row($csvLine, $row, 'Producto nuevo omitido: creación deshabilitada.')
+                        : MaeprodImportError::general('Producto nuevo omitido: creación deshabilitada.', codigo: $item),
+                );
+                $result['skipped']++;
+
+                continue;
+            }
+
+            if (! $producto) {
+                $createValidation = $this->validateRowForCreate($row, $csvLine > 0 ? $csvLine : 1);
+                if ($createValidation !== null) {
+                    $this->pushError($result, $createValidation);
+                    $result['skipped']++;
+
+                    continue;
+                }
+
+                $atributos = $this->buildAttributes($row, $usuarioUpd, null, MaeprodImportOptions::UPDATABLE_FIELDS);
+                $record = array_merge(['prod_item' => $item], $atributos);
+                $result['created']++;
+            } else {
+                $atributos = $this->buildAttributes($row, $usuarioUpd, $producto, $options['updatable_fields']);
+                $record = $this->mergeExistingRecord($producto, $atributos, $item);
+
                 if (! array_key_exists('prod_valor_fecha', $atributos)) {
                     $record['prod_valor_fecha'] = $producto->prod_valor_fecha;
                 }
@@ -534,8 +642,6 @@ class MaeprodImportService
                     $record['prod_user_upd'] = $producto->prod_user_upd;
                 }
                 $result['updated']++;
-            } else {
-                $result['created']++;
             }
 
             $upsertRows[] = $this->normalizeUpsertRecord($record);
@@ -546,23 +652,11 @@ class MaeprodImportService
         }
 
         try {
-            DB::transaction(function () use ($upsertRows) {
+            DB::transaction(function () use ($upsertRows, $updateColumns) {
                 Maeprod::query()->upsert(
                     $upsertRows,
                     ['prod_item'],
-                    [
-                        'prod_nombre',
-                        'prod_familia',
-                        'prod_imagen',
-                        'prod_gramaje',
-                        'prod_item_softland',
-                        'prod_valor',
-                        'prod_valor_costo',
-                        'prod_stock_real',
-                        'prod_valor_fecha',
-                        'prod_item_softland_fecha',
-                        'prod_user_upd',
-                    ],
+                    $updateColumns,
                 );
             });
         } catch (\Throwable $exception) {
@@ -583,6 +677,59 @@ class MaeprodImportService
     }
 
     /**
+     * @param  array{allow_create: bool, updatable_fields: list<string>}  $options
+     * @return list<string>
+     */
+    private function resolveUpsertUpdateColumns(array $options): array
+    {
+        $fieldToColumn = [
+            'nombre' => 'prod_nombre',
+            'familia' => 'prod_familia',
+            'precio' => 'prod_valor',
+            'costo' => 'prod_valor_costo',
+            'nombre_archivo' => 'prod_imagen',
+            'gramaje' => 'prod_gramaje',
+            'stock' => 'prod_stock_real',
+            'softland' => 'prod_item_softland',
+        ];
+
+        $columns = [];
+        foreach ($options['updatable_fields'] as $field) {
+            if (isset($fieldToColumn[$field])) {
+                $columns[] = $fieldToColumn[$field];
+            }
+        }
+
+        $columns[] = 'prod_valor_fecha';
+        $columns[] = 'prod_item_softland_fecha';
+        $columns[] = 'prod_user_upd';
+
+        return array_values(array_unique($columns));
+    }
+
+    /**
+     * @param  array<string, mixed>  $atributos
+     * @return array<string, mixed>
+     */
+    private function mergeExistingRecord(Maeprod $producto, array $atributos, string $item): array
+    {
+        return array_merge([
+            'prod_item' => $item,
+            'prod_nombre' => $producto->prod_nombre,
+            'prod_familia' => $producto->prod_familia,
+            'prod_imagen' => $producto->prod_imagen,
+            'prod_gramaje' => $producto->prod_gramaje,
+            'prod_item_softland' => $producto->prod_item_softland,
+            'prod_valor' => $producto->prod_valor,
+            'prod_valor_costo' => $producto->prod_valor_costo,
+            'prod_stock_real' => $producto->prod_stock_real,
+            'prod_valor_fecha' => $producto->prod_valor_fecha,
+            'prod_item_softland_fecha' => $producto->prod_item_softland_fecha,
+            'prod_user_upd' => $producto->prod_user_upd,
+        ], $atributos);
+    }
+
+    /**
      * @param  array{created: int, updated: int, skipped: int, errors: list<array<string, mixed>>}  $result
      * @param  array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}  $error
      */
@@ -592,29 +739,23 @@ class MaeprodImportService
     }
 
     /**
+     * Validación mínima (código + formatos). Los requerimientos de creación se evalúan al persistir.
+     *
      * @param  array<string, string>  $row
      * @return array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}|null
      */
-    private function validateRow(array $row, int $fila): ?array
+    private function validateRowLight(array $row, int $fila): ?array
     {
         if (trim((string) ($row['prod_item'] ?? '')) === '') {
             return MaeprodImportError::row($fila, $row, 'Falta código.');
         }
 
-        if (trim((string) ($row['prod_nombre'] ?? '')) === '') {
-            return MaeprodImportError::row($fila, $row, 'Falta nombre.');
-        }
-
-        if (trim((string) ($row['prod_familia'] ?? '')) === '') {
-            return MaeprodImportError::row($fila, $row, 'Falta familia.');
-        }
-
-        if (! is_numeric($row['prod_valor'] ?? null)) {
+        if (isset($row['prod_valor']) && $row['prod_valor'] !== '' && ! is_numeric($row['prod_valor'])) {
             return MaeprodImportError::row(
                 $fila,
                 $row,
                 'Precio inválido.',
-                'valor: '.($row['prod_valor'] ?? ''),
+                'valor: '.$row['prod_valor'],
             );
         }
 
@@ -637,6 +778,48 @@ class MaeprodImportService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, string>  $row
+     * @return array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}|null
+     */
+    private function validateRowForCreate(array $row, int $fila): ?array
+    {
+        if (trim((string) ($row['prod_nombre'] ?? '')) === '') {
+            return MaeprodImportError::row($fila, $row, 'Falta nombre.');
+        }
+
+        if (trim((string) ($row['prod_familia'] ?? '')) === '') {
+            return MaeprodImportError::row($fila, $row, 'Falta familia.');
+        }
+
+        if (! is_numeric($row['prod_valor'] ?? null)) {
+            return MaeprodImportError::row(
+                $fila,
+                $row,
+                'Precio inválido.',
+                'valor: '.($row['prod_valor'] ?? ''),
+            );
+        }
+
+        return $this->validateRowLight($row, $fila);
+    }
+
+    /**
+     * @deprecated Usar validateRowLight / validateRowForCreate
+     *
+     * @param  array<string, string>  $row
+     * @return array{fila: int|null, codigo: string, nombre: string, familia: string, mensaje: string, detalle: string|null}|null
+     */
+    private function validateRow(array $row, int $fila): ?array
+    {
+        $light = $this->validateRowLight($row, $fila);
+        if ($light !== null) {
+            return $light;
+        }
+
+        return $this->validateRowForCreate($row, $fila);
     }
 
     /**
@@ -678,37 +861,95 @@ class MaeprodImportService
 
     /**
      * @param  array<string, string>  $row
+     * @param  list<string>  $allowedFields
      * @return array<string, mixed>
      */
-    private function buildAttributes(array $row, ?string $usuarioUpd, ?Maeprod $existente): array
-    {
-        $nuevoValor = (int) $row['prod_valor'];
-        $nuevoCosto = $row['prod_valor_costo'] !== '' ? (int) $row['prod_valor_costo'] : 0;
+    private function buildAttributes(
+        array $row,
+        ?string $usuarioUpd,
+        ?Maeprod $existente,
+        array $allowedFields,
+    ): array {
+        $atributos = [];
 
-        $atributos = [
-            'prod_nombre' => $this->clipString(mb_strtoupper(trim((string) $row['prod_nombre'])), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_nombre']),
-            'prod_familia' => $this->clipString(trim((string) $row['prod_familia']), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_familia']),
-            'prod_imagen' => $this->clipString($this->nullableString($row['prod_imagen'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_imagen']),
-            'prod_gramaje' => $this->clipString($this->nullableString($row['prod_gramaje'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_gramaje']),
-            'prod_item_softland' => $this->clipString($this->nullableString($row['prod_item_softland'] ?? ''), MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_item_softland']),
-            'prod_valor' => $nuevoValor,
-            'prod_valor_costo' => $nuevoCosto,
-            'prod_stock_real' => $row['prod_stock_real'] !== '' ? (int) $row['prod_stock_real'] : null,
-        ];
+        if (in_array('nombre', $allowedFields, true) || ! $existente) {
+            $atributos['prod_nombre'] = $this->clipString(
+                mb_strtoupper(trim((string) ($row['prod_nombre'] ?? ''))),
+                MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_nombre'],
+            );
+        }
+
+        if (in_array('familia', $allowedFields, true) || ! $existente) {
+            $atributos['prod_familia'] = $this->clipString(
+                trim((string) ($row['prod_familia'] ?? '')),
+                MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_familia'],
+            );
+        }
+
+        if (in_array('nombre_archivo', $allowedFields, true) || ! $existente) {
+            $atributos['prod_imagen'] = $this->clipString(
+                $this->nullableString($row['prod_imagen'] ?? ''),
+                MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_imagen'],
+            );
+        }
+
+        if (in_array('gramaje', $allowedFields, true) || ! $existente) {
+            $atributos['prod_gramaje'] = $this->clipString(
+                $this->nullableString($row['prod_gramaje'] ?? ''),
+                MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_gramaje'],
+            );
+        }
+
+        if (in_array('softland', $allowedFields, true) || ! $existente) {
+            $atributos['prod_item_softland'] = $this->clipString(
+                $this->nullableString($row['prod_item_softland'] ?? ''),
+                MaeprodSchemaSupport::STRING_COLUMN_WIDTHS['prod_item_softland'],
+            );
+        }
+
+        if (in_array('precio', $allowedFields, true) || ! $existente) {
+            $atributos['prod_valor'] = (int) ($row['prod_valor'] ?? 0);
+        }
+
+        if (in_array('costo', $allowedFields, true) || ! $existente) {
+            $atributos['prod_valor_costo'] = ($row['prod_valor_costo'] ?? '') !== ''
+                ? (int) $row['prod_valor_costo']
+                : 0;
+        }
+
+        if (in_array('stock', $allowedFields, true) || ! $existente) {
+            $atributos['prod_stock_real'] = ($row['prod_stock_real'] ?? '') !== ''
+                ? (int) $row['prod_stock_real']
+                : null;
+        }
+
+        $nuevoValor = array_key_exists('prod_valor', $atributos)
+            ? (int) $atributos['prod_valor']
+            : (int) ($existente?->prod_valor ?? 0);
+        $nuevoCosto = array_key_exists('prod_valor_costo', $atributos)
+            ? (int) $atributos['prod_valor_costo']
+            : (int) ($existente?->prod_valor_costo ?? 0);
 
         $precioCambio = ! $existente
-            || (int) ($existente->prod_valor ?? 0) !== $nuevoValor
-            || (int) ($existente->prod_valor_costo ?? 0) !== $nuevoCosto;
+            || (
+                (array_key_exists('prod_valor', $atributos) || array_key_exists('prod_valor_costo', $atributos))
+                && (
+                    (int) ($existente->prod_valor ?? 0) !== $nuevoValor
+                    || (int) ($existente->prod_valor_costo ?? 0) !== $nuevoCosto
+                )
+            );
 
         if ($precioCambio) {
             $atributos['prod_valor_fecha'] = now();
             $atributos['prod_user_upd'] = $usuarioUpd;
         }
 
-        $softlandNuevo = (string) ($atributos['prod_item_softland'] ?? '');
-        $softlandAnterior = (string) ($existente?->prod_item_softland ?? '');
-        if ($softlandNuevo !== $softlandAnterior) {
-            $atributos['prod_item_softland_fecha'] = now();
+        if (array_key_exists('prod_item_softland', $atributos)) {
+            $softlandNuevo = (string) ($atributos['prod_item_softland'] ?? '');
+            $softlandAnterior = (string) ($existente?->prod_item_softland ?? '');
+            if ($softlandNuevo !== $softlandAnterior) {
+                $atributos['prod_item_softland_fecha'] = now();
+            }
         }
 
         if (! $existente) {

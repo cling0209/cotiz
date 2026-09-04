@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
 use App\Support\MaeprodImportFileTypes;
+use App\Support\MaeprodImportOptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
@@ -214,8 +215,13 @@ class MaeprodImportStagingService
      *     preview_limit: int
      * }
      */
-    public function preview(string $uploadId, int $userId, array $mapping, int $limit = 10): array
-    {
+    public function preview(
+        string $uploadId,
+        int $userId,
+        array $mapping,
+        int $limit = 10,
+        ?array $importOptions = null,
+    ): array {
         $staging = $this->findStaging($uploadId);
 
         if ((int) $staging->user_id !== $userId) {
@@ -225,6 +231,7 @@ class MaeprodImportStagingService
         MaeprodImportColumnMapping::validate($mapping);
 
         $importService = app(MaeprodImportService::class);
+        $options = $importOptions ?? MaeprodImportOptions::load($uploadId);
 
         if ($staging->source_path) {
             return $importService->previewFromPath(
@@ -232,6 +239,7 @@ class MaeprodImportStagingService
                 $mapping,
                 $limit,
                 $staging->original_name,
+                $options,
             );
         }
 
@@ -239,6 +247,7 @@ class MaeprodImportStagingService
             $staging->csv_content ?? '',
             $mapping,
             $limit,
+            $options,
         );
     }
 

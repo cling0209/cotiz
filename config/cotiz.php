@@ -104,6 +104,15 @@ return [
 
     'import' => [
         'background' => filter_var(env('MAEPROD_IMPORT_BACKGROUND', true), FILTER_VALIDATE_BOOL),
+        // Defaults de carga masiva maeprod (la UI puede sobreescribir por importación).
+        'allow_create' => filter_var(env('MAEPROD_IMPORT_ALLOW_CREATE', true), FILTER_VALIDATE_BOOL),
+        'updatable_fields' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env(
+                'MAEPROD_IMPORT_UPDATABLE_FIELDS',
+                'nombre,familia,precio,costo,nombre_archivo,gramaje,stock,softland',
+            )),
+        ))),
     ],
 
     // OCR de PDF escaneado (pdftoppm + tesseract). Bajar dpi/max_pages si el

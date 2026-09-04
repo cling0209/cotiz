@@ -28,6 +28,40 @@
         </button>
     </div>
 
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">Opciones de importaci&oacute;n</div>
+        <div class="card-body">
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="importAllowCreate"
+                       @checked(($importOptionDefaults['allow_create'] ?? true) === true)>
+                <label class="form-check-label" for="importAllowCreate">
+                    Crear productos nuevos si el c&oacute;digo no existe
+                </label>
+                <div class="form-text">Si est&aacute; desmarcado, las filas con c&oacute;digos inexistentes se omiten.</div>
+            </div>
+            <div class="mb-1 fw-semibold small">Campos modificables al actualizar productos existentes</div>
+            <div class="row g-2" id="importUpdatableFields">
+                @foreach($updatableFieldDefinitions as $field)
+                    <div class="col-6 col-md-4 col-lg-3">
+                        <div class="form-check">
+                            <input class="form-check-input import-updatable-field" type="checkbox"
+                                   id="importField_{{ $field['field'] }}"
+                                   value="{{ $field['field'] }}"
+                                   @checked(in_array($field['field'], $importOptionDefaults['updatable_fields'] ?? [], true))>
+                            <label class="form-check-label" for="importField_{{ $field['field'] }}">
+                                {{ $field['label'] }}
+                            </label>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            <div class="form-text mt-2">
+                Defaults configurables con <code>MAEPROD_IMPORT_ALLOW_CREATE</code> y
+                <code>MAEPROD_IMPORT_UPDATABLE_FIELDS</code>. El c&oacute;digo siempre identifica la fila.
+            </div>
+        </div>
+    </div>
+
     <ul class="nav nav-tabs mb-4" id="importModeTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="tab-template" data-bs-toggle="tab" data-bs-target="#panel-template" type="button" role="tab">
@@ -205,6 +239,7 @@ const CHUNK_SIZE = 6 * 1024 * 1024;
 const CLIENT_EXCEL_MAX_BYTES = 15 * 1024 * 1024;
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 const BACKGROUND_IMPORT_ENABLED = @json((bool) config('cotiz.import.background', true));
+const IMPORT_OPTION_DEFAULTS = @json($importOptionDefaults);
 const chunkUploadUrl = @json(route('admin.productos.import.chunk', [], false));
 const initializeImportUrl = @json(route('admin.productos.import.initialize', [], false));
 const prepareTemplateImportUrl = @json(route('admin.productos.import.prepare.template', [], false));
@@ -816,21 +851,21 @@ async function prepareImportUntilFinished(url, fetchOptions, progress, plan) {
 }
 
 async function prepareTemplateImport(uploadId, progress) {
-    const formData = new FormData();
-    formData.append('upload_id', uploadId);
-    formData.append('_token', csrfToken);
-
     return prepareImportUntilFinished(
         prepareTemplateImportUrl,
         {
             method: 'POST',
-            body: formData,
             headers: {
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': csrfToken,
             },
             credentials: 'same-origin',
+            body: JSON.stringify({
+                upload_id: uploadId,
+                import_options: getImportOptions(),
+            }),
         },
         progress,
         {
@@ -844,7 +879,11 @@ async function prepareTemplateImport(uploadId, progress) {
 }
 
 async function startBackgroundImport(uploadId, mode = 'template', mapping = null) {
-    const body = { upload_id: uploadId, mode };
+    const body = {
+        upload_id: uploadId,
+        mode,
+        import_options: getImportOptions(),
+    };
     if (mapping) {
         body.mapping = mapping;
     }
@@ -867,6 +906,18 @@ async function startBackgroundImport(uploadId, mode = 'template', mapping = null
     }
 
     return payload;
+}
+
+function getImportOptions() {
+    const updatable = Array.from(document.querySelectorAll('.import-updatable-field:checked'))
+        .map((el) => el.value);
+
+    return {
+        allow_create: document.getElementById('importAllowCreate')?.checked ?? true,
+        updatable_fields: updatable.length > 0
+            ? updatable
+            : (IMPORT_OPTION_DEFAULTS.updatable_fields || []),
+    };
 }
 
 async function pollBackgroundImport(uploadId, progress, plan) {
@@ -1032,15 +1083,21 @@ function renderPreviewRows(data) {
             ? '<span class="badge text-bg-success">Crear</span>'
             : row.accion === 'actualizar'
                 ? '<span class="badge text-bg-primary">Actualizar</span>'
-                : '<span class="badge text-bg-danger">Error</span>';
+                : row.accion === 'omitido'
+                    ? '<span class="badge text-bg-warning">Omitido</span>'
+                    : '<span class="badge text-bg-danger">Error</span>';
 
         const precio = row.precio !== undefined && row.precio !== '' && row.precio !== null
             ? Number(row.precio).toLocaleString('es-CL')
             : '—';
 
-        const estado = row.mensaje
+        const estado = row.accion === 'omitido'
+            ? `<span class="text-warning small">${row.mensaje || 'Omitido'}</span>`
+            : row.mensaje && row.accion === 'error'
             ? `<span class="text-danger small">${row.mensaje}${row.detalle ? ' (' + row.detalle + ')' : ''}</span>`
-            : '<span class="text-success small">OK</span>';
+            : row.mensaje
+                ? `<span class="text-muted small">${row.mensaje}</span>`
+                : '<span class="text-success small">OK</span>';
 
         tr.innerHTML = `
             <td>${row.fila ?? '—'}</td>
@@ -1055,7 +1112,7 @@ function renderPreviewRows(data) {
     });
 
     const s = data.summary;
-    summary.textContent = `Muestra de ${data.rows.length} filas — Crear: ${s.crear}, Actualizar: ${s.actualizar}, Errores: ${s.error} (total archivo: ${data.total_rows})`;
+    summary.textContent = `Muestra de ${data.rows.length} filas — Crear: ${s.crear}, Actualizar: ${s.actualizar}, Omitidos: ${s.omitido ?? 0}, Errores: ${s.error} (total archivo: ${data.total_rows})`;
     document.getElementById('customPreviewCard').classList.remove('d-none');
 }
 
@@ -1264,6 +1321,7 @@ document.getElementById('customPreviewBtn').addEventListener('click', async () =
             body: JSON.stringify({
                 upload_id: customUploadId,
                 mapping: getCustomMapping(),
+                import_options: getImportOptions(),
             }),
         });
 
@@ -1320,6 +1378,7 @@ document.getElementById('customConfirmBtn').addEventListener('click', async () =
                 body: JSON.stringify({
                     upload_id: customUploadId,
                     mapping,
+                    import_options: getImportOptions(),
                 }),
             },
             progress,

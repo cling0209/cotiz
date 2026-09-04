@@ -6,6 +6,7 @@ use App\Jobs\ProcessMaeprodImportJob;
 use App\Models\MaeprodImportRun;
 use App\Models\MaeprodImportStaging;
 use App\Support\MaeprodImportColumnMapping;
+use App\Support\MaeprodImportOptions;
 use App\Support\RenderKeepAlive;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -372,14 +373,19 @@ class MaeprodImportJobService
 
     /**
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      */
     public function queueBackgroundImport(
         string $uploadId,
         int $userId,
         string $mode = 'template',
         ?array $columnMapping = null,
+        ?array $importOptions = null,
     ): void {
         $this->assertValidUploadId($uploadId);
+
+        $normalizedOptions = MaeprodImportOptions::fromRequest($importOptions);
+        MaeprodImportOptions::persist($uploadId, $normalizedOptions);
 
         $this->assertReadyForBackgroundImport($uploadId, $userId, $mode);
 
@@ -390,7 +396,7 @@ class MaeprodImportJobService
             return;
         }
 
-        $progress->beginQueued($uploadId, $userId, $mode, $columnMapping);
+        $progress->beginQueued($uploadId, $userId, $mode, $columnMapping, $normalizedOptions);
 
         try {
             $meta = $this->resolveImportMetaForLock($uploadId, $userId, $mode);
@@ -407,7 +413,13 @@ class MaeprodImportJobService
                 );
             }
 
-            $dispatch = ProcessMaeprodImportJob::dispatch($uploadId, $userId, $mode, $columnMapping);
+            $dispatch = ProcessMaeprodImportJob::dispatch(
+                $uploadId,
+                $userId,
+                $mode,
+                $columnMapping,
+                $normalizedOptions,
+            );
 
             if (config('queue.default') !== 'sync') {
                 $dispatch->afterResponse();
@@ -422,17 +434,23 @@ class MaeprodImportJobService
 
     /**
      * @param  array<string, string|null>|null  $columnMapping
+     * @param  array{allow_create?: bool, updatable_fields?: list<string>}|null  $importOptions
      */
     public function runBackgroundImport(
         string $uploadId,
         int $userId,
         string $mode = 'template',
         ?array $columnMapping = null,
+        ?array $importOptions = null,
     ): void {
         @set_time_limit(0);
         @ini_set('memory_limit', '512M');
 
         $this->assertValidUploadId($uploadId);
+
+        if ($importOptions !== null) {
+            MaeprodImportOptions::persist($uploadId, MaeprodImportOptions::normalize($importOptions));
+        }
 
         $progress = app(MaeprodImportProgressService::class);
         $lock = app(MaeprodImportLockService::class);
@@ -602,10 +620,16 @@ class MaeprodImportJobService
             ? $job['column_mapping']
             : null;
 
+        $importOptions = MaeprodImportOptions::resolve(
+            isset($job['import_options']) && is_array($job['import_options']) ? $job['import_options'] : null,
+            $uploadId,
+        );
+
         $batchResult = app(MaeprodImportService::class)->importFromUploadedFile(
             $uploaded,
             $job['username'] ?? null,
             $columnMapping,
+            $importOptions,
         );
         $job['result'] = $this->mergeResults($job['result'], $batchResult);
         $job['next_batch'] = $nextBatch + 1;
@@ -824,6 +848,13 @@ class MaeprodImportJobService
      */
     protected function writeJob(string $uploadId, array $job): void
     {
+        if (! isset($job['import_options']) || ! is_array($job['import_options'])) {
+            $job['import_options'] = MaeprodImportOptions::load($uploadId);
+        } else {
+            $job['import_options'] = MaeprodImportOptions::normalize($job['import_options']);
+            MaeprodImportOptions::persist($uploadId, $job['import_options']);
+        }
+
         File::put(
             $this->jobDirectory($uploadId).'/job.json',
             json_encode($job, JSON_THROW_ON_ERROR)
@@ -875,6 +906,8 @@ class MaeprodImportJobService
         if ($columnMapping !== null) {
             $jobData['column_mapping'] = $columnMapping;
         }
+
+        $jobData['import_options'] = MaeprodImportOptions::load($uploadId);
 
         $this->writeJob($uploadId, $jobData);
     }
@@ -1061,6 +1094,11 @@ class MaeprodImportJobService
             ? $job['column_mapping']
             : null;
 
+        $importOptions = MaeprodImportOptions::resolve(
+            isset($job['import_options']) && is_array($job['import_options']) ? $job['import_options'] : null,
+            $uploadId,
+        );
+
         $streamResult = app(MaeprodImportService::class)->importFromCsvStreamPath(
             $sourcePath,
             (int) ($job['next_physical_row'] ?? 2),
@@ -1069,6 +1107,7 @@ class MaeprodImportJobService
             $columnMapping,
             $job['data_headers'] ?? [],
             (string) ($job['delimiter'] ?? ';'),
+            $importOptions,
         );
 
         $job['result'] = $this->mergeResults($job['result'], $streamResult['chunk_result']);
@@ -1422,10 +1461,16 @@ class MaeprodImportJobService
             ? $job['column_mapping']
             : null;
 
+        $importOptions = MaeprodImportOptions::resolve(
+            isset($job['import_options']) && is_array($job['import_options']) ? $job['import_options'] : null,
+            $uploadId,
+        );
+
         $chunkResult = app(MaeprodImportService::class)->importRows(
             $rows,
             $job['username'] ?? null,
             $columnMapping,
+            $importOptions,
         );
 
         $job['result'] = $this->mergeResults($job['result'], $chunkResult);

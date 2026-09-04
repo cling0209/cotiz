@@ -17,6 +17,7 @@ use App\Services\MaeprodImportRunService;
 use App\Services\MaeprodImportService;
 use App\Services\MaeprodImportStagingService;
 use App\Support\MaeprodImportColumnMapping;
+use App\Support\MaeprodImportOptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -386,6 +387,8 @@ class MaeprodController extends Controller
         return view('admin.maeprod.import', [
             'activeImport' => $importLock->currentOrReleaseIfAbandoned(),
             'mappableFields' => MaeprodImportColumnMapping::fieldDefinitions(),
+            'importOptionDefaults' => MaeprodImportOptions::defaults(),
+            'updatableFieldDefinitions' => MaeprodImportOptions::fieldDefinitions(),
         ]);
     }
 
@@ -420,16 +423,17 @@ class MaeprodController extends Controller
 
     public function startBackgroundImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'upload_id' => ['required', 'uuid'],
             'mode' => ['nullable', 'in:template,custom'],
             'mapping' => ['nullable', 'array'],
-        ]);
+        ], MaeprodImportOptions::validationRules()));
 
         $mode = (string) ($data['mode'] ?? 'template');
         $mapping = isset($data['mapping']) && is_array($data['mapping'])
             ? $this->normalizeColumnMapping($data['mapping'])
             : null;
+        $importOptions = MaeprodImportOptions::fromRequest($data['import_options'] ?? null);
 
         try {
             $importJob->queueBackgroundImport(
@@ -437,6 +441,7 @@ class MaeprodController extends Controller
                 (int) $request->user()->id,
                 $mode,
                 $mapping,
+                $importOptions,
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(
@@ -621,17 +626,21 @@ class MaeprodController extends Controller
 
     public function previewImportMapping(Request $request, MaeprodImportStagingService $staging): JsonResponse
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'upload_id' => ['required', 'uuid'],
             'mapping' => ['required', 'array'],
-        ]);
+        ], MaeprodImportOptions::validationRules()));
 
         try {
             $mapping = $this->normalizeColumnMapping($data['mapping']);
+            $importOptions = MaeprodImportOptions::fromRequest($data['import_options'] ?? null);
+            MaeprodImportOptions::persist($data['upload_id'], $importOptions);
             $preview = $staging->preview(
                 $data['upload_id'],
                 (int) $request->user()->id,
                 $mapping,
+                10,
+                $importOptions,
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -642,13 +651,15 @@ class MaeprodController extends Controller
 
     public function prepareCustomImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'upload_id' => ['required', 'uuid'],
             'mapping' => ['required', 'array'],
-        ]);
+        ], MaeprodImportOptions::validationRules()));
 
         try {
             $mapping = $this->normalizeColumnMapping($data['mapping']);
+            $importOptions = MaeprodImportOptions::fromRequest($data['import_options'] ?? null);
+            MaeprodImportOptions::persist($data['upload_id'], $importOptions);
             $prepared = $importJob->continuePrepareCustom(
                 $data['upload_id'],
                 (int) $request->user()->id,
@@ -674,11 +685,13 @@ class MaeprodController extends Controller
 
     public function prepareTemplateImport(Request $request, MaeprodImportJobService $importJob): JsonResponse
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'upload_id' => ['required', 'uuid'],
-        ]);
+        ], MaeprodImportOptions::validationRules()));
 
         try {
+            $importOptions = MaeprodImportOptions::fromRequest($data['import_options'] ?? null);
+            MaeprodImportOptions::persist($data['upload_id'], $importOptions);
             $prepared = $importJob->continuePrepareTemplate(
                 $data['upload_id'],
                 (int) $request->user()->id,
