@@ -130,11 +130,10 @@ class OportunidadBusquedaService
                 $regionesReintento,
             ): array {
                 $region = (int) ($paso['region'] ?? 0);
-                // Fallo definitivo previo: ventana completa del día (no desde última pub.).
-                if ($region > 0 && in_array($region, $regionesReintento, true)) {
+                // Fallo previo: priorizar la región, pero seguir desde el cursor (no saltar a 00:00).
+                $esReintento = $region > 0 && in_array($region, $regionesReintento, true);
+                if ($esReintento) {
                     $paso['reintento_fallo_previo'] = true;
-
-                    return $paso;
                 }
 
                 $iso = $cambioDesdeForzadoIso
@@ -259,7 +258,8 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Por región: último cambio visto (o hora en que se tomó el paso) de la corrida previa + 1 minuto.
+     * Por región: último cambio visto de la corrida previa + 1 minuto.
+     * Incluye pasos OK y fallidos (si alcanzaron a ver cambios) para no abrir huecos.
      * Busca a través de las últimas corridas completadas sin limitarse al mismo día calendario.
      *
      * @return array<int, string> region => ISO8601
@@ -282,7 +282,8 @@ class OportunidadBusquedaService
                 if ($region < 1 || isset($out[$region])) {
                     continue;
                 }
-                if ((string) ($paso['estado'] ?? '') !== self::PASO_OK) {
+                $estadoPaso = (string) ($paso['estado'] ?? '');
+                if ($estadoPaso !== self::PASO_OK && $estadoPaso !== self::PASO_RETRY_FAILED) {
                     continue;
                 }
                 $cursor = $this->cursorDesdePaso($paso, $dia);
@@ -431,7 +432,7 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Regiones a releer con ventana completa en la siguiente corrida del día:
+     * Regiones a priorizar en la siguiente corrida (mismo cursor incremental):
      * fallo definitivo, o OK con páginas omitidas tras timeout/504.
      *
      * @return list<int>
@@ -680,7 +681,7 @@ class OportunidadBusquedaService
         if ($ventanaCompleta) {
             $msg = 'Búsqueda con ventana completa encolada para '.$fecha.'.';
             if ($nReintento > 0) {
-                $msg .= ' Reintento completo de '.$nReintento
+                $msg .= ' Reintento priorizado de '.$nReintento
                     .' región(es) fallida(s) en la corrida previa.';
             }
 
@@ -691,8 +692,8 @@ class OportunidadBusquedaService
             $msg = 'Búsqueda incremental encolada para '.$fecha
                 .' desde último cambio visto '.$this->formatearFechaHoraMensaje($cambioDesdeIso).'.';
             if ($nReintento > 0) {
-                $msg .= ' Reintento completo de '.$nReintento
-                    .' región(es) fallida(s) en la corrida previa.';
+                $msg .= ' Reintento priorizado de '.$nReintento
+                    .' región(es) fallida(s) desde el mismo cursor (sin huecos).';
             }
 
             return $msg;
@@ -2732,7 +2733,7 @@ class OportunidadBusquedaService
     }
 
     /**
-     * Día listo para catch-up: corrida completed sin regiones que requieran reintento completo.
+     * Día listo para catch-up: corrida completed sin regiones que requieran reintento priorizado.
      */
     private function fechaTieneBusquedaSatisfactoria(string $fecha): bool
     {

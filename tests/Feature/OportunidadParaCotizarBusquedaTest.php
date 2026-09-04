@@ -996,13 +996,13 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
         $this->assertCount(2, $corrida->plan_json);
         $this->assertSame(10, (int) ($corrida->plan_json[0]['region'] ?? 0));
         $this->assertTrue((bool) ($corrida->plan_json[0]['reintento_fallo_previo'] ?? false));
-        $this->assertFalse((bool) ($corrida->plan_json[0]['incremental'] ?? false));
-        $this->assertArrayNotHasKey('cambio_desde', $corrida->plan_json[0]);
+        $this->assertTrue((bool) ($corrida->plan_json[0]['incremental'] ?? false));
+        $this->assertNotEmpty($corrida->plan_json[0]['cambio_desde'] ?? null);
 
         $this->assertSame(13, (int) ($corrida->plan_json[1]['region'] ?? 0));
         $this->assertTrue((bool) ($corrida->plan_json[1]['incremental'] ?? false));
         $this->assertNotEmpty($corrida->plan_json[1]['cambio_desde'] ?? null);
-        $this->assertStringContainsString('Reintento completo', (string) $corrida->mensaje);
+        $this->assertStringContainsString('Reintento priorizado', (string) $corrida->mensaje);
 
         Carbon::setTestNow();
     }
@@ -1076,9 +1076,9 @@ class OportunidadParaCotizarBusquedaTest extends TestCase
 
         $siguiente = $servicio->iniciar('sistema');
         $this->assertTrue((bool) ($siguiente->plan_json[0]['reintento_fallo_previo'] ?? false));
-        $this->assertFalse((bool) ($siguiente->plan_json[0]['incremental'] ?? false));
-        $this->assertArrayNotHasKey('cambio_desde', $siguiente->plan_json[0]);
-        $this->assertStringContainsString('Reintento completo', (string) $siguiente->mensaje);
+        $this->assertTrue((bool) ($siguiente->plan_json[0]['incremental'] ?? false));
+        $this->assertNotEmpty($siguiente->plan_json[0]['cambio_desde'] ?? null);
+        $this->assertStringContainsString('Reintento priorizado', (string) $siguiente->mensaje);
 
         Carbon::setTestNow();
     }

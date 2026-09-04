@@ -4197,7 +4197,7 @@
                     tdConsultaDesde.appendChild(fechaConsultaEl);
                     const modoParts = [];
                     if (paso.reintento_fallo_previo) {
-                        modoParts.push('reintento completo');
+                        modoParts.push('reintento (desde cursor)');
                     } else if (paso.consulta_incremental) {
                         modoParts.push('incremental');
                     }

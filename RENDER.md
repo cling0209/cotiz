@@ -195,7 +195,7 @@ La búsqueda de **Oportunidades** usa los mismos horarios y parámetros HTTP de 
 - Solo se ejecuta donde `MERCADOPUBLICO_ANALISIS_ADMIN=true`.
 - La corrida queda persistida y continúa desde el siguiente paso si Render reinicia.
 - Si el día **en curso** ya tiene corrida completa, el siguiente horario (o Buscar) hace una corrida **incremental** desde la última `fecha_publicacion` conocida (`cambio_desde`), para no perder cotizaciones publicadas más tarde.
-- Regiones con **Falló (definitivo)** en la corrida previa del mismo día se reconsultan **completas** (sin `cambio_desde`) y **antes** que el resto incremental, por si el fallo de MP fue temporal.
+- Regiones con **Falló (definitivo)** en la corrida previa se **priorizan** y se reconsultan con el **mismo cursor incremental** (desde donde quedó; no desde 00:00), para no abrir huecos ni perder cotizaciones.
 - Días pasados siguen con una sola corrida completa (no se reconsultan).
 - Si el worker se cae o Mercado Público deja la corrida sin avance (`updated_at` viejo), el poll de estado / login / catch-up **reencola automáticamente** desde el checkpoint (`plan_json`). Endpoint manual: `POST .../oportunidades/para-cotizar/reanudar`.
 - Un error temporal de MP afecta solo al paso `palabra × región`.
