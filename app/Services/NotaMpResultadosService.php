@@ -2344,16 +2344,23 @@ class NotaMpResultadosService
 
     /**
      * Completa oc_fecha_* en el seguimiento si faltan (detalle v1 ?codigo=).
+     *
+     * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
-    private function sincronizarFechasOcSeguimiento(int $nronota, string $codigoOc): void
+    public function rellenarFechasOcSiFaltan(int $nronota, string $codigoOc): string
     {
+        $codigoOc = strtoupper(trim($codigoOc));
+        if ($codigoOc === '') {
+            return 'skipped';
+        }
+
         $seg = NotaMpSeguimiento::query()->find($nronota);
         if ($seg === null) {
-            return;
+            return 'skipped';
         }
 
         if ($seg->oc_fecha_envio !== null && $seg->oc_fecha_creacion !== null) {
-            return;
+            return 'skipped';
         }
 
         try {
@@ -2365,11 +2372,11 @@ class NotaMpResultadosService
                 'error' => mb_substr($e->getMessage(), 0, 200),
             ]);
 
-            return;
+            return str_contains($e->getMessage(), 'Cuota') ? 'error_cuota' : 'error';
         }
 
         if ($detalle === null) {
-            return;
+            return 'not_found';
         }
 
         $update = [];
@@ -2387,10 +2394,20 @@ class NotaMpResultadosService
         }
 
         if ($update === []) {
-            return;
+            return 'not_found';
         }
 
         NotaMpSeguimiento::query()->whereKey($nronota)->update($update);
+
+        return 'updated';
+    }
+
+    /**
+     * Completa oc_fecha_* en el seguimiento si faltan (detalle v1 ?codigo=).
+     */
+    private function sincronizarFechasOcSeguimiento(int $nronota, string $codigoOc): void
+    {
+        $this->rellenarFechasOcSiFaltan($nronota, $codigoOc);
     }
 
     private function marcarNoExisteEnMp(
