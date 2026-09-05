@@ -13,7 +13,8 @@
     </div>
 
     <p class="text-muted small mb-3">
-        Cotizaciones con orden de compra. Utilidad = (Costo × {{ number_format($factorBase, 2, ',', '.') }}) − Costo;
+        Solo cotizaciones <strong>ganadas</strong> (Reicol/Romulo) con orden de compra.
+        Utilidad = (Costo × {{ number_format($factorBase, 2, ',', '.') }}) − Costo;
         comisión = 20% de la utilidad; pago fijo ${{ number_format($pagoFijo, 0, ',', '.') }} por cotización.
         El factor de venta mostrado es el de cada cotización.
     </p>
@@ -116,7 +117,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center text-muted py-4">Sin cotizaciones con orden de compra para los filtros aplicados.</td>
+                            <td colspan="14" class="text-center text-muted py-4">Sin cotizaciones ganadas con orden de compra para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>

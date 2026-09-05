@@ -185,9 +185,12 @@ class CompraAgilComisionesService
     private function buildQuery(array $filtros): Builder
     {
         $query = NotaMpSeguimiento::query()
+            ->where('resultado_propio', 'cerrada')
             ->whereHas('nota', function (Builder $n): void {
                 $n->whereRaw("TRIM(COALESCE(ocompra, '')) <> ''");
             });
+
+        $this->aplicarFiltroGanadasGrupo($query);
 
         if (! empty($filtros['nronota'])) {
             $query->where('nronota', (int) $filtros['nronota']);
@@ -211,6 +214,45 @@ class CompraAgilComisionesService
         }
 
         return $query;
+    }
+
+    /**
+     * Ganadas = rut_ganador Reicol o Romulo (mismo criterio que OC visible en Resultados).
+     *
+     * @param  Builder<NotaMpSeguimiento>  $query
+     */
+    private function aplicarFiltroGanadasGrupo(Builder $query): void
+    {
+        $ruts = array_values(array_filter([
+            $this->rutNormalizado((string) config('cotiz.reicol_rut', '')),
+            $this->rutNormalizado((string) config('cotiz.romulo_rut', '')),
+        ]));
+
+        if ($ruts === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereNotNull('rut_ganador')
+            ->where(function (Builder $q) use ($ruts): void {
+                foreach ($ruts as $rutNorm) {
+                    $q->orWhereRaw(
+                        "regexp_replace(upper(coalesce(rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
+                        [$rutNorm]
+                    );
+                }
+            });
+    }
+
+    private function rutNormalizado(string $rut): string
+    {
+        $rut = trim($rut);
+        if ($rut === '') {
+            return '';
+        }
+
+        return strtoupper(preg_replace('/[^0-9kK]/', '', $rut) ?? '');
     }
 
     /**
@@ -251,11 +293,12 @@ class CompraAgilComisionesService
 
         $ejecutivoUsername = trim((string) ($nota->usuario ?? ''));
         $ejecutivo = trim((string) ($nota->usuarioRel?->fullName() ?: $ejecutivoUsername));
+        $ordenCompra = trim((string) ($nota->ocompra ?? ''));
 
         return (object) [
             'nronota' => $seg->nronota,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
-            'orden_compra' => $seg->valorOrdenCompraExport(),
+            'orden_compra' => $ordenCompra,
             'fecha_envio_oc' => $seg->oc_fecha_envio,
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,
