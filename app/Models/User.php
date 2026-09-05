@@ -97,6 +97,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Reporte de comisiones en Resultados Compra Ágil.
+     * Solo superadmin y admin cliente.
+     */
+    public function canAccessCompraAgilComisiones(): bool
+    {
+        return $this->canAccessCompraAgilResultados()
+            && in_array($this->perfil, [self::PERFIL_SUPERADMIN, self::PERFIL_ADMIN_CLIENTE], true);
+    }
+
+    /**
      * Agregar/quitar frases de vinculación Agile en productos.
      * Superadmin siempre; ejecutivo solo si se le otorgó el permiso en Usuarios.
      */

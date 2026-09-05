@@ -94,6 +94,11 @@
         <a href="{{ route('admin.compra-agil.resultados.reportes') }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-file-earmark-bar-graph"></i> Reportes
         </a>
+        @if(auth()->user()?->canAccessCompraAgilComisiones())
+            <a href="{{ route('admin.compra-agil.resultados.comisiones') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-cash-coin"></i> Comisiones
+            </a>
+        @endif
     </div>
 
     <div class="card shadow-sm mb-4 {{ $corridaActiva ? '' : 'd-none' }}" id="card-progreso">

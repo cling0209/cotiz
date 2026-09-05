@@ -1,0 +1,130 @@
+@extends('layouts.admin')
+
+@section('title', 'Comisiones — Resultados Compra Ágil')
+
+@section('content')
+<div class="container-fluid py-4">
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <a href="{{ route('admin.compra-agil.resultados.index') }}" class="btn btn-outline-secondary btn-sm" data-no-loader>
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+        <h1 class="h3 mb-0">Comisiones</h1>
+        <span class="badge text-bg-secondary">{{ $items->total() }}</span>
+    </div>
+
+    <p class="text-muted small mb-3">
+        Cotizaciones con orden de compra. Utilidad = (Costo × {{ number_format($factorBase, 2, ',', '.') }}) − Costo;
+        comisión = 20% de la utilidad; pago fijo ${{ number_format($pagoFijo, 0, ',', '.') }} por cotización.
+        El factor de venta mostrado es el de cada cotización.
+    </p>
+
+    <form method="GET" action="{{ route('admin.compra-agil.resultados.comisiones') }}" class="card shadow-sm mb-3" data-no-loader>
+        @if(!empty($filtros['sort']))
+            <input type="hidden" name="sort" value="{{ $filtros['sort'] }}">
+        @endif
+        @if(!empty($filtros['dir']))
+            <input type="hidden" name="dir" value="{{ $filtros['dir'] }}">
+        @endif
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label for="f-envio-desde" class="form-label small mb-0">Fecha envío desde</label>
+                    <input type="date" class="form-control form-control-sm" id="f-envio-desde" name="fecha_envio_desde"
+                        value="{{ $filtros['fecha_envio_desde'] ?? '' }}">
+                </div>
+                <div class="col-auto">
+                    <label for="f-envio-hasta" class="form-label small mb-0">Fecha envío hasta</label>
+                    <input type="date" class="form-control form-control-sm" id="f-envio-hasta" name="fecha_envio_hasta"
+                        value="{{ $filtros['fecha_envio_hasta'] ?? '' }}">
+                </div>
+                @include('admin.compra-agil.partials.filtro-ejecutivo')
+                <div class="col-auto">
+                    <label for="f-nronota" class="form-label small mb-0">Nº nota</label>
+                    <input type="number" class="form-control form-control-sm" id="f-nronota" name="nronota"
+                        value="{{ $filtros['nronota'] ?? '' }}" placeholder="Ej: 1234" style="width:7rem">
+                </div>
+                <div class="col-auto">
+                    <label for="f-codigo" class="form-label small mb-0">Código cotización (CA)</label>
+                    <input type="text" class="form-control form-control-sm" id="f-codigo" name="codigo_proceso"
+                        value="{{ $filtros['codigo_proceso'] ?? '' }}" placeholder="Ej: 2923-..." style="width:10rem">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    @if(collect($filtros)->except(['sort', 'dir'])->filter()->isNotEmpty())
+                        <a href="{{ route('admin.compra-agil.resultados.comisiones', request()->only(['sort', 'dir'])) }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
+                            <i class="bi bi-x-lg"></i> Limpiar
+                        </a>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="card shadow-sm">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <p class="text-muted small mb-0">La descarga respeta los filtros actuales (todos o la selección filtrada).</p>
+            @if($items->total() > 0)
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm" download data-no-loader>
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
+                    </a>
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm" download data-no-loader>
+                        <i class="bi bi-people"></i> Descargar resumen por ejecutivo
+                    </a>
+                </div>
+            @endif
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'nronota', 'label' => 'Nota', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'codigo_proceso', 'label' => 'Código CA', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        <th>Orden compra</th>
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        <th>Ejecutivo</th>
+                        <th>Región</th>
+                        <th class="text-end">Factor</th>
+                        <th class="text-end">Costo</th>
+                        <th class="text-end">Venta</th>
+                        <th class="text-end">Venta {{ number_format($factorBase, 1, ',', '.') }}</th>
+                        <th class="text-end">Utilidad</th>
+                        <th class="text-end">20% Comisión</th>
+                        <th class="text-end">Pago</th>
+                        <th class="text-end">A pagar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($items as $fila)
+                        <tr>
+                            <td class="text-nowrap">{{ $fila->nronota }}</td>
+                            <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
+                            <td class="small font-monospace">{{ $fila->orden_compra ?: '—' }}</td>
+                            <td class="small text-muted">{{ $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—' }}</td>
+                            <td class="small">{{ $fila->ejecutivo }}</td>
+                            <td class="small">{{ $fila->region_nombre }}</td>
+                            <td class="text-end small tabular-nums">{{ number_format($fila->factor, 2, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->costo, 0, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->venta, 0, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->venta_12, 0, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->utilidad, 0, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->comision_20, 0, ',', '.') }}</td>
+                            <td class="text-end small tabular-nums">${{ number_format($fila->pago, 0, ',', '.') }}</td>
+                            <td class="text-end small fw-semibold tabular-nums">${{ number_format($fila->a_pagar, 0, ',', '.') }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="14" class="text-center text-muted py-4">Sin cotizaciones con OC para los filtros aplicados.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer border-top-0 pt-0">
+            <x-listado-paginacion :paginator="$items" entity-label="cotizaciones con OC" />
+        </div>
+    </div>
+</div>
+@endsection

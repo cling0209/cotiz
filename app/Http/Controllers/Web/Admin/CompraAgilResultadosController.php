@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\ListadoPorPagina;
+use App\Services\CompraAgilComisionesService;
 use App\Services\CompraAgilReporteExportService;
 use App\Services\NotaListadoService;
 use App\Services\NotaMpResultadosService;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilResultadosController extends Controller
 {
@@ -20,6 +22,7 @@ class CompraAgilResultadosController extends Controller
         protected NotaMpResultadosService $resultados,
         protected NotaListadoService $notaListado,
         protected CompraAgilReporteExportService $reporteExports,
+        protected CompraAgilComisionesService $comisiones,
     ) {}
 
     public function index(Request $request): View
@@ -445,6 +448,36 @@ class CompraAgilResultadosController extends Controller
         return view('admin.compra-agil.resultados-reportes');
     }
 
+    public function comisiones(Request $request): View
+    {
+        $this->assertPuedeVerComisiones($request);
+
+        $filtros = $this->filtrosComisiones($request);
+        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-comisiones');
+
+        return view('admin.compra-agil.resultados-comisiones', [
+            'items' => $this->comisiones->listadoPaginado($porPagina, $filtros),
+            'filtros' => $filtros,
+            'ejecutivosFiltro' => $this->ejecutivosFiltro(),
+            'pagoFijo' => $this->comisiones->pagoFijo(),
+            'factorBase' => $this->comisiones->factorComisionBase(),
+        ]);
+    }
+
+    public function comisionesExportarDetalle(Request $request): StreamedResponse
+    {
+        $this->assertPuedeVerComisiones($request);
+
+        return $this->comisiones->exportarDetalle($this->filtrosComisiones($request));
+    }
+
+    public function comisionesExportarResumen(Request $request): StreamedResponse
+    {
+        $this->assertPuedeVerComisiones($request);
+
+        return $this->comisiones->exportarResumen($this->filtrosComisiones($request));
+    }
+
     public function productosGanadosGenerar(Request $request): JsonResponse
     {
         $filtros = $request->only(['fecha_desde', 'fecha_hasta', 'ganador', 'tipo_fecha']);
@@ -639,6 +672,34 @@ class CompraAgilResultadosController extends Controller
             'seguimiento', 'estado_mp', 'convocatoria',
             'sort', 'dir',
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filtrosComisiones(Request $request): array
+    {
+        $filtros = $request->only([
+            'nronota', 'codigo_proceso', 'usuario',
+            'fecha_envio_desde', 'fecha_envio_hasta',
+            'sort', 'dir',
+        ]);
+
+        if (empty($filtros['sort'])) {
+            $filtros['sort'] = 'fecha_envio';
+        }
+        if (empty($filtros['dir'])) {
+            $filtros['dir'] = 'desc';
+        }
+
+        return $filtros;
+    }
+
+    private function assertPuedeVerComisiones(Request $request): void
+    {
+        if (! $request->user()?->canAccessCompraAgilComisiones()) {
+            abort(403, 'Acceso restringido a administradores y superadministradores.');
+        }
     }
 
     /**

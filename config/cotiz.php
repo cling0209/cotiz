@@ -19,6 +19,13 @@ return [
     // Factor por región al importar Compra Ágil / Oportunidades (editable después en la nota).
     'factor_precio_venta_rm' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_RM', 1.22),
     'factor_precio_venta_otras' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_OTRAS', 1.30),
+    // Comisiones Compra Ágil (Resultados): utilidad sobre factor_base; pago fijo por cotización con OC.
+    'comisiones' => [
+        'factor_base' => (float) env('COTIZ_COMISIONES_FACTOR_BASE', 1.2),
+        'porcentaje' => (float) env('COTIZ_COMISIONES_PORCENTAJE', 0.20),
+        'pago_fijo' => (int) env('COTIZ_COMISIONES_PAGO_FIJO', 10000),
+    ],
+
     // Días hábiles sugeridos por región (editable en la nota).
     'diashabiles_rm' => (int) env('COTIZ_DIASHABILES_RM', 5),
     'diashabiles_otras' => (int) env('COTIZ_DIASHABILES_OTRAS', 10),

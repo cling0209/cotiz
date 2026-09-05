@@ -168,6 +168,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('compra-agil/resultados/reportes/match-agile-maestro/generar', [CompraAgilResultadosController::class, 'matchAgileMaestroGenerar'])->name('compra-agil.resultados.reportes.match-agile-maestro.generar');
             Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/estado', [CompraAgilResultadosController::class, 'reporteExportEstado'])->name('compra-agil.resultados.reportes.exportaciones.estado');
             Route::get('compra-agil/resultados/reportes/exportaciones/{jobId}/descargar', [CompraAgilResultadosController::class, 'reporteExportDescargar'])->name('compra-agil.resultados.reportes.exportaciones.descargar');
+            Route::get('compra-agil/resultados/comisiones', [CompraAgilResultadosController::class, 'comisiones'])->name('compra-agil.resultados.comisiones');
+            Route::get('compra-agil/resultados/comisiones/exportar-detalle', [CompraAgilResultadosController::class, 'comisionesExportarDetalle'])->name('compra-agil.resultados.comisiones.exportar-detalle');
+            Route::get('compra-agil/resultados/comisiones/exportar-resumen', [CompraAgilResultadosController::class, 'comisionesExportarResumen'])->name('compra-agil.resultados.comisiones.exportar-resumen');
         });
 
         Route::middleware('oportunidades-ver')->group(function () {
