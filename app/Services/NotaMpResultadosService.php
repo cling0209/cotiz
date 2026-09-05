@@ -2301,6 +2301,7 @@ class NotaMpResultadosService
 
     /**
      * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
+     * Persiste también fechas OC (FechaEnvio / Creacion / Aceptacion) en nota_mp_seguimientos.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -2308,6 +2309,8 @@ class NotaMpResultadosService
     {
         $actual = trim((string) ($nota->ocompra ?? ''));
         if ($actual !== '') {
+            $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $actual);
+
             return $actual;
         }
 
@@ -2334,7 +2337,60 @@ class NotaMpResultadosService
         Nota::query()->whereKey($nota->nronota)->update(['ocompra' => mb_substr($codigoOc, 0, 20)]);
         $nota->ocompra = $codigoOc;
 
+        $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $codigoOc);
+
         return $codigoOc;
+    }
+
+    /**
+     * Completa oc_fecha_* en el seguimiento si faltan (detalle v1 ?codigo=).
+     */
+    private function sincronizarFechasOcSeguimiento(int $nronota, string $codigoOc): void
+    {
+        $seg = NotaMpSeguimiento::query()->find($nronota);
+        if ($seg === null) {
+            return;
+        }
+
+        if ($seg->oc_fecha_envio !== null && $seg->oc_fecha_creacion !== null) {
+            return;
+        }
+
+        try {
+            $detalle = $this->ordenCompraMp->obtenerDetallePorCodigo($codigoOc);
+        } catch (RuntimeException $e) {
+            Log::warning('NotaMpResultados: no se pudo obtener detalle OC MP', [
+                'nronota' => $nronota,
+                'codigo_oc' => $codigoOc,
+                'error' => mb_substr($e->getMessage(), 0, 200),
+            ]);
+
+            return;
+        }
+
+        if ($detalle === null) {
+            return;
+        }
+
+        $update = [];
+        if ($seg->oc_fecha_envio === null && $detalle['fecha_envio'] !== null) {
+            $update['oc_fecha_envio'] = $detalle['fecha_envio'];
+        }
+        if ($seg->oc_fecha_creacion === null && $detalle['fecha_creacion'] !== null) {
+            $update['oc_fecha_creacion'] = $detalle['fecha_creacion'];
+        }
+        if ($seg->oc_fecha_aceptacion === null && $detalle['fecha_aceptacion'] !== null) {
+            $update['oc_fecha_aceptacion'] = $detalle['fecha_aceptacion'];
+        }
+        if (trim((string) ($seg->oc_estado ?? '')) === '' && $detalle['estado'] !== null) {
+            $update['oc_estado'] = mb_substr($detalle['estado'], 0, 60);
+        }
+
+        if ($update === []) {
+            return;
+        }
+
+        NotaMpSeguimiento::query()->whereKey($nronota)->update($update);
     }
 
     private function marcarNoExisteEnMp(

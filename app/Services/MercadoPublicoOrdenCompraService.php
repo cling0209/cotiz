@@ -10,6 +10,9 @@ use RuntimeException;
 /**
  * Resuelve el código alfanumérico de OC (ej. 1411-2423-AG26) vía API clásica v1.
  * Compra Ágil v2 solo entrega id_orden_compra numérico; el código AG está en v1.
+ *
+ * Match: (1) texto COT en Nombre/Descripcion, (2) igualdad de nombre del proceso CA.
+ * Detalle: ordenesdecompra.json?codigo=… (FechaEnvio, etc.). Path /{codigo}.json responde 404.
  */
 class MercadoPublicoOrdenCompraService
 {
@@ -55,7 +58,27 @@ class MercadoPublicoOrdenCompraService
     }
 
     /**
-     * Busca en API OC v1 el código AG vinculado al COT (texto «compra ágil: {COT}»).
+     * Título del proceso Compra Ágil (suele coincidir con Nombre de la OC cuando no trae el COT).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function nombreProcesoDesdePayload(array $payload): string
+    {
+        foreach (['nombre', 'descripcion', 'titulo', 'objeto'] as $key) {
+            $valor = trim((string) ($payload[$key] ?? ''));
+            if ($valor !== '') {
+                // Primera línea / hasta salto si descripcion es larga.
+                $primera = preg_split('/\R/u', $valor, 2)[0] ?? $valor;
+
+                return trim((string) $primera);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Busca en API OC v1 el código AG vinculado al COT o al nombre del proceso.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -71,24 +94,99 @@ class MercadoPublicoOrdenCompraService
         }
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
+        $nombreProceso = $this->nombreProcesoDesdePayload($payload);
 
         foreach ($this->fechasBusquedaDesdePayload($payload) as $fechaDdmmaaaa) {
             if ($codigoProveedor !== null && $codigoProveedor !== '') {
                 $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
-                $codigo = $this->buscarCodigoEnListado($listado, $codigoCot);
+                $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
                 if ($codigo !== null) {
                     return $codigo;
                 }
             }
 
             $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
-            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot);
+            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso);
             if ($codigo !== null) {
                 return $codigo;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Detalle OC v1 por código AG (`?codigo=`). Incluye Fechas.FechaEnvio.
+     *
+     * @return array{
+     *     codigo: string,
+     *     fecha_envio: ?Carbon,
+     *     fecha_creacion: ?Carbon,
+     *     fecha_aceptacion: ?Carbon,
+     *     estado: ?string,
+     *     total: ?float
+     * }|null
+     */
+    public function obtenerDetallePorCodigo(string $codigoOc): ?array
+    {
+        $codigoOc = strtoupper(trim($codigoOc));
+        if ($codigoOc === '' || ! $this->isConfigured()) {
+            return null;
+        }
+
+        $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
+        $baseUrl = rtrim((string) config('cotiz.mercadopublico.oc_v1_base_url'), '/');
+
+        try {
+            $response = Http::connectTimeout(10)
+                ->timeout(max(15, (int) config('cotiz.mercadopublico.api_timeout_segundos', 45)))
+                ->acceptJson()
+                ->get($baseUrl.'/ordenesdecompra.json', [
+                    'codigo' => $codigoOc,
+                    'ticket' => $ticket,
+                ]);
+        } catch (\Throwable $e) {
+            Log::debug('MercadoPublicoOrdenCompra: error detalle OC v1', [
+                'codigo' => $codigoOc,
+                'error' => mb_substr($e->getMessage(), 0, 200),
+            ]);
+
+            return null;
+        }
+
+        if ($response->status() === 429) {
+            throw new RuntimeException('Cuota diaria de Mercado Público agotada consultando detalle de orden de compra.');
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $json = $response->json();
+        if (! is_array($json)) {
+            return null;
+        }
+
+        $listado = $json['Listado'] ?? [];
+        if (! is_array($listado) || $listado === []) {
+            return null;
+        }
+
+        $item = $listado[0];
+        if (! is_array($item)) {
+            return null;
+        }
+
+        $fechas = is_array($item['Fechas'] ?? null) ? $item['Fechas'] : [];
+
+        return [
+            'codigo' => strtoupper(trim((string) ($item['Codigo'] ?? $codigoOc))),
+            'fecha_envio' => $this->parsearFechaMp((string) ($fechas['FechaEnvio'] ?? '')),
+            'fecha_creacion' => $this->parsearFechaMp((string) ($fechas['FechaCreacion'] ?? '')),
+            'fecha_aceptacion' => $this->parsearFechaMp((string) ($fechas['FechaAceptacion'] ?? '')),
+            'estado' => ($e = trim((string) ($item['Estado'] ?? ''))) !== '' ? $e : null,
+            'total' => isset($item['Total']) && is_numeric($item['Total']) ? (float) $item['Total'] : null,
+        ];
     }
 
     /**
@@ -150,8 +248,10 @@ class MercadoPublicoOrdenCompraService
     /**
      * @param  list<array<string, mixed>>  $listado
      */
-    public function buscarCodigoEnListado(array $listado, string $codigoCot): ?string
+    public function buscarCodigoEnListado(array $listado, string $codigoCot, ?string $nombreProceso = null): ?string
     {
+        $codigoCot = strtoupper(trim($codigoCot));
+
         foreach ($listado as $item) {
             if (! is_array($item)) {
                 continue;
@@ -159,16 +259,84 @@ class MercadoPublicoOrdenCompraService
             $texto = mb_strtolower(
                 trim((string) ($item['Nombre'] ?? '')).' '.trim((string) ($item['Descripcion'] ?? '')),
             );
-            if (! str_contains($texto, mb_strtolower($codigoCot))) {
+            if ($codigoCot !== '' && str_contains($texto, mb_strtolower($codigoCot))) {
+                $codigo = $this->codigoAgDesdeItem($item);
+                if ($codigo !== null) {
+                    return $codigo;
+                }
+            }
+        }
+
+        return $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso);
+    }
+
+    /**
+     * Fallback: Nombre de la OC igual al nombre del proceso CA (casos sin «compra ágil: COT» en el listado).
+     *
+     * @param  list<array<string, mixed>>  $listado
+     */
+    public function buscarCodigoPorNombreProceso(array $listado, string $codigoCot, ?string $nombreProceso): ?string
+    {
+        $nombreNorm = $this->normalizarNombreOc((string) ($nombreProceso ?? ''));
+        if ($nombreNorm === '') {
+            return null;
+        }
+
+        $matches = [];
+        foreach ($listado as $item) {
+            if (! is_array($item)) {
                 continue;
             }
-            $codigo = strtoupper(trim((string) ($item['Codigo'] ?? '')));
-            if ($codigo !== '' && preg_match('/-\d+-AG\d+$/i', $codigo)) {
-                return $codigo;
+            $itemNombre = $this->normalizarNombreOc((string) ($item['Nombre'] ?? ''));
+            if ($itemNombre === '' || $itemNombre !== $nombreNorm) {
+                continue;
+            }
+            $codigo = $this->codigoAgDesdeItem($item);
+            if ($codigo !== null) {
+                $matches[] = $codigo;
+            }
+        }
+
+        $matches = array_values(array_unique($matches));
+        if ($matches === []) {
+            return null;
+        }
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+
+        // Desambiguar por prefijo numérico compartido (4034-452-COT26 ↔ 4034-510-AG26).
+        $prefix = explode('-', strtoupper(trim($codigoCot)))[0] ?? '';
+        if ($prefix !== '' && preg_match('/^\d+$/', $prefix)) {
+            $porPrefijo = array_values(array_filter(
+                $matches,
+                static fn (string $c): bool => str_starts_with($c, $prefix.'-'),
+            ));
+            if (count($porPrefijo) === 1) {
+                return $porPrefijo[0];
             }
         }
 
         return null;
+    }
+
+    public function normalizarNombreOc(string $nombre): string
+    {
+        $nombre = trim($nombre);
+        if ($nombre === '') {
+            return '';
+        }
+
+        $nombre = mb_strtolower($nombre);
+        $nombre = strtr($nombre, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+            'ü' => 'u', 'ñ' => 'n',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u',
+            'Ü' => 'u', 'Ñ' => 'n',
+        ]);
+        $nombre = preg_replace('/\s+/u', ' ', $nombre) ?? $nombre;
+
+        return trim($nombre);
     }
 
     public function codigoProveedorMpParaRut(?string $rut): ?string
@@ -194,6 +362,19 @@ class MercadoPublicoOrdenCompraService
 
                 return $codigo !== '' ? $codigo : null;
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function codigoAgDesdeItem(array $item): ?string
+    {
+        $codigo = strtoupper(trim((string) ($item['Codigo'] ?? '')));
+        if ($codigo !== '' && preg_match('/-\d+-AG\d+$/i', $codigo)) {
+            return $codigo;
         }
 
         return null;

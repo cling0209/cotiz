@@ -38,6 +38,64 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         );
     }
 
+    public function test_buscar_codigo_en_listado_por_nombre_proceso_sin_cot(): void
+    {
+        $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850 - SOLICITUDES 47-48-49-50 FONDOS SEP 90%';
+        $listado = [
+            ['Codigo' => '956-578-AG26', 'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 956-388-COT26'],
+            ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre],
+        ];
+
+        $this->assertSame(
+            '4034-510-AG26',
+            $this->service->buscarCodigoEnListado($listado, '4034-452-COT26', $nombre),
+        );
+    }
+
+    public function test_buscar_por_nombre_desambigua_con_prefijo_cot(): void
+    {
+        $nombre = 'MATERIALES VARIOS ESCUELA';
+        $listado = [
+            ['Codigo' => '1111-100-AG26', 'Nombre' => $nombre],
+            ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre],
+        ];
+
+        $this->assertSame(
+            '4034-510-AG26',
+            $this->service->buscarCodigoPorNombreProceso($listado, '4034-452-COT26', $nombre),
+        );
+    }
+
+    public function test_obtener_detalle_por_codigo_incluye_fecha_envio(): void
+    {
+        Http::fake([
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [
+                    [
+                        'Codigo' => '4034-510-AG26',
+                        'Estado' => 'Aceptada',
+                        'Total' => 1780516.0,
+                        'Fechas' => [
+                            'FechaCreacion' => '2026-09-02T15:33:20.513',
+                            'FechaEnvio' => '2026-09-02T17:24:14.53',
+                            'FechaAceptacion' => '2026-09-04T20:55:33.643',
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $detalle = $this->service->obtenerDetallePorCodigo('4034-510-AG26');
+
+        $this->assertNotNull($detalle);
+        $this->assertSame('4034-510-AG26', $detalle['codigo']);
+        $this->assertSame('Aceptada', $detalle['estado']);
+        $this->assertSame('2026-09-02 17:24:14', $detalle['fecha_envio']?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-02 15:33:20', $detalle['fecha_creacion']?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-04 20:55:33', $detalle['fecha_aceptacion']?->format('Y-m-d H:i:s'));
+    }
+
     public function test_resolver_codigo_consulta_oc_v1(): void
     {
         Http::fake([
@@ -64,6 +122,42 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         );
 
         $this->assertSame('1411-2423-AG26', $codigo);
+    }
+
+    public function test_resolver_codigo_por_nombre_cuando_listado_no_tiene_cot(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-04 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago']);
+
+        $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850 - SOLICITUDES 47-48-49-50 FONDOS SEP 90%';
+
+        Http::fake(function ($request) use ($nombre) {
+            $url = $request->url();
+            if (str_contains($url, 'fecha=04092026')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [
+                        ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre, 'CodigoEstado' => 6],
+                    ],
+                ]);
+            }
+
+            return Http::response(['Cantidad' => 0, 'Listado' => []]);
+        });
+
+        $codigo = $this->service->resolverCodigoPorCotizacion(
+            '4034-452-COT26',
+            [
+                'id_orden_compra' => 55427925,
+                'nombre' => $nombre,
+                'fechas' => ['fecha_ultimo_cambio' => '2026-09-02 15:35:00'],
+            ],
+            '76.185.139-K',
+        );
+
+        $this->assertSame('4034-510-AG26', $codigo);
+
+        Carbon::setTestNow();
     }
 
     public function test_no_resuelve_sin_id_orden_compra(): void

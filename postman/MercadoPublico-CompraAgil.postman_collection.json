@@ -61,6 +61,11 @@
       "key": "codigoLicitacion",
       "value": "1509-5-L114",
       "type": "string"
+    },
+    {
+      "key": "codigoOc",
+      "value": "4034-510-AG26",
+      "type": "string"
     }
   ],
   "item": [
@@ -327,18 +332,45 @@
               "response": []
             },
             {
-              "name": "OC por código",
+              "name": "OC por código (FechaEnvio)",
               "request": {
                 "method": "GET",
                 "header": [{ "key": "Accept", "value": "application/json" }],
                 "url": {
-                  "raw": "{{baseUrlV1}}/ordenesdecompra/{{codigoLicitacion}}.json?ticket={{ticket}}",
+                  "raw": "{{baseUrlV1}}/ordenesdecompra.json?codigo={{codigoOc}}&ticket={{ticket}}",
                   "host": ["{{baseUrlV1}}"],
-                  "path": ["ordenesdecompra", "{{codigoLicitacion}}.json"],
-                  "query": [{ "key": "ticket", "value": "{{ticket}}" }]
+                  "path": ["ordenesdecompra.json"],
+                  "query": [
+                    {
+                      "key": "codigo",
+                      "value": "{{codigoOc}}",
+                      "description": "Código AG (ej. 4034-510-AG26). NO usar path /ordenesdecompra/{codigo}.json (404)."
+                    },
+                    { "key": "ticket", "value": "{{ticket}}" }
+                  ]
                 },
-                "description": "Reemplace codigoLicitacion por el código de OC real."
+                "description": "Detalle de OC por código. En `Listado[0].Fechas.FechaEnvio` está la fecha de envío.\n\nTambién: `FechaCreacion`, `FechaAceptacion`, `Estado`, `Total`, comprador/proveedor."
               },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Respuesta OK', function () {",
+                      "  pm.response.to.have.status(200);",
+                      "});",
+                      "const json = pm.response.json();",
+                      "const o = json && Array.isArray(json.Listado) ? json.Listado[0] : null;",
+                      "if (o && o.Fechas) {",
+                      "  console.log('FechaEnvio:', o.Fechas.FechaEnvio);",
+                      "  console.log('Estado:', o.Estado);",
+                      "  console.log('Total:', o.Total);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
               "response": []
             }
           ]

@@ -1,0 +1,379 @@
+{
+  "info": {
+    "_postman_id": "mercadopublico-orden-compra",
+    "name": "Mercado Público — Orden de Compra (manual)",
+    "description": "Flujo **manual** para resolver el código AG de orden de compra, igual que Cotiz (`MercadoPublicoOrdenCompraService`).\n\n## Por qué dos APIs\n\n1. **Compra Ágil v2** (`api2`) solo entrega `id_orden_compra` **numérico**.\n2. El código alfanumérico (`1411-2423-AG26`) está en la **API OC v1** (`ordenesdecompra.json`).\n\n## Pasos (igual que Cotiz)\n\n1. **Detalle Compra Ágil** → anotar `id_orden_compra` y fechas (`fecha_ultimo_cambio` / `fecha_cierre`).\n2. **OC del día (con CodigoProveedor)** → listar OC de esa fecha (y días vecinos si hace falta).\n3. En `Listado[]`, buscar: (a) `Nombre`/`Descripcion` con el código COT, o (b) `Nombre` igual al `nombre` del detalle Compra Ágil.\n4. Tomar `Codigo` que termine en `-AGxx` y guardarlo en `notas.ocompra`.\n5. **OC por código (`?codigo=`)** → detalle con `Fechas.FechaEnvio`, `FechaAceptacion`, monto, comprador/proveedor (Cotiz persiste en `nota_mp_seguimientos.oc_fecha_*`).\n\n**Importante:** el detalle NO es `ordenesdecompra/{codigo}.json` (404). Usar `ordenesdecompra.json?codigo={{codigoOc}}`.\n\n## Variables\n\n| Variable | Uso |\n|---|---|\n| `ticket` | Ticket ChileCompra (header en v2, query en v1) |\n| `codigoCompraAgil` | Código COT, ej. `1161-172-COT26` |\n| `fechaDdmmaaaa` | Fecha búsqueda OC, formato `ddmmaaaa` |\n| `codigoProveedor` | ID MP del proveedor (Romulo `1276139`, Reicol `1417881`) |\n| `codigoOc` | Código AG resuelto, ej. `1411-2423-AG26` |\n\nTicket: https://www.chilecompra.cl/api/\n\nUsa el entorno **Mercado Público** (`MercadoPublico.postman_environment.json`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('ticket') && !pm.environment.get('ticket')) {",
+          "    console.warn('Configure ticket en el entorno Mercado Público o en variables de la colección');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrlV2",
+      "value": "https://api2.mercadopublico.cl",
+      "type": "string"
+    },
+    {
+      "key": "baseUrlV1",
+      "value": "https://api.mercadopublico.cl/servicios/v1/publico",
+      "type": "string"
+    },
+    {
+      "key": "ticket",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "codigoCompraAgil",
+      "value": "1161-172-COT26",
+      "type": "string"
+    },
+    {
+      "key": "fechaDdmmaaaa",
+      "value": "04092026",
+      "type": "string"
+    },
+    {
+      "key": "codigoProveedor",
+      "value": "1276139",
+      "type": "string"
+    },
+    {
+      "key": "codigoProveedorRomulo",
+      "value": "1276139",
+      "type": "string"
+    },
+    {
+      "key": "codigoProveedorReicol",
+      "value": "1417881",
+      "type": "string"
+    },
+    {
+      "key": "codigoOc",
+      "value": "4034-510-AG26",
+      "type": "string"
+    },
+    {
+      "key": "fechaEnvioOc",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Compra Ágil v2 — detalle (id_orden_compra)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "ticket", "value": "{{ticket}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrlV2}}/v2/compra-agil/{{codigoCompraAgil}}",
+          "host": ["{{baseUrlV2}}"],
+          "path": ["v2", "compra-agil", "{{codigoCompraAgil}}"]
+        },
+        "description": "Paso 1 de Cotiz.\n\nBuscar en el JSON:\n- `payload.id_orden_compra` (numérico; si falta, aún no hay OC)\n- `payload.fechas.fecha_ultimo_cambio` / `fecha_cierre` → convertir a `ddmmaaaa` en `fechaDdmmaaaa`\n- proveedor ganador: `proveedores_cotizando[].seleccion.proveedor_seleccionado`\n\nSi hay `id_orden_compra` pero no sabes el código AG, seguir con el paso 2."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "const p = json && json.payload ? json.payload : json;",
+              "if (!p) { console.warn('Sin payload'); return; }",
+              "",
+              "const idOc = p.id_orden_compra",
+              "  ?? (p.orden_compra && p.orden_compra.id_orden_compra)",
+              "  ?? null;",
+              "console.log('id_orden_compra:', idOc);",
+              "pm.test('Respuesta OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "if (idOc) {",
+              "  pm.test('Tiene id_orden_compra', function () {",
+              "    pm.expect(Number(idOc)).to.be.above(0);",
+              "  });",
+              "}",
+              "",
+              "const fechas = p.fechas || {};",
+              "const ref = fechas.fecha_ultimo_cambio || fechas.fecha_cierre || '';",
+              "console.log('fecha ref MP:', ref);",
+              "if (ref) {",
+              "  const d = new Date(ref);",
+              "  if (!isNaN(d.getTime())) {",
+              "    const dd = String(d.getDate()).padStart(2, '0');",
+              "    const mm = String(d.getMonth() + 1).padStart(2, '0');",
+              "    const yyyy = d.getFullYear();",
+              "    const sugerida = dd + mm + yyyy;",
+              "    console.log('Sugerencia fechaDdmmaaaa:', sugerida);",
+              "    console.log('Copiar a variable fechaDdmmaaaa y probar días vecinos (+/-) si no aparece la OC');",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "2. OC v1 — listado del día (con CodigoProveedor)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrlV1}}/ordenesdecompra.json?fecha={{fechaDdmmaaaa}}&CodigoProveedor={{codigoProveedor}}&ticket={{ticket}}",
+          "host": ["{{baseUrlV1}}"],
+          "path": ["ordenesdecompra.json"],
+          "query": [
+            {
+              "key": "fecha",
+              "value": "{{fechaDdmmaaaa}}",
+              "description": "Formato ddmmaaaa. Cotiz prueba desde fecha_cierre−1 hasta hoy (máx ~31 días)."
+            },
+            {
+              "key": "CodigoProveedor",
+              "value": "{{codigoProveedor}}",
+              "description": "Romulo 1276139 · Reicol 1417881 (config cotiz.mercadopublico.codigo_proveedor_por_rut)"
+            },
+            {
+              "key": "ticket",
+              "value": "{{ticket}}"
+            }
+          ]
+        },
+        "description": "Paso 2 — misma llamada que `MercadoPublicoOrdenCompraService::listarOrdenesPorFecha`.\n\n**Buscar en `Listado`:**\n- `Nombre` o `Descripcion` que contenga `{{codigoCompraAgil}}` (texto tipo «compra ágil: 1161-172-COT26»)\n- `Codigo` con patrón `*-AGxx` → ese es `notas.ocompra`\n\nSi no aparece: cambiar `fechaDdmmaaaa` (día siguiente/anterior) o probar sin `CodigoProveedor` (request 3).\n\nCódigos proveedor Cotiz:\n- Romulo (76.185.139-K) → `1276139` (`codigoProveedorRomulo`)\n- Reicol (76.356.855-5) → `1417881` (`codigoProveedorReicol`)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Respuesta OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const listado = (json && Array.isArray(json.Listado)) ? json.Listado : [];",
+              "const cot = String(pm.variables.get('codigoCompraAgil') || '').toLowerCase();",
+              "console.log('Órdenes en Listado:', listado.length);",
+              "console.log('Buscando COT:', cot);",
+              "",
+              "const hits = [];",
+              "listado.forEach(function (item) {",
+              "  const texto = ((item.Nombre || '') + ' ' + (item.Descripcion || '')).toLowerCase();",
+              "  if (cot && texto.indexOf(cot) !== -1) {",
+              "    hits.push({ Codigo: item.Codigo, Nombre: item.Nombre });",
+              "  }",
+              "});",
+              "",
+              "if (hits.length) {",
+              "  console.log('Matches COT:', JSON.stringify(hits, null, 2));",
+              "  const ag = hits.find(function (h) {",
+              "    return /\\-\\d+\\-AG\\d+$/i.test(String(h.Codigo || ''));",
+              "  });",
+              "  if (ag && ag.Codigo) {",
+              "    pm.collectionVariables.set('codigoOc', String(ag.Codigo).toUpperCase());",
+              "    console.log('codigoOc guardado en colección:', ag.Codigo);",
+              "    pm.test('Encontró código AG para el COT', function () {",
+              "      pm.expect(ag.Codigo).to.match(/\\-AG\\d+$/i);",
+              "    });",
+              "  }",
+              "} else {",
+              "  console.warn('Sin match del COT en esta fecha. Probar otra fechaDdmmaaaa o request sin CodigoProveedor.');",
+              "  const ags = listado",
+              "    .filter(function (i) { return /\\-AG\\d+$/i.test(String(i.Codigo || '')); })",
+              "    .slice(0, 15)",
+              "    .map(function (i) { return i.Codigo + ' | ' + (i.Nombre || ''); });",
+              "  if (ags.length) {",
+              "    console.log('Primeras OC *-AG* del día:', ags);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "3. OC v1 — listado del día (sin CodigoProveedor)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrlV1}}/ordenesdecompra.json?fecha={{fechaDdmmaaaa}}&ticket={{ticket}}",
+          "host": ["{{baseUrlV1}}"],
+          "path": ["ordenesdecompra.json"],
+          "query": [
+            { "key": "fecha", "value": "{{fechaDdmmaaaa}}" },
+            { "key": "ticket", "value": "{{ticket}}" }
+          ]
+        },
+        "description": "Fallback de Cotiz: si con `CodigoProveedor` no aparece, lista **todas** las OC del día y busca el COT en Nombre/Descripcion.\n\nPuede ser lento / listado grande. Preferir siempre el request 2 primero."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Respuesta OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const listado = (json && Array.isArray(json.Listado)) ? json.Listado : [];",
+              "const cot = String(pm.variables.get('codigoCompraAgil') || '').toLowerCase();",
+              "console.log('Órdenes en Listado:', listado.length);",
+              "",
+              "const hits = listado.filter(function (item) {",
+              "  const texto = ((item.Nombre || '') + ' ' + (item.Descripcion || '')).toLowerCase();",
+              "  return cot && texto.indexOf(cot) !== -1;",
+              "}).map(function (item) {",
+              "  return { Codigo: item.Codigo, Nombre: item.Nombre };",
+              "});",
+              "",
+              "console.log('Matches COT:', JSON.stringify(hits, null, 2));",
+              "const ag = hits.find(function (h) {",
+              "  return /\\-\\d+\\-AG\\d+$/i.test(String(h.Codigo || ''));",
+              "});",
+              "if (ag && ag.Codigo) {",
+              "  pm.collectionVariables.set('codigoOc', String(ag.Codigo).toUpperCase());",
+              "  console.log('codigoOc guardado:', ag.Codigo);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "4. OC v1 — detalle por código AG (FechaEnvio)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": {
+          "raw": "{{baseUrlV1}}/ordenesdecompra.json?codigo={{codigoOc}}&ticket={{ticket}}",
+          "host": ["{{baseUrlV1}}"],
+          "path": ["ordenesdecompra.json"],
+          "query": [
+            {
+              "key": "codigo",
+              "value": "{{codigoOc}}",
+              "description": "Código AG, ej. 4034-510-AG26. NO usar path /ordenesdecompra/{codigo}.json (responde 404)."
+            },
+            { "key": "ticket", "value": "{{ticket}}" }
+          ]
+        },
+        "description": "Detalle completo de la OC (doc ChileCompra).\n\nEn `Listado[0].Fechas`:\n- `FechaEnvio` — fecha de envío al proveedor\n- `FechaCreacion`\n- `FechaAceptacion`\n- `FechaCancelacion`\n- `FechaUltimaModificacion`\n\nTambién: `Estado`, `Total`, `TotalNeto`, `Comprador`, `Proveedor`, `Items`.\n\nEjemplo verificado: `codigo=4034-510-AG26` → `FechaEnvio=2026-09-02T17:24:14.53`."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Respuesta OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "const listado = (json && Array.isArray(json.Listado)) ? json.Listado : [];",
+              "pm.test('Trae Listado con la OC', function () {",
+              "  pm.expect(listado.length).to.be.above(0);",
+              "});",
+              "",
+              "if (listado[0]) {",
+              "  const o = listado[0];",
+              "  const fechas = o.Fechas || {};",
+              "  console.log('Codigo:', o.Codigo);",
+              "  console.log('Estado:', o.Estado);",
+              "  console.log('FechaEnvio:', fechas.FechaEnvio);",
+              "  console.log('FechaCreacion:', fechas.FechaCreacion);",
+              "  console.log('FechaAceptacion:', fechas.FechaAceptacion);",
+              "  console.log('Total:', o.Total);",
+              "  if (fechas.FechaEnvio) {",
+              "    pm.collectionVariables.set('fechaEnvioOc', String(fechas.FechaEnvio));",
+              "    pm.test('Tiene FechaEnvio', function () {",
+              "      pm.expect(fechas.FechaEnvio).to.be.a('string').and.not.empty;",
+              "    });",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Atajos proveedor",
+      "item": [
+        {
+          "name": "OC del día — Romulo (1276139)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV1}}/ordenesdecompra.json?fecha={{fechaDdmmaaaa}}&CodigoProveedor={{codigoProveedorRomulo}}&ticket={{ticket}}",
+              "host": ["{{baseUrlV1}}"],
+              "path": ["ordenesdecompra.json"],
+              "query": [
+                { "key": "fecha", "value": "{{fechaDdmmaaaa}}" },
+                { "key": "CodigoProveedor", "value": "{{codigoProveedorRomulo}}", "description": "76.185.139-K" },
+                { "key": "ticket", "value": "{{ticket}}" }
+              ]
+            },
+            "description": "Listado OC v1 filtrado por Romulo."
+          },
+          "response": []
+        },
+        {
+          "name": "OC del día — Reicol (1417881)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrlV1}}/ordenesdecompra.json?fecha={{fechaDdmmaaaa}}&CodigoProveedor={{codigoProveedorReicol}}&ticket={{ticket}}",
+              "host": ["{{baseUrlV1}}"],
+              "path": ["ordenesdecompra.json"],
+              "query": [
+                { "key": "fecha", "value": "{{fechaDdmmaaaa}}" },
+                { "key": "CodigoProveedor", "value": "{{codigoProveedorReicol}}", "description": "76.356.855-5" },
+                { "key": "ticket", "value": "{{ticket}}" }
+              ]
+            },
+            "description": "Listado OC v1 filtrado por Reicol."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
