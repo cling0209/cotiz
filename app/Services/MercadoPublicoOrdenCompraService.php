@@ -95,21 +95,49 @@ class MercadoPublicoOrdenCompraService
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
         $nombreProceso = $this->nombreProcesoDesdePayload($payload);
+        $huboCuotaAgotada = false;
 
         foreach ($this->fechasBusquedaDesdePayload($payload) as $fechaDdmmaaaa) {
             if ($codigoProveedor !== null && $codigoProveedor !== '') {
-                $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
-                $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
-                if ($codigo !== null) {
-                    return $codigo;
+                try {
+                    $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
+                } catch (RuntimeException $e) {
+                    $huboCuotaAgotada = true;
+                    Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC, se prueba otra fecha', [
+                        'fecha' => $fechaDdmmaaaa,
+                        'CodigoProveedor' => $codigoProveedor,
+                        'error' => mb_substr($e->getMessage(), 0, 160),
+                    ]);
+                    $listado = null;
+                }
+                if (is_array($listado)) {
+                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
+                    if ($codigo !== null) {
+                        return $codigo;
+                    }
                 }
             }
 
-            $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
+            try {
+                $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
+            } catch (RuntimeException $e) {
+                $huboCuotaAgotada = true;
+                Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC sin proveedor, se prueba otra fecha', [
+                    'fecha' => $fechaDdmmaaaa,
+                    'error' => mb_substr($e->getMessage(), 0, 160),
+                ]);
+
+                continue;
+            }
+
             $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso);
             if ($codigo !== null) {
                 return $codigo;
             }
+        }
+
+        if ($huboCuotaAgotada) {
+            throw new RuntimeException('Cuota diaria de Mercado Público agotada consultando órdenes de compra.');
         }
 
         return null;
@@ -224,7 +252,8 @@ class MercadoPublicoOrdenCompraService
                 $cursor->addDay();
             }
 
-            return array_values(array_unique($out));
+            // Preferir días recientes primero (la OC suele indexarse días después del envío).
+            return array_values(array_reverse(array_unique($out)));
         }
 
         // OC puede emitirse semanas después del último cambio: tramo desde adjudicación + días recientes.

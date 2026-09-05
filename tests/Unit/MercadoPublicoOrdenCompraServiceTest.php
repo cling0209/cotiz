@@ -160,6 +160,61 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_resolver_codigo_continua_si_un_dia_da_cuota_429(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-05 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago']);
+
+        $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850';
+
+        Http::fake(function ($request) use ($nombre) {
+            $url = $request->url();
+            if (str_contains($url, 'fecha=03092026')) {
+                return Http::response(['Codigo' => 10500, 'Mensaje' => 'cuota'], 429);
+            }
+            if (str_contains($url, 'fecha=04092026')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [
+                        ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre],
+                    ],
+                ]);
+            }
+
+            return Http::response(['Cantidad' => 0, 'Listado' => []]);
+        });
+
+        $codigo = $this->service->resolverCodigoPorCotizacion(
+            '4034-452-COT26',
+            [
+                'id_orden_compra' => 55427925,
+                'nombre' => $nombre,
+                'fechas' => ['fecha_ultimo_cambio' => '2026-09-02 15:35:00'],
+            ],
+            '76.185.139-K',
+        );
+
+        $this->assertSame('4034-510-AG26', $codigo);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_fechas_busqueda_prioriza_dias_recientes(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-05 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago', 'cotiz.mercadopublico.oc_busqueda_max_dias' => 15]);
+
+        $fechas = $this->service->fechasBusquedaDesdePayload([
+            'fechas' => ['fecha_ultimo_cambio' => '2026-09-02 15:35:00'],
+        ]);
+
+        $this->assertSame('05092026', $fechas[0]);
+        $this->assertContains('04092026', $fechas);
+        $this->assertContains('01092026', $fechas);
+
+        Carbon::setTestNow();
+    }
+
     public function test_no_resuelve_sin_id_orden_compra(): void
     {
         $this->assertNull($this->service->resolverCodigoPorCotizacion(
