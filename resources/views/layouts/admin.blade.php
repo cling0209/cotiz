@@ -50,7 +50,7 @@
                     <ul class="dropdown-menu dropdown-menu-end">
                         @if(auth()->user()->canAccessCompraAgilResultados())
                             <li>
-                                <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.resultados.*') ? 'active' : '' }}"
+                                <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.resultados.*') && ! request()->routeIs('admin.compra-agil.resultados.comisiones*') ? 'active' : '' }}"
                                    href="{{ route('admin.compra-agil.resultados.index') }}">
                                     <i class="bi bi-trophy"></i> Resultados Compra Ágil
                                 </a>
@@ -62,6 +62,14 @@
                                 <i class="bi bi-check2-circle"></i> Adjudicadas
                             </a>
                         </li>
+                        @if(auth()->user()->canAccessCompraAgilComisiones())
+                            <li>
+                                <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.resultados.comisiones*') ? 'active' : '' }}"
+                                   href="{{ route('admin.compra-agil.resultados.comisiones') }}">
+                                    <i class="bi bi-cash-coin"></i> Comisiones
+                                </a>
+                            </li>
+                        @endif
                         @if(auth()->user()->canAccessCompraAgilAnalisis())
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.analisis.*') ? 'active' : '' }}"

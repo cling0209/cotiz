@@ -185,11 +185,8 @@ class CompraAgilComisionesService
     private function buildQuery(array $filtros): Builder
     {
         $query = NotaMpSeguimiento::query()
-            ->where(function (Builder $q): void {
-                $q->whereNotNull('id_orden_compra')
-                    ->orWhereHas('nota', function (Builder $n): void {
-                        $n->whereRaw("TRIM(COALESCE(ocompra, '')) <> ''");
-                    });
+            ->whereHas('nota', function (Builder $n): void {
+                $n->whereRaw("TRIM(COALESCE(ocompra, '')) <> ''");
             });
 
         if (! empty($filtros['nronota'])) {
