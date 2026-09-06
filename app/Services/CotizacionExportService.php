@@ -167,7 +167,7 @@ class CotizacionExportService
     {
         $fecha = $nota->fecha?->format('d-m-Y') ?? '';
         $fechaEntrega = $nota->fechaentrega?->format('d-m-Y') ?? '';
-        $rut = (string) ($nota->rutempresa ?? '');
+        $rut = $this->rutEmpresaSinFormato((string) ($nota->rutempresa ?? ''));
         $softland = trim($prodItemSoftland);
 
         $campos = [
@@ -198,6 +198,14 @@ class CotizacionExportService
         ];
 
         return implode(';', $campos);
+    }
+
+    private function rutEmpresaSinFormato(string $rut): string
+    {
+        $rut = str_replace('.', '', trim($rut));
+        $cuerpo = explode('-', $rut, 2)[0];
+
+        return preg_replace('/[^0-9]/', '', $cuerpo) ?? '';
     }
 
     private function entreComillas(string $valor): string
