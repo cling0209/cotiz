@@ -15,7 +15,22 @@ final class CotizacionListadoRetorno
 
     public const FROM_ADJUDICADAS = 'adjudicadas';
 
+    public const FROM_COMISIONES = 'comisiones';
+
     public const SESSION_KEY = 'cotiz.listado_retorno';
+
+    /** @var list<string> */
+    public const CLAVES_COMISIONES = [
+        'fecha_envio_desde',
+        'fecha_envio_hasta',
+        'usuario',
+        'codigo_proceso',
+        'sort',
+        'dir',
+        'page',
+        'buscar_nronota',
+        'por_pagina',
+    ];
 
     /** Prefijo para no chocar con `codigo` (Compra Ágil a importar) ni con campos del formulario. */
     public const CLAVES_OPORTUNIDADES = [
@@ -69,6 +84,30 @@ final class CotizacionListadoRetorno
     {
         $q = ['from' => self::FROM_ADJUDICADAS];
         foreach (['fechaentregadesde', 'fechaentregahasta'] as $key) {
+            $valor = trim((string) ($filtros[$key] ?? ''));
+            if ($valor !== '') {
+                $q[$key] = $valor;
+            }
+        }
+        $nronota = (int) ($filtros['nronota'] ?? 0);
+        if ($nronota > 0) {
+            $q['buscar_nronota'] = $nronota;
+        }
+        if ($page > 1) {
+            $q['page'] = $page;
+        }
+
+        return $q;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     * @return array<string, scalar>
+     */
+    public static function paraComisiones(array $filtros, int $page): array
+    {
+        $q = ['from' => self::FROM_COMISIONES];
+        foreach (['fecha_envio_desde', 'fecha_envio_hasta', 'usuario', 'codigo_proceso', 'sort', 'dir', 'por_pagina'] as $key) {
             $valor = trim((string) ($filtros[$key] ?? ''));
             if ($valor !== '') {
                 $q[$key] = $valor;
@@ -172,6 +211,7 @@ final class CotizacionListadoRetorno
         return match ($from) {
             self::FROM_OPORTUNIDADES => route('admin.oportunidades.para-cotizar.index', $q),
             self::FROM_ADJUDICADAS => route('admin.cotizaciones.adjudicadas.index', $q),
+            self::FROM_COMISIONES => route('admin.compra-agil.resultados.comisiones', $q),
             self::FROM_LISTADO => route('admin.cotizaciones.index', $q),
             default => route('admin.cotizaciones.index'),
         };
@@ -182,6 +222,7 @@ final class CotizacionListadoRetorno
         return match ((string) (self::query($request)['from'] ?? '')) {
             self::FROM_OPORTUNIDADES => 'Oportunidades',
             self::FROM_ADJUDICADAS => 'Adjudicadas',
+            self::FROM_COMISIONES => 'Comisiones',
             default => 'Listado',
         };
     }
@@ -192,7 +233,7 @@ final class CotizacionListadoRetorno
     private static function queryDesdeInput(Request $request): array
     {
         $from = trim((string) $request->input('from', ''));
-        if (! in_array($from, [self::FROM_OPORTUNIDADES, self::FROM_LISTADO, self::FROM_ADJUDICADAS], true)) {
+        if (! in_array($from, [self::FROM_OPORTUNIDADES, self::FROM_LISTADO, self::FROM_ADJUDICADAS, self::FROM_COMISIONES], true)) {
             return [];
         }
 
@@ -200,6 +241,7 @@ final class CotizacionListadoRetorno
         $claves = match ($from) {
             self::FROM_OPORTUNIDADES => self::CLAVES_OPORTUNIDADES,
             self::FROM_ADJUDICADAS => ['fechaentregadesde', 'fechaentregahasta', 'page', 'buscar_nronota', 'por_pagina'],
+            self::FROM_COMISIONES => self::CLAVES_COMISIONES,
             default => ['fechadesde', 'fechahasta', 'cotizacion', 'estado_mp', 'orden_campo', 'orden_dir', 'page', 'buscar_nronota', 'por_pagina'],
         };
 
@@ -221,7 +263,7 @@ final class CotizacionListadoRetorno
     private static function soloClavesPermitidas(array $raw): array
     {
         $from = trim((string) ($raw['from'] ?? ''));
-        if (! in_array($from, [self::FROM_OPORTUNIDADES, self::FROM_LISTADO, self::FROM_ADJUDICADAS], true)) {
+        if (! in_array($from, [self::FROM_OPORTUNIDADES, self::FROM_LISTADO, self::FROM_ADJUDICADAS, self::FROM_COMISIONES], true)) {
             return [];
         }
 
@@ -232,6 +274,7 @@ final class CotizacionListadoRetorno
                 'fechaentregadesde', 'fechaentregahasta',
             ],
             self::CLAVES_OPORTUNIDADES,
+            self::CLAVES_COMISIONES,
         );
         $out = [];
         foreach ($permitidas as $key) {

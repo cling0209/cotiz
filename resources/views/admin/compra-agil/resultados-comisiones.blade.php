@@ -3,6 +3,12 @@
 @section('title', 'Comisiones — Resultados Compra Ágil')
 
 @section('content')
+@php
+    $comisionesRetorno = \App\Support\CotizacionListadoRetorno::paraComisiones(
+        array_merge($filtros, ['por_pagina' => $items->perPage()]),
+        (int) $items->currentPage()
+    );
+@endphp
 <div class="container-fluid py-4">
     <div class="d-flex align-items-center gap-2 mb-4">
         <a href="{{ route('admin.compra-agil.resultados.index') }}" class="btn btn-outline-secondary btn-sm" data-no-loader>
@@ -97,6 +103,7 @@
                         <th class="text-end">20% Comisión</th>
                         <th class="text-end">Pago</th>
                         <th class="text-end">A pagar</th>
+                        <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -118,10 +125,16 @@
                             <td class="text-end small tabular-nums">${{ number_format($fila->comision_20, 0, ',', '.') }}</td>
                             <td class="text-end small tabular-nums">${{ number_format($fila->pago, 0, ',', '.') }}</td>
                             <td class="text-end small fw-semibold tabular-nums">${{ number_format($fila->a_pagar, 0, ',', '.') }}</td>
+                            <td class="text-end text-nowrap">
+                                <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $fila->nronota], $comisionesRetorno)) }}"
+                                   class="btn btn-outline-primary btn-sm" title="Ir a la nota">
+                                    <i class="bi bi-box-arrow-up-right"></i> Nota
+                                </a>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="16" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
+                            <td colspan="17" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>

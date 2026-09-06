@@ -135,6 +135,27 @@ class CotizacionListadoRetornoTest extends TestCase
         $this->assertStringContainsString('fechaentregahasta=2026-06-30', $html);
     }
 
+    public function test_ver_desde_comisiones_conserva_filtros_y_pagina(): void
+    {
+        $nota = $this->crearNota(504);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.cotizaciones.edit', [
+                'nronota' => $nota->nronota,
+                'from' => 'comisiones',
+                'fecha_envio_desde' => '2026-01-01',
+                'usuario' => 'admin',
+                'page' => 3,
+                'por_pagina' => 40,
+            ]))
+            ->assertOk()
+            ->assertSee('fecha_envio_desde=2026-01-01', false)
+            ->assertSee('usuario=admin', false)
+            ->assertSee('page=3', false)
+            ->assertSee('por_pagina=40', false)
+            ->assertSee('&larr; Comisiones', false);
+    }
+
     /**
      * @param  array<string, mixed>  $attrs
      */
