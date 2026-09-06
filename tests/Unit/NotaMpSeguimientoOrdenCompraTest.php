@@ -70,7 +70,28 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
     }
 
-    public function test_muestra_ocompra_si_es_ganador_propio_aunque_rut_grupo_desactualizado(): void
+    public function test_guion_si_no_es_ganador_reicol_ni_romulo_aunque_tenga_id_oc(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+        ]);
+
+        $service = Mockery::mock(NotaMpResultadosService::class)->makePartial();
+        $service->shouldReceive('etiquetaGanadorPorRut')->andReturn(null);
+        $this->app->instance(NotaMpResultadosService::class, $service);
+
+        $seg = new NotaMpSeguimiento([
+            'rut_ganador' => '11.111.111-1',
+            'id_orden_compra' => 999999,
+        ]);
+        $seg->es_ganador_propio = false;
+        $seg->setRelation('nota', new Nota(['ocompra' => '']));
+
+        $this->assertSame('—', $seg->textoOrdenCompraMp());
+    }
+
+    public function test_guion_si_solo_es_ganador_propio_pero_no_reicol_ni_romulo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -88,7 +109,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $seg->es_ganador_propio = true;
         $seg->setRelation('nota', new Nota(['ocompra' => '3497-305-AG26']));
 
-        $this->assertSame('3497-305-AG26', $seg->textoOrdenCompraMp());
+        $this->assertSame('—', $seg->textoOrdenCompraMp());
     }
 
     public function test_puede_reconsultar_si_seguimiento_no_finalizado(): void
