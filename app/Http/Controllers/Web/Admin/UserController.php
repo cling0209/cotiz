@@ -164,6 +164,39 @@ class UserController extends Controller
             ->with('success', 'Usuario actualizado.');
     }
 
+    public function toggleActivo(Request $request, User $usuario): RedirectResponse
+    {
+        $this->asegurarUsuarioPanel($usuario);
+
+        if ($usuario->id === $request->user()->id) {
+            return redirect()
+                ->route('admin.users.index')
+                ->with('error', 'No puedes deshabilitar tu propia cuenta.');
+        }
+
+        $nuevoActivo = ! $usuario->isActivo();
+
+        if ($usuario->isSuperAdmin()
+            && $usuario->isActivo()
+            && ! $nuevoActivo
+            && $this->cantidadSuperadminsActivos() <= 1) {
+            return redirect()
+                ->route('admin.users.index')
+                ->with('error', 'Debe quedar al menos un superadministrador activo.');
+        }
+
+        $usuario->update(['activo' => $nuevoActivo]);
+
+        return redirect()
+            ->route('admin.users.index')
+            ->with(
+                'success',
+                $nuevoActivo
+                    ? 'Usuario '.$usuario->username.' habilitado.'
+                    : 'Usuario '.$usuario->username.' deshabilitado. No podrá ingresar.'
+            );
+    }
+
     public function destroy(Request $request, User $usuario): RedirectResponse
     {
         $this->asegurarUsuarioPanel($usuario);

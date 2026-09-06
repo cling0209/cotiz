@@ -279,6 +279,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('usuarios', [UserController::class, 'store'])->name('users.store');
             Route::get('usuarios/{usuario}/editar', [UserController::class, 'edit'])->name('users.edit');
             Route::put('usuarios/{usuario}', [UserController::class, 'update'])->name('users.update');
+            Route::post('usuarios/{usuario}/toggle-activo', [UserController::class, 'toggleActivo'])->name('users.toggle-activo');
             Route::delete('usuarios/{usuario}', [UserController::class, 'destroy'])->name('users.destroy');
 
             Route::get('tarifas-correos-chile', [CorreosChileTarifaController::class, 'index'])->name('correos-chile.index');

@@ -81,8 +81,21 @@
                             <td class="text-end text-nowrap">
                                 <a href="{{ route('admin.users.edit', $u) }}" class="btn btn-outline-primary btn-sm py-0">Editar</a>
                                 @if($u->id !== auth()->id())
+                                    <form method="post" action="{{ route('admin.users.toggle-activo', $u) }}" class="d-inline"
+                                          @if($u->activo) data-confirm="¿Deshabilitar a {{ $u->username }}? Seguirá en el sistema pero no podrá ingresar." @endif>
+                                        @csrf
+                                        @if($u->activo)
+                                            <button type="submit" class="btn btn-outline-warning btn-sm py-0">
+                                                Deshabilitar
+                                            </button>
+                                        @else
+                                            <button type="submit" class="btn btn-outline-success btn-sm py-0">
+                                                Habilitar
+                                            </button>
+                                        @endif
+                                    </form>
                                     <form method="post" action="{{ route('admin.users.destroy', $u) }}" class="d-inline"
-                                          data-confirm="¿Eliminar usuario {{ $u->username }}?">
+                                          data-confirm="¿Eliminar usuario {{ $u->username }}? Esta acción lo borra del sistema.">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn btn-outline-danger btn-sm py-0">Eliminar</button>
