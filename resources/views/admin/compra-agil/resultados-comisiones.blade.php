@@ -37,12 +37,12 @@
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
                 <div class="col-auto">
-                    <label for="f-envio-desde" class="form-label small mb-0">Fecha envío desde</label>
+                    <label for="f-envio-desde" class="form-label small mb-0">Fecha envío OC desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-envio-desde" name="fecha_envio_desde"
                         value="{{ $filtros['fecha_envio_desde'] ?? '' }}">
                 </div>
                 <div class="col-auto">
-                    <label for="f-envio-hasta" class="form-label small mb-0">Fecha envío hasta</label>
+                    <label for="f-envio-hasta" class="form-label small mb-0">Fecha envío OC hasta</label>
                     <input type="date" class="form-control form-control-sm" id="f-envio-hasta" name="fecha_envio_hasta"
                         value="{{ $filtros['fecha_envio_hasta'] ?? '' }}">
                 </div>
