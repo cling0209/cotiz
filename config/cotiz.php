@@ -255,6 +255,10 @@ return [
         // Consulta masiva automática («Consultar ahora») vía scheduler.
         'resultados_schedule_habilitado' => filter_var(env('MERCADOPUBLICO_RESULTADOS_SCHEDULE', true), FILTER_VALIDATE_BOOL),
         'resultados_schedule_hours' => env('MERCADOPUBLICO_RESULTADOS_SCHEDULE_HOURS', '10,19'),
+        // Backfill periódico de notas.region (comisiones / listados).
+        'regiones_backfill_schedule' => filter_var(env('MERCADOPUBLICO_REGIONES_BACKFILL_SCHEDULE', true), FILTER_VALIDATE_BOOL),
+        'regiones_backfill_limit' => max(1, (int) env('MERCADOPUBLICO_REGIONES_BACKFILL_LIMIT', 25)),
+        'regiones_backfill_delay_ms' => max(0, (int) env('MERCADOPUBLICO_REGIONES_BACKFILL_DELAY_MS', 1500)),
         // Catch-up al login: solo Render (el contenedor duerme). En VPS el scheduler dispara a la hora.
         // RENDER lo inyecta la plataforma; en Hetzner no existe → false.
         'resultados_catchup_login' => filter_var(

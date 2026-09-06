@@ -67,3 +67,21 @@ Schedule::command('organismo:analizar-perfiles')
     ->timezone($tz)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Rellenar región faltante en notas (prioriza las con OC). Romulo/Reicol en minutos distintos para no pelear cuota MP.
+if (config('cotiz.mercadopublico.regiones_backfill_schedule', true)) {
+    $sistema = mb_strtolower((string) config('cotiz.sistema', ''));
+    $minutoBackfill = str_contains($sistema, 'reicol') ? 25 : 55;
+    $limit = (int) config('cotiz.mercadopublico.regiones_backfill_limit', 25);
+    $delayMs = (int) config('cotiz.mercadopublico.regiones_backfill_delay_ms', 1500);
+
+    Schedule::command(sprintf(
+        'compra-agil:backfill-regiones --solo-con-oc --limit=%d --delay-ms=%d',
+        max(1, $limit),
+        max(0, $delayMs),
+    ))
+        ->cron($minutoBackfill.' */2 * * *')
+        ->timezone($tz)
+        ->withoutOverlapping(45)
+        ->runInBackground();
+}
