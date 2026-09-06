@@ -24,7 +24,7 @@ class EnsureUserIsActive
 
             return redirect()
                 ->route('admin.login')
-                ->with('error', 'Este usuario está deshabilitado.');
+                ->with('error', 'Usuario deshabilitado. Contacte al administrador para habilitar el acceso.');
         }
 
         return $next($request);

@@ -53,7 +53,7 @@ class AuthController extends Controller
         if (! $user->isActivo()) {
             return back()
                 ->withInput($request->only('username'))
-                ->with('error', 'Este usuario está deshabilitado.');
+                ->with('error', 'Usuario deshabilitado. Contacte al administrador para habilitar el acceso.');
         }
 
         Auth::login($user, $request->boolean('remember'));
