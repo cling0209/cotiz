@@ -785,7 +785,7 @@ class NotaMpResultadosService
      * - sin seguimiento aún, o
      * - pendientes de seguimiento (resultado_propio = pendiente), o
      * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún), o
-     * - OC emitida en MP pero falta notas.ocompra alfanumérica (ganador = empresa de esta instancia).
+     * - OC emitida en MP pero falta notas.ocompra alfanumérica (cualquier ganador).
      * Omite las ya consultadas hoy (SKIP_MISMO_DIA): la siguiente corrida del
      * mismo día no las vuelve a procesar; entran al día siguiente.
      * Omite oportunidades encontradas hoy sin seguimiento MP (aún no cambian de estado).
@@ -844,21 +844,18 @@ class NotaMpResultadosService
 
     /**
      * Sigue consultando mientras MP ya tiene id_orden_compra pero falta el código AG en notas.ocompra
-     * (solo cuando ganó Reicol o Romulo).
+     * (cualquier ganador: Reicol, Romulo u otro).
      */
     public function pendienteOcompraAlfanumerica(
         ?string $ocompraNota,
         ?int $idOrdenCompra,
-        ?string $rutGanador,
+        ?string $rutGanador = null,
     ): bool {
         if (trim((string) $ocompraNota) !== '') {
             return false;
         }
-        if ($idOrdenCompra === null || $idOrdenCompra <= 0) {
-            return false;
-        }
 
-        return $this->etiquetaGanadorPorRut($rutGanador) !== null;
+        return $idOrdenCompra !== null && $idOrdenCompra > 0;
     }
 
     /**
@@ -869,21 +866,9 @@ class NotaMpResultadosService
         string $notasAlias = 'notas',
         string $segAlias = 'seg',
     ): void {
-        $ruts = $this->rutsGrupoNormalizadosParaSql();
-        if ($ruts === []) {
-            $query->whereRaw('1 = 0');
-
-            return;
-        }
-
-        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
         $query->whereNotNull("{$segAlias}.id_orden_compra")
             ->where("{$segAlias}.id_orden_compra", '>', 0)
-            ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''")
-            ->whereRaw(
-                "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
-                $ruts,
-            );
+            ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''");
     }
 
     /**
@@ -2268,11 +2253,12 @@ class NotaMpResultadosService
 
         $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
         $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
+        // Código AG si ya está; «Pendiente» solo Reicol/Romulo con id OC sin código; terceros sin código → vacío (UI «—»).
         $ordenCompraVisible = '';
-        if ($esGanadorGrupo) {
-            $ordenCompraVisible = $ocompraNota !== ''
-                ? $ocompraNota
-                : ($idOrdenCompra ? 'Pendiente' : '');
+        if ($ocompraNota !== '') {
+            $ordenCompraVisible = $ocompraNota;
+        } elseif ($esGanadorGrupo && $idOrdenCompra) {
+            $ordenCompraVisible = 'Pendiente';
         }
 
         $msTotal = (int) round((microtime(true) - $inicio) * 1000);
@@ -2317,19 +2303,13 @@ class NotaMpResultadosService
 
     /**
      * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
-     * Solo Reicol/Romulo: no busca ni persiste OC de otros ganadores.
+     * Aplica a cualquier ganador (Reicol, Romulo u otro proveedor).
      * Persiste también fechas OC (FechaEnvio / Creacion / Aceptacion) en nota_mp_seguimientos.
      *
      * @param  array<string, mixed>  $payload
      */
     private function sincronizarOcompraNotaSiCorresponde(Nota $nota, string $codigoCot, array $payload, ?string $rutGanador): ?string
     {
-        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
-            $this->limpiarOcompraSiGanadorAjeno((int) $nota->nronota, $nota);
-
-            return null;
-        }
-
         $actual = trim((string) ($nota->ocompra ?? ''));
         if ($actual !== '') {
             $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $actual);

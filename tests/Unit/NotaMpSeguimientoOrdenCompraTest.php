@@ -4,7 +4,6 @@ namespace Tests\Unit;
 
 use App\Models\Nota;
 use App\Models\NotaMpSeguimiento;
-use App\Services\CompraAgilTextoParserService;
 use App\Services\NotaMpResultadosService;
 use Mockery;
 use Tests\TestCase;
@@ -17,7 +16,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_muestra_ocompra_solo_si_ganador_reicol_o_romulo(): void
+    public function test_muestra_ocompra_aunque_ganador_no_sea_reicol_ni_romulo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -47,10 +46,10 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $segOtro->setRelation('nota', new Nota(['ocompra' => '1411-2423-AG26']));
 
         $this->assertSame('1411-2423-AG26', $segGanador->textoOrdenCompraMp());
-        $this->assertSame('—', $segOtro->textoOrdenCompraMp());
+        $this->assertSame('1411-2423-AG26', $segOtro->textoOrdenCompraMp());
     }
 
-    public function test_pendiente_cuando_falta_codigo_ag(): void
+    public function test_pendiente_cuando_falta_codigo_ag_y_es_grupo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -70,7 +69,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
     }
 
-    public function test_guion_si_no_es_ganador_reicol_ni_romulo_aunque_tenga_id_oc(): void
+    public function test_guion_si_no_es_grupo_con_id_oc_sin_codigo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -91,7 +90,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $this->assertSame('—', $seg->textoOrdenCompraMp());
     }
 
-    public function test_guion_si_solo_es_ganador_propio_pero_no_reicol_ni_romulo(): void
+    public function test_muestra_ocompra_si_ganador_propio_no_grupo_ya_tiene_codigo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -109,7 +108,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $seg->es_ganador_propio = true;
         $seg->setRelation('nota', new Nota(['ocompra' => '3497-305-AG26']));
 
-        $this->assertSame('—', $seg->textoOrdenCompraMp());
+        $this->assertSame('3497-305-AG26', $seg->textoOrdenCompraMp());
     }
 
     public function test_puede_reconsultar_si_seguimiento_no_finalizado(): void

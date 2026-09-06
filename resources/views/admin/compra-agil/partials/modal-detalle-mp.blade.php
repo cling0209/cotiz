@@ -254,7 +254,7 @@
         const reconsultarMp = r.resultado_propio === 'pendiente'
             || r.finalizado === false
             || r.orden_compra === 'Pendiente'
-            || (r.es_ganador_grupo && r.id_orden_compra && !r.ocompra && !r.orden_compra);
+            || (r.id_orden_compra && !r.ocompra && !r.orden_compra);
         if (btnConsultar && !reconsultarMp) {
             btnConsultar.remove();
         } else if (btnConsultar) {
@@ -289,7 +289,7 @@
             }
             return '<span class="font-monospace">' + escapeHtml(String(r.orden_compra)) + '</span>';
         }
-        if (r.ocompra && r.es_ganador_grupo) {
+        if (r.ocompra) {
             return '<span class="font-monospace">' + escapeHtml(String(r.ocompra)) + '</span>';
         }
         return '—';

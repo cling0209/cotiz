@@ -16,7 +16,7 @@ class BackfillOcFechasCommand extends Command
                             {--dry-run : Lista candidatas sin llamar a MP}
                             {--limpiar-ajenos : Borra ocompra/fechas si el ganador no es Reicol ni Romulo}';
 
-    protected $description = 'Rellena oc_fecha_* (solo ganadores Reicol/Romulo) o limpia OC de ganadores ajenos';
+    protected $description = 'Rellena oc_fecha_* en seguimientos con ocompra, o limpia OC de ganadores ajenos (--limpiar-ajenos)';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -39,11 +39,6 @@ class BackfillOcFechasCommand extends Command
         $limit = max(1, (int) $this->option('limit'));
         $delayMs = max(0, (int) $this->option('delay-ms'));
         $nronotaOpt = $this->option('nronota');
-        $rutsGrupo = array_values(array_filter([
-            preg_replace('/[^0-9kK]/', '', (string) config('cotiz.reicol_rut', '')) ?? '',
-            preg_replace('/[^0-9kK]/', '', (string) config('cotiz.romulo_rut', '')) ?? '',
-        ]));
-        $rutsGrupo = array_map('strtoupper', $rutsGrupo);
 
         $query = Nota::query()
             ->select(['notas.nronota', 'notas.ocompra', 'seg.rut_ganador'])
@@ -55,14 +50,6 @@ class BackfillOcFechasCommand extends Command
             })
             ->orderByDesc('notas.nronota');
 
-        if ($rutsGrupo !== []) {
-            $placeholders = implode(', ', array_fill(0, count($rutsGrupo), '?'));
-            $query->whereRaw(
-                "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
-                $rutsGrupo,
-            );
-        }
-
         if ($nronotaOpt !== null && $nronotaOpt !== '') {
             $query->where('notas.nronota', (int) $nronotaOpt);
         }
@@ -70,12 +57,12 @@ class BackfillOcFechasCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas Reicol/Romulo con ocompra pendiente de fechas OC.');
+            $this->info('No hay notas con ocompra pendiente de fechas OC.');
 
             return self::SUCCESS;
         }
 
-        $this->info(sprintf('Candidatas Reicol/Romulo: %d (limit=%d)', $candidatas->count(), $limit));
+        $this->info(sprintf('Candidatas: %d (limit=%d)', $candidatas->count(), $limit));
 
         if ($this->option('dry-run')) {
             foreach ($candidatas as $nota) {
