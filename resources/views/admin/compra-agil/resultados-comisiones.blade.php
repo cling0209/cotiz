@@ -89,6 +89,7 @@
                 <thead class="table-dark">
                     <tr>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'nronota', 'label' => 'Nota', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_creacion', 'label' => 'Fecha de creación', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'codigo_proceso', 'label' => 'Código CA', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Participó MP</th>
@@ -112,6 +113,7 @@
                     @forelse($items as $fila)
                         <tr class="{{ $fila->es_ganada ? 'table-success' : ($fila->participo_mp ? '' : 'table-warning') }}">
                             <td class="text-nowrap">{{ $fila->nronota }}</td>
+                            <td class="small text-nowrap">{{ $fila->fecha_creacion?->format('d/m/Y') ?? '—' }}</td>
                             <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
                             <td class="small">{{ $fila->resultado_propio ?: '—' }}</td>
                             <td class="small">
@@ -143,7 +145,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="18" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
+                            <td colspan="19" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>

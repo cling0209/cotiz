@@ -116,6 +116,7 @@ class CompraAgilComisionesService
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Nota',
+                'Fecha de creación',
                 'Código CA',
                 'Seguimiento',
                 'Participó MP',
@@ -136,6 +137,7 @@ class CompraAgilComisionesService
             foreach ($filas as $fila) {
                 fputcsv($out, [
                     $fila->nronota,
+                    $fila->fecha_creacion?->format('d/m/Y') ?? '',
                     $fila->codigo_proceso,
                     $fila->resultado_propio,
                     $fila->participo_mp ? 'Sí' : 'No',
@@ -336,6 +338,10 @@ class CompraAgilComisionesService
             'fecha_envio' => $query->orderByRaw('oc_fecha_envio IS NULL')
                 ->orderBy('oc_fecha_envio', $dir)
                 ->orderByDesc('nronota'),
+            'fecha_creacion' => $query->orderBy(
+                Nota::query()->select('fecha')->whereColumn('notas.nronota', 'nota_mp_seguimientos.nronota'),
+                $dir,
+            )->orderByDesc('nronota'),
             'seguimiento' => $query->orderBy('resultado_propio', $dir)->orderByDesc('nronota'),
             default => $query->orderBy('nronota', $dir),
         };
@@ -369,6 +375,7 @@ class CompraAgilComisionesService
 
         return (object) [
             'nronota' => $seg->nronota,
+            'fecha_creacion' => $nota?->fecha,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
             'resultado_propio' => (string) ($seg->resultado_propio ?? ''),
             'participo_mp' => $participoMp,
