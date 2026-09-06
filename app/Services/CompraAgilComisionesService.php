@@ -263,25 +263,21 @@ class CompraAgilComisionesService
     }
 
     /**
-     * Ganada para comisión: RUT Reicol/Rómulo y con orden de compra
-     * (ocompra en nota o id_orden_compra en seguimiento MP).
+     * Ganada para comisión: RUT Reicol/Rómulo y con orden de compra alfanumérica
+     * en la nota (no basta id_orden_compra de MP / "Pendiente").
      */
-    private function esGanadaParaComision(?string $rutGanador, ?Nota $nota, NotaMpSeguimiento $seg): bool
+    private function esGanadaParaComision(?string $rutGanador, ?Nota $nota): bool
     {
         if (! $this->esGanadaGrupo($rutGanador)) {
             return false;
         }
 
-        return $this->tieneOrdenCompra($nota, $seg);
+        return $this->tieneOrdenCompra($nota);
     }
 
-    private function tieneOrdenCompra(?Nota $nota, NotaMpSeguimiento $seg): bool
+    private function tieneOrdenCompra(?Nota $nota): bool
     {
-        if (trim((string) ($nota?->ocompra ?? '')) !== '') {
-            return true;
-        }
-
-        return filled($seg->id_orden_compra);
+        return trim((string) ($nota?->ocompra ?? '')) !== '';
     }
 
     /**
@@ -354,7 +350,7 @@ class CompraAgilComisionesService
             $factor = round((float) config('cotiz.factor_precio_venta', 1.22), 2);
         }
 
-        $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota, $seg);
+        $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota);
         $participoMp = $this->participoEmpresaPropia($seg);
         $factorBase = $this->factorComisionBase();
         $venta = (int) round($costo * $factor);

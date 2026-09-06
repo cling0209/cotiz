@@ -59,10 +59,10 @@ class CompraAgilComisionesServiceTest extends TestCase
         $notaConOc = new \App\Models\Nota(['ocompra' => '4500123456']);
         $notaSinOc = new \App\Models\Nota(['ocompra' => '']);
 
-        $this->assertTrue($esGanada->invoke($service, '76.111.111-1', $notaConOc, $segSinOc));
-        $this->assertTrue($esGanada->invoke($service, '76.222.222-2', $notaSinOc, $segConOc));
-        $this->assertFalse($esGanada->invoke($service, '76.111.111-1', $notaSinOc, $segSinOc));
-        $this->assertFalse($esGanada->invoke($service, '11.111.111-1', $notaConOc, $segConOc));
+        $this->assertTrue($esGanada->invoke($service, '76.111.111-1', $notaConOc));
+        $this->assertFalse($esGanada->invoke($service, '76.222.222-2', $notaSinOc));
+        $this->assertFalse($esGanada->invoke($service, '76.111.111-1', $notaSinOc));
+        $this->assertFalse($esGanada->invoke($service, '11.111.111-1', $notaConOc));
     }
 
     #[Test]

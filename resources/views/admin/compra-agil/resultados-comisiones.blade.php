@@ -20,7 +20,8 @@
 
     <p class="text-muted small mb-3">
         Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
-        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra.
+        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra en la nota
+        (si en MP hay OC pero aún no está el número, no aplica comisión).
         El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP;
         si no cotizó, pago = $0.
     </p>
