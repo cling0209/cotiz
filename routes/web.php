@@ -18,6 +18,7 @@ use App\Http\Controllers\Web\Admin\MaeprodFraseBusquedaController;
 use App\Http\Controllers\Web\Admin\OportunidadPalabraClaveController;
 use App\Http\Controllers\Web\Admin\OportunidadParaCotizarController;
 use App\Http\Controllers\Web\Admin\OrganismoObservacionController;
+use App\Http\Controllers\Web\Admin\ParametroController;
 use App\Http\Controllers\Web\Admin\PasswordResetController;
 use App\Http\Controllers\Web\Admin\ProductoMpEncontradoController;
 use App\Http\Controllers\Web\Admin\ThemeController;
@@ -300,6 +301,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('colores', [ThemeController::class, 'edit'])->name('colores.index');
             Route::put('colores', [ThemeController::class, 'update'])->name('colores.update');
             Route::delete('colores', [ThemeController::class, 'reset'])->name('colores.reset');
+
+            Route::get('parametros', [ParametroController::class, 'index'])->name('parametros.index');
+            Route::put('parametros', [ParametroController::class, 'update'])->name('parametros.update');
         });
     });
 });

@@ -686,7 +686,7 @@ class CompraAgilResultadosController extends Controller
         ]);
 
         if (empty($filtros['sort'])) {
-            $filtros['sort'] = 'fecha_envio';
+            $filtros['sort'] = 'nronota';
         }
         if (empty($filtros['dir'])) {
             $filtros['dir'] = 'desc';

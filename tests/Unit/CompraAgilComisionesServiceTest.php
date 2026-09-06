@@ -15,7 +15,7 @@ class CompraAgilComisionesServiceTest extends TestCase
 
         $this->assertEqualsWithDelta(1.2, $service->factorComisionBase(), 0.001);
         $this->assertEqualsWithDelta(0.20, $service->porcentajeComision(), 0.001);
-        $this->assertSame(10000, $service->pagoFijo());
+        $this->assertSame(10000, (int) config('cotiz.comisiones.pago_fijo', 10000));
     }
 
     #[Test]

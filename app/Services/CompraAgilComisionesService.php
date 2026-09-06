@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\NotaMpSeguimiento;
+use App\Models\Parametro;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -11,6 +13,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilComisionesService
 {
+    /** @var list<string>|null */
+    private ?array $rutsGanadorasNorm = null;
+
     public function factorComisionBase(): float
     {
         return (float) config('cotiz.comisiones.factor_base', 1.2);
@@ -21,9 +26,21 @@ class CompraAgilComisionesService
         return (float) config('cotiz.comisiones.porcentaje', 0.20);
     }
 
+    public function pagoPorCotizacion(): int
+    {
+        $default = (int) config('cotiz.comisiones.pago_fijo', 10000);
+
+        try {
+            return Parametro::getInt(Parametro::CLAVE_PAGO_COTIZACION_REALIZADA, $default);
+        } catch (\Throwable) {
+            return $default;
+        }
+    }
+
+    /** @deprecated usar pagoPorCotizacion() */
     public function pagoFijo(): int
     {
-        return (int) config('cotiz.comisiones.pago_fijo', 10000);
+        return $this->pagoPorCotizacion();
     }
 
     /**
@@ -100,6 +117,8 @@ class CompraAgilComisionesService
             fputcsv($out, [
                 'Nota',
                 'Código CA',
+                'Seguimiento',
+                'Ganada',
                 'Orden compra',
                 'Fecha envío OC',
                 'Ejecutivo',
@@ -117,6 +136,8 @@ class CompraAgilComisionesService
                 fputcsv($out, [
                     $fila->nronota,
                     $fila->codigo_proceso,
+                    $fila->resultado_propio,
+                    $fila->es_ganada ? 'Sí' : 'No',
                     $fila->orden_compra,
                     $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
                     $fila->ejecutivo,
@@ -179,18 +200,14 @@ class CompraAgilComisionesService
     }
 
     /**
+     * Todas las cotizaciones con seguimiento MP (cualquier estado), con o sin OC.
+     *
      * @param  array<string, mixed>  $filtros
      * @return Builder<NotaMpSeguimiento>
      */
     private function buildQuery(array $filtros): Builder
     {
-        $query = NotaMpSeguimiento::query()
-            ->where('resultado_propio', 'cerrada')
-            ->whereHas('nota', function (Builder $n): void {
-                $n->whereRaw("TRIM(COALESCE(ocompra, '')) <> ''");
-            });
-
-        $this->aplicarFiltroGanadasGrupo($query);
+        $query = NotaMpSeguimiento::query();
 
         if (! empty($filtros['nronota'])) {
             $query->where('nronota', (int) $filtros['nronota']);
@@ -217,32 +234,30 @@ class CompraAgilComisionesService
     }
 
     /**
-     * Ganadas = rut_ganador Reicol o Romulo (mismo criterio que OC visible en Resultados).
-     *
-     * @param  Builder<NotaMpSeguimiento>  $query
+     * @return list<string>
      */
-    private function aplicarFiltroGanadasGrupo(Builder $query): void
+    private function rutsGanadorasNormalizados(): array
     {
-        $ruts = array_values(array_filter([
+        if ($this->rutsGanadorasNorm !== null) {
+            return $this->rutsGanadorasNorm;
+        }
+
+        $this->rutsGanadorasNorm = array_values(array_filter([
             $this->rutNormalizado((string) config('cotiz.reicol_rut', '')),
             $this->rutNormalizado((string) config('cotiz.romulo_rut', '')),
         ]));
 
-        if ($ruts === []) {
-            $query->whereRaw('1 = 0');
+        return $this->rutsGanadorasNorm;
+    }
 
-            return;
+    private function esGanadaGrupo(?string $rutGanador): bool
+    {
+        $rutNorm = $this->rutNormalizado((string) ($rutGanador ?? ''));
+        if ($rutNorm === '') {
+            return false;
         }
 
-        $query->whereNotNull('rut_ganador')
-            ->where(function (Builder $q) use ($ruts): void {
-                foreach ($ruts as $rutNorm) {
-                    $q->orWhereRaw(
-                        "regexp_replace(upper(coalesce(rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
-                        [$rutNorm]
-                    );
-                }
-            });
+        return in_array($rutNorm, $this->rutsGanadorasNormalizados(), true);
     }
 
     private function rutNormalizado(string $rut): string
@@ -262,16 +277,17 @@ class CompraAgilComisionesService
      */
     private function aplicarOrden(Builder $query, array $filtros): Builder
     {
-        $sort = (string) ($filtros['sort'] ?? 'fecha_envio');
+        $sort = (string) ($filtros['sort'] ?? 'nronota');
         $dir = strtolower((string) ($filtros['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
 
         return match ($sort) {
-            'nronota' => $query->orderBy('nronota', $dir),
-            'codigo_proceso' => $query->orderBy('codigo_proceso', $dir),
-            'orden_compra' => $query->orderBy('id_orden_compra', $dir),
-            default => $query->orderByRaw('oc_fecha_envio IS NULL')
+            'codigo_proceso' => $query->orderBy('codigo_proceso', $dir)->orderByDesc('nronota'),
+            'orden_compra' => $query->orderBy('id_orden_compra', $dir)->orderByDesc('nronota'),
+            'fecha_envio' => $query->orderByRaw('oc_fecha_envio IS NULL')
                 ->orderBy('oc_fecha_envio', $dir)
-                ->orderBy('nronota', 'desc'),
+                ->orderByDesc('nronota'),
+            'seguimiento' => $query->orderBy('resultado_propio', $dir)->orderByDesc('nronota'),
+            default => $query->orderBy('nronota', $dir),
         };
     }
 
@@ -284,20 +300,26 @@ class CompraAgilComisionesService
             $factor = round((float) config('cotiz.factor_precio_venta', 1.22), 2);
         }
 
+        $esGanada = $this->esGanadaGrupo($seg->rut_ganador);
         $factorBase = $this->factorComisionBase();
         $venta = (int) round($costo * $factor);
         $venta12 = (int) round($costo * $factorBase);
-        $utilidad = $venta12 - $costo;
-        $comision = (int) round($utilidad * $this->porcentajeComision());
-        $pago = $this->pagoFijo();
+        $utilidad = $esGanada ? ($venta12 - $costo) : 0;
+        $comision = $esGanada ? (int) round($utilidad * $this->porcentajeComision()) : 0;
+        $pago = $this->pagoPorCotizacion();
 
         $ejecutivoUsername = trim((string) ($nota->usuario ?? ''));
         $ejecutivo = trim((string) ($nota->usuarioRel?->fullName() ?: $ejecutivoUsername));
         $ordenCompra = trim((string) ($nota->ocompra ?? ''));
+        if ($ordenCompra === '' && $seg->id_orden_compra) {
+            $ordenCompra = 'Pendiente';
+        }
 
         return (object) [
             'nronota' => $seg->nronota,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
+            'resultado_propio' => (string) ($seg->resultado_propio ?? ''),
+            'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,
             'fecha_envio_oc' => $seg->oc_fecha_envio,
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
@@ -325,7 +347,7 @@ class CompraAgilComisionesService
         );
     }
 
-    private function regionNombreNota(?\App\Models\Nota $nota): string
+    private function regionNombreNota(?Nota $nota): string
     {
         if ($nota === null) {
             return '—';

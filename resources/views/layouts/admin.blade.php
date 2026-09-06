@@ -95,7 +95,7 @@
             @endif
             @if(auth()->user()->isSuperAdmin())
                 <div class="dropdown">
-                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.producto-mp.frases.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') ? 'active' : '' }}"
+                    <a href="#" class="nav-link-admin dropdown-toggle {{ request()->routeIs('admin.productos.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.oportunidades.palabras-clave.*') || request()->routeIs('admin.producto-mp.frases.*') || request()->routeIs('admin.correos-chile.*') || request()->routeIs('admin.organismos-observaciones.*') || request()->routeIs('admin.colores.*') || request()->routeIs('admin.parametros.*') ? 'active' : '' }}"
                        data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-gear"></i> Mantenedores
                     </a>
@@ -144,6 +144,12 @@
                             <a class="dropdown-item {{ request()->routeIs('admin.colores.*') ? 'active' : '' }}"
                                href="{{ route('admin.colores.index') }}">
                                 <i class="bi bi-palette"></i> Colores
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {{ request()->routeIs('admin.parametros.*') ? 'active' : '' }}"
+                               href="{{ route('admin.parametros.index') }}">
+                                <i class="bi bi-sliders"></i> Parámetros
                             </a>
                         </li>
                     </ul>

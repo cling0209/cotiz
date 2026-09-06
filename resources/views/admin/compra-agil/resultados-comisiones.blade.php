@@ -13,10 +13,10 @@
     </div>
 
     <p class="text-muted small mb-3">
-        Solo cotizaciones <strong>ganadas</strong> (Reicol/Romulo) con orden de compra.
-        Utilidad = (Costo × {{ number_format($factorBase, 2, ',', '.') }}) − Costo;
-        comisión = 20% de la utilidad; pago fijo ${{ number_format($pagoFijo, 0, ',', '.') }} por cotización.
-        El factor de venta mostrado es el de cada cotización.
+        Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
+        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong> (Reicol/Romulo).
+        El <strong>pago</strong> por cotización realizada es ${{ number_format($pagoFijo, 0, ',', '.') }}
+        (parámetro <em>Valor por cotización realizada</em>).
     </p>
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.comisiones') }}" class="card shadow-sm mb-3" data-no-loader>
@@ -83,6 +83,8 @@
                     <tr>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'nronota', 'label' => 'Nota', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'codigo_proceso', 'label' => 'Código CA', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        <th>Ganada</th>
                         <th>Orden compra</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Ejecutivo</th>
@@ -99,9 +101,11 @@
                 </thead>
                 <tbody>
                     @forelse($items as $fila)
-                        <tr>
+                        <tr class="{{ $fila->es_ganada ? 'table-success' : '' }}">
                             <td class="text-nowrap">{{ $fila->nronota }}</td>
                             <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
+                            <td class="small">{{ $fila->resultado_propio ?: '—' }}</td>
+                            <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
                             <td class="small font-monospace">{{ $fila->orden_compra ?: '—' }}</td>
                             <td class="small text-muted">{{ $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $fila->ejecutivo }}</td>
@@ -117,14 +121,14 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center text-muted py-4">Sin cotizaciones ganadas con orden de compra para los filtros aplicados.</td>
+                            <td colspan="16" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
         <div class="card-footer border-top-0 pt-0">
-            <x-listado-paginacion :paginator="$items" entity-label="cotizaciones con OC" />
+            <x-listado-paginacion :paginator="$items" entity-label="cotizaciones MP" />
         </div>
     </div>
 </div>
