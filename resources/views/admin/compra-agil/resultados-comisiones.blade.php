@@ -147,10 +147,18 @@
                             <td class="text-end small tabular-nums">${{ number_format($fila->pago, 0, ',', '.') }}</td>
                             <td class="text-end small fw-semibold tabular-nums">${{ number_format($fila->a_pagar, 0, ',', '.') }}</td>
                             <td class="text-end text-nowrap">
-                                <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $fila->nronota], $comisionesRetorno)) }}"
-                                   class="btn btn-outline-primary btn-sm" title="Ir a la nota">
-                                    <i class="bi bi-box-arrow-up-right"></i> Nota
-                                </a>
+                                <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm btn-detalle-mp"
+                                            data-nronota="{{ $fila->nronota }}"
+                                            title="Ver participantes y detalle en Mercado Público">
+                                        Detalle MP
+                                    </button>
+                                    <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $fila->nronota], $comisionesRetorno)) }}"
+                                       class="btn btn-outline-primary btn-sm" title="Ir a la nota">
+                                        <i class="bi bi-box-arrow-up-right"></i> Nota
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     @empty
@@ -166,4 +174,6 @@
         </div>
     </div>
 </div>
+
+@include('admin.compra-agil.partials.modal-detalle-mp')
 @endsection
