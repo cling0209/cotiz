@@ -13,6 +13,17 @@
                 </div>
             </div>
 
+            @if(session('error'))
+                <div class="alert alert-danger py-2 px-3 small mt-3 mb-0" role="alert">
+                    {{ session('error') }}
+                </div>
+            @endif
+            @if(session('success'))
+                <div class="alert alert-success py-2 px-3 small mt-3 mb-0" role="alert">
+                    {{ session('success') }}
+                </div>
+            @endif
+
             <form method="post" action="{{ route('admin.login.store') }}" class="mt-4">
                 @csrf
                 <div class="mb-3">
