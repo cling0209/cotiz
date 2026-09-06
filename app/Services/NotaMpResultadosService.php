@@ -844,7 +844,7 @@ class NotaMpResultadosService
 
     /**
      * Sigue consultando mientras MP ya tiene id_orden_compra pero falta el código AG en notas.ocompra
-     * (solo cuando ganó la empresa de esta instancia).
+     * (solo cuando ganó Reicol o Romulo).
      */
     public function pendienteOcompraAlfanumerica(
         ?string $ocompraNota,
@@ -858,12 +858,7 @@ class NotaMpResultadosService
             return false;
         }
 
-        $rutPropio = $this->ganador->rutEmpresaPropia();
-        if ($rutPropio === '') {
-            return false;
-        }
-
-        return $this->ganador->rutsCoinciden($rutGanador, $rutPropio);
+        return $this->etiquetaGanadorPorRut($rutGanador) !== null;
     }
 
     /**
@@ -874,20 +869,37 @@ class NotaMpResultadosService
         string $notasAlias = 'notas',
         string $segAlias = 'seg',
     ): void {
-        $rutNorm = strtoupper($this->rutEmpresaPropiaNormalizado());
-        if ($rutNorm === '') {
+        $ruts = $this->rutsGrupoNormalizadosParaSql();
+        if ($ruts === []) {
             $query->whereRaw('1 = 0');
 
             return;
         }
 
+        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
         $query->whereNotNull("{$segAlias}.id_orden_compra")
             ->where("{$segAlias}.id_orden_compra", '>', 0)
             ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''")
             ->whereRaw(
-                "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
-                [$rutNorm],
+                "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
+                $ruts,
             );
+    }
+
+    /**
+     * @return list<string> RUT sin puntos/guión, mayúsculas (mismo formato que el WHERE SQL)
+     */
+    private function rutsGrupoNormalizadosParaSql(): array
+    {
+        $out = [];
+        foreach ($this->rutsEmpresasGrupo() as $rut) {
+            $norm = strtoupper(preg_replace('/[^0-9kK]/', '', (string) $rut) ?? '');
+            if ($norm !== '') {
+                $out[] = $norm;
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     private function rutEmpresaPropiaNormalizado(): string
@@ -2305,12 +2317,19 @@ class NotaMpResultadosService
 
     /**
      * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
+     * Solo Reicol/Romulo: no busca ni persiste OC de otros ganadores.
      * Persiste también fechas OC (FechaEnvio / Creacion / Aceptacion) en nota_mp_seguimientos.
      *
      * @param  array<string, mixed>  $payload
      */
     private function sincronizarOcompraNotaSiCorresponde(Nota $nota, string $codigoCot, array $payload, ?string $rutGanador): ?string
     {
+        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
+            $this->limpiarOcompraSiGanadorAjeno((int) $nota->nronota, $nota);
+
+            return null;
+        }
+
         $actual = trim((string) ($nota->ocompra ?? ''));
         if ($actual !== '') {
             $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $actual);
@@ -2344,6 +2363,107 @@ class NotaMpResultadosService
         $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $codigoOc);
 
         return $codigoOc;
+    }
+
+    /**
+     * Quita ocompra/fechas OC si el ganador no es Reicol ni Romulo (alcance incorrecto).
+     */
+    public function limpiarOcompraSiGanadorAjeno(int $nronota, ?Nota $nota = null): bool
+    {
+        $nota ??= Nota::query()->find($nronota);
+        if ($nota === null) {
+            return false;
+        }
+
+        $teniaOcompra = trim((string) ($nota->ocompra ?? '')) !== '';
+        $seg = NotaMpSeguimiento::query()->find($nronota);
+        $teniaFechas = $seg !== null && (
+            $seg->oc_fecha_envio !== null
+            || $seg->oc_fecha_creacion !== null
+            || $seg->oc_fecha_aceptacion !== null
+            || trim((string) ($seg->oc_estado ?? '')) !== ''
+        );
+
+        if (! $teniaOcompra && ! $teniaFechas) {
+            return false;
+        }
+
+        if ($teniaOcompra) {
+            Nota::query()->whereKey($nronota)->update(['ocompra' => '']);
+            $nota->ocompra = '';
+        }
+
+        if ($seg !== null && $teniaFechas) {
+            $update = [
+                'oc_fecha_envio' => null,
+                'oc_fecha_creacion' => null,
+                'oc_fecha_aceptacion' => null,
+                'oc_estado' => null,
+            ];
+            if (! Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
+                $update = [];
+            }
+            if ($update !== []) {
+                NotaMpSeguimiento::query()->whereKey($nronota)->update($update);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Cantidad de notas con ocompra/fechas OC cuyo ganador no es Reicol/Romulo.
+     */
+    public function contarOcompraFueraDeGrupo(): int
+    {
+        $ruts = $this->rutsGrupoNormalizadosParaSql();
+        $query = Nota::query()
+            ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''");
+
+        if ($ruts === []) {
+            return (int) $query->count();
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
+
+        return (int) $query
+            ->whereRaw(
+                "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
+                $ruts,
+            )
+            ->count();
+    }
+
+    /**
+     * @return int notas limpiadas
+     */
+    public function limpiarOcomprasFueraDeGrupo(int $limit = 500): int
+    {
+        $ruts = $this->rutsGrupoNormalizadosParaSql();
+        $query = Nota::query()
+            ->select(['notas.nronota', 'notas.ocompra'])
+            ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
+            ->orderByDesc('notas.nronota')
+            ->limit(max(1, $limit));
+
+        if ($ruts !== []) {
+            $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
+            $query->whereRaw(
+                "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
+                $ruts,
+            );
+        }
+
+        $limpiadas = 0;
+        foreach ($query->get() as $nota) {
+            if ($this->limpiarOcompraSiGanadorAjeno((int) $nota->nronota, $nota)) {
+                $limpiadas++;
+            }
+        }
+
+        return $limpiadas;
     }
 
     /**
