@@ -22,8 +22,9 @@
         Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
         La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra en la nota
         (si en MP hay OC pero aún no está el número, no aplica comisión).
-        El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP;
-        si no cotizó, pago = $0.
+        El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP.
+        Si MP aún no muestra proveedores cotizando, se indica <em>Sin proveedores en MP</em> (pago $0 hasta confirmar).
+        Si ya hay proveedores y no está esta empresa, <em>No participó</em> (pago $0).
     </p>
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.comisiones') }}" class="card shadow-sm mb-3" data-no-loader>
@@ -111,14 +112,23 @@
                 </thead>
                 <tbody>
                     @forelse($items as $fila)
-                        <tr class="{{ $fila->es_ganada ? 'table-success' : ($fila->participo_mp ? '' : 'table-warning') }}">
+                        @php
+                            $filaClass = $fila->es_ganada
+                                ? 'table-success'
+                                : ($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_NO
+                                    ? 'table-warning'
+                                    : '');
+                        @endphp
+                        <tr class="{{ $filaClass }}">
                             <td class="text-nowrap">{{ $fila->nronota }}</td>
                             <td class="small text-nowrap">{{ $fila->fecha_creacion?->format('d/m/Y') ?? '—' }}</td>
                             <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
-                            <td class="small">{{ $fila->resultado_propio ?: '—' }}</td>
+                            <td class="cell-seguimiento">@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $fila->resultado_propio])</td>
                             <td class="small">
-                                @if($fila->participo_mp)
+                                @if($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SI)
                                     <span class="badge text-bg-success">Sí</span>
+                                @elseif($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SIN_PROVEEDORES)
+                                    <span class="badge text-bg-info" title="Mercado Público aún no muestra proveedores cotizando">Sin proveedores en MP</span>
                                 @else
                                     <span class="badge text-bg-warning">No participó</span>
                                 @endif

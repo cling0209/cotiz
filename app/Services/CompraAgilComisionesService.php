@@ -13,6 +13,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilComisionesService
 {
+    public const PARTICIPACION_SI = 'si';
+
+    public const PARTICIPACION_NO = 'no';
+
+    /** MP aún no entrega listado de proveedores cotizando. */
+    public const PARTICIPACION_SIN_PROVEEDORES = 'sin_proveedores';
+
     /** @var list<string>|null */
     private ?array $rutsGanadorasNorm = null;
 
@@ -140,7 +147,7 @@ class CompraAgilComisionesService
                     $fila->fecha_creacion?->format('d/m/Y') ?? '',
                     $fila->codigo_proceso,
                     $fila->resultado_propio,
-                    $fila->participo_mp ? 'Sí' : 'No',
+                    $fila->participacion_mp_label,
                     $fila->es_ganada ? 'Sí' : 'No',
                     $fila->orden_compra,
                     $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
@@ -283,33 +290,51 @@ class CompraAgilComisionesService
     }
 
     /**
-     * La empresa de esta instancia (Reicol o Rómulo según cotiz.empresa_rut)
-     * figura como proveedor cotizando en MP.
+     * Participación de la empresa de esta instancia en MP.
+     * - si: figura en proveedores cotizando
+     * - no: hay proveedores en MP y esta empresa no está
+     * - sin_proveedores: MP aún no muestra participantes
+     *
+     * @return self::PARTICIPACION_*
      */
-    private function participoEmpresaPropia(NotaMpSeguimiento $seg): bool
+    private function estadoParticipacionMp(NotaMpSeguimiento $seg): string
     {
         $ofertas = $seg->relationLoaded('ofertas')
             ? $seg->ofertas
             : $seg->ofertas()->get();
 
+        if ($ofertas->isEmpty()) {
+            return self::PARTICIPACION_SIN_PROVEEDORES;
+        }
+
         foreach ($ofertas as $oferta) {
             if ($oferta->es_propio) {
-                return true;
+                return self::PARTICIPACION_SI;
             }
         }
 
         $rutPropio = $this->rutNormalizado((string) config('cotiz.empresa_rut', ''));
         if ($rutPropio === '') {
-            return false;
+            return self::PARTICIPACION_NO;
         }
 
         foreach ($ofertas as $oferta) {
             if ($this->rutNormalizado((string) ($oferta->rut_proveedor ?? '')) === $rutPropio) {
-                return true;
+                return self::PARTICIPACION_SI;
             }
         }
 
-        return false;
+        return self::PARTICIPACION_NO;
+    }
+
+    private function labelParticipacionMp(string $estado): string
+    {
+        return match ($estado) {
+            self::PARTICIPACION_SI => 'Sí',
+            self::PARTICIPACION_NO => 'No participó',
+            self::PARTICIPACION_SIN_PROVEEDORES => 'Sin proveedores en MP',
+            default => '—',
+        };
     }
 
     private function rutNormalizado(string $rut): string
@@ -357,13 +382,14 @@ class CompraAgilComisionesService
         }
 
         $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota);
-        $participoMp = $this->participoEmpresaPropia($seg);
+        $estadoParticipacion = $this->estadoParticipacionMp($seg);
+        $participoMp = $estadoParticipacion === self::PARTICIPACION_SI;
         $factorBase = $this->factorComisionBase();
         $venta = (int) round($costo * $factor);
         $venta12 = (int) round($costo * $factorBase);
         $utilidad = $esGanada ? ($venta12 - $costo) : 0;
         $comision = $esGanada ? (int) round($utilidad * $this->porcentajeComision()) : 0;
-        // Pago del parámetro solo si esta empresa cotizó en MP; si no ingresó, $0.
+        // Pago del parámetro solo si esta empresa cotizó en MP; si no o aún sin listado, $0.
         $pago = $participoMp ? $this->pagoPorCotizacion() : 0;
 
         $ejecutivoUsername = trim((string) ($nota->usuario ?? ''));
@@ -378,6 +404,8 @@ class CompraAgilComisionesService
             'fecha_creacion' => $nota?->fecha,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
             'resultado_propio' => (string) ($seg->resultado_propio ?? ''),
+            'participacion_mp' => $estadoParticipacion,
+            'participacion_mp_label' => $this->labelParticipacionMp($estadoParticipacion),
             'participo_mp' => $participoMp,
             'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,

@@ -66,40 +66,44 @@ class CompraAgilComisionesServiceTest extends TestCase
     }
 
     #[Test]
-    public function participacion_mp_usa_empresa_propia_de_la_instancia(): void
+    public function participacion_mp_distingue_sin_proveedores_y_no_participo(): void
     {
         $service = app(CompraAgilComisionesService::class);
         $ref = new \ReflectionClass($service);
-        $participo = $ref->getMethod('participoEmpresaPropia');
-        $participo->setAccessible(true);
+        $estado = $ref->getMethod('estadoParticipacionMp');
+        $estado->setAccessible(true);
 
         config(['cotiz.empresa_rut' => '76.185.139-K']);
 
-        $seg = new \App\Models\NotaMpSeguimiento(['nronota' => 1]);
-        $seg->setRelation('ofertas', collect([
+        $sinOfertas = new \App\Models\NotaMpSeguimiento(['nronota' => 1]);
+        $sinOfertas->setRelation('ofertas', collect());
+        $this->assertSame(
+            CompraAgilComisionesService::PARTICIPACION_SIN_PROVEEDORES,
+            $estado->invoke($service, $sinOfertas),
+        );
+
+        $ajeno = new \App\Models\NotaMpSeguimiento(['nronota' => 2]);
+        $ajeno->setRelation('ofertas', collect([
             new \App\Models\NotaMpOferta([
                 'rut_proveedor' => '76.111.111-1',
                 'es_propio' => false,
             ]),
         ]));
-        $this->assertFalse($participo->invoke($service, $seg));
+        $this->assertSame(
+            CompraAgilComisionesService::PARTICIPACION_NO,
+            $estado->invoke($service, $ajeno),
+        );
 
-        $segPropio = new \App\Models\NotaMpSeguimiento(['nronota' => 2]);
-        $segPropio->setRelation('ofertas', collect([
+        $propio = new \App\Models\NotaMpSeguimiento(['nronota' => 3]);
+        $propio->setRelation('ofertas', collect([
             new \App\Models\NotaMpOferta([
                 'rut_proveedor' => '76.185.139-K',
                 'es_propio' => true,
             ]),
         ]));
-        $this->assertTrue($participo->invoke($service, $segPropio));
-
-        $segPorRut = new \App\Models\NotaMpSeguimiento(['nronota' => 3]);
-        $segPorRut->setRelation('ofertas', collect([
-            new \App\Models\NotaMpOferta([
-                'rut_proveedor' => '76185139K',
-                'es_propio' => false,
-            ]),
-        ]));
-        $this->assertTrue($participo->invoke($service, $segPorRut));
+        $this->assertSame(
+            CompraAgilComisionesService::PARTICIPACION_SI,
+            $estado->invoke($service, $propio),
+        );
     }
 }
