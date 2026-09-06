@@ -49,7 +49,7 @@ class CompraAgilComisionesService
     public function listadoPaginado(int $porPagina, array $filtros = []): LengthAwarePaginator
     {
         $paginator = $this->aplicarOrden($this->buildQuery($filtros), $filtros)
-            ->with(['nota.usuarioRel', 'nota.detalle'])
+            ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas'])
             ->paginate($porPagina)
             ->withQueryString();
 
@@ -67,7 +67,7 @@ class CompraAgilComisionesService
     public function listadoDetalle(array $filtros = [], int $limite = 10000): Collection
     {
         return $this->aplicarOrden($this->buildQuery($filtros), $filtros)
-            ->with(['nota.usuarioRel', 'nota.detalle'])
+            ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas'])
             ->limit($limite)
             ->get()
             ->map(fn (NotaMpSeguimiento $seg) => $this->enriquecerFila($seg));
@@ -118,6 +118,7 @@ class CompraAgilComisionesService
                 'Nota',
                 'Código CA',
                 'Seguimiento',
+                'Participó MP',
                 'Ganada',
                 'Orden compra',
                 'Fecha envío OC',
@@ -137,6 +138,7 @@ class CompraAgilComisionesService
                     $fila->nronota,
                     $fila->codigo_proceso,
                     $fila->resultado_propio,
+                    $fila->participo_mp ? 'Sí' : 'No',
                     $fila->es_ganada ? 'Sí' : 'No',
                     $fila->orden_compra,
                     $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
@@ -282,6 +284,36 @@ class CompraAgilComisionesService
         return filled($seg->id_orden_compra);
     }
 
+    /**
+     * La empresa de esta instancia (Reicol o Rómulo según cotiz.empresa_rut)
+     * figura como proveedor cotizando en MP.
+     */
+    private function participoEmpresaPropia(NotaMpSeguimiento $seg): bool
+    {
+        $ofertas = $seg->relationLoaded('ofertas')
+            ? $seg->ofertas
+            : $seg->ofertas()->get();
+
+        foreach ($ofertas as $oferta) {
+            if ($oferta->es_propio) {
+                return true;
+            }
+        }
+
+        $rutPropio = $this->rutNormalizado((string) config('cotiz.empresa_rut', ''));
+        if ($rutPropio === '') {
+            return false;
+        }
+
+        foreach ($ofertas as $oferta) {
+            if ($this->rutNormalizado((string) ($oferta->rut_proveedor ?? '')) === $rutPropio) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function rutNormalizado(string $rut): string
     {
         $rut = trim($rut);
@@ -323,12 +355,14 @@ class CompraAgilComisionesService
         }
 
         $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota, $seg);
+        $participoMp = $this->participoEmpresaPropia($seg);
         $factorBase = $this->factorComisionBase();
         $venta = (int) round($costo * $factor);
         $venta12 = (int) round($costo * $factorBase);
         $utilidad = $esGanada ? ($venta12 - $costo) : 0;
         $comision = $esGanada ? (int) round($utilidad * $this->porcentajeComision()) : 0;
-        $pago = $this->pagoPorCotizacion();
+        // Pago del parámetro solo si esta empresa cotizó en MP; si no ingresó, $0.
+        $pago = $participoMp ? $this->pagoPorCotizacion() : 0;
 
         $ejecutivoUsername = trim((string) ($nota->usuario ?? ''));
         $ejecutivo = trim((string) ($nota->usuarioRel?->fullName() ?: $ejecutivoUsername));
@@ -341,6 +375,7 @@ class CompraAgilComisionesService
             'nronota' => $seg->nronota,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
             'resultado_propio' => (string) ($seg->resultado_propio ?? ''),
+            'participo_mp' => $participoMp,
             'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,
             'fecha_envio_oc' => $seg->oc_fecha_envio,

@@ -21,8 +21,8 @@
     <p class="text-muted small mb-3">
         Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
         La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra.
-        El <strong>pago</strong> por cotización realizada es ${{ number_format($pagoFijo, 0, ',', '.') }}
-        (parámetro <em>Valor por cotización realizada</em>).
+        El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP;
+        si no cotizó, pago = $0.
     </p>
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.comisiones') }}" class="card shadow-sm mb-3" data-no-loader>
@@ -90,6 +90,7 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'nronota', 'label' => 'Nota', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'codigo_proceso', 'label' => 'Código CA', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        <th>Participó MP</th>
                         <th>Ganada</th>
                         <th>Orden compra</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC', 'route' => 'admin.compra-agil.resultados.comisiones'])
@@ -108,10 +109,17 @@
                 </thead>
                 <tbody>
                     @forelse($items as $fila)
-                        <tr class="{{ $fila->es_ganada ? 'table-success' : '' }}">
+                        <tr class="{{ $fila->es_ganada ? 'table-success' : ($fila->participo_mp ? '' : 'table-warning') }}">
                             <td class="text-nowrap">{{ $fila->nronota }}</td>
                             <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
                             <td class="small">{{ $fila->resultado_propio ?: '—' }}</td>
+                            <td class="small">
+                                @if($fila->participo_mp)
+                                    <span class="badge text-bg-success">Sí</span>
+                                @else
+                                    <span class="badge text-bg-warning">No participó</span>
+                                @endif
+                            </td>
                             <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
                             <td class="small font-monospace">{{ $fila->orden_compra ?: '—' }}</td>
                             <td class="small text-muted">{{ $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—' }}</td>
@@ -134,7 +142,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="17" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
+                            <td colspan="18" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>
