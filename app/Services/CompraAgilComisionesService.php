@@ -260,6 +260,28 @@ class CompraAgilComisionesService
         return in_array($rutNorm, $this->rutsGanadorasNormalizados(), true);
     }
 
+    /**
+     * Ganada para comisión: RUT Reicol/Rómulo y con orden de compra
+     * (ocompra en nota o id_orden_compra en seguimiento MP).
+     */
+    private function esGanadaParaComision(?string $rutGanador, ?Nota $nota, NotaMpSeguimiento $seg): bool
+    {
+        if (! $this->esGanadaGrupo($rutGanador)) {
+            return false;
+        }
+
+        return $this->tieneOrdenCompra($nota, $seg);
+    }
+
+    private function tieneOrdenCompra(?Nota $nota, NotaMpSeguimiento $seg): bool
+    {
+        if (trim((string) ($nota?->ocompra ?? '')) !== '') {
+            return true;
+        }
+
+        return filled($seg->id_orden_compra);
+    }
+
     private function rutNormalizado(string $rut): string
     {
         $rut = trim($rut);
@@ -300,7 +322,7 @@ class CompraAgilComisionesService
             $factor = round((float) config('cotiz.factor_precio_venta', 1.22), 2);
         }
 
-        $esGanada = $this->esGanadaGrupo($seg->rut_ganador);
+        $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota, $seg);
         $factorBase = $this->factorComisionBase();
         $venta = (int) round($costo * $factor);
         $venta12 = (int) round($costo * $factorBase);

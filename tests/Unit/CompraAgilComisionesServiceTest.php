@@ -39,4 +39,29 @@ class CompraAgilComisionesServiceTest extends TestCase
         $this->assertSame(40_000, $comision);
         $this->assertSame(50_000, $aPagar);
     }
+
+    #[Test]
+    public function ganada_requiere_rut_grupo_y_orden_compra(): void
+    {
+        $service = app(CompraAgilComisionesService::class);
+        $ref = new \ReflectionClass($service);
+
+        $esGanada = $ref->getMethod('esGanadaParaComision');
+        $esGanada->setAccessible(true);
+
+        config([
+            'cotiz.reicol_rut' => '76.111.111-1',
+            'cotiz.romulo_rut' => '76.222.222-2',
+        ]);
+
+        $segConOc = new \App\Models\NotaMpSeguimiento(['id_orden_compra' => '12345', 'rut_ganador' => '76.111.111-1']);
+        $segSinOc = new \App\Models\NotaMpSeguimiento(['id_orden_compra' => null, 'rut_ganador' => '76.111.111-1']);
+        $notaConOc = new \App\Models\Nota(['ocompra' => '4500123456']);
+        $notaSinOc = new \App\Models\Nota(['ocompra' => '']);
+
+        $this->assertTrue($esGanada->invoke($service, '76.111.111-1', $notaConOc, $segSinOc));
+        $this->assertTrue($esGanada->invoke($service, '76.222.222-2', $notaSinOc, $segConOc));
+        $this->assertFalse($esGanada->invoke($service, '76.111.111-1', $notaSinOc, $segSinOc));
+        $this->assertFalse($esGanada->invoke($service, '11.111.111-1', $notaConOc, $segConOc));
+    }
 }

@@ -14,7 +14,7 @@
 
     <p class="text-muted small mb-3">
         Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
-        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong> (Reicol/Romulo).
+        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra.
         El <strong>pago</strong> por cotización realizada es ${{ number_format($pagoFijo, 0, ',', '.') }}
         (parámetro <em>Valor por cotización realizada</em>).
     </p>
