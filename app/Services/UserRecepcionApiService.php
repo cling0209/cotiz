@@ -24,6 +24,7 @@ class UserRecepcionApiService
             'correo' => ['nullable', 'email', 'max:60'],
             'perfil' => ['required', 'integer', Rule::in([User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])],
             'puede_gestionar_frases' => ['sometimes', 'boolean'],
+            'activo' => ['sometimes', 'boolean'],
             'password' => ['required', 'string', 'max:20', Password::min(8)->letters()->numbers()],
         ])->validate();
 
@@ -39,6 +40,9 @@ class UserRecepcionApiService
         $perfil = (int) $datos['perfil'];
         $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
             && filter_var($datos['puede_gestionar_frases'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $activo = array_key_exists('activo', $datos)
+            ? filter_var($datos['activo'], FILTER_VALIDATE_BOOLEAN)
+            : true;
 
         User::query()->create([
             'username' => $username,
@@ -48,6 +52,7 @@ class UserRecepcionApiService
             'correo' => $datos['correo'] ?? null,
             'perfil' => $perfil,
             'puede_gestionar_frases' => $puedeGestionarFrases,
+            'activo' => $activo,
             'password' => $datos['password'],
         ]);
 

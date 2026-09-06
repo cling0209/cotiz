@@ -39,13 +39,14 @@
                         <th>Nombre</th>
                         <th>Correo</th>
                         <th>Perfil</th>
+                        <th>Estado</th>
                         <th>Frases Agile</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($usuarios as $u)
-                        <tr>
+                        <tr @class(['table-secondary' => ! $u->activo])>
                             <td>
                                 <code>{{ $u->username }}</code>
                                 @if($u->id === auth()->id())
@@ -60,6 +61,13 @@
                                     'text-bg-dark' => $u->isSuperAdmin(),
                                     'text-bg-secondary' => $u->isEjecutivo(),
                                 ])>{{ $u->perfilLabel() }}</span>
+                            </td>
+                            <td>
+                                @if($u->activo)
+                                    <span class="badge text-bg-success">Activo</span>
+                                @else
+                                    <span class="badge text-bg-danger">Deshabilitado</span>
+                                @endif
                             </td>
                             <td class="small">
                                 @if($u->isSuperAdmin())
@@ -83,7 +91,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted py-4">Sin usuarios.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">Sin usuarios.</td></tr>
                     @endforelse
                 </tbody>
             </table>

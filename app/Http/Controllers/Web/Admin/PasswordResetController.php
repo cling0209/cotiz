@@ -42,7 +42,7 @@ class PasswordResetController extends Controller
             'otp_habilitado' => config('admin.otp_enabled'),
         ]);
 
-        if ($user?->isAdmin()) {
+        if ($user?->isAdmin() && $user->isActivo()) {
             if (config('admin.otp_enabled')) {
                 return $this->storeWithOtp($request, $user);
             }

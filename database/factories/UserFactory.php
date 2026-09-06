@@ -24,6 +24,7 @@ class UserFactory extends Factory
             'correo' => fake()->unique()->safeEmail(),
             'perfil' => User::PERFIL_EJECUTIVO,
             'puede_gestionar_frases' => false,
+            'activo' => true,
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
@@ -34,6 +35,13 @@ class UserFactory extends Factory
         return $this->state(fn () => [
             'perfil' => User::PERFIL_EJECUTIVO,
             'puede_gestionar_frases' => true,
+        ]);
+    }
+
+    public function deshabilitado(): static
+    {
+        return $this->state(fn () => [
+            'activo' => false,
         ]);
     }
 }

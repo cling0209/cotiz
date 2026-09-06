@@ -48,6 +48,7 @@ class UserRelayService
             'correo' => $user->correo,
             'perfil' => (int) $user->perfil,
             'puede_gestionar_frases' => (bool) $user->puede_gestionar_frases,
+            'activo' => (bool) $user->activo,
             'password' => $plainPassword,
         ];
 

@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['username', 'nombre', 'apellidop', 'apellidom', 'correo', 'perfil', 'puede_gestionar_frases', 'empresa', 'ccosto', 'password'])]
+#[Fillable(['username', 'nombre', 'apellidop', 'apellidom', 'correo', 'perfil', 'puede_gestionar_frases', 'activo', 'empresa', 'ccosto', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -48,6 +48,16 @@ class User extends Authenticatable
     public function canAccessPanel(): bool
     {
         return in_array($this->perfil, [self::PERFIL_SUPERADMIN, self::PERFIL_EJECUTIVO], true);
+    }
+
+    public function isActivo(): bool
+    {
+        return (bool) $this->activo;
+    }
+
+    public function puedeIngresar(): bool
+    {
+        return $this->isActivo() && $this->canAccessPanel();
     }
 
     public function isAdmin(): bool
@@ -161,6 +171,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'perfil' => 'integer',
             'puede_gestionar_frases' => 'boolean',
+            'activo' => 'boolean',
         ];
     }
 }

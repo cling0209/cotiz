@@ -50,6 +50,12 @@ class AuthController extends Controller
                 ->with('error', 'Este usuario no tiene acceso al panel de cotizaciones.');
         }
 
+        if (! $user->isActivo()) {
+            return back()
+                ->withInput($request->only('username'))
+                ->with('error', 'Este usuario está deshabilitado.');
+        }
+
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 

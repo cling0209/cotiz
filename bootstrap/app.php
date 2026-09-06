@@ -10,6 +10,7 @@ use App\Http\Middleware\EnsureOportunidadesAdmin;
 use App\Http\Middleware\EnsureOportunidadesPalabrasClave;
 use App\Http\Middleware\EnsureOportunidadesViewer;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -40,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
+            'user.activo' => EnsureUserIsActive::class,
             'oportunidades-admin' => EnsureOportunidadesAdmin::class,
             'oportunidades-palabras' => EnsureOportunidadesPalabrasClave::class,
             'oportunidades-ver' => EnsureOportunidadesViewer::class,

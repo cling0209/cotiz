@@ -57,6 +57,7 @@ class UserController extends Controller
         $perfil = (int) $datos['perfil'];
         $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
             && $request->boolean('puede_gestionar_frases');
+        $activo = $request->boolean('activo', true);
 
         $usuarioCreado = User::query()->create([
             'username' => $datos['username'],
@@ -66,6 +67,7 @@ class UserController extends Controller
             'correo' => $datos['correo'] ?? null,
             'perfil' => $perfil,
             'puede_gestionar_frases' => $puedeGestionarFrases,
+            'activo' => $activo,
             'password' => $datos['password'],
         ]);
 
@@ -107,6 +109,10 @@ class UserController extends Controller
         $perfil = (int) $datos['perfil'];
         $puedeGestionarFrases = $perfil === User::PERFIL_EJECUTIVO
             && $request->boolean('puede_gestionar_frases');
+        $activo = $request->boolean('activo', true);
+        if ($usuario->id === $request->user()->id) {
+            $activo = true;
+        }
 
         $updates = [
             'nombre' => $datos['nombre'],
@@ -115,6 +121,7 @@ class UserController extends Controller
             'correo' => $datos['correo'] ?? null,
             'perfil' => $perfil,
             'puede_gestionar_frases' => $puedeGestionarFrases,
+            'activo' => $activo,
         ];
 
         if (! empty($datos['password'])) {
@@ -127,12 +134,27 @@ class UserController extends Controller
                 ->with('error', 'No puedes quitarte el perfil de superadministrador.');
         }
 
+        if ($usuario->id === $request->user()->id && ! $activo) {
+            return back()
+                ->withInput($request->except('password', 'password_confirmation'))
+                ->with('error', 'No puedes deshabilitar tu propia cuenta.');
+        }
+
         if ($usuario->isSuperAdmin()
             && $perfil !== User::PERFIL_SUPERADMIN
             && $this->cantidadSuperadmins() <= 1) {
             return back()
                 ->withInput($request->except('password', 'password_confirmation'))
                 ->with('error', 'Debe quedar al menos un superadministrador.');
+        }
+
+        if ($usuario->isSuperAdmin()
+            && $usuario->isActivo()
+            && ! $activo
+            && $this->cantidadSuperadminsActivos() <= 1) {
+            return back()
+                ->withInput($request->except('password', 'password_confirmation'))
+                ->with('error', 'Debe quedar al menos un superadministrador activo.');
         }
 
         $usuario->update($updates);
@@ -177,6 +199,14 @@ class UserController extends Controller
         return User::query()->where('perfil', User::PERFIL_SUPERADMIN)->count();
     }
 
+    private function cantidadSuperadminsActivos(): int
+    {
+        return User::query()
+            ->where('perfil', User::PERFIL_SUPERADMIN)
+            ->where('activo', true)
+            ->count();
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -189,6 +219,7 @@ class UserController extends Controller
             'correo' => ['nullable', 'email', 'max:60'],
             'perfil' => ['required', 'integer', Rule::in([User::PERFIL_SUPERADMIN, User::PERFIL_EJECUTIVO])],
             'puede_gestionar_frases' => ['sometimes', 'boolean'],
+            'activo' => ['sometimes', 'boolean'],
         ];
 
         if ($esNuevo) {

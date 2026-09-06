@@ -45,7 +45,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->middleware('throttle:6,1')
         ->name('password.update');
 
-    Route::middleware('auth')->group(function () {
+    Route::middleware(['auth', 'user.activo'])->group(function () {
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
 
         Route::get('cuenta/contrasena', [AccountController::class, 'editPassword'])->name('account.password');

@@ -90,6 +90,42 @@
                         </div>
 
                         <div class="mb-3">
+                            @if(! $esNuevo && $usuario && $usuario->id === auth()->id())
+                                <input type="hidden" name="activo" value="1">
+                                <div class="form-check">
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           id="activo"
+                                           value="1"
+                                           checked
+                                           disabled>
+                                    <label class="form-check-label" for="activo">
+                                        Usuario activo
+                                    </label>
+                                </div>
+                                <div class="form-text">
+                                    No puedes deshabilitar tu propia cuenta.
+                                </div>
+                            @else
+                                <div class="form-check">
+                                    <input type="hidden" name="activo" value="0">
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           name="activo"
+                                           id="activo"
+                                           value="1"
+                                           @checked((bool) old('activo', $usuario?->activo ?? true))>
+                                    <label class="form-check-label" for="activo">
+                                        Usuario activo
+                                    </label>
+                                </div>
+                                <div class="form-text">
+                                    Si se desmarca, el usuario sigue existiendo pero no puede ingresar al panel.
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label" for="password">
                                 {{ $esNuevo ? 'Contraseña' : 'Nueva contraseña' }}
                                 @if($esNuevo)<span class="text-danger">*</span>@else<span class="text-muted small">(opcional)</span>@endif
