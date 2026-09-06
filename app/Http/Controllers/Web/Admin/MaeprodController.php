@@ -533,6 +533,20 @@ class MaeprodController extends Controller
         return $this->importService->exportCsvResponse();
     }
 
+    public function exportExcel(Request $request): StreamedResponse
+    {
+        abort_unless(
+            $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
+            403,
+            'Acceso no autorizado.',
+        );
+
+        return $this->maeprodService->exportExcelResponse(
+            $request->string('q')->trim()->toString() ?: null,
+            $request->string('familia')->trim()->toString() ?: null,
+        );
+    }
+
     public function storeImportChunk(Request $request, MaeprodChunkUploadService $chunkUpload): JsonResponse
     {
         if (! $request->hasFile('chunk') || ! $request->file('chunk')->isValid()) {

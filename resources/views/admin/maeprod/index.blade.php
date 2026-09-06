@@ -17,6 +17,11 @@
             <p class="text-muted mb-0 small">Cat&aacute;logo maestro (maeprod).</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="{{ route('admin.productos.export.excel', array_filter(['q' => $filtros['q'] ?? null, 'familia' => $filtros['familia'] ?? null])) }}"
+               class="btn btn-outline-success btn-sm"
+               data-no-loader>
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </a>
             @if($puedeModificar)
                 <a href="{{ route('admin.productos.import') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-upload"></i> Carga masiva
@@ -67,6 +72,7 @@
                         <th class="text-end">Stock</th>
                         <th class="text-end">Precio</th>
                         <th class="text-end">Costo</th>
+                        <th style="min-width:8rem">&Uacute;ltimo uso</th>
                         @if($mostrarAcciones)
                         <th></th>
                         @endif
@@ -78,6 +84,8 @@
                             $imageUrl = $producto->buildExternalImageUrl();
                             $frasesLista = $producto->frases->pluck('frase')->filter()->values();
                             $frasesCompletas = $frasesLista->implode(' · ');
+                            $ultimoUsoNronota = $producto->ultimo_uso_nronota ?? null;
+                            $ultimoUsoFecha = $producto->ultimo_uso_fechahora ?? null;
                         @endphp
                         <tr>
                             <td class="p-1">
@@ -117,6 +125,18 @@
                             <td class="text-end text-muted small tabular-nums">{{ $producto->prod_stock_real !== null ? number_format((int) $producto->prod_stock_real, 0, ',', '.') : '—' }}</td>
                             <td class="text-end">${{ number_format((int) $producto->prod_valor, 0, ',', '.') }}</td>
                             <td class="text-end">${{ number_format((int) ($producto->prod_valor_costo ?? 0), 0, ',', '.') }}</td>
+                            <td class="small text-nowrap">
+                                @if($ultimoUsoNronota)
+                                    <a href="{{ route('admin.cotizaciones.edit', (int) $ultimoUsoNronota) }}"
+                                       class="fw-semibold text-decoration-underline"
+                                       title="Abrir cotización #{{ $ultimoUsoNronota }}">
+                                        {{ $ultimoUsoFecha ? $ultimoUsoFecha->format('d/m/Y') : '—' }}
+                                        · #{{ $ultimoUsoNronota }}
+                                    </a>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
                             @if($mostrarAcciones)
                             <td class="text-end text-nowrap">
                                 @if($puedeModificar)
@@ -142,7 +162,7 @@
                             @endif
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $mostrarAcciones ? 8 : 7 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
+                        <tr><td colspan="{{ $mostrarAcciones ? 9 : 8 }}" class="text-center text-muted py-4">Sin productos.</td></tr>
                     @endforelse
                 </tbody>
             </table>

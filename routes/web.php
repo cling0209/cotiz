@@ -83,6 +83,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('productos', [MaeprodController::class, 'index'])->name('productos.index');
         Route::get('productos/nuevo', [MaeprodController::class, 'create'])->name('productos.create');
         Route::post('productos', [MaeprodController::class, 'store'])->name('productos.store');
+        Route::get('productos/exportar-excel', [MaeprodController::class, 'exportExcel'])->name('productos.export.excel');
 
         // Rutas estáticas de productos ANTES de productos/{prod_item} (evita que "carga-masiva"/"exportar" se tomen como código).
         Route::middleware('superadmin')->group(function () {

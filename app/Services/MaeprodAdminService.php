@@ -7,11 +7,17 @@ use App\Models\Famprod;
 use App\Models\Gramaje;
 use App\Models\Maeprod;
 use App\Models\MaeprodFrase;
+use App\Models\NotaDetalle;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection as BaseCollection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MaeprodAdminService
 {
@@ -22,6 +28,74 @@ class MaeprodAdminService
     ) {}
 
     public function listado(?string $term, ?string $familia, int $perPage = 20): LengthAwarePaginator
+    {
+        $paginator = $this->buildListadoQuery($term, $familia)
+            ->with(['frases' => fn ($q) => $q->orderBy('frase')])
+            ->orderBy('prod_familia')
+            ->orderBy('prod_nombre')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $this->adjuntarUltimoUsoEnNotas($paginator->getCollection());
+
+        return $paginator;
+    }
+
+    public function exportExcelResponse(?string $term, ?string $familia): StreamedResponse
+    {
+        $filename = 'maeprod_'.now()->format('Y-m-d_His').'.xlsx';
+
+        return response()->streamDownload(function () use ($term, $familia) {
+            $spreadsheet = new Spreadsheet;
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray([
+                [
+                    'codigo',
+                    'nombre',
+                    'familia',
+                    'frases',
+                    'stock',
+                    'precio',
+                    'costo',
+                    'softland',
+                    'ultimo_uso_fecha',
+                    'ultimo_uso_nronota',
+                ],
+            ], null, 'A1');
+
+            $row = 2;
+            $this->buildListadoQuery($term, $familia)
+                ->with(['frases' => fn ($q) => $q->orderBy('frase')])
+                ->orderBy('prod_familia')
+                ->orderBy('prod_nombre')
+                ->chunk(200, function (Collection $productos) use ($sheet, &$row) {
+                    $this->adjuntarUltimoUsoEnNotas($productos);
+
+                    foreach ($productos as $producto) {
+                        $fecha = $producto->ultimo_uso_fechahora ?? null;
+                        $sheet->fromArray([[
+                            $producto->prod_item,
+                            $producto->prod_nombre,
+                            $producto->prod_familia,
+                            $producto->frases->pluck('frase')->filter()->implode(' · '),
+                            $producto->prod_stock_real,
+                            (int) ($producto->prod_valor ?? 0),
+                            (int) ($producto->prod_valor_costo ?? 0),
+                            $producto->prod_item_softland ?? '',
+                            $fecha ? $fecha->format('d/m/Y') : '',
+                            $producto->ultimo_uso_nronota ?? '',
+                        ]], null, 'A'.$row);
+                        $row++;
+                    }
+                });
+
+            (new Xlsx($spreadsheet))->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    private function buildListadoQuery(?string $term, ?string $familia): Builder
     {
         $query = Maeprod::query();
 
@@ -41,12 +115,48 @@ class MaeprodAdminService
             $query->where('prod_familia', trim($familia));
         }
 
-        return $query
-            ->with(['frases' => fn ($q) => $q->orderBy('frase')])
-            ->orderBy('prod_familia')
-            ->orderBy('prod_nombre')
-            ->paginate($perPage)
-            ->withQueryString();
+        return $query;
+    }
+
+    /**
+     * Adjunta nronota y fechahora del último uso en notasdetalle (solo página actual).
+     *
+     * @param  Collection<int, Maeprod>|BaseCollection<int, Maeprod>  $productos
+     */
+    private function adjuntarUltimoUsoEnNotas(Collection|BaseCollection $productos): void
+    {
+        $codigos = $productos
+            ->pluck('prod_item')
+            ->map(fn ($codigo) => trim((string) $codigo))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($codigos->isEmpty()) {
+            return;
+        }
+
+        $lineas = NotaDetalle::query()
+            ->whereIn('prod_item', $codigos->all())
+            ->orderByDesc('fechahora')
+            ->orderByDesc('nronota')
+            ->get(['prod_item', 'nronota', 'fechahora']);
+
+        /** @var array<string, NotaDetalle> $ultimoPorProducto */
+        $ultimoPorProducto = [];
+        foreach ($lineas as $linea) {
+            $key = trim((string) $linea->prod_item);
+            if ($key === '' || isset($ultimoPorProducto[$key])) {
+                continue;
+            }
+            $ultimoPorProducto[$key] = $linea;
+        }
+
+        foreach ($productos as $producto) {
+            $ultimo = $ultimoPorProducto[trim((string) $producto->prod_item)] ?? null;
+            $producto->setAttribute('ultimo_uso_nronota', $ultimo?->nronota);
+            $producto->setAttribute('ultimo_uso_fechahora', $ultimo?->fechahora);
+        }
     }
 
     public function familias(): Collection
