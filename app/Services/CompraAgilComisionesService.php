@@ -302,7 +302,7 @@ class CompraAgilComisionesService
             'fecha_envio_oc' => $seg->oc_fecha_envio,
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,
-            'region_nombre' => trim((string) ($nota->nombre_region ?? '')) ?: '—',
+            'region_nombre' => $this->regionNombreNota($nota),
             'factor' => $factor,
             'costo' => $costo,
             'venta' => $venta,
@@ -323,5 +323,24 @@ class CompraAgilComisionesService
         return (int) $detalle->sum(
             fn (NotaDetalle $linea) => (int) $linea->prod_valor_costo * (int) $linea->cantidad
         );
+    }
+
+    private function regionNombreNota(?\App\Models\Nota $nota): string
+    {
+        if ($nota === null) {
+            return '—';
+        }
+
+        $nombre = trim((string) ($nota->nombre_region ?? ''));
+        if ($nombre !== '') {
+            return $nombre;
+        }
+
+        $region = $nota->region !== null ? (int) $nota->region : 0;
+        if ($region > 0) {
+            return CompraAgilRegionScope::nombreRegion($region);
+        }
+
+        return '—';
     }
 }

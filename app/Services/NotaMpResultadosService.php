@@ -11,6 +11,7 @@ use App\Models\NotaMpCorridaDetalle;
 use App\Models\NotaMpOferta;
 use App\Models\NotaMpOfertaLinea;
 use App\Models\NotaMpSeguimiento;
+use App\Models\CompraAgilProceso;
 use App\Models\OportunidadEncontrada;
 use App\Support\HoraChile;
 use App\Support\RenderKeepAlive;
@@ -40,6 +41,7 @@ class NotaMpResultadosService
         protected CompraAgilTextoParserService $parser,
         protected OrganismoObservacionService $organismoObservacion,
         protected MercadoPublicoOrdenCompraService $ordenCompraMp,
+        protected CompraAgilPayloadMapper $payloadMapper,
     ) {}
 
     public function ultimaCorrida(): ?NotaMpCorrida
@@ -2240,6 +2242,8 @@ class NotaMpResultadosService
 
         $ocompraResuelta = $this->sincronizarOcompraNotaSiCorresponde($nota, $codigo, $payload, $rutGanador);
 
+        $this->rellenarRegionNotaDesdePayload($nota, $payload, $codigo);
+
         $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
         if ($finalizado && $this->pendienteOcompraAlfanumerica(
             $ocompraResuelta ?? (string) ($nota->ocompra ?? ''),
@@ -2340,6 +2344,165 @@ class NotaMpResultadosService
         $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $codigoOc);
 
         return $codigoOc;
+    }
+
+    /**
+     * Completa notas.region / nombre_region si faltan, usando el detalle MP ya obtenido.
+     * También actualiza compra_agil_procesos.region cuando aplica.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function rellenarRegionNotaDesdePayload(Nota $nota, array $payload, ?string $codigoProceso = null): bool
+    {
+        $tieneRegion = $nota->region !== null && (int) $nota->region > 0;
+        $tieneNombre = trim((string) ($nota->nombre_region ?? '')) !== '';
+        if ($tieneRegion && $tieneNombre) {
+            $this->sincronizarRegionProceso($codigoProceso ?? (string) $nota->encargado, (int) $nota->region);
+
+            return false;
+        }
+
+        $institucion = is_array($payload['institucion'] ?? null) ? $payload['institucion'] : [];
+        $geo = $this->payloadMapper->geoDesdeInstitucion($institucion, $payload);
+        $region = $geo['region'] ?? null;
+        if ($region === null || (int) $region <= 0) {
+            return false;
+        }
+
+        $region = (int) $region;
+        $nombre = trim((string) ($geo['nombre_region'] ?? ''));
+        if ($nombre === '') {
+            $nombre = CompraAgilRegionScope::nombreRegion($region);
+        }
+
+        $update = [];
+        if (! $tieneRegion) {
+            $update['region'] = $region;
+        }
+        if (! $tieneNombre) {
+            $update['nombre_region'] = mb_substr($nombre, 0, 100);
+        }
+
+        if ($update === []) {
+            return false;
+        }
+
+        Nota::query()->whereKey($nota->nronota)->update($update);
+        $nota->fill($update);
+
+        $this->sincronizarRegionProceso($codigoProceso ?? (string) $nota->encargado, $region);
+
+        return true;
+    }
+
+    /**
+     * Rellena región de una nota consultando MP (o proceso local) si aún no la tiene.
+     *
+     * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
+     */
+    public function rellenarRegionSiFalta(int $nronota): string
+    {
+        $nota = Nota::query()->find($nronota);
+        if ($nota === null) {
+            return 'skipped';
+        }
+
+        $tieneRegion = $nota->region !== null && (int) $nota->region > 0;
+        $tieneNombre = trim((string) ($nota->nombre_region ?? '')) !== '';
+
+        if ($tieneRegion && ! $tieneNombre) {
+            Nota::query()->whereKey($nronota)->update([
+                'nombre_region' => mb_substr(CompraAgilRegionScope::nombreRegion((int) $nota->region), 0, 100),
+            ]);
+
+            return 'updated';
+        }
+
+        if ($tieneRegion && $tieneNombre) {
+            return 'skipped';
+        }
+
+        $codigo = strtoupper(trim((string) (
+            NotaMpSeguimiento::query()->whereKey($nronota)->value('codigo_proceso')
+            ?: $nota->encargado
+        )));
+
+        if ($codigo === '' || ! $this->esCodigoCompraAgil($codigo)) {
+            return 'skipped';
+        }
+
+        $proceso = CompraAgilProceso::query()->where('codigo', $codigo)->first();
+        if ($proceso !== null && $proceso->region !== null && (int) $proceso->region > 0) {
+            $region = (int) $proceso->region;
+            Nota::query()->whereKey($nronota)->update([
+                'region' => $region,
+                'nombre_region' => mb_substr(CompraAgilRegionScope::nombreRegion($region), 0, 100),
+            ]);
+
+            return 'updated';
+        }
+
+        $oportunidad = OportunidadEncontrada::query()
+            ->where('codigo', $codigo)
+            ->whereNotNull('region')
+            ->where('region', '>', 0)
+            ->first();
+        if ($oportunidad !== null) {
+            $region = (int) $oportunidad->region;
+            $nombre = trim((string) ($oportunidad->nombre_region ?? ''));
+            if ($nombre === '') {
+                $nombre = CompraAgilRegionScope::nombreRegion($region);
+            }
+            Nota::query()->whereKey($nronota)->update([
+                'region' => $region,
+                'nombre_region' => mb_substr($nombre, 0, 100),
+            ]);
+            $this->sincronizarRegionProceso($codigo, $region);
+
+            return 'updated';
+        }
+
+        if (! $this->api->isConfigured()) {
+            return 'error';
+        }
+
+        try {
+            $payload = $this->api->detalle($codigo, false);
+        } catch (RuntimeException $e) {
+            Log::warning('NotaMpResultados: no se pudo obtener detalle MP para región', [
+                'nronota' => $nronota,
+                'codigo' => $codigo,
+                'error' => mb_substr($e->getMessage(), 0, 200),
+            ]);
+
+            if (CompraAgilApiService::esNoExisteEnMp($e->getMessage())) {
+                return 'not_found';
+            }
+
+            return str_contains($e->getMessage(), 'Cuota') ? 'error_cuota' : 'error';
+        }
+
+        $nota->refresh();
+        if ($this->rellenarRegionNotaDesdePayload($nota, $payload, $codigo)) {
+            return 'updated';
+        }
+
+        return 'not_found';
+    }
+
+    private function sincronizarRegionProceso(string $codigo, int $region): void
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '' || $region <= 0) {
+            return;
+        }
+
+        CompraAgilProceso::query()
+            ->where('codigo', $codigo)
+            ->where(function ($q) {
+                $q->whereNull('region')->orWhere('region', '<=', 0);
+            })
+            ->update(['region' => $region]);
     }
 
     /**
