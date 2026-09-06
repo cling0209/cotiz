@@ -682,6 +682,7 @@ class CompraAgilResultadosController extends Controller
         $filtros = $request->only([
             'nronota', 'codigo_proceso', 'usuario',
             'fecha_envio_desde', 'fecha_envio_hasta',
+            'fecha_creacion_desde', 'fecha_creacion_hasta',
             'sort', 'dir',
         ]);
 

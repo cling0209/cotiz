@@ -23,6 +23,8 @@ final class CotizacionListadoRetorno
     public const CLAVES_COMISIONES = [
         'fecha_envio_desde',
         'fecha_envio_hasta',
+        'fecha_creacion_desde',
+        'fecha_creacion_hasta',
         'usuario',
         'codigo_proceso',
         'sort',
@@ -107,7 +109,11 @@ final class CotizacionListadoRetorno
     public static function paraComisiones(array $filtros, int $page): array
     {
         $q = ['from' => self::FROM_COMISIONES];
-        foreach (['fecha_envio_desde', 'fecha_envio_hasta', 'usuario', 'codigo_proceso', 'sort', 'dir', 'por_pagina'] as $key) {
+        foreach ([
+            'fecha_envio_desde', 'fecha_envio_hasta',
+            'fecha_creacion_desde', 'fecha_creacion_hasta',
+            'usuario', 'codigo_proceso', 'sort', 'dir', 'por_pagina',
+        ] as $key) {
             $valor = trim((string) ($filtros[$key] ?? ''));
             if ($valor !== '') {
                 $q[$key] = $valor;

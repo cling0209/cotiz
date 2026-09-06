@@ -241,6 +241,20 @@ class CompraAgilComisionesService
             $query->where('oc_fecha_envio', '<=', $filtros['fecha_envio_hasta'].' 23:59:59');
         }
 
+        if (! empty($filtros['fecha_creacion_desde'])) {
+            $query->whereHas(
+                'nota',
+                fn (Builder $q) => $q->whereDate('fecha', '>=', $filtros['fecha_creacion_desde']),
+            );
+        }
+
+        if (! empty($filtros['fecha_creacion_hasta'])) {
+            $query->whereHas(
+                'nota',
+                fn (Builder $q) => $q->whereDate('fecha', '<=', $filtros['fecha_creacion_hasta']),
+            );
+        }
+
         return $query;
     }
 

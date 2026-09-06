@@ -37,6 +37,16 @@
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
                 <div class="col-auto">
+                    <label for="f-creacion-desde" class="form-label small mb-0">Fecha de creación desde</label>
+                    <input type="date" class="form-control form-control-sm" id="f-creacion-desde" name="fecha_creacion_desde"
+                        value="{{ $filtros['fecha_creacion_desde'] ?? '' }}">
+                </div>
+                <div class="col-auto">
+                    <label for="f-creacion-hasta" class="form-label small mb-0">Fecha de creación hasta</label>
+                    <input type="date" class="form-control form-control-sm" id="f-creacion-hasta" name="fecha_creacion_hasta"
+                        value="{{ $filtros['fecha_creacion_hasta'] ?? '' }}">
+                </div>
+                <div class="col-auto">
                     <label for="f-envio-desde" class="form-label small mb-0">Fecha envío OC desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-envio-desde" name="fecha_envio_desde"
                         value="{{ $filtros['fecha_envio_desde'] ?? '' }}">
