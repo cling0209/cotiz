@@ -408,12 +408,10 @@ class MaeprodController extends Controller
                 'max:10240',
                 'extensions:xlsx,xls,csv,txt',
             ],
-            'confirmar' => ['accepted'],
         ], [
             'archivo.required' => 'Seleccione un Excel con los códigos a eliminar.',
             'archivo.extensions' => 'El archivo debe ser Excel (.xlsx, .xls) o CSV.',
             'archivo.max' => 'El archivo no puede superar 10 MB.',
-            'confirmar.accepted' => 'Debe confirmar que desea eliminar los productos del archivo.',
         ]);
 
         try {

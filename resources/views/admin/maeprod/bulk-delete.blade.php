@@ -59,17 +59,6 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input @error('confirmar') is-invalid @enderror"
-                                   type="checkbox" name="confirmar" id="confirmar" value="1"
-                                   @checked(old('confirmar'))>
-                            <label class="form-check-label small" for="confirmar">
-                                Confirmo que deseo eliminar definitivamente los productos listados en el archivo.
-                            </label>
-                            @error('confirmar')
-                                <div class="invalid-feedback d-block">{{ $message }}</div>
-                            @enderror
-                        </div>
                         <button type="submit" class="btn btn-danger btn-sm" id="btn-bulk-delete">
                             <i class="bi bi-trash"></i> Procesar eliminaci&oacute;n
                         </button>

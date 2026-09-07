@@ -61,7 +61,7 @@ class MaeprodBulkDeleteTest extends TestCase
             ->assertSee(route('admin.productos.bulk-delete'), false);
     }
 
-    public function test_requiere_confirmacion_para_procesar(): void
+    public function test_requiere_archivo_para_procesar(): void
     {
         Maeprod::query()->create([
             'prod_item' => 'DEL-A',
@@ -70,13 +70,9 @@ class MaeprodBulkDeleteTest extends TestCase
             'prod_familia' => 'PAPEL',
         ]);
 
-        $file = $this->excelWithCodes(['DEL-A']);
-
         $this->actingAs($this->superadmin)
-            ->post(route('admin.productos.bulk-delete.process'), [
-                'archivo' => $file,
-            ])
-            ->assertSessionHasErrors('confirmar');
+            ->post(route('admin.productos.bulk-delete.process'), [])
+            ->assertSessionHasErrors('archivo');
 
         $this->assertDatabaseHas('maeprod', ['prod_item' => 'DEL-A']);
     }
@@ -101,7 +97,6 @@ class MaeprodBulkDeleteTest extends TestCase
         $response = $this->actingAs($this->superadmin)
             ->post(route('admin.productos.bulk-delete.process'), [
                 'archivo' => $file,
-                'confirmar' => '1',
             ]);
 
         $response->assertRedirect(route('admin.productos.bulk-delete'))
@@ -136,7 +131,6 @@ class MaeprodBulkDeleteTest extends TestCase
         $this->actingAs($this->superadmin)
             ->post(route('admin.productos.bulk-delete.process'), [
                 'archivo' => $file,
-                'confirmar' => '1',
             ])
             ->assertRedirect(route('admin.productos.bulk-delete'))
             ->assertSessionHas('bulk_delete_result');
