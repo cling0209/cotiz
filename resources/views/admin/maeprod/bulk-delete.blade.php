@@ -13,6 +13,7 @@
             <h1 class="h3 fw-bold mb-1">Eliminaci&oacute;n masiva de productos</h1>
             <p class="text-muted mb-0">
                 Suba un Excel con c&oacute;digos del maestro (<code>prod_item</code>) para eliminarlos del cat&aacute;logo.
+                M&aacute;ximo {{ number_format($maxCodigos ?? 15000, 0, ',', '.') }} c&oacute;digos por archivo.
             </p>
         </div>
         <a href="{{ route('admin.productos.index') }}" class="btn btn-outline-secondary">

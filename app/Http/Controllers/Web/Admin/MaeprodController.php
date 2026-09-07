@@ -391,6 +391,7 @@ class MaeprodController extends Controller
     {
         return view('admin.maeprod.bulk-delete', [
             'resultado' => session('bulk_delete_result'),
+            'maxCodigos' => MaeprodBulkDeleteService::MAX_ROWS,
         ]);
     }
 

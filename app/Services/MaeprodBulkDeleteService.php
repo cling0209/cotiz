@@ -15,7 +15,7 @@ use Throwable;
 
 class MaeprodBulkDeleteService
 {
-    private const MAX_ROWS = 15000;
+    public const MAX_ROWS = 15000;
 
     /**
      * @return array{
