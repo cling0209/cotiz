@@ -26,6 +26,9 @@
                 <a href="{{ route('admin.productos.import') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-upload"></i> Carga masiva
                 </a>
+                <a href="{{ route('admin.productos.bulk-delete') }}" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-trash"></i> Eliminaci&oacute;n masiva
+                </a>
             @endif
             <a href="{{ route('admin.productos.create', $listadoQuery) }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg"></i> Nuevo producto

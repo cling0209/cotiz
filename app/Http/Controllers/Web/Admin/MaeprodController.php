@@ -8,6 +8,7 @@ use App\Models\MaeprodFrase;
 use App\Models\MaeprodImportRun;
 use App\Support\ListadoPorPagina;
 use App\Services\MaeprodAdminService;
+use App\Services\MaeprodBulkDeleteService;
 use App\Services\MaeprodChunkUploadService;
 use App\Services\MaeprodFraseRelayService;
 use App\Services\MaeprodImportJobService;
@@ -384,6 +385,63 @@ class MaeprodController extends Controller
         return redirect()
             ->route('admin.productos.index', $this->listadoQuery($request))
             ->with('success', 'Producto eliminado del catálogo.');
+    }
+
+    public function bulkDeleteForm(): View
+    {
+        return view('admin.maeprod.bulk-delete', [
+            'resultado' => session('bulk_delete_result'),
+        ]);
+    }
+
+    public function downloadBulkDeleteTemplate(MaeprodBulkDeleteService $bulkDelete): StreamedResponse
+    {
+        return $bulkDelete->templateExcelDownloadResponse();
+    }
+
+    public function bulkDelete(Request $request, MaeprodBulkDeleteService $bulkDelete): RedirectResponse
+    {
+        $data = $request->validate([
+            'archivo' => [
+                'required',
+                'file',
+                'max:10240',
+                'extensions:xlsx,xls,csv,txt',
+            ],
+            'confirmar' => ['accepted'],
+        ], [
+            'archivo.required' => 'Seleccione un Excel con los códigos a eliminar.',
+            'archivo.extensions' => 'El archivo debe ser Excel (.xlsx, .xls) o CSV.',
+            'archivo.max' => 'El archivo no puede superar 10 MB.',
+            'confirmar.accepted' => 'Debe confirmar que desea eliminar los productos del archivo.',
+        ]);
+
+        try {
+            $resultado = $bulkDelete->deleteFromUpload($data['archivo']);
+        } catch (Throwable $e) {
+            return redirect()
+                ->route('admin.productos.bulk-delete')
+                ->withInput()
+                ->with('error', 'No se pudo procesar la eliminación masiva: '.$e->getMessage());
+        }
+
+        $mensaje = sprintf(
+            'Eliminación masiva finalizada: %d eliminado(s), %d no eliminado(s).',
+            $resultado['deleted'],
+            $resultado['not_deleted']
+        );
+
+        $redirect = redirect()
+            ->route('admin.productos.bulk-delete')
+            ->with('bulk_delete_result', $resultado);
+
+        if ($resultado['deleted'] > 0) {
+            $redirect->with('success', $mensaje);
+        } else {
+            $redirect->with('error', $mensaje);
+        }
+
+        return $redirect;
     }
 
     public function importForm(MaeprodImportLockService $importLock): View

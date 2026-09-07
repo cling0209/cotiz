@@ -105,6 +105,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('productos/carga-masiva/procesar-background', [MaeprodController::class, 'startBackgroundImport'])->name('productos.import.background');
             Route::get('productos/carga-masiva/progreso', [MaeprodController::class, 'importProgress'])->name('productos.import.progress');
             Route::get('productos/exportar', [MaeprodController::class, 'exportCsv'])->name('productos.export');
+            Route::get('productos/eliminacion-masiva', [MaeprodController::class, 'bulkDeleteForm'])->name('productos.bulk-delete');
+            Route::get('productos/eliminacion-masiva/plantilla', [MaeprodController::class, 'downloadBulkDeleteTemplate'])->name('productos.bulk-delete.template');
+            Route::post('productos/eliminacion-masiva', [MaeprodController::class, 'bulkDelete'])->name('productos.bulk-delete.process');
         });
 
         Route::get('productos/{prod_item}/imagen', [MaeprodController::class, 'editImagen'])->name('productos.imagen.edit')->where('prod_item', '[^/]+');
