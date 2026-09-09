@@ -49,6 +49,27 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $this->assertSame('1411-2423-AG26', $segOtro->textoOrdenCompraMp());
     }
 
+    public function test_pendiente_cuando_falta_codigo_ag_y_hay_id_oc_cualquier_ganador(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+        ]);
+
+        $service = Mockery::mock(NotaMpResultadosService::class)->makePartial();
+        $service->shouldReceive('etiquetaGanadorPorRut')->andReturn(null);
+        $this->app->instance(NotaMpResultadosService::class, $service);
+
+        $seg = new NotaMpSeguimiento([
+            'rut_ganador' => '11.111.111-1',
+            'id_orden_compra' => 999999,
+        ]);
+        $seg->es_ganador_propio = false;
+        $seg->setRelation('nota', new Nota(['ocompra' => '']));
+
+        $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
+    }
+
     public function test_pendiente_cuando_falta_codigo_ag_y_es_grupo(): void
     {
         config([
@@ -69,7 +90,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
     }
 
-    public function test_guion_si_no_es_grupo_con_id_oc_sin_codigo(): void
+    public function test_guion_si_no_hay_id_oc_ni_codigo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -82,7 +103,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
 
         $seg = new NotaMpSeguimiento([
             'rut_ganador' => '11.111.111-1',
-            'id_orden_compra' => 999999,
+            'id_orden_compra' => null,
         ]);
         $seg->es_ganador_propio = false;
         $seg->setRelation('nota', new Nota(['ocompra' => '']));

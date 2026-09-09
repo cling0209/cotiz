@@ -105,7 +105,7 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Participó MP</th>
                         <th>Ganada</th>
-                        <th>Orden compra</th>
+                        <th>Código OC</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Ejecutivo</th>
                         <th>Región</th>

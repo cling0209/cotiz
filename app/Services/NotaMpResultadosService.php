@@ -2253,11 +2253,11 @@ class NotaMpResultadosService
 
         $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
         $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
-        // Código AG si ya está; «Pendiente» solo Reicol/Romulo con id OC sin código; terceros sin código → vacío (UI «—»).
+        // Código AG si ya está; «Pendiente» si hay id OC numérico sin código AG (cualquier ganador).
         $ordenCompraVisible = '';
         if ($ocompraNota !== '') {
             $ordenCompraVisible = $ocompraNota;
-        } elseif ($esGanadorGrupo && $idOrdenCompra) {
+        } elseif ($idOrdenCompra) {
             $ordenCompraVisible = 'Pendiente';
         }
 

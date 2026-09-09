@@ -108,8 +108,7 @@ class NotaMpSeguimiento extends Model
 
     /**
      * Código AG en notas.ocompra (ej. 1411-2423-AG26) si ya está resuelto (cualquier ganador).
-     * «Pendiente» solo si ganó Reicol/Romulo y MP ya emitió OC numérica pero falta el código AG.
-     * Otro ganador sin código AG: «—» (nunca Pendiente).
+     * «Pendiente» si MP ya emitió OC numérica (id_orden_compra) pero falta el código AG.
      */
     public function textoOrdenCompraMp(): string
     {
@@ -118,7 +117,7 @@ class NotaMpSeguimiento extends Model
             return $ocompra;
         }
 
-        if ($this->esGanadorGrupo() && $this->id_orden_compra) {
+        if ($this->id_orden_compra) {
             return 'Pendiente';
         }
 

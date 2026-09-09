@@ -1,12 +1,22 @@
 @php
     /** @var \App\Models\NotaMpSeguimiento|null $seg */
     $seg = $seg ?? null;
-    $textoOc = $seg?->textoOrdenCompraMp() ?? '—';
+    $idOc = $seg?->id_orden_compra ?: null;
+    $codigoOc = $seg?->textoOrdenCompraMp() ?? '—';
 @endphp
-@if($textoOc === 'Pendiente')
-    <span class="text-warning" title="OC emitida en MP{{ $seg?->id_orden_compra ? ' (ID '.$seg->id_orden_compra.')' : '' }}; pendiente código AG">Pendiente</span>
-@elseif($textoOc !== '—')
-    <span class="font-monospace">{{ $textoOc }}</span>
-@else
+@if(!$idOc && $codigoOc === '—')
     —
+@else
+    <div class="lh-sm">
+        @if($idOc)
+            <div><span class="text-muted">ID OC:</span> <span class="font-monospace">{{ $idOc }}</span></div>
+        @endif
+        @if($codigoOc === 'Pendiente')
+            <div><span class="text-muted">Código OC:</span> <span class="text-warning">Pendiente</span></div>
+        @elseif($codigoOc !== '—')
+            <div><span class="text-muted">Código OC:</span> <span class="font-monospace">{{ $codigoOc }}</span></div>
+        @elseif($idOc)
+            <div><span class="text-muted">Código OC:</span> <span class="text-muted">—</span></div>
+        @endif
+    </div>
 @endif

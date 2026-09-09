@@ -282,17 +282,42 @@
     }
 
     function fmtOrdenCompraCell(r) {
-        if (r.orden_compra) {
-            if (r.orden_compra === 'Pendiente') {
-                const title = r.id_orden_compra ? 'OC emitida (ID ' + r.id_orden_compra + ')' : 'OC emitida';
-                return '<span class="text-warning" title="' + title + '">Pendiente</span>';
-            }
-            return '<span class="font-monospace">' + escapeHtml(String(r.orden_compra)) + '</span>';
+        const idOc = r.id_orden_compra || null;
+        const codigo = (r.ocompra || (r.orden_compra && r.orden_compra !== 'Pendiente' ? r.orden_compra : null)) || null;
+        const pendiente = r.orden_compra === 'Pendiente' || (idOc && !codigo);
+        if (!idOc && !codigo && !pendiente) {
+            return '—';
         }
-        if (r.ocompra) {
-            return '<span class="font-monospace">' + escapeHtml(String(r.ocompra)) + '</span>';
+        let html = '<div class="lh-sm">';
+        if (idOc) {
+            html += '<div><span class="text-muted">ID OC:</span> <span class="font-monospace">' + escapeHtml(String(idOc)) + '</span></div>';
         }
-        return '—';
+        if (codigo) {
+            html += '<div><span class="text-muted">Código OC:</span> <span class="font-monospace">' + escapeHtml(String(codigo)) + '</span></div>';
+        } else if (pendiente) {
+            html += '<div><span class="text-muted">Código OC:</span> <span class="text-warning">Pendiente</span></div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function fmtOrdenCompraDetalle(s) {
+        const idOc = s.id_orden_compra || null;
+        const codigo = (s.ocompra || (s.orden_compra && s.orden_compra !== 'Pendiente' ? s.orden_compra : null)) || null;
+        const pendiente = s.orden_compra === 'Pendiente' || (idOc && !codigo);
+        if (!idOc && !codigo && !pendiente) {
+            return '';
+        }
+        let html = '';
+        if (idOc) {
+            html += '<br>ID OC: <strong class="font-monospace">' + escapeHtml(String(idOc)) + '</strong>';
+        }
+        if (codigo) {
+            html += '<br>Código OC: <strong class="font-monospace">' + escapeHtml(String(codigo)) + '</strong>';
+        } else if (pendiente) {
+            html += '<br>Código OC: <strong class="text-warning">Pendiente</strong>';
+        }
+        return html;
     }
 
     function actualizarCeldaOrdenCompra(row, r) {
@@ -740,7 +765,7 @@
             const s = data.seguimiento;
             let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
-                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${s.orden_compra ? '<br>Orden compra: <strong class="font-monospace">' + escapeHtml(String(s.orden_compra)) + '</strong>' : ''}</p>`;
+                Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${fmtOrdenCompraDetalle(s)}</p>`;
 
             const tieneFechas = s.fecha_publicacion || s.fecha_cierre || s.fecha_ultimo_cambio || s.fecha_cancelacion;
             if (tieneFechas) {

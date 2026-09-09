@@ -113,7 +113,7 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'proveedor', 'label' => 'Prov. seleccionado', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'monto', 'label' => 'Monto', 'route' => 'admin.compra-agil.resultados.segundo-llamado', 'align' => 'text-end'])
-                        <th>Orden compra</th>
+                        <th>ID / Código OC</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'consultado', 'label' => 'Consultado', 'route' => 'admin.compra-agil.resultados.segundo-llamado'])
                         <th></th>
                     </tr>

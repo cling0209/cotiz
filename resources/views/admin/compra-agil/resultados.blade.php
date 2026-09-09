@@ -164,7 +164,7 @@
                         <th>Seguimiento</th>
                         <th>Prov. seleccionado</th>
                         <th class="text-end">Monto</th>
-                        <th>Orden compra</th>
+                        <th>ID / Código OC</th>
                         <th>Consultado</th>
                         <th></th>
                     </tr>
