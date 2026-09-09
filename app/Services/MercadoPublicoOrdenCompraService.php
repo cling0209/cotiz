@@ -11,7 +11,8 @@ use RuntimeException;
  * Resuelve el código alfanumérico de OC (ej. 1411-2423-AG26) vía API clásica v1.
  * Compra Ágil v2 solo entrega id_orden_compra numérico; el código AG está en v1.
  *
- * Match: (1) texto COT en Nombre/Descripcion, (2) igualdad de nombre del proceso CA.
+ * Orden: (1) detalle OC v1 con ?codigo={id_numerico}, (2) listados por fecha
+ * matcheando texto COT / nombre del proceso.
  * Detalle: ordenesdecompra.json?codigo=… (FechaEnvio, etc.). Path /{codigo}.json responde 404.
  */
 class MercadoPublicoOrdenCompraService
@@ -89,8 +90,15 @@ class MercadoPublicoOrdenCompraService
             return null;
         }
 
-        if ($this->idOrdenCompraDesdePayload($payload) === null) {
+        $idOrdenCompra = $this->idOrdenCompraDesdePayload($payload);
+        if ($idOrdenCompra === null) {
             return null;
+        }
+
+        // 1 request: la API v1 acepta el ID numérico en ?codigo= y devuelve Codigo AG.
+        $porId = $this->resolverCodigoAgPorIdOrdenCompra($idOrdenCompra);
+        if ($porId !== null) {
+            return $porId;
         }
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
@@ -141,6 +149,23 @@ class MercadoPublicoOrdenCompraService
         }
 
         return null;
+    }
+
+    /**
+     * Obtiene el código AG consultando OC v1 con el id numérico (`?codigo=54528069`).
+     */
+    public function resolverCodigoAgPorIdOrdenCompra(int $idOrdenCompra): ?string
+    {
+        if ($idOrdenCompra <= 0 || ! $this->isConfigured()) {
+            return null;
+        }
+
+        $detalle = $this->obtenerDetallePorCodigo((string) $idOrdenCompra);
+        if ($detalle === null) {
+            return null;
+        }
+
+        return $this->codigoAgSiValido((string) ($detalle['codigo'] ?? ''));
     }
 
     /**
@@ -401,7 +426,12 @@ class MercadoPublicoOrdenCompraService
      */
     private function codigoAgDesdeItem(array $item): ?string
     {
-        $codigo = strtoupper(trim((string) ($item['Codigo'] ?? '')));
+        return $this->codigoAgSiValido((string) ($item['Codigo'] ?? ''));
+    }
+
+    private function codigoAgSiValido(string $codigo): ?string
+    {
+        $codigo = strtoupper(trim($codigo));
         if ($codigo !== '' && preg_match('/-\d+-AG\d+$/i', $codigo)) {
             return $codigo;
         }
