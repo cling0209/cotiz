@@ -786,6 +786,9 @@ class NotaMpResultadosService
      * - pendientes de seguimiento (resultado_propio = pendiente), o
      * - no finalizadas (finalizado = false; p. ej. proveedor_seleccionado sin OC aún), o
      * - OC emitida en MP pero falta notas.ocompra alfanumérica (cualquier ganador).
+     * No reconsulta masiva si ya tiene código OC (ocompra) y el resultado está cerrado
+     * (cerrada/desierta/cancelada/no_encontrada): evita gastar cuota cuando solo falta
+     * el estado MP `oc_emitida`.
      * Omite las ya consultadas hoy (SKIP_MISMO_DIA): la siguiente corrida del
      * mismo día no las vuelve a procesar; entran al día siguiente.
      * Omite oportunidades encontradas hoy sin seguimiento MP (aún no cambian de estado).
@@ -817,6 +820,12 @@ class NotaMpResultadosService
                     ->orWhere(function ($sub) {
                         $this->aplicarFiltroPendienteOcompraAlfanumerica($sub);
                     });
+            })
+            // Ya tiene Código OC y resultado cerrado → fuera del masivo (aunque finalizado=false legacy).
+            ->where(function ($q) {
+                $q->whereRaw("trim(coalesce(notas.ocompra, '')) = ''")
+                    ->orWhereNull('seg.nronota')
+                    ->orWhereNotIn('seg.resultado_propio', ['cerrada', 'desierta', 'cancelada', 'no_encontrada']);
             });
 
         if (config('cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia', true)) {
@@ -2242,16 +2251,22 @@ class NotaMpResultadosService
         $this->rellenarRegionNotaDesdePayload($nota, $payload, $codigo);
 
         $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
-        if ($finalizado && $this->pendienteOcompraAlfanumerica(
-            $ocompraResuelta ?? (string) ($nota->ocompra ?? ''),
-            $idOrdenCompra,
-            $rutGanador,
-        )) {
-            NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => false]);
-            $finalizado = false;
+        $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
+
+        if ($this->pendienteOcompraAlfanumerica($ocompraNota, $idOrdenCompra, $rutGanador)) {
+            // MP ya emitió OC numérica pero falta código AG → seguir en masivo.
+            if ($finalizado) {
+                NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => false]);
+                $finalizado = false;
+            }
+        } elseif ($ocompraNota !== '' && in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true)) {
+            // Ya hay Código OC y resultado cerrado (p. ej. proveedor_seleccionado): no seguir en masivo.
+            if (! $finalizado) {
+                NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => true]);
+                $finalizado = true;
+            }
         }
 
-        $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
         $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
         // Código AG si ya está; «Pendiente» si hay id OC numérico sin código AG (cualquier ganador).
         $ordenCompraVisible = '';

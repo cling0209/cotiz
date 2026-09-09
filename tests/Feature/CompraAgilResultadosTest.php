@@ -1560,6 +1560,47 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_omite_cerrada_con_ocompra_aunque_finalizado_false(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-07-13 10:00:00', 'America/Santiago'));
+
+        Nota::query()->create([
+            'nronota' => 11251,
+            'descripcion' => 'Cerrada con código OC',
+            'fecha' => '2026-07-01',
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '3560-69-COT26',
+            'ocompra' => '3560-120-AG26',
+            'nota_softland' => 1125100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 11251,
+            'codigo_proceso' => '3560-69-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'cerrada',
+            // Legacy: proveedor_seleccionado deja finalizado=false aunque ya hay AG.
+            'finalizado' => false,
+            'id_orden_compra' => 54528069,
+            'rut_ganador' => '11.111.111-1',
+            'ultimo_consultado_en' => Carbon::parse('2026-07-12 10:30:00', 'America/Santiago'),
+        ]);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame(0, $pendientes->count());
+
+        Carbon::setTestNow();
+    }
+
     public function test_pendientes_incluye_oc_emitida_sin_ocompra_al_dia_siguiente(): void
     {
         config([
