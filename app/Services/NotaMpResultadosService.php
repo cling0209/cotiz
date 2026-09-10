@@ -2726,6 +2726,9 @@ class NotaMpResultadosService
                 $rutGanador,
                 null,
                 omitirListadoSinProveedor: true,
+                montoGanador: $seg->monto_total_ganador !== null
+                    ? (float) $seg->monto_total_ganador
+                    : null,
             );
         } catch (RuntimeException $e) {
             Log::warning('NotaMpResultados: backfill ocompra por listado OC falló', [

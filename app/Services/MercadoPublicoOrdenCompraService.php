@@ -100,6 +100,7 @@ class MercadoPublicoOrdenCompraService
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
         $nombreProceso = $this->nombreProcesoDesdePayload($payload);
+        $montoGanador = $this->montoGanadorDesdePayload($payload);
         $huboCuotaAgotada = false;
 
         foreach ($this->fechasBusquedaDesdePayload($payload) as $fechaDdmmaaaa) {
@@ -116,7 +117,7 @@ class MercadoPublicoOrdenCompraService
                     $listado = null;
                 }
                 if (is_array($listado)) {
-                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
+                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso, $montoGanador);
                     if ($codigo !== null) {
                         return $codigo;
                     }
@@ -135,7 +136,7 @@ class MercadoPublicoOrdenCompraService
                 continue;
             }
 
-            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso);
+            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso, $montoGanador);
             if ($codigo !== null) {
                 return $codigo;
             }
@@ -196,6 +197,7 @@ class MercadoPublicoOrdenCompraService
         ?string $rutGanador,
         ?string $nombreProceso = null,
         bool $omitirListadoSinProveedor = true,
+        ?float $montoGanador = null,
     ): ?string {
         $codigoCot = strtoupper(trim($codigoCot));
         if ($codigoCot === '' || ! $this->isConfigured() || $fechasDdmmaaaa === []) {
@@ -224,7 +226,7 @@ class MercadoPublicoOrdenCompraService
                     $listado = null;
                 }
                 if (is_array($listado)) {
-                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
+                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso, $montoGanador);
                     if ($codigo !== null) {
                         return $codigo;
                     }
@@ -247,7 +249,7 @@ class MercadoPublicoOrdenCompraService
                 continue;
             }
 
-            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso);
+            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso, $montoGanador);
             if ($codigo !== null) {
                 return $codigo;
             }
@@ -403,8 +405,12 @@ class MercadoPublicoOrdenCompraService
     /**
      * @param  list<array<string, mixed>>  $listado
      */
-    public function buscarCodigoEnListado(array $listado, string $codigoCot, ?string $nombreProceso = null): ?string
-    {
+    public function buscarCodigoEnListado(
+        array $listado,
+        string $codigoCot,
+        ?string $nombreProceso = null,
+        ?float $montoGanador = null,
+    ): ?string {
         $codigoCot = strtoupper(trim($codigoCot));
 
         foreach ($listado as $item) {
@@ -422,7 +428,14 @@ class MercadoPublicoOrdenCompraService
             }
         }
 
-        return $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso);
+        $porNombre = $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso);
+        if ($porNombre !== null) {
+            return $porNombre;
+        }
+
+        // Casos como COT «Materiales pedagogicos utp» ↔ OC «ARTICULOS PEDAGOGICOS UTP»
+        // (sin el código COT en el nombre del listado).
+        return $this->buscarCodigoPorPrefijoYSimilitud($listado, $codigoCot, $nombreProceso, $montoGanador);
     }
 
     /**
@@ -473,6 +486,161 @@ class MercadoPublicoOrdenCompraService
         }
 
         return null;
+    }
+
+    /**
+     * Prefijo org del COT + tokens del nombre del proceso (y opcionalmente monto del ganador).
+     *
+     * @param  list<array<string, mixed>>  $listado
+     */
+    public function buscarCodigoPorPrefijoYSimilitud(
+        array $listado,
+        string $codigoCot,
+        ?string $nombreProceso = null,
+        ?float $montoGanador = null,
+    ): ?string {
+        $prefix = explode('-', strtoupper(trim($codigoCot)))[0] ?? '';
+        if ($prefix === '' || ! preg_match('/^\d+$/', $prefix)) {
+            return null;
+        }
+
+        $candidatos = [];
+        foreach ($listado as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $codigo = $this->codigoAgDesdeItem($item);
+            if ($codigo === null || ! str_starts_with($codigo, $prefix.'-')) {
+                continue;
+            }
+            $candidatos[$codigo] = $item;
+        }
+
+        if ($candidatos === []) {
+            return null;
+        }
+
+        if (count($candidatos) === 1) {
+            return array_key_first($candidatos);
+        }
+
+        $tokensProceso = $this->tokensNombreSignificativos((string) ($nombreProceso ?? ''));
+        if ($tokensProceso !== []) {
+            $mejores = [];
+            $mejorScore = 0;
+            foreach ($candidatos as $codigo => $item) {
+                $tokensOc = $this->tokensNombreSignificativos((string) ($item['Nombre'] ?? ''));
+                $score = count(array_intersect($tokensProceso, $tokensOc));
+                if ($score > $mejorScore) {
+                    $mejorScore = $score;
+                    $mejores = [$codigo];
+                } elseif ($score === $mejorScore && $score > 0) {
+                    $mejores[] = $codigo;
+                }
+            }
+
+            // Exige al menos 2 tokens en común (ej. pedagogicos + utp).
+            if ($mejorScore >= 2 && count($mejores) === 1) {
+                return $mejores[0];
+            }
+
+            if ($mejorScore >= 2 && count($mejores) > 1) {
+                $candidatos = array_intersect_key($candidatos, array_flip($mejores));
+            }
+        }
+
+        if ($montoGanador === null || $montoGanador <= 0) {
+            return null;
+        }
+
+        return $this->desambiguarCandidatosPorMonto(array_keys($candidatos), $montoGanador);
+    }
+
+    /**
+     * Monto total del proveedor seleccionado en payload Compra Ágil v2.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function montoGanadorDesdePayload(array $payload): ?float
+    {
+        $proveedores = is_array($payload['proveedores_cotizando'] ?? null)
+            ? $payload['proveedores_cotizando']
+            : [];
+
+        foreach ($proveedores as $prov) {
+            if (! is_array($prov)) {
+                continue;
+            }
+            $esGanador = ! empty($prov['seleccion']['proveedor_seleccionado'])
+                || (int) ($prov['proveedor_seleccionado'] ?? 0) === 1;
+            if (! $esGanador) {
+                continue;
+            }
+            if (isset($prov['monto_total']) && is_numeric($prov['monto_total'])) {
+                return (float) $prov['monto_total'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function tokensNombreSignificativos(string $nombre): array
+    {
+        $norm = $this->normalizarNombreOc($nombre);
+        if ($norm === '') {
+            return [];
+        }
+
+        $stop = [
+            'de', 'del', 'la', 'las', 'los', 'el', 'y', 'e', 'o', 'u', 'a', 'en', 'para', 'por',
+            'con', 'sin', 'al', 'un', 'una', 'unos', 'unas', 'orden', 'compra', 'generada',
+            'invitacion', 'compra', 'agil', 'segun', 'detalle', 'anexo', 'adjunto',
+        ];
+
+        $parts = preg_split('/[^a-z0-9]+/u', $norm) ?: [];
+        $out = [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if (strlen($part) < 3 || in_array($part, $stop, true)) {
+                continue;
+            }
+            $out[] = $part;
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  list<string>  $codigosAg
+     */
+    private function desambiguarCandidatosPorMonto(array $codigosAg, float $montoGanador): ?string
+    {
+        $codigosAg = array_values(array_unique(array_filter($codigosAg)));
+        if ($codigosAg === []) {
+            return null;
+        }
+
+        // Evitar quemar cuota: máximo 5 detalles.
+        $codigosAg = array_slice($codigosAg, 0, 5);
+        $matches = [];
+        foreach ($codigosAg as $codigo) {
+            try {
+                $detalle = $this->obtenerDetallePorCodigo($codigo);
+            } catch (RuntimeException) {
+                continue;
+            }
+            if ($detalle === null || ! isset($detalle['total']) || $detalle['total'] === null) {
+                continue;
+            }
+            if (abs((float) $detalle['total'] - $montoGanador) < 0.51) {
+                $matches[] = $codigo;
+            }
+        }
+
+        return count($matches) === 1 ? $matches[0] : null;
     }
 
     public function normalizarNombreOc(string $nombre): string

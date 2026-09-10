@@ -397,4 +397,114 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_buscar_por_prefijo_y_similitud_nombre_distinto(): void
+    {
+        $listado = [
+            ['Codigo' => '1469-2396-AG26', 'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 1469-2548-COT26'],
+            ['Codigo' => '3958-181-AG26', 'Nombre' => 'ARTICULOS PEDAGOGICOS UTP'],
+            ['Codigo' => '1978-946-AG26', 'Nombre' => 'CA 1978-284-COT26 / MATERIALES DE ESCRITORIO'],
+        ];
+
+        $this->assertSame(
+            '3958-181-AG26',
+            $this->service->buscarCodigoEnListado(
+                $listado,
+                '3958-91-COT26',
+                'Materiales pedagogicos utp',
+            ),
+        );
+    }
+
+    public function test_buscar_por_prefijo_unico_sin_nombre(): void
+    {
+        $listado = [
+            ['Codigo' => '3958-181-AG26', 'Nombre' => 'OC SIN RELACION CON EL NOMBRE'],
+            ['Codigo' => '1978-946-AG26', 'Nombre' => 'OTRA'],
+        ];
+
+        $this->assertSame(
+            '3958-181-AG26',
+            $this->service->buscarCodigoPorPrefijoYSimilitud($listado, '3958-91-COT26'),
+        );
+    }
+
+    public function test_desambigua_prefijos_multiples_por_monto_detalle(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'codigo=3958-100-AG26')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [['Codigo' => '3958-100-AG26', 'Total' => 100000]],
+                ]);
+            }
+            if (str_contains($url, 'codigo=3958-181-AG26')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [['Codigo' => '3958-181-AG26', 'Total' => 392903]],
+                ]);
+            }
+
+            return Http::response(['Cantidad' => 0, 'Listado' => []]);
+        });
+
+        $listado = [
+            ['Codigo' => '3958-100-AG26', 'Nombre' => 'FOO BAR'],
+            ['Codigo' => '3958-181-AG26', 'Nombre' => 'BAZ QUX'],
+        ];
+
+        $this->assertSame(
+            '3958-181-AG26',
+            $this->service->buscarCodigoPorPrefijoYSimilitud(
+                $listado,
+                '3958-91-COT26',
+                null,
+                392903.0,
+            ),
+        );
+    }
+
+    public function test_resolver_navidad_nombre_oc_distinto_al_proceso(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-09 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago']);
+
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'fecha=08092026') && str_contains($url, 'CodigoProveedor=1276139')) {
+                return Http::response([
+                    'Cantidad' => 2,
+                    'Listado' => [
+                        ['Codigo' => '1469-2396-AG26', 'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 1469-2548-COT26'],
+                        ['Codigo' => '3958-181-AG26', 'Nombre' => 'ARTICULOS PEDAGOGICOS UTP'],
+                    ],
+                ]);
+            }
+
+            return Http::response(['Cantidad' => 0, 'Listado' => []]);
+        });
+
+        $codigo = $this->service->resolverCodigoPorCotizacion(
+            '3958-91-COT26',
+            [
+                'id_orden_compra' => 55439451,
+                'nombre' => 'Materiales pedagogicos utp',
+                'fechas' => ['fecha_ultimo_cambio' => '2026-09-03 17:50:00'],
+                'proveedores_cotizando' => [
+                    [
+                        'rut_proveedor' => '76.185.139-K',
+                        'proveedor_seleccionado' => 1,
+                        'monto_total' => 392903,
+                        'id_oc' => 55439451,
+                    ],
+                ],
+            ],
+            '76.185.139-K',
+        );
+
+        $this->assertSame('3958-181-AG26', $codigo);
+
+        Carbon::setTestNow();
+    }
 }
