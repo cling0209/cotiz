@@ -15,7 +15,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) a notas cerradas sin ocompra (listados OC v1 por fecha/COT)';
+    protected $description = 'Copia código OC (AG) a notas cerradas sin ocompra (propio o ajeno; listados OC v1)';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -32,9 +32,16 @@ class BackfillOcompraCommand extends Command
         $delayMs = max(0, (int) $this->option('delay-ms'));
         $nronotaOpt = $this->option('nronota');
 
-        // Solo cerradas en MP sin código OC alfanumérico (aunque tengan id_orden_compra).
+        // Cerradas sin código OC: cualquier ganador (Reicol/Romulo u otro).
         $query = Nota::query()
-            ->select(['notas.nronota', 'notas.ocompra', 'notas.encargado', 'seg.id_orden_compra', 'seg.codigo_proceso'])
+            ->select([
+                'notas.nronota',
+                'notas.ocompra',
+                'notas.encargado',
+                'seg.id_orden_compra',
+                'seg.codigo_proceso',
+                'seg.rut_ganador',
+            ])
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->where('seg.resultado_propio', 'cerrada')
             ->whereRaw("trim(coalesce(notas.ocompra, '')) = ''")
@@ -49,20 +56,26 @@ class BackfillOcompraCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas cerradas con id_orden_compra y ocompra vacío.');
+            $this->info('No hay notas cerradas (propio/ajeno) con id_orden_compra y ocompra vacío.');
 
             return self::SUCCESS;
         }
 
-        $this->info(sprintf('Candidatas: %d (limit=%d radio_dias=±%d)', $candidatas->count(), $limit, $radio));
+        $this->info(sprintf(
+            'Candidatas: %d (limit=%d radio_dias=±%d; incluye ganador ajeno)',
+            $candidatas->count(),
+            $limit,
+            $radio,
+        ));
 
         if ($this->option('dry-run')) {
             foreach ($candidatas as $nota) {
                 $this->line(sprintf(
-                    '  nronota=%d id_oc=%s cot=%s',
+                    '  nronota=%d id_oc=%s cot=%s rut=%s',
                     $nota->nronota,
                     (string) ($nota->id_orden_compra ?? ''),
                     trim((string) ($nota->codigo_proceso ?: $nota->encargado ?: '')),
+                    trim((string) ($nota->rut_ganador ?? '')),
                 ));
             }
 

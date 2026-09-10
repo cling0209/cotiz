@@ -2622,7 +2622,7 @@ class NotaMpResultadosService
 
     /**
      * Resuelve notas.ocompra (código AG) vía API OC v1 listando por fecha + match COT.
-     * Solo cerradas sin ocompra; usa id_orden_compra / fechas / rut_ganador (sin Compra Ágil api2).
+     * Solo cerradas sin ocompra; incluye ganador propio o ajeno (sin Compra Ágil api2).
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
@@ -2663,15 +2663,23 @@ class NotaMpResultadosService
             ?? now()->subDays(3);
 
         $radio = max(0, min(7, (int) config('cotiz.mercadopublico.oc_backfill_radio_dias', 3)));
+        $rutGanador = $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null;
+        // Ajeno: sin CodigoProveedor mapeado → hay que listar sin proveedor (más cuota).
+        $codigoProveedor = $this->ordenCompraMp->codigoProveedorMpParaRut($rutGanador);
+        if ($codigoProveedor === null || $codigoProveedor === '') {
+            $radio = max($radio, 7);
+        }
         $fechas = $this->ordenCompraMp->fechasBusquedaVentana($refFecha, $radio);
 
         try {
             $codigoOc = $this->ordenCompraMp->resolverCodigoEnFechas(
                 $codigoCot,
                 $fechas,
-                $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null,
+                $rutGanador,
                 null,
-                omitirListadoSinProveedor: true,
+                // Propio: intenta con CodigoProveedor y, si no hay match, listado general.
+                // Ajeno: solo listado general (codigoProveedor null).
+                omitirListadoSinProveedor: false,
             );
         } catch (RuntimeException $e) {
             Log::warning('NotaMpResultados: backfill ocompra por listado OC falló', [
@@ -2690,6 +2698,7 @@ class NotaMpResultadosService
             return 'not_found';
         }
 
+        // Persistir aunque el ganador no sea Reicol/Romulo.
         Nota::query()->whereKey($nronota)->update(['ocompra' => mb_substr($codigoOc, 0, 20)]);
         $nota->ocompra = $codigoOc;
         $this->sincronizarFechasOcSeguimiento($nronota, $codigoOc);

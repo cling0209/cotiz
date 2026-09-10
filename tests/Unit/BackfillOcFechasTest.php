@@ -215,4 +215,70 @@ class BackfillOcFechasTest extends TestCase
         $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
         Http::assertNothingSent();
     }
+
+    public function test_rellenar_ocompra_tambien_si_ganador_ajeno(): void
+    {
+        if (! Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
+            $this->markTestSkipped('Migración oc_fecha_* no aplicada en sqlite de test.');
+        }
+
+        config([
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
+            'cotiz.mercadopublico.codigo_proveedor_por_rut' => [
+                '76.185.139-K' => '1276139',
+            ],
+            'cotiz.mercadopublico.oc_backfill_radio_dias' => 0,
+        ]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 14409,
+            'descripcion' => 'Ganador ajeno',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '3000-1031-COT26',
+            'ocompra' => '',
+            'nota_softland' => 1440900,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '3000-1031-COT26',
+            'id_orden_compra' => 55445901,
+            'fecha_ultimo_cambio' => '2026-09-04 14:55:00',
+            'rut_ganador' => '78.308.634-4',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => false,
+        ]);
+
+        Http::fake([
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [
+                    [
+                        'Codigo' => '3000-1200-AG26',
+                        'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 3000-1031-COT26',
+                        'Estado' => 'Enviada a Proveedor',
+                    ],
+                ],
+            ]),
+        ]);
+
+        $service = app(NotaMpResultadosService::class);
+        $this->assertSame('updated', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
+        $this->assertDatabaseHas('notas', [
+            'nronota' => 14409,
+            'ocompra' => '3000-1200-AG26',
+        ]);
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
+
+            return str_contains($request->url(), 'ordenesdecompra.json')
+                && isset($q['fecha'])
+                && ! isset($q['CodigoProveedor']);
+        });
+    }
 }
