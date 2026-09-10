@@ -428,7 +428,7 @@ class MercadoPublicoOrdenCompraService
             }
         }
 
-        $porNombre = $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso);
+        $porNombre = $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso, $montoGanador);
         if ($porNombre !== null) {
             return $porNombre;
         }
@@ -439,12 +439,17 @@ class MercadoPublicoOrdenCompraService
     }
 
     /**
-     * Fallback: Nombre de la OC igual al nombre del proceso CA (casos sin «compra ágil: COT» en el listado).
+     * Fallback: Nombre de la OC igual o que contiene el nombre del proceso CA
+     * (casos sin «compra ágil: COT» en el listado).
      *
      * @param  list<array<string, mixed>>  $listado
      */
-    public function buscarCodigoPorNombreProceso(array $listado, string $codigoCot, ?string $nombreProceso): ?string
-    {
+    public function buscarCodigoPorNombreProceso(
+        array $listado,
+        string $codigoCot,
+        ?string $nombreProceso,
+        ?float $montoGanador = null,
+    ): ?string {
         $nombreNorm = $this->normalizarNombreOc((string) ($nombreProceso ?? ''));
         if ($nombreNorm === '') {
             return null;
@@ -456,7 +461,13 @@ class MercadoPublicoOrdenCompraService
                 continue;
             }
             $itemNombre = $this->normalizarNombreOc((string) ($item['Nombre'] ?? ''));
-            if ($itemNombre === '' || $itemNombre !== $nombreNorm) {
+            if ($itemNombre === '') {
+                continue;
+            }
+            $igual = $itemNombre === $nombreNorm
+                || str_contains($itemNombre, $nombreNorm)
+                || str_contains($nombreNorm, $itemNombre);
+            if (! $igual) {
                 continue;
             }
             $codigo = $this->codigoAgDesdeItem($item);
@@ -483,6 +494,13 @@ class MercadoPublicoOrdenCompraService
             if (count($porPrefijo) === 1) {
                 return $porPrefijo[0];
             }
+            if (count($porPrefijo) > 1 && $montoGanador !== null && $montoGanador > 0) {
+                return $this->desambiguarCandidatosPorMonto($porPrefijo, $montoGanador);
+            }
+        }
+
+        if ($montoGanador !== null && $montoGanador > 0) {
+            return $this->desambiguarCandidatosPorMonto($matches, $montoGanador);
         }
 
         return null;

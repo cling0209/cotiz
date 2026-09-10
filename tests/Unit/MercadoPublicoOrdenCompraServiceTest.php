@@ -507,4 +507,40 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    public function test_insumos_oficina_desambigua_dos_oc_mismo_nombre_por_monto(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'codigo=1057510-3499-AG26')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [['Codigo' => '1057510-3499-AG26', 'Total' => 216023]],
+                ]);
+            }
+            if (str_contains($url, 'codigo=1057510-3484-AG26')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [['Codigo' => '1057510-3484-AG26', 'Total' => 480522]],
+                ]);
+            }
+
+            return Http::response(['Cantidad' => 0, 'Listado' => []]);
+        });
+
+        $listado = [
+            ['Codigo' => '1057510-3499-AG26', 'Nombre' => 'INSUMOS OFICINA, AGOSTO 2026'],
+            ['Codigo' => '1057510-3484-AG26', 'Nombre' => 'INSUMOS OFICINA, AGOSTO 2026'],
+        ];
+
+        $this->assertSame(
+            '1057510-3499-AG26',
+            $this->service->buscarCodigoEnListado(
+                $listado,
+                '1057510-1481-COT26',
+                'insumos oficina',
+                216023.0,
+            ),
+        );
+    }
 }
