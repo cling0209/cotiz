@@ -2622,7 +2622,7 @@ class NotaMpResultadosService
 
     /**
      * Resuelve notas.ocompra (código AG) vía API OC v1 listando por fecha + match COT.
-     * Usa id_orden_compra / fechas / rut_ganador del seguimiento (sin Compra Ágil api2).
+     * Solo cerradas sin ocompra; usa id_orden_compra / fechas / rut_ganador (sin Compra Ágil api2).
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
@@ -2639,7 +2639,11 @@ class NotaMpResultadosService
         }
 
         $seg = NotaMpSeguimiento::query()->find($nronota);
-        $idOrdenCompra = (int) ($seg?->id_orden_compra ?? 0);
+        if ($seg === null || (string) ($seg->resultado_propio ?? '') !== 'cerrada') {
+            return 'skipped';
+        }
+
+        $idOrdenCompra = (int) ($seg->id_orden_compra ?? 0);
         if ($idOrdenCompra <= 0) {
             return 'skipped';
         }

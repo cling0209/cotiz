@@ -15,7 +15,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) a notas.ocompra buscando en listados OC v1 por fecha/COT (sin Compra Ágil)';
+    protected $description = 'Copia código OC (AG) a notas cerradas sin ocompra (listados OC v1 por fecha/COT)';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -32,9 +32,11 @@ class BackfillOcompraCommand extends Command
         $delayMs = max(0, (int) $this->option('delay-ms'));
         $nronotaOpt = $this->option('nronota');
 
+        // Solo cerradas en MP sin código OC alfanumérico (aunque tengan id_orden_compra).
         $query = Nota::query()
             ->select(['notas.nronota', 'notas.ocompra', 'notas.encargado', 'seg.id_orden_compra', 'seg.codigo_proceso'])
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->where('seg.resultado_propio', 'cerrada')
             ->whereRaw("trim(coalesce(notas.ocompra, '')) = ''")
             ->whereNotNull('seg.id_orden_compra')
             ->where('seg.id_orden_compra', '>', 0)
@@ -47,7 +49,7 @@ class BackfillOcompraCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas con id_orden_compra y ocompra vacío.');
+            $this->info('No hay notas cerradas con id_orden_compra y ocompra vacío.');
 
             return self::SUCCESS;
         }

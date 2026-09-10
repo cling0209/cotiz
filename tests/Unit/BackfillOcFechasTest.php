@@ -185,4 +185,34 @@ class BackfillOcFechasTest extends TestCase
         $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
         Http::assertNothingSent();
     }
+
+    public function test_rellenar_ocompra_skip_si_no_esta_cerrada(): void
+    {
+        $nota = Nota::query()->create([
+            'nronota' => 14408,
+            'descripcion' => 'Pendiente sin OC',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '3560-70-COT26',
+            'ocompra' => '',
+            'nota_softland' => 1440800,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '3560-70-COT26',
+            'id_orden_compra' => 54528070,
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+        ]);
+
+        Http::fake();
+
+        $service = app(NotaMpResultadosService::class);
+        $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
+        Http::assertNothingSent();
+    }
 }
