@@ -110,6 +110,7 @@ class BackfillOcFechasTest extends TestCase
             'nronota' => $nota->nronota,
             'codigo_proceso' => '3560-69-COT26',
             'id_orden_compra' => 54528069,
+            'fecha_ultimo_cambio' => '2026-03-23 09:10:00',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
@@ -120,6 +121,7 @@ class BackfillOcFechasTest extends TestCase
                 'Listado' => [
                     [
                         'Codigo' => '3560-120-AG26',
+                        'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 3560-69-COT26',
                         'Estado' => 'Enviada a Proveedor',
                         'Total' => 1000,
                         'Fechas' => [
@@ -143,6 +145,12 @@ class BackfillOcFechasTest extends TestCase
 
         Http::assertNotSent(function ($request) {
             return str_contains($request->url(), 'api2.mercadopublico.cl');
+        });
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
+
+            return str_contains($request->url(), 'ordenesdecompra.json')
+                && isset($q['fecha']);
         });
     }
 

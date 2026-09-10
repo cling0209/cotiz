@@ -96,20 +96,19 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         $this->assertSame('2026-09-04 20:55:33', $detalle['fecha_aceptacion']?->format('Y-m-d H:i:s'));
     }
 
-    public function test_resolver_codigo_por_id_numerico_antes_de_listado(): void
+    public function test_resolver_codigo_usa_listado_por_fecha_no_id_numerico(): void
     {
         Http::fake([
-            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::sequence()
-                ->push([
-                    'Cantidad' => 1,
-                    'Listado' => [
-                        [
-                            'Codigo' => '3560-120-AG26',
-                            'Estado' => 'Enviada a Proveedor',
-                            'Fechas' => ['FechaEnvio' => '2026-03-24T10:00:00'],
-                        ],
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [
+                    [
+                        'Codigo' => '3560-120-AG26',
+                        'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 3560-69-COT26',
+                        'Estado' => 'Enviada a Proveedor',
                     ],
-                ]),
+                ],
+            ]),
         ]);
 
         $codigo = $this->service->resolverCodigoPorCotizacion(
@@ -123,24 +122,20 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         $this->assertSame('3560-120-AG26', $codigo);
         Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
+
             return str_contains($request->url(), 'ordenesdecompra.json')
-                && ($request['codigo'] ?? null) === '54528069';
+                && isset($q['fecha'])
+                && ! isset($q['codigo']);
         });
-        Http::assertSentCount(1);
     }
 
-    public function test_resolver_codigo_ag_por_id_rechaza_si_api_no_trae_patron_ag(): void
+    public function test_resolver_codigo_ag_por_id_numerico_no_llama_mp(): void
     {
-        Http::fake([
-            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
-                'Cantidad' => 1,
-                'Listado' => [
-                    ['Codigo' => '54528069', 'Estado' => 'Aceptada'],
-                ],
-            ]),
-        ]);
+        Http::fake();
 
         $this->assertNull($this->service->resolverCodigoAgPorIdOrdenCompra(54528069));
+        Http::assertNothingSent();
     }
 
     public function test_resolver_codigo_consulta_oc_v1(): void

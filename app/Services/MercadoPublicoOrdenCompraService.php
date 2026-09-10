@@ -11,9 +11,9 @@ use RuntimeException;
  * Resuelve el código alfanumérico de OC (ej. 1411-2423-AG26) vía API clásica v1.
  * Compra Ágil v2 solo entrega id_orden_compra numérico; el código AG está en v1.
  *
- * Orden: (1) detalle OC v1 con ?codigo={id_numerico}, (2) listados por fecha
- * matcheando texto COT / nombre del proceso.
- * Detalle: ordenesdecompra.json?codigo=… (FechaEnvio, etc.). Path /{codigo}.json responde 404.
+ * Orden: listados OC v1 por fecha (+ CodigoProveedor) matcheando COT / nombre del proceso.
+ * Detalle: ordenesdecompra.json?codigo=…-AGxx (FechaEnvio, etc.).
+ * Nota: ?codigo={id_numerico} responde inválido (HTTP 500 Codigo 10300) — no usarlo.
  */
 class MercadoPublicoOrdenCompraService
 {
@@ -95,11 +95,8 @@ class MercadoPublicoOrdenCompraService
             return null;
         }
 
-        // 1 request: la API v1 acepta el ID numérico en ?codigo= y devuelve Codigo AG.
-        $porId = $this->resolverCodigoAgPorIdOrdenCompra($idOrdenCompra);
-        if ($porId !== null) {
-            return $porId;
-        }
+        // MP v1 no acepta id numérico en ?codigo= (HTTP 500 "parámetros no válidos").
+        // Resolver solo por listados de fecha + match COT / nombre.
 
         $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
         $nombreProceso = $this->nombreProcesoDesdePayload($payload);
@@ -152,20 +149,12 @@ class MercadoPublicoOrdenCompraService
     }
 
     /**
-     * Obtiene el código AG consultando OC v1 con el id numérico (`?codigo=54528069`).
+     * La API OC v1 no acepta id numérico en ?codigo= (responde 500 / parámetros inválidos).
+     * Se mantiene por compatibilidad; siempre retorna null sin llamar a MP.
      */
     public function resolverCodigoAgPorIdOrdenCompra(int $idOrdenCompra): ?string
     {
-        if ($idOrdenCompra <= 0 || ! $this->isConfigured()) {
-            return null;
-        }
-
-        $detalle = $this->obtenerDetallePorCodigo((string) $idOrdenCompra);
-        if ($detalle === null) {
-            return null;
-        }
-
-        return $this->codigoAgSiValido((string) ($detalle['codigo'] ?? ''));
+        return null;
     }
 
     /**

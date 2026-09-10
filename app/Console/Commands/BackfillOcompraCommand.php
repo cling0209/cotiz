@@ -14,7 +14,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) público a notas.ocompra desde id_orden_compra (API v1, sin Compra Ágil)';
+    protected $description = 'Copia código OC (AG) a notas.ocompra buscando en listados OC v1 por fecha/COT (sin Compra Ágil)';
 
     public function handle(NotaMpResultadosService $resultados): int
     {

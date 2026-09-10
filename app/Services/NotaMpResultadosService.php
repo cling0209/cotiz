@@ -2621,8 +2621,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Resuelve notas.ocompra (código AG) desde seg.id_orden_compra vía API OC v1.
-     * No llama Compra Ágil (api2); útil cuando el detalle CA da 504 pero ya hay ID OC.
+     * Resuelve notas.ocompra (código AG) vía API OC v1 listando por fecha + match COT.
+     * Usa id_orden_compra / fechas / rut_ganador del seguimiento (sin Compra Ágil api2).
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
@@ -2648,12 +2648,35 @@ class NotaMpResultadosService
             return 'error';
         }
 
+        $codigoCot = strtoupper(trim((string) ($seg->codigo_proceso ?: $nota->encargado ?: '')));
+        if ($codigoCot === '' || ! $this->esCodigoCompraAgil($codigoCot)) {
+            return 'skipped';
+        }
+
+        $refFecha = $seg->fecha_ultimo_cambio
+            ?? $seg->fecha_cierre
+            ?? ($nota->fecha ? Carbon::parse((string) $nota->fecha) : null)
+            ?? now()->subDays(3);
+
+        $payload = [
+            'id_orden_compra' => $idOrdenCompra,
+            'fechas' => [
+                'fecha_ultimo_cambio' => $refFecha->format('Y-m-d H:i:s'),
+                'fecha_cierre' => $seg->fecha_cierre?->format('Y-m-d H:i:s'),
+            ],
+        ];
+
         try {
-            $codigoOc = $this->ordenCompraMp->resolverCodigoAgPorIdOrdenCompra($idOrdenCompra);
+            $codigoOc = $this->ordenCompraMp->resolverCodigoPorCotizacion(
+                $codigoCot,
+                $payload,
+                $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null,
+            );
         } catch (RuntimeException $e) {
-            Log::warning('NotaMpResultados: backfill ocompra desde id OC falló', [
+            Log::warning('NotaMpResultados: backfill ocompra por listado OC falló', [
                 'nronota' => $nronota,
                 'id_orden_compra' => $idOrdenCompra,
+                'codigo_cot' => $codigoCot,
                 'error' => mb_substr($e->getMessage(), 0, 200),
             ]);
 
