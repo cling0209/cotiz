@@ -2658,25 +2658,24 @@ class NotaMpResultadosService
             ?? ($nota->fecha ? Carbon::parse((string) $nota->fecha) : null)
             ?? now()->subDays(3);
 
-        $payload = [
-            'id_orden_compra' => $idOrdenCompra,
-            'fechas' => [
-                'fecha_ultimo_cambio' => $refFecha->format('Y-m-d H:i:s'),
-                'fecha_cierre' => $seg->fecha_cierre?->format('Y-m-d H:i:s'),
-            ],
-        ];
+        $radio = max(0, min(7, (int) config('cotiz.mercadopublico.oc_backfill_radio_dias', 3)));
+        $fechas = $this->ordenCompraMp->fechasBusquedaVentana($refFecha, $radio);
 
         try {
-            $codigoOc = $this->ordenCompraMp->resolverCodigoPorCotizacion(
+            $codigoOc = $this->ordenCompraMp->resolverCodigoEnFechas(
                 $codigoCot,
-                $payload,
+                $fechas,
                 $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null,
+                null,
+                omitirListadoSinProveedor: true,
             );
         } catch (RuntimeException $e) {
             Log::warning('NotaMpResultados: backfill ocompra por listado OC falló', [
                 'nronota' => $nronota,
                 'id_orden_compra' => $idOrdenCompra,
                 'codigo_cot' => $codigoCot,
+                'radio_dias' => $radio,
+                'fechas' => $fechas,
                 'error' => mb_substr($e->getMessage(), 0, 200),
             ]);
 

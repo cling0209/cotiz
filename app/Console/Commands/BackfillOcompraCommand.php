@@ -11,6 +11,7 @@ class BackfillOcompraCommand extends Command
     protected $signature = 'compra-agil:backfill-ocompra
                             {--limit=100 : Máximo de notas a procesar}
                             {--delay-ms=800 : Pausa entre llamadas a MP (cuota)}
+                            {--radio-dias=3 : Días ± alrededor de fecha_ultimo_cambio}
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
@@ -18,6 +19,9 @@ class BackfillOcompraCommand extends Command
 
     public function handle(NotaMpResultadosService $resultados): int
     {
+        $radio = max(0, min(7, (int) $this->option('radio-dias')));
+        config(['cotiz.mercadopublico.oc_backfill_radio_dias' => $radio]);
+
         if (! $resultados->apiConfigurada() && ! $this->option('dry-run')) {
             $this->error('MERCADOPUBLICO_TICKET no configurado.');
 
@@ -48,7 +52,7 @@ class BackfillOcompraCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->info(sprintf('Candidatas: %d (limit=%d)', $candidatas->count(), $limit));
+        $this->info(sprintf('Candidatas: %d (limit=%d radio_dias=±%d)', $candidatas->count(), $limit, $radio));
 
         if ($this->option('dry-run')) {
             foreach ($candidatas as $nota) {

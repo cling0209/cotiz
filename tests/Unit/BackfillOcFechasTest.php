@@ -134,6 +134,8 @@ class BackfillOcFechasTest extends TestCase
             'api2.mercadopublico.cl/*' => Http::response(['success' => 'NOK'], 500),
         ]);
 
+        config(['cotiz.mercadopublico.oc_backfill_radio_dias' => 3]);
+
         $service = app(NotaMpResultadosService::class);
         $resultado = $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota);
 

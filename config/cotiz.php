@@ -195,6 +195,8 @@ return [
         ],
         // Días máximos (desde fecha cierre/último cambio −1 hasta hoy) al buscar código AG en OC v1.
         'oc_busqueda_max_dias' => max(4, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS', 31))),
+        // Backfill ocompra: ventana ±N días alrededor de fecha_ultimo_cambio (ahorra cuota).
+        'oc_backfill_radio_dias' => max(0, min(7, (int) env('MERCADOPUBLICO_OC_BACKFILL_RADIO_DIAS', 3))),
         'regiones' => array_values(array_filter(array_map(
             'intval',
             array_map('trim', explode(',', (string) env(

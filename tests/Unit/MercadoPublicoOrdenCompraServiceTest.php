@@ -66,6 +66,56 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         );
     }
 
+    public function test_fechas_busqueda_ventana_centrada_no_pasa_hoy(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-09 12:00:00', 'America/Santiago'));
+        config(['app.timezone' => 'America/Santiago']);
+
+        $fechas = $this->service->fechasBusquedaVentana(
+            Carbon::parse('2026-09-08 10:00:00', 'America/Santiago'),
+            3,
+        );
+
+        $this->assertContains('08092026', $fechas);
+        $this->assertContains('09092026', $fechas);
+        $this->assertContains('07092026', $fechas);
+        $this->assertNotContains('10092026', $fechas);
+        $this->assertLessThanOrEqual(7, count($fechas));
+        Carbon::setTestNow();
+    }
+
+    public function test_resolver_codigo_en_fechas_usa_proveedor_y_pocas_llamadas(): void
+    {
+        Http::fake([
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [
+                    [
+                        'Codigo' => '1411-2423-AG26',
+                        'Nombre' => 'invitación a compra ágil: 1411-882-COT26',
+                    ],
+                ],
+            ]),
+        ]);
+
+        $codigo = $this->service->resolverCodigoEnFechas(
+            '1411-882-COT26',
+            ['05082026'],
+            '76.185.139-K',
+            null,
+            omitirListadoSinProveedor: true,
+        );
+
+        $this->assertSame('1411-2423-AG26', $codigo);
+        Http::assertSentCount(1);
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
+
+            return ($q['CodigoProveedor'] ?? null) === '1276139'
+                && ($q['fecha'] ?? null) === '05082026';
+        });
+    }
+
     public function test_obtener_detalle_por_codigo_incluye_fecha_envio(): void
     {
         Http::fake([

@@ -149,6 +149,118 @@ class MercadoPublicoOrdenCompraService
     }
 
     /**
+     * Ventana corta de fechas (dmY) centrada en una referencia (± radio), sin pasar de hoy.
+     *
+     * @return list<string>
+     */
+    public function fechasBusquedaVentana(?Carbon $referencia, int $radioDias = 3): array
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $hoy = now()->timezone($tz)->startOfDay();
+        $radio = max(0, min(7, $radioDias));
+        $centro = ($referencia ?? $hoy)->copy()->timezone($tz)->startOfDay();
+
+        $out = [];
+        for ($d = -$radio; $d <= $radio; $d++) {
+            $dia = $centro->copy()->addDays($d);
+            if ($dia->greaterThan($hoy)) {
+                continue;
+            }
+            $out[] = $dia->format('dmY');
+        }
+
+        // Preferir el día central y luego los más recientes.
+        $out = array_values(array_unique($out));
+        usort($out, static function (string $a, string $b) use ($centro): int {
+            $da = Carbon::createFromFormat('dmY', $a, $centro->timezoneName)->startOfDay();
+            $db = Carbon::createFromFormat('dmY', $b, $centro->timezoneName)->startOfDay();
+            $cmp = $da->diffInDays($centro) <=> $db->diffInDays($centro);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            return $db->timestamp <=> $da->timestamp;
+        });
+
+        return $out;
+    }
+
+    /**
+     * Busca código AG en listados OC v1 solo en las fechas dadas (p. ej. backfill ±3 días).
+     *
+     * @param  list<string>  $fechasDdmmaaaa
+     */
+    public function resolverCodigoEnFechas(
+        string $codigoCot,
+        array $fechasDdmmaaaa,
+        ?string $rutGanador,
+        ?string $nombreProceso = null,
+        bool $omitirListadoSinProveedor = true,
+    ): ?string {
+        $codigoCot = strtoupper(trim($codigoCot));
+        if ($codigoCot === '' || ! $this->isConfigured() || $fechasDdmmaaaa === []) {
+            return null;
+        }
+
+        $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
+        $huboCuotaAgotada = false;
+
+        foreach ($fechasDdmmaaaa as $fechaDdmmaaaa) {
+            $fechaDdmmaaaa = trim((string) $fechaDdmmaaaa);
+            if ($fechaDdmmaaaa === '') {
+                continue;
+            }
+
+            if ($codigoProveedor !== null && $codigoProveedor !== '') {
+                try {
+                    $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
+                } catch (RuntimeException $e) {
+                    $huboCuotaAgotada = true;
+                    Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC (ventana)', [
+                        'fecha' => $fechaDdmmaaaa,
+                        'CodigoProveedor' => $codigoProveedor,
+                        'error' => mb_substr($e->getMessage(), 0, 160),
+                    ]);
+                    $listado = null;
+                }
+                if (is_array($listado)) {
+                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso);
+                    if ($codigo !== null) {
+                        return $codigo;
+                    }
+                }
+
+                if ($omitirListadoSinProveedor) {
+                    continue;
+                }
+            }
+
+            try {
+                $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
+            } catch (RuntimeException $e) {
+                $huboCuotaAgotada = true;
+                Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC sin proveedor (ventana)', [
+                    'fecha' => $fechaDdmmaaaa,
+                    'error' => mb_substr($e->getMessage(), 0, 160),
+                ]);
+
+                continue;
+            }
+
+            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso);
+            if ($codigo !== null) {
+                return $codigo;
+            }
+        }
+
+        if ($huboCuotaAgotada) {
+            throw new RuntimeException('Cuota diaria de Mercado Público agotada consultando órdenes de compra.');
+        }
+
+        return null;
+    }
+
+    /**
      * La API OC v1 no acepta id numérico en ?codigo= (responde 500 / parámetros inválidos).
      * Se mantiene por compatibilidad; siempre retorna null sin llamar a MP.
      */
