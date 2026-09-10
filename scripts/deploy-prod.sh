@@ -38,6 +38,27 @@ echo "Building sidecar PaddleOCR (tablas PDF nativas + OCR)..."
 echo "Levantando sidecar PaddleOCR..."
 "${COMPOSE[@]}" up -d --no-deps --force-recreate paddleocr
 
+# Postgres debe estar arriba: un compose fallido previo puede dejarlo en Created
+# y con --no-deps app la app hace crash-loop (no resuelve host "postgres").
+if "${COMPOSE[@]}" config --services 2>/dev/null | grep -qx postgres; then
+  echo "Asegurando Postgres..."
+  "${COMPOSE[@]}" up -d postgres
+  echo "Esperando Postgres healthy..."
+  for i in $(seq 1 60); do
+    status="$("${COMPOSE[@]}" ps postgres --format '{{.Status}}' 2>/dev/null | tr -d '\r' || true)"
+    if echo "$status" | grep -qi healthy; then
+      echo "Postgres OK ($status)"
+      break
+    fi
+    if [ "$i" -eq 60 ]; then
+      echo "Postgres no quedó healthy: $status"
+      "${COMPOSE[@]}" logs postgres --tail 40 || true
+      exit 1
+    fi
+    sleep 2
+  done
+fi
+
 echo "Recreando contenedor (rm inmediato antes de up)..."
 docker rm -f "$APP_CONTAINER" 2>/dev/null || true
 docker ps -aq --filter "name=${PROJECT_NAME}-app" | xargs -r docker rm -f 2>/dev/null || true
