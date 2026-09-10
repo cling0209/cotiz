@@ -106,4 +106,54 @@ class CompraAgilComisionesServiceTest extends TestCase
             $estado->invoke($service, $propio),
         );
     }
+
+    #[Test]
+    public function fecha_envio_usa_oc_en_cerrada_propia_y_ultimo_cambio_en_ajena(): void
+    {
+        $service = app(CompraAgilComisionesService::class);
+        $ref = new \ReflectionClass($service);
+        $fecha = $ref->getMethod('fechaEnvioOUltimaModificacion');
+        $fecha->setAccessible(true);
+
+        config([
+            'cotiz.reicol_rut' => '76.111.111-1',
+            'cotiz.romulo_rut' => '76.222.222-2',
+        ]);
+
+        $envio = \Illuminate\Support\Carbon::parse('2026-09-01 10:00:00');
+        $cambio = \Illuminate\Support\Carbon::parse('2026-09-05 15:30:00');
+
+        $propia = new \App\Models\NotaMpSeguimiento([
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '76.111.111-1',
+            'oc_fecha_envio' => $envio,
+            'fecha_ultimo_cambio' => $cambio,
+        ]);
+        $this->assertTrue($envio->equalTo($fecha->invoke($service, $propia)));
+
+        $ajena = new \App\Models\NotaMpSeguimiento([
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '11.111.111-1',
+            'oc_fecha_envio' => $envio,
+            'fecha_ultimo_cambio' => $cambio,
+        ]);
+        $this->assertTrue($cambio->equalTo($fecha->invoke($service, $ajena)));
+
+        $desierta = new \App\Models\NotaMpSeguimiento([
+            'resultado_propio' => 'desierta',
+            'rut_ganador' => null,
+            'oc_fecha_envio' => $envio,
+            'fecha_ultimo_cambio' => $cambio,
+        ]);
+        $this->assertTrue($cambio->equalTo($fecha->invoke($service, $desierta)));
+    }
+
+    #[Test]
+    public function resultados_visibles_solo_cerrada_desierta_cancelada(): void
+    {
+        $this->assertSame(
+            ['cerrada', 'desierta', 'cancelada'],
+            CompraAgilComisionesService::RESULTADOS_VISIBLE,
+        );
+    }
 }

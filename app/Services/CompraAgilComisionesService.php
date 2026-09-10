@@ -20,6 +20,9 @@ class CompraAgilComisionesService
     /** MP aún no entrega listado de proveedores cotizando. */
     public const PARTICIPACION_SIN_PROVEEDORES = 'sin_proveedores';
 
+    /** Estados de seguimiento visibles en Comisiones. */
+    public const RESULTADOS_VISIBLE = ['cerrada', 'desierta', 'cancelada'];
+
     /** @var list<string>|null */
     private ?array $rutsGanadorasNorm = null;
 
@@ -129,7 +132,7 @@ class CompraAgilComisionesService
                 'Participó MP',
                 'Ganada',
                 'Orden compra',
-                'Fecha envío OC',
+                'Fecha envío OC o última modificación',
                 'Ejecutivo',
                 'Región',
                 'Factor',
@@ -211,14 +214,15 @@ class CompraAgilComisionesService
     }
 
     /**
-     * Todas las cotizaciones con seguimiento MP (cualquier estado), con o sin OC.
+     * Cotizaciones cerradas / desiertas / canceladas (no pendientes).
      *
      * @param  array<string, mixed>  $filtros
      * @return Builder<NotaMpSeguimiento>
      */
     private function buildQuery(array $filtros): Builder
     {
-        $query = NotaMpSeguimiento::query();
+        $query = NotaMpSeguimiento::query()
+            ->whereIn('resultado_propio', self::RESULTADOS_VISIBLE);
 
         if (! empty($filtros['nronota'])) {
             $query->where('nronota', (int) $filtros['nronota']);
@@ -233,12 +237,20 @@ class CompraAgilComisionesService
             $query->whereHas('nota', fn (Builder $q) => $q->where('usuario', $usuario));
         }
 
+        [$sqlFecha, $bindingsFecha] = $this->sqlExpresionFechaEnvioVisible();
+
         if (! empty($filtros['fecha_envio_desde'])) {
-            $query->where('oc_fecha_envio', '>=', $filtros['fecha_envio_desde'].' 00:00:00');
+            $query->whereRaw(
+                "({$sqlFecha}) >= ?",
+                [...$bindingsFecha, $filtros['fecha_envio_desde'].' 00:00:00'],
+            );
         }
 
         if (! empty($filtros['fecha_envio_hasta'])) {
-            $query->where('oc_fecha_envio', '<=', $filtros['fecha_envio_hasta'].' 23:59:59');
+            $query->whereRaw(
+                "({$sqlFecha}) <= ?",
+                [...$bindingsFecha, $filtros['fecha_envio_hasta'].' 23:59:59'],
+            );
         }
 
         if (! empty($filtros['fecha_creacion_desde'])) {
@@ -256,6 +268,48 @@ class CompraAgilComisionesService
         }
 
         return $query;
+    }
+
+    /**
+     * Fecha mostrada/filtrada en Comisiones:
+     * - cerrada propia (ganador Reicol/Rómulo): oc_fecha_envio (fallback último cambio)
+     * - cerrada ajena / desierta / cancelada: fecha_ultimo_cambio
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    private function sqlExpresionFechaEnvioVisible(string $alias = 'nota_mp_seguimientos'): array
+    {
+        $ruts = $this->rutsGanadorasNormalizados();
+        if ($ruts === []) {
+            return ["{$alias}.fecha_ultimo_cambio", []];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ruts), '?'));
+        $rutNormSql = "regexp_replace(upper(coalesce({$alias}.rut_ganador, '')), '[^0-9K]', '', 'g')";
+
+        $sql = "CASE
+            WHEN {$alias}.resultado_propio = 'cerrada'
+             AND {$rutNormSql} IN ({$placeholders})
+            THEN COALESCE({$alias}.oc_fecha_envio, {$alias}.fecha_ultimo_cambio)
+            ELSE {$alias}.fecha_ultimo_cambio
+        END";
+
+        return [$sql, $ruts];
+    }
+
+    /**
+     * Fecha a mostrar en columna «Fecha envío OC o última modificación».
+     */
+    private function fechaEnvioOUltimaModificacion(NotaMpSeguimiento $seg): mixed
+    {
+        $resultado = (string) ($seg->resultado_propio ?? '');
+        $propia = $this->esGanadaGrupo($seg->rut_ganador);
+
+        if ($resultado === 'cerrada' && $propia) {
+            return $seg->oc_fecha_envio ?? $seg->fecha_ultimo_cambio;
+        }
+
+        return $seg->fecha_ultimo_cambio;
     }
 
     /**
@@ -371,12 +425,18 @@ class CompraAgilComisionesService
         $sort = (string) ($filtros['sort'] ?? 'nronota');
         $dir = strtolower((string) ($filtros['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
 
+        if ($sort === 'fecha_envio') {
+            [$sqlFecha, $bindingsFecha] = $this->sqlExpresionFechaEnvioVisible();
+
+            return $query
+                ->orderByRaw("({$sqlFecha}) IS NULL", $bindingsFecha)
+                ->orderByRaw("({$sqlFecha}) {$dir}", $bindingsFecha)
+                ->orderByDesc('nronota');
+        }
+
         return match ($sort) {
             'codigo_proceso' => $query->orderBy('codigo_proceso', $dir)->orderByDesc('nronota'),
             'orden_compra' => $query->orderBy('id_orden_compra', $dir)->orderByDesc('nronota'),
-            'fecha_envio' => $query->orderByRaw('oc_fecha_envio IS NULL')
-                ->orderBy('oc_fecha_envio', $dir)
-                ->orderByDesc('nronota'),
             'fecha_creacion' => $query->orderBy(
                 Nota::query()->select('fecha')->whereColumn('notas.nronota', 'nota_mp_seguimientos.nronota'),
                 $dir,
@@ -423,7 +483,7 @@ class CompraAgilComisionesService
             'participo_mp' => $participoMp,
             'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,
-            'fecha_envio_oc' => $seg->oc_fecha_envio,
+            'fecha_envio_oc' => $this->fechaEnvioOUltimaModificacion($seg),
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,
             'region_nombre' => $this->regionNombreNota($nota),

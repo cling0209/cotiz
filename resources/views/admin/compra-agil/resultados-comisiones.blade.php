@@ -19,7 +19,9 @@
     </div>
 
     <p class="text-muted small mb-3">
-        Cotizaciones con registro en Mercado Público (cualquier estado), con o sin orden de compra.
+        Solo cotizaciones con seguimiento <strong>cerrada</strong>, <strong>desierta</strong> o <strong>cancelada</strong>.
+        La columna de fecha muestra el <strong>envío de OC</strong> si la cerrada es propia (ganador Reicol/Rómulo);
+        si es ajena (u otras), usa la <strong>última modificación</strong> del seguimiento.
         La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra en la nota
         (si en MP hay OC pero aún no está el número, no aplica comisión).
         El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP.
@@ -47,12 +49,12 @@
                         value="{{ $filtros['fecha_creacion_hasta'] ?? '' }}">
                 </div>
                 <div class="col-auto">
-                    <label for="f-envio-desde" class="form-label small mb-0">Fecha envío OC desde</label>
+                    <label for="f-envio-desde" class="form-label small mb-0">Fecha envío OC / última mod. desde</label>
                     <input type="date" class="form-control form-control-sm" id="f-envio-desde" name="fecha_envio_desde"
                         value="{{ $filtros['fecha_envio_desde'] ?? '' }}">
                 </div>
                 <div class="col-auto">
-                    <label for="f-envio-hasta" class="form-label small mb-0">Fecha envío OC hasta</label>
+                    <label for="f-envio-hasta" class="form-label small mb-0">Fecha envío OC / última mod. hasta</label>
                     <input type="date" class="form-control form-control-sm" id="f-envio-hasta" name="fecha_envio_hasta"
                         value="{{ $filtros['fecha_envio_hasta'] ?? '' }}">
                 </div>
@@ -106,7 +108,7 @@
                         <th>Participó MP</th>
                         <th>Ganada</th>
                         <th>Código OC</th>
-                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC', 'route' => 'admin.compra-agil.resultados.comisiones'])
+                        @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC o última modificación', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Ejecutivo</th>
                         <th>Región</th>
                         <th class="text-end">Factor</th>
@@ -173,7 +175,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="19" class="text-center text-muted py-4">Sin cotizaciones con seguimiento MP para los filtros aplicados.</td>
+                            <td colspan="19" class="text-center text-muted py-4">Sin cotizaciones cerradas, desiertas o canceladas para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>
