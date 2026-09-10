@@ -2621,6 +2621,57 @@ class NotaMpResultadosService
     }
 
     /**
+     * Resuelve notas.ocompra (código AG) desde seg.id_orden_compra vía API OC v1.
+     * No llama Compra Ágil (api2); útil cuando el detalle CA da 504 pero ya hay ID OC.
+     *
+     * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
+     */
+    public function rellenarOcompraDesdeIdOrdenCompra(int $nronota): string
+    {
+        $nota = Nota::query()->find($nronota);
+        if ($nota === null) {
+            return 'skipped';
+        }
+
+        $actual = trim((string) ($nota->ocompra ?? ''));
+        if ($actual !== '') {
+            return 'skipped';
+        }
+
+        $seg = NotaMpSeguimiento::query()->find($nronota);
+        $idOrdenCompra = (int) ($seg?->id_orden_compra ?? 0);
+        if ($idOrdenCompra <= 0) {
+            return 'skipped';
+        }
+
+        if (! $this->ordenCompraMp->isConfigured()) {
+            return 'error';
+        }
+
+        try {
+            $codigoOc = $this->ordenCompraMp->resolverCodigoAgPorIdOrdenCompra($idOrdenCompra);
+        } catch (RuntimeException $e) {
+            Log::warning('NotaMpResultados: backfill ocompra desde id OC falló', [
+                'nronota' => $nronota,
+                'id_orden_compra' => $idOrdenCompra,
+                'error' => mb_substr($e->getMessage(), 0, 200),
+            ]);
+
+            return str_contains($e->getMessage(), 'Cuota') ? 'error_cuota' : 'error';
+        }
+
+        if ($codigoOc === null || $codigoOc === '') {
+            return 'not_found';
+        }
+
+        Nota::query()->whereKey($nronota)->update(['ocompra' => mb_substr($codigoOc, 0, 20)]);
+        $nota->ocompra = $codigoOc;
+        $this->sincronizarFechasOcSeguimiento($nronota, $codigoOc);
+
+        return 'updated';
+    }
+
+    /**
      * Completa oc_fecha_* en el seguimiento si faltan (detalle v1 ?codigo=).
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
