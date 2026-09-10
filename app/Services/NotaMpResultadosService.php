@@ -852,8 +852,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Sigue consultando mientras MP ya tiene id_orden_compra pero falta el código AG en notas.ocompra
-     * (cualquier ganador: Reicol, Romulo u otro).
+     * Sigue consultando mientras falta el código AG en notas.ocompra
+     * solo si el ganador es del grupo (Reicol/Romulo). Ajenos no reintentan por OC.
      */
     public function pendienteOcompraAlfanumerica(
         ?string $ocompraNota,
@@ -864,7 +864,11 @@ class NotaMpResultadosService
             return false;
         }
 
-        return $idOrdenCompra !== null && $idOrdenCompra > 0;
+        if ($idOrdenCompra === null || $idOrdenCompra <= 0) {
+            return false;
+        }
+
+        return $this->etiquetaGanadorPorRut($rutGanador) !== null;
     }
 
     /**
@@ -878,6 +882,19 @@ class NotaMpResultadosService
         $query->whereNotNull("{$segAlias}.id_orden_compra")
             ->where("{$segAlias}.id_orden_compra", '>', 0)
             ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''");
+
+        $ruts = $this->rutsGrupoNormalizadosParaSql();
+        if ($ruts === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
+        $query->whereRaw(
+            "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
+            $ruts,
+        );
     }
 
     /**
@@ -2158,6 +2175,11 @@ class NotaMpResultadosService
             $deadline,
             $procesadasAlInicio,
         ) {
+            // ID OC solo para ganador del grupo; ajenos no persisten ni persiguen OC.
+            $idOrdenCompraGuardar = $this->etiquetaGanadorPorRut($rutGanador) !== null
+                ? $this->ordenCompraMp->idOrdenCompraDesdePayload($payload)
+                : null;
+
             $datosSeguimiento = array_merge(
                 [
                     'codigo_proceso' => $codigo,
@@ -2168,7 +2190,7 @@ class NotaMpResultadosService
                     'razon_social_ganador' => $ganadorProv !== null
                         ? mb_substr(trim((string) ($ganadorProv['razon_social'] ?? '')), 0, 200)
                         : null,
-                    'id_orden_compra' => $this->ordenCompraMp->idOrdenCompraDesdePayload($payload),
+                    'id_orden_compra' => $idOrdenCompraGuardar,
                     'monto_total_ganador' => $montoGanador,
                     'resultado_propio' => $resultadoPropio,
                     'finalizado' => $finalizado,
@@ -2250,29 +2272,31 @@ class NotaMpResultadosService
 
         $this->rellenarRegionNotaDesdePayload($nota, $payload, $codigo);
 
-        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
+        $idOrdenCompraPayload = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
+        $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
+        // Solo propios persisten/persiguen id OC; ajenos usan null en la lógica de reintento.
+        $idOrdenCompra = $esGanadorGrupo ? $idOrdenCompraPayload : null;
         $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
 
         if ($this->pendienteOcompraAlfanumerica($ocompraNota, $idOrdenCompra, $rutGanador)) {
-            // MP ya emitió OC numérica pero falta código AG → seguir en masivo.
+            // Propio: MP ya emitió OC numérica pero falta código AG → seguir en masivo.
             if ($finalizado) {
                 NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => false]);
                 $finalizado = false;
             }
-        } elseif ($ocompraNota !== '' && in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true)) {
-            // Ya hay Código OC y resultado cerrado (p. ej. proveedor_seleccionado): no seguir en masivo.
+        } elseif ($esGanadorGrupo && $ocompraNota !== '' && in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true)) {
+            // Ya hay Código OC y resultado cerrado: no seguir en masivo.
             if (! $finalizado) {
                 NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => true]);
                 $finalizado = true;
             }
         }
 
-        $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
-        // Código AG si ya está; «Pendiente» si hay id OC numérico sin código AG (cualquier ganador).
+        // Código AG / «Pendiente» solo para ganador del grupo.
         $ordenCompraVisible = '';
-        if ($ocompraNota !== '') {
+        if ($ocompraNota !== '' && $esGanadorGrupo) {
             $ordenCompraVisible = $ocompraNota;
-        } elseif ($idOrdenCompra) {
+        } elseif ($esGanadorGrupo && $idOrdenCompra) {
             $ordenCompraVisible = 'Pendiente';
         }
 
@@ -2318,13 +2342,21 @@ class NotaMpResultadosService
 
     /**
      * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
-     * Aplica a cualquier ganador (Reicol, Romulo u otro proveedor).
-     * Persiste también fechas OC (FechaEnvio / Creacion / Aceptacion) en nota_mp_seguimientos.
+     * Solo ganador del grupo (Reicol/Romulo). Persiste fechas OC en nota_mp_seguimientos.
      *
      * @param  array<string, mixed>  $payload
      */
     private function sincronizarOcompraNotaSiCorresponde(Nota $nota, string $codigoCot, array $payload, ?string $rutGanador): ?string
     {
+        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
+            // Ajeno: no buscar ni conservar código OC.
+            if (trim((string) ($nota->ocompra ?? '')) !== '') {
+                $this->limpiarOcompraSiGanadorAjeno((int) $nota->nronota, $nota);
+            }
+
+            return null;
+        }
+
         $actual = trim((string) ($nota->ocompra ?? ''));
         if ($actual !== '') {
             $this->sincronizarFechasOcSeguimiento((int) $nota->nronota, $actual);
@@ -2361,7 +2393,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Quita ocompra/fechas OC si el ganador no es Reicol ni Romulo (alcance incorrecto).
+     * Quita ocompra, id_orden_compra y fechas OC si el ganador no es Reicol ni Romulo.
+     * Si el resultado ya está cerrado, marca finalizado para no reintentar por OC.
      */
     public function limpiarOcompraSiGanadorAjeno(int $nronota, ?Nota $nota = null): bool
     {
@@ -2370,8 +2403,13 @@ class NotaMpResultadosService
             return false;
         }
 
-        $teniaOcompra = trim((string) ($nota->ocompra ?? '')) !== '';
         $seg = NotaMpSeguimiento::query()->find($nronota);
+        if ($seg !== null && $this->etiquetaGanadorPorRut($seg->rut_ganador !== null ? (string) $seg->rut_ganador : null) !== null) {
+            return false;
+        }
+
+        $teniaOcompra = trim((string) ($nota->ocompra ?? '')) !== '';
+        $teniaIdOc = $seg !== null && (int) ($seg->id_orden_compra ?? 0) > 0;
         $teniaFechas = $seg !== null && (
             $seg->oc_fecha_envio !== null
             || $seg->oc_fecha_creacion !== null
@@ -2379,7 +2417,7 @@ class NotaMpResultadosService
             || trim((string) ($seg->oc_estado ?? '')) !== ''
         );
 
-        if (! $teniaOcompra && ! $teniaFechas) {
+        if (! $teniaOcompra && ! $teniaIdOc && ! $teniaFechas) {
             return false;
         }
 
@@ -2388,15 +2426,22 @@ class NotaMpResultadosService
             $nota->ocompra = '';
         }
 
-        if ($seg !== null && $teniaFechas) {
-            $update = [
-                'oc_fecha_envio' => null,
-                'oc_fecha_creacion' => null,
-                'oc_fecha_aceptacion' => null,
-                'oc_estado' => null,
-            ];
-            if (! Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
-                $update = [];
+        if ($seg !== null) {
+            $update = [];
+            if ($teniaIdOc) {
+                $update['id_orden_compra'] = null;
+            }
+            if ($teniaFechas && Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
+                $update['oc_fecha_envio'] = null;
+                $update['oc_fecha_creacion'] = null;
+                $update['oc_fecha_aceptacion'] = null;
+                $update['oc_estado'] = null;
+            }
+            $resultado = (string) ($seg->resultado_propio ?? '');
+            if (in_array($resultado, ['cerrada', 'desierta', 'cancelada', 'no_encontrada'], true)
+                && ! $seg->finalizado
+            ) {
+                $update['finalizado'] = true;
             }
             if ($update !== []) {
                 NotaMpSeguimiento::query()->whereKey($nronota)->update($update);
@@ -2407,27 +2452,42 @@ class NotaMpResultadosService
     }
 
     /**
-     * Cantidad de notas con ocompra/fechas OC cuyo ganador no es Reicol/Romulo.
+     * Cantidad de notas con ocompra / id OC / fechas cuyo ganador no es Reicol/Romulo.
      */
     public function contarOcompraFueraDeGrupo(): int
+    {
+        return (int) $this->queryOcompraFueraDeGrupo()->count();
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<Nota>
+     */
+    private function queryOcompraFueraDeGrupo(): \Illuminate\Database\Eloquent\Builder
     {
         $ruts = $this->rutsGrupoNormalizadosParaSql();
         $query = Nota::query()
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''");
+            ->where(function ($q) {
+                $q->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
+                    ->orWhere('seg.id_orden_compra', '>', 0);
+                if (Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
+                    $q->orWhereNotNull('seg.oc_fecha_envio')
+                        ->orWhereNotNull('seg.oc_fecha_creacion')
+                        ->orWhereNotNull('seg.oc_fecha_aceptacion')
+                        ->orWhereRaw("trim(coalesce(seg.oc_estado, '')) <> ''");
+                }
+            });
 
         if ($ruts === []) {
-            return (int) $query->count();
+            return $query;
         }
 
         $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
 
-        return (int) $query
-            ->whereRaw(
-                "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
-                $ruts,
-            )
-            ->count();
+        return $query->whereRaw(
+            "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
+            $ruts,
+        );
     }
 
     /**
@@ -2435,21 +2495,10 @@ class NotaMpResultadosService
      */
     public function limpiarOcomprasFueraDeGrupo(int $limit = 500): int
     {
-        $ruts = $this->rutsGrupoNormalizadosParaSql();
-        $query = Nota::query()
+        $query = $this->queryOcompraFueraDeGrupo()
             ->select(['notas.nronota', 'notas.ocompra'])
-            ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
             ->orderByDesc('notas.nronota')
             ->limit(max(1, $limit));
-
-        if ($ruts !== []) {
-            $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
-            $query->whereRaw(
-                "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
-                $ruts,
-            );
-        }
 
         $limpiadas = 0;
         foreach ($query->get() as $nota) {
@@ -2622,7 +2671,7 @@ class NotaMpResultadosService
 
     /**
      * Resuelve notas.ocompra (código AG) vía API OC v1 listando por fecha + match COT.
-     * Solo cerradas sin ocompra; incluye ganador propio o ajeno (sin Compra Ágil api2).
+     * Solo cerradas del grupo (Reicol/Romulo) sin ocompra.
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
@@ -2640,6 +2689,11 @@ class NotaMpResultadosService
 
         $seg = NotaMpSeguimiento::query()->find($nronota);
         if ($seg === null || (string) ($seg->resultado_propio ?? '') !== 'cerrada') {
+            return 'skipped';
+        }
+
+        $rutGanador = $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null;
+        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
             return 'skipped';
         }
 
@@ -2663,12 +2717,6 @@ class NotaMpResultadosService
             ?? now()->subDays(3);
 
         $radio = max(0, min(7, (int) config('cotiz.mercadopublico.oc_backfill_radio_dias', 3)));
-        $rutGanador = $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null;
-        // Ajeno: sin CodigoProveedor mapeado → hay que listar sin proveedor (más cuota).
-        $codigoProveedor = $this->ordenCompraMp->codigoProveedorMpParaRut($rutGanador);
-        if ($codigoProveedor === null || $codigoProveedor === '') {
-            $radio = max($radio, 7);
-        }
         $fechas = $this->ordenCompraMp->fechasBusquedaVentana($refFecha, $radio);
 
         try {
@@ -2677,9 +2725,7 @@ class NotaMpResultadosService
                 $fechas,
                 $rutGanador,
                 null,
-                // Propio: intenta con CodigoProveedor y, si no hay match, listado general.
-                // Ajeno: solo listado general (codigoProveedor null).
-                omitirListadoSinProveedor: false,
+                omitirListadoSinProveedor: true,
             );
         } catch (RuntimeException $e) {
             Log::warning('NotaMpResultados: backfill ocompra por listado OC falló', [
@@ -2698,7 +2744,6 @@ class NotaMpResultadosService
             return 'not_found';
         }
 
-        // Persistir aunque el ganador no sea Reicol/Romulo.
         Nota::query()->whereKey($nronota)->update(['ocompra' => mb_substr($codigoOc, 0, 20)]);
         $nota->ocompra = $codigoOc;
         $this->sincronizarFechasOcSeguimiento($nronota, $codigoOc);

@@ -16,7 +16,7 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_muestra_ocompra_aunque_ganador_no_sea_reicol_ni_romulo(): void
+    public function test_muestra_ocompra_solo_si_ganador_grupo_o_propio(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -43,13 +43,14 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
             'rut_ganador' => '11111111-1',
             'id_orden_compra' => 999,
         ]);
+        $segOtro->es_ganador_propio = false;
         $segOtro->setRelation('nota', new Nota(['ocompra' => '1411-2423-AG26']));
 
         $this->assertSame('1411-2423-AG26', $segGanador->textoOrdenCompraMp());
-        $this->assertSame('1411-2423-AG26', $segOtro->textoOrdenCompraMp());
+        $this->assertSame('—', $segOtro->textoOrdenCompraMp());
     }
 
-    public function test_pendiente_cuando_falta_codigo_ag_y_hay_id_oc_cualquier_ganador(): void
+    public function test_pendiente_cuando_falta_codigo_ag_solo_si_ganador_grupo(): void
     {
         config([
             'cotiz.reicol_rut' => '76.356.855-5',
@@ -67,7 +68,8 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         $seg->es_ganador_propio = false;
         $seg->setRelation('nota', new Nota(['ocompra' => '']));
 
-        $this->assertSame('Pendiente', $seg->textoOrdenCompraMp());
+        // Ajeno: no mostrar «Pendiente» ni perseguir OC.
+        $this->assertSame('—', $seg->textoOrdenCompraMp());
     }
 
     public function test_pendiente_cuando_falta_codigo_ag_y_es_grupo(): void

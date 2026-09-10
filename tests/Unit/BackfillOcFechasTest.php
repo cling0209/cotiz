@@ -91,6 +91,8 @@ class BackfillOcFechasTest extends TestCase
         config([
             'cotiz.mercadopublico.ticket' => 'test-ticket',
             'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
         ]);
 
         $nota = Nota::query()->create([
@@ -111,6 +113,7 @@ class BackfillOcFechasTest extends TestCase
             'codigo_proceso' => '3560-69-COT26',
             'id_orden_compra' => 54528069,
             'fecha_ultimo_cambio' => '2026-03-23 09:10:00',
+            'rut_ganador' => '76.185.139-K',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
@@ -216,21 +219,8 @@ class BackfillOcFechasTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_rellenar_ocompra_tambien_si_ganador_ajeno(): void
+    public function test_rellenar_ocompra_skip_si_ganador_ajeno(): void
     {
-        if (! Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
-            $this->markTestSkipped('Migración oc_fecha_* no aplicada en sqlite de test.');
-        }
-
-        config([
-            'cotiz.mercadopublico.ticket' => 'test-ticket',
-            'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
-            'cotiz.mercadopublico.codigo_proveedor_por_rut' => [
-                '76.185.139-K' => '1276139',
-            ],
-            'cotiz.mercadopublico.oc_backfill_radio_dias' => 0,
-        ]);
-
         $nota = Nota::query()->create([
             'nronota' => 14409,
             'descripcion' => 'Ganador ajeno',
@@ -254,31 +244,16 @@ class BackfillOcFechasTest extends TestCase
             'finalizado' => false,
         ]);
 
-        Http::fake([
-            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
-                'Cantidad' => 1,
-                'Listado' => [
-                    [
-                        'Codigo' => '3000-1200-AG26',
-                        'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 3000-1031-COT26',
-                        'Estado' => 'Enviada a Proveedor',
-                    ],
-                ],
-            ]),
+        Http::fake();
+
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
         ]);
 
         $service = app(NotaMpResultadosService::class);
-        $this->assertSame('updated', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
-        $this->assertDatabaseHas('notas', [
-            'nronota' => 14409,
-            'ocompra' => '3000-1200-AG26',
-        ]);
-        Http::assertSent(function ($request) {
-            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
-
-            return str_contains($request->url(), 'ordenesdecompra.json')
-                && isset($q['fecha'])
-                && ! isset($q['CodigoProveedor']);
-        });
+        $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
+        Http::assertNothingSent();
     }
 }

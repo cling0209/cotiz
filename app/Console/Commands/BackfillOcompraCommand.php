@@ -15,7 +15,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) a notas cerradas sin ocompra (propio o ajeno; listados OC v1)';
+    protected $description = 'Copia código OC (AG) a notas cerradas del grupo (Reicol/Romulo) sin ocompra';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -32,7 +32,16 @@ class BackfillOcompraCommand extends Command
         $delayMs = max(0, (int) $this->option('delay-ms'));
         $nronotaOpt = $this->option('nronota');
 
-        // Cerradas sin código OC: cualquier ganador (Reicol/Romulo u otro).
+        $ruts = [];
+        foreach ($resultados->rutsEmpresasGrupo() as $rut) {
+            $norm = strtoupper(preg_replace('/[^0-9kK]/', '', (string) $rut) ?? '');
+            if ($norm !== '') {
+                $ruts[] = $norm;
+            }
+        }
+        $ruts = array_values(array_unique($ruts));
+
+        // Solo cerradas del grupo sin código OC.
         $query = Nota::query()
             ->select([
                 'notas.nronota',
@@ -49,6 +58,18 @@ class BackfillOcompraCommand extends Command
             ->where('seg.id_orden_compra', '>', 0)
             ->orderByDesc('notas.nronota');
 
+        if ($ruts === []) {
+            $this->warn('Sin RUTs de grupo configurados; no hay candidatas.');
+
+            return self::SUCCESS;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
+        $query->whereRaw(
+            "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
+            $ruts,
+        );
+
         if ($nronotaOpt !== null && $nronotaOpt !== '') {
             $query->where('notas.nronota', (int) $nronotaOpt);
         }
@@ -56,13 +77,13 @@ class BackfillOcompraCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas cerradas (propio/ajeno) con id_orden_compra y ocompra vacío.');
+            $this->info('No hay notas cerradas del grupo con id_orden_compra y ocompra vacío.');
 
             return self::SUCCESS;
         }
 
         $this->info(sprintf(
-            'Candidatas: %d (limit=%d radio_dias=±%d; incluye ganador ajeno)',
+            'Candidatas: %d (limit=%d radio_dias=±%d; solo ganador propio/grupo)',
             $candidatas->count(),
             $limit,
             $radio,

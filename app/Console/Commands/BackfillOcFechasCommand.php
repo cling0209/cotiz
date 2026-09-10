@@ -14,7 +14,7 @@ class BackfillOcFechasCommand extends Command
                             {--delay-ms=800 : Pausa entre llamadas a MP (cuota)}
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}
-                            {--limpiar-ajenos : Borra ocompra/fechas si el ganador no es Reicol ni Romulo}';
+                            {--limpiar-ajenos : Borra ocompra/id OC/fechas si el ganador no es Reicol ni Romulo}';
 
     protected $description = 'Rellena oc_fecha_* en seguimientos con ocompra, o limpia OC de ganadores ajenos (--limpiar-ajenos)';
 
@@ -129,7 +129,7 @@ class BackfillOcFechasCommand extends Command
     {
         $limit = max(1, (int) $this->option('limit'));
         $pendientes = $resultados->contarOcompraFueraDeGrupo();
-        $this->info(sprintf('Ocompra con ganador ajeno (no Reicol/Romulo): %d', $pendientes));
+        $this->info(sprintf('OC (código/id/fechas) con ganador ajeno (no Reicol/Romulo): %d', $pendientes));
 
         if ($this->option('dry-run') || $pendientes === 0) {
             return self::SUCCESS;
