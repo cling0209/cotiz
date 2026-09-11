@@ -23,6 +23,11 @@ class CompraAgilComisionesService
     /** Estados de seguimiento visibles en Comisiones. */
     public const RESULTADOS_VISIBLE = ['cerrada', 'desierta', 'cancelada'];
 
+    /** Zona agregada en resumen por ejecutivo. */
+    public const ZONA_METROPOLITANA = 'Metropolitana';
+
+    public const ZONA_REGION = 'Región';
+
     /** @var list<string>|null */
     private ?array $rutsGanadorasNorm = null;
 
@@ -84,6 +89,9 @@ class CompraAgilComisionesService
     }
 
     /**
+     * Resumen por ejecutivo y zona (Metropolitana / Región).
+     * Si la nota no tiene región, la zona se deduce por factor (1,22 = RM).
+     *
      * @param  array<string, mixed>  $filtros
      * @return Collection<int, object>
      */
@@ -92,13 +100,18 @@ class CompraAgilComisionesService
         $filas = $this->listadoDetalle($filtros);
 
         return $filas
-            ->groupBy(fn (object $fila) => $fila->ejecutivo_username ?: '(sin ejecutivo)')
+            ->groupBy(function (object $fila) {
+                $user = $fila->ejecutivo_username ?: '(sin ejecutivo)';
+
+                return $user.'|'.$fila->zona_resumen;
+            })
             ->map(function (Collection $grupo) {
                 $primera = $grupo->first();
 
                 return (object) [
                     'ejecutivo' => $primera->ejecutivo,
                     'ejecutivo_username' => $primera->ejecutivo_username,
+                    'zona' => $primera->zona_resumen,
                     'cantidad_cotizaciones' => $grupo->count(),
                     'costo' => (int) $grupo->sum('costo'),
                     'venta' => (int) $grupo->sum('venta'),
@@ -109,7 +122,11 @@ class CompraAgilComisionesService
                     'a_pagar' => (int) $grupo->sum('a_pagar'),
                 ];
             })
-            ->sortBy('ejecutivo', SORT_NATURAL | SORT_FLAG_CASE)
+            ->sortBy(
+                fn (object $fila) => mb_strtolower((string) $fila->ejecutivo)
+                    .'|'.($fila->zona === self::ZONA_METROPOLITANA ? '0' : '1'),
+                SORT_NATURAL,
+            )
             ->values();
     }
 
@@ -185,6 +202,7 @@ class CompraAgilComisionesService
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Ejecutivo',
+                'Zona',
                 'Cantidad cotizaciones',
                 'Costo',
                 'Venta',
@@ -194,9 +212,15 @@ class CompraAgilComisionesService
                 'Pago',
                 'A pagar',
             ], ';');
+            $ejecutivoAnterior = null;
             foreach ($filas as $fila) {
+                $userKey = $fila->ejecutivo_username ?: $fila->ejecutivo;
+                if ($ejecutivoAnterior !== null && $ejecutivoAnterior !== $userKey) {
+                    fputcsv($out, [], ';');
+                }
                 fputcsv($out, [
                     $fila->ejecutivo,
+                    $fila->zona,
                     $fila->cantidad_cotizaciones,
                     $fila->costo,
                     $fila->venta,
@@ -206,6 +230,7 @@ class CompraAgilComisionesService
                     $fila->pago,
                     $fila->a_pagar,
                 ], ';');
+                $ejecutivoAnterior = $userKey;
             }
             fclose($out);
         }, $filename, [
@@ -487,6 +512,7 @@ class CompraAgilComisionesService
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,
             'region_nombre' => $this->regionNombreNota($nota),
+            'zona_resumen' => $this->zonaResumenNota($nota, $factor),
             'factor' => $factor,
             'costo' => $costo,
             'venta' => $venta,
@@ -526,5 +552,24 @@ class CompraAgilComisionesService
         }
 
         return '—';
+    }
+
+    /**
+     * Zona para resumen: región de la nota, o por factor si falta (1,22 = Metropolitana).
+     */
+    private function zonaResumenNota(?Nota $nota, float $factor): string
+    {
+        $region = $nota?->region !== null ? (int) $nota->region : 0;
+        if ($region > 0) {
+            return CompraAgilRegionScope::esMetropolitana($region)
+                ? self::ZONA_METROPOLITANA
+                : self::ZONA_REGION;
+        }
+
+        $factorRm = round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2);
+
+        return abs(round($factor, 2) - $factorRm) < 0.001
+            ? self::ZONA_METROPOLITANA
+            : self::ZONA_REGION;
     }
 }

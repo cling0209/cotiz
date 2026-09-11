@@ -156,4 +156,42 @@ class CompraAgilComisionesServiceTest extends TestCase
             CompraAgilComisionesService::RESULTADOS_VISIBLE,
         );
     }
+
+    #[Test]
+    public function zona_resumen_usa_region_o_factor_si_falta(): void
+    {
+        $service = app(CompraAgilComisionesService::class);
+        $ref = new \ReflectionClass($service);
+        $zona = $ref->getMethod('zonaResumenNota');
+        $zona->setAccessible(true);
+
+        config([
+            'cotiz.factor_precio_venta_rm' => 1.22,
+            'cotiz.factor_precio_venta_otras' => 1.30,
+        ]);
+
+        $rm = new \App\Models\Nota(['region' => 13]);
+        $this->assertSame(
+            CompraAgilComisionesService::ZONA_METROPOLITANA,
+            $zona->invoke($service, $rm, 1.30),
+        );
+
+        $region = new \App\Models\Nota(['region' => 5]);
+        $this->assertSame(
+            CompraAgilComisionesService::ZONA_REGION,
+            $zona->invoke($service, $region, 1.22),
+        );
+
+        $sinRegionRm = new \App\Models\Nota(['region' => null]);
+        $this->assertSame(
+            CompraAgilComisionesService::ZONA_METROPOLITANA,
+            $zona->invoke($service, $sinRegionRm, 1.22),
+        );
+
+        $sinRegionOtras = new \App\Models\Nota(['region' => 0]);
+        $this->assertSame(
+            CompraAgilComisionesService::ZONA_REGION,
+            $zona->invoke($service, $sinRegionOtras, 1.30),
+        );
+    }
 }
