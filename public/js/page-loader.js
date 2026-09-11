@@ -157,9 +157,10 @@
     }
 
     /**
-     * Exportaciones CSV grandes: descarga nativa (iframe) + overlay.
-     * No usa fetch/blob (cuelga con muchos datos) ni page-loader-pending.
-     * Cierra al iniciar la descarga, Escape, clic en overlay (tras 2s) o timeout.
+     * Exportaciones CSV: inicia descarga nativa y muestra overlay breve.
+     * Los adjuntos casi nunca disparan load en el iframe → no esperar eso
+     * (dejaba la UI pegada hasta 2 min). Se cierra solo a los ~2,5s;
+     * la descarga sigue en el navegador.
      */
     function downloadWithLoader(link) {
         const href = link.getAttribute('href');
@@ -170,7 +171,7 @@
         downloadUntil = 0;
         clearNavigationPending();
         showLoader();
-        setStatus('Descargando…');
+        setStatus('Descargando… revise la barra de descargas del navegador');
 
         const startedAt = Date.now();
         let finished = false;
@@ -181,7 +182,7 @@
                 return;
             }
             finished = true;
-            clearTimeout(safetyTimeout);
+            clearTimeout(autoHideTimeout);
             loader.removeEventListener('click', onOverlayClick);
             document.removeEventListener('keydown', onEscape);
             downloadUntil = Date.now() + 2500;
@@ -196,7 +197,7 @@
         };
 
         const onOverlayClick = () => {
-            if (Date.now() - startedAt < 2000) {
+            if (Date.now() - startedAt < 400) {
                 return;
             }
             finish();
@@ -210,10 +211,10 @@
 
         loader.addEventListener('click', onOverlayClick);
         document.addEventListener('keydown', onEscape);
+        iframe.addEventListener('load', () => setTimeout(finish, 300));
 
-        iframe.addEventListener('load', () => setTimeout(finish, 500));
-        // Si el adjunto no dispara load, no dejar la UI pegada para siempre.
-        const safetyTimeout = setTimeout(finish, 120000);
+        // Cierre rápido: no depender del load del iframe (adjuntos no lo disparan).
+        const autoHideTimeout = setTimeout(finish, 2500);
     }
 
     window.PageLoader = {

@@ -246,7 +246,7 @@ window.CotizSesionConfig = {
 };
 </script>
 <script src="{{ asset('js/session-expired.js') }}?v=2"></script>
-<script src="{{ asset('js/page-loader.js') }}?v=descarga-nativa-overlay" defer></script>
+<script src="{{ asset('js/page-loader.js') }}?v=export-autohide-2s" defer></script>
 <script src="{{ asset('js/listado-por-pagina.js') }}?v=1" defer></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script src="{{ asset('js/password-toggle.js') }}?v=2" defer></script>

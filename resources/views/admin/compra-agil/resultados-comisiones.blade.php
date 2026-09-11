@@ -87,13 +87,14 @@
         <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <p class="text-muted small mb-0">La descarga respeta los filtros actuales (todos o la selección filtrada).</p>
             @if($items->total() > 0)
-                <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export">
                         <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                     </a>
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm">
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export">
                         <i class="bi bi-people"></i> Descargar resumen por ejecutivo
                     </a>
+                    <span class="small text-muted d-none" id="comisiones-export-hint" aria-live="polite">Descargando… puede tardar con muchos registros.</span>
                 </div>
             @endif
         </div>
@@ -188,4 +189,33 @@
 </div>
 
 @include('admin.compra-agil.partials.modal-detalle-mp')
+
+@push('scripts')
+<script>
+(function () {
+    const hint = document.getElementById('comisiones-export-hint');
+    const links = document.querySelectorAll('a.js-comisiones-export');
+    if (!hint || !links.length) {
+        return;
+    }
+
+    links.forEach(function (link) {
+        link.addEventListener('click', function () {
+            hint.classList.remove('d-none');
+            links.forEach(function (el) {
+                el.classList.add('disabled');
+                el.setAttribute('aria-disabled', 'true');
+            });
+            setTimeout(function () {
+                hint.classList.add('d-none');
+                links.forEach(function (el) {
+                    el.classList.remove('disabled');
+                    el.removeAttribute('aria-disabled');
+                });
+            }, 8000);
+        });
+    });
+})();
+</script>
+@endpush
 @endsection
