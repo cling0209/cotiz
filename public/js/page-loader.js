@@ -146,55 +146,74 @@
         showLoader();
     }
 
-    async function downloadWithLoader(link) {
+    function triggerNativeDownload(href) {
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+        iframe.src = href;
+        document.body.appendChild(iframe);
+
+        return iframe;
+    }
+
+    /**
+     * Exportaciones CSV grandes: descarga nativa (iframe) + overlay.
+     * No usa fetch/blob (cuelga con muchos datos) ni page-loader-pending.
+     * Cierra al iniciar la descarga, Escape, clic en overlay (tras 2s) o timeout.
+     */
+    function downloadWithLoader(link) {
         const href = link.getAttribute('href');
         if (!href) {
             return;
         }
 
         downloadUntil = 0;
-        beginNavigation();
+        clearNavigationPending();
+        showLoader();
         setStatus('Descargando…');
 
-        try {
-            const res = await fetch(href, {
-                credentials: 'same-origin',
-                headers: { Accept: '*/*' },
-            });
+        const startedAt = Date.now();
+        let finished = false;
+        const iframe = triggerNativeDownload(href);
 
-            if (!res.ok) {
-                const errorText = (await res.text()).trim();
-                throw new Error(errorText || ('HTTP ' + res.status));
+        const finish = () => {
+            if (finished) {
+                return;
             }
-
-            const blob = await res.blob();
-            const filename = parseFilename(
-                res.headers.get('Content-Disposition'),
-                'descarga_' + Date.now()
-            );
-
-            const objectUrl = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = objectUrl;
-            anchor.download = filename;
-            anchor.style.display = 'none';
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            URL.revokeObjectURL(objectUrl);
-        } catch (error) {
-            const message = error instanceof Error && error.message
-                ? error.message
-                : 'No se pudo completar la descarga. Intente nuevamente.';
-            if (window.AdminDialog) {
-                AdminDialog.alert(message, { title: 'Descarga', type: 'danger' });
-            } else {
-                alert(message);
-            }
-        } finally {
-            downloadUntil = Date.now() + 1500;
+            finished = true;
+            clearTimeout(safetyTimeout);
+            loader.removeEventListener('click', onOverlayClick);
+            document.removeEventListener('keydown', onEscape);
+            downloadUntil = Date.now() + 2500;
             hideLoader();
-        }
+            setTimeout(() => {
+                try {
+                    iframe.remove();
+                } catch (error) {
+                    // ignore
+                }
+            }, 120000);
+        };
+
+        const onOverlayClick = () => {
+            if (Date.now() - startedAt < 2000) {
+                return;
+            }
+            finish();
+        };
+
+        const onEscape = (event) => {
+            if (event.key === 'Escape') {
+                finish();
+            }
+        };
+
+        loader.addEventListener('click', onOverlayClick);
+        document.addEventListener('keydown', onEscape);
+
+        iframe.addEventListener('load', () => setTimeout(finish, 500));
+        // Si el adjunto no dispara load, no dejar la UI pegada para siempre.
+        const safetyTimeout = setTimeout(finish, 120000);
     }
 
     window.PageLoader = {
