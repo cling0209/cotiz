@@ -154,6 +154,7 @@
 
         downloadUntil = 0;
         beginNavigation();
+        setStatus('Descargando…');
 
         try {
             const res = await fetch(href, {

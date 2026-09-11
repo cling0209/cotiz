@@ -88,10 +88,10 @@
             <p class="text-muted small mb-0">La descarga respeta los filtros actuales (todos o la selección filtrada).</p>
             @if($items->total() > 0)
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm" download data-no-loader>
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm">
                         <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                     </a>
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm" download data-no-loader>
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm">
                         <i class="bi bi-people"></i> Descargar resumen por ejecutivo
                     </a>
                 </div>
