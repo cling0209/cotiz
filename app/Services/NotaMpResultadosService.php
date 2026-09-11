@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\ProcessNotaMpCorridaJob;
+use App\Jobs\ReintentarCatchUpResultadosJob;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\NotaMpCorrida;
@@ -28,6 +29,16 @@ class NotaMpResultadosService
     private const LIMITE_CORRIDA_MAX = 10000;
 
     private const CACHE_ULTIMO_CATCHUP = 'mp_resultados_ultimo_catchup';
+
+    private const CACHE_CATCHUP_RETRY_LOCK = 'mp_resultados_catchup_retry_lock';
+
+    private const CACHE_CATCHUP_RETRY_ATTEMPT = 'mp_resultados_catchup_retry_attempt';
+
+    /** Segundos entre reintentos cuando el catch-up queda bloqueado por el pipeline. */
+    private const CATCHUP_RETRY_DELAY_SECONDS = 300;
+
+    /** Máximo de reintentos diferidos (~2 h con delay de 5 min). */
+    private const CATCHUP_RETRY_MAX_ATTEMPTS = 24;
 
     public const CATCHUP_ORIGEN_LOGIN = 'login';
 
@@ -1012,6 +1023,8 @@ class NotaMpResultadosService
         }
 
         if ($this->huboCorridaMasivaDesde($slot)) {
+            $this->limpiarReintentoCatchUp(true);
+
             return $this->registrarYDevolverCatchUp($origen, [
                 'accion' => 'omitido',
                 'slot' => $slot->toIso8601String(),
@@ -1020,17 +1033,21 @@ class NotaMpResultadosService
         }
 
         if ($this->corridaEnCurso() !== null) {
+            $this->programarReintentoCatchUp($usuario, $origen);
+
             return $this->registrarYDevolverCatchUp($origen, [
-                'accion' => 'omitido',
+                'accion' => 'pospuesto',
                 'slot' => $slot->toIso8601String(),
-                'mensaje' => 'Ya hay una consulta en curso.',
+                'mensaje' => 'Ya hay una consulta en curso. Se reintentará automáticamente al terminar.',
             ]);
         }
 
         $postergado = $this->motivoPostergarCambiosEstadoPorOrdenPipeline();
         if ($postergado !== null) {
+            $this->programarReintentoCatchUp($usuario, $origen);
+
             return $this->registrarYDevolverCatchUp($origen, [
-                'accion' => 'omitido',
+                'accion' => 'pospuesto',
                 'slot' => $slot->toIso8601String(),
                 'mensaje' => $postergado,
             ]);
@@ -1045,6 +1062,8 @@ class NotaMpResultadosService
                 'mensaje' => $e->getMessage(),
             ]);
         }
+
+        $this->limpiarReintentoCatchUp(true);
 
         return $this->registrarYDevolverCatchUp($origen, [
             'accion' => 'encolada',
@@ -1118,9 +1137,67 @@ class NotaMpResultadosService
             return 'Catch-up: encolado el '.$hora.' por '.$origenLabel.$horario.'.';
         }
 
+        if ($u['accion'] === 'pospuesto') {
+            $motivo = trim($u['mensaje']) !== '' ? $u['mensaje'] : 'pipeline ocupado';
+
+            return 'Catch-up: pospuesto el '.$hora.' ('.$origenLabel.'): '.$motivo
+                .' Se reintentará automáticamente al liberarse el pipeline.';
+        }
+
         $motivo = trim($u['mensaje']) !== '' ? $u['mensaje'] : 'sin detalle';
 
         return 'Catch-up: omitido el '.$hora.' ('.$origenLabel.'): '.$motivo;
+    }
+
+    /**
+     * Encola un reintento diferido del catch-up si el pipeline estaba ocupado.
+     * Evita duplicar jobs concurrentes con un lock corto en cache.
+     */
+    public function programarReintentoCatchUp(
+        string $usuario = 'sistema',
+        string $origen = self::CATCHUP_ORIGEN_BOOT,
+        ?int $intento = null,
+    ): bool {
+        $intento = $intento ?? ((int) Cache::get(self::CACHE_CATCHUP_RETRY_ATTEMPT, 0) + 1);
+        if ($intento > self::CATCHUP_RETRY_MAX_ATTEMPTS) {
+            Log::warning('Catch-up: se agotaron los reintentos diferidos', [
+                'intento' => $intento,
+                'origen' => $origen,
+            ]);
+
+            return false;
+        }
+
+        $delay = self::CATCHUP_RETRY_DELAY_SECONDS;
+        $lockTtl = max(60, $delay - 30);
+        // Solo un reintento en vuelo.
+        if (! Cache::add(self::CACHE_CATCHUP_RETRY_LOCK, $intento, $lockTtl)) {
+            return false;
+        }
+
+        Cache::put(self::CACHE_CATCHUP_RETRY_ATTEMPT, $intento, now()->addHours(3));
+
+        ReintentarCatchUpResultadosJob::dispatch(
+            trim($usuario) ?: 'sistema',
+            $origen,
+            $intento,
+        )->delay(now()->addSeconds($delay));
+
+        Log::info('Catch-up: reintento diferido programado', [
+            'intento' => $intento,
+            'delay_segundos' => $delay,
+            'origen' => $origen,
+        ]);
+
+        return true;
+    }
+
+    public function limpiarReintentoCatchUp(bool $resetIntentos = false): void
+    {
+        Cache::forget(self::CACHE_CATCHUP_RETRY_LOCK);
+        if ($resetIntentos) {
+            Cache::forget(self::CACHE_CATCHUP_RETRY_ATTEMPT);
+        }
     }
 
     /**

@@ -3015,6 +3015,7 @@ class OportunidadBusquedaService
                 'corrida_id' => $corrida->id,
                 'mensaje' => $corrida->mensaje,
             ]);
+            $resultados->limpiarReintentoCatchUp(true);
 
             return true;
         } catch (RuntimeException $e) {

@@ -1217,6 +1217,7 @@ class CompraAgilResultadosTest extends TestCase
 
     public function test_catch_up_schedule_omite_si_vinculacion_en_curso_en_romulo(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         config([
             'app.timezone' => 'America/Santiago',
             'cotiz.mercadopublico.analisis_admin_habilitado' => true,
@@ -1254,9 +1255,10 @@ class CompraAgilResultadosTest extends TestCase
         $resultado = $this->app->make(NotaMpResultadosService::class)
             ->asegurarCorridaProgramadaSiCorresponde('sistema');
 
-        $this->assertSame('omitido', $resultado['accion']);
+        $this->assertSame('pospuesto', $resultado['accion']);
         $this->assertStringContainsString('proceso anterior del pipeline', $resultado['mensaje'] ?? '');
         $this->assertDatabaseMissing('nota_mp_corridas', ['estado' => 'running']);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ReintentarCatchUpResultadosJob::class);
 
         Carbon::setTestNow();
     }

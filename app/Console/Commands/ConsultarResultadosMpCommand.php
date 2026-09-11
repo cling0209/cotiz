@@ -85,6 +85,8 @@ class ConsultarResultadosMpCommand extends Command
         $accion = (string) ($resultado['accion'] ?? '');
         if ($accion === 'encolada') {
             $this->info($mensaje.' (corrida #'.($resultado['corrida_id'] ?? '?').').');
+        } elseif ($accion === 'pospuesto') {
+            $this->info($mensaje.' Reintento diferido programado.');
         } else {
             $this->info($mensaje);
         }

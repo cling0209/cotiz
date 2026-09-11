@@ -58,7 +58,7 @@
     @endif
 
     @if(!empty($textoUltimoCatchUp))
-        <div class="alert {{ ($ultimoCatchUp['accion'] ?? '') === 'encolada' ? 'alert-success' : 'alert-secondary' }} border small mb-3 py-2" id="banner-ultimo-catchup">
+        <div class="alert {{ ($ultimoCatchUp['accion'] ?? '') === 'encolada' ? 'alert-success' : (($ultimoCatchUp['accion'] ?? '') === 'pospuesto' ? 'alert-warning' : 'alert-secondary') }} border small mb-3 py-2" id="banner-ultimo-catchup">
             {{ $textoUltimoCatchUp }}
         </div>
     @endif
