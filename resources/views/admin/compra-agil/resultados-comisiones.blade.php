@@ -88,13 +88,16 @@
             <p class="text-muted small mb-0">La descarga respeta los filtros actuales (todos o la selección filtrada).</p>
             @if($items->total() > 0)
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export">
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                         <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                     </a>
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export">
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                         <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
                     </a>
-                    <span class="small text-muted d-none" id="comisiones-export-hint" aria-live="polite">Descargando… puede tardar con muchos registros.</span>
+                    <span class="small text-primary fw-semibold d-none" id="comisiones-export-hint" aria-live="polite">
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        Descargando… revise la barra de descargas del navegador.
+                    </span>
                 </div>
             @endif
         </div>
@@ -193,6 +196,21 @@
 @push('scripts')
 <script>
 (function () {
+    // Si quedó un overlay de una descarga anterior, liberar la UI de inmediato.
+    try {
+        document.documentElement.classList.remove('page-loader-active');
+        document.body.classList.remove('is-loading');
+        const loader = document.getElementById('page-loader');
+        if (loader) {
+            loader.classList.remove('is-active');
+            loader.setAttribute('aria-hidden', 'true');
+        }
+        if (window.PageLoader && typeof window.PageLoader.hide === 'function') {
+            window.PageLoader.hide();
+        }
+        sessionStorage.removeItem('page-loader-pending');
+    } catch (e) {}
+
     const hint = document.getElementById('comisiones-export-hint');
     const links = document.querySelectorAll('a.js-comisiones-export');
     if (!hint || !links.length) {
@@ -212,7 +230,7 @@
                     el.classList.remove('disabled');
                     el.removeAttribute('aria-disabled');
                 });
-            }, 8000);
+            }, 12000);
         });
     });
 })();
