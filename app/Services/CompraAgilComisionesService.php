@@ -9,6 +9,10 @@ use App\Models\Parametro;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilComisionesService
@@ -195,12 +199,14 @@ class CompraAgilComisionesService
     public function exportarResumen(array $filtros = []): StreamedResponse
     {
         $filas = $this->resumenPorEjecutivo($filtros);
-        $filename = 'comisiones_resumen_ejecutivo_'.now()->format('Ymd_His').'.csv';
+        $filename = 'comisiones_resumen_ejecutivo_'.now()->format('Ymd_His').'.xlsx';
 
         return response()->streamDownload(function () use ($filas) {
-            $out = fopen('php://output', 'w');
-            fprintf($out, "\xEF\xBB\xBF");
-            fputcsv($out, [
+            $spreadsheet = new Spreadsheet;
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Resumen ejecutivo');
+
+            $headers = [
                 'Ejecutivo',
                 'Zona',
                 'Cantidad cotizaciones',
@@ -211,30 +217,93 @@ class CompraAgilComisionesService
                 '20% Comisión',
                 'Pago',
                 'A pagar',
-            ], ';');
+            ];
+            $sheet->fromArray([$headers], null, 'A1');
+
+            $headerRange = 'A1:J1';
+            $sheet->getStyle($headerRange)->applyFromArray([
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => '000000'],
+                ],
+                'fill' => [
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'D9D9D9'],
+                ],
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_LEFT,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                    'wrapText' => false,
+                ],
+            ]);
+            $sheet->getRowDimension(1)->setRowHeight(18);
+
+            $row = 2;
             $ejecutivoAnterior = null;
             foreach ($filas as $fila) {
                 $userKey = $fila->ejecutivo_username ?: $fila->ejecutivo;
                 if ($ejecutivoAnterior !== null && $ejecutivoAnterior !== $userKey) {
-                    fputcsv($out, [], ';');
+                    $row++;
                 }
-                fputcsv($out, [
+
+                $sheet->fromArray([[
                     $fila->ejecutivo,
                     $fila->zona,
-                    $fila->cantidad_cotizaciones,
-                    $fila->costo,
-                    $fila->venta,
-                    $fila->venta_12,
-                    $fila->utilidad,
-                    $fila->comision_20,
-                    $fila->pago,
-                    $fila->a_pagar,
-                ], ';');
+                    (int) $fila->cantidad_cotizaciones,
+                    (int) $fila->costo,
+                    (int) $fila->venta,
+                    (int) $fila->venta_12,
+                    (int) $fila->utilidad,
+                    (int) $fila->comision_20,
+                    (int) $fila->pago,
+                    (int) $fila->a_pagar,
+                ]], null, 'A'.$row);
+
                 $ejecutivoAnterior = $userKey;
+                $row++;
             }
-            fclose($out);
+
+            $lastDataRow = max(2, $row - 1);
+            if ($filas->isNotEmpty()) {
+                $sheet->getStyle('C2:J'.$lastDataRow)
+                    ->getNumberFormat()
+                    ->setFormatCode('#,##0');
+                $sheet->getStyle('C2:J'.$lastDataRow)
+                    ->getAlignment()
+                    ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            }
+
+            foreach (range('A', 'J') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Asegura que títulos largos (ej. "Cantidad cotizaciones", "20% Comisión")
+            // queden visibles aunque autoSize sea corto en algunos entornos.
+            $minWidths = [
+                'A' => 18,
+                'B' => 14,
+                'C' => 22,
+                'D' => 12,
+                'E' => 12,
+                'F' => 12,
+                'G' => 12,
+                'H' => 14,
+                'I' => 12,
+                'J' => 12,
+            ];
+            foreach ($minWidths as $col => $min) {
+                $dim = $sheet->getColumnDimension($col);
+                $current = (float) ($dim->getWidth() ?: 0);
+                if ($current < $min) {
+                    $dim->setAutoSize(false);
+                    $dim->setWidth($min);
+                }
+            }
+
+            (new Xlsx($spreadsheet))->save('php://output');
+            $spreadsheet->disconnectWorksheets();
         }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
 

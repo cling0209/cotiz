@@ -92,7 +92,7 @@
                         <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                     </a>
                     <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export">
-                        <i class="bi bi-people"></i> Descargar resumen por ejecutivo
+                        <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
                     </a>
                     <span class="small text-muted d-none" id="comisiones-export-hint" aria-live="polite">Descargando… puede tardar con muchos registros.</span>
                 </div>
