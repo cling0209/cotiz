@@ -13,6 +13,9 @@
 @if(!empty($filtros['estado_mp']))
     <input type="hidden" name="estado_mp" value="{{ $filtros['estado_mp'] }}">
 @endif
+@if(!empty($filtros['solo_asignadas']))
+    <input type="hidden" name="solo_asignadas" value="1">
+@endif
 <input type="hidden" name="orden_campo" value="{{ $filtros['orden_campo'] ?? 'nronota' }}">
 <input type="hidden" name="orden_dir" value="{{ $filtros['orden_dir'] ?? 'DESC' }}">
 @if(!empty($page))

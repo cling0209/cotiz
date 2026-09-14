@@ -293,6 +293,7 @@ class CotizacionListadoController extends Controller
             'nronota' => $request->input('nronota'),
             'cotizacion' => $request->input('cotizacion'),
             'estado_mp' => $request->input('estado_mp'),
+            'solo_asignadas' => $request->boolean('solo_asignadas') ? '1' : null,
             'orden_campo' => $request->input('orden_campo'),
             'orden_dir' => $request->input('orden_dir'),
             'page' => $request->input('page'),
@@ -338,6 +339,7 @@ class CotizacionListadoController extends Controller
             'fechadesde' => $fechadesde,
             'fechahasta' => $fechahasta,
             'estado_mp' => $estadoMp,
+            'solo_asignadas' => $request->boolean('solo_asignadas'),
             'orden_campo' => $ordenCampo,
             'orden_dir' => $ordenDir,
         ];

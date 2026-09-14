@@ -172,6 +172,13 @@ class NotaListadoService
         $this->aplicarReglasPerfil($query, $user);
         $this->aplicarFiltroEstadoMp($query, $user, $filtros);
 
+        if (! empty($filtros['solo_asignadas'])) {
+            $query->where(function (Builder $q) {
+                $q->whereNotNull('notas.asignado_por')
+                    ->whereRaw("trim(coalesce(notas.asignado_por, '')) <> ''");
+            });
+        }
+
         if (! empty($filtros['nronota'])) {
             $query->where('notas.nronota', (int) $filtros['nronota']);
         } elseif (! empty($filtros['cotizacion'])) {

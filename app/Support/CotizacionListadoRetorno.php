@@ -67,6 +67,9 @@ final class CotizacionListadoRetorno
                 $q[$key] = $valor;
             }
         }
+        if (! empty($filtros['solo_asignadas'])) {
+            $q['solo_asignadas'] = '1';
+        }
         $nronota = (int) ($filtros['nronota'] ?? 0);
         if ($nronota > 0) {
             $q['buscar_nronota'] = $nronota;
@@ -248,7 +251,7 @@ final class CotizacionListadoRetorno
             self::FROM_OPORTUNIDADES => self::CLAVES_OPORTUNIDADES,
             self::FROM_ADJUDICADAS => ['fechaentregadesde', 'fechaentregahasta', 'page', 'buscar_nronota', 'por_pagina'],
             self::FROM_COMISIONES => self::CLAVES_COMISIONES,
-            default => ['fechadesde', 'fechahasta', 'cotizacion', 'estado_mp', 'orden_campo', 'orden_dir', 'page', 'buscar_nronota', 'por_pagina'],
+            default => ['fechadesde', 'fechahasta', 'cotizacion', 'estado_mp', 'solo_asignadas', 'orden_campo', 'orden_dir', 'page', 'buscar_nronota', 'por_pagina'],
         };
 
         foreach ($claves as $key) {
@@ -275,7 +278,7 @@ final class CotizacionListadoRetorno
 
         $permitidas = array_merge(
             [
-                'from', 'fechadesde', 'fechahasta', 'cotizacion', 'estado_mp',
+                'from', 'fechadesde', 'fechahasta', 'cotizacion', 'estado_mp', 'solo_asignadas',
                 'orden_campo', 'orden_dir', 'page', 'buscar_nronota', 'por_pagina',
                 'fechaentregadesde', 'fechaentregahasta',
             ],

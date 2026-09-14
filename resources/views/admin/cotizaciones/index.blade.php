@@ -63,6 +63,20 @@
                 <div class="col-md-auto">
                     <button type="submit" class="btn btn-secondary btn-sm">Buscar cotiz.</button>
                 </div>
+                <div class="col-md-auto">
+                    <div class="form-check mb-0">
+                        <input
+                            type="checkbox"
+                            class="form-check-input"
+                            name="solo_asignadas"
+                            id="filtro-solo-asignadas"
+                            value="1"
+                            @checked(!empty($filtros['solo_asignadas']))
+                            onchange="this.form.submit()"
+                        >
+                        <label class="form-check-label" for="filtro-solo-asignadas">Solo asignadas</label>
+                    </div>
+                </div>
                 @if($puedeVerEstadoMp ?? false)
                     <div class="col-md-2">
                         <label class="form-label" for="filtro-estado-mp">Estado MP</label>
