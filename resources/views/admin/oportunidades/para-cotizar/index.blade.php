@@ -824,6 +824,7 @@
     (function() {
         const puedeBuscar = @json((bool) $puedeBuscar);
         const puedeEliminar = @json((bool) ($puedeEliminar ?? false));
+        const puedeAsignar = @json((bool) ($puedeAsignar ?? false));
         const puedeAdjuntos = @json((bool) ($puedeAdjuntos ?? false));
         const urls = {
             iniciar: @json($puedeBuscar ? route('admin.oportunidades.para-cotizar.iniciar') : ''),
@@ -839,6 +840,7 @@
             vincularCodigo: @json(route('admin.oportunidades.para-cotizar.vincular-codigo')),
             visita: @json(route('admin.oportunidades.para-cotizar.visita')),
             eliminar: @json(($puedeEliminar ?? false) ? route('admin.oportunidades.para-cotizar.destroy') : ''),
+            asignarBase: @json(($puedeAsignar ?? false) ? url()->route('admin.oportunidades.para-cotizar.asignar', ['codigo' => '__CODIGO__']) : ''),
             cotizarBase: @json(route('admin.cotizaciones.create')),
             adjuntosEstado: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
             adjuntosBuscar: @json(($puedeAdjuntos ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
@@ -2861,6 +2863,14 @@
                         <i class="bi bi-trash"></i> Eliminar
                     </button>`
                     : '';
+                const hrefAsignar = (puedeAsignar && codigo && urls.asignarBase)
+                    ? String(urls.asignarBase).replace('__CODIGO__', encodeURIComponent(codigo))
+                    : '';
+                const btnAsignar = hrefAsignar
+                    ? `<a href="${escapeHtml(hrefAsignar)}" class="btn btn-outline-secondary btn-sm text-nowrap" data-no-loader title="Asignar a un ejecutivo">
+                        <i class="bi bi-person-plus"></i> Asignar
+                    </a>`
+                    : '';
                 const nAdj = Number(adjuntosPorCodigo[codigo] || 0);
                 const nombresAdj = Array.isArray(adjuntosArchivosPorCodigo[codigo])
                     ? adjuntosArchivosPorCodigo[codigo]
@@ -2883,8 +2893,8 @@
                     : ((puedeAdjuntos && codigo && nAdj > 0)
                         ? `<button type="button" class="btn btn-link btn-sm p-0 text-start mt-1 btn-ver-adjuntos" data-no-loader data-codigo="${escapeHtml(codigo)}">Ver documentos (${nAdj})</button>`
                         : '');
-                const accionHtml = (btnProductos || btnCotizar || btnAdjuntos || btnEliminar)
-                    ? `<div class="opc-acciones">${btnProductos}${btnCotizar}${btnAdjuntos}${btnEliminar}</div>`
+                const accionHtml = (btnProductos || btnCotizar || btnAsignar || btnAdjuntos || btnEliminar)
+                    ? `<div class="opc-acciones">${btnProductos}${btnCotizar}${btnAsignar}${btnAdjuntos}${btnEliminar}</div>`
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>

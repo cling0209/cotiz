@@ -212,7 +212,20 @@
                                     @endif
                                 @endif
                             </td>
-                            <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
+                            <td>
+                                {{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}
+                                @if(trim((string) ($nota->asignado_por ?? '')) !== '')
+                                    @php
+                                        $asignadoPorNombre = $nota->asignadoPorRel?->fullName() ?: $nota->asignado_por;
+                                        $asignadoAtFmt = $nota->asignado_at
+                                            ? $nota->asignado_at->timezone(config('app.timezone'))->format('d/m/Y H:i')
+                                            : null;
+                                    @endphp
+                                    <div class="small text-muted">
+                                        Asignada por {{ $asignadoPorNombre }}@if($asignadoAtFmt) · {{ $asignadoAtFmt }}@endif
+                                    </div>
+                                @endif
+                            </td>
                             <td>
                                 @php
                                     $obsEjecutivo = trim((string) ($nota->observacion_ejecutivo ?? ''));

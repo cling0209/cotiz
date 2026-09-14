@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Services\CompraAgilRegionScope;
 use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadAdjuntoService;
@@ -12,6 +13,7 @@ use App\Services\OportunidadParaCotizarService;
 use App\Services\OportunidadVinculoService;
 use App\Support\MaterialesImportArchivo;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
@@ -54,6 +56,7 @@ class OportunidadParaCotizarController extends Controller
             'puedeBuscar' => $puedeBuscar,
             'puedePalabras' => $puedePalabras,
             'puedeEliminar' => (bool) $request->user()?->isSuperAdmin(),
+            'puedeAsignar' => (bool) $request->user()?->isSuperAdmin(),
             'puedeAdjuntos' => (bool) $request->user()?->canVerOportunidades(),
             'fechaBusqueda' => is_array($corridaEstado) && ! empty($corridaEstado['fecha_busqueda'])
                 ? (string) $corridaEstado['fecha_busqueda']
@@ -100,6 +103,67 @@ class OportunidadParaCotizarController extends Controller
                     ? 'Oportunidad eliminada y sincronizada al sitio par.'
                     : 'Oportunidad eliminada.'),
         ]);
+    }
+
+    public function asignarForm(Request $request, string $codigo): View|RedirectResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $codigo = strtoupper(trim($codigo));
+        $oportunidad = $this->servicio->encontrarVigentePorCodigo($codigo);
+        if (! $oportunidad) {
+            return redirect()
+                ->route('admin.oportunidades.para-cotizar.index')
+                ->with('error', 'No se encontró la oportunidad vigente «'.$codigo.'».');
+        }
+
+        $tomados = array_fill_keys($this->servicio->codigosTomadosNormalizados(), true);
+        if (isset($tomados[$codigo])) {
+            return redirect()
+                ->route('admin.oportunidades.para-cotizar.index')
+                ->with('info', 'La oportunidad «'.$codigo.'» ya fue tomada o cotizada.');
+        }
+
+        return view('admin.oportunidades.para-cotizar.asignar', [
+            'oportunidad' => $oportunidad,
+            'usuarios' => $this->servicio->ejecutivosParaAsignar(),
+        ]);
+    }
+
+    public function asignar(Request $request, string $codigo): RedirectResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'usuario' => ['required', 'string', 'max:20', 'exists:users,username'],
+        ]);
+
+        $ejecutivo = User::query()
+            ->where('username', $validated['usuario'])
+            ->firstOrFail();
+
+        try {
+            $nota = $this->servicio->asignarAEjecutivo(
+                $codigo,
+                $ejecutivo,
+                $request->user(),
+            );
+        } catch (RuntimeException $e) {
+            return redirect()
+                ->route('admin.oportunidades.para-cotizar.asignar', ['codigo' => strtoupper(trim($codigo))])
+                ->withInput()
+                ->with('error', $e->getMessage());
+        }
+
+        $nombre = $ejecutivo->fullName() ?: $ejecutivo->username;
+
+        return redirect()
+            ->route('admin.cotizaciones.edit', $nota->nronota)
+            ->with('success', 'Oportunidad asignada a '.$nombre.'. Cotización #'.$nota->nronota.'.');
     }
 
     public function registrarVisita(Request $request): JsonResponse

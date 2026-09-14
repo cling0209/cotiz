@@ -7,7 +7,9 @@ use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
 use App\Models\OportunidadTomada;
 use App\Models\OportunidadVisita;
+use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -33,6 +35,7 @@ class OportunidadParaCotizarService
         protected CompraAgilOportunidadService $oportunidad,
         protected CompraAgilPayloadMapper $mapper,
         protected OportunidadEncontradaRelayService $encontradaRelay,
+        protected NotaService $notaService,
     ) {}
 
     public function apiConfigurada(): bool
@@ -280,6 +283,100 @@ class OportunidadParaCotizarService
             $visita->save();
 
             return (int) $visita->veces;
+        });
+    }
+
+    /**
+     * Ejecutivos activos (no bloqueados) disponibles para asignar una oportunidad.
+     *
+     * @return Collection<int, User>
+     */
+    public function ejecutivosParaAsignar(): Collection
+    {
+        return User::query()
+            ->where('perfil', User::PERFIL_EJECUTIVO)
+            ->where('activo', true)
+            ->orderBy('nombre')
+            ->orderBy('apellidop')
+            ->orderBy('username')
+            ->get();
+    }
+
+    public function encontrarVigentePorCodigo(string $codigo): ?OportunidadEncontrada
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        return OportunidadEncontrada::query()
+            ->whereRaw('upper(trim(codigo)) = ?', [$codigo])
+            ->where(function ($query) {
+                $query->whereNull('fecha_cierre')
+                    ->orWhere('fecha_cierre', '>', now());
+            })
+            ->orderByDesc('fecha_busqueda')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Crea una cotización asignada al ejecutivo, reserva el código y saca la oportunidad del listado.
+     */
+    public function asignarAEjecutivo(string $codigo, User $ejecutivo, User $asignador): Nota
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            throw new RuntimeException('Código de oportunidad inválido.');
+        }
+
+        if (! $asignador->isSuperAdmin()) {
+            throw new RuntimeException('Solo un administrador puede asignar oportunidades.');
+        }
+
+        if (! $ejecutivo->isEjecutivo() || ! $ejecutivo->isActivo()) {
+            throw new RuntimeException('Seleccione un ejecutivo activo (no bloqueado).');
+        }
+
+        $oportunidad = $this->encontrarVigentePorCodigo($codigo);
+        if (! $oportunidad) {
+            throw new RuntimeException('No se encontró la oportunidad vigente «'.$codigo.'».');
+        }
+
+        $tomados = array_fill_keys($this->codigosTomadosNormalizados(), true);
+        if (isset($tomados[$codigo])) {
+            throw new RuntimeException('La oportunidad «'.$codigo.'» ya fue tomada o cotizada.');
+        }
+
+        return DB::transaction(function () use ($codigo, $ejecutivo, $asignador, $oportunidad) {
+            $nota = $this->notaService->crear($ejecutivo->username);
+
+            if ($error = $this->notaService->validarNumeroCotizacion($nota, $codigo)) {
+                throw new RuntimeException($error);
+            }
+
+            $descripcion = trim((string) ($oportunidad->nombre ?? ''));
+            if ($descripcion === '') {
+                $descripcion = 'Cotización '.$codigo;
+            }
+
+            $nota = $this->notaService->modificarCabecera($nota, [
+                'encargado' => $codigo,
+                'descripcion' => mb_substr($descripcion, 0, 500),
+                'empresa' => mb_substr(trim((string) ($oportunidad->organismo ?? '')), 0, 100),
+                'rutempresa' => mb_substr(trim((string) ($oportunidad->rut_organismo ?? '')), 0, 10),
+                'direccion_entrega' => mb_substr(trim((string) ($oportunidad->direccion ?? '')), 0, 255),
+                'region' => $oportunidad->region,
+                'nombre_region' => trim((string) ($oportunidad->nombre_region ?? '')),
+                'comuna' => trim((string) ($oportunidad->comuna ?? '')),
+            ], $asignador->username);
+
+            $nota->update([
+                'asignado_por' => $asignador->username,
+                'asignado_at' => now(),
+            ]);
+
+            return $nota->fresh(['usuarioRel', 'asignadoPorRel']);
         });
     }
 

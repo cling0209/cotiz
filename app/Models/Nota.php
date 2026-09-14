@@ -20,7 +20,7 @@ class Nota extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'nronota', 'descripcion', 'fecha', 'usuario', 'empresa', 'encargado', 'correlativo',
+        'nronota', 'descripcion', 'fecha', 'usuario', 'asignado_por', 'asignado_at', 'empresa', 'encargado', 'correlativo',
         'celular', 'contacto', 'contactocorreo', 'rutempresa', 'nota_softland',
         'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
         'estadofecha', 'estadousuario', 'ocompra', 'fechaentrega', 'factor_precio_venta',
@@ -35,6 +35,7 @@ class Nota extends Model
             'fecha' => 'date',
             'fechaentrega' => 'date',
             'estadofecha' => 'datetime',
+            'asignado_at' => 'datetime',
             'factor_precio_venta' => 'decimal:4',
             'enviadoapi' => 'integer',
             'diashabiles' => 'integer',
@@ -57,6 +58,11 @@ class Nota extends Model
     public function usuarioRel(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario', 'username');
+    }
+
+    public function asignadoPorRel(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'asignado_por', 'username');
     }
 
     public function mpSeguimiento(): HasOne
