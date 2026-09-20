@@ -165,17 +165,28 @@ class CompraAgilCompetenciaService
         }
 
         $primera = $filas->first();
+        $precioPropio = [];
+        foreach ($filas as $fila) {
+            $clave = $fila->nronota.'|'.$fila->orden;
+            if (isset($precioPropio[$clave]) || $fila->precio_unitario === null || ! $this->ofertaEsPropia($fila)) {
+                continue;
+            }
+            $precioPropio[$clave] = (int) $fila->precio_unitario;
+        }
+
         $vistas = [];
         $lineas = [];
         foreach ($filas as $fila) {
             $clavePropia = $fila->nronota.'|'.$fila->orden;
             if (! isset($vistas[$clavePropia])) {
                 $vistas[$clavePropia] = true;
-                $lineas[] = [
-                    'proveedor' => 'Tú',
-                    'es_propio' => true,
-                    'precio_unitario' => (int) $fila->prod_valor,
-                ];
+                if (isset($precioPropio[$clavePropia])) {
+                    $lineas[] = [
+                        'proveedor' => 'Tú',
+                        'es_propio' => true,
+                        'precio_unitario' => $precioPropio[$clavePropia],
+                    ];
+                }
             }
             if ($fila->precio_unitario === null || $this->ofertaEsPropia($fila)) {
                 continue;
@@ -194,6 +205,7 @@ class CompraAgilCompetenciaService
                 : trim((string) $primera->prod_descripcion_maestro),
             'nronota' => (int) $primera->nronota,
             'fecha_cierre' => $this->formatearFecha($primera->fecha_cierre),
+            'precio_catalogo' => $primera->prod_valor !== null ? (int) $primera->prod_valor : null,
             'lineas' => $lineas,
         ];
     }
@@ -409,24 +421,23 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Un precio propio por código: el de la nota con cierre más reciente.
+     * Precio ofertado propio de la nota con cierre más reciente. No usa el precio de catálogo.
      *
      * @param  array<string, mixed>  $filtros
      */
     private function preciosUltimos(array $filtros, ?string $prodItem)
     {
-        $ranked = DB::table('notasdetalle as d2')
-            ->join('nota_mp_seguimientos as s2', 's2.nronota', '=', 'd2.nronota')
+        $fecha = $this->sqlFechaCierre('s');
+        $propio = $this->sqlEsPropio('op');
+        $ruts = $this->rutsPropiosCompactos();
+        $ranked = $this->queryBase($filtros, $prodItem)
             ->select([
-                'd2.prod_item',
-                'd2.prod_valor',
-                'd2.nronota',
-                DB::raw('ROW_NUMBER() OVER (PARTITION BY d2.prod_item ORDER BY '.$this->sqlFechaCierre('s2').' DESC NULLS LAST, d2.nronota DESC) as rn'),
-            ]);
-        $this->aplicarFecha($ranked, $filtros, 's2');
-        if ($prodItem !== null) {
-            $ranked->where('d2.prod_item', $prodItem);
-        }
+                'd.prod_item',
+                DB::raw("CASE WHEN ({$propio}) THEN op.precio_unitario END as prod_valor"),
+                'd.nronota',
+                DB::raw("ROW_NUMBER() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC, CASE WHEN ({$propio}) AND op.precio_unitario IS NOT NULL THEN 0 ELSE 1 END) as rn"),
+            ])
+            ->addBinding(array_merge($ruts, $ruts), 'select');
 
         return DB::query()
             ->fromSub($ranked, 'px')

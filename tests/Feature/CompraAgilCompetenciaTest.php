@@ -55,7 +55,7 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->linea($glt, '999', 10, 100);
 
         $propio = $this->oferta(14865, '76185139-K', 'ROMULO', false, true);
-        $this->linea($propio, '44121622', 100, 800);
+        $this->linea($propio, '44121622', 100, 26);
         $this->linea($propio, '999', 10, 500);
 
         $vergio = $this->oferta(14865, '96972190-2', 'DISTRIBUIDORA VERGIO SPA', true, false);
@@ -78,7 +78,7 @@ class CompraAgilCompetenciaTest extends TestCase
             $huellero['cant_total'],
             $huellero['adjudicada_propia'] + $huellero['adjudicada_otros'] + $huellero['nadie_gano'],
         );
-        $this->assertSame(800, $huellero['tu_precio']);
+        $this->assertSame(26, $huellero['tu_precio']);
         $this->assertSame(756, $huellero['precio_min']);
         $this->assertSame(950, $huellero['precio_max']);
 
@@ -91,8 +91,9 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $precios = $servicio->detallePrecios('12345', []);
         $this->assertSame(14865, $precios['nronota']);
+        $this->assertSame(800, $precios['precio_catalogo']);
         $porPrecio = collect($precios['lineas'])->keyBy('proveedor');
-        $this->assertSame(800, $porPrecio['Tú']['precio_unitario']);
+        $this->assertSame(26, $porPrecio['Tú']['precio_unitario']);
         $this->assertTrue($porPrecio['Tú']['es_propio']);
         $this->assertSame(756, $porPrecio['COMERCIALIZADORA GLT SPA']['precio_unitario']);
         $this->assertSame(950, $porPrecio['DISTRIBUIDORA VERGIO SPA']['precio_unitario']);
@@ -118,9 +119,11 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->linea($vieja, 'X', 5, 50);
         $nueva = $this->oferta(2, '22222222-2', 'NUEVO', true, false);
         $this->linea($nueva, 'X', 8, 1200);
+        $propia = $this->oferta(2, '76185139-K', 'ROMULO', false, true);
+        $this->linea($propia, 'X', 5, 850);
 
         $fila = app(CompraAgilCompetenciaService::class)->listado([])->items()[0];
-        $this->assertSame(900, $fila['tu_precio']);
+        $this->assertSame(850, $fila['tu_precio']);
         $this->assertSame(1200, $fila['precio_min']);
         $this->assertSame(1200, $fila['precio_max']);
 
@@ -154,6 +157,8 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->linea($vieja, 'X', 4, 40);
         $otra = $this->oferta(1, '22222222-2', 'OTRA MAS', false, false);
         $this->linea($otra, 'X', 4, 80);
+        $propiaVieja = $this->oferta(1, '76185139-K', 'ROMULO', false, true);
+        $this->linea($propiaVieja, 'X', 5, 30);
         $propia = $this->oferta(2, '76185139-K', 'ROMULO', false, true);
         $this->linea($propia, 'X', 5, 900);
 
@@ -164,8 +169,9 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $precios = app(CompraAgilCompetenciaService::class)->detallePrecios('P1', []);
         $this->assertSame(1, $precios['nronota']);
+        $this->assertSame(100, $precios['precio_catalogo']);
         $porPrecio = collect($precios['lineas'])->keyBy('proveedor');
-        $this->assertSame(100, $porPrecio['Tú']['precio_unitario']);
+        $this->assertSame(30, $porPrecio['Tú']['precio_unitario']);
         $this->assertSame(40, $porPrecio['OTRA']['precio_unitario']);
         $this->assertSame(80, $porPrecio['OTRA MAS']['precio_unitario']);
         $this->assertArrayNotHasKey('ROMULO', $porPrecio->all());
@@ -217,7 +223,8 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertSee('Nadie se ganó')
             ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
-            ->assertSee('Precios abre esa nota')
+            ->assertSee('no el de catálogo')
+            ->assertSee('precio de catálogo')
             ->assertDontSee('Cód. MP');
     }
 

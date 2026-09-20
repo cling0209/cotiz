@@ -38,7 +38,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio es el de la última nota. Más barato y más caro salen de la última nota en la que cotizó al menos otra empresa. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Precios abre esa nota con tu precio y el de cada empresa. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio es el ofertado en la última nota, no el de catálogo. Más barato y más caro salen de la última nota en la que cotizó al menos otra empresa. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Precios abre esa nota con el precio ofertado propio, el de cada empresa y, aparte, el precio de catálogo. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
@@ -106,7 +106,7 @@
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_propia') }}">Adjudicada propio{{ $sortMark('adjudicada_propia') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_otros') }}">Adjudicadas otros{{ $sortMark('adjudicada_otros') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('nadie_gano') }}">Nadie se ganó{{ $sortMark('nadie_gano') }}</a></th>
-                        <th class="text-end">Tu precio</th>
+                        <th class="text-end" title="Precio ofertado en la última nota, no el de catálogo">Tu precio</th>
                         <th class="text-end">Más barato</th>
                         <th class="text-end">Más caro</th>
                         <th class="text-end">Acciones</th>
@@ -205,6 +205,7 @@
             </div>
             <div class="modal-body py-2">
                 <p class="small mb-2" id="modal-precios-nota"></p>
+                <p class="small mb-2 text-muted" id="modal-precios-catalogo"></p>
                 <p class="small mb-2 text-danger" id="modal-precios-error"></p>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
@@ -267,9 +268,11 @@ document.querySelectorAll('.btn-precios-competencia').forEach(btn => {
         const data = await res.json();
         const fmt = n => '$' + (Number(n) || 0).toLocaleString('es-CL');
         const nota = document.getElementById('modal-precios-nota');
+        const catalogo = document.getElementById('modal-precios-catalogo');
         const error = document.getElementById('modal-precios-error');
         if (!res.ok) {
             nota.textContent = '';
+            catalogo.textContent = '';
             error.textContent = data.error || 'No se pudo cargar el detalle.';
             document.getElementById('modal-precios-lineas').innerHTML = '';
             bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-precios')).show();
@@ -278,6 +281,7 @@ document.querySelectorAll('.btn-precios-competencia').forEach(btn => {
         error.textContent = '';
         nota.textContent = 'Nota ' + data.nronota + (data.fecha_cierre ? ' · cierre ' + data.fecha_cierre : '')
             + (data.prod_nombre ? ' · ' + data.prod_nombre : '');
+        catalogo.textContent = data.precio_catalogo == null ? '' : 'Precio catálogo: ' + fmt(data.precio_catalogo);
         document.getElementById('modal-precios-lineas').innerHTML = (data.lineas || []).map(l => {
             const cls = l.es_propio ? 'fw-semibold' : '';
             return `<tr class="${cls}"><td>${l.proveedor || '—'}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td></tr>`;
