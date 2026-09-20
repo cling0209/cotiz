@@ -173,6 +173,8 @@ class CompraAgilCompetenciaService
 
         $out = [];
         foreach ($filas as $fila) {
+            $propia = (float) ($fila->cant_propia ?? 0);
+            $otros = (float) ($fila->cant_otros ?? 0);
             $total = $propia + $otros;
             $adjudicadaPropia = (float) ($fila->adj_propia ?? 0);
             $adjudicadaOtros = (float) ($fila->adj_otros ?? 0);
