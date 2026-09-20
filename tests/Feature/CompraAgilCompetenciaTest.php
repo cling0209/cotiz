@@ -81,9 +81,37 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertContains('COMERCIALIZADORA GLT SPA', $proveedores);
         $this->assertNotContains('999', collect($detalle['lineas'])->pluck('precio_unitario')->all());
         $adjudicada = collect($detalle['lineas'])->firstWhere('proveedor', 'DISTRIBUIDORA VERGIO SPA');
-        $this->assertSame(100.0, $adjudicada['cantidad_adjudicada']);
         $tu = collect($detalle['lineas'])->firstWhere('proveedor', 'Tú');
-        $this->assertSame(0.0, $tu['cantidad_adjudicada']);
+        $this->assertSame(100.0, $tu['cantidad_cotizada_propia']);
+        $this->assertNull($tu['cantidad_cotizada_competencia']);
+        $this->assertSame(100.0, $adjudicada['cantidad_cotizada_competencia']);
+        $this->assertNull($adjudicada['cantidad_cotizada_propia']);
+    }
+
+    public function test_min_max_salen_de_la_ultima_cotizacion(): void
+    {
+        $this->nota(1, '2026-01-10 10:00:00');
+        $this->nota(2, '2026-06-10 10:00:00');
+        foreach ([1 => 100, 2 => 900] as $nro => $precioPropio) {
+            NotaDetalle::query()->create([
+                'nronota' => $nro,
+                'prod_item' => 'P1',
+                'prod_valor' => $precioPropio,
+                'cantidad' => 5,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_descripcion_maestro' => 'Producto',
+            ]);
+        }
+        $vieja = $this->oferta(1, '11111111-1', 'VIEJO', true, false);
+        $this->linea($vieja, 'X', 5, 50);
+        $nueva = $this->oferta(2, '22222222-2', 'NUEVO', true, false);
+        $this->linea($nueva, 'X', 8, 1200);
+
+        $fila = app(CompraAgilCompetenciaService::class)->listado([])->items()[0];
+        $this->assertSame(900, $fila['tu_precio']);
+        $this->assertSame(1200, $fila['precio_min']);
+        $this->assertSame(1200, $fila['precio_max']);
     }
 
     public function test_sin_fechas_trae_todo_y_el_rango_recorta(): void
@@ -126,7 +154,44 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertOk()
             ->assertSee('Cód. propio')
             ->assertSee('Cant. propia')
+            ->assertSee('Excel')
             ->assertDontSee('Cód. MP');
+    }
+
+    public function test_excel_exporta_todas_las_filas_del_filtro(): void
+    {
+        $this->nota(1, '2026-06-10 10:00:00');
+        foreach (['P1' => 1, 'P2' => 2] as $item => $orden) {
+            NotaDetalle::query()->create([
+                'nronota' => 1,
+                'prod_item' => $item,
+                'prod_valor' => 500,
+                'cantidad' => 4,
+                'fechahora' => now(),
+                'orden' => $orden,
+                'prod_descripcion_maestro' => 'Producto '.$item,
+            ]);
+        }
+        $oferta = $this->oferta(1, '11111111-1', 'OTRO', true, false);
+        $this->linea($oferta, 'A', 3, 100);
+        $this->linea($oferta, 'B', 7, 200);
+
+        $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
+        $response = $this->withoutMiddleware()
+            ->actingAs($admin)
+            ->get(route('admin.compra-agil.analisis.excel', ['por_pagina' => 1]));
+
+        $response->assertOk();
+        $tmp = tempnam(sys_get_temp_dir(), 'comp').'.xlsx';
+        file_put_contents($tmp, $response->streamedContent());
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmp)->getActiveSheet();
+        @unlink($tmp);
+
+        $this->assertSame('Cód. propio', $sheet->getCell('A1')->getValue());
+        $this->assertSame('Más caro', $sheet->getCell('H1')->getValue());
+        $codigos = [$sheet->getCell('A2')->getValue(), $sheet->getCell('A3')->getValue()];
+        sort($codigos);
+        $this->assertSame(['P1', 'P2'], $codigos);
     }
 
     private function nota(int $nronota, string $cierre): void

@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilAnalisisController extends Controller
 {
@@ -64,6 +65,11 @@ class CompraAgilAnalisisController extends Controller
         }
 
         return back()->with('success', $mensaje);
+    }
+
+    public function exportarExcel(Request $request): StreamedResponse
+    {
+        return $this->competencia->exportarExcel($this->filtros($request));
     }
 
     public function detalleProducto(Request $request, string $prodItem): JsonResponse

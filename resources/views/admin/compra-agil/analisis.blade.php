@@ -85,8 +85,17 @@
                     <label class="form-label" for="fecha_hasta">Hasta</label>
                     <input type="date" name="fecha_hasta" id="fecha_hasta" class="form-control form-control-sm" value="{{ $filtros['fecha_hasta'] }}">
                 </div>
-                <div class="col-md-auto">
+                <div class="col-md-auto d-flex gap-2">
                     <button type="submit" class="btn btn-secondary btn-sm">Filtrar</button>
+                    <a href="{{ route('admin.compra-agil.analisis.excel', array_filter([
+                        'buscar' => $filtros['buscar'] !== '' ? $filtros['buscar'] : null,
+                        'fecha_desde' => $filtros['fecha_desde'] !== '' ? $filtros['fecha_desde'] : null,
+                        'fecha_hasta' => $filtros['fecha_hasta'] !== '' ? $filtros['fecha_hasta'] : null,
+                        'orden' => $filtros['orden'],
+                        'dir' => $filtros['dir'],
+                    ])) }}" class="btn btn-outline-success btn-sm" data-no-loader>
+                        <i class="bi bi-file-earmark-excel"></i> Excel
+                    </a>
                 </div>
             </form>
         </div>
@@ -156,8 +165,8 @@
                                 <th>Cierre</th>
                                 <th>Proveedor</th>
                                 <th class="text-end">P. unit.</th>
-                                <th class="text-end">Cant. cotizada</th>
-                                <th class="text-end">Cant. adjudicada</th>
+                                <th class="text-end">Cant. cotizada propia</th>
+                                <th class="text-end">Cant. cotizada competencia</th>
                             </tr>
                         </thead>
                         <tbody id="modal-competencia-lineas"></tbody>
@@ -194,10 +203,11 @@ document.querySelectorAll('.btn-detalle-competencia').forEach(btn => {
             + (data.tu_precio == null ? '—' : fmt(data.tu_precio))
             + ' · más barato ' + (data.precio_min == null ? '—' : fmt(data.precio_min))
             + ' · más caro ' + (data.precio_max == null ? '—' : fmt(data.precio_max));
+        const celdaCant = n => n == null || n === '' ? '—' : cant(n);
         document.getElementById('modal-competencia-lineas').innerHTML = (data.lineas || []).map(l => {
             const marca = l.seleccionado ? ' · Seleccionado' : '';
             const cls = l.seleccionado ? 'table-success' : (l.es_propio ? 'fw-semibold' : '');
-            return `<tr class="${cls}"><td>${l.nronota}</td><td>${l.fecha_cierre || '—'}</td><td>${l.proveedor || '—'}${marca}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td><td class="text-end">${cant(l.cantidad_cotizada)}</td><td class="text-end">${cant(l.cantidad_adjudicada)}</td></tr>`;
+            return `<tr class="${cls}"><td>${l.nronota}</td><td>${l.fecha_cierre || '—'}</td><td>${l.proveedor || '—'}${marca}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td><td class="text-end">${celdaCant(l.cantidad_cotizada_propia)}</td><td class="text-end">${celdaCant(l.cantidad_cotizada_competencia)}</td></tr>`;
         }).join('') || '<tr><td colspan="6" class="text-muted">Sin ofertas</td></tr>';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
     });

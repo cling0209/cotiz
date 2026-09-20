@@ -6,6 +6,11 @@ use App\Support\ListadoPorPagina;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\LengthAwarePaginator as Paginator;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Precios y cantidades adjudicadas por código propio.
@@ -63,6 +68,24 @@ class CompraAgilCompetenciaService
     }
 
     /**
+     * Todas las filas del filtro, en el mismo orden de la tabla.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    public function exportarExcel(array $filtros): StreamedResponse
+    {
+        $filas = $this->ordenar($this->filasAgrupadas($filtros), $filtros);
+        $filename = 'precios_competencia_'.now()->format('Ymd_His').'.xlsx';
+
+        return response()->streamDownload(function () use ($filas) {
+            $writer = new Xlsx($this->libroExcel($filas));
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      * @return ?array<string, mixed>
      */
@@ -111,14 +134,14 @@ class CompraAgilCompetenciaService
 
         $filas = $query
             ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
-            ->groupBy('d.prod_item')
+            ->groupBy('d.prod_item', 'tu.nronota')
             ->select([
                 'd.prod_item',
                 DB::raw("MAX({$nombre}) as prod_nombre"),
                 DB::raw("SUM(CASE WHEN {$seleccionado} AND {$propio} THEN COALESCE(d.cantidad, 0) ELSE 0 END) as cant_propia"),
                 DB::raw("SUM(CASE WHEN {$seleccionado} AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as cant_otros"),
-                DB::raw('MIN(op.precio_unitario) as precio_min'),
-                DB::raw('MAX(op.precio_unitario) as precio_max'),
+                DB::raw("MIN(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_min"),
+                DB::raw("MAX(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_max"),
                 DB::raw('MAX(tu.prod_valor) as tu_precio'),
             ])
             ->addBinding(array_merge($ruts, $ruts), 'select')
@@ -204,25 +227,23 @@ class CompraAgilCompetenciaService
                 'es_propio' => true,
                 'seleccionado' => $ganoPropio,
                 'precio_unitario' => $bloque['prod_valor'],
-                'cantidad_cotizada' => $bloque['cantidad_nota'],
-                'cantidad_adjudicada' => $ganoPropio ? $bloque['cantidad_nota'] : 0,
+                'cantidad_cotizada_propia' => $bloque['cantidad_nota'],
+                'cantidad_cotizada_competencia' => null,
             ];
 
             foreach ($bloque['ofertas'] as $oferta) {
                 if ($this->ofertaEsPropia($oferta)) {
                     continue;
                 }
-                $seleccionado = $this->esSeleccionado($oferta->proveedor_seleccionado);
-                $cantidad = (float) ($oferta->cantidad_oferta ?? 0);
                 $lineas[] = [
                     'nronota' => $bloque['nronota'],
                     'fecha_cierre' => $this->formatearFecha($bloque['fecha_cierre']),
                     'proveedor' => trim((string) ($oferta->razon_social ?: $oferta->rut_proveedor ?: '—')),
                     'es_propio' => false,
-                    'seleccionado' => $seleccionado,
+                    'seleccionado' => $this->esSeleccionado($oferta->proveedor_seleccionado),
                     'precio_unitario' => $oferta->precio_unitario !== null ? (int) $oferta->precio_unitario : null,
-                    'cantidad_cotizada' => $cantidad,
-                    'cantidad_adjudicada' => $seleccionado ? $cantidad : 0,
+                    'cantidad_cotizada_propia' => null,
+                    'cantidad_cotizada_competencia' => (float) ($oferta->cantidad_oferta ?? 0),
                 ];
             }
         }
@@ -304,6 +325,7 @@ class CompraAgilCompetenciaService
             ->select([
                 'd2.prod_item',
                 'd2.prod_valor',
+                'd2.nronota',
                 DB::raw('ROW_NUMBER() OVER (PARTITION BY d2.prod_item ORDER BY '.$this->sqlFechaCierre('s2').' DESC NULLS LAST, d2.nronota DESC) as rn'),
             ]);
         $this->aplicarFecha($ranked, $filtros, 's2');
@@ -314,7 +336,7 @@ class CompraAgilCompetenciaService
         return DB::query()
             ->fromSub($ranked, 'px')
             ->where('rn', 1)
-            ->select(['prod_item', 'prod_valor']);
+            ->select(['prod_item', 'prod_valor', 'nronota']);
     }
 
     /**
@@ -404,6 +426,60 @@ class CompraAgilCompetenciaService
      * @param  array<string, mixed>  $filtros
      * @return list<array<string, mixed>>
      */
+    /**
+     * @param  list<array<string, mixed>>  $filas
+     */
+    private function libroExcel(array $filas): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Precios competencia');
+        $sheet->fromArray([[
+            'Cód. propio',
+            'Descripción propia',
+            'Cant. propia',
+            'Cant. otros',
+            'Cant. total',
+            'Tu precio',
+            'Más barato',
+            'Más caro',
+        ]], null, 'A1');
+        $sheet->getStyle('A1:H1')->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'D9D9D9'],
+            ],
+        ]);
+
+        $row = 2;
+        foreach ($filas as $fila) {
+            $sheet->fromArray([[
+                $fila['prod_item'],
+                $fila['prod_nombre'],
+                $fila['cant_propia'],
+                $fila['cant_otros'],
+                $fila['cant_total'],
+                $fila['tu_precio'],
+                $fila['precio_min'],
+                $fila['precio_max'],
+            ]], null, 'A'.$row);
+            $row++;
+        }
+
+        $last = max(2, $row - 1);
+        if ($filas !== []) {
+            $sheet->getStyle('C2:E'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
+            $sheet->getStyle('F2:H'.$last)->getNumberFormat()->setFormatCode('#,##0');
+            $sheet->getStyle('C2:H'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        }
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        return $spreadsheet;
+    }
+
     private function ordenar(array $filas, array $filtros): array
     {
         $columna = (string) ($filtros['orden'] ?? 'cant_total');
