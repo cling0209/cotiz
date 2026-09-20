@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
  */
 class CompraAgilCompetenciaService
 {
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $agrupadasCache = [];
+
     /**
      * @param  array<string, mixed>  $filtros
      * @return array{productos: int, unidades_propias: float, unidades_otros: float, mas_caro: int}
@@ -95,26 +98,19 @@ class CompraAgilCompetenciaService
      */
     private function filasAgrupadas(array $filtros, ?string $prodItem = null): array
     {
+        $cacheKey = md5((string) json_encode([$filtros, $prodItem]));
+        if (isset($this->agrupadasCache[$cacheKey])) {
+            return $this->agrupadasCache[$cacheKey];
+        }
+
         $query = $this->queryBase($filtros, $prodItem);
         $nombre = $this->sqlNombre();
-        $fecha = $this->sqlFechaCierre('s');
         $propio = $this->sqlEsPropio('op');
         $seleccionado = 'op.proveedor_seleccionado IS TRUE';
         $ruts = $this->rutsPropiosCompactos();
-        $bindings = $ruts;
-
-        $tuPrecio = '(SELECT d2.prod_valor FROM notasdetalle d2'
-            .' INNER JOIN nota_mp_seguimientos s2 ON s2.nronota = d2.nronota'
-            .' WHERE d2.prod_item = d.prod_item';
-        $tuBindings = [];
-        if ($prodItem !== null) {
-            $tuPrecio .= ' AND d2.prod_item = ?';
-            $tuBindings[] = $prodItem;
-        }
-        $tuPrecio .= $this->sqlFechaFiltro('s2', $filtros, $tuBindings);
-        $tuPrecio .= ' ORDER BY '.$this->sqlFechaCierre('s2').' DESC NULLS LAST, d2.nronota DESC LIMIT 1) as tu_precio';
 
         $filas = $query
+            ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
             ->groupBy('d.prod_item')
             ->select([
                 'd.prod_item',
@@ -123,9 +119,9 @@ class CompraAgilCompetenciaService
                 DB::raw("SUM(CASE WHEN {$seleccionado} AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as cant_otros"),
                 DB::raw('MIN(op.precio_unitario) as precio_min'),
                 DB::raw('MAX(op.precio_unitario) as precio_max'),
-                DB::raw($tuPrecio),
+                DB::raw('MAX(tu.prod_valor) as tu_precio'),
             ])
-            ->addBinding(array_merge($bindings, $bindings, $tuBindings), 'select')
+            ->addBinding(array_merge($ruts, $ruts), 'select')
             ->get();
 
         $out = [];
@@ -144,7 +140,7 @@ class CompraAgilCompetenciaService
             ];
         }
 
-        return $out;
+        return $this->agrupadasCache[$cacheKey] = $out;
     }
 
     /**
@@ -242,6 +238,7 @@ class CompraAgilCompetenciaService
         $ofertas = DB::table('nota_mp_ofertas as o')
             ->join('nota_mp_oferta_lineas as l', 'l.oferta_id', '=', 'o.id')
             ->whereRaw('NOT (o.inadmisible IS TRUE)')
+            ->whereIn('o.nronota', $this->nronotasFiltradas($filtros, $prodItem))
             ->select([
                 'o.nronota',
                 'o.rut_proveedor',
@@ -275,6 +272,52 @@ class CompraAgilCompetenciaService
     }
 
     /**
+     * Solo las notas del filtro. El ROW_NUMBER de ofertas no recorre el historial completo.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function nronotasFiltradas(array $filtros, ?string $prodItem)
+    {
+        $query = DB::table('nota_mp_seguimientos as sf')->select('sf.nronota');
+        $this->aplicarFecha($query, $filtros, 'sf');
+        if ($prodItem !== null) {
+            $query->whereExists(function ($sub) use ($prodItem) {
+                $sub->select(DB::raw('1'))
+                    ->from('notasdetalle as df')
+                    ->whereColumn('df.nronota', 'sf.nronota')
+                    ->where('df.prod_item', $prodItem);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Un precio propio por código: el de la nota con cierre más reciente.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function preciosUltimos(array $filtros, ?string $prodItem)
+    {
+        $ranked = DB::table('notasdetalle as d2')
+            ->join('nota_mp_seguimientos as s2', 's2.nronota', '=', 'd2.nronota')
+            ->select([
+                'd2.prod_item',
+                'd2.prod_valor',
+                DB::raw('ROW_NUMBER() OVER (PARTITION BY d2.prod_item ORDER BY '.$this->sqlFechaCierre('s2').' DESC NULLS LAST, d2.nronota DESC) as rn'),
+            ]);
+        $this->aplicarFecha($ranked, $filtros, 's2');
+        if ($prodItem !== null) {
+            $ranked->where('d2.prod_item', $prodItem);
+        }
+
+        return DB::query()
+            ->fromSub($ranked, 'px')
+            ->where('rn', 1)
+            ->select(['prod_item', 'prod_valor']);
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      */
     private function aplicarFecha($query, array $filtros, string $alias): void
@@ -288,28 +331,6 @@ class CompraAgilCompetenciaService
         if ($hasta !== '') {
             $query->whereRaw("{$expr} <= ?", [$hasta.' 23:59:59']);
         }
-    }
-
-    /**
-     * @param  array<string, mixed>  $filtros
-     * @param  list<mixed>  $bindings
-     */
-    private function sqlFechaFiltro(string $alias, array $filtros, array &$bindings): string
-    {
-        $sql = '';
-        $expr = $this->sqlFechaCierre($alias);
-        $desde = trim((string) ($filtros['fecha_desde'] ?? ''));
-        $hasta = trim((string) ($filtros['fecha_hasta'] ?? ''));
-        if ($desde !== '') {
-            $sql .= " AND {$expr} >= ?";
-            $bindings[] = $desde.' 00:00:00';
-        }
-        if ($hasta !== '') {
-            $sql .= " AND {$expr} <= ?";
-            $bindings[] = $hasta.' 23:59:59';
-        }
-
-        return $sql;
     }
 
     /**
