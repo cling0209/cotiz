@@ -73,6 +73,11 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(300.0, $huellero['cant_total']);
         $this->assertSame(0.0, $huellero['adjudicada_propia']);
         $this->assertSame(100.0, $huellero['adjudicada_otros']);
+        $this->assertSame(200.0, $huellero['nadie_gano']);
+        $this->assertSame(
+            $huellero['cant_total'],
+            $huellero['adjudicada_propia'] + $huellero['adjudicada_otros'] + $huellero['nadie_gano'],
+        );
         $this->assertSame(800, $huellero['tu_precio']);
         $this->assertSame(756, $huellero['precio_min']);
         $this->assertSame(950, $huellero['precio_max']);
@@ -192,7 +197,7 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertOk()
             ->assertSee('Cód. propio')
             ->assertSee('Cant. total')
-            ->assertSee('Adjudicada propio')
+            ->assertSee('Nadie se ganó')
             ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
             ->assertDontSee('Cód. MP');
@@ -228,7 +233,8 @@ class CompraAgilCompetenciaTest extends TestCase
         @unlink($tmp);
 
         $this->assertSame('Cód. propio', $sheet->getCell('A1')->getValue());
-        $this->assertSame('Más caro', $sheet->getCell('H1')->getValue());
+        $this->assertSame('Más caro', $sheet->getCell('I1')->getValue());
+        $this->assertSame('Nadie se ganó', $sheet->getCell('F1')->getValue());
         $this->assertSame('Cant. total', $sheet->getCell('C1')->getValue());
         $this->assertSame('Adjudicada propio', $sheet->getCell('D1')->getValue());
         $codigos = [$sheet->getCell('A2')->getValue(), $sheet->getCell('A3')->getValue()];

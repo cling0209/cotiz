@@ -88,7 +88,7 @@ class CompraAgilAnalisisController extends Controller
     private function filtros(Request $request): array
     {
         $orden = (string) $request->query('orden', 'cant_total');
-        if (! in_array($orden, ['cant_total', 'adjudicada_propia', 'adjudicada_otros'], true)) {
+        if (! in_array($orden, ['cant_total', 'adjudicada_propia', 'adjudicada_otros', 'nadie_gano'], true)) {
             $orden = 'cant_total';
         }
         $dir = (string) $request->query('dir', 'desc');

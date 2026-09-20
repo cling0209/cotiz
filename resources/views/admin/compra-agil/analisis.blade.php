@@ -38,7 +38,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Cant. total es lo cotizado. Adjudicada propio y adjudicadas otros es lo ganado. Tu precio es el de la última nota. Más barato y más caro salen de la última nota en la que cotizó otra empresa. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio es el de la última nota. Más barato y más caro salen de la última nota en la que cotizó al menos otra empresa. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
@@ -105,6 +105,7 @@
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('cant_total') }}">Cant. total{{ $sortMark('cant_total') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_propia') }}">Adjudicada propio{{ $sortMark('adjudicada_propia') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_otros') }}">Adjudicadas otros{{ $sortMark('adjudicada_otros') }}</a></th>
+                        <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('nadie_gano') }}">Nadie se ganó{{ $sortMark('nadie_gano') }}</a></th>
                         <th class="text-end">Tu precio</th>
                         <th class="text-end">Más barato</th>
                         <th class="text-end">Más caro</th>
@@ -119,6 +120,7 @@
                             <td class="text-end tabular-nums">{{ $fmtCant($row['cant_total']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_propia']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_otros']) }}</td>
+                            <td class="text-end tabular-nums">{{ $fmtCant($row['nadie_gano']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['tu_precio']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_min']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_max']) }}</td>
@@ -131,7 +133,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
                     @endforelse
                 </tbody>
             </table>

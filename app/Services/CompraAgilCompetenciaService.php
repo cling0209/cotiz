@@ -110,6 +110,7 @@ class CompraAgilCompetenciaService
             'cant_total' => $resumen['cant_total'],
             'adjudicada_propia' => $resumen['adjudicada_propia'],
             'adjudicada_otros' => $resumen['adjudicada_otros'],
+            'nadie_gano' => $resumen['nadie_gano'],
             'nronota_ultima' => $resumen['nronota_ultima'],
             'tu_precio' => $resumen['tu_precio'],
             'precio_min' => $resumen['precio_min'],
@@ -172,16 +173,18 @@ class CompraAgilCompetenciaService
 
         $out = [];
         foreach ($filas as $fila) {
-            $propia = (float) ($fila->cant_propia ?? 0);
-            $otros = (float) ($fila->cant_otros ?? 0);
+            $total = $propia + $otros;
+            $adjudicadaPropia = (float) ($fila->adj_propia ?? 0);
+            $adjudicadaOtros = (float) ($fila->adj_otros ?? 0);
             $out[] = [
                 'prod_item' => (string) $fila->prod_item,
                 'prod_nombre' => trim((string) $fila->prod_nombre),
                 'cant_propia' => $propia,
                 'cant_otros' => $otros,
-                'cant_total' => $propia + $otros,
-                'adjudicada_propia' => (float) ($fila->adj_propia ?? 0),
-                'adjudicada_otros' => (float) ($fila->adj_otros ?? 0),
+                'cant_total' => $total,
+                'adjudicada_propia' => $adjudicadaPropia,
+                'adjudicada_otros' => $adjudicadaOtros,
+                'nadie_gano' => $total - $adjudicadaPropia - $adjudicadaOtros,
                 'nronota_ultima' => $fila->nronota_ultima !== null ? (int) $fila->nronota_ultima : null,
                 'tu_precio' => $fila->tu_precio !== null ? (int) $fila->tu_precio : null,
                 'precio_min' => $fila->precio_min !== null ? (int) $fila->precio_min : null,
@@ -479,11 +482,12 @@ class CompraAgilCompetenciaService
             'Cant. total',
             'Adjudicada propio',
             'Adjudicadas otros',
+            'Nadie se ganó',
             'Tu precio',
             'Más barato',
             'Más caro',
         ]], null, 'A1');
-        $sheet->getStyle('A1:H1')->applyFromArray([
+        $sheet->getStyle('A1:I1')->applyFromArray([
             'font' => ['bold' => true],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -499,6 +503,7 @@ class CompraAgilCompetenciaService
                 $fila['cant_total'],
                 $fila['adjudicada_propia'],
                 $fila['adjudicada_otros'],
+                $fila['nadie_gano'],
                 $fila['tu_precio'],
                 $fila['precio_min'],
                 $fila['precio_max'],
@@ -508,11 +513,11 @@ class CompraAgilCompetenciaService
 
         $last = max(2, $row - 1);
         if ($filas !== []) {
-            $sheet->getStyle('C2:E'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
-            $sheet->getStyle('F2:H'.$last)->getNumberFormat()->setFormatCode('#,##0');
-            $sheet->getStyle('C2:H'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle('C2:F'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
+            $sheet->getStyle('G2:I'.$last)->getNumberFormat()->setFormatCode('#,##0');
+            $sheet->getStyle('C2:I'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
-        foreach (range('A', 'H') as $col) {
+        foreach (range('A', 'I') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -522,7 +527,7 @@ class CompraAgilCompetenciaService
     private function ordenar(array $filas, array $filtros): array
     {
         $columna = (string) ($filtros['orden'] ?? 'cant_total');
-        if (! in_array($columna, ['cant_total', 'adjudicada_propia', 'adjudicada_otros'], true)) {
+        if (! in_array($columna, ['cant_total', 'adjudicada_propia', 'adjudicada_otros', 'nadie_gano'], true)) {
             $columna = 'cant_total';
         }
         $desc = ($filtros['dir'] ?? 'desc') !== 'asc';
