@@ -112,6 +112,11 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(900, $fila['tu_precio']);
         $this->assertSame(1200, $fila['precio_min']);
         $this->assertSame(1200, $fila['precio_max']);
+
+        $detalle = app(CompraAgilCompetenciaService::class)->detalle('P1', []);
+        $notas = collect($detalle['lineas'])->pluck('nronota')->unique()->values()->all();
+        $this->assertSame([2], $notas);
+        $this->assertNotContains(50, collect($detalle['lineas'])->pluck('precio_unitario')->all());
     }
 
     public function test_sin_fechas_trae_todo_y_el_rango_recorta(): void
@@ -155,7 +160,9 @@ class CompraAgilCompetenciaTest extends TestCase
             ->get(route('admin.compra-agil.analisis.index'))
             ->assertOk()
             ->assertSee('Cód. propio')
-            ->assertSee('Cant. propia')
+            ->assertSee('Cant. total')
+            ->assertDontSee('Cant. propia')
+            ->assertDontSee('Cant. otros')
             ->assertSee('Excel')
             ->assertDontSee('Cód. MP');
     }
@@ -190,7 +197,8 @@ class CompraAgilCompetenciaTest extends TestCase
         @unlink($tmp);
 
         $this->assertSame('Cód. propio', $sheet->getCell('A1')->getValue());
-        $this->assertSame('Más caro', $sheet->getCell('H1')->getValue());
+        $this->assertSame('Más caro', $sheet->getCell('F1')->getValue());
+        $this->assertSame('Cant. total', $sheet->getCell('C1')->getValue());
         $codigos = [$sheet->getCell('A2')->getValue(), $sheet->getCell('A3')->getValue()];
         sort($codigos);
         $this->assertSame(['P1', 'P2'], $codigos);

@@ -160,7 +160,8 @@ class CompraAgilSyncLogTest extends TestCase
             ->actingAs($admin)
             ->get(route('admin.compra-agil.analisis.index'))
             ->assertOk()
-            ->assertSee('Cant. propia')
+            ->assertSee('Cant. total')
+            ->assertDontSee('Cant. propia')
             ->assertSee('Desde')
             ->assertDontSee('Último análisis');
     }

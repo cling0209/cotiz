@@ -38,28 +38,22 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. La cantidad propia y la de otros es lo cotizado, gane o no. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. La cantidad es el total cotizado, propio y competencia. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm h-100"><div class="card-body py-3">
                 <div class="text-muted small">Productos</div>
                 <div class="fs-4 fw-semibold">{{ number_format($kpi['productos'], 0, ',', '.') }}</div>
             </div></div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm h-100"><div class="card-body py-3">
-                <div class="text-muted small">Unidades propias</div>
-                <div class="fs-4 fw-semibold text-success">{{ $fmtCant($kpi['unidades_propias']) }}</div>
+                <div class="text-muted small">Cant. total</div>
+                <div class="fs-4 fw-semibold">{{ $fmtCant($kpi['unidades_propias'] + $kpi['unidades_otros']) }}</div>
             </div></div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm h-100"><div class="card-body py-3">
-                <div class="text-muted small">Unidades otros</div>
-                <div class="fs-4 fw-semibold">{{ $fmtCant($kpi['unidades_otros']) }}</div>
-            </div></div>
-        </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm h-100 border-warning"><div class="card-body py-3">
                 <div class="text-muted small">Donde estás más caro</div>
                 <div class="fs-4 fw-semibold text-warning">{{ number_format($kpi['mas_caro'], 0, ',', '.') }}</div>
@@ -108,8 +102,6 @@
                     <tr>
                         <th>Cód. propio</th>
                         <th>Descripción propia</th>
-                        <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('cant_propia') }}">Cant. propia{{ $sortMark('cant_propia') }}</a></th>
-                        <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('cant_otros') }}">Cant. otros{{ $sortMark('cant_otros') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('cant_total') }}">Cant. total{{ $sortMark('cant_total') }}</a></th>
                         <th class="text-end">Tu precio</th>
                         <th class="text-end">Más barato</th>
@@ -122,8 +114,6 @@
                         <tr>
                             <td class="font-monospace">{{ $row['prod_item'] }}</td>
                             <td>{{ $row['prod_nombre'] !== '' ? $row['prod_nombre'] : '—' }}</td>
-                            <td class="text-end tabular-nums">{{ $fmtCant($row['cant_propia']) }}</td>
-                            <td class="text-end tabular-nums">{{ $fmtCant($row['cant_otros']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['cant_total']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['tu_precio']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_min']) }}</td>
@@ -137,7 +127,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -156,6 +146,10 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body py-2">
+                <div class="border rounded px-3 py-2 mb-3">
+                    <div class="text-muted small">Cant. total</div>
+                    <div class="fs-5 fw-semibold" id="modal-competencia-cant-total">—</div>
+                </div>
                 <p class="small mb-2" id="modal-competencia-resumen"></p>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
@@ -165,8 +159,6 @@
                                 <th>Cierre</th>
                                 <th>Proveedor</th>
                                 <th class="text-end">P. unit.</th>
-                                <th class="text-end">Cant. cotizada propia</th>
-                                <th class="text-end">Cant. cotizada competencia</th>
                             </tr>
                         </thead>
                         <tbody id="modal-competencia-lineas"></tbody>
@@ -190,25 +182,27 @@ document.querySelectorAll('.btn-detalle-competencia').forEach(btn => {
         document.getElementById('modal-competencia-titulo').textContent = btn.dataset.prod || 'Detalle';
         const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
         const data = await res.json();
+        const fmt = n => '$' + (Number(n) || 0).toLocaleString('es-CL');
+        const cant = n => (Number(n) || 0).toLocaleString('es-CL');
         if (!res.ok) {
+            document.getElementById('modal-competencia-cant-total').textContent = '—';
             document.getElementById('modal-competencia-resumen').textContent = data.error || 'No se pudo cargar el detalle.';
             document.getElementById('modal-competencia-lineas').innerHTML = '';
             bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
             return;
         }
-        const fmt = n => '$' + (Number(n) || 0).toLocaleString('es-CL');
-        const cant = n => (Number(n) || 0).toLocaleString('es-CL');
-        const resumen = document.getElementById('modal-competencia-resumen');
-        resumen.textContent = cant(data.cant_propia) + ' propio · ' + cant(data.cant_otros) + ' otros · tu precio '
+        document.getElementById('modal-competencia-cant-total').textContent = cant(data.cant_total);
+        const ultima = (data.lineas && data.lineas[0]) ? data.lineas[0] : null;
+        const notaTxt = ultima ? ('nota ' + ultima.nronota + (ultima.fecha_cierre ? ' · ' + ultima.fecha_cierre : '')) : 'sin nota';
+        document.getElementById('modal-competencia-resumen').textContent = 'Precios de la última nota (' + notaTxt + '). Tu precio '
             + (data.tu_precio == null ? '—' : fmt(data.tu_precio))
             + ' · más barato ' + (data.precio_min == null ? '—' : fmt(data.precio_min))
             + ' · más caro ' + (data.precio_max == null ? '—' : fmt(data.precio_max));
-        const celdaCant = n => n == null || n === '' ? '—' : cant(n);
         document.getElementById('modal-competencia-lineas').innerHTML = (data.lineas || []).map(l => {
             const marca = l.seleccionado ? ' · Seleccionado' : '';
             const cls = l.seleccionado ? 'table-success' : (l.es_propio ? 'fw-semibold' : '');
-            return `<tr class="${cls}"><td>${l.nronota}</td><td>${l.fecha_cierre || '—'}</td><td>${l.proveedor || '—'}${marca}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td><td class="text-end">${celdaCant(l.cantidad_cotizada_propia)}</td><td class="text-end">${celdaCant(l.cantidad_cotizada_competencia)}</td></tr>`;
-        }).join('') || '<tr><td colspan="6" class="text-muted">Sin ofertas</td></tr>';
+            return `<tr class="${cls}"><td>${l.nronota}</td><td>${l.fecha_cierre || '—'}</td><td>${l.proveedor || '—'}${marca}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td></tr>`;
+        }).join('') || '<tr><td colspan="4" class="text-muted">Sin ofertas</td></tr>';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
     });
 });

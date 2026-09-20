@@ -199,7 +199,7 @@ class CompraAgilCompetenciaService
                 'op.proveedor_seleccionado',
                 'op.es_propio',
             ])
-            ->orderByDesc(DB::raw($fecha))
+            ->orderByRaw($fecha.' DESC NULLS LAST')
             ->orderByDesc('d.nronota')
             ->orderBy('op.precio_unitario')
             ->get();
@@ -223,7 +223,14 @@ class CompraAgilCompetenciaService
         }
 
         $lineas = [];
+        $nronotaUltima = null;
         foreach ($porNota as $bloque) {
+            if ($nronotaUltima === null) {
+                $nronotaUltima = $bloque['nronota'];
+            }
+            if ($bloque['nronota'] !== $nronotaUltima) {
+                continue;
+            }
             $ganoPropio = false;
             foreach ($bloque['ofertas'] as $oferta) {
                 if ($this->esSeleccionado($oferta->proveedor_seleccionado) && $this->ofertaEsPropia($oferta)) {
@@ -449,14 +456,12 @@ class CompraAgilCompetenciaService
         $sheet->fromArray([[
             'Cód. propio',
             'Descripción propia',
-            'Cant. propia',
-            'Cant. otros',
             'Cant. total',
             'Tu precio',
             'Más barato',
             'Más caro',
         ]], null, 'A1');
-        $sheet->getStyle('A1:H1')->applyFromArray([
+        $sheet->getStyle('A1:F1')->applyFromArray([
             'font' => ['bold' => true],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -469,8 +474,6 @@ class CompraAgilCompetenciaService
             $sheet->fromArray([[
                 $fila['prod_item'],
                 $fila['prod_nombre'],
-                $fila['cant_propia'],
-                $fila['cant_otros'],
                 $fila['cant_total'],
                 $fila['tu_precio'],
                 $fila['precio_min'],
@@ -481,11 +484,11 @@ class CompraAgilCompetenciaService
 
         $last = max(2, $row - 1);
         if ($filas !== []) {
-            $sheet->getStyle('C2:E'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
-            $sheet->getStyle('F2:H'.$last)->getNumberFormat()->setFormatCode('#,##0');
-            $sheet->getStyle('C2:H'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle('C2:C'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
+            $sheet->getStyle('D2:F'.$last)->getNumberFormat()->setFormatCode('#,##0');
+            $sheet->getStyle('C2:F'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
-        foreach (range('A', 'H') as $col) {
+        foreach (range('A', 'F') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
