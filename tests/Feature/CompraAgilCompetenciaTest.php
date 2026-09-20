@@ -68,8 +68,8 @@ class CompraAgilCompetenciaTest extends TestCase
         $huellero = collect($filas)->firstWhere('prod_item', '12345');
         $this->assertNotNull($huellero);
         $this->assertSame('Huellero individual', $huellero['prod_nombre']);
-        $this->assertSame(0.0, $huellero['cant_propia']);
-        $this->assertSame(100.0, $huellero['cant_otros']);
+        $this->assertSame(100.0, $huellero['cant_propia']);
+        $this->assertSame(200.0, $huellero['cant_otros']);
         $this->assertSame(800, $huellero['tu_precio']);
         $this->assertSame(756, $huellero['precio_min']);
         $this->assertSame(950, $huellero['precio_max']);
@@ -134,6 +134,7 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $servicio = app(CompraAgilCompetenciaService::class);
         $todo = $servicio->listado([])->items();
+        $this->assertSame(10.0, $todo[0]['cant_propia']);
         $this->assertSame(10.0, $todo[0]['cant_otros']);
 
         $recorte = $servicio->listado([
@@ -141,6 +142,7 @@ class CompraAgilCompetenciaTest extends TestCase
             'fecha_hasta' => '2026-06-30',
         ])->items();
         $this->assertCount(1, $recorte);
+        $this->assertSame(5.0, $recorte[0]['cant_propia']);
         $this->assertSame(5.0, $recorte[0]['cant_otros']);
     }
 

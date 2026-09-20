@@ -38,7 +38,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. La cantidad propia y la de otros es lo adjudicado. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. La cantidad propia y la de otros es lo cotizado, gane o no. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-3">

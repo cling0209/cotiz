@@ -13,7 +13,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Precios y cantidades adjudicadas por código propio.
+ * Precios y cantidades cotizadas por código propio.
  * Cada línea de la nota se cruza con las ofertas de Mercado Público en la misma posición.
  */
 class CompraAgilCompetenciaService
@@ -129,22 +129,34 @@ class CompraAgilCompetenciaService
         $query = $this->queryBase($filtros, $prodItem);
         $nombre = $this->sqlNombre();
         $propio = $this->sqlEsPropio('op');
-        $seleccionado = 'op.proveedor_seleccionado IS TRUE';
         $ruts = $this->rutsPropiosCompactos();
 
-        $filas = $query
+        $porLinea = $query
             ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
-            ->groupBy('d.prod_item', 'tu.nronota')
+            ->groupBy('d.prod_item', 'd.nronota', 'd.orden', 'tu.nronota')
             ->select([
                 'd.prod_item',
                 DB::raw("MAX({$nombre}) as prod_nombre"),
-                DB::raw("SUM(CASE WHEN {$seleccionado} AND {$propio} THEN COALESCE(d.cantidad, 0) ELSE 0 END) as cant_propia"),
-                DB::raw("SUM(CASE WHEN {$seleccionado} AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as cant_otros"),
+                DB::raw('MAX(COALESCE(d.cantidad, 0)) as cant_propia'),
+                DB::raw("SUM(CASE WHEN op.rut_proveedor IS NULL OR ({$propio}) THEN 0 ELSE COALESCE(op.cantidad, 0) END) as cant_otros"),
                 DB::raw("MIN(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_min"),
                 DB::raw("MAX(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_max"),
                 DB::raw('MAX(tu.prod_valor) as tu_precio'),
             ])
-            ->addBinding(array_merge($ruts, $ruts), 'select')
+            ->addBinding($ruts, 'select');
+
+        $filas = DB::query()
+            ->fromSub($porLinea, 'lin')
+            ->groupBy('prod_item')
+            ->select([
+                'prod_item',
+                DB::raw('MAX(prod_nombre) as prod_nombre'),
+                DB::raw('SUM(cant_propia) as cant_propia'),
+                DB::raw('SUM(cant_otros) as cant_otros'),
+                DB::raw('MIN(precio_min) as precio_min'),
+                DB::raw('MAX(precio_max) as precio_max'),
+                DB::raw('MAX(tu_precio) as tu_precio'),
+            ])
             ->get();
 
         $out = [];
