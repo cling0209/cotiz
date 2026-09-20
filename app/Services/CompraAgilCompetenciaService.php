@@ -120,6 +120,85 @@ class CompraAgilCompetenciaService
     }
 
     /**
+     * Nota usada para más barato y más caro, con el precio propio y el de cada empresa.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return ?array<string, mixed>
+     */
+    public function detallePrecios(string $prodItem, array $filtros): ?array
+    {
+        $prodItem = trim($prodItem);
+        if ($prodItem === '') {
+            return null;
+        }
+
+        $resumen = $this->filasAgrupadas($filtros, $prodItem)[0] ?? null;
+        if ($resumen === null) {
+            return null;
+        }
+
+        $nronota = $resumen['nronota_mercado'] ?? $resumen['nronota_ultima'];
+        if ($nronota === null) {
+            return null;
+        }
+
+        $fecha = $this->sqlFechaCierre('s');
+        $filas = $this->queryBase($filtros, $prodItem)
+            ->where('d.nronota', $nronota)
+            ->select([
+                'd.nronota',
+                'd.orden',
+                'd.prod_valor',
+                'd.prod_descripcion_maestro',
+                DB::raw("{$fecha} as fecha_cierre"),
+                'op.razon_social',
+                'op.rut_proveedor',
+                'op.precio_unitario',
+                'op.es_propio',
+            ])
+            ->orderBy('d.orden')
+            ->orderBy('op.precio_unitario')
+            ->get();
+
+        if ($filas->isEmpty()) {
+            return null;
+        }
+
+        $primera = $filas->first();
+        $vistas = [];
+        $lineas = [];
+        foreach ($filas as $fila) {
+            $clavePropia = $fila->nronota.'|'.$fila->orden;
+            if (! isset($vistas[$clavePropia])) {
+                $vistas[$clavePropia] = true;
+                $lineas[] = [
+                    'proveedor' => 'Tú',
+                    'es_propio' => true,
+                    'precio_unitario' => (int) $fila->prod_valor,
+                ];
+            }
+            if ($fila->precio_unitario === null || $this->ofertaEsPropia($fila)) {
+                continue;
+            }
+            $lineas[] = [
+                'proveedor' => trim((string) ($fila->razon_social ?: $fila->rut_proveedor ?: '—')),
+                'es_propio' => false,
+                'precio_unitario' => (int) $fila->precio_unitario,
+            ];
+        }
+
+        return [
+            'prod_item' => $resumen['prod_item'],
+            'prod_nombre' => $resumen['prod_nombre'] !== ''
+                ? $resumen['prod_nombre']
+                : trim((string) $primera->prod_descripcion_maestro),
+            'nronota' => (int) $primera->nronota,
+            'fecha_cierre' => $this->formatearFecha($primera->fecha_cierre),
+            'lineas' => $lineas,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      * @return list<array<string, mixed>>
      */
@@ -151,6 +230,7 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(mk.precio_max) as precio_max'),
                 DB::raw('MAX(tu.prod_valor) as tu_precio'),
                 DB::raw('MAX(tu.nronota) as nronota_ultima'),
+                DB::raw('MAX(mk.nronota) as nronota_mercado'),
             ])
             ->addBinding(array_merge($ruts, $ruts, $ruts), 'select');
 
@@ -168,6 +248,7 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(precio_max) as precio_max'),
                 DB::raw('MAX(tu_precio) as tu_precio'),
                 DB::raw('MAX(nronota_ultima) as nronota_ultima'),
+                DB::raw('MAX(nronota_mercado) as nronota_mercado'),
             ])
             ->get();
 
@@ -188,6 +269,7 @@ class CompraAgilCompetenciaService
                 'adjudicada_otros' => $adjudicadaOtros,
                 'nadie_gano' => $total - $adjudicadaPropia - $adjudicadaOtros,
                 'nronota_ultima' => $fila->nronota_ultima !== null ? (int) $fila->nronota_ultima : null,
+                'nronota_mercado' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'tu_precio' => $fila->tu_precio !== null ? (int) $fila->tu_precio : null,
                 'precio_min' => $fila->precio_min !== null ? (int) $fila->precio_min : null,
                 'precio_max' => $fila->precio_max !== null ? (int) $fila->precio_max : null,
@@ -367,6 +449,7 @@ class CompraAgilCompetenciaService
             ->whereRaw("NOT ({$propio})")
             ->select([
                 'd.prod_item',
+                'd.nronota',
                 'op.precio_unitario',
                 DB::raw("DENSE_RANK() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC) as rk"),
             ])
@@ -375,9 +458,10 @@ class CompraAgilCompetenciaService
         return DB::query()
             ->fromSub($lineas, 'mk')
             ->where('rk', 1)
-            ->groupBy('prod_item')
+            ->groupBy('prod_item', 'nronota')
             ->select([
                 'prod_item',
+                'nronota',
                 DB::raw('MIN(precio_unitario) as precio_min'),
                 DB::raw('MAX(precio_unitario) as precio_max'),
             ]);

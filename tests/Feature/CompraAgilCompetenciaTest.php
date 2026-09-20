@@ -88,6 +88,15 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(['DISTRIBUIDORA VERGIO SPA'], $proveedores);
         $this->assertSame(100.0, $detalle['lineas'][0]['cantidad_adjudicada']);
         $this->assertArrayNotHasKey('precio_unitario', $detalle['lineas'][0]);
+
+        $precios = $servicio->detallePrecios('12345', []);
+        $this->assertSame(14865, $precios['nronota']);
+        $porPrecio = collect($precios['lineas'])->keyBy('proveedor');
+        $this->assertSame(800, $porPrecio['Tú']['precio_unitario']);
+        $this->assertTrue($porPrecio['Tú']['es_propio']);
+        $this->assertSame(756, $porPrecio['COMERCIALIZADORA GLT SPA']['precio_unitario']);
+        $this->assertSame(950, $porPrecio['DISTRIBUIDORA VERGIO SPA']['precio_unitario']);
+        $this->assertArrayNotHasKey('ROMULO', $porPrecio->all());
     }
 
     public function test_min_max_salen_de_la_ultima_cotizacion(): void
@@ -152,6 +161,14 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(900, $fila['tu_precio']);
         $this->assertSame(40, $fila['precio_min']);
         $this->assertSame(80, $fila['precio_max']);
+
+        $precios = app(CompraAgilCompetenciaService::class)->detallePrecios('P1', []);
+        $this->assertSame(1, $precios['nronota']);
+        $porPrecio = collect($precios['lineas'])->keyBy('proveedor');
+        $this->assertSame(100, $porPrecio['Tú']['precio_unitario']);
+        $this->assertSame(40, $porPrecio['OTRA']['precio_unitario']);
+        $this->assertSame(80, $porPrecio['OTRA MAS']['precio_unitario']);
+        $this->assertArrayNotHasKey('ROMULO', $porPrecio->all());
     }
 
     public function test_sin_fechas_trae_todo_y_el_rango_recorta(): void
@@ -200,6 +217,7 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertSee('Nadie se ganó')
             ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
+            ->assertSee('Precios abre esa nota')
             ->assertDontSee('Cód. MP');
     }
 

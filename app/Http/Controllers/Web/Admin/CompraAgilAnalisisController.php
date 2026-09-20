@@ -72,6 +72,16 @@ class CompraAgilAnalisisController extends Controller
         return $this->competencia->exportarExcel($this->filtros($request));
     }
 
+    public function detallePrecios(Request $request, string $prodItem): JsonResponse
+    {
+        $detalle = $this->competencia->detallePrecios($prodItem, $this->filtros($request));
+        if ($detalle === null) {
+            return response()->json(['error' => 'Sin precios de otras empresas para ese producto en el período.'], 404);
+        }
+
+        return response()->json($detalle);
+    }
+
     public function detalleProducto(Request $request, string $prodItem): JsonResponse
     {
         $detalle = $this->competencia->detalle($prodItem, $this->filtros($request));

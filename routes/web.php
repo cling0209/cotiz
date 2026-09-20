@@ -280,6 +280,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('compra-agil/analisis', [CompraAgilAnalisisController::class, 'index'])->name('compra-agil.analisis.index');
                 Route::get('compra-agil/analisis/excel', [CompraAgilAnalisisController::class, 'exportarExcel'])->name('compra-agil.analisis.excel');
                 Route::post('compra-agil/analisis/sync', [CompraAgilAnalisisController::class, 'sincronizar'])->name('compra-agil.analisis.sync');
+                Route::get('compra-agil/analisis/producto/{prodItem}/precios', [CompraAgilAnalisisController::class, 'detallePrecios'])->name('compra-agil.analisis.precios')->where('prodItem', '[^/]+');
                 Route::get('compra-agil/analisis/producto/{prodItem}', [CompraAgilAnalisisController::class, 'detalleProducto'])->name('compra-agil.analisis.producto')->where('prodItem', '[^/]+');
             });
 
