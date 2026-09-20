@@ -107,8 +107,7 @@ class CompraAgilBenchmarkTest extends TestCase
             ->actingAs($admin)
             ->get(route('admin.compra-agil.analisis.index'))
             ->assertOk()
-            ->assertSee('Cód. MP')
-            ->assertSee('31237835')
-            ->assertSee('PAPEL MP');
+            ->assertSee('Cód. propio')
+            ->assertDontSee('Cód. MP');
     }
 }

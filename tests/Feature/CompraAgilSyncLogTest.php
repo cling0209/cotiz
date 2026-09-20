@@ -152,27 +152,16 @@ class CompraAgilSyncLogTest extends TestCase
         $this->assertSame('super_sync', $log->usuario);
     }
 
-    public function test_pantalla_analisis_muestra_ultimo_analisis(): void
+    public function test_pantalla_analisis_muestra_precios_competencia(): void
     {
-        CompraAgilSyncLog::query()->create([
-            'inicio' => now()->subMinutes(5),
-            'fin' => now()->subMinutes(4),
-            'usuario' => 'admin_demo',
-            'listados' => 3,
-            'detalles' => 2,
-            'procesos_nuevos' => 1,
-            'estado' => 'ok',
-        ]);
-
         $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
 
         $this->withoutMiddleware()
             ->actingAs($admin)
             ->get(route('admin.compra-agil.analisis.index'))
             ->assertOk()
-            ->assertSee('Último análisis')
-            ->assertSee('admin_demo')
-            ->assertSee('Inicio:')
-            ->assertSee('Fin:');
+            ->assertSee('Cant. propia')
+            ->assertSee('Desde')
+            ->assertDontSee('Último análisis');
     }
 }

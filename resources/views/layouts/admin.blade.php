@@ -74,7 +74,7 @@
                             <li>
                                 <a class="dropdown-item {{ request()->routeIs('admin.compra-agil.analisis.*') ? 'active' : '' }}"
                                    href="{{ route('admin.compra-agil.analisis.index') }}">
-                                    <i class="bi bi-graph-up"></i> Análisis MP
+                                    <i class="bi bi-graph-up"></i> Precios competencia
                                 </a>
                             </li>
                         @endif

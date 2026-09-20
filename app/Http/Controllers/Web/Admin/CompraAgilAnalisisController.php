@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\ListadoPorPagina;
-use App\Services\CompraAgilBenchmarkService;
+use App\Services\CompraAgilCompetenciaService;
 use App\Services\CompraAgilSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -14,37 +14,18 @@ use Illuminate\View\View;
 class CompraAgilAnalisisController extends Controller
 {
     public function __construct(
-        protected CompraAgilBenchmarkService $benchmark,
+        protected CompraAgilCompetenciaService $competencia,
         protected CompraAgilSyncService $sync,
     ) {}
 
     public function index(Request $request): View
     {
-        $vista = (string) $request->query('vista', 'vinculados');
-        if (! in_array($vista, ['vinculados', 'sin_vinculo'], true)) {
-            $vista = 'vinculados';
-        }
-
-        $porPagina = ListadoPorPagina::resolver($request, 'compra-agil-analisis-'.$vista);
-        $filtros = [
-            'vista' => $vista,
-            'buscar' => trim((string) $request->query('buscar', '')),
-            'solo_alertas' => $request->boolean('solo_alertas'),
-            'solo_con_datos' => $request->boolean('solo_con_datos'),
-            'orden' => $request->query('orden', $vista === 'sin_vinculo' ? 'procesos_desc' : 'desvio_desc'),
-            'page' => $request->integer('page', 1),
-            'por_pagina' => $porPagina,
-        ];
+        $filtros = $this->filtros($request);
 
         return view('admin.compra-agil.analisis', [
             'filtros' => $filtros,
-            'vista' => $vista,
-            'kpi' => $this->benchmark->resumenKpi(),
-            'ultimaSync' => $this->benchmark->ultimaSync(),
-            'productos' => $vista === 'vinculados' ? $this->benchmark->listadoAdmin($filtros) : null,
-            'sinVinculo' => $vista === 'sin_vinculo' ? $this->benchmark->listadoSinVinculo($filtros) : null,
-            'diasAnalisis' => (int) config('cotiz.mercadopublico.sync_dias', 30),
-            'apiConfigurada' => trim((string) config('cotiz.mercadopublico.ticket', '')) !== '',
+            'kpi' => $this->competencia->resumen($filtros),
+            'productos' => $this->competencia->listado($filtros),
         ]);
     }
 
@@ -87,9 +68,36 @@ class CompraAgilAnalisisController extends Controller
 
     public function detalleProducto(Request $request, string $prodItem): JsonResponse
     {
-        return response()->json([
-            'lineas_mercado' => $this->benchmark->lineasMercadoProducto($prodItem),
-            'similares_catalogo' => $this->benchmark->similaresCatalogo($prodItem),
-        ]);
+        $detalle = $this->competencia->detalle($prodItem, $this->filtros($request));
+        if ($detalle === null) {
+            return response()->json(['error' => 'Sin datos para ese producto en el período.'], 404);
+        }
+
+        return response()->json($detalle);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filtros(Request $request): array
+    {
+        $orden = (string) $request->query('orden', 'cant_total');
+        if (! in_array($orden, ['cant_total', 'cant_propia', 'cant_otros'], true)) {
+            $orden = 'cant_total';
+        }
+        $dir = (string) $request->query('dir', 'desc');
+        if (! in_array($dir, ['asc', 'desc'], true)) {
+            $dir = 'desc';
+        }
+
+        return [
+            'buscar' => trim((string) $request->query('buscar', '')),
+            'fecha_desde' => trim((string) $request->query('fecha_desde', '')),
+            'fecha_hasta' => trim((string) $request->query('fecha_hasta', '')),
+            'orden' => $orden,
+            'dir' => $dir,
+            'page' => $request->integer('page', 1),
+            'por_pagina' => ListadoPorPagina::resolver($request, 'compra-agil-analisis'),
+        ];
     }
 }
