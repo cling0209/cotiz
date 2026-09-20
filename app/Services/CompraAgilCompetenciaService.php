@@ -137,7 +137,7 @@ class CompraAgilCompetenciaService
             return null;
         }
 
-        $nronota = $resumen['nronota_mercado'] ?? $resumen['nronota_ultima'];
+        $nronota = $resumen['nronota_mercado'] ?? null;
         if ($nronota === null) {
             return null;
         }
@@ -228,13 +228,8 @@ class CompraAgilCompetenciaService
         $ruts = $this->rutsPropiosCompactos();
 
         $porLinea = $query
-            ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
             ->leftJoinSub($this->preciosMercado($filtros, $prodItem), 'mk', 'mk.prod_item', '=', 'd.prod_item')
-            ->leftJoinSub($this->preciosOfertados($filtros, $prodItem), 'po', function ($join) {
-                $join->on('po.prod_item', '=', 'd.prod_item')
-                    ->on('po.nronota', '=', 'mk.nronota');
-            })
-            ->groupBy('d.prod_item', 'd.nronota', 'd.orden', 'tu.nronota')
+            ->groupBy('d.prod_item', 'd.nronota', 'd.orden')
             ->select([
                 'd.prod_item',
                 DB::raw("MAX({$nombre}) as prod_nombre"),
@@ -244,8 +239,7 @@ class CompraAgilCompetenciaService
                 DB::raw("SUM(CASE WHEN {$seleccionado} AND op.rut_proveedor IS NOT NULL AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as adj_otros"),
                 DB::raw('MAX(mk.precio_min) as precio_min'),
                 DB::raw('MAX(mk.precio_max) as precio_max'),
-                DB::raw('COALESCE(MAX(po.precio_ofertado), MAX(tu.prod_valor)) as tu_precio'),
-                DB::raw('MAX(tu.nronota) as nronota_ultima'),
+                DB::raw('MAX(mk.precio_ofertado) as tu_precio'),
                 DB::raw('MAX(mk.nronota) as nronota_mercado'),
             ])
             ->addBinding(array_merge($ruts, $ruts, $ruts), 'select');
@@ -263,7 +257,6 @@ class CompraAgilCompetenciaService
                 DB::raw('MIN(precio_min) as precio_min'),
                 DB::raw('MAX(precio_max) as precio_max'),
                 DB::raw('MAX(tu_precio) as tu_precio'),
-                DB::raw('MAX(nronota_ultima) as nronota_ultima'),
                 DB::raw('MAX(nronota_mercado) as nronota_mercado'),
             ])
             ->get();
@@ -284,7 +277,7 @@ class CompraAgilCompetenciaService
                 'adjudicada_propia' => $adjudicadaPropia,
                 'adjudicada_otros' => $adjudicadaOtros,
                 'nadie_gano' => $total - $adjudicadaPropia - $adjudicadaOtros,
-                'nronota_ultima' => $fila->nronota_ultima !== null ? (int) $fila->nronota_ultima : null,
+                'nronota_ultima' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'nronota_mercado' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'tu_precio' => $fila->tu_precio !== null ? (int) $fila->tu_precio : null,
                 'precio_min' => $fila->precio_min !== null ? (int) $fila->precio_min : null,
@@ -425,33 +418,7 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Precio ofertado propio de la última nota en la que sí hubo oferta. Respaldo si la nota de mercado no tiene precio propio.
-     *
-     * @param  array<string, mixed>  $filtros
-     */
-    private function preciosUltimos(array $filtros, ?string $prodItem)
-    {
-        $fecha = $this->sqlFechaCierre('s');
-        $propio = $this->sqlEsPropio('op');
-        $ranked = $this->queryBase($filtros, $prodItem)
-            ->whereNotNull('op.precio_unitario')
-            ->whereRaw("({$propio})")
-            ->select([
-                'd.prod_item',
-                'op.precio_unitario as prod_valor',
-                'd.nronota',
-                DB::raw("ROW_NUMBER() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC) as rn"),
-            ])
-            ->addBinding($this->rutsPropiosCompactos(), 'where');
-
-        return DB::query()
-            ->fromSub($ranked, 'px')
-            ->where('rn', 1)
-            ->select(['prod_item', 'prod_valor', 'nronota']);
-    }
-
-    /**
-     * Precio ofertado propio por nota, para la misma nota de más barato y más caro.
+     * Precio ofertado propio por nota.
      *
      * @param  array<string, mixed>  $filtros
      */
@@ -472,7 +439,7 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Más barato y más caro: última nota en la que cotizó al menos otra empresa.
+     * Última nota en la que hay oferta propia y al menos otra empresa.
      *
      * @param  array<string, mixed>  $filtros
      */
@@ -481,6 +448,10 @@ class CompraAgilCompetenciaService
         $fecha = $this->sqlFechaCierre('s');
         $propio = $this->sqlEsPropio('op');
         $lineas = $this->queryBase($filtros, $prodItem)
+            ->joinSub($this->preciosOfertados($filtros, $prodItem), 'po', function ($join) {
+                $join->on('po.prod_item', '=', 'd.prod_item')
+                    ->on('po.nronota', '=', 'd.nronota');
+            })
             ->whereNotNull('op.rut_proveedor')
             ->whereNotNull('op.precio_unitario')
             ->whereRaw("NOT ({$propio})")
@@ -488,6 +459,7 @@ class CompraAgilCompetenciaService
                 'd.prod_item',
                 'd.nronota',
                 'op.precio_unitario',
+                'po.precio_ofertado',
                 DB::raw("DENSE_RANK() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC) as rk"),
             ])
             ->addBinding($this->rutsPropiosCompactos(), 'where');
@@ -495,10 +467,11 @@ class CompraAgilCompetenciaService
         return DB::query()
             ->fromSub($lineas, 'mk')
             ->where('rk', 1)
-            ->groupBy('prod_item', 'nronota')
+            ->groupBy('prod_item', 'nronota', 'precio_ofertado')
             ->select([
                 'prod_item',
                 'nronota',
+                'precio_ofertado',
                 DB::raw('MIN(precio_unitario) as precio_min'),
                 DB::raw('MAX(precio_unitario) as precio_max'),
             ]);

@@ -76,7 +76,7 @@ class CompraAgilAnalisisController extends Controller
     {
         $detalle = $this->competencia->detallePrecios($prodItem, $this->filtros($request));
         if ($detalle === null) {
-            return response()->json(['error' => 'Sin precios de otras empresas para ese producto en el período.'], 404);
+            return response()->json(['error' => 'No hay una nota en la que hayas ofertado junto con otra empresa.'], 404);
         }
 
         return response()->json($detalle);

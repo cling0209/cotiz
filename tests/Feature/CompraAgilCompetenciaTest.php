@@ -175,6 +175,38 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertArrayNotHasKey('ROMULO', $porPrecio->all());
     }
 
+    public function test_tu_precio_ignora_la_nota_si_no_cotizo_otra_empresa(): void
+    {
+        $this->nota(1, '2026-01-10 10:00:00');
+        $this->nota(2, '2026-06-10 10:00:00');
+        $this->nota(3, '2026-09-04 10:00:00');
+        foreach ([1 => 80, 2 => 80, 3 => 80] as $nro => $precioCatalogo) {
+            NotaDetalle::query()->create([
+                'nronota' => $nro,
+                'prod_item' => 'REYSOL17',
+                'prod_valor' => $precioCatalogo,
+                'cantidad' => 5,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_descripcion_maestro' => 'Kit',
+            ]);
+        }
+        $compartida = $this->oferta(1, '76185139-K', 'ROMULO', false, true);
+        $this->linea($compartida, 'X', 5, 90);
+        $otra = $this->oferta(1, '11111111-1', 'OTRA', false, false);
+        $this->linea($otra, 'X', 5, 100);
+        $soloOtros = $this->oferta(2, '22222222-2', 'SOLO OTROS', false, false);
+        $this->linea($soloOtros, 'X', 5, 194);
+        $soloPropia = $this->oferta(3, '76185139-K', 'ROMULO', false, true);
+        $this->linea($soloPropia, 'X', 5, 859850);
+
+        $fila = app(CompraAgilCompetenciaService::class)->listado([])->items()[0];
+        $this->assertSame(90, $fila['tu_precio']);
+        $this->assertSame(100, $fila['precio_min']);
+        $this->assertSame(100, $fila['precio_max']);
+        $this->assertSame(1, $fila['nronota_mercado']);
+    }
+
     public function test_sin_fechas_trae_todo_y_el_rango_recorta(): void
     {
         $this->nota(1, '2026-01-10 10:00:00');
@@ -221,7 +253,7 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertSee('Nadie se ganó')
             ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
-            ->assertSee('no el de catálogo')
+            ->assertSee('ofertaste y cotizó al menos otra empresa')
             ->assertSee('precio de catálogo')
             ->assertDontSee('Cód. MP');
     }
