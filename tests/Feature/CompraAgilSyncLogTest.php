@@ -162,7 +162,7 @@ class CompraAgilSyncLogTest extends TestCase
             ->assertOk()
             ->assertSee('Cant. total')
             ->assertDontSee('Cant. propia')
-            ->assertSee('Desde')
+            ->assertSee('Cierre desde')
             ->assertDontSee('Último análisis');
     }
 }
