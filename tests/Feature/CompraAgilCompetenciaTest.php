@@ -159,11 +159,9 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->linea($otra, 'X', 4, 80);
         $propiaVieja = $this->oferta(1, '76185139-K', 'ROMULO', false, true);
         $this->linea($propiaVieja, 'X', 5, 30);
-        $propia = $this->oferta(2, '76185139-K', 'ROMULO', false, true);
-        $this->linea($propia, 'X', 5, 900);
 
         $fila = app(CompraAgilCompetenciaService::class)->listado([])->items()[0];
-        $this->assertSame(900, $fila['tu_precio']);
+        $this->assertSame(30, $fila['tu_precio']);
         $this->assertSame(40, $fila['precio_min']);
         $this->assertSame(80, $fila['precio_max']);
 

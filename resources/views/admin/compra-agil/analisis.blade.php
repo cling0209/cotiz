@@ -38,7 +38,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio es el ofertado en la última nota, no el de catálogo. Más barato y más caro salen de la última nota en la que cotizó al menos otra empresa. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Precios abre esa nota con el precio ofertado propio, el de cada empresa y, aparte, el precio de catálogo. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio es el ofertado en la misma nota de más barato y más caro, no el de catálogo. Más barato y más caro salen de la última nota en la que cotizó al menos otra empresa. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Precios abre esa nota con el precio ofertado propio, el de cada empresa y, aparte, el precio de catálogo. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
@@ -106,7 +106,7 @@
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_propia') }}">Adjudicada propio{{ $sortMark('adjudicada_propia') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_otros') }}">Adjudicadas otros{{ $sortMark('adjudicada_otros') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('nadie_gano') }}">Nadie se ganó{{ $sortMark('nadie_gano') }}</a></th>
-                        <th class="text-end" title="Precio ofertado en la última nota, no el de catálogo">Tu precio</th>
+                        <th class="text-end" title="Precio ofertado en la misma nota de más barato y más caro, no el de catálogo">Tu precio</th>
                         <th class="text-end">Más barato</th>
                         <th class="text-end">Más caro</th>
                         <th class="text-end">Acciones</th>

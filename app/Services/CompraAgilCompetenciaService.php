@@ -230,6 +230,10 @@ class CompraAgilCompetenciaService
         $porLinea = $query
             ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
             ->leftJoinSub($this->preciosMercado($filtros, $prodItem), 'mk', 'mk.prod_item', '=', 'd.prod_item')
+            ->leftJoinSub($this->preciosOfertados($filtros, $prodItem), 'po', function ($join) {
+                $join->on('po.prod_item', '=', 'd.prod_item')
+                    ->on('po.nronota', '=', 'mk.nronota');
+            })
             ->groupBy('d.prod_item', 'd.nronota', 'd.orden', 'tu.nronota')
             ->select([
                 'd.prod_item',
@@ -240,7 +244,7 @@ class CompraAgilCompetenciaService
                 DB::raw("SUM(CASE WHEN {$seleccionado} AND op.rut_proveedor IS NOT NULL AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as adj_otros"),
                 DB::raw('MAX(mk.precio_min) as precio_min'),
                 DB::raw('MAX(mk.precio_max) as precio_max'),
-                DB::raw('MAX(tu.prod_valor) as tu_precio'),
+                DB::raw('COALESCE(MAX(po.precio_ofertado), MAX(tu.prod_valor)) as tu_precio'),
                 DB::raw('MAX(tu.nronota) as nronota_ultima'),
                 DB::raw('MAX(mk.nronota) as nronota_mercado'),
             ])
@@ -421,7 +425,7 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Precio ofertado propio de la nota con cierre más reciente. No usa el precio de catálogo.
+     * Precio ofertado propio de la última nota en la que sí hubo oferta. Respaldo si la nota de mercado no tiene precio propio.
      *
      * @param  array<string, mixed>  $filtros
      */
@@ -429,20 +433,42 @@ class CompraAgilCompetenciaService
     {
         $fecha = $this->sqlFechaCierre('s');
         $propio = $this->sqlEsPropio('op');
-        $ruts = $this->rutsPropiosCompactos();
         $ranked = $this->queryBase($filtros, $prodItem)
+            ->whereNotNull('op.precio_unitario')
+            ->whereRaw("({$propio})")
             ->select([
                 'd.prod_item',
-                DB::raw("CASE WHEN ({$propio}) THEN op.precio_unitario END as prod_valor"),
+                'op.precio_unitario as prod_valor',
                 'd.nronota',
-                DB::raw("ROW_NUMBER() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC, CASE WHEN ({$propio}) AND op.precio_unitario IS NOT NULL THEN 0 ELSE 1 END) as rn"),
+                DB::raw("ROW_NUMBER() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC) as rn"),
             ])
-            ->addBinding(array_merge($ruts, $ruts), 'select');
+            ->addBinding($this->rutsPropiosCompactos(), 'where');
 
         return DB::query()
             ->fromSub($ranked, 'px')
             ->where('rn', 1)
             ->select(['prod_item', 'prod_valor', 'nronota']);
+    }
+
+    /**
+     * Precio ofertado propio por nota, para la misma nota de más barato y más caro.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function preciosOfertados(array $filtros, ?string $prodItem)
+    {
+        $propio = $this->sqlEsPropio('op');
+
+        return $this->queryBase($filtros, $prodItem)
+            ->whereNotNull('op.precio_unitario')
+            ->whereRaw("({$propio})")
+            ->groupBy('d.prod_item', 'd.nronota')
+            ->select([
+                'd.prod_item',
+                'd.nronota',
+                DB::raw('MAX(op.precio_unitario) as precio_ofertado'),
+            ])
+            ->addBinding($this->rutsPropiosCompactos(), 'where');
     }
 
     /**
