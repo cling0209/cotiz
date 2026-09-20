@@ -38,7 +38,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. La cantidad es el total cotizado, propio y competencia. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Cant. total es lo cotizado. Adjudicada propio y adjudicadas otros es lo ganado. Tu precio es el de la última nota. Más barato y más caro salen de la última nota en la que cotizó otra empresa. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
@@ -103,6 +103,8 @@
                         <th>Cód. propio</th>
                         <th>Descripción propia</th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('cant_total') }}">Cant. total{{ $sortMark('cant_total') }}</a></th>
+                        <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_propia') }}">Adjudicada propio{{ $sortMark('adjudicada_propia') }}</a></th>
+                        <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_otros') }}">Adjudicadas otros{{ $sortMark('adjudicada_otros') }}</a></th>
                         <th class="text-end">Tu precio</th>
                         <th class="text-end">Más barato</th>
                         <th class="text-end">Más caro</th>
@@ -115,6 +117,8 @@
                             <td class="font-monospace">{{ $row['prod_item'] }}</td>
                             <td>{{ $row['prod_nombre'] !== '' ? $row['prod_nombre'] : '—' }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['cant_total']) }}</td>
+                            <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_propia']) }}</td>
+                            <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_otros']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['tu_precio']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_min']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_max']) }}</td>
@@ -127,7 +131,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -146,19 +150,33 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body py-2">
-                <div class="border rounded px-3 py-2 mb-3">
-                    <div class="text-muted small">Cant. total</div>
-                    <div class="fs-5 fw-semibold" id="modal-competencia-cant-total">—</div>
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-4">
+                        <div class="border rounded px-3 py-2">
+                            <div class="text-muted small">Cant. total</div>
+                            <div class="fs-5 fw-semibold" id="modal-competencia-cant-total">—</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="border rounded px-3 py-2">
+                            <div class="text-muted small">Adjudicada propio</div>
+                            <div class="fs-5 fw-semibold" id="modal-competencia-adj-propia">—</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="border rounded px-3 py-2">
+                            <div class="text-muted small">Adjudicadas otros</div>
+                            <div class="fs-5 fw-semibold" id="modal-competencia-adj-otros">—</div>
+                        </div>
+                    </div>
                 </div>
-                <p class="small mb-2" id="modal-competencia-resumen"></p>
+                <p class="small mb-2 text-danger" id="modal-competencia-resumen"></p>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
                         <thead>
                             <tr>
-                                <th>Nota</th>
-                                <th>Cierre</th>
-                                <th>Proveedor</th>
-                                <th class="text-end">P. unit.</th>
+                                <th>Empresa</th>
+                                <th class="text-end">Cant. adjudicada</th>
                             </tr>
                         </thead>
                         <tbody id="modal-competencia-lineas"></tbody>
@@ -182,27 +200,23 @@ document.querySelectorAll('.btn-detalle-competencia').forEach(btn => {
         document.getElementById('modal-competencia-titulo').textContent = btn.dataset.prod || 'Detalle';
         const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
         const data = await res.json();
-        const fmt = n => '$' + (Number(n) || 0).toLocaleString('es-CL');
         const cant = n => (Number(n) || 0).toLocaleString('es-CL');
         if (!res.ok) {
             document.getElementById('modal-competencia-cant-total').textContent = '—';
+            document.getElementById('modal-competencia-adj-propia').textContent = '—';
+            document.getElementById('modal-competencia-adj-otros').textContent = '—';
             document.getElementById('modal-competencia-resumen').textContent = data.error || 'No se pudo cargar el detalle.';
             document.getElementById('modal-competencia-lineas').innerHTML = '';
             bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
             return;
         }
+        document.getElementById('modal-competencia-resumen').textContent = '';
         document.getElementById('modal-competencia-cant-total').textContent = cant(data.cant_total);
-        const ultima = (data.lineas && data.lineas[0]) ? data.lineas[0] : null;
-        const notaTxt = ultima ? ('nota ' + ultima.nronota + (ultima.fecha_cierre ? ' · ' + ultima.fecha_cierre : '')) : 'sin nota';
-        document.getElementById('modal-competencia-resumen').textContent = 'Precios de la última nota (' + notaTxt + '). Tu precio '
-            + (data.tu_precio == null ? '—' : fmt(data.tu_precio))
-            + ' · más barato ' + (data.precio_min == null ? '—' : fmt(data.precio_min))
-            + ' · más caro ' + (data.precio_max == null ? '—' : fmt(data.precio_max));
+        document.getElementById('modal-competencia-adj-propia').textContent = cant(data.adjudicada_propia);
+        document.getElementById('modal-competencia-adj-otros').textContent = cant(data.adjudicada_otros);
         document.getElementById('modal-competencia-lineas').innerHTML = (data.lineas || []).map(l => {
-            const marca = l.seleccionado ? ' · Seleccionado' : '';
-            const cls = l.seleccionado ? 'table-success' : (l.es_propio ? 'fw-semibold' : '');
-            return `<tr class="${cls}"><td>${l.nronota}</td><td>${l.fecha_cierre || '—'}</td><td>${l.proveedor || '—'}${marca}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td></tr>`;
-        }).join('') || '<tr><td colspan="4" class="text-muted">Sin ofertas</td></tr>';
+            return `<tr><td>${l.proveedor || '—'}</td><td class="text-end">${cant(l.cantidad_adjudicada)}</td></tr>`;
+        }).join('') || '<tr><td colspan="2" class="text-muted">Sin adjudicaciones de otras empresas</td></tr>';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
     });
 });

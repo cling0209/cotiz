@@ -70,6 +70,9 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame('Huellero individual', $huellero['prod_nombre']);
         $this->assertSame(100.0, $huellero['cant_propia']);
         $this->assertSame(200.0, $huellero['cant_otros']);
+        $this->assertSame(300.0, $huellero['cant_total']);
+        $this->assertSame(0.0, $huellero['adjudicada_propia']);
+        $this->assertSame(100.0, $huellero['adjudicada_otros']);
         $this->assertSame(800, $huellero['tu_precio']);
         $this->assertSame(756, $huellero['precio_min']);
         $this->assertSame(950, $huellero['precio_max']);
@@ -77,15 +80,9 @@ class CompraAgilCompetenciaTest extends TestCase
         $detalle = $servicio->detalle('12345', []);
         $this->assertNotNull($detalle);
         $proveedores = collect($detalle['lineas'])->pluck('proveedor')->all();
-        $this->assertContains('Tú', $proveedores);
-        $this->assertContains('COMERCIALIZADORA GLT SPA', $proveedores);
-        $this->assertNotContains('999', collect($detalle['lineas'])->pluck('precio_unitario')->all());
-        $adjudicada = collect($detalle['lineas'])->firstWhere('proveedor', 'DISTRIBUIDORA VERGIO SPA');
-        $tu = collect($detalle['lineas'])->firstWhere('proveedor', 'Tú');
-        $this->assertSame(100.0, $tu['cantidad_cotizada_propia']);
-        $this->assertNull($tu['cantidad_cotizada_competencia']);
-        $this->assertSame(100.0, $adjudicada['cantidad_cotizada_competencia']);
-        $this->assertNull($adjudicada['cantidad_cotizada_propia']);
+        $this->assertSame(['DISTRIBUIDORA VERGIO SPA'], $proveedores);
+        $this->assertSame(100.0, $detalle['lineas'][0]['cantidad_adjudicada']);
+        $this->assertArrayNotHasKey('precio_unitario', $detalle['lineas'][0]);
     }
 
     public function test_min_max_salen_de_la_ultima_cotizacion(): void
@@ -113,10 +110,43 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(1200, $fila['precio_min']);
         $this->assertSame(1200, $fila['precio_max']);
 
+        $this->assertSame(0.0, $fila['adjudicada_propia']);
+        $this->assertSame(13.0, $fila['adjudicada_otros']);
+
         $detalle = app(CompraAgilCompetenciaService::class)->detalle('P1', []);
-        $notas = collect($detalle['lineas'])->pluck('nronota')->unique()->values()->all();
-        $this->assertSame([2], $notas);
-        $this->assertNotContains(50, collect($detalle['lineas'])->pluck('precio_unitario')->all());
+        $porEmpresa = collect($detalle['lineas'])->keyBy('proveedor');
+        $this->assertSame(5.0, $porEmpresa['VIEJO']['cantidad_adjudicada']);
+        $this->assertSame(8.0, $porEmpresa['NUEVO']['cantidad_adjudicada']);
+        $this->assertSame(1200, $detalle['precio_min']);
+        $this->assertSame(1200, $detalle['precio_max']);
+    }
+
+    public function test_min_max_retrocede_si_la_ultima_nota_no_tiene_otra_empresa(): void
+    {
+        $this->nota(1, '2026-01-10 10:00:00');
+        $this->nota(2, '2026-06-10 10:00:00');
+        foreach ([1 => 100, 2 => 900] as $nro => $precioPropio) {
+            NotaDetalle::query()->create([
+                'nronota' => $nro,
+                'prod_item' => 'P1',
+                'prod_valor' => $precioPropio,
+                'cantidad' => 5,
+                'fechahora' => now(),
+                'orden' => 1,
+                'prod_descripcion_maestro' => 'Producto',
+            ]);
+        }
+        $vieja = $this->oferta(1, '11111111-1', 'OTRA', false, false);
+        $this->linea($vieja, 'X', 4, 40);
+        $otra = $this->oferta(1, '22222222-2', 'OTRA MAS', false, false);
+        $this->linea($otra, 'X', 4, 80);
+        $propia = $this->oferta(2, '76185139-K', 'ROMULO', false, true);
+        $this->linea($propia, 'X', 5, 900);
+
+        $fila = app(CompraAgilCompetenciaService::class)->listado([])->items()[0];
+        $this->assertSame(900, $fila['tu_precio']);
+        $this->assertSame(40, $fila['precio_min']);
+        $this->assertSame(80, $fila['precio_max']);
     }
 
     public function test_sin_fechas_trae_todo_y_el_rango_recorta(): void
@@ -139,16 +169,17 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $servicio = app(CompraAgilCompetenciaService::class);
         $todo = $servicio->listado([])->items();
-        $this->assertSame(10.0, $todo[0]['cant_propia']);
-        $this->assertSame(10.0, $todo[0]['cant_otros']);
+        $this->assertSame(20.0, $todo[0]['cant_total']);
+        $this->assertSame(0.0, $todo[0]['adjudicada_propia']);
+        $this->assertSame(10.0, $todo[0]['adjudicada_otros']);
 
         $recorte = $servicio->listado([
             'fecha_desde' => '2026-06-01',
             'fecha_hasta' => '2026-06-30',
         ])->items();
         $this->assertCount(1, $recorte);
-        $this->assertSame(5.0, $recorte[0]['cant_propia']);
-        $this->assertSame(5.0, $recorte[0]['cant_otros']);
+        $this->assertSame(10.0, $recorte[0]['cant_total']);
+        $this->assertSame(5.0, $recorte[0]['adjudicada_otros']);
     }
 
     public function test_pantalla_no_muestra_codigo_mp(): void
@@ -161,8 +192,8 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertOk()
             ->assertSee('Cód. propio')
             ->assertSee('Cant. total')
-            ->assertDontSee('Cant. propia')
-            ->assertDontSee('Cant. otros')
+            ->assertSee('Adjudicada propio')
+            ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
             ->assertDontSee('Cód. MP');
     }
@@ -197,8 +228,9 @@ class CompraAgilCompetenciaTest extends TestCase
         @unlink($tmp);
 
         $this->assertSame('Cód. propio', $sheet->getCell('A1')->getValue());
-        $this->assertSame('Más caro', $sheet->getCell('F1')->getValue());
+        $this->assertSame('Más caro', $sheet->getCell('H1')->getValue());
         $this->assertSame('Cant. total', $sheet->getCell('C1')->getValue());
+        $this->assertSame('Adjudicada propio', $sheet->getCell('D1')->getValue());
         $codigos = [$sheet->getCell('A2')->getValue(), $sheet->getCell('A3')->getValue()];
         sort($codigos);
         $this->assertSame(['P1', 'P2'], $codigos);

@@ -108,6 +108,9 @@ class CompraAgilCompetenciaService
             'cant_propia' => $resumen['cant_propia'],
             'cant_otros' => $resumen['cant_otros'],
             'cant_total' => $resumen['cant_total'],
+            'adjudicada_propia' => $resumen['adjudicada_propia'],
+            'adjudicada_otros' => $resumen['adjudicada_otros'],
+            'nronota_ultima' => $resumen['nronota_ultima'],
             'tu_precio' => $resumen['tu_precio'],
             'precio_min' => $resumen['precio_min'],
             'precio_max' => $resumen['precio_max'],
@@ -129,21 +132,26 @@ class CompraAgilCompetenciaService
         $query = $this->queryBase($filtros, $prodItem);
         $nombre = $this->sqlNombre();
         $propio = $this->sqlEsPropio('op');
+        $seleccionado = 'op.proveedor_seleccionado IS TRUE';
         $ruts = $this->rutsPropiosCompactos();
 
         $porLinea = $query
             ->leftJoinSub($this->preciosUltimos($filtros, $prodItem), 'tu', 'tu.prod_item', '=', 'd.prod_item')
+            ->leftJoinSub($this->preciosMercado($filtros, $prodItem), 'mk', 'mk.prod_item', '=', 'd.prod_item')
             ->groupBy('d.prod_item', 'd.nronota', 'd.orden', 'tu.nronota')
             ->select([
                 'd.prod_item',
                 DB::raw("MAX({$nombre}) as prod_nombre"),
                 DB::raw('MAX(COALESCE(d.cantidad, 0)) as cant_propia'),
                 DB::raw("SUM(CASE WHEN op.rut_proveedor IS NULL OR ({$propio}) THEN 0 ELSE COALESCE(op.cantidad, 0) END) as cant_otros"),
-                DB::raw("MIN(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_min"),
-                DB::raw("MAX(CASE WHEN d.nronota = tu.nronota THEN op.precio_unitario END) as precio_max"),
+                DB::raw("MAX(CASE WHEN {$seleccionado} AND ({$propio}) THEN COALESCE(d.cantidad, 0) ELSE 0 END) as adj_propia"),
+                DB::raw("SUM(CASE WHEN {$seleccionado} AND op.rut_proveedor IS NOT NULL AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as adj_otros"),
+                DB::raw('MAX(mk.precio_min) as precio_min'),
+                DB::raw('MAX(mk.precio_max) as precio_max'),
                 DB::raw('MAX(tu.prod_valor) as tu_precio'),
+                DB::raw('MAX(tu.nronota) as nronota_ultima'),
             ])
-            ->addBinding($ruts, 'select');
+            ->addBinding(array_merge($ruts, $ruts, $ruts), 'select');
 
         $filas = DB::query()
             ->fromSub($porLinea, 'lin')
@@ -153,9 +161,12 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(prod_nombre) as prod_nombre'),
                 DB::raw('SUM(cant_propia) as cant_propia'),
                 DB::raw('SUM(cant_otros) as cant_otros'),
+                DB::raw('SUM(adj_propia) as adj_propia'),
+                DB::raw('SUM(adj_otros) as adj_otros'),
                 DB::raw('MIN(precio_min) as precio_min'),
                 DB::raw('MAX(precio_max) as precio_max'),
                 DB::raw('MAX(tu_precio) as tu_precio'),
+                DB::raw('MAX(nronota_ultima) as nronota_ultima'),
             ])
             ->get();
 
@@ -169,6 +180,9 @@ class CompraAgilCompetenciaService
                 'cant_propia' => $propia,
                 'cant_otros' => $otros,
                 'cant_total' => $propia + $otros,
+                'adjudicada_propia' => (float) ($fila->adj_propia ?? 0),
+                'adjudicada_otros' => (float) ($fila->adj_otros ?? 0),
+                'nronota_ultima' => $fila->nronota_ultima !== null ? (int) $fila->nronota_ultima : null,
                 'tu_precio' => $fila->tu_precio !== null ? (int) $fila->tu_precio : null,
                 'precio_min' => $fila->precio_min !== null ? (int) $fila->precio_min : null,
                 'precio_max' => $fila->precio_max !== null ? (int) $fila->precio_max : null,
@@ -222,49 +236,24 @@ class CompraAgilCompetenciaService
             $porNota[$clave]['ofertas'][] = $fila;
         }
 
-        $lineas = [];
-        $nronotaUltima = null;
+        $porEmpresa = [];
         foreach ($porNota as $bloque) {
-            if ($nronotaUltima === null) {
-                $nronotaUltima = $bloque['nronota'];
-            }
-            if ($bloque['nronota'] !== $nronotaUltima) {
-                continue;
-            }
-            $ganoPropio = false;
             foreach ($bloque['ofertas'] as $oferta) {
-                if ($this->esSeleccionado($oferta->proveedor_seleccionado) && $this->ofertaEsPropia($oferta)) {
-                    $ganoPropio = true;
-                    break;
-                }
-            }
-
-            $lineas[] = [
-                'nronota' => $bloque['nronota'],
-                'fecha_cierre' => $this->formatearFecha($bloque['fecha_cierre']),
-                'proveedor' => 'Tú',
-                'es_propio' => true,
-                'seleccionado' => $ganoPropio,
-                'precio_unitario' => $bloque['prod_valor'],
-                'cantidad_cotizada_propia' => $bloque['cantidad_nota'],
-                'cantidad_cotizada_competencia' => null,
-            ];
-
-            foreach ($bloque['ofertas'] as $oferta) {
-                if ($this->ofertaEsPropia($oferta)) {
+                if (! $this->esSeleccionado($oferta->proveedor_seleccionado) || $this->ofertaEsPropia($oferta)) {
                     continue;
                 }
-                $lineas[] = [
-                    'nronota' => $bloque['nronota'],
-                    'fecha_cierre' => $this->formatearFecha($bloque['fecha_cierre']),
-                    'proveedor' => trim((string) ($oferta->razon_social ?: $oferta->rut_proveedor ?: '—')),
-                    'es_propio' => false,
-                    'seleccionado' => $this->esSeleccionado($oferta->proveedor_seleccionado),
-                    'precio_unitario' => $oferta->precio_unitario !== null ? (int) $oferta->precio_unitario : null,
-                    'cantidad_cotizada_propia' => null,
-                    'cantidad_cotizada_competencia' => (float) ($oferta->cantidad_oferta ?? 0),
-                ];
+                $empresa = trim((string) ($oferta->razon_social ?: $oferta->rut_proveedor ?: '—'));
+                $porEmpresa[$empresa] = ($porEmpresa[$empresa] ?? 0) + (float) ($oferta->cantidad_oferta ?? 0);
             }
+        }
+
+        arsort($porEmpresa);
+        $lineas = [];
+        foreach ($porEmpresa as $empresa => $cantidad) {
+            $lineas[] = [
+                'proveedor' => $empresa,
+                'cantidad_adjudicada' => $cantidad,
+            ];
         }
 
         return $lineas;
@@ -356,6 +345,37 @@ class CompraAgilCompetenciaService
             ->fromSub($ranked, 'px')
             ->where('rn', 1)
             ->select(['prod_item', 'prod_valor', 'nronota']);
+    }
+
+    /**
+     * Más barato y más caro: última nota en la que cotizó al menos otra empresa.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function preciosMercado(array $filtros, ?string $prodItem)
+    {
+        $fecha = $this->sqlFechaCierre('s');
+        $propio = $this->sqlEsPropio('op');
+        $lineas = $this->queryBase($filtros, $prodItem)
+            ->whereNotNull('op.rut_proveedor')
+            ->whereNotNull('op.precio_unitario')
+            ->whereRaw("NOT ({$propio})")
+            ->select([
+                'd.prod_item',
+                'op.precio_unitario',
+                DB::raw("DENSE_RANK() OVER (PARTITION BY d.prod_item ORDER BY {$fecha} DESC NULLS LAST, d.nronota DESC) as rk"),
+            ])
+            ->addBinding($this->rutsPropiosCompactos(), 'where');
+
+        return DB::query()
+            ->fromSub($lineas, 'mk')
+            ->where('rk', 1)
+            ->groupBy('prod_item')
+            ->select([
+                'prod_item',
+                DB::raw('MIN(precio_unitario) as precio_min'),
+                DB::raw('MAX(precio_unitario) as precio_max'),
+            ]);
     }
 
     /**
@@ -457,11 +477,13 @@ class CompraAgilCompetenciaService
             'Cód. propio',
             'Descripción propia',
             'Cant. total',
+            'Adjudicada propio',
+            'Adjudicadas otros',
             'Tu precio',
             'Más barato',
             'Más caro',
         ]], null, 'A1');
-        $sheet->getStyle('A1:F1')->applyFromArray([
+        $sheet->getStyle('A1:H1')->applyFromArray([
             'font' => ['bold' => true],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -475,6 +497,8 @@ class CompraAgilCompetenciaService
                 $fila['prod_item'],
                 $fila['prod_nombre'],
                 $fila['cant_total'],
+                $fila['adjudicada_propia'],
+                $fila['adjudicada_otros'],
                 $fila['tu_precio'],
                 $fila['precio_min'],
                 $fila['precio_max'],
@@ -484,11 +508,11 @@ class CompraAgilCompetenciaService
 
         $last = max(2, $row - 1);
         if ($filas !== []) {
-            $sheet->getStyle('C2:C'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
-            $sheet->getStyle('D2:F'.$last)->getNumberFormat()->setFormatCode('#,##0');
-            $sheet->getStyle('C2:F'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle('C2:E'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
+            $sheet->getStyle('F2:H'.$last)->getNumberFormat()->setFormatCode('#,##0');
+            $sheet->getStyle('C2:H'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
-        foreach (range('A', 'F') as $col) {
+        foreach (range('A', 'H') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -498,7 +522,7 @@ class CompraAgilCompetenciaService
     private function ordenar(array $filas, array $filtros): array
     {
         $columna = (string) ($filtros['orden'] ?? 'cant_total');
-        if (! in_array($columna, ['cant_total', 'cant_propia', 'cant_otros'], true)) {
+        if (! in_array($columna, ['cant_total', 'adjudicada_propia', 'adjudicada_otros'], true)) {
             $columna = 'cant_total';
         }
         $desc = ($filtros['dir'] ?? 'desc') !== 'asc';
