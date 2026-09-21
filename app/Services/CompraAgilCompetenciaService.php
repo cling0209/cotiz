@@ -604,12 +604,12 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Deja en cada oferta solo la(s) línea(s) del producto de la fila.
-     * La nota ya viene de la última cerrada con propio + adjudicado.
-     * Alinea por cantidad de notasdetalle, código MP de la oferta propia y, al final, orden.
+     * Deja en cada oferta la(s) línea(s) del producto de la fila.
+     * La nota ya es la última cerrada con propio + adjudicado: esas dos ofertas
+     * siempre se incluyen. El resto solo si se pudo alinear la misma línea.
      *
      * @param  iterable<int, object>  $ofertas  ofertas con relación lineas
-     * @return list<object> ofertas con lineas filtradas; sin líneas se omiten
+     * @return list<object>
      */
     public function filtrarOfertasPorProductoPropio(iterable $ofertas, string $prodItem, int $nronota): array
     {
@@ -626,10 +626,6 @@ class CompraAgilCompetenciaService
             ->unique()
             ->values()
             ->all();
-
-        if ($ordenes === []) {
-            return [];
-        }
 
         $cantidadesNota = $detalles
             ->map(fn ($d) => round((float) $d->cantidad, 4))
@@ -658,7 +654,6 @@ class CompraAgilCompetenciaService
             $cantNota = $cantidadesNota[$idx] ?? null;
             $lineaRef = $lineasPropia->get($pos - 1);
 
-            // Si la posición no calza (orden ≠ índice en MP), buscar por cantidad en la oferta propia.
             if (
                 ($lineaRef === null || ($cantNota !== null && round((float) ($lineaRef->cantidad ?? 0), 4) !== $cantNota))
                 && $cantNota !== null
@@ -683,6 +678,10 @@ class CompraAgilCompetenciaService
             $lineas = collect($oferta->lineas ?? [])->sortBy('id')->values();
             if ($lineas->isEmpty()) {
                 return [];
+            }
+
+            if ($refs === [] && $ordenes === []) {
+                return $lineas->all();
             }
 
             $usadas = [];
@@ -730,45 +729,52 @@ class CompraAgilCompetenciaService
                 }
             }
 
-            if ($filtradas === []) {
+            if ($filtradas === [] && $ordenes !== []) {
                 $filtradas = $this->filtrarLineasPorOrdenes($lineas, $ordenes);
             }
 
             return $filtradas;
         };
 
-        $out = [];
-        foreach ($lista as $oferta) {
-            $filtradas = $mapear($oferta);
-            if ($filtradas === []) {
-                continue;
+        $aplicar = function (object $oferta, array $filtradas) use (&$out, &$ids): void {
+            $id = (int) ($oferta->id ?? 0);
+            if ($id > 0 && isset($ids[$id])) {
+                return;
             }
-
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
             $oferta->setRelation('lineas', collect($filtradas)->values());
             $suma = collect($filtradas)->sum(fn ($l) => (int) ($l->monto_total ?? 0));
             if ($suma > 0) {
                 $oferta->monto_total = $suma;
             }
             $out[] = $oferta;
+        };
+
+        $out = [];
+        $ids = [];
+
+        // Competidores alineados al producto.
+        foreach ($lista as $oferta) {
+            $filtradas = $mapear($oferta);
+            if ($filtradas === []) {
+                continue;
+            }
+            $aplicar($oferta, $filtradas);
         }
 
-        // La nota ya garantizó propio + adjudicado: si el match fino falló, al menos esos dos.
-        if ($out === []) {
-            foreach ($lista as $oferta) {
-                if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
-                    continue;
-                }
-                $filtradas = $mapear($oferta);
-                if ($filtradas === []) {
-                    $todas = collect($oferta->lineas ?? [])->sortBy('id')->values()->all();
-                    if ($todas === []) {
-                        continue;
-                    }
-                    $filtradas = $todas;
-                }
-                $oferta->setRelation('lineas', collect($filtradas)->values());
-                $out[] = $oferta;
+        // Siempre propio y adjudicado (requisito de la nota elegida).
+        foreach ($lista as $oferta) {
+            if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
+                continue;
             }
+            $filtradas = $mapear($oferta);
+            if ($filtradas === []) {
+                // Último recurso: no dejar el modal sin propio/adjudicado.
+                $filtradas = collect($oferta->lineas ?? [])->sortBy('id')->values()->all();
+            }
+            $aplicar($oferta, $filtradas);
         }
 
         return $out;
