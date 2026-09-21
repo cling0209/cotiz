@@ -814,7 +814,17 @@
             }
 
             html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
-            (data.ofertas || []).forEach(o => {
+            const ofertasOrdenadas = [...(data.ofertas || [])].sort((a, b) => {
+                const rank = (o) => {
+                    if (o.proveedor_seleccionado) return 0;
+                    if (o.es_propio) return 1;
+                    return 2;
+                };
+                const diff = rank(a) - rank(b);
+                if (diff !== 0) return diff;
+                return String(a.razon_social || '').localeCompare(String(b.razon_social || ''), 'es');
+            });
+            ofertasOrdenadas.forEach(o => {
                 html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">
                     <td>${o.razon_social || '—'}</td>
                     <td class="small">${o.rut_proveedor || '—'}</td>
@@ -824,7 +834,7 @@
             });
             html += '</tbody></table></div>';
             html += '<h3 class="h6 mt-3">Detalle por proveedor</h3>';
-            (data.ofertas || []).forEach(o => {
+            ofertasOrdenadas.forEach(o => {
                 const badges = [
                     o.proveedor_seleccionado ? 'Seleccionado' : '',
                     o.es_propio ? 'Propio' : '',
