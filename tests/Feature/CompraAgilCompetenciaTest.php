@@ -112,6 +112,25 @@ class CompraAgilCompetenciaTest extends TestCase
         );
         $this->assertCount(1, $lineasFiltradas);
         $this->assertSame('44121622', $lineasFiltradas[0]->codigo_producto);
+
+        // Misma línea de competencia aunque el otro proveedor tenga otro orden de productos.
+        $desalineado = $this->oferta(14865, '11111111-1', 'OTRO ORDEN SPA', false, false);
+        $this->linea($desalineado, '999', 10, 100);
+        $this->linea($desalineado, '44121622', 100, 700);
+        $desalineado->load('lineas');
+        $propio->load('lineas');
+        $vergio->load('lineas');
+        $filtradas = $servicio->filtrarOfertasPorProductoPropio(
+            collect([$propio, $vergio, $desalineado]),
+            '12345',
+            14865,
+        );
+        $this->assertCount(3, $filtradas);
+        foreach ($filtradas as $ofertaFiltrada) {
+            $this->assertCount(1, $ofertaFiltrada->lineas);
+            $this->assertSame('44121622', (string) $ofertaFiltrada->lineas->first()->codigo_producto);
+            $this->assertSame(100.0, (float) $ofertaFiltrada->lineas->first()->cantidad);
+        }
     }
 
     public function test_min_max_salen_de_la_ultima_cotizacion(): void

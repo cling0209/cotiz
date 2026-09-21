@@ -10,6 +10,7 @@ use App\Services\NotaMpResultadosService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -115,11 +116,21 @@ class CompraAgilAnalisisController extends Controller
             return response()->json(['error' => $e->getMessage()], 404);
         }
 
-        $ordenes = $this->competencia->ordenesProductoEnNota($prodItem, $nronota);
+        $ofertasFiltradas = $this->competencia->filtrarOfertasPorProductoPropio(
+            $detalle['ofertas'],
+            $prodItem,
+            $nronota,
+        );
         $seg = $detalle['seguimiento'];
+
+        $prodNombre = trim((string) DB::table('notasdetalle')
+            ->where('nronota', $nronota)
+            ->where('prod_item', trim($prodItem))
+            ->value('prod_descripcion_maestro'));
 
         return response()->json([
             'prod_item_filtro' => trim($prodItem),
+            'prod_nombre_filtro' => $prodNombre !== '' ? $prodNombre : null,
             'seguimiento' => [
                 'nronota' => $seg->nronota,
                 'codigo_proceso' => $seg->codigo_proceso,
@@ -144,10 +155,7 @@ class CompraAgilAnalisisController extends Controller
                 'fecha_cierre_primer_llamado' => $seg->fecha_cierre_primer_llamado?->toIso8601String(),
                 'fecha_cierre_segundo_llamado' => $seg->fecha_cierre_segundo_llamado?->toIso8601String(),
             ],
-            'ofertas' => $detalle['ofertas']->map(function ($o) use ($ordenes) {
-                $lineasOrdenadas = $o->lineas->sortBy('id')->values();
-                $lineas = $this->competencia->filtrarLineasPorOrdenes($lineasOrdenadas, $ordenes);
-
+            'ofertas' => collect($ofertasFiltradas)->map(function ($o) {
                 return [
                     'id' => $o->id,
                     'rut_proveedor' => $o->rut_proveedor,
@@ -156,7 +164,7 @@ class CompraAgilAnalisisController extends Controller
                     'monto_total' => $o->monto_total,
                     'es_propio' => $o->es_propio,
                     'inadmisible' => $o->inadmisible,
-                    'lineas' => collect($lineas)->map(fn ($l) => [
+                    'lineas' => $o->lineas->map(fn ($l) => [
                         'codigo_producto' => $l->codigo_producto ?: null,
                         'descripcion' => $l->descripcion ?: $l->nombre_producto,
                         'cantidad' => $l->cantidad,
@@ -164,7 +172,7 @@ class CompraAgilAnalisisController extends Controller
                         'monto_total' => $l->monto_total,
                     ])->values(),
                 ];
-            }),
+            })->values(),
         ]);
     }
 

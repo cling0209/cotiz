@@ -560,25 +560,32 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Posiciones (orden) del producto en la nota, para filtrar líneas MP.
+     * Índice 1-based del producto entre las líneas de la nota (ordenadas por orden).
+     * Coincide con ROW_NUMBER de ofertas propias (mismo orden de cotización).
      *
      * @return list<int>
      */
     public function ordenesProductoEnNota(string $prodItem, int $nronota): array
     {
-        return DB::table('notasdetalle')
+        $prodItem = trim($prodItem);
+        $items = DB::table('notasdetalle')
             ->where('nronota', $nronota)
-            ->where('prod_item', $prodItem)
             ->orderBy('orden')
-            ->pluck('orden')
-            ->map(fn ($orden) => (int) $orden)
-            ->unique()
-            ->values()
-            ->all();
+            ->orderBy('prod_item')
+            ->pluck('prod_item');
+
+        $posiciones = [];
+        foreach ($items->values() as $i => $item) {
+            if (trim((string) $item) === $prodItem) {
+                $posiciones[] = $i + 1;
+            }
+        }
+
+        return $posiciones;
     }
 
     /**
-     * Conserva solo las líneas MP cuya posición (1-based por id) coincide con órdenes de notasdetalle.
+     * Conserva solo las líneas MP cuya posición (1-based por id) coincide con las pedidas.
      *
      * @param  iterable<int, object>  $lineas
      * @param  list<int>  $ordenes
@@ -598,6 +605,135 @@ class CompraAgilCompetenciaService
             if (isset($permitidas[$pos])) {
                 $out[] = $linea;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Deja en cada oferta solo la(s) línea(s) del producto propio (misma línea de competencia).
+     * Ancla en la oferta propia: el orden de notasdetalle = orden de cotización propia;
+     * el resto de proveedores se alinea por código MP o cantidad (el orden en MP puede diferir).
+     *
+     * @param  iterable<int, object>  $ofertas  ofertas con relación lineas
+     * @return list<object> ofertas con lineas filtradas; sin líneas se omiten
+     */
+    public function filtrarOfertasPorProductoPropio(iterable $ofertas, string $prodItem, int $nronota): array
+    {
+        $posiciones = $this->ordenesProductoEnNota($prodItem, $nronota);
+        if ($posiciones === []) {
+            return [];
+        }
+
+        $cantidadesNota = DB::table('notasdetalle')
+            ->where('nronota', $nronota)
+            ->where('prod_item', trim($prodItem))
+            ->orderBy('orden')
+            ->pluck('cantidad')
+            ->map(fn ($c) => round((float) $c, 4))
+            ->values()
+            ->all();
+
+        $lista = [];
+        foreach ($ofertas as $oferta) {
+            $lista[] = $oferta;
+        }
+
+        $propia = null;
+        foreach ($lista as $oferta) {
+            if (! empty($oferta->es_propio)) {
+                $propia = $oferta;
+                break;
+            }
+        }
+
+        $refs = [];
+        if ($propia !== null) {
+            $lineasPropia = $propia->lineas->sortBy('id')->values();
+            foreach ($posiciones as $idx => $pos) {
+                $linea = $lineasPropia->get($pos - 1);
+                if ($linea === null) {
+                    continue;
+                }
+                $refs[] = [
+                    'pos' => $pos,
+                    'codigo' => trim((string) ($linea->codigo_producto ?? '')),
+                    'cantidad' => round((float) ($linea->cantidad ?? 0), 4),
+                    'cantidad_nota' => $cantidadesNota[$idx] ?? round((float) ($linea->cantidad ?? 0), 4),
+                ];
+            }
+        }
+
+        if ($refs === []) {
+            foreach ($posiciones as $idx => $pos) {
+                $refs[] = [
+                    'pos' => $pos,
+                    'codigo' => '',
+                    'cantidad' => $cantidadesNota[$idx] ?? null,
+                    'cantidad_nota' => $cantidadesNota[$idx] ?? null,
+                ];
+            }
+        }
+
+        $out = [];
+        foreach ($lista as $oferta) {
+            $lineas = $oferta->lineas->sortBy('id')->values();
+            $usadas = [];
+            $filtradas = [];
+
+            foreach ($refs as $ref) {
+                $elegida = null;
+                $codigoRef = $ref['codigo'];
+
+                if ($codigoRef !== '') {
+                    foreach ($lineas as $i => $linea) {
+                        if (isset($usadas[$i])) {
+                            continue;
+                        }
+                        if (trim((string) ($linea->codigo_producto ?? '')) === $codigoRef) {
+                            $elegida = $linea;
+                            $usadas[$i] = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($elegida === null) {
+                    $cantRef = $ref['cantidad_nota'] ?? $ref['cantidad'];
+                    if ($cantRef !== null) {
+                        foreach ($lineas as $i => $linea) {
+                            if (isset($usadas[$i])) {
+                                continue;
+                            }
+                            if (round((float) ($linea->cantidad ?? 0), 4) === (float) $cantRef) {
+                                $elegida = $linea;
+                                $usadas[$i] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($elegida === null) {
+                    $idx = $ref['pos'] - 1;
+                    if ($idx >= 0 && $idx < $lineas->count() && ! isset($usadas[$idx])) {
+                        $elegida = $lineas[$idx];
+                        $usadas[$idx] = true;
+                    }
+                }
+
+                if ($elegida !== null) {
+                    $filtradas[] = $elegida;
+                }
+            }
+
+            if ($filtradas === []) {
+                continue;
+            }
+
+            $oferta->setRelation('lineas', collect($filtradas));
+            $oferta->monto_total = collect($filtradas)->sum(fn ($l) => (int) ($l->monto_total ?? 0));
+            $out[] = $oferta;
         }
 
         return $out;

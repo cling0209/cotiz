@@ -779,7 +779,8 @@
             }
             let html = '';
             if (data.prod_item_filtro) {
-                html += `<p class="small text-muted mb-2">Mostrando solo el producto <span class="font-monospace fw-semibold">${data.prod_item_filtro}</span> de esta nota.</p>`;
+                const nombre = data.prod_nombre_filtro ? ` — ${data.prod_nombre_filtro}` : '';
+                html += `<p class="small text-muted mb-2">Comparando el producto propio <span class="font-monospace fw-semibold">${data.prod_item_filtro}</span>${nombre} con la misma línea ofertada por cada proveedor.</p>`;
             }
             html += `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
