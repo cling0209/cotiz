@@ -81,6 +81,7 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(26, $huellero['tu_precio']);
         $this->assertSame(756, $huellero['precio_min']);
         $this->assertSame(950, $huellero['precio_max']);
+        $this->assertSame(14865, $huellero['nronota_cerrada']);
 
         $detalle = $servicio->detalle('12345', []);
         $this->assertNotNull($detalle);
@@ -98,6 +99,19 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(756, $porPrecio['COMERCIALIZADORA GLT SPA']['precio_unitario']);
         $this->assertSame(950, $porPrecio['DISTRIBUIDORA VERGIO SPA']['precio_unitario']);
         $this->assertArrayNotHasKey('ROMULO', $porPrecio->all());
+
+        $this->assertSame(14865, $servicio->nronotaUltimaCerrada('12345', []));
+        $this->assertSame([1], $servicio->ordenesProductoEnNota('12345', 14865));
+        $this->assertSame([2], $servicio->ordenesProductoEnNota('99999', 14865));
+        $lineasFiltradas = $servicio->filtrarLineasPorOrdenes(
+            collect([
+                (object) ['codigo_producto' => '44121622'],
+                (object) ['codigo_producto' => '999'],
+            ]),
+            [1],
+        );
+        $this->assertCount(1, $lineasFiltradas);
+        $this->assertSame('44121622', $lineasFiltradas[0]->codigo_producto);
     }
 
     public function test_min_max_salen_de_la_ultima_cotizacion(): void
@@ -253,8 +267,11 @@ class CompraAgilCompetenciaTest extends TestCase
             ->assertSee('Nadie se ganó')
             ->assertSee('Adjudicadas otros')
             ->assertSee('Excel')
-            ->assertSee('ofertaste y cotizó al menos otra empresa')
-            ->assertSee('precio de catálogo')
+            ->assertSee('Total proveedores')
+            ->assertSee('Ver nota')
+            ->assertDontSee('Tu precio')
+            ->assertDontSee('Más barato')
+            ->assertDontSee('Más caro')
             ->assertDontSee('Cód. MP');
     }
 
@@ -288,8 +305,8 @@ class CompraAgilCompetenciaTest extends TestCase
         @unlink($tmp);
 
         $this->assertSame('Cód. propio', $sheet->getCell('A1')->getValue());
-        $this->assertSame('Más caro', $sheet->getCell('I1')->getValue());
         $this->assertSame('Nadie se ganó', $sheet->getCell('F1')->getValue());
+        $this->assertNull($sheet->getCell('G1')->getValue());
         $this->assertSame('Cant. total', $sheet->getCell('C1')->getValue());
         $this->assertSame('Adjudicada propio', $sheet->getCell('D1')->getValue());
         $codigos = [$sheet->getCell('A2')->getValue(), $sheet->getCell('A3')->getValue()];

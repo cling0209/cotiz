@@ -751,19 +751,37 @@
         }
 
         const btn = ev.target.closest('.btn-detalle-mp');
-        if (!btn) return;
+        if (!btn || btn.disabled) return;
         const nronota = btn.dataset.nronota;
+        const customUrl = btn.dataset.url || '';
         const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-detalle-mp'));
         const body = document.getElementById('modal-detalle-body');
-        document.getElementById('modal-detalle-titulo').textContent = 'Nota ' + nronota;
+        document.getElementById('modal-detalle-titulo').textContent = nronota ? ('Nota ' + nronota) : 'Detalle nota';
         body.innerHTML = '<p class="text-muted small">Cargando…</p>';
         modal.show();
         try {
-            const res = await fetch(urlDetalle.replace('__NRO__', nronota), { headers: { 'Accept': 'application/json' } });
+            let fetchUrl;
+            if (customUrl) {
+                const params = new URLSearchParams(window.location.search);
+                const qs = new URLSearchParams();
+                if (params.get('fecha_desde')) qs.set('fecha_desde', params.get('fecha_desde'));
+                if (params.get('fecha_hasta')) qs.set('fecha_hasta', params.get('fecha_hasta'));
+                fetchUrl = customUrl + (qs.toString() ? '?' + qs.toString() : '');
+            } else {
+                fetchUrl = urlDetalle.replace('__NRO__', nronota);
+            }
+            const res = await fetch(fetchUrl, { headers: { 'Accept': 'application/json' } });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Error');
             const s = data.seguimiento;
-            let html = `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
+            if (s?.nronota) {
+                document.getElementById('modal-detalle-titulo').textContent = 'Nota ' + s.nronota;
+            }
+            let html = '';
+            if (data.prod_item_filtro) {
+                html += `<p class="small text-muted mb-2">Mostrando solo el producto <span class="font-monospace fw-semibold">${data.prod_item_filtro}</span> de esta nota.</p>`;
+            }
+            html += `<p class="small mb-2"><strong>${s.codigo_proceso}</strong> · ${s.estado_mp_glosa || s.estado_mp_codigo}<br>
                 Prov. seleccionado: ${s.razon_social_ganador || '—'} ${s.rut_ganador ? '(' + s.rut_ganador + ')' : ''}<br>
                 Seguimiento: ${({ cerrada: 'Cerrada', pendiente: 'Pendiente seguimiento', desierta: 'Desierta', cancelada: 'Cancelada' }[s.resultado_propio]) || s.resultado_propio || '—'} · Monto: ${fmtMonto(s.monto_total_ganador)}${fmtOrdenCompraDetalle(s)}</p>`;
 

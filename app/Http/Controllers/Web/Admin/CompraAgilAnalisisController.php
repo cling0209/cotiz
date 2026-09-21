@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Support\ListadoPorPagina;
 use App\Services\CompraAgilCompetenciaService;
 use App\Services\CompraAgilSyncService;
+use App\Services\NotaMpResultadosService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CompraAgilAnalisisController extends Controller
@@ -17,6 +19,7 @@ class CompraAgilAnalisisController extends Controller
     public function __construct(
         protected CompraAgilCompetenciaService $competencia,
         protected CompraAgilSyncService $sync,
+        protected NotaMpResultadosService $resultados,
     ) {}
 
     public function index(Request $request): View
@@ -90,6 +93,79 @@ class CompraAgilAnalisisController extends Controller
         }
 
         return response()->json($detalle);
+    }
+
+    /**
+     * Mismo detalle que Resultados → Todas, filtrado al producto de la fila.
+     * Usa la última nota cerrada con oferta propia y proveedor adjudicado.
+     */
+    public function detalleNotaProducto(Request $request, string $prodItem): JsonResponse
+    {
+        $filtros = $this->filtros($request);
+        $nronota = $this->competencia->nronotaUltimaCerrada($prodItem, $filtros);
+        if ($nronota === null) {
+            return response()->json([
+                'error' => 'No hay una nota cerrada donde hayan participado el propio y un adjudicado.',
+            ], 404);
+        }
+
+        try {
+            $detalle = $this->resultados->detalleNota($nronota);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
+        }
+
+        $ordenes = $this->competencia->ordenesProductoEnNota($prodItem, $nronota);
+        $seg = $detalle['seguimiento'];
+
+        return response()->json([
+            'prod_item_filtro' => trim($prodItem),
+            'seguimiento' => [
+                'nronota' => $seg->nronota,
+                'codigo_proceso' => $seg->codigo_proceso,
+                'estado_mp_codigo' => $seg->estado_mp_codigo,
+                'estado_mp_glosa' => $seg->estado_mp_glosa,
+                'organismo' => $seg->organismo,
+                'rut_ganador' => $seg->rut_ganador,
+                'razon_social_ganador' => $seg->razon_social_ganador,
+                'resultado_propio' => $seg->resultado_propio,
+                'finalizado' => $seg->finalizado,
+                'monto_total_ganador' => $seg->monto_total_ganador,
+                'id_orden_compra' => $seg->id_orden_compra,
+                'ocompra' => trim((string) ($seg->nota?->ocompra ?? '')) ?: null,
+                'orden_compra' => $seg->valorOrdenCompraExport() ?: null,
+                'es_ganador_grupo' => $seg->esGanadorGrupo(),
+                'fecha_publicacion' => $seg->fecha_publicacion?->toIso8601String(),
+                'fecha_cierre' => $seg->fecha_cierre?->toIso8601String(),
+                'fecha_ultimo_cambio' => $seg->fecha_ultimo_cambio?->toIso8601String(),
+                'fecha_cancelacion' => $seg->fecha_cancelacion?->toIso8601String(),
+                'convocatoria_estado' => $seg->convocatoria_estado,
+                'convocatoria_descripcion' => $seg->convocatoria_descripcion,
+                'fecha_cierre_primer_llamado' => $seg->fecha_cierre_primer_llamado?->toIso8601String(),
+                'fecha_cierre_segundo_llamado' => $seg->fecha_cierre_segundo_llamado?->toIso8601String(),
+            ],
+            'ofertas' => $detalle['ofertas']->map(function ($o) use ($ordenes) {
+                $lineasOrdenadas = $o->lineas->sortBy('id')->values();
+                $lineas = $this->competencia->filtrarLineasPorOrdenes($lineasOrdenadas, $ordenes);
+
+                return [
+                    'id' => $o->id,
+                    'rut_proveedor' => $o->rut_proveedor,
+                    'razon_social' => $o->razon_social,
+                    'proveedor_seleccionado' => $o->proveedor_seleccionado,
+                    'monto_total' => $o->monto_total,
+                    'es_propio' => $o->es_propio,
+                    'inadmisible' => $o->inadmisible,
+                    'lineas' => collect($lineas)->map(fn ($l) => [
+                        'codigo_producto' => $l->codigo_producto ?: null,
+                        'descripcion' => $l->descripcion ?: $l->nombre_producto,
+                        'cantidad' => $l->cantidad,
+                        'precio_unitario' => $l->precio_unitario,
+                        'monto_total' => $l->monto_total,
+                    ])->values(),
+                ];
+            }),
+        ]);
     }
 
     /**

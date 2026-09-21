@@ -229,6 +229,7 @@ class CompraAgilCompetenciaService
 
         $porLinea = $query
             ->leftJoinSub($this->preciosMercado($filtros, $prodItem), 'mk', 'mk.prod_item', '=', 'd.prod_item')
+            ->leftJoinSub($this->notasCerradasAdjudicadas($filtros, $prodItem), 'nc', 'nc.prod_item', '=', 'd.prod_item')
             ->groupBy('d.prod_item', 'd.nronota', 'd.orden')
             ->select([
                 'd.prod_item',
@@ -241,6 +242,7 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(mk.precio_max) as precio_max'),
                 DB::raw('MAX(mk.precio_ofertado) as tu_precio'),
                 DB::raw('MAX(mk.nronota) as nronota_mercado'),
+                DB::raw('MAX(nc.nronota) as nronota_cerrada'),
             ])
             ->addBinding(array_merge($ruts, $ruts, $ruts), 'select');
 
@@ -258,6 +260,7 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(precio_max) as precio_max'),
                 DB::raw('MAX(tu_precio) as tu_precio'),
                 DB::raw('MAX(nronota_mercado) as nronota_mercado'),
+                DB::raw('MAX(nronota_cerrada) as nronota_cerrada'),
             ])
             ->get();
 
@@ -279,6 +282,7 @@ class CompraAgilCompetenciaService
                 'nadie_gano' => $total - $adjudicadaPropia - $adjudicadaOtros,
                 'nronota_ultima' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'nronota_mercado' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
+                'nronota_cerrada' => $fila->nronota_cerrada !== null ? (int) $fila->nronota_cerrada : null,
                 'tu_precio' => $fila->tu_precio !== null ? (int) $fila->tu_precio : null,
                 'precio_min' => $fila->precio_min !== null ? (int) $fila->precio_min : null,
                 'precio_max' => $fila->precio_max !== null ? (int) $fila->precio_max : null,
@@ -478,6 +482,128 @@ class CompraAgilCompetenciaService
     }
 
     /**
+     * Última nota cerrada donde hay oferta propia y un proveedor adjudicado.
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function notasCerradasAdjudicadas(array $filtros, ?string $prodItem)
+    {
+        $fecha = $this->sqlFechaCierre('s');
+        $propio = $this->sqlEsPropio('o');
+        $ruts = $this->rutsPropiosCompactos();
+
+        $query = DB::table('notasdetalle as d')
+            ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'd.nronota')
+            ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'd.prod_item')
+            ->whereRaw("trim(coalesce(d.prod_item, '')) <> ''")
+            ->where('d.prod_item', '!=', '0')
+            ->whereRaw("upper(trim(d.prod_item)) NOT LIKE 'NOK-%'")
+            ->whereRaw('s.finalizado IS TRUE')
+            ->whereExists(function ($sub) use ($propio, $ruts) {
+                $sub->select(DB::raw('1'))
+                    ->from('nota_mp_ofertas as o')
+                    ->whereColumn('o.nronota', 'd.nronota')
+                    ->whereRaw('NOT (o.inadmisible IS TRUE)')
+                    ->whereRaw("({$propio})", $ruts);
+            })
+            ->whereExists(function ($sub) {
+                $sub->select(DB::raw('1'))
+                    ->from('nota_mp_ofertas as oa')
+                    ->whereColumn('oa.nronota', 'd.nronota')
+                    ->whereRaw('NOT (oa.inadmisible IS TRUE)')
+                    ->whereRaw('oa.proveedor_seleccionado IS TRUE');
+            });
+
+        if ($prodItem !== null) {
+            $query->where('d.prod_item', $prodItem);
+        }
+
+        $this->aplicarFecha($query, $filtros, 's');
+        $this->aplicarBusqueda($query, $filtros);
+
+        $porNota = $query
+            ->groupBy('d.prod_item', 'd.nronota')
+            ->select([
+                'd.prod_item',
+                'd.nronota',
+                DB::raw("MAX({$fecha}) as fecha_cierre"),
+            ]);
+
+        $ranked = DB::query()
+            ->fromSub($porNota, 'nc')
+            ->select([
+                'prod_item',
+                'nronota',
+                'fecha_cierre',
+                DB::raw('DENSE_RANK() OVER (PARTITION BY prod_item ORDER BY fecha_cierre DESC NULLS LAST, nronota DESC) as rk'),
+            ]);
+
+        return DB::query()
+            ->fromSub($ranked, 'ncr')
+            ->where('rk', 1)
+            ->select(['prod_item', 'nronota']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     */
+    public function nronotaUltimaCerrada(string $prodItem, array $filtros): ?int
+    {
+        $prodItem = trim($prodItem);
+        if ($prodItem === '') {
+            return null;
+        }
+
+        $fila = $this->notasCerradasAdjudicadas($filtros, $prodItem)->first();
+
+        return $fila !== null ? (int) $fila->nronota : null;
+    }
+
+    /**
+     * Posiciones (orden) del producto en la nota, para filtrar líneas MP.
+     *
+     * @return list<int>
+     */
+    public function ordenesProductoEnNota(string $prodItem, int $nronota): array
+    {
+        return DB::table('notasdetalle')
+            ->where('nronota', $nronota)
+            ->where('prod_item', $prodItem)
+            ->orderBy('orden')
+            ->pluck('orden')
+            ->map(fn ($orden) => (int) $orden)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Conserva solo las líneas MP cuya posición (1-based por id) coincide con órdenes de notasdetalle.
+     *
+     * @param  iterable<int, object>  $lineas
+     * @param  list<int>  $ordenes
+     * @return list<object>
+     */
+    public function filtrarLineasPorOrdenes(iterable $lineas, array $ordenes): array
+    {
+        if ($ordenes === []) {
+            return [];
+        }
+
+        $permitidas = array_fill_keys($ordenes, true);
+        $out = [];
+        $pos = 0;
+        foreach ($lineas as $linea) {
+            $pos++;
+            if (isset($permitidas[$pos])) {
+                $out[] = $linea;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array<string, mixed>  $filtros
      */
     private function aplicarFecha($query, array $filtros, string $alias): void
@@ -579,11 +705,8 @@ class CompraAgilCompetenciaService
             'Adjudicada propio',
             'Adjudicadas otros',
             'Nadie se ganó',
-            'Tu precio',
-            'Más barato',
-            'Más caro',
         ]], null, 'A1');
-        $sheet->getStyle('A1:I1')->applyFromArray([
+        $sheet->getStyle('A1:F1')->applyFromArray([
             'font' => ['bold' => true],
             'fill' => [
                 'fillType' => Fill::FILL_SOLID,
@@ -600,9 +723,6 @@ class CompraAgilCompetenciaService
                 $fila['adjudicada_propia'],
                 $fila['adjudicada_otros'],
                 $fila['nadie_gano'],
-                $fila['tu_precio'],
-                $fila['precio_min'],
-                $fila['precio_max'],
             ]], null, 'A'.$row);
             $row++;
         }
@@ -610,10 +730,9 @@ class CompraAgilCompetenciaService
         $last = max(2, $row - 1);
         if ($filas !== []) {
             $sheet->getStyle('C2:F'.$last)->getNumberFormat()->setFormatCode('#,##0.##');
-            $sheet->getStyle('G2:I'.$last)->getNumberFormat()->setFormatCode('#,##0');
-            $sheet->getStyle('C2:I'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle('C2:F'.$last)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
-        foreach (range('A', 'I') as $col) {
+        foreach (range('A', 'F') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 

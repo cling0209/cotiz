@@ -10,13 +10,6 @@
 
         return number_format($n, $decimales, ',', '.');
     };
-    $fmtPrecio = function ($n): string {
-        if ($n === null || $n === '') {
-            return '—';
-        }
-
-        return '$'.number_format((int) $n, 0, ',', '.');
-    };
     $sortUrl = function (string $columna) use ($filtros): string {
         $dir = ($filtros['orden'] === $columna && $filtros['dir'] === 'desc') ? 'asc' : 'desc';
 
@@ -38,25 +31,19 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Tu precio, más barato y más caro salen de la última nota en la que ofertaste y cotizó al menos otra empresa. No es el precio de catálogo. Ver muestra la cantidad adjudicada de cada empresa, sin precios. Precios abre esa nota con el precio ofertado propio, el de cada empresa y, aparte, el precio de catálogo. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Total proveedores muestra la cantidad adjudicada de cada empresa, sin precios. Ver nota abre el detalle de Mercado Público (como en Resultados) de la última nota <strong>cerrada</strong> donde participaron el propio y el adjudicado; en productos solo muestra el de la fila. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card shadow-sm h-100"><div class="card-body py-3">
                 <div class="text-muted small">Productos</div>
                 <div class="fs-4 fw-semibold">{{ number_format($kpi['productos'], 0, ',', '.') }}</div>
             </div></div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card shadow-sm h-100"><div class="card-body py-3">
                 <div class="text-muted small">Cant. total</div>
                 <div class="fs-4 fw-semibold">{{ $fmtCant($kpi['unidades_propias'] + $kpi['unidades_otros']) }}</div>
-            </div></div>
-        </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm h-100 border-warning"><div class="card-body py-3">
-                <div class="text-muted small">Donde estás más caro</div>
-                <div class="fs-4 fw-semibold text-warning">{{ number_format($kpi['mas_caro'], 0, ',', '.') }}</div>
             </div></div>
         </div>
     </div>
@@ -106,9 +93,6 @@
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_propia') }}">Adjudicada propio{{ $sortMark('adjudicada_propia') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('adjudicada_otros') }}">Adjudicadas otros{{ $sortMark('adjudicada_otros') }}</a></th>
                         <th class="text-end"><a class="link-light text-decoration-none" href="{{ $sortUrl('nadie_gano') }}">Nadie se ganó{{ $sortMark('nadie_gano') }}</a></th>
-                        <th class="text-end" title="Precio ofertado en la última nota en la que también cotizó otra empresa">Tu precio</th>
-                        <th class="text-end">Más barato</th>
-                        <th class="text-end">Más caro</th>
                         <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
@@ -121,26 +105,34 @@
                             <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_propia']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['adjudicada_otros']) }}</td>
                             <td class="text-end tabular-nums">{{ $fmtCant($row['nadie_gano']) }}</td>
-                            <td class="text-end tabular-nums">{{ $fmtPrecio($row['tu_precio']) }}</td>
-                            <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_min']) }}</td>
-                            <td class="text-end tabular-nums">{{ $fmtPrecio($row['precio_max']) }}</td>
                             <td class="text-end">
-                                <div class="d-flex justify-content-end gap-1">
+                                <div class="d-flex justify-content-end flex-wrap gap-1">
                                     <button type="button" class="btn btn-outline-primary btn-sm btn-detalle-competencia"
+                                        title="Cantidad adjudicada por cada proveedor"
                                         data-url="{{ route('admin.compra-agil.analisis.producto', ['prodItem' => $row['prod_item']]) }}"
                                         data-prod="{{ $row['prod_item'] }} — {{ $row['prod_nombre'] }}">
-                                        Ver
+                                        Total proveedores
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm btn-precios-competencia"
-                                        data-url="{{ route('admin.compra-agil.analisis.precios', ['prodItem' => $row['prod_item']]) }}"
-                                        data-prod="{{ $row['prod_item'] }} — {{ $row['prod_nombre'] }}">
-                                        Precios
-                                    </button>
+                                    @if(!empty($row['nronota_cerrada']))
+                                        <button type="button"
+                                            class="btn btn-outline-dark btn-sm btn-detalle-mp"
+                                            title="Última nota cerrada con propio y adjudicado"
+                                            data-nronota="{{ $row['nronota_cerrada'] }}"
+                                            data-prod-item="{{ $row['prod_item'] }}"
+                                            data-url="{{ route('admin.compra-agil.analisis.nota', ['prodItem' => $row['prod_item']]) }}">
+                                            Ver nota {{ $row['nronota_cerrada'] }}
+                                        </button>
+                                    @else
+                                        <button type="button" class="btn btn-outline-dark btn-sm" disabled
+                                            title="No hay nota cerrada con propio y adjudicado">
+                                            Ver nota
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">No hay productos cotizados para ese filtro.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -196,32 +188,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modal-competencia-precios" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h2 class="modal-title fs-6" id="modal-precios-titulo">Precios</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body py-2">
-                <p class="small mb-2" id="modal-precios-nota"></p>
-                <p class="small mb-2 text-muted" id="modal-precios-catalogo"></p>
-                <p class="small mb-2 text-danger" id="modal-precios-error"></p>
-                <div class="table-responsive">
-                    <table class="table table-sm mb-0">
-                        <thead>
-                            <tr>
-                                <th>Empresa</th>
-                                <th class="text-end">P. unit.</th>
-                            </tr>
-                        </thead>
-                        <tbody id="modal-precios-lineas"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+@include('admin.compra-agil.partials.modal-detalle-mp')
 @endsection
 
 @push('scripts')
@@ -254,39 +221,6 @@ document.querySelectorAll('.btn-detalle-competencia').forEach(btn => {
             return `<tr><td>${l.proveedor || '—'}</td><td class="text-end">${cant(l.cantidad_adjudicada)}</td></tr>`;
         }).join('') || '<tr><td colspan="2" class="text-muted">Sin adjudicaciones de otras empresas</td></tr>';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-detalle')).show();
-    });
-});
-document.querySelectorAll('.btn-precios-competencia').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        const params = new URLSearchParams(window.location.search);
-        const qs = new URLSearchParams();
-        if (params.get('fecha_desde')) qs.set('fecha_desde', params.get('fecha_desde'));
-        if (params.get('fecha_hasta')) qs.set('fecha_hasta', params.get('fecha_hasta'));
-        const url = btn.dataset.url + (qs.toString() ? '?' + qs.toString() : '');
-        document.getElementById('modal-precios-titulo').textContent = btn.dataset.prod || 'Precios';
-        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        const data = await res.json();
-        const fmt = n => '$' + (Number(n) || 0).toLocaleString('es-CL');
-        const nota = document.getElementById('modal-precios-nota');
-        const catalogo = document.getElementById('modal-precios-catalogo');
-        const error = document.getElementById('modal-precios-error');
-        if (!res.ok) {
-            nota.textContent = '';
-            catalogo.textContent = '';
-            error.textContent = data.error || 'No se pudo cargar el detalle.';
-            document.getElementById('modal-precios-lineas').innerHTML = '';
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-precios')).show();
-            return;
-        }
-        error.textContent = '';
-        nota.textContent = 'Nota ' + data.nronota + (data.fecha_cierre ? ' · cierre ' + data.fecha_cierre : '')
-            + (data.prod_nombre ? ' · ' + data.prod_nombre : '');
-        catalogo.textContent = data.precio_catalogo == null ? '' : 'Precio catálogo: ' + fmt(data.precio_catalogo);
-        document.getElementById('modal-precios-lineas').innerHTML = (data.lineas || []).map(l => {
-            const cls = l.es_propio ? 'fw-semibold' : '';
-            return `<tr class="${cls}"><td>${l.proveedor || '—'}</td><td class="text-end">${l.precio_unitario == null ? '—' : fmt(l.precio_unitario)}</td></tr>`;
-        }).join('') || '<tr><td colspan="2" class="text-muted">Sin precios</td></tr>';
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-competencia-precios')).show();
     });
 });
 </script>
