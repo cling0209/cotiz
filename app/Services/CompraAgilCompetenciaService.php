@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\NotaMpOferta;
 use App\Support\ListadoPorPagina;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\LengthAwarePaginator as Paginator;
@@ -20,6 +21,12 @@ class CompraAgilCompetenciaService
 {
     /** @var array<string, list<array<string, mixed>>> */
     private array $agrupadasCache = [];
+
+    /** @var array<string, list<int>> */
+    private array $candidatasCerradasCache = [];
+
+    /** @var array<string, bool> */
+    private array $detalleMpCache = [];
 
     /**
      * @param  array<string, mixed>  $filtros
@@ -290,6 +297,17 @@ class CompraAgilCompetenciaService
             ];
         }
 
+        // Preferir nota con detalle MP alineable al producto (no solo la última cerrada).
+        foreach ($out as $i => $fila) {
+            if ($fila['nronota_cerrada'] === null) {
+                continue;
+            }
+            $conDetalle = $this->nronotaUltimaCerrada((string) $fila['prod_item'], $filtros);
+            if ($conDetalle !== null) {
+                $out[$i]['nronota_cerrada'] = $conDetalle;
+            }
+        }
+
         return $this->agrupadasCache[$cacheKey] = $out;
     }
 
@@ -483,11 +501,24 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Última nota cerrada donde hay oferta propia y un proveedor adjudicado.
+     * Última nota cerrada donde hay oferta propia y un proveedor adjudicado (rk=1 por producto).
      *
      * @param  array<string, mixed>  $filtros
      */
     private function notasCerradasAdjudicadas(array $filtros, ?string $prodItem)
+    {
+        return DB::query()
+            ->fromSub($this->notasCerradasAdjudicadasRanked($filtros, $prodItem), 'ncr')
+            ->where('rk', 1)
+            ->select(['prod_item', 'nronota']);
+    }
+
+    /**
+     * Candidatas cerradas con propio + adjudicado, ordenadas por cierre (más reciente primero).
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    private function notasCerradasAdjudicadasRanked(array $filtros, ?string $prodItem)
     {
         $fecha = $this->sqlFechaCierre('s');
         $propio = $this->sqlEsPropio('o');
@@ -530,7 +561,7 @@ class CompraAgilCompetenciaService
                 DB::raw("MAX({$fecha}) as fecha_cierre"),
             ]);
 
-        $ranked = DB::query()
+        return DB::query()
             ->fromSub($porNota, 'nc')
             ->select([
                 'prod_item',
@@ -538,14 +569,35 @@ class CompraAgilCompetenciaService
                 'fecha_cierre',
                 DB::raw('DENSE_RANK() OVER (PARTITION BY prod_item ORDER BY fecha_cierre DESC NULLS LAST, nronota DESC) as rk'),
             ]);
-
-        return DB::query()
-            ->fromSub($ranked, 'ncr')
-            ->where('rk', 1)
-            ->select(['prod_item', 'nronota']);
     }
 
     /**
+     * @param  array<string, mixed>  $filtros
+     * @return list<int>
+     */
+    private function candidatasNronotaCerrada(string $prodItem, array $filtros): array
+    {
+        $prodItem = trim($prodItem);
+        $cacheKey = md5((string) json_encode([$filtros, $prodItem]));
+        if (isset($this->candidatasCerradasCache[$cacheKey])) {
+            return $this->candidatasCerradasCache[$cacheKey];
+        }
+
+        $nros = $this->notasCerradasAdjudicadasRanked($filtros, $prodItem)
+            ->orderBy('rk')
+            ->pluck('nronota')
+            ->map(fn ($n) => (int) $n)
+            ->unique()
+            ->values()
+            ->all();
+
+        return $this->candidatasCerradasCache[$cacheKey] = $nros;
+    }
+
+    /**
+     * Última nota cerrada con propio + adjudicado donde el producto tiene línea MP alineable.
+     * Si ninguna tiene detalle usable, cae a la más reciente (comportamiento anterior).
+     *
      * @param  array<string, mixed>  $filtros
      */
     public function nronotaUltimaCerrada(string $prodItem, array $filtros): ?int
@@ -555,9 +607,55 @@ class CompraAgilCompetenciaService
             return null;
         }
 
-        $fila = $this->notasCerradasAdjudicadas($filtros, $prodItem)->first();
+        $candidatas = $this->candidatasNronotaCerrada($prodItem, $filtros);
+        if ($candidatas === []) {
+            return null;
+        }
 
-        return $fila !== null ? (int) $fila->nronota : null;
+        foreach ($candidatas as $nronota) {
+            if ($this->notaTieneDetalleProductoMp($nronota, $prodItem)) {
+                return $nronota;
+            }
+        }
+
+        return $candidatas[0];
+    }
+
+    /**
+     * True si propio o adjudicado tienen al menos una línea MP alineable al producto.
+     */
+    private function notaTieneDetalleProductoMp(int $nronota, string $prodItem): bool
+    {
+        $cacheKey = $nronota.'|'.trim($prodItem);
+        if (isset($this->detalleMpCache[$cacheKey])) {
+            return $this->detalleMpCache[$cacheKey];
+        }
+
+        $ofertas = NotaMpOferta::query()
+            ->with('lineas')
+            ->where('nronota', $nronota)
+            ->whereRaw('NOT (inadmisible IS TRUE)')
+            ->where(function ($q) {
+                $q->whereRaw('es_propio IS TRUE')
+                    ->orWhereRaw('proveedor_seleccionado IS TRUE');
+            })
+            ->get();
+
+        if ($ofertas->isEmpty()) {
+            return $this->detalleMpCache[$cacheKey] = false;
+        }
+
+        $filtradas = $this->filtrarOfertasPorProductoPropio($ofertas, $prodItem, $nronota);
+        foreach ($filtradas as $oferta) {
+            if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
+                continue;
+            }
+            if ($oferta->lineas->isNotEmpty()) {
+                return $this->detalleMpCache[$cacheKey] = true;
+            }
+        }
+
+        return $this->detalleMpCache[$cacheKey] = false;
     }
 
     /**

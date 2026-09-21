@@ -98,7 +98,7 @@ class CompraAgilAnalisisController extends Controller
 
     /**
      * Mismo detalle que Resultados → Todas, filtrado al producto de la fila.
-     * Usa la última nota cerrada con oferta propia y proveedor adjudicado.
+     * Usa la última nota cerrada con propio + adjudicado y línea MP alineable al producto.
      */
     public function detalleNotaProducto(Request $request, string $prodItem): JsonResponse
     {

@@ -275,6 +275,61 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame(0.0, $recorte[0]['nadie_gano']);
     }
 
+    public function test_ver_nota_retrocede_si_la_ultima_no_tiene_detalle_mp_del_producto(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+            'cotiz.empresa_rut' => '76.185.139-K',
+        ]);
+
+        // Nota reciente: producto en orden 2, MP solo trae 1 línea genérica → no alinea.
+        $this->nota(14901, '2026-09-20 12:00:00');
+        NotaDetalle::query()->create([
+            'nronota' => 14901,
+            'prod_item' => 'OTRO',
+            'prod_valor' => 100,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_descripcion_maestro' => 'Otro item',
+        ]);
+        NotaDetalle::query()->create([
+            'nronota' => 14901,
+            'prod_item' => 'CRP99777',
+            'prod_valor' => 500,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 2,
+            'prod_item_agile' => '44122000',
+            'prod_descripcion_maestro' => 'CARPETAS PLASTIFICADAS C/ACCO COLORES SURTIDOS',
+        ]);
+        $propiaNueva = $this->oferta(14901, '76185139-K', 'ROMULO', true, true);
+        $this->linea($propiaNueva, 'PACK', 99, 1000); // una sola línea, no es la carpeta
+
+        // Nota anterior: misma carpeta con línea MP alineable.
+        $this->nota(14800, '2026-08-01 12:00:00');
+        NotaDetalle::query()->create([
+            'nronota' => 14800,
+            'prod_item' => 'CRP99777',
+            'prod_valor' => 500,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '44122000',
+            'prod_descripcion_maestro' => 'CARPETAS PLASTIFICADAS C/ACCO COLORES SURTIDOS',
+        ]);
+        $propiaVieja = $this->oferta(14800, '76185139-K', 'ROMULO', true, true);
+        $this->linea($propiaVieja, '44122000', 10, 400);
+
+        $servicio = app(CompraAgilCompetenciaService::class);
+        $this->assertSame(14800, $servicio->nronotaUltimaCerrada('CRP99777', []));
+
+        $fila = collect($servicio->listado([])->items())->firstWhere('prod_item', 'CRP99777');
+        $this->assertNotNull($fila);
+        $this->assertSame(14800, $fila['nronota_cerrada']);
+    }
+
     public function test_pantalla_no_muestra_codigo_mp(): void
     {
         $admin = User::factory()->create(['perfil' => User::PERFIL_SUPERADMIN]);
