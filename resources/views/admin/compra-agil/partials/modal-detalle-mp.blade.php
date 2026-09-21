@@ -813,7 +813,6 @@
                 html += '</dl>';
             }
 
-            html += '<h3 class="h6">Ofertas recibidas</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Proveedor</th><th>RUT</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>';
             const ofertasOrdenadas = [...(data.ofertas || [])].sort((a, b) => {
                 const rank = (o) => {
                     if (o.proveedor_seleccionado) return 0;
@@ -824,33 +823,30 @@
                 if (diff !== 0) return diff;
                 return String(a.razon_social || '').localeCompare(String(b.razon_social || ''), 'es');
             });
-            ofertasOrdenadas.forEach(o => {
-                html += `<tr class="${o.proveedor_seleccionado ? 'table-success' : ''}${o.es_propio ? ' fw-semibold' : ''}">
-                    <td>${o.razon_social || '—'}</td>
-                    <td class="small">${o.rut_proveedor || '—'}</td>
-                    <td class="text-end">${fmtMonto(o.monto_total)}</td>
-                    <td class="small">${o.proveedor_seleccionado ? 'Seleccionado' : ''}${o.es_propio ? ' · Propio' : ''}${o.inadmisible ? ' · Inadm.' : ''}</td>
-                </tr>`;
-            });
-            html += '</tbody></table></div>';
-            html += '<h3 class="h6 mt-3">Detalle por proveedor</h3>';
+            html += '<h3 class="h6 mt-2">Detalle por proveedor</h3>';
             ofertasOrdenadas.forEach(o => {
                 const badges = [
                     o.proveedor_seleccionado ? 'Seleccionado' : '',
                     o.es_propio ? 'Propio' : '',
                     o.inadmisible ? 'Inadmisible' : '',
                 ].filter(Boolean).join(' · ');
-                const rowClass = o.proveedor_seleccionado ? ' border border-success rounded p-2 mb-2' : ' border rounded p-2 mb-2';
-                html += `<div class="${rowClass.trim()}">`;
-                html += `<p class="small fw-semibold mb-1">${o.razon_social || '—'} <span class="text-muted fw-normal">(${o.rut_proveedor || '—'})</span>`;
+                const clases = ['border', 'rounded', 'p-2', 'mb-2'];
+                if (o.proveedor_seleccionado) {
+                    clases.push('border-success', 'bg-success-subtle');
+                }
+                if (o.es_propio) {
+                    clases.push('fw-bold');
+                }
+                html += `<div class="${clases.join(' ')}">`;
+                html += `<p class="small mb-1${o.es_propio ? ' fw-bold' : ' fw-semibold'}">${o.razon_social || '—'} <span class="text-muted fw-normal">(${o.rut_proveedor || '—'})</span>`;
                 if (badges) {
                     html += ` · ${badges}`;
                 }
                 html += ` · Total: ${fmtMonto(o.monto_total)}</p>`;
                 if (!o.lineas || !o.lineas.length) {
-                    html += '<p class="small text-muted mb-0">Sin detalle de productos en MP.</p>';
+                    html += '<p class="small text-muted mb-0 fw-normal">Sin detalle de productos en MP.</p>';
                 } else {
-                    html += '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Cód. MP</th><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
+                    html += '<div class="table-responsive fw-normal"><table class="table table-sm mb-0"><thead><tr><th>Cód. MP</th><th>Producto</th><th>Cant.</th><th class="text-end">P.unit.</th><th class="text-end">Total</th></tr></thead><tbody>';
                     o.lineas.forEach(l => {
                         html += `<tr><td class="small font-monospace">${l.codigo_producto || '—'}</td><td class="small">${l.descripcion || '—'}</td><td>${l.cantidad ?? '—'}</td><td class="text-end">${fmtMonto(l.precio_unitario)}</td><td class="text-end">${fmtMonto(l.monto_total)}</td></tr>`;
                     });
