@@ -327,7 +327,8 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $fila = collect($servicio->listado([])->items())->firstWhere('prod_item', 'CRP99777');
         $this->assertNotNull($fila);
-        $this->assertSame(14800, $fila['nronota_cerrada']);
+        // El listado muestra la última cerrada (rápido); al abrir Ver nota se resuelve la con detalle.
+        $this->assertSame(14901, $fila['nronota_cerrada']);
     }
 
     public function test_pantalla_no_muestra_codigo_mp(): void

@@ -297,17 +297,6 @@ class CompraAgilCompetenciaService
             ];
         }
 
-        // Preferir nota con detalle MP alineable al producto (no solo la última cerrada).
-        foreach ($out as $i => $fila) {
-            if ($fila['nronota_cerrada'] === null) {
-                continue;
-            }
-            $conDetalle = $this->nronotaUltimaCerrada((string) $fila['prod_item'], $filtros);
-            if ($conDetalle !== null) {
-                $out[$i]['nronota_cerrada'] = $conDetalle;
-            }
-        }
-
         return $this->agrupadasCache[$cacheKey] = $out;
     }
 

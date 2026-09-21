@@ -31,7 +31,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. Cant. total es la cantidad solicitada en la nota (no la suma de ofertas de cada proveedor) y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Total proveedores muestra la cantidad adjudicada de cada empresa. Ver nota abre el detalle de Mercado Público de la última nota <strong>cerrada</strong> con propio y adjudicado donde el producto tiene línea desglosada en MP (si la más reciente solo trae un pack sin detalle, retrocede). Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es la cantidad solicitada en la nota (no la suma de ofertas de cada proveedor) y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Total proveedores muestra la cantidad adjudicada de cada empresa. Ver nota abre el detalle de Mercado Público de la última nota <strong>cerrada</strong> con propio y adjudicado donde el producto tiene línea desglosada en MP (si la más reciente solo trae un pack sin detalle, retrocede al abrir el modal). Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-6">
@@ -120,7 +120,7 @@
                                             data-nronota="{{ $row['nronota_cerrada'] }}"
                                             data-prod-item="{{ $row['prod_item'] }}"
                                             data-url="{{ route('admin.compra-agil.analisis.nota', ['prodItem' => $row['prod_item']]) }}">
-                                            Ver nota {{ $row['nronota_cerrada'] }}
+                                            Ver nota
                                         </button>
                                     @else
                                         <button type="button" class="btn btn-outline-dark btn-sm" disabled
