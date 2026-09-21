@@ -31,7 +31,7 @@
         <h1 class="h3 mb-0">Precios y cantidades — Compra Ágil</h1>
     </div>
 
-    <p class="small text-muted mb-3">Por código propio. Cant. total es lo cotizado y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Total proveedores muestra la cantidad adjudicada de cada empresa. Ver nota abre el detalle de Mercado Público (como en Resultados) de la última nota <strong>cerrada</strong> donde participaron el propio y el adjudicado; en productos solo muestra el de la fila. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
+    <p class="small text-muted mb-3">Por código propio. Cant. total es la cantidad solicitada en la nota (no la suma de ofertas de cada proveedor) y cuadra con adjudicada propio, adjudicadas otros y nadie se ganó. Total proveedores muestra la cantidad adjudicada de cada empresa. Ver nota abre el detalle de Mercado Público (como en Resultados) de la última nota <strong>cerrada</strong> donde participaron el propio y el adjudicado; en productos solo muestra el de la fila. Desde y hasta filtran por la fecha de cierre; si no está, se usa la del segundo llamado y, si tampoco hay, la del primero. Si no indicas fechas, se usa todo el historial.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-md-6">
@@ -43,7 +43,7 @@
         <div class="col-md-6">
             <div class="card shadow-sm h-100"><div class="card-body py-3">
                 <div class="text-muted small">Cant. total</div>
-                <div class="fs-4 fw-semibold">{{ $fmtCant($kpi['unidades_propias'] + $kpi['unidades_otros']) }}</div>
+                <div class="fs-4 fw-semibold">{{ $fmtCant($kpi['unidades_propias']) }}</div>
             </div></div>
         </div>
     </div>

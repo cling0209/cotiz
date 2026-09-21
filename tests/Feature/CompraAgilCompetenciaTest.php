@@ -70,10 +70,10 @@ class CompraAgilCompetenciaTest extends TestCase
         $this->assertSame('Huellero individual', $huellero['prod_nombre']);
         $this->assertSame(100.0, $huellero['cant_propia']);
         $this->assertSame(200.0, $huellero['cant_otros']);
-        $this->assertSame(300.0, $huellero['cant_total']);
+        $this->assertSame(100.0, $huellero['cant_total']);
         $this->assertSame(0.0, $huellero['adjudicada_propia']);
         $this->assertSame(100.0, $huellero['adjudicada_otros']);
-        $this->assertSame(200.0, $huellero['nadie_gano']);
+        $this->assertSame(0.0, $huellero['nadie_gano']);
         $this->assertSame(
             $huellero['cant_total'],
             $huellero['adjudicada_propia'] + $huellero['adjudicada_otros'] + $huellero['nadie_gano'],
@@ -260,17 +260,19 @@ class CompraAgilCompetenciaTest extends TestCase
 
         $servicio = app(CompraAgilCompetenciaService::class);
         $todo = $servicio->listado([])->items();
-        $this->assertSame(20.0, $todo[0]['cant_total']);
+        $this->assertSame(10.0, $todo[0]['cant_total']);
         $this->assertSame(0.0, $todo[0]['adjudicada_propia']);
         $this->assertSame(10.0, $todo[0]['adjudicada_otros']);
+        $this->assertSame(0.0, $todo[0]['nadie_gano']);
 
         $recorte = $servicio->listado([
             'fecha_desde' => '2026-06-01',
             'fecha_hasta' => '2026-06-30',
         ])->items();
         $this->assertCount(1, $recorte);
-        $this->assertSame(10.0, $recorte[0]['cant_total']);
+        $this->assertSame(5.0, $recorte[0]['cant_total']);
         $this->assertSame(5.0, $recorte[0]['adjudicada_otros']);
+        $this->assertSame(0.0, $recorte[0]['nadie_gano']);
     }
 
     public function test_pantalla_no_muestra_codigo_mp(): void

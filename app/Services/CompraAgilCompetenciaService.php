@@ -237,7 +237,7 @@ class CompraAgilCompetenciaService
                 DB::raw('MAX(COALESCE(d.cantidad, 0)) as cant_propia'),
                 DB::raw("SUM(CASE WHEN op.rut_proveedor IS NULL OR ({$propio}) THEN 0 ELSE COALESCE(op.cantidad, 0) END) as cant_otros"),
                 DB::raw("MAX(CASE WHEN {$seleccionado} AND ({$propio}) THEN COALESCE(d.cantidad, 0) ELSE 0 END) as adj_propia"),
-                DB::raw("SUM(CASE WHEN {$seleccionado} AND op.rut_proveedor IS NOT NULL AND NOT ({$propio}) THEN COALESCE(op.cantidad, 0) ELSE 0 END) as adj_otros"),
+                DB::raw("MAX(CASE WHEN {$seleccionado} AND op.rut_proveedor IS NOT NULL AND NOT ({$propio}) THEN COALESCE(d.cantidad, 0) ELSE 0 END) as adj_otros"),
                 DB::raw('MAX(mk.precio_min) as precio_min'),
                 DB::raw('MAX(mk.precio_max) as precio_max'),
                 DB::raw('MAX(mk.precio_ofertado) as tu_precio'),
@@ -268,7 +268,8 @@ class CompraAgilCompetenciaService
         foreach ($filas as $fila) {
             $propia = (float) ($fila->cant_propia ?? 0);
             $otros = (float) ($fila->cant_otros ?? 0);
-            $total = $propia + $otros;
+            // Cant. total = cantidad solicitada en la nota (notasdetalle), no la suma de ofertas.
+            $total = $propia;
             $adjudicadaPropia = (float) ($fila->adj_propia ?? 0);
             $adjudicadaOtros = (float) ($fila->adj_otros ?? 0);
             $out[] = [
@@ -279,7 +280,7 @@ class CompraAgilCompetenciaService
                 'cant_total' => $total,
                 'adjudicada_propia' => $adjudicadaPropia,
                 'adjudicada_otros' => $adjudicadaOtros,
-                'nadie_gano' => $total - $adjudicadaPropia - $adjudicadaOtros,
+                'nadie_gano' => max(0.0, $total - $adjudicadaPropia - $adjudicadaOtros),
                 'nronota_ultima' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'nronota_mercado' => $fila->nronota_mercado !== null ? (int) $fila->nronota_mercado : null,
                 'nronota_cerrada' => $fila->nronota_cerrada !== null ? (int) $fila->nronota_cerrada : null,
