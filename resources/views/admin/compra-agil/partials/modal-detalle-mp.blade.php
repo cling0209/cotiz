@@ -825,6 +825,9 @@
                 return String(a.razon_social || '').localeCompare(String(b.razon_social || ''), 'es');
             });
             html += '<h3 class="h6 mt-2">Detalle por proveedor</h3>';
+            if (!ofertasOrdenadas.length) {
+                html += '<p class="small text-muted">No se encontraron líneas de este producto en las ofertas MP de la nota (propio/adjudicado). Revisa si el detalle MP tiene productos cargados.</p>';
+            }
             ofertasOrdenadas.forEach(o => {
                 const badges = [
                     o.proveedor_seleccionado ? 'Seleccionado' : '',

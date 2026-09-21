@@ -560,28 +560,21 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Índice 1-based del producto entre las líneas de la nota (ordenadas por orden).
-     * Coincide con ROW_NUMBER de ofertas propias (mismo orden de cotización).
+     * Valores de `orden` del producto en la nota (1-based, como ROW_NUMBER de ofertas).
      *
      * @return list<int>
      */
     public function ordenesProductoEnNota(string $prodItem, int $nronota): array
     {
-        $prodItem = trim($prodItem);
-        $items = DB::table('notasdetalle')
+        return DB::table('notasdetalle')
             ->where('nronota', $nronota)
+            ->where('prod_item', trim($prodItem))
             ->orderBy('orden')
-            ->orderBy('prod_item')
-            ->pluck('prod_item');
-
-        $posiciones = [];
-        foreach ($items->values() as $i => $item) {
-            if (trim((string) $item) === $prodItem) {
-                $posiciones[] = $i + 1;
-            }
-        }
-
-        return $posiciones;
+            ->pluck('orden')
+            ->map(fn ($orden) => (int) $orden)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -611,26 +604,35 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Deja en cada oferta solo la(s) línea(s) del producto propio (misma línea de competencia).
-     * Ancla en la oferta propia: el orden de notasdetalle = orden de cotización propia;
-     * el resto de proveedores se alinea por código MP o cantidad (el orden en MP puede diferir).
+     * Deja en cada oferta solo la(s) línea(s) del producto de la fila.
+     * La nota ya viene de la última cerrada con propio + adjudicado.
+     * Alinea por cantidad de notasdetalle, código MP de la oferta propia y, al final, orden.
      *
      * @param  iterable<int, object>  $ofertas  ofertas con relación lineas
      * @return list<object> ofertas con lineas filtradas; sin líneas se omiten
      */
     public function filtrarOfertasPorProductoPropio(iterable $ofertas, string $prodItem, int $nronota): array
     {
-        $posiciones = $this->ordenesProductoEnNota($prodItem, $nronota);
-        if ($posiciones === []) {
+        $prodItem = trim($prodItem);
+        $detalles = DB::table('notasdetalle')
+            ->where('nronota', $nronota)
+            ->where('prod_item', $prodItem)
+            ->orderBy('orden')
+            ->get(['orden', 'cantidad']);
+
+        $ordenes = $detalles
+            ->pluck('orden')
+            ->map(fn ($orden) => (int) $orden)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ordenes === []) {
             return [];
         }
 
-        $cantidadesNota = DB::table('notasdetalle')
-            ->where('nronota', $nronota)
-            ->where('prod_item', trim($prodItem))
-            ->orderBy('orden')
-            ->pluck('cantidad')
-            ->map(fn ($c) => round((float) $c, 4))
+        $cantidadesNota = $detalles
+            ->map(fn ($d) => round((float) $d->cantidad, 4))
             ->values()
             ->all();
 
@@ -641,56 +643,60 @@ class CompraAgilCompetenciaService
 
         $propia = null;
         foreach ($lista as $oferta) {
-            if (! empty($oferta->es_propio)) {
+            if ($oferta->es_propio) {
                 $propia = $oferta;
                 break;
             }
         }
 
+        $lineasPropia = $propia !== null
+            ? collect($propia->lineas ?? [])->sortBy('id')->values()
+            : collect();
+
         $refs = [];
-        if ($propia !== null) {
-            $lineasPropia = $propia->lineas->sortBy('id')->values();
-            foreach ($posiciones as $idx => $pos) {
-                $linea = $lineasPropia->get($pos - 1);
-                if ($linea === null) {
-                    continue;
+        foreach ($ordenes as $idx => $pos) {
+            $cantNota = $cantidadesNota[$idx] ?? null;
+            $lineaRef = $lineasPropia->get($pos - 1);
+
+            // Si la posición no calza (orden ≠ índice en MP), buscar por cantidad en la oferta propia.
+            if (
+                ($lineaRef === null || ($cantNota !== null && round((float) ($lineaRef->cantidad ?? 0), 4) !== $cantNota))
+                && $cantNota !== null
+                && $cantNota > 0
+            ) {
+                $porCantidad = $lineasPropia->first(
+                    fn ($l) => round((float) ($l->cantidad ?? 0), 4) === $cantNota
+                );
+                if ($porCantidad !== null) {
+                    $lineaRef = $porCantidad;
                 }
-                $refs[] = [
-                    'pos' => $pos,
-                    'codigo' => trim((string) ($linea->codigo_producto ?? '')),
-                    'cantidad' => round((float) ($linea->cantidad ?? 0), 4),
-                    'cantidad_nota' => $cantidadesNota[$idx] ?? round((float) ($linea->cantidad ?? 0), 4),
-                ];
             }
+
+            $refs[] = [
+                'pos' => $pos,
+                'codigo' => $lineaRef !== null ? trim((string) ($lineaRef->codigo_producto ?? '')) : '',
+                'cantidad_nota' => $cantNota,
+            ];
         }
 
-        if ($refs === []) {
-            foreach ($posiciones as $idx => $pos) {
-                $refs[] = [
-                    'pos' => $pos,
-                    'codigo' => '',
-                    'cantidad' => $cantidadesNota[$idx] ?? null,
-                    'cantidad_nota' => $cantidadesNota[$idx] ?? null,
-                ];
+        $mapear = function (object $oferta) use ($refs, $ordenes): array {
+            $lineas = collect($oferta->lineas ?? [])->sortBy('id')->values();
+            if ($lineas->isEmpty()) {
+                return [];
             }
-        }
 
-        $out = [];
-        foreach ($lista as $oferta) {
-            $lineas = $oferta->lineas->sortBy('id')->values();
             $usadas = [];
             $filtradas = [];
 
             foreach ($refs as $ref) {
                 $elegida = null;
-                $codigoRef = $ref['codigo'];
 
-                if ($codigoRef !== '') {
+                if ($ref['codigo'] !== '') {
                     foreach ($lineas as $i => $linea) {
                         if (isset($usadas[$i])) {
                             continue;
                         }
-                        if (trim((string) ($linea->codigo_producto ?? '')) === $codigoRef) {
+                        if (trim((string) ($linea->codigo_producto ?? '')) === $ref['codigo']) {
                             $elegida = $linea;
                             $usadas[$i] = true;
                             break;
@@ -698,18 +704,15 @@ class CompraAgilCompetenciaService
                     }
                 }
 
-                if ($elegida === null) {
-                    $cantRef = $ref['cantidad_nota'] ?? $ref['cantidad'];
-                    if ($cantRef !== null) {
-                        foreach ($lineas as $i => $linea) {
-                            if (isset($usadas[$i])) {
-                                continue;
-                            }
-                            if (round((float) ($linea->cantidad ?? 0), 4) === (float) $cantRef) {
-                                $elegida = $linea;
-                                $usadas[$i] = true;
-                                break;
-                            }
+                if ($elegida === null && $ref['cantidad_nota'] !== null && $ref['cantidad_nota'] > 0) {
+                    foreach ($lineas as $i => $linea) {
+                        if (isset($usadas[$i])) {
+                            continue;
+                        }
+                        if (round((float) ($linea->cantidad ?? 0), 4) === $ref['cantidad_nota']) {
+                            $elegida = $linea;
+                            $usadas[$i] = true;
+                            break;
                         }
                     }
                 }
@@ -728,12 +731,44 @@ class CompraAgilCompetenciaService
             }
 
             if ($filtradas === []) {
+                $filtradas = $this->filtrarLineasPorOrdenes($lineas, $ordenes);
+            }
+
+            return $filtradas;
+        };
+
+        $out = [];
+        foreach ($lista as $oferta) {
+            $filtradas = $mapear($oferta);
+            if ($filtradas === []) {
                 continue;
             }
 
-            $oferta->setRelation('lineas', collect($filtradas));
-            $oferta->monto_total = collect($filtradas)->sum(fn ($l) => (int) ($l->monto_total ?? 0));
+            $oferta->setRelation('lineas', collect($filtradas)->values());
+            $suma = collect($filtradas)->sum(fn ($l) => (int) ($l->monto_total ?? 0));
+            if ($suma > 0) {
+                $oferta->monto_total = $suma;
+            }
             $out[] = $oferta;
+        }
+
+        // La nota ya garantizó propio + adjudicado: si el match fino falló, al menos esos dos.
+        if ($out === []) {
+            foreach ($lista as $oferta) {
+                if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
+                    continue;
+                }
+                $filtradas = $mapear($oferta);
+                if ($filtradas === []) {
+                    $todas = collect($oferta->lineas ?? [])->sortBy('id')->values()->all();
+                    if ($todas === []) {
+                        continue;
+                    }
+                    $filtradas = $todas;
+                }
+                $oferta->setRelation('lineas', collect($filtradas)->values());
+                $out[] = $oferta;
+            }
         }
 
         return $out;
