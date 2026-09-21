@@ -604,11 +604,16 @@ class CompraAgilCompetenciaService
     }
 
     /**
-     * Deja en cada oferta la(s) línea(s) del producto de la fila.
-     * La nota ya es la última cerrada con propio + adjudicado: esas dos ofertas
-     * siempre se incluyen. El resto solo si se pudo alinear la misma línea.
+     * Deja en cada oferta la(s) linea(s) del producto de la fila.
+     * La nota ya es la ultima cerrada con propio + adjudicado: esas dos siempre se incluyen.
      *
-     * @param  iterable<int, object>  $ofertas  ofertas con relación lineas
+     * Alineacion (sin cantidad: se repite entre items y mezclaba pilas/elastico):
+     * 1) misma posicion que la linea hallada en la oferta propia
+     * 2) codigo_producto = prod_item_agile
+     * 3) descripcion MP ~ descripcion del producto propio
+     * 4) posicion = orden en notasdetalle
+     *
+     * @param  iterable<int, object>  $ofertas  ofertas con relacion lineas
      * @return list<object>
      */
     public function filtrarOfertasPorProductoPropio(iterable $ofertas, string $prodItem, int $nronota): array
@@ -618,7 +623,16 @@ class CompraAgilCompetenciaService
             ->where('nronota', $nronota)
             ->where('prod_item', $prodItem)
             ->orderBy('orden')
-            ->get(['orden', 'cantidad']);
+            ->get(['orden', 'prod_item_agile', 'prod_descripcion_agile', 'prod_descripcion_maestro']);
+
+        $lista = [];
+        foreach ($ofertas as $oferta) {
+            $lista[] = $oferta;
+        }
+
+        if ($detalles->isEmpty()) {
+            return $this->forzarPropioYAdjudicado($lista, fn () => []);
+        }
 
         $ordenes = $detalles
             ->pluck('orden')
@@ -627,15 +641,25 @@ class CompraAgilCompetenciaService
             ->values()
             ->all();
 
-        $cantidadesNota = $detalles
-            ->map(fn ($d) => round((float) $d->cantidad, 4))
+        $codigosAgile = $detalles
+            ->map(fn ($d) => trim((string) ($d->prod_item_agile ?? '')))
+            ->filter(fn ($c) => $c !== '')
+            ->unique()
             ->values()
             ->all();
 
-        $lista = [];
-        foreach ($ofertas as $oferta) {
-            $lista[] = $oferta;
-        }
+        $textosNota = $detalles
+            ->map(function ($d) {
+                return trim(implode(' ', array_filter([
+                    (string) ($d->prod_descripcion_maestro ?? ''),
+                    (string) ($d->prod_descripcion_agile ?? ''),
+                ])));
+            })
+            ->filter(fn ($t) => $t !== '')
+            ->values()
+            ->all();
+
+        $tokens = $this->tokensDescripcionProducto($textosNota);
 
         $propia = null;
         foreach ($lista as $oferta) {
@@ -645,97 +669,54 @@ class CompraAgilCompetenciaService
             }
         }
 
-        $lineasPropia = $propia !== null
-            ? collect($propia->lineas ?? [])->sortBy('id')->values()
-            : collect();
-
-        $refs = [];
-        foreach ($ordenes as $idx => $pos) {
-            $cantNota = $cantidadesNota[$idx] ?? null;
-            $lineaRef = $lineasPropia->get($pos - 1);
-
-            if (
-                ($lineaRef === null || ($cantNota !== null && round((float) ($lineaRef->cantidad ?? 0), 4) !== $cantNota))
-                && $cantNota !== null
-                && $cantNota > 0
-            ) {
-                $porCantidad = $lineasPropia->first(
-                    fn ($l) => round((float) ($l->cantidad ?? 0), 4) === $cantNota
-                );
-                if ($porCantidad !== null) {
-                    $lineaRef = $porCantidad;
-                }
+        $indicePropio = null;
+        $codigoPropio = null;
+        if ($propia !== null) {
+            $lineasPropia = collect($propia->lineas ?? [])->sortBy('id')->values();
+            $idx = $this->indiceLineaProducto($lineasPropia, $ordenes, $codigosAgile, $tokens);
+            if ($idx !== null) {
+                $indicePropio = $idx;
+                $codigoPropio = trim((string) ($lineasPropia[$idx]->codigo_producto ?? ''));
             }
-
-            $refs[] = [
-                'pos' => $pos,
-                'codigo' => $lineaRef !== null ? trim((string) ($lineaRef->codigo_producto ?? '')) : '',
-                'cantidad_nota' => $cantNota,
-            ];
         }
 
-        $mapear = function (object $oferta) use ($refs, $ordenes): array {
+        $mapear = function (object $oferta) use ($ordenes, $codigosAgile, $tokens, $indicePropio, $codigoPropio): array {
             $lineas = collect($oferta->lineas ?? [])->sortBy('id')->values();
             if ($lineas->isEmpty()) {
                 return [];
             }
 
-            if ($refs === [] && $ordenes === []) {
-                return $lineas->all();
-            }
-
-            $usadas = [];
-            $filtradas = [];
-
-            foreach ($refs as $ref) {
-                $elegida = null;
-
-                if ($ref['codigo'] !== '') {
-                    foreach ($lineas as $i => $linea) {
-                        if (isset($usadas[$i])) {
-                            continue;
-                        }
-                        if (trim((string) ($linea->codigo_producto ?? '')) === $ref['codigo']) {
-                            $elegida = $linea;
-                            $usadas[$i] = true;
-                            break;
-                        }
+            // Codigo agile / codigo ofertado por el propio (antes que posicion: el orden MP puede diferir).
+            foreach ($codigosAgile as $codigo) {
+                foreach ($lineas as $linea) {
+                    if (trim((string) ($linea->codigo_producto ?? '')) === $codigo) {
+                        return [$linea];
                     }
-                }
-
-                if ($elegida === null && $ref['cantidad_nota'] !== null && $ref['cantidad_nota'] > 0) {
-                    foreach ($lineas as $i => $linea) {
-                        if (isset($usadas[$i])) {
-                            continue;
-                        }
-                        if (round((float) ($linea->cantidad ?? 0), 4) === $ref['cantidad_nota']) {
-                            $elegida = $linea;
-                            $usadas[$i] = true;
-                            break;
-                        }
-                    }
-                }
-
-                if ($elegida === null) {
-                    $idx = $ref['pos'] - 1;
-                    if ($idx >= 0 && $idx < $lineas->count() && ! isset($usadas[$idx])) {
-                        $elegida = $lineas[$idx];
-                        $usadas[$idx] = true;
-                    }
-                }
-
-                if ($elegida !== null) {
-                    $filtradas[] = $elegida;
                 }
             }
 
-            if ($filtradas === [] && $ordenes !== []) {
-                $filtradas = $this->filtrarLineasPorOrdenes($lineas, $ordenes);
+            if ($codigoPropio !== null && $codigoPropio !== '') {
+                foreach ($lineas as $linea) {
+                    if (trim((string) ($linea->codigo_producto ?? '')) === $codigoPropio) {
+                        return [$linea];
+                    }
+                }
             }
 
-            return $filtradas;
+            $porTexto = $this->primeraLineaPorTokens($lineas, $tokens);
+            if ($porTexto !== null) {
+                return [$porTexto];
+            }
+
+            if ($indicePropio !== null && $indicePropio < $lineas->count()) {
+                return [$lineas[$indicePropio]];
+            }
+
+            return $this->filtrarLineasPorOrdenes($lineas, $ordenes);
         };
 
+        $out = [];
+        $ids = [];
         $aplicar = function (object $oferta, array $filtradas) use (&$out, &$ids): void {
             $id = (int) ($oferta->id ?? 0);
             if ($id > 0 && isset($ids[$id])) {
@@ -752,10 +733,6 @@ class CompraAgilCompetenciaService
             $out[] = $oferta;
         };
 
-        $out = [];
-        $ids = [];
-
-        // Competidores alineados al producto.
         foreach ($lista as $oferta) {
             $filtradas = $mapear($oferta);
             if ($filtradas === []) {
@@ -764,20 +741,151 @@ class CompraAgilCompetenciaService
             $aplicar($oferta, $filtradas);
         }
 
-        // Siempre propio y adjudicado (requisito de la nota elegida).
         foreach ($lista as $oferta) {
             if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
                 continue;
             }
-            $filtradas = $mapear($oferta);
-            if ($filtradas === []) {
-                // Último recurso: no dejar el modal sin propio/adjudicado.
-                $filtradas = collect($oferta->lineas ?? [])->sortBy('id')->values()->all();
-            }
-            $aplicar($oferta, $filtradas);
+            // Nunca volcar todas las lineas: mezclaba productos ajenos (pilas vs elastico).
+            $aplicar($oferta, $mapear($oferta));
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<object>  $lista
+     * @return list<object>
+     */
+    private function forzarPropioYAdjudicado(array $lista, callable $mapear): array
+    {
+        $out = [];
+        $ids = [];
+        foreach ($lista as $oferta) {
+            if (! $oferta->es_propio && ! $oferta->proveedor_seleccionado) {
+                continue;
+            }
+            $id = (int) ($oferta->id ?? 0);
+            if ($id > 0 && isset($ids[$id])) {
+                continue;
+            }
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+            $filtradas = $mapear($oferta);
+            $oferta->setRelation('lineas', collect($filtradas)->values());
+            $out[] = $oferta;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $lineas
+     * @param  list<int>  $ordenes
+     * @param  list<string>  $codigosAgile
+     * @param  list<string>  $tokens
+     */
+    private function indiceLineaProducto($lineas, array $ordenes, array $codigosAgile, array $tokens): ?int
+    {
+        if ($lineas->isEmpty()) {
+            return null;
+        }
+
+        foreach ($codigosAgile as $codigo) {
+            foreach ($lineas as $i => $linea) {
+                if (trim((string) ($linea->codigo_producto ?? '')) === $codigo) {
+                    return (int) $i;
+                }
+            }
+        }
+
+        $porTexto = $this->primeraLineaPorTokens($lineas, $tokens);
+        if ($porTexto !== null) {
+            foreach ($lineas as $i => $linea) {
+                if ($linea === $porTexto) {
+                    return (int) $i;
+                }
+            }
+        }
+
+        foreach ($ordenes as $pos) {
+            $idx = $pos - 1;
+            if ($idx >= 0 && $idx < $lineas->count()) {
+                return $idx;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $textos
+     * @return list<string>
+     */
+    private function tokensDescripcionProducto(array $textos): array
+    {
+        $stop = [
+            'DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'UN', 'UNA', 'Y', 'O', 'PARA', 'CON', 'SIN',
+            'MM', 'CM', 'MT', 'MTS', 'KG', 'G', 'UND', 'UNID', 'UNIDADES', 'CAJA', 'PACK',
+            'X', 'N', 'NO', 'TIPO', 'COLOR', 'BLANCO', 'NEGRO',
+        ];
+        $tokens = [];
+        foreach ($textos as $texto) {
+            $norm = $this->normalizarTextoMp($texto);
+            foreach (preg_split('/[^A-Z0-9]+/', $norm) ?: [] as $tok) {
+                if (strlen($tok) < 4 || in_array($tok, $stop, true)) {
+                    continue;
+                }
+                $tokens[$tok] = true;
+            }
+        }
+
+        return array_keys($tokens);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $lineas
+     * @param  list<string>  $tokens
+     */
+    private function primeraLineaPorTokens($lineas, array $tokens): ?object
+    {
+        if ($tokens === []) {
+            return null;
+        }
+
+        $mejor = null;
+        $mejorScore = 0;
+        foreach ($lineas as $linea) {
+            $haystack = $this->normalizarTextoMp(trim(
+                (string) ($linea->descripcion ?? '').' '.(string) ($linea->nombre_producto ?? '')
+            ));
+            if ($haystack === '') {
+                continue;
+            }
+            $score = 0;
+            foreach ($tokens as $tok) {
+                if (str_contains($haystack, $tok)) {
+                    $score++;
+                }
+            }
+            if ($score > $mejorScore) {
+                $mejorScore = $score;
+                $mejor = $linea;
+            }
+        }
+
+        return $mejorScore > 0 ? $mejor : null;
+    }
+
+    private function normalizarTextoMp(string $texto): string
+    {
+        $texto = mb_strtoupper(trim($texto), 'UTF-8');
+        $repl = [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+            'Ü' => 'U', 'Ñ' => 'N',
+        ];
+
+        return strtr($texto, $repl);
     }
 
     /**
