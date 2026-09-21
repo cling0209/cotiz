@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'Precios competencia — Compra Ágil')
+@section('title', 'Análisis MP productos')
 
 @section('content')
 @php

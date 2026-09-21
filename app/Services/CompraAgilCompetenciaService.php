@@ -75,7 +75,7 @@ class CompraAgilCompetenciaService
     public function exportarExcel(array $filtros): StreamedResponse
     {
         $filas = $this->ordenar($this->filasAgrupadas($filtros), $filtros);
-        $filename = 'precios_competencia_'.now()->format('Ymd_His').'.xlsx';
+        $filename = 'analisis_mp_productos_'.now()->format('Ymd_His').'.xlsx';
 
         return response()->streamDownload(function () use ($filas) {
             $writer = new Xlsx($this->libroExcel($filas));
@@ -697,7 +697,7 @@ class CompraAgilCompetenciaService
     {
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Precios competencia');
+        $sheet->setTitle('Análisis MP productos');
         $sheet->fromArray([[
             'Cód. propio',
             'Descripción propia',
