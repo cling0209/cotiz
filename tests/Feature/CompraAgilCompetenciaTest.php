@@ -133,6 +133,77 @@ class CompraAgilCompetenciaTest extends TestCase
         }
     }
 
+    public function test_mismo_codigo_mp_elige_linea_por_descripcion(): void
+    {
+        config([
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+            'cotiz.empresa_rut' => '76.185.139-K',
+        ]);
+
+        $this->nota(20001, '2026-09-04 12:00:00');
+        Maeprod::query()->create([
+            'prod_item' => 'RESMA01',
+            'prod_nombre' => 'Resma de 500 hojas de tamaño carta',
+            'prod_valor' => 3500,
+        ]);
+        NotaDetalle::query()->create([
+            'nronota' => 20001,
+            'prod_item' => 'RESMA01',
+            'prod_valor' => 3500,
+            'cantidad' => 30,
+            'fechahora' => now(),
+            'orden' => 2,
+            'prod_item_agile' => '14111509',
+            'prod_descripcion_maestro' => 'Resma de 500 hojas de tamaño carta',
+            'prod_descripcion_agile' => 'Resma de 500 hojas de tamaño carta',
+        ]);
+        NotaDetalle::query()->create([
+            'nronota' => 20001,
+            'prod_item' => 'STICK01',
+            'prod_valor' => 1125,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_item_agile' => '14111509',
+            'prod_descripcion_maestro' => 'Block de stickers animales',
+            'prod_descripcion_agile' => 'Block de stickers animales',
+        ]);
+
+        $propio = $this->oferta(20001, '76185139-K', 'ROMULO', false, true);
+        $this->lineaConDesc($propio, '14111509', 10, 1200, 'Block de stickers animales. Block de Stickers con diseños surtidos');
+        $this->lineaConDesc($propio, '14111509', 30, 3500, 'Resma de 500 hojas de tamaño carta');
+
+        $glt = $this->oferta(20001, '77738709-K', 'COMERCIALIZADORA GLT SPA', false, false);
+        // Stickers primero (mismo codigo MP): antes el filtro devolvía esta línea por error.
+        $this->lineaConDesc($glt, '14111509', 10, 1125, 'Block de stickers animales. Block de Stickers con diseños surtidos');
+        $this->lineaConDesc($glt, '14111509', 30, 1125, 'Resma de 500 hojas de tamaño carta');
+
+        $otro = $this->oferta(20001, '50103920-9', 'COMERCIALIZADORA J H SALAZAR LIMITADA', true, false);
+        $this->lineaConDesc($otro, '14111509', 30, 2750, 'Resma de 500 hojas de tamaño carta');
+        $this->lineaConDesc($otro, '14111509', 10, 900, 'Block de stickers animales');
+
+        $propio->load('lineas');
+        $glt->load('lineas');
+        $otro->load('lineas');
+
+        $filtradas = app(CompraAgilCompetenciaService::class)->filtrarOfertasPorProductoPropio(
+            collect([$propio, $glt, $otro]),
+            'RESMA01',
+            20001,
+        );
+
+        $this->assertCount(3, $filtradas);
+        foreach ($filtradas as $ofertaFiltrada) {
+            $this->assertCount(1, $ofertaFiltrada->lineas);
+            $linea = $ofertaFiltrada->lineas->first();
+            $this->assertSame('14111509', (string) $linea->codigo_producto);
+            $this->assertSame(30.0, (float) $linea->cantidad);
+            $this->assertStringContainsStringIgnoringCase('Resma', (string) $linea->descripcion);
+            $this->assertStringNotContainsStringIgnoringCase('stickers', (string) $linea->descripcion);
+        }
+    }
+
     public function test_min_max_salen_de_la_ultima_cotizacion(): void
     {
         $this->nota(1, '2026-01-10 10:00:00');
@@ -428,10 +499,20 @@ class CompraAgilCompetenciaTest extends TestCase
 
     private function linea(NotaMpOferta $oferta, string $codigo, float $cantidad, int $precio): void
     {
+        $this->lineaConDesc($oferta, $codigo, $cantidad, $precio, 'Linea '.$codigo);
+    }
+
+    private function lineaConDesc(
+        NotaMpOferta $oferta,
+        string $codigo,
+        float $cantidad,
+        int $precio,
+        string $descripcion,
+    ): void {
         NotaMpOfertaLinea::query()->create([
             'oferta_id' => $oferta->id,
             'codigo_producto' => $codigo,
-            'descripcion' => 'Linea '.$codigo,
+            'descripcion' => $descripcion,
             'cantidad' => $cantidad,
             'precio_unitario' => $precio,
             'monto_total' => (int) round($cantidad * $precio),

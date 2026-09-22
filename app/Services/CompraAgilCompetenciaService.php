@@ -696,10 +696,11 @@ class CompraAgilCompetenciaService
      * La nota ya es la ultima cerrada con propio + adjudicado: esas dos siempre se incluyen.
      *
      * Alineacion (sin cantidad: se repite entre items y mezclaba pilas/elastico):
-     * 1) misma posicion que la linea hallada en la oferta propia
-     * 2) codigo_producto = prod_item_agile
+     * 1) codigo_producto = prod_item_agile (si hay varias lineas con el mismo codigo, desambigua por texto)
+     * 2) codigo ofertado por el propio (misma desambiguacion)
      * 3) descripcion MP ~ descripcion del producto propio
-     * 4) posicion = orden en notasdetalle
+     * 4) misma posicion que la linea hallada en la oferta propia
+     * 5) posicion = orden en notasdetalle
      *
      * @param  iterable<int, object>  $ofertas  ofertas con relacion lineas
      * @return list<object>
@@ -775,19 +776,18 @@ class CompraAgilCompetenciaService
             }
 
             // Codigo agile / codigo ofertado por el propio (antes que posicion: el orden MP puede diferir).
+            // Si el mismo codigo aparece en varias lineas (UNSPSC compartido), desambigua por texto.
             foreach ($codigosAgile as $codigo) {
-                foreach ($lineas as $linea) {
-                    if (trim((string) ($linea->codigo_producto ?? '')) === $codigo) {
-                        return [$linea];
-                    }
+                $hit = $this->primeraLineaPorCodigo($lineas, $codigo, $tokens);
+                if ($hit !== null) {
+                    return [$hit];
                 }
             }
 
             if ($codigoPropio !== null && $codigoPropio !== '') {
-                foreach ($lineas as $linea) {
-                    if (trim((string) ($linea->codigo_producto ?? '')) === $codigoPropio) {
-                        return [$linea];
-                    }
+                $hit = $this->primeraLineaPorCodigo($lineas, $codigoPropio, $tokens);
+                if ($hit !== null) {
+                    return [$hit];
                 }
             }
 
@@ -880,9 +880,12 @@ class CompraAgilCompetenciaService
         }
 
         foreach ($codigosAgile as $codigo) {
-            foreach ($lineas as $i => $linea) {
-                if (trim((string) ($linea->codigo_producto ?? '')) === $codigo) {
-                    return (int) $i;
+            $hit = $this->primeraLineaPorCodigo($lineas, $codigo, $tokens);
+            if ($hit !== null) {
+                foreach ($lineas as $i => $linea) {
+                    if ($linea === $hit) {
+                        return (int) $i;
+                    }
                 }
             }
         }
@@ -904,6 +907,43 @@ class CompraAgilCompetenciaService
         }
 
         return null;
+    }
+
+    /**
+     * Busca linea por codigo_producto. Si el mismo codigo aparece en varias lineas
+     * (UNSPSC compartido), desambigua por descripcion; si no hay match de texto,
+     * no adivina la primera.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $lineas
+     * @param  list<string>  $tokens
+     */
+    private function primeraLineaPorCodigo($lineas, string $codigo, array $tokens): ?object
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') {
+            return null;
+        }
+
+        $candidatas = $lineas
+            ->filter(fn ($l) => trim((string) ($l->codigo_producto ?? '')) === $codigo)
+            ->values();
+
+        if ($candidatas->isEmpty()) {
+            return null;
+        }
+
+        if ($tokens !== []) {
+            $porTexto = $this->primeraLineaPorTokens($candidatas, $tokens);
+            if ($porTexto !== null) {
+                return $porTexto;
+            }
+            // Varias lineas con el mismo codigo y ninguna coincide con la descripcion del producto.
+            if ($candidatas->count() > 1) {
+                return null;
+            }
+        }
+
+        return $candidatas->first();
     }
 
     /**
