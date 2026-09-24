@@ -172,7 +172,7 @@ class CotizacionListadoExportService
             $query = DB::table('notas as n')
                 ->leftJoinSub(
                     DB::table('notasdetalle')
-                        ->selectRaw('nronota, COALESCE(SUM(prod_valor * cantidad), 0) AS total')
+                        ->selectRaw('nronota, COALESCE(SUM(CAST(prod_valor AS BIGINT) * CAST(cantidad AS BIGINT)), 0) AS total')
                         ->groupBy('nronota'),
                     'nd_tot',
                     'nd_tot.nronota',
@@ -253,13 +253,13 @@ class CotizacionListadoExportService
 
             $rows = $query
                 ->groupBy('nd.prod_item', DB::raw($nombreProducto))
-                ->orderByDesc(DB::raw('SUM(nd.prod_valor * nd.cantidad)'))
+                ->orderByDesc(DB::raw('SUM(CAST(nd.prod_valor AS BIGINT) * CAST(nd.cantidad AS BIGINT))'))
                 ->orderBy('nd.prod_item')
                 ->get([
                     'nd.prod_item as codigo_producto',
                     DB::raw("{$nombreProducto} as nombre_producto"),
                     DB::raw('SUM(nd.cantidad) as cantidad_acumulada'),
-                    DB::raw('SUM(nd.prod_valor * nd.cantidad) as monto_venta_acumulado'),
+                    DB::raw('SUM(CAST(nd.prod_valor AS BIGINT) * CAST(nd.cantidad AS BIGINT)) as monto_venta_acumulado'),
                 ]);
 
             foreach ($rows as $row) {
@@ -324,7 +324,7 @@ class CotizacionListadoExportService
                     DB::raw("{$nombreProducto} as nombre_producto"),
                     'nd.cantidad',
                     'nd.prod_valor as valor',
-                    DB::raw('(nd.prod_valor * nd.cantidad) as total'),
+                    DB::raw('(CAST(nd.prod_valor AS BIGINT) * CAST(nd.cantidad AS BIGINT)) as total'),
                 ]);
 
             foreach ($rows as $row) {
@@ -435,7 +435,7 @@ class CotizacionListadoExportService
                 'nd.prod_valor_costo',
                 'nd.prod_valor',
                 'nd.cantidad',
-                DB::raw('(nd.prod_valor * nd.cantidad) AS total'),
+                DB::raw('(CAST(nd.prod_valor AS BIGINT) * CAST(nd.cantidad AS BIGINT)) AS total'),
             ]);
 
             foreach ($rows as $row) {

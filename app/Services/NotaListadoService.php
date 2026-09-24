@@ -67,7 +67,8 @@ class NotaListadoService
 
         $ids = $notas->pluck('nronota')->all();
         $totales = DB::table('notasdetalle')
-            ->selectRaw('nronota, COALESCE(SUM(prod_valor * cantidad), 0) as total_calculado')
+            // CAST a BIGINT: en PostgreSQL prod_valor*cantidad (integer) desborda int32 y tira 500.
+            ->selectRaw('nronota, COALESCE(SUM(CAST(prod_valor AS BIGINT) * CAST(cantidad AS BIGINT)), 0) as total_calculado')
             ->whereIn('nronota', $ids)
             ->groupBy('nronota')
             ->pluck('total_calculado', 'nronota');
@@ -163,7 +164,7 @@ class NotaListadoService
             // Solo necesario al ordenar por total (el planner debe calcularlo para todo el set filtrado).
             $query->selectSub(
                 DB::table('notasdetalle')
-                    ->selectRaw('COALESCE(SUM(prod_valor * cantidad), 0)')
+                    ->selectRaw('COALESCE(SUM(CAST(prod_valor AS BIGINT) * CAST(cantidad AS BIGINT)), 0)')
                     ->whereColumn('notasdetalle.nronota', 'notas.nronota'),
                 'total_calculado'
             );

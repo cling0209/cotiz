@@ -3378,7 +3378,7 @@ class NotaMpResultadosService
                 'o.rut_proveedor',
                 DB::raw('MAX(o.razon_social) as razon_social'),
                 DB::raw('SUM(notasdetalle.cantidad) as cantidad_acumulada'),
-                DB::raw('SUM(notasdetalle.prod_valor * notasdetalle.cantidad) as monto_venta_acumulado'),
+                DB::raw('SUM(CAST(notasdetalle.prod_valor AS BIGINT) * CAST(notasdetalle.cantidad AS BIGINT)) as monto_venta_acumulado'),
             ])
             ->groupBy('notasdetalle.prod_item', DB::raw($nombreProducto), 'o.rut_proveedor')
             ->orderByDesc('monto_venta_acumulado')
@@ -3406,7 +3406,7 @@ class NotaMpResultadosService
                 DB::raw("{$nombreProductoAgile} as nombre_producto_agile"),
                 'notasdetalle.cantidad',
                 'notasdetalle.prod_valor as valor',
-                DB::raw('(notasdetalle.prod_valor * notasdetalle.cantidad) as total'),
+                DB::raw('(CAST(notasdetalle.prod_valor AS BIGINT) * CAST(notasdetalle.cantidad AS BIGINT)) as total'),
                 'o.rut_proveedor',
                 'o.razon_social',
             ])
