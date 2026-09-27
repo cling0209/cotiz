@@ -93,8 +93,7 @@
                             <a href="{{ $sortLink('frase', 'ASC') }}" class="text-muted small text-decoration-none" title="A → Z">&#9650;</a>
                             <a href="{{ $sortLink('frase', 'DESC') }}" class="text-muted small text-decoration-none" title="Z → A">&#9660;</a>
                         </th>
-                        <th>Regiones</th>
-                        <th>Excluye</th>
+                        <th>Regiones / Excluir</th>
                         <th>
                             Agregada por
                             <a href="{{ $sortLink('creador', 'ASC') }}" class="text-muted small text-decoration-none" title="A → Z">&#9650;</a>
@@ -129,18 +128,9 @@
                                         aria-expanded="false" aria-controls="{{ $editId }}">
                                     Editar
                                 </button>
-                            </td>
-                            <td class="small">
-                                @forelse($terminosExcluidos as $termino)
-                                    <span class="badge text-bg-light border text-danger-emphasis">{{ $termino }}</span>
-                                @empty
-                                    <span class="text-muted">—</span>
-                                @endforelse
-                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
-                                        data-bs-toggle="collapse" data-bs-target="#{{ $editId }}"
-                                        aria-expanded="false" aria-controls="{{ $editId }}">
-                                    Editar
-                                </button>
+                                @if($terminosExcluidos !== [])
+                                    <div class="text-danger-emphasis mt-1">Excluye: {{ implode(', ', $terminosExcluidos) }}</div>
+                                @endif
                             </td>
                             <td class="small text-muted">
                                 {{ $palabra->creador?->fullName() ?: ($palabra->creador?->username ?: '—') }}
@@ -160,7 +150,7 @@
                             </td>
                         </tr>
                         <tr class="collapse" id="{{ $editId }}">
-                            <td colspan="7" class="bg-light border-top-0 pt-0">
+                            <td colspan="6" class="bg-light border-top-0 pt-0">
                                 <form method="post" action="{{ route('admin.oportunidades.palabras-clave.update', $palabra) }}"
                                       class="row g-2 align-items-end py-2">
                                     @csrf
@@ -199,7 +189,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-4">
+                            <td colspan="6" class="text-center text-muted py-4">
                                 A&uacute;n no hay palabras clave cotizaci&oacute;n. Agregue al menos una para buscar oportunidades.
                             </td>
                         </tr>
