@@ -16,6 +16,9 @@ enum VinculoOrigen: string
     /** Vinculado automáticamente al recibir una cotización por API Agile. */
     case API = 'api';
 
+    /** Confirmado al aplicar «Cotizar con IA» (equivalencia sugerida por Gemini). */
+    case IA = 'ia';
+
     /** Sin origen atribuible (fallback). */
     case SISTEMA = 'sistema';
 }

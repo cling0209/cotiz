@@ -590,8 +590,9 @@ class NotaDetalleService
      *   prod_valor_costo?: int,
      *   prod_item_agile?: string|null,
      *   prod_descripcion_agile?: string|null,
-     *   prod_nombre?: string|null
-     * }>  $lineas
+     *   prod_nombre?: string|null,
+     *   observacion?: string|null
+     * }>  $lineas  pendiente puede traer prod_valor_costo/prod_valor (referencia de precio externa)
      */
     public function agregarLineasImportacionLote(Nota $nota, array $lineas): int
     {
@@ -632,17 +633,18 @@ class NotaDetalleService
                 $agileId = trim((string) ($linea['prod_item_agile'] ?? ''));
                 $agileDesc = AgileDescripcion::paraDetalle($linea['prod_descripcion_agile'] ?? null);
                 $cantidad = max(1, (int) ($linea['cantidad'] ?? 1));
+                $observacion = trim((string) ($linea['observacion'] ?? ''));
 
                 if (! empty($linea['pendiente'])) {
                     $prodItem = self::codigoNokParaOrden($orden);
-                    $rows[] = [
+                    $row = [
                         'nronota' => $nota->nronota,
                         'prod_item' => $prodItem,
-                        'prod_valor' => 0,
+                        'prod_valor' => max(0, (int) ($linea['prod_valor'] ?? 0)),
                         'cantidad' => $cantidad,
                         'fechahora' => $ahora,
                         'orden' => $orden,
-                        'prod_valor_costo' => 0,
+                        'prod_valor_costo' => max(0, (int) ($linea['prod_valor_costo'] ?? 0)),
                         'prod_item_agile' => $agileId !== '' ? $agileId : null,
                         'prod_descripcion_agile' => $agileDesc,
                         'prod_descripcion_maestro' => $agileDesc,
@@ -659,7 +661,7 @@ class NotaDetalleService
                         ? AgileDescripcion::paraDetalle($nombreMaestro)
                         : $agileDesc;
 
-                    $rows[] = [
+                    $row = [
                         'nronota' => $nota->nronota,
                         'prod_item' => $prodItem,
                         'prod_valor' => (int) ($linea['prod_valor'] ?? 0),
@@ -673,7 +675,18 @@ class NotaDetalleService
                     ];
                 }
 
+                if ($observacion !== '') {
+                    $row['observacion'] = $observacion;
+                }
+                $rows[] = $row;
                 $orden++;
+            }
+
+            // insert() por chunk exige las mismas columnas en todas las filas.
+            if ($this->algunaTieneColumna($rows, 'observacion')) {
+                foreach ($rows as $i => $row) {
+                    $rows[$i]['observacion'] ??= null;
+                }
             }
 
             foreach (array_chunk($rows, 100) as $chunk) {
@@ -682,6 +695,20 @@ class NotaDetalleService
 
             return count($rows);
         });
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function algunaTieneColumna(array $rows, string $columna): bool
+    {
+        foreach ($rows as $row) {
+            if (array_key_exists($columna, $row)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

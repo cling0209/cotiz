@@ -163,24 +163,12 @@ class AgileVinculoAprendizajeService
             ];
         }
 
-        $hash = $this->hashDescripcion($descripcion);
-        if ($hash !== '') {
-            $exacto = AgileMaeprod::query()
-                ->where('descripcion_norm_hash', $hash)
-                ->whereNotNull('prod_item')
-                ->where('prod_item', '!=', '')
-                ->where('prod_item', '!=', '0')
-                ->first();
-
-            if ($exacto) {
-                $producto = $this->maeprodDesdeCache((string) $exacto->prod_item);
-                if ($producto !== null) {
-                    return [
-                        'producto' => $producto,
-                        'origen' => 'aprendido_exacto',
-                    ];
-                }
-            }
+        $exacto = $this->buscarAprendidoExacto($descripcion);
+        if ($exacto !== null) {
+            return [
+                'producto' => $exacto,
+                'origen' => 'aprendido_exacto',
+            ];
         }
 
         $simil = $this->buscarSimilitudEnAprendizaje($descripcion);
@@ -192,6 +180,28 @@ class AgileVinculoAprendizajeService
         }
 
         return ['producto' => null, 'origen' => null];
+    }
+
+    /**
+     * Solo aprendizaje por descripción idéntica (hash normalizado), sin similitud.
+     *
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    public function buscarAprendidoExacto(string $descripcion): ?array
+    {
+        $hash = $this->hashDescripcion($descripcion);
+        if ($hash === '') {
+            return null;
+        }
+
+        $exacto = AgileMaeprod::query()
+            ->where('descripcion_norm_hash', $hash)
+            ->whereNotNull('prod_item')
+            ->where('prod_item', '!=', '')
+            ->where('prod_item', '!=', '0')
+            ->first();
+
+        return $exacto ? $this->maeprodDesdeCache((string) $exacto->prod_item) : null;
     }
 
     /**

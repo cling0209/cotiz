@@ -922,6 +922,13 @@ class OportunidadAdjuntoService
 
     public function htmlPreviewDocx(string $contenido): string
     {
+        return '<pre style="white-space:pre-wrap;font-family:inherit;">'
+            .e(mb_substr($this->textoDocx($contenido), 0, 20000))
+            .'</pre>';
+    }
+
+    public function textoDocx(string $contenido): string
+    {
         $tmp = tempnam(sys_get_temp_dir(), 'docx');
         if ($tmp === false) {
             throw new RuntimeException('No se pudo crear archivo temporal.');
@@ -936,14 +943,49 @@ class OportunidadAdjuntoService
         $xml = $zip->getFromName('word/document.xml') ?: '';
         $zip->close();
         @unlink($tmp);
+        $xml = str_replace(['</w:tc>'], "\t", $xml);
         $texto = strip_tags(str_replace(['</w:p>', '</w:tr>'], "\n", $xml));
         $texto = html_entity_decode($texto, ENT_QUOTES | ENT_XML1, 'UTF-8');
         $texto = preg_replace('/[ \t]+/u', ' ', $texto) ?? $texto;
-        $texto = trim(preg_replace("/\n{3,}/", "\n\n", $texto) ?? $texto);
 
-        return '<pre style="white-space:pre-wrap;font-family:inherit;">'
-            .e(mb_substr($texto, 0, 20000))
-            .'</pre>';
+        return trim(preg_replace("/\n{3,}/", "\n\n", $texto) ?? $texto);
+    }
+
+    /**
+     * Texto tabulado de todas las hojas (una fila por línea, celdas separadas por " | ").
+     */
+    public function textoExcel(string $contenido, int $maxCaracteres = 60000): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'xls');
+        if ($tmp === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+        file_put_contents($tmp, $contenido);
+        try {
+            $spreadsheet = IOFactory::load($tmp);
+            $salida = '';
+            foreach ($spreadsheet->getWorksheetIterator() as $hoja) {
+                $salida .= '## Hoja: '.$hoja->getTitle()."\n";
+                foreach ($hoja->toArray(null, true, true, false) as $fila) {
+                    $celdas = array_values(array_filter(
+                        array_map(static fn ($v) => trim((string) $v), $fila),
+                        static fn (string $v) => $v !== '',
+                    ));
+                    if ($celdas === []) {
+                        continue;
+                    }
+                    $salida .= implode(' | ', $celdas)."\n";
+                    if (mb_strlen($salida) >= $maxCaracteres) {
+                        break 2;
+                    }
+                }
+            }
+            $spreadsheet->disconnectWorksheets();
+
+            return mb_substr($salida, 0, $maxCaracteres);
+        } finally {
+            @unlink($tmp);
+        }
     }
 
     /**

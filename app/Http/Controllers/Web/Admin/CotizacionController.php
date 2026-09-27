@@ -9,6 +9,7 @@ use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\CompraAgilImportService;
 use App\Services\CompraAgilOportunidadService;
+use App\Services\CotizarIaService;
 use App\Services\MaterialesExcelImportService;
 use App\Services\MaterialesImportLockService;
 use App\Services\MaterialesPdfImportService;
@@ -796,6 +797,69 @@ class CotizacionController extends Controller
             'message' => 'Grabado con éxito.',
             'lineas' => $this->detalleService->lineasOrdenJson($nota),
         ]);
+    }
+
+    public function cotizarIaPreview(Request $request, int $nronota, CotizarIaService $cotizarIa): JsonResponse
+    {
+        abort_unless(CotizarIaService::usuarioPermitido($request->user()), 403);
+
+        [$nota] = $this->resolverNota($request, $nronota, false);
+        if (! $nota || (int) $nota->nronota === 0) {
+            return $this->respuestaNotaNoExiste($nronota);
+        }
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+            return $respuesta;
+        }
+
+        @set_time_limit(300);
+
+        try {
+            return response()->json($cotizarIa->preview($nota, (string) $request->user()->username));
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['error' => 'No se pudo cotizar con IA. Intente nuevamente.'], 500);
+        }
+    }
+
+    public function cotizarIaAplicar(Request $request, int $nronota, CotizarIaService $cotizarIa): JsonResponse
+    {
+        abort_unless(CotizarIaService::usuarioPermitido($request->user()), 403);
+
+        [$nota] = $this->resolverNota($request, $nronota, false);
+        if (! $nota || (int) $nota->nronota === 0) {
+            return $this->respuestaNotaNoExiste($nronota);
+        }
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+            return $respuesta;
+        }
+
+        $datos = $request->validate([
+            'token' => ['required', 'string', 'size:32'],
+            'rechazados' => ['nullable', 'array'],
+            'rechazados.*' => ['integer', 'min:0'],
+            'reemplazar' => ['nullable', 'boolean'],
+        ]);
+
+        try {
+            $resultado = $cotizarIa->aplicar(
+                $nota,
+                (string) $request->user()->username,
+                $datos['token'],
+                $datos['rechazados'] ?? [],
+                (bool) ($datos['reemplazar'] ?? false),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['error' => 'No se pudieron agregar las líneas. Intente nuevamente.'], 500);
+        }
+
+        return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota)));
     }
 
     public function importarCompraAgilPreview(Request $request, int $nronota): JsonResponse

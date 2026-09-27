@@ -143,6 +143,20 @@ return [
         'annotation_enabled' => filter_var(env('COTIZ_MISTRAL_OCR_ANNOTATION', true), FILTER_VALIDATE_BOOL),
     ],
 
+    // Google Gemini (AI Studio, capa gratuita) para «Cotizar con IA» en la nota.
+    // Sin cuota disponible (429) se vincula solo con reglas y se avisa al usuario.
+    'gemini' => [
+        'api_key' => (string) env('GEMINI_API_KEY', ''),
+        'model' => env('COTIZ_GEMINI_MODEL', 'gemini-3.8-flash'),
+        'endpoint' => rtrim((string) env('COTIZ_GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'), '/'),
+        'timeout' => max(20, min(300, (int) env('COTIZ_GEMINI_TIMEOUT', 120))),
+        // Búsqueda web (Google Search grounding) para referencias en Mercado Libre / Sodimac.
+        'busqueda_web' => filter_var(env('COTIZ_GEMINI_BUSQUEDA_WEB', true), FILTER_VALIDATE_BOOL),
+        'max_lineas_web' => max(0, min(30, (int) env('COTIZ_GEMINI_MAX_LINEAS_WEB', 10))),
+        'max_adjuntos' => max(1, min(10, (int) env('COTIZ_GEMINI_MAX_ADJUNTOS', 4))),
+        'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
+    ],
+
     // Sidecar PaddleOCR (tablas escaneadas producto/cantidad). En Docker: http://paddleocr:8080
     'paddleocr' => [
         'enabled' => filter_var(env('COTIZ_PADDLEOCR_ENABLED', true), FILTER_VALIDATE_BOOL),
