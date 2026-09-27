@@ -3178,8 +3178,8 @@ class CompraAgilResultadosTest extends TestCase
         NotaMpSeguimiento::query()->create($base + ['nronota' => 14727, 'codigo_proceso' => '14727-1-COT26', 'rut_ganador' => '76356855-5', 'fecha_ultimo_cambio' => now()->subDays(90)]);
         // Propio dentro del plazo: sigue buscando.
         NotaMpSeguimiento::query()->create($base + ['nronota' => 14728, 'codigo_proceso' => '14728-1-COT26', 'rut_ganador' => '76356855-5', 'fecha_ultimo_cambio' => now()->subDays(5)]);
-        // Otra empresa aún con proveedor seleccionado: no entregada.
-        NotaMpSeguimiento::query()->create(['nronota' => 14729, 'codigo_proceso' => '14729-1-COT26', 'rut_ganador' => '11111111-1', 'estado_mp_codigo' => 'proveedor_seleccionado', 'id_orden_compra' => 55258096, 'resultado_propio' => 'cerrada', 'finalizado' => false]);
+        // Propio con OC por emitir: sigue abierto.
+        NotaMpSeguimiento::query()->create(['nronota' => 14729, 'codigo_proceso' => '14729-1-COT26', 'rut_ganador' => '76356855-5', 'estado_mp_codigo' => 'proveedor_seleccionado', 'id_orden_compra' => 55258096, 'resultado_propio' => 'cerrada', 'finalizado' => false]);
 
         $service = app(NotaMpResultadosService::class);
 

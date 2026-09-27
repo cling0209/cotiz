@@ -69,11 +69,22 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         ], $seg->ordenCompraParaJson());
     }
 
-    public function test_oc_de_otra_empresa_con_proveedor_seleccionado_aun_no_esta_entregada(): void
+    public function test_id_oc_de_otra_empresa_con_proveedor_seleccionado_cuenta_como_entregada(): void
+    {
+        $seg = $this->seguimiento([
+            'rut_ganador' => '76185139-K',
+            'id_orden_compra' => 55030956,
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+        ]);
+
+        $this->assertSame(EstadoOrdenCompraMp::OTRA_EMPRESA, $seg->estadoOrdenCompraMp());
+    }
+
+    public function test_otra_empresa_sin_id_oc_no_muestra_estado(): void
     {
         $seg = $this->seguimiento([
             'rut_ganador' => '11.111.111-1',
-            'id_orden_compra' => 999999,
+            'id_orden_compra' => null,
             'estado_mp_codigo' => 'proveedor_seleccionado',
         ]);
 

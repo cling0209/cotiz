@@ -909,11 +909,9 @@ class NotaMpResultadosService
         $estadoMpCodigo = trim((string) $estadoMpCodigo);
 
         if (! $this->esRutPropio($rutGanador)) {
-            // Adjudica quien recibe la OC: con proveedor_seleccionado aún puede cambiar.
-            $ocEntregada = $estadoMpCodigo === 'oc_emitida'
-                || ($tieneIdOc && $estadoMpCodigo !== 'proveedor_seleccionado');
-
-            return $ocEntregada ? EstadoOrdenCompraMp::OTRA_EMPRESA : null;
+            return $tieneIdOc || $estadoMpCodigo === 'oc_emitida'
+                ? EstadoOrdenCompraMp::OTRA_EMPRESA
+                : null;
         }
 
         if (trim((string) $ocompraNota) !== '') {
