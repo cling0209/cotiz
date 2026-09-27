@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoOrdenCompraMp;
 use App\Jobs\ProcessNotaMpCorridaJob;
 use App\Jobs\ReintentarCatchUpResultadosJob;
 use App\Models\Nota;
@@ -864,25 +865,91 @@ class NotaMpResultadosService
 
     /**
      * Sigue consultando mientras falta el código AG en notas.ocompra
-     * solo si el ganador es del grupo (Reicol/Romulo). Ajenos no reintentan por OC.
+     * solo si ganó la empresa propia, la OC ya se emitió y no venció el plazo.
      */
     public function pendienteOcompraAlfanumerica(
         ?string $ocompraNota,
         ?int $idOrdenCompra,
         ?string $rutGanador = null,
+        ?string $estadoMpCodigo = null,
+        ?\DateTimeInterface $fechaUltimoCambio = null,
     ): bool {
-        if (trim((string) $ocompraNota) !== '') {
-            return false;
-        }
-
-        if ($idOrdenCompra === null || $idOrdenCompra <= 0) {
-            return false;
-        }
-
-        return $this->etiquetaGanadorPorRut($rutGanador) !== null;
+        return $this->estadoOrdenCompra(
+            $ocompraNota,
+            $idOrdenCompra,
+            $rutGanador,
+            $estadoMpCodigo,
+            $fechaUltimoCambio,
+        ) === EstadoOrdenCompraMp::BUSCANDO;
     }
 
     /**
+     * Propio = solo la empresa de esta instancia (cotiz.empresa_rut). Reicol y Romulo
+     * son del mismo grupo, pero cada instancia trata a la otra como otra empresa.
+     */
+    public function esRutPropio(?string $rut): bool
+    {
+        $rutPropio = $this->ganador->rutEmpresaPropia();
+
+        return $rutPropio !== '' && $this->ganador->rutsCoinciden($rut, $rutPropio);
+    }
+
+    public function estadoOrdenCompra(
+        ?string $ocompraNota,
+        ?int $idOrdenCompra,
+        ?string $rutGanador,
+        ?string $estadoMpCodigo,
+        ?\DateTimeInterface $fechaUltimoCambio,
+    ): ?EstadoOrdenCompraMp {
+        if (trim((string) $rutGanador) === '') {
+            return null;
+        }
+
+        $tieneIdOc = $idOrdenCompra !== null && $idOrdenCompra > 0;
+        $estadoMpCodigo = trim((string) $estadoMpCodigo);
+
+        if (! $this->esRutPropio($rutGanador)) {
+            // Adjudica quien recibe la OC: con proveedor_seleccionado aún puede cambiar.
+            $ocEntregada = $estadoMpCodigo === 'oc_emitida'
+                || ($tieneIdOc && $estadoMpCodigo !== 'proveedor_seleccionado');
+
+            return $ocEntregada ? EstadoOrdenCompraMp::OTRA_EMPRESA : null;
+        }
+
+        if (trim((string) $ocompraNota) !== '') {
+            return EstadoOrdenCompraMp::CODIGO;
+        }
+
+        if ($estadoMpCodigo === 'proveedor_seleccionado') {
+            return EstadoOrdenCompraMp::POR_EMITIR;
+        }
+
+        if (! $tieneIdOc && $estadoMpCodigo !== 'oc_emitida') {
+            return null;
+        }
+
+        return $this->plazoCodigoOcVencido($fechaUltimoCambio)
+            ? EstadoOrdenCompraMp::NO_ENCONTRADO
+            : EstadoOrdenCompraMp::BUSCANDO;
+    }
+
+    public function plazoCodigoOcVencido(?\DateTimeInterface $fechaUltimoCambio): bool
+    {
+        if ($fechaUltimoCambio === null) {
+            return false;
+        }
+
+        return Carbon::instance($fechaUltimoCambio)->lessThan($this->limitePlazoCodigoOc());
+    }
+
+    private function limitePlazoCodigoOc(): Carbon
+    {
+        return now()->subDays(max(7, (int) config('cotiz.mercadopublico.oc_codigo_plazo_dias', 60)));
+    }
+
+    /**
+     * Misma regla que estadoOrdenCompra() === BUSCANDO, en SQL.
+     *
      * @param  \Illuminate\Database\Eloquent\Builder<Nota>|\Illuminate\Database\Query\Builder  $query
      */
     private function aplicarFiltroPendienteOcompraAlfanumerica(
@@ -892,19 +959,23 @@ class NotaMpResultadosService
     ): void {
         $query->whereNotNull("{$segAlias}.id_orden_compra")
             ->where("{$segAlias}.id_orden_compra", '>', 0)
-            ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''");
+            ->whereRaw("trim(coalesce({$notasAlias}.ocompra, '')) = ''")
+            ->whereRaw("coalesce({$segAlias}.estado_mp_codigo, '') <> 'proveedor_seleccionado'")
+            ->where(function ($q) use ($segAlias) {
+                $q->whereNull("{$segAlias}.fecha_ultimo_cambio")
+                    ->orWhere("{$segAlias}.fecha_ultimo_cambio", '>=', $this->limitePlazoCodigoOc());
+            });
 
-        $ruts = $this->rutsGrupoNormalizadosParaSql();
-        if ($ruts === []) {
+        $rutPropio = $this->rutEmpresaPropiaNormalizado();
+        if ($rutPropio === '') {
             $query->whereRaw('1 = 0');
 
             return;
         }
 
-        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
         $query->whereRaw(
-            "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
-            $ruts,
+            "regexp_replace(upper(coalesce({$segAlias}.rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
+            [$rutPropio],
         );
     }
 
@@ -2252,10 +2323,9 @@ class NotaMpResultadosService
             $deadline,
             $procesadasAlInicio,
         ) {
-            // ID OC solo para ganador del grupo; ajenos no persisten ni persiguen OC.
-            $idOrdenCompraGuardar = $this->etiquetaGanadorPorRut($rutGanador) !== null
-                ? $this->ordenCompraMp->idOrdenCompraDesdePayload($payload)
-                : null;
+            // El ID OC se guarda siempre (muestra «OC entregada a otra empresa»);
+            // solo la empresa propia persigue el código AG.
+            $idOrdenCompraGuardar = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
 
             $datosSeguimiento = array_merge(
                 [
@@ -2349,33 +2419,33 @@ class NotaMpResultadosService
 
         $this->rellenarRegionNotaDesdePayload($nota, $payload, $codigo);
 
-        $idOrdenCompraPayload = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
+        $idOrdenCompra = $this->ordenCompraMp->idOrdenCompraDesdePayload($payload);
         $esGanadorGrupo = $this->etiquetaGanadorPorRut($rutGanador) !== null;
-        // Solo propios persisten/persiguen id OC; ajenos usan null en la lógica de reintento.
-        $idOrdenCompra = $esGanadorGrupo ? $idOrdenCompraPayload : null;
         $ocompraNota = trim((string) ($ocompraResuelta ?? $nota->ocompra ?? ''));
+        $estadoOc = $this->estadoOrdenCompra(
+            $ocompraNota,
+            $idOrdenCompra,
+            $rutGanador,
+            $estadoCodigo,
+            NotaMpSeguimiento::query()->whereKey($nronota)->value('fecha_ultimo_cambio'),
+        );
 
-        if ($this->pendienteOcompraAlfanumerica($ocompraNota, $idOrdenCompra, $rutGanador)) {
-            // Propio: MP ya emitió OC numérica pero falta código AG → seguir en masivo.
-            if ($finalizado) {
-                NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => false]);
-                $finalizado = false;
-            }
-        } elseif ($esGanadorGrupo && $ocompraNota !== '' && in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true)) {
-            // Ya hay Código OC y resultado cerrado: no seguir en masivo.
-            if (! $finalizado) {
-                NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => true]);
-                $finalizado = true;
-            }
+        $finalizadoOc = match ($estadoOc) {
+            // OC emitida y falta código AG → seguir en masivo.
+            EstadoOrdenCompraMp::BUSCANDO => false,
+            // OC de otra empresa: ya se adjudicó, no seguir consultando.
+            EstadoOrdenCompraMp::OTRA_EMPRESA => true,
+            EstadoOrdenCompraMp::CODIGO => in_array($resultadoPropio, ['cerrada', 'desierta', 'cancelada'], true)
+                ? true
+                : $finalizado,
+            default => $finalizado,
+        };
+        if ($finalizadoOc !== $finalizado) {
+            NotaMpSeguimiento::query()->whereKey($nronota)->update(['finalizado' => $finalizadoOc]);
+            $finalizado = $finalizadoOc;
         }
 
-        // Código AG / «Pendiente» solo para ganador del grupo.
-        $ordenCompraVisible = '';
-        if ($ocompraNota !== '' && $esGanadorGrupo) {
-            $ordenCompraVisible = $ocompraNota;
-        } elseif ($esGanadorGrupo && $idOrdenCompra) {
-            $ordenCompraVisible = 'Pendiente';
-        }
+        $ordenCompraVisible = $estadoOc === EstadoOrdenCompraMp::CODIGO ? $ocompraNota : '';
 
         $msTotal = (int) round((microtime(true) - $inicio) * 1000);
         if ($msTotal >= 60000) {
@@ -2409,7 +2479,10 @@ class NotaMpResultadosService
             'id_orden_compra' => $idOrdenCompra,
             'ocompra' => $ocompraNota !== '' ? $ocompraNota : null,
             'orden_compra' => $ordenCompraVisible !== '' ? $ordenCompraVisible : null,
+            'orden_compra_estado' => $estadoOc?->value,
+            'orden_compra_texto' => $estadoOc?->etiqueta(),
             'es_ganador_grupo' => $esGanadorGrupo,
+            'es_ganador_propio' => $this->esRutPropio($rutGanador),
             'organismo' => trim((string) ($institucion['organismo_comprador'] ?? '')),
             'ms_total' => $msTotal,
             'ms_api' => $msApi,
@@ -2419,14 +2492,14 @@ class NotaMpResultadosService
 
     /**
      * Resuelve ocompra alfanumérica (1411-2423-AG26) vía API OC v1 cuando v2 ya tiene id_orden_compra.
-     * Solo ganador del grupo (Reicol/Romulo). Persiste fechas OC en nota_mp_seguimientos.
+     * Solo ganador propio, con OC emitida y dentro del plazo. Persiste fechas OC en nota_mp_seguimientos.
      *
      * @param  array<string, mixed>  $payload
      */
     private function sincronizarOcompraNotaSiCorresponde(Nota $nota, string $codigoCot, array $payload, ?string $rutGanador): ?string
     {
-        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
-            // Ajeno: no buscar ni conservar código OC.
+        if (! $this->esRutPropio($rutGanador)) {
+            // No propio: no buscar código OC; fuera del grupo además se limpia.
             if (trim((string) ($nota->ocompra ?? '')) !== '') {
                 $this->limpiarOcompraSiGanadorAjeno((int) $nota->nronota, $nota);
             }
@@ -2442,6 +2515,16 @@ class NotaMpResultadosService
         }
 
         if ($this->ordenCompraMp->idOrdenCompraDesdePayload($payload) === null) {
+            return null;
+        }
+
+        if ($this->ganador->codigoEstadoMp($payload) === 'proveedor_seleccionado') {
+            // OC por emitir: el listado v1 aún no la tiene.
+            return null;
+        }
+
+        $fechaUltimoCambio = NotaMpSeguimiento::query()->whereKey($nota->nronota)->value('fecha_ultimo_cambio');
+        if ($this->plazoCodigoOcVencido($fechaUltimoCambio)) {
             return null;
         }
 
@@ -2470,7 +2553,8 @@ class NotaMpResultadosService
     }
 
     /**
-     * Quita ocompra, id_orden_compra y fechas OC si el ganador no es Reicol ni Romulo.
+     * Quita ocompra y fechas OC si el ganador no es Reicol ni Romulo.
+     * Conserva id_orden_compra (columna «OC entregada a otra empresa»).
      * Si el resultado ya está cerrado, marca finalizado para no reintentar por OC.
      */
     public function limpiarOcompraSiGanadorAjeno(int $nronota, ?Nota $nota = null): bool
@@ -2486,7 +2570,6 @@ class NotaMpResultadosService
         }
 
         $teniaOcompra = trim((string) ($nota->ocompra ?? '')) !== '';
-        $teniaIdOc = $seg !== null && (int) ($seg->id_orden_compra ?? 0) > 0;
         $teniaFechas = $seg !== null && (
             $seg->oc_fecha_envio !== null
             || $seg->oc_fecha_creacion !== null
@@ -2494,7 +2577,7 @@ class NotaMpResultadosService
             || trim((string) ($seg->oc_estado ?? '')) !== ''
         );
 
-        if (! $teniaOcompra && ! $teniaIdOc && ! $teniaFechas) {
+        if (! $teniaOcompra && ! $teniaFechas) {
             return false;
         }
 
@@ -2505,9 +2588,6 @@ class NotaMpResultadosService
 
         if ($seg !== null) {
             $update = [];
-            if ($teniaIdOc) {
-                $update['id_orden_compra'] = null;
-            }
             if ($teniaFechas && Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
                 $update['oc_fecha_envio'] = null;
                 $update['oc_fecha_creacion'] = null;
@@ -2529,7 +2609,7 @@ class NotaMpResultadosService
     }
 
     /**
-     * Cantidad de notas con ocompra / id OC / fechas cuyo ganador no es Reicol/Romulo.
+     * Cantidad de notas con ocompra / fechas OC cuyo ganador no es Reicol/Romulo.
      */
     public function contarOcompraFueraDeGrupo(): int
     {
@@ -2545,8 +2625,7 @@ class NotaMpResultadosService
         $query = Nota::query()
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->where(function ($q) {
-                $q->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
-                    ->orWhere('seg.id_orden_compra', '>', 0);
+                $q->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''");
                 if (Schema::hasColumn('nota_mp_seguimientos', 'oc_fecha_envio')) {
                     $q->orWhereNotNull('seg.oc_fecha_envio')
                         ->orWhereNotNull('seg.oc_fecha_creacion')
@@ -2565,6 +2644,50 @@ class NotaMpResultadosService
             "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') NOT IN ({$placeholders})",
             $ruts,
         );
+    }
+
+    /**
+     * Cierra (finalizado = true) seguimientos abiertos que ya no deben consultarse:
+     * OC entregada a otra empresa, o propia con OC emitida y plazo del código vencido.
+     *
+     * @return list<array{nronota: int, codigo_proceso: string, estado: EstadoOrdenCompraMp, razon_social_ganador: string}>
+     */
+    public function cerrarSeguimientosOcResueltos(bool $dryRun = true, int $limit = 500): array
+    {
+        $candidatos = NotaMpSeguimiento::query()
+            ->with('nota:nronota,ocompra')
+            ->whereRaw('COALESCE(finalizado, false) = false')
+            ->whereRaw("trim(coalesce(rut_ganador, '')) <> ''")
+            ->where(function ($q) {
+                $q->where('id_orden_compra', '>', 0)
+                    ->orWhere('estado_mp_codigo', 'oc_emitida');
+            })
+            ->orderByDesc('nronota')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $cerrados = [];
+        foreach ($candidatos as $seg) {
+            $estado = $seg->estadoOrdenCompraMp();
+            $cerrar = $estado === EstadoOrdenCompraMp::OTRA_EMPRESA
+                || ($estado === EstadoOrdenCompraMp::NO_ENCONTRADO && $seg->estado_mp_codigo === 'oc_emitida');
+            if (! $cerrar) {
+                continue;
+            }
+
+            if (! $dryRun) {
+                NotaMpSeguimiento::query()->whereKey($seg->nronota)->update(['finalizado' => true]);
+            }
+
+            $cerrados[] = [
+                'nronota' => (int) $seg->nronota,
+                'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
+                'estado' => $estado,
+                'razon_social_ganador' => trim((string) ($seg->razon_social_ganador ?? '')),
+            ];
+        }
+
+        return $cerrados;
     }
 
     /**
@@ -2748,7 +2871,7 @@ class NotaMpResultadosService
 
     /**
      * Resuelve notas.ocompra (código AG) vía API OC v1 listando por fecha + match COT.
-     * Solo cerradas del grupo (Reicol/Romulo) sin ocompra.
+     * Solo cerradas de la empresa propia sin ocompra y con la OC ya emitida.
      *
      * @return 'updated'|'skipped'|'not_found'|'error_cuota'|'error'
      */
@@ -2770,7 +2893,11 @@ class NotaMpResultadosService
         }
 
         $rutGanador = $seg->rut_ganador !== null ? (string) $seg->rut_ganador : null;
-        if ($this->etiquetaGanadorPorRut($rutGanador) === null) {
+        if (! $this->esRutPropio($rutGanador)) {
+            return 'skipped';
+        }
+
+        if ($seg->estado_mp_codigo === 'proveedor_seleccionado') {
             return 'skipped';
         }
 

@@ -93,6 +93,8 @@ class BackfillOcFechasTest extends TestCase
             'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
             'cotiz.reicol_rut' => '76.356.855-5',
             'cotiz.romulo_rut' => '76.185.139-K',
+            // Instancia Romulo: la OC es propia.
+            'cotiz.empresa_rut' => '76.185.139-K',
         ]);
 
         $nota = Nota::query()->create([

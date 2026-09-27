@@ -1697,6 +1697,8 @@ class CompraAgilResultadosTest extends TestCase
             ],
         ]);
 
+        Carbon::setTestNow(Carbon::parse('2026-03-26 10:00:00', 'America/Santiago'));
+
         $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
         $nota = Nota::query()->create([
             'nronota' => 506,
@@ -1759,6 +1761,8 @@ class CompraAgilResultadosTest extends TestCase
             'nronota' => $nota->nronota,
             'ocompra' => '',
         ]);
+
+        Carbon::setTestNow();
     }
 
     public function test_pendientes_incluye_consultadas_hoy_si_skip_desactivado(): void
@@ -3058,6 +3062,138 @@ class CompraAgilResultadosTest extends TestCase
             'resultado_propio' => 'cerrada',
             'finalizado' => false,
         ]);
+    }
+
+    public function test_consultar_individual_oc_entregada_a_otra_empresa_del_grupo_finaliza_sin_buscar_codigo(): void
+    {
+        config([
+            'cotiz.empresa_rut' => '76.356.855-5',
+            'cotiz.reicol_rut' => '76.356.855-5',
+            'cotiz.romulo_rut' => '76.185.139-K',
+        ]);
+
+        $admin = User::factory()->create(['username' => 'admin', 'perfil' => User::PERFIL_SUPERADMIN]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 14726,
+            'descripcion' => 'Ganada por Romulo',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '3482-106-COT26',
+            'nota_softland' => 14726,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => 14726,
+            'codigo_proceso' => '3482-106-COT26',
+            'estado_mp_codigo' => 'proveedor_seleccionado',
+            'resultado_propio' => 'pendiente',
+            'finalizado' => false,
+            'ultimo_consultado_en' => now()->subDay(),
+        ]);
+
+        Http::fake([
+            'api2.mercadopublico.cl/v2/compra-agil/3482-106-COT26' => Http::response([
+                'success' => 'OK',
+                'payload' => [
+                    'codigo' => '3482-106-COT26',
+                    'estado' => ['codigo' => 'oc_emitida', 'glosa' => 'OC emitida'],
+                    'id_orden_compra' => 55258095,
+                    'institucion' => ['organismo_comprador' => 'Municipalidad'],
+                    'fechas' => [
+                        'fecha_publicacion' => '2026-09-01 10:00',
+                        'fecha_cierre' => '2026-09-05 09:00',
+                        'fecha_ultimo_cambio' => '2026-09-08 11:00',
+                        'fecha_cancelacion' => null,
+                    ],
+                    'convocatoria' => [
+                        'estado_convocatoria' => 1,
+                        'descripcion' => 'Primer llamado',
+                        'fecha_cierre_primer_llamado' => '2026-09-05 09:00',
+                        'fecha_cierre_segundo_llamado' => null,
+                    ],
+                    'proveedores_cotizando' => [
+                        [
+                            'id_cotizacion' => 1,
+                            'rut_proveedor' => '76.185.139-K',
+                            'razon_social' => 'COMERCIAL ROMULO SPA',
+                            'proveedor_seleccionado' => 1,
+                            'activo' => 1,
+                            'id_oc' => 55258095,
+                            'monto_total' => 120000,
+                            'productos_cotizados' => [],
+                        ],
+                    ],
+                ],
+            ]),
+            'api.mercadopublico.cl/*' => Http::response(['Listado' => []]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.compra-agil.resultados.consultar-individual', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('resultado.orden_compra_estado', 'otra_empresa')
+            ->assertJsonPath('resultado.orden_compra_texto', 'OC entregada a otra empresa')
+            ->assertJsonPath('resultado.es_ganador_propio', false);
+
+        $this->assertDatabaseHas('nota_mp_seguimientos', [
+            'nronota' => $nota->nronota,
+            'id_orden_compra' => 55258095,
+            'finalizado' => true,
+        ]);
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.mercadopublico.cl/servicios'));
+    }
+
+    public function test_cerrar_seguimientos_oc_resueltos_solo_otra_empresa_o_codigo_vencido(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-27 12:00:00', 'America/Santiago'));
+        config([
+            'cotiz.empresa_rut' => '76.356.855-5',
+            'cotiz.mercadopublico.oc_codigo_plazo_dias' => 60,
+        ]);
+
+        foreach ([14726, 14727, 14728, 14729] as $nronota) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Seguimiento '.$nronota,
+                'fecha' => now()->toDateString(),
+                'usuario' => 'admin',
+                'empresa' => 'Cliente',
+                'encargado' => $nronota.'-1-COT26',
+                'nota_softland' => $nronota,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.22,
+            ]);
+        }
+
+        $base = ['resultado_propio' => 'cerrada', 'finalizado' => false, 'estado_mp_codigo' => 'oc_emitida', 'id_orden_compra' => 55258095];
+        // Otra empresa: se cierra.
+        NotaMpSeguimiento::query()->create($base + ['nronota' => 14726, 'codigo_proceso' => '14726-1-COT26', 'rut_ganador' => '76185139-K', 'razon_social_ganador' => 'COMERCIAL ROMULO SPA', 'fecha_ultimo_cambio' => now()->subDays(5)]);
+        // Propio con plazo vencido: se cierra.
+        NotaMpSeguimiento::query()->create($base + ['nronota' => 14727, 'codigo_proceso' => '14727-1-COT26', 'rut_ganador' => '76356855-5', 'fecha_ultimo_cambio' => now()->subDays(90)]);
+        // Propio dentro del plazo: sigue buscando.
+        NotaMpSeguimiento::query()->create($base + ['nronota' => 14728, 'codigo_proceso' => '14728-1-COT26', 'rut_ganador' => '76356855-5', 'fecha_ultimo_cambio' => now()->subDays(5)]);
+        // Otra empresa aún con proveedor seleccionado: no entregada.
+        NotaMpSeguimiento::query()->create(['nronota' => 14729, 'codigo_proceso' => '14729-1-COT26', 'rut_ganador' => '11111111-1', 'estado_mp_codigo' => 'proveedor_seleccionado', 'id_orden_compra' => 55258096, 'resultado_propio' => 'cerrada', 'finalizado' => false]);
+
+        $service = app(NotaMpResultadosService::class);
+
+        $simulado = $service->cerrarSeguimientosOcResueltos(dryRun: true);
+        $this->assertEqualsCanonicalizing([14726, 14727], array_column($simulado, 'nronota'));
+        $this->assertSame(0, NotaMpSeguimiento::query()->where('finalizado', true)->count());
+
+        $service->cerrarSeguimientosOcResueltos(dryRun: false);
+        $this->assertEqualsCanonicalizing(
+            [14726, 14727],
+            NotaMpSeguimiento::query()->where('finalizado', true)->pluck('nronota')->map(fn ($n) => (int) $n)->all()
+        );
+
+        Carbon::setTestNow();
     }
 
     public function test_consultar_individual_permitido_con_corrida_masiva_en_curso(): void

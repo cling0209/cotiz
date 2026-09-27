@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\PgBoolean;
+use App\Enums\EstadoOrdenCompraMp;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -96,40 +97,72 @@ class NotaMpSeguimiento extends Model
         return $this->etiquetaGanadorGrupo() !== null;
     }
 
-    /** Ganador del grupo (Reicol/Romulo) o empresa propia de esta instancia (misma lógica que fila verde). */
-    public function esGanadorParaOrdenCompra(): bool
+    /** Ganó la empresa de esta instancia (cotiz.empresa_rut). */
+    public function esGanadorPropio(): bool
     {
-        if ($this->esGanadorGrupo()) {
-            return true;
-        }
+        return app(\App\Services\NotaMpResultadosService::class)->esRutPropio(
+            $this->rut_ganador !== null ? (string) $this->rut_ganador : null,
+        );
+    }
 
-        return ! empty($this->es_ganador_propio);
+    public function estadoOrdenCompraMp(): ?EstadoOrdenCompraMp
+    {
+        return app(\App\Services\NotaMpResultadosService::class)->estadoOrdenCompra(
+            (string) ($this->nota?->ocompra ?? ''),
+            $this->id_orden_compra,
+            $this->rut_ganador !== null ? (string) $this->rut_ganador : null,
+            $this->estado_mp_codigo,
+            $this->fecha_ultimo_cambio,
+        );
     }
 
     /**
-     * Código AG en notas.ocompra (ej. 1411-2423-AG26) si ya está resuelto (ganador del grupo).
-     * «Pendiente» solo si el ganador es del grupo y MP ya emitió id OC sin código AG.
+     * Código AG (ej. 1411-2423-AG26) si ganamos y ya está resuelto; si no, la etiqueta
+     * del estado (OC por emitir, Buscando código OC, OC entregada a otra empresa…) o «—».
      */
     public function textoOrdenCompraMp(): string
     {
-        $ocompra = trim((string) ($this->nota?->ocompra ?? ''));
-        if ($ocompra !== '') {
-            return $this->esGanadorParaOrdenCompra() ? $ocompra : '—';
-        }
+        $estado = $this->estadoOrdenCompraMp();
 
-        if ($this->id_orden_compra && $this->esGanadorParaOrdenCompra()) {
-            return 'Pendiente';
-        }
-
-        return '—';
+        return match ($estado) {
+            null => '—',
+            EstadoOrdenCompraMp::CODIGO => trim((string) ($this->nota?->ocompra ?? '')),
+            default => $estado->etiqueta(),
+        };
     }
 
-    /** Valor para exportación CSV (vacío si no aplica). */
+    /** Valor para exportación CSV (vacío si no aplica); incluye la empresa si la OC es de otra. */
     public function valorOrdenCompraExport(): string
     {
         $texto = $this->textoOrdenCompraMp();
+        if ($texto === '—') {
+            return '';
+        }
 
-        return $texto === '—' ? '' : $texto;
+        $empresa = trim((string) ($this->razon_social_ganador ?? ''));
+        if ($this->estadoOrdenCompraMp() === EstadoOrdenCompraMp::OTRA_EMPRESA && $empresa !== '') {
+            return $texto.' ('.$empresa.')';
+        }
+
+        return $texto;
+    }
+
+    /**
+     * Campos OC para respuestas JSON del detalle (modal).
+     *
+     * @return array{orden_compra: ?string, orden_compra_estado: ?string, orden_compra_texto: ?string}
+     */
+    public function ordenCompraParaJson(): array
+    {
+        $estado = $this->estadoOrdenCompraMp();
+
+        return [
+            'orden_compra' => $estado === EstadoOrdenCompraMp::CODIGO
+                ? trim((string) ($this->nota?->ocompra ?? ''))
+                : null,
+            'orden_compra_estado' => $estado?->value,
+            'orden_compra_texto' => $estado?->etiqueta(),
+        ];
     }
 
     /** Aún debe poder consultarse MP (seguimiento abierto o falta código AG). */
@@ -143,11 +176,7 @@ class NotaMpSeguimiento extends Model
             return true;
         }
 
-        return app(\App\Services\NotaMpResultadosService::class)->pendienteOcompraAlfanumerica(
-            (string) ($this->nota?->ocompra ?? ''),
-            $this->id_orden_compra,
-            $this->rut_ganador,
-        );
+        return $this->estadoOrdenCompraMp() === EstadoOrdenCompraMp::BUSCANDO;
     }
 
     public function scopeWhereFinalizado(Builder $query): Builder

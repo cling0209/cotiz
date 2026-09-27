@@ -41,27 +41,27 @@ class CompraAgilComisionesServiceTest extends TestCase
     }
 
     #[Test]
-    public function ganada_requiere_rut_grupo_y_orden_compra(): void
+    public function ganada_requiere_rut_propio_y_orden_compra(): void
     {
+        config([
+            'cotiz.empresa_rut' => '76.111.111-1',
+            'cotiz.reicol_rut' => '76.111.111-1',
+            'cotiz.romulo_rut' => '76.222.222-2',
+        ]);
+
         $service = app(CompraAgilComisionesService::class);
         $ref = new \ReflectionClass($service);
 
         $esGanada = $ref->getMethod('esGanadaParaComision');
         $esGanada->setAccessible(true);
 
-        config([
-            'cotiz.reicol_rut' => '76.111.111-1',
-            'cotiz.romulo_rut' => '76.222.222-2',
-        ]);
-
-        $segConOc = new \App\Models\NotaMpSeguimiento(['id_orden_compra' => '12345', 'rut_ganador' => '76.111.111-1']);
-        $segSinOc = new \App\Models\NotaMpSeguimiento(['id_orden_compra' => null, 'rut_ganador' => '76.111.111-1']);
         $notaConOc = new \App\Models\Nota(['ocompra' => '4500123456']);
         $notaSinOc = new \App\Models\Nota(['ocompra' => '']);
 
         $this->assertTrue($esGanada->invoke($service, '76.111.111-1', $notaConOc));
-        $this->assertFalse($esGanada->invoke($service, '76.222.222-2', $notaSinOc));
         $this->assertFalse($esGanada->invoke($service, '76.111.111-1', $notaSinOc));
+        // La otra empresa del grupo no cuenta para la comisión de esta instancia.
+        $this->assertFalse($esGanada->invoke($service, '76.222.222-2', $notaConOc));
         $this->assertFalse($esGanada->invoke($service, '11.111.111-1', $notaConOc));
     }
 
@@ -110,15 +110,16 @@ class CompraAgilComisionesServiceTest extends TestCase
     #[Test]
     public function fecha_envio_usa_oc_en_cerrada_propia_y_ultimo_cambio_en_ajena(): void
     {
+        config([
+            'cotiz.empresa_rut' => '76.111.111-1',
+            'cotiz.reicol_rut' => '76.111.111-1',
+            'cotiz.romulo_rut' => '76.222.222-2',
+        ]);
+
         $service = app(CompraAgilComisionesService::class);
         $ref = new \ReflectionClass($service);
         $fecha = $ref->getMethod('fechaEnvioOUltimaModificacion');
         $fecha->setAccessible(true);
-
-        config([
-            'cotiz.reicol_rut' => '76.111.111-1',
-            'cotiz.romulo_rut' => '76.222.222-2',
-        ]);
 
         $envio = \Illuminate\Support\Carbon::parse('2026-09-01 10:00:00');
         $cambio = \Illuminate\Support\Carbon::parse('2026-09-05 15:30:00');

@@ -185,6 +185,8 @@
                                 : ($nota->mpSeguimiento?->resultado_propio ?: 'sin_consultar');
                             $esGanadorPropio = $estadoMp === 'cerrada' && ! empty($nota->mpSeguimiento?->es_ganador_propio);
                             $esGanadorGrupo = $nota->mpSeguimiento?->esGanadorGrupo() ?? false;
+                            $esGanadorPropioMp = $nota->mpSeguimiento?->esGanadorPropio() ?? false;
+                            $estadoOcMp = $nota->mpSeguimiento?->estadoOrdenCompraMp();
                             $textoOcMp = $nota->mpSeguimiento?->textoOrdenCompraMp() ?? '—';
                         @endphp
                         <tr @class([
@@ -260,17 +262,13 @@
                                 <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
                                 <td>
                                     @if($esGanadorGrupo)
-                                        <span class="badge text-bg-success{{ $esGanadorPropio ? ' badge-ganador-propio-destello' : '' }}">
+                                        <span class="badge {{ $esGanadorPropioMp ? 'text-bg-success' : 'text-bg-secondary' }}{{ $esGanadorPropio ? ' badge-ganador-propio-destello' : '' }}">
                                             Ganador {{ $nota->mpSeguimiento->etiquetaGanadorGrupo() }}
                                         </span>
-                                        @if($textoOcMp !== '—')
+                                        @if($estadoOcMp !== null)
                                             <div class="small mt-1">
                                                 OC:
-                                                @if($textoOcMp === 'Pendiente')
-                                                    <span class="text-warning">Pendiente</span>
-                                                @else
-                                                    <span class="font-monospace">{{ $textoOcMp }}</span>
-                                                @endif
+                                                <span class="{{ $estadoOcMp->claseCss() }}">{{ $textoOcMp }}</span>
                                             </div>
                                         @endif
                                     @else

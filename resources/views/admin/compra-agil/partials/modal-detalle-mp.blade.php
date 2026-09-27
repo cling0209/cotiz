@@ -253,8 +253,7 @@
         const btnConsultar = acciones.querySelector('.btn-consultar-mp-individual');
         const reconsultarMp = r.resultado_propio === 'pendiente'
             || r.finalizado === false
-            || r.orden_compra === 'Pendiente'
-            || (r.id_orden_compra && !r.ocompra && !r.orden_compra);
+            || r.orden_compra_estado === ESTADO_OC.BUSCANDO;
         if (btnConsultar && !reconsultarMp) {
             btnConsultar.remove();
         } else if (btnConsultar) {
@@ -281,21 +280,30 @@
         }
     }
 
+    const ESTADO_OC = @json(collect(\App\Enums\EstadoOrdenCompraMp::cases())->mapWithKeys(fn ($e) => [$e->name => $e->value]));
+    const CLASE_ESTADO_OC = @json(collect(\App\Enums\EstadoOrdenCompraMp::cases())->mapWithKeys(fn ($e) => [$e->value => $e->claseCss()]));
+
     function fmtOrdenCompraCell(r) {
         const idOc = r.id_orden_compra || null;
-        const codigo = (r.ocompra || (r.orden_compra && r.orden_compra !== 'Pendiente' ? r.orden_compra : null)) || null;
-        const pendiente = r.orden_compra === 'Pendiente' || (idOc && !codigo);
-        if (!idOc && !codigo && !pendiente) {
+        const estado = r.orden_compra_estado || null;
+        if (!idOc && !estado) {
             return '—';
         }
         let html = '<div class="lh-sm">';
         if (idOc) {
             html += '<div><span class="text-muted">ID OC:</span> <span class="font-monospace">' + escapeHtml(String(idOc)) + '</span></div>';
         }
-        if (codigo) {
-            html += '<div><span class="text-muted">Código OC:</span> <span class="font-monospace">' + escapeHtml(String(codigo)) + '</span></div>';
-        } else if (pendiente) {
-            html += '<div><span class="text-muted">Código OC:</span> <span class="text-warning">Pendiente</span></div>';
+        if (estado === ESTADO_OC.CODIGO) {
+            html += '<div><span class="text-muted">Código OC:</span> <span class="font-monospace">' + escapeHtml(String(r.orden_compra || '')) + '</span></div>';
+        } else if (estado === ESTADO_OC.OTRA_EMPRESA) {
+            html += '<div class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(r.orden_compra_texto || '') + '</div>';
+            if (r.razon_social_ganador) {
+                html += '<div class="small text-muted">' + escapeHtml(String(r.razon_social_ganador)) + '</div>';
+            }
+        } else if (estado) {
+            html += '<div><span class="text-muted">Código OC:</span> <span class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(r.orden_compra_texto || '') + '</span></div>';
+        } else {
+            html += '<div><span class="text-muted">Código OC:</span> <span class="text-muted">—</span></div>';
         }
         html += '</div>';
         return html;
@@ -303,19 +311,23 @@
 
     function fmtOrdenCompraDetalle(s) {
         const idOc = s.id_orden_compra || null;
-        const codigo = (s.ocompra || (s.orden_compra && s.orden_compra !== 'Pendiente' ? s.orden_compra : null)) || null;
-        const pendiente = s.orden_compra === 'Pendiente' || (idOc && !codigo);
-        if (!idOc && !codigo && !pendiente) {
+        const estado = s.orden_compra_estado || null;
+        if (!idOc && !estado) {
             return '';
         }
         let html = '';
         if (idOc) {
             html += '<br>ID OC: <strong class="font-monospace">' + escapeHtml(String(idOc)) + '</strong>';
         }
-        if (codigo) {
-            html += '<br>Código OC: <strong class="font-monospace">' + escapeHtml(String(codigo)) + '</strong>';
-        } else if (pendiente) {
-            html += '<br>Código OC: <strong class="text-warning">Pendiente</strong>';
+        if (estado === ESTADO_OC.CODIGO) {
+            html += '<br>Código OC: <strong class="font-monospace">' + escapeHtml(String(s.orden_compra || '')) + '</strong>';
+        } else if (estado === ESTADO_OC.OTRA_EMPRESA) {
+            html += '<br><strong class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(s.orden_compra_texto || '') + '</strong>';
+            if (s.razon_social_ganador) {
+                html += ': ' + escapeHtml(String(s.razon_social_ganador));
+            }
+        } else if (estado) {
+            html += '<br>Código OC: <strong class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(s.orden_compra_texto || '') + '</strong>';
         }
         return html;
     }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -83,8 +84,12 @@ class MercadoPublicoOrdenCompraService
      *
      * @param  array<string, mixed>  $payload
      */
-    public function resolverCodigoPorCotizacion(string $codigoCot, array $payload, ?string $rutGanador): ?string
-    {
+    public function resolverCodigoPorCotizacion(
+        string $codigoCot,
+        array $payload,
+        ?string $rutGanador,
+        ?int $maxLlamadas = null,
+    ): ?string {
         $codigoCot = strtoupper(trim($codigoCot));
         if ($codigoCot === '' || ! $this->isConfigured()) {
             return null;
@@ -97,49 +102,121 @@ class MercadoPublicoOrdenCompraService
 
         // MP v1 no acepta id numérico en ?codigo= (HTTP 500 "parámetros no válidos").
         // Resolver solo por listados de fecha + match COT / nombre.
+        return $this->resolverCodigoDesdeReferencia(
+            $codigoCot,
+            $this->referenciaBusquedaDesdePayload($payload),
+            $rutGanador,
+            $this->nombreProcesoDesdePayload($payload),
+            $this->montoGanadorDesdePayload($payload),
+            $maxLlamadas,
+        );
+    }
 
-        $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
-        $nombreProceso = $this->nombreProcesoDesdePayload($payload);
-        $montoGanador = $this->montoGanadorDesdePayload($payload);
+    /**
+     * Busca el código AG desde la fecha de referencia (adjudicación/último cambio) hasta hoy,
+     * sin depender del detalle Compra Ágil v2 (sirve cuando v2 responde 502/503/504).
+     */
+    public function resolverCodigoDesdeReferencia(
+        string $codigoCot,
+        ?Carbon $referencia,
+        ?string $rutGanador,
+        ?string $nombreProceso = null,
+        ?float $montoGanador = null,
+        ?int $maxLlamadas = null,
+        int $margenDias = 1,
+    ): ?string {
+        $codigoCot = strtoupper(trim($codigoCot));
+        if ($codigoCot === '' || ! $this->isConfigured()) {
+            return null;
+        }
+
+        return $this->buscarCodigoEnFechas(
+            $codigoCot,
+            $this->fechasBusquedaDesdeReferencia($referencia, $margenDias),
+            $this->codigoProveedorMpParaRut($rutGanador),
+            $nombreProceso !== '' ? $nombreProceso : null,
+            $montoGanador,
+            $this->fechasVentanaCorta($referencia, $margenDias),
+            max(0, (int) config('cotiz.mercadopublico.oc_busqueda_dias_sin_proveedor', 2)),
+            $maxLlamadas ?? max(1, (int) config('cotiz.mercadopublico.oc_busqueda_max_llamadas', 40)),
+        );
+    }
+
+    /**
+     * Pasada 1: COT exacto en todas las fechas (recientes primero).
+     * Pasada 2: nombre/prefijo/monto solo en la ventana corta, para no tomar
+     * una OC de otra compra del mismo organismo en fechas lejanas.
+     *
+     * @param  list<string>  $fechas
+     * @param  list<string>  $fechasSimilitud
+     */
+    private function buscarCodigoEnFechas(
+        string $codigoCot,
+        array $fechas,
+        ?string $codigoProveedor,
+        ?string $nombreProceso,
+        ?float $montoGanador,
+        array $fechasSimilitud,
+        int $diasSinProveedor,
+        ?int $maxLlamadas,
+    ): ?string {
+        $conProveedor = $codigoProveedor !== null && $codigoProveedor !== '';
+        $permiteSimilitud = array_flip($fechasSimilitud);
+        $listadosSimilitud = [];
+        $llamadas = 0;
         $huboCuotaAgotada = false;
 
-        foreach ($this->fechasBusquedaDesdePayload($payload) as $fechaDdmmaaaa) {
-            if ($codigoProveedor !== null && $codigoProveedor !== '') {
+        foreach (array_values($fechas) as $i => $fechaDdmmaaaa) {
+            $proveedores = [];
+            if ($conProveedor) {
+                $proveedores[] = $codigoProveedor;
+            }
+            if (! $conProveedor || $i < $diasSinProveedor) {
+                $proveedores[] = null;
+            }
+
+            foreach ($proveedores as $proveedor) {
                 try {
-                    $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
+                    $listado = $this->listarOrdenesPorFechaConCache($fechaDdmmaaaa, $proveedor, $llamadas, $maxLlamadas);
                 } catch (RuntimeException $e) {
                     $huboCuotaAgotada = true;
                     Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC, se prueba otra fecha', [
                         'fecha' => $fechaDdmmaaaa,
-                        'CodigoProveedor' => $codigoProveedor,
+                        'CodigoProveedor' => $proveedor,
                         'error' => mb_substr($e->getMessage(), 0, 160),
                     ]);
-                    $listado = null;
+
+                    continue;
                 }
-                if (is_array($listado)) {
-                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso, $montoGanador);
-                    if ($codigo !== null) {
-                        return $codigo;
-                    }
+
+                if ($listado === null) {
+                    continue;
+                }
+
+                $codigo = $this->buscarCodigoPorTextoCot($listado, $codigoCot);
+                if ($codigo !== null) {
+                    return $codigo;
+                }
+
+                if (isset($permiteSimilitud[$fechaDdmmaaaa]) && $listado !== []) {
+                    $listadosSimilitud[] = $listado;
                 }
             }
+        }
 
-            try {
-                $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
-            } catch (RuntimeException $e) {
-                $huboCuotaAgotada = true;
-                Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC sin proveedor, se prueba otra fecha', [
-                    'fecha' => $fechaDdmmaaaa,
-                    'error' => mb_substr($e->getMessage(), 0, 160),
-                ]);
-
-                continue;
-            }
-
-            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso, $montoGanador);
+        foreach ($listadosSimilitud as $listado) {
+            $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso, $montoGanador);
             if ($codigo !== null) {
                 return $codigo;
             }
+        }
+
+        if ($maxLlamadas !== null && $llamadas >= $maxLlamadas) {
+            Log::info('MercadoPublicoOrdenCompra: límite de llamadas OC alcanzado; se retoma en la próxima consulta', [
+                'codigo_cot' => $codigoCot,
+                'fechas' => count($fechas),
+                'llamadas' => $llamadas,
+            ]);
         }
 
         if ($huboCuotaAgotada) {
@@ -204,62 +281,21 @@ class MercadoPublicoOrdenCompraService
             return null;
         }
 
-        $codigoProveedor = $this->codigoProveedorMpParaRut($rutGanador);
-        $huboCuotaAgotada = false;
+        $fechas = array_values(array_filter(
+            array_map(static fn ($f): string => trim((string) $f), $fechasDdmmaaaa),
+            static fn (string $f): bool => $f !== '',
+        ));
 
-        foreach ($fechasDdmmaaaa as $fechaDdmmaaaa) {
-            $fechaDdmmaaaa = trim((string) $fechaDdmmaaaa);
-            if ($fechaDdmmaaaa === '') {
-                continue;
-            }
-
-            if ($codigoProveedor !== null && $codigoProveedor !== '') {
-                try {
-                    $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
-                } catch (RuntimeException $e) {
-                    $huboCuotaAgotada = true;
-                    Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC (ventana)', [
-                        'fecha' => $fechaDdmmaaaa,
-                        'CodigoProveedor' => $codigoProveedor,
-                        'error' => mb_substr($e->getMessage(), 0, 160),
-                    ]);
-                    $listado = null;
-                }
-                if (is_array($listado)) {
-                    $codigo = $this->buscarCodigoEnListado($listado, $codigoCot, $nombreProceso, $montoGanador);
-                    if ($codigo !== null) {
-                        return $codigo;
-                    }
-                }
-
-                if ($omitirListadoSinProveedor) {
-                    continue;
-                }
-            }
-
-            try {
-                $listadoSinProveedor = $this->listarOrdenesPorFecha($fechaDdmmaaaa);
-            } catch (RuntimeException $e) {
-                $huboCuotaAgotada = true;
-                Log::warning('MercadoPublicoOrdenCompra: cuota/listado OC sin proveedor (ventana)', [
-                    'fecha' => $fechaDdmmaaaa,
-                    'error' => mb_substr($e->getMessage(), 0, 160),
-                ]);
-
-                continue;
-            }
-
-            $codigo = $this->buscarCodigoEnListado($listadoSinProveedor, $codigoCot, $nombreProceso, $montoGanador);
-            if ($codigo !== null) {
-                return $codigo;
-            }
-        }
-
-        if ($huboCuotaAgotada) {
-            throw new RuntimeException('Cuota diaria de Mercado Público agotada consultando órdenes de compra.');
-        }
-
-        return null;
+        return $this->buscarCodigoEnFechas(
+            $codigoCot,
+            $fechas,
+            $this->codigoProveedorMpParaRut($rutGanador),
+            $nombreProceso,
+            $montoGanador,
+            $fechas,
+            $omitirListadoSinProveedor ? 0 : PHP_INT_MAX,
+            null,
+        );
     }
 
     /**
@@ -352,11 +388,65 @@ class MercadoPublicoOrdenCompraService
      */
     public function fechasBusquedaDesdePayload(array $payload): array
     {
+        return $this->fechasBusquedaDesdeReferencia($this->referenciaBusquedaDesdePayload($payload));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function referenciaBusquedaDesdePayload(array $payload): ?Carbon
+    {
         $fechas = is_array($payload['fechas'] ?? null) ? $payload['fechas'] : [];
-        $referencia = $this->parsearFechaMp(
+
+        return $this->parsearFechaMp(
             (string) ($fechas['fecha_ultimo_cambio'] ?? $fechas['fecha_cierre'] ?? ''),
         );
+    }
 
+    /**
+     * Todos los días desde (referencia − margen) hasta hoy, recientes primero,
+     * acotado a oc_busqueda_max_dias_atras.
+     *
+     * @return list<string> fechas ddmmaaaa
+     */
+    public function fechasBusquedaDesdeReferencia(?Carbon $referencia, int $margenDias = 1): array
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        $hoy = now()->timezone($tz)->startOfDay();
+
+        if ($referencia === null) {
+            return [$hoy->format('dmY')];
+        }
+
+        $maxAtras = max(7, (int) config('cotiz.mercadopublico.oc_busqueda_max_dias_atras', 180));
+        $limite = $hoy->copy()->subDays($maxAtras - 1);
+
+        $inicio = $referencia->copy()->timezone($tz)->startOfDay()->subDays(max(0, $margenDias));
+        if ($inicio->greaterThan($hoy)) {
+            $inicio = $hoy->copy();
+        }
+        if ($inicio->lessThan($limite)) {
+            $inicio = $limite;
+        }
+
+        $out = [];
+        $cursor = $hoy->copy();
+        while ($cursor->greaterThanOrEqualTo($inicio)) {
+            $out[] = $cursor->format('dmY');
+            $cursor->subDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Ventana corta (tramo post adjudicación + días recientes) donde se acepta
+     * match por nombre/prefijo/monto además del COT exacto.
+     *
+     * @return list<string> fechas ddmmaaaa
+     */
+    private function fechasVentanaCorta(?Carbon $referencia, int $margenDias = 1): array
+    {
         $tz = (string) config('app.timezone', 'America/Santiago');
         $hoy = now()->timezone($tz)->startOfDay();
         $maxDias = max(4, min(31, (int) config('cotiz.mercadopublico.oc_busqueda_max_dias', 31)));
@@ -365,7 +455,7 @@ class MercadoPublicoOrdenCompraService
             return [$hoy->format('dmY')];
         }
 
-        $inicio = $referencia->copy()->timezone($tz)->startOfDay()->subDay();
+        $inicio = $referencia->copy()->timezone($tz)->startOfDay()->subDays(max(0, $margenDias));
         if ($inicio->greaterThan($hoy)) {
             $inicio = $hoy->copy();
         }
@@ -413,19 +503,9 @@ class MercadoPublicoOrdenCompraService
     ): ?string {
         $codigoCot = strtoupper(trim($codigoCot));
 
-        foreach ($listado as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $texto = mb_strtolower(
-                trim((string) ($item['Nombre'] ?? '')).' '.trim((string) ($item['Descripcion'] ?? '')),
-            );
-            if ($codigoCot !== '' && str_contains($texto, mb_strtolower($codigoCot))) {
-                $codigo = $this->codigoAgDesdeItem($item);
-                if ($codigo !== null) {
-                    return $codigo;
-                }
-            }
+        $porCot = $this->buscarCodigoPorTextoCot($listado, $codigoCot);
+        if ($porCot !== null) {
+            return $porCot;
         }
 
         $porNombre = $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso, $montoGanador);
@@ -436,6 +516,36 @@ class MercadoPublicoOrdenCompraService
         // Casos como COT «Materiales pedagogicos utp» ↔ OC «ARTICULOS PEDAGOGICOS UTP»
         // (sin el código COT en el nombre del listado).
         return $this->buscarCodigoPorPrefijoYSimilitud($listado, $codigoCot, $nombreProceso, $montoGanador);
+    }
+
+    /**
+     * OC cuyo Nombre/Descripción contiene el código COT (ej. «compra ágil: 3482-95-COT26»).
+     *
+     * @param  list<array<string, mixed>>  $listado
+     */
+    public function buscarCodigoPorTextoCot(array $listado, string $codigoCot): ?string
+    {
+        $codigoCot = mb_strtolower(trim($codigoCot));
+        if ($codigoCot === '') {
+            return null;
+        }
+
+        foreach ($listado as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $texto = mb_strtolower(
+                trim((string) ($item['Nombre'] ?? '')).' '.trim((string) ($item['Descripcion'] ?? '')),
+            );
+            if (str_contains($texto, $codigoCot)) {
+                $codigo = $this->codigoAgDesdeItem($item);
+                if ($codigo !== null) {
+                    return $codigo;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -727,9 +837,69 @@ class MercadoPublicoOrdenCompraService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * Un día cerrado solo puede perder OC (pasan al día de su nuevo estado), nunca ganarlas:
+     * su listado por proveedor se cachea y las consultas siguientes no gastan cuota.
+     *
+     * @return list<array<string, mixed>>|null null = sin caché y sin llamadas disponibles
      */
-    private function listarOrdenesPorFecha(string $fechaDdmmaaaa, ?string $codigoProveedor = null): array
+    private function listarOrdenesPorFechaConCache(
+        string $fechaDdmmaaaa,
+        ?string $codigoProveedor,
+        int &$llamadas,
+        ?int $maxLlamadas,
+    ): ?array {
+        $cacheKey = $this->cacheKeyListado($fechaDdmmaaaa, $codigoProveedor);
+        if ($cacheKey !== null) {
+            $cacheado = Cache::get($cacheKey);
+            if (is_array($cacheado)) {
+                return $cacheado;
+            }
+        }
+
+        if ($maxLlamadas !== null && $llamadas >= $maxLlamadas) {
+            return null;
+        }
+
+        $llamadas++;
+        $listado = $this->listarOrdenesPorFecha($fechaDdmmaaaa, $codigoProveedor);
+        if ($listado === null) {
+            return [];
+        }
+
+        if ($cacheKey !== null) {
+            $dias = (int) config('cotiz.mercadopublico.oc_listado_cache_dias', 30);
+            Cache::put($cacheKey, $listado, now()->addDays($dias));
+        }
+
+        return $listado;
+    }
+
+    private function cacheKeyListado(string $fechaDdmmaaaa, ?string $codigoProveedor): ?string
+    {
+        if ($codigoProveedor === null || $codigoProveedor === ''
+            || (int) config('cotiz.mercadopublico.oc_listado_cache_dias', 30) <= 0) {
+            return null;
+        }
+
+        $tz = (string) config('app.timezone', 'America/Santiago');
+        try {
+            $fecha = Carbon::createFromFormat('dmY', $fechaDdmmaaaa, $tz)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        // Hoy y ayer pueden seguir recibiendo OC (indexación tardía en MP).
+        if ($fecha->greaterThanOrEqualTo(now()->timezone($tz)->startOfDay()->subDay())) {
+            return null;
+        }
+
+        return 'mp_oc_v1_listado:'.$fechaDdmmaaaa.':'.$codigoProveedor;
+    }
+
+    /**
+     * @return list<array<string, mixed>>|null null = error HTTP / respuesta inválida
+     */
+    private function listarOrdenesPorFecha(string $fechaDdmmaaaa, ?string $codigoProveedor = null): ?array
     {
         $ticket = trim((string) config('cotiz.mercadopublico.ticket'));
         $baseUrl = rtrim((string) config('cotiz.mercadopublico.oc_v1_base_url'), '/');
@@ -753,7 +923,7 @@ class MercadoPublicoOrdenCompraService
                 'error' => mb_substr($e->getMessage(), 0, 200),
             ]);
 
-            return [];
+            return null;
         }
 
         if ($response->status() === 429) {
@@ -761,12 +931,12 @@ class MercadoPublicoOrdenCompraService
         }
 
         if (! $response->successful()) {
-            return [];
+            return null;
         }
 
         $json = $response->json();
         if (! is_array($json)) {
-            return [];
+            return null;
         }
 
         $listado = $json['Listado'] ?? [];

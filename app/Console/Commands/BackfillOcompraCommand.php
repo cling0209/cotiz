@@ -15,7 +15,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) a notas cerradas del grupo (Reicol/Romulo) sin ocompra';
+    protected $description = 'Copia código OC (AG) a notas cerradas de la empresa propia sin ocompra';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -32,16 +32,9 @@ class BackfillOcompraCommand extends Command
         $delayMs = max(0, (int) $this->option('delay-ms'));
         $nronotaOpt = $this->option('nronota');
 
-        $ruts = [];
-        foreach ($resultados->rutsEmpresasGrupo() as $rut) {
-            $norm = strtoupper(preg_replace('/[^0-9kK]/', '', (string) $rut) ?? '');
-            if ($norm !== '') {
-                $ruts[] = $norm;
-            }
-        }
-        $ruts = array_values(array_unique($ruts));
+        $rutPropio = strtoupper(preg_replace('/[^0-9kK]/', '', (string) config('cotiz.empresa_rut', '')) ?? '');
 
-        // Solo cerradas del grupo sin código OC.
+        // Solo cerradas de la empresa propia, con OC ya emitida y sin código OC.
         $query = Nota::query()
             ->select([
                 'notas.nronota',
@@ -56,18 +49,18 @@ class BackfillOcompraCommand extends Command
             ->whereRaw("trim(coalesce(notas.ocompra, '')) = ''")
             ->whereNotNull('seg.id_orden_compra')
             ->where('seg.id_orden_compra', '>', 0)
+            ->whereRaw("coalesce(seg.estado_mp_codigo, '') <> 'proveedor_seleccionado'")
             ->orderByDesc('notas.nronota');
 
-        if ($ruts === []) {
-            $this->warn('Sin RUTs de grupo configurados; no hay candidatas.');
+        if ($rutPropio === '') {
+            $this->warn('Sin COTIZ_EMPRESA_RUT configurado; no hay candidatas.');
 
             return self::SUCCESS;
         }
 
-        $placeholders = implode(', ', array_fill(0, count($ruts), '?'));
         $query->whereRaw(
-            "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') IN ({$placeholders})",
-            $ruts,
+            "regexp_replace(upper(coalesce(seg.rut_ganador, '')), '[^0-9K]', '', 'g') = ?",
+            [$rutPropio],
         );
 
         if ($nronotaOpt !== null && $nronotaOpt !== '') {
@@ -77,13 +70,13 @@ class BackfillOcompraCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas cerradas del grupo con id_orden_compra y ocompra vacío.');
+            $this->info('No hay notas cerradas propias con id_orden_compra y ocompra vacío.');
 
             return self::SUCCESS;
         }
 
         $this->info(sprintf(
-            'Candidatas: %d (limit=%d radio_dias=±%d; solo ganador propio/grupo)',
+            'Candidatas: %d (limit=%d radio_dias=±%d; solo ganador propio)',
             $candidatas->count(),
             $limit,
             $radio,

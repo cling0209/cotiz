@@ -366,7 +366,7 @@ class CompraAgilComisionesService
 
     /**
      * Fecha mostrada/filtrada en Comisiones:
-     * - cerrada propia (ganador Reicol/Rómulo): oc_fecha_envio (fallback último cambio)
+     * - cerrada propia (ganador = empresa de esta instancia): oc_fecha_envio (fallback último cambio)
      * - cerrada ajena / desierta / cancelada: fecha_ultimo_cambio
      *
      * @return array{0: string, 1: list<string>}
@@ -397,7 +397,7 @@ class CompraAgilComisionesService
     private function fechaEnvioOUltimaModificacion(NotaMpSeguimiento $seg): mixed
     {
         $resultado = (string) ($seg->resultado_propio ?? '');
-        $propia = $this->esGanadaGrupo($seg->rut_ganador);
+        $propia = $this->esGanadaPropia($seg->rut_ganador);
 
         if ($resultado === 'cerrada' && $propia) {
             return $seg->oc_fecha_envio ?? $seg->fecha_ultimo_cambio;
@@ -407,6 +407,8 @@ class CompraAgilComisionesService
     }
 
     /**
+     * Solo la empresa de esta instancia: Reicol y Romulo se tratan como empresas distintas.
+     *
      * @return list<string>
      */
     private function rutsGanadorasNormalizados(): array
@@ -416,14 +418,13 @@ class CompraAgilComisionesService
         }
 
         $this->rutsGanadorasNorm = array_values(array_filter([
-            $this->rutNormalizado((string) config('cotiz.reicol_rut', '')),
-            $this->rutNormalizado((string) config('cotiz.romulo_rut', '')),
+            $this->rutNormalizado((string) config('cotiz.empresa_rut', '')),
         ]));
 
         return $this->rutsGanadorasNorm;
     }
 
-    private function esGanadaGrupo(?string $rutGanador): bool
+    private function esGanadaPropia(?string $rutGanador): bool
     {
         $rutNorm = $this->rutNormalizado((string) ($rutGanador ?? ''));
         if ($rutNorm === '') {
@@ -434,12 +435,12 @@ class CompraAgilComisionesService
     }
 
     /**
-     * Ganada para comisión: RUT Reicol/Rómulo y con orden de compra alfanumérica
-     * en la nota (no basta id_orden_compra de MP / "Pendiente").
+     * Ganada para comisión: RUT de la empresa propia y con orden de compra alfanumérica
+     * en la nota (no basta id_orden_compra de MP).
      */
     private function esGanadaParaComision(?string $rutGanador, ?Nota $nota): bool
     {
-        if (! $this->esGanadaGrupo($rutGanador)) {
+        if (! $this->esGanadaPropia($rutGanador)) {
             return false;
         }
 
@@ -562,9 +563,9 @@ class CompraAgilComisionesService
 
         $ejecutivoUsername = trim((string) ($nota->usuario ?? ''));
         $ejecutivo = trim((string) ($nota->usuarioRel?->fullName() ?: $ejecutivoUsername));
-        $ordenCompra = trim((string) ($nota->ocompra ?? ''));
-        if ($ordenCompra === '' && $seg->id_orden_compra) {
-            $ordenCompra = 'Pendiente';
+        $ordenCompra = $seg->textoOrdenCompraMp();
+        if ($ordenCompra === '—') {
+            $ordenCompra = '';
         }
 
         return (object) [

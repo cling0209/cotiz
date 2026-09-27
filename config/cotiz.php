@@ -193,8 +193,19 @@ return [
             '76185139K' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_ROMULO', '1276139'),
             '763568555' => env('MERCADOPUBLICO_CODIGO_PROVEEDOR_REICOL', '1417881'),
         ],
-        // Días máximos (desde fecha cierre/último cambio −1 hasta hoy) al buscar código AG en OC v1.
+        // Ventana corta (desde fecha cierre/último cambio −1) donde se permite match por nombre/prefijo/monto.
         'oc_busqueda_max_dias' => max(4, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS', 31))),
+        // El listado OC v1 por fecha ubica cada OC en el día de su estado actual (enviada, aceptada,
+        // recepción conforme…), no en su creación: se busca por COT desde la adjudicación hasta hoy.
+        'oc_busqueda_max_dias_atras' => max(7, min(366, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_DIAS_ATRAS', 180))),
+        // Llamadas HTTP (sin caché) por resolución; lo no revisado se retoma en la próxima consulta.
+        'oc_busqueda_max_llamadas' => max(1, min(400, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_MAX_LLAMADAS', 40))),
+        // Listado sin CodigoProveedor (pesado): solo en los N días más recientes si hay código proveedor.
+        'oc_busqueda_dias_sin_proveedor' => max(0, min(31, (int) env('MERCADOPUBLICO_OC_BUSQUEDA_DIAS_SIN_PROVEEDOR', 2))),
+        // Caché de listados por proveedor de días cerrados (anteayer o antes); 0 = sin caché.
+        'oc_listado_cache_dias' => max(0, min(120, (int) env('MERCADOPUBLICO_OC_LISTADO_CACHE_DIAS', 30))),
+        // Días desde la OC emitida (fecha_ultimo_cambio) buscando el código AG; luego «Código OC no encontrado».
+        'oc_codigo_plazo_dias' => max(7, min(366, (int) env('MERCADOPUBLICO_OC_CODIGO_PLAZO_DIAS', 60))),
         // Backfill ocompra: ventana ±N días alrededor de fecha_ultimo_cambio (ahorra cuota).
         'oc_backfill_radio_dias' => max(0, min(7, (int) env('MERCADOPUBLICO_OC_BACKFILL_RADIO_DIAS', 3))),
         'regiones' => array_values(array_filter(array_map(
