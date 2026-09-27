@@ -73,18 +73,21 @@ class OportunidadPalabraClaveController extends Controller
                 'max:200',
                 Rule::unique('oportunidad_palabras_clave', 'frase'),
             ],
+            'excluir' => ['nullable', 'string', 'max:1000'],
             'regiones' => ['nullable', 'array'],
             'regiones.*' => ['integer'],
         ], [
             'frase.required' => 'Indique la palabra clave.',
             'frase.unique' => 'Esa palabra clave ya está registrada.',
             'frase.min' => 'La palabra clave debe tener al menos 2 caracteres.',
+            'excluir.max' => 'Las palabras a excluir no pueden superar 1000 caracteres.',
         ]);
 
         $maxOrden = (int) OportunidadPalabraClave::query()->max('orden');
 
         $palabra = OportunidadPalabraClave::query()->create([
             'frase' => $frase,
+            'excluir' => OportunidadPalabraClave::normalizarExcluir($request->input('excluir')),
             'orden' => $maxOrden + 1,
             'created_by' => $request->user()?->id,
         ]);
@@ -99,15 +102,23 @@ class OportunidadPalabraClaveController extends Controller
     public function update(Request $request, OportunidadPalabraClave $palabra): RedirectResponse
     {
         $request->validate([
+            'excluir' => ['nullable', 'string', 'max:1000'],
             'regiones' => ['nullable', 'array'],
             'regiones.*' => ['integer'],
+        ], [
+            'excluir.max' => 'Las palabras a excluir no pueden superar 1000 caracteres.',
         ]);
+
+        if ($request->has('excluir')) {
+            $palabra->excluir = OportunidadPalabraClave::normalizarExcluir($request->input('excluir'));
+            $palabra->save();
+        }
 
         $this->syncRegiones($palabra, $this->normalizarRegiones($request));
 
         return redirect()
             ->route('admin.oportunidades.palabras-clave.index')
-            ->with('success', 'Regiones de «'.$palabra->frase.'» actualizadas.');
+            ->with('success', 'Palabra clave «'.$palabra->frase.'» actualizada.');
     }
 
     public function destroy(OportunidadPalabraClave $palabra): RedirectResponse

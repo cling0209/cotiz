@@ -433,6 +433,67 @@ class OportunidadPalabrasClaveTest extends TestCase
         $this->assertSame(['aseo'], $servicio->palabrasClaveParaRegion(8));
     }
 
+    public function test_store_y_update_guardan_excluir_normalizado(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('admin.oportunidades.palabras-clave.store'), [
+                'frase' => 'articulos de escritorio',
+                'excluir' => ' silla ,, mueble; Silla ',
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $palabra = OportunidadPalabraClave::query()->where('frase', 'articulos de escritorio')->firstOrFail();
+        $this->assertSame('silla, mueble', $palabra->excluir);
+        $this->assertSame(['silla', 'mueble'], $palabra->terminosExcluidos());
+
+        $this->actingAs($user)
+            ->put(route('admin.oportunidades.palabras-clave.update', $palabra), [
+                'excluir' => '',
+                'regiones' => [],
+            ])
+            ->assertRedirect(route('admin.oportunidades.palabras-clave.index'));
+
+        $this->assertNull($palabra->fresh()->excluir);
+    }
+
+    public function test_excluir_solo_descarta_la_frase_que_lo_define(): void
+    {
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'articulos de escritorio',
+            'excluir' => 'silla, mueble',
+            'orden' => 1,
+        ]);
+        OportunidadPalabraClave::query()->create([
+            'frase' => 'sillas de oficina',
+            'orden' => 2,
+        ]);
+
+        $servicio = app(\App\Services\OportunidadParaCotizarService::class);
+        $frases = ['articulos de escritorio', 'sillas de oficina'];
+
+        $this->assertSame([], $servicio->frasesQueCoinciden($frases, [
+            'nombre' => 'Adquisición de artículos de escritorio y sillas',
+        ]));
+
+        $this->assertSame(['sillas de oficina'], $servicio->frasesQueCoinciden($frases, [
+            'nombre' => 'Compra de artículos de escritorio y sillas de oficina',
+        ]));
+
+        $this->assertSame(['articulos de escritorio'], $servicio->frasesQueCoinciden($frases, [
+            'nombre' => 'Artículos de escritorio: lápices y cuadernos',
+        ]));
+
+        // Subcadena dentro de otra palabra no excluye.
+        $this->assertSame(['articulos de escritorio'], $servicio->frasesQueCoinciden($frases, [
+            'nombre' => 'Artículos de escritorio para sillería municipal',
+        ]));
+    }
+
     public function test_plan_busqueda_omite_region_sin_frases_aplicables(): void
     {
         config([

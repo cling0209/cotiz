@@ -32,6 +32,8 @@
         Puede ordenar por columna con las flechas.
         Si una palabra clave <strong>no tiene regiones</strong>, se busca en <strong>todas</strong> las de
         <code>MERCADOPUBLICO_REGIONES</code>; con regiones seleccionadas, solo en esas.
+        Con <strong>excluir</strong>, se descartan las cotizaciones encontradas por esa palabra clave
+        que contengan alguno de esos t&eacute;rminos (no afecta a las dem&aacute;s palabras clave).
     </div>
 
     <div class="card shadow-sm mb-4">
@@ -46,6 +48,14 @@
                     @error('frase')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
+                    <label class="form-label small mb-1 mt-2" for="excluir">Excluir si contiene (opcional)</label>
+                    <input type="text" name="excluir" id="excluir" class="form-control form-control-sm @error('excluir') is-invalid @enderror"
+                           maxlength="1000" placeholder="Ej: silla, mueble"
+                           value="{{ old('excluir') }}">
+                    @error('excluir')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <div class="form-text">Separe con comas. Solo aplica a esta palabra clave.</div>
                 </div>
                 <div class="col-md-12 col-lg-5">
                     <label class="form-label small mb-1">Regiones (opcional)</label>
@@ -84,6 +94,7 @@
                             <a href="{{ $sortLink('frase', 'DESC') }}" class="text-muted small text-decoration-none" title="Z → A">&#9660;</a>
                         </th>
                         <th>Regiones</th>
+                        <th>Excluye</th>
                         <th>
                             Agregada por
                             <a href="{{ $sortLink('creador', 'ASC') }}" class="text-muted small text-decoration-none" title="A → Z">&#9650;</a>
@@ -101,6 +112,7 @@
                     @forelse($palabras as $index => $palabra)
                         @php
                             $codigosPalabra = $palabra->codigosRegion();
+                            $terminosExcluidos = $palabra->terminosExcluidos();
                             $editId = 'regiones-edit-'.$palabra->id;
                         @endphp
                         <tr>
@@ -112,6 +124,18 @@
                                 @else
                                     <span class="text-muted">{{ $palabra->etiquetaRegiones() }}</span>
                                 @endif
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+                                        data-bs-toggle="collapse" data-bs-target="#{{ $editId }}"
+                                        aria-expanded="false" aria-controls="{{ $editId }}">
+                                    Editar
+                                </button>
+                            </td>
+                            <td class="small">
+                                @forelse($terminosExcluidos as $termino)
+                                    <span class="badge text-bg-light border text-danger-emphasis">{{ $termino }}</span>
+                                @empty
+                                    <span class="text-muted">—</span>
+                                @endforelse
                                 <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
                                         data-bs-toggle="collapse" data-bs-target="#{{ $editId }}"
                                         aria-expanded="false" aria-controls="{{ $editId }}">
@@ -136,11 +160,21 @@
                             </td>
                         </tr>
                         <tr class="collapse" id="{{ $editId }}">
-                            <td colspan="6" class="bg-light border-top-0 pt-0">
+                            <td colspan="7" class="bg-light border-top-0 pt-0">
                                 <form method="post" action="{{ route('admin.oportunidades.palabras-clave.update', $palabra) }}"
                                       class="row g-2 align-items-end py-2">
                                     @csrf
                                     @method('PUT')
+                                    <div class="col-md-8 col-lg-6">
+                                        <label class="form-label small fw-medium mb-1" for="excluir-{{ $palabra->id }}">
+                                            Excluir si contiene
+                                        </label>
+                                        <span class="small text-muted ms-1">(separe con comas; vac&iacute;o = no excluye)</span>
+                                        <input type="text" name="excluir" id="excluir-{{ $palabra->id }}"
+                                               class="form-control form-control-sm" maxlength="1000"
+                                               placeholder="Ej: silla, mueble"
+                                               value="{{ $palabra->excluir }}">
+                                    </div>
                                     <div class="col-12">
                                         <span class="small fw-medium">Regiones para «{{ $palabra->frase }}»</span>
                                         <span class="small text-muted ms-1">(ninguna = todas)</span>
@@ -158,14 +192,14 @@
                                         </div>
                                     </div>
                                     <div class="col-auto">
-                                        <button type="submit" class="btn btn-primary btn-sm">Guardar regiones</button>
+                                        <button type="submit" class="btn btn-primary btn-sm">Guardar cambios</button>
                                     </div>
                                 </form>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="7" class="text-center text-muted py-4">
                                 A&uacute;n no hay palabras clave cotizaci&oacute;n. Agregue al menos una para buscar oportunidades.
                             </td>
                         </tr>

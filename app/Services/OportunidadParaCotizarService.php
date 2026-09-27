@@ -91,7 +91,24 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * @return list<array{frase: string, regiones: list<int>}>
+     * Términos a excluir por frase (solo frases que tienen alguno).
+     *
+     * @return array<string, list<string>>
+     */
+    public function exclusionesPorFrase(): array
+    {
+        $out = [];
+        foreach ($this->palabrasClaveConRegiones() as $row) {
+            if (($row['excluir'] ?? []) !== []) {
+                $out[$row['frase']] = $row['excluir'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{frase: string, regiones: list<int>, excluir: list<string>}>
      */
     private function palabrasClaveConRegiones(): array
     {
@@ -103,6 +120,7 @@ class OportunidadParaCotizarService
             ->map(fn (OportunidadPalabraClave $p) => [
                 'frase' => trim((string) $p->frase),
                 'regiones' => $p->codigosRegion(),
+                'excluir' => $p->terminosExcluidos(),
             ])
             ->filter(fn (array $row) => ($row['frase'] ?? '') !== '')
             ->values()
@@ -727,22 +745,8 @@ class OportunidadParaCotizarService
             return false;
         }
 
-        $partes = [
-            (string) ($resumen['nombre'] ?? ''),
-            (string) ($resumen['organismo'] ?? ''),
-            (string) ($resumen['comuna'] ?? ''),
-            (string) ($resumen['nombre_region'] ?? ''),
-        ];
-
-        if (is_array($crudo)) {
-            $partes[] = (string) ($crudo['nombre'] ?? '');
-            $institucion = is_array($crudo['institucion'] ?? null) ? $crudo['institucion'] : [];
-            $partes[] = (string) ($institucion['organismo_comprador'] ?? '');
-            $partes[] = (string) ($institucion['comuna'] ?? $institucion['nombre_comuna'] ?? '');
-        }
-
-        $haystack = $this->normalizarTextoBusqueda(implode(' ', $partes));
-        if ($haystack === '') {
+        $haystackWords = $this->palabrasTextoOportunidad($resumen, $crudo);
+        if ($haystackWords === []) {
             return false;
         }
 
@@ -751,7 +755,6 @@ class OportunidadParaCotizarService
             return false;
         }
 
-        $haystackWords = array_values(array_filter(preg_split('/\s+/u', $haystack) ?: []));
         $needleTokens = array_values(array_filter(preg_split('/\s+/u', $needle) ?: []));
         if ($haystackWords === [] || $needleTokens === []) {
             return false;
@@ -779,6 +782,65 @@ class OportunidadParaCotizarService
         }
 
         return true;
+    }
+
+    /**
+     * True si algún término aparece como palabra(s) completa(s), en orden, en el mismo
+     * texto que se usa para el match de frases. Acepta plurales simples en español.
+     *
+     * @param  list<string>  $terminos
+     * @param  array<string, mixed>  $resumen
+     * @param  array<string, mixed>|null  $crudo
+     */
+    public function textoContieneExclusion(array $terminos, array $resumen, ?array $crudo = null): bool
+    {
+        if ($terminos === []) {
+            return false;
+        }
+
+        $haystackWords = $this->palabrasTextoOportunidad($resumen, $crudo);
+        if ($haystackWords === []) {
+            return false;
+        }
+
+        foreach ($terminos as $termino) {
+            $norm = $this->normalizarTextoBusqueda((string) $termino);
+            $tokens = array_values(array_filter(preg_split('/\s+/u', $norm) ?: []));
+            if ($tokens !== [] && $this->secuenciaPalabrasCoincide($tokens, $haystackWords)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $resumen
+     * @param  array<string, mixed>|null  $crudo
+     * @return list<string>
+     */
+    private function palabrasTextoOportunidad(array $resumen, ?array $crudo = null): array
+    {
+        $partes = [
+            (string) ($resumen['nombre'] ?? ''),
+            (string) ($resumen['organismo'] ?? ''),
+            (string) ($resumen['comuna'] ?? ''),
+            (string) ($resumen['nombre_region'] ?? ''),
+        ];
+
+        if (is_array($crudo)) {
+            $partes[] = (string) ($crudo['nombre'] ?? '');
+            $institucion = is_array($crudo['institucion'] ?? null) ? $crudo['institucion'] : [];
+            $partes[] = (string) ($institucion['organismo_comprador'] ?? '');
+            $partes[] = (string) ($institucion['comuna'] ?? $institucion['nombre_comuna'] ?? '');
+        }
+
+        $haystack = $this->normalizarTextoBusqueda(implode(' ', $partes));
+        if ($haystack === '') {
+            return [];
+        }
+
+        return array_values(array_filter(preg_split('/\s+/u', $haystack) ?: []));
     }
 
     /**
@@ -1312,6 +1374,7 @@ class OportunidadParaCotizarService
         $dia = $this->normalizarFechaBusqueda($fechaBusqueda);
         $pagina = max(1, $pagina);
         $palabras = $this->palabrasClaveParaRegion($region);
+        $exclusiones = $this->exclusionesPorFrase();
         $maxPaginas = self::maxPaginasRegion();
         $vacio = [
             'items' => [],
@@ -1468,7 +1531,7 @@ class OportunidadParaCotizarService
                     $dia,
                     $cambioDesde,
                 )) {
-                    $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item);
+                    $coinciden = $this->frasesQueCoinciden($palabras, $resumen, $item, $exclusiones);
                     if ($coinciden !== []
                         && $this->estaVigente($resumen['fecha_cierre'] ?? null)
                         && ! isset($tomadasSet[$codigo])
@@ -1670,6 +1733,7 @@ class OportunidadParaCotizarService
             }
         }
         $tomadasSet = array_fill_keys($this->codigosTomadosNormalizados(), true);
+        $exclusiones = $this->exclusionesPorFrase();
 
         $ventanaKey = $this->ventanaCambioParaDia($dia, $cambioDesde);
         $cacheSufijo = is_array($ventanaKey)
@@ -1699,7 +1763,7 @@ class OportunidadParaCotizarService
                 $this->mapper->resumenListadoItem($item),
             );
 
-            if (! $this->fraseApareceEnTexto($frase, $resumen, $item)) {
+            if ($this->frasesQueCoinciden([$frase], $resumen, $item, $exclusiones) === []) {
                 continue;
             }
 
@@ -1752,20 +1816,30 @@ class OportunidadParaCotizarService
     }
 
     /**
+     * Frases que coinciden y cuyo texto no contiene ninguno de sus propios términos excluidos.
+     *
      * @param  list<string>  $palabras
      * @param  array<string, mixed>  $resumen
      * @param  array<string, mixed>|null  $crudo
+     * @param  array<string, list<string>>|null  $exclusiones  frase => términos; null = cargar de BD
      * @return list<string>
      */
-    public function frasesQueCoinciden(array $palabras, array $resumen, ?array $crudo = null): array
-    {
+    public function frasesQueCoinciden(
+        array $palabras,
+        array $resumen,
+        ?array $crudo = null,
+        ?array $exclusiones = null,
+    ): array {
+        $exclusiones ??= $this->exclusionesPorFrase();
         $out = [];
         foreach ($palabras as $frase) {
             $frase = trim((string) $frase);
             if ($frase === '') {
                 continue;
             }
-            if ($this->fraseApareceEnTexto($frase, $resumen, $crudo)) {
+            if ($this->fraseApareceEnTexto($frase, $resumen, $crudo)
+                && ! $this->textoContieneExclusion($exclusiones[$frase] ?? [], $resumen, $crudo)
+            ) {
                 $out[] = $frase;
             }
         }
