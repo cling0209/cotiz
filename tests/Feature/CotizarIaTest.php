@@ -147,6 +147,8 @@ class CotizarIaTest extends TestCase
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $lineas[self::DESC_WEB]['estado']);
         $this->assertSame('Mercado Libre', $lineas[self::DESC_WEB]['referencia']['sitio']);
         $this->assertSame(100, $lineas[self::DESC_WEB]['referencia']['neto_unitario']);
+        $this->assertFalse($lineas[self::DESC_WEB]['referencia']['stock_verificado']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'stock no verificado')));
 
         Http::assertSent(function (HttpRequest $request) {
             $cuerpo = $request->body();
@@ -183,6 +185,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame(122, (int) $web->prod_valor);
         $this->assertStringContainsString('Ref. Mercado Libre', (string) $web->observacion);
         $this->assertStringContainsString('https://articulo.mercadolibre.cl/MLC-123-tornillo', (string) $web->observacion);
+        $this->assertStringContainsString('stock no verificado', (string) $web->observacion);
         $this->assertNull($detalle[self::DESC_IA]->observacion);
 
         $hash = app(AgileVinculoAprendizajeService::class)->hashDescripcion(self::DESC_IA);
@@ -293,6 +296,62 @@ class CotizarIaTest extends TestCase
         $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
         $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $web['estado']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no devolvió un resultado legible')));
+    }
+
+    public function test_busqueda_web_exige_stock_suficiente_para_la_cantidad(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => [], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        [
+                            'i' => 2,
+                            'opciones' => [
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_IA, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 0, 'url' => 'https://articulo.mercadolibre.cl/MLC-1'],
+                                ['sitio' => 'sodimac', 'titulo' => self::DESC_IA, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => 2, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/1'],
+                            ],
+                        ],
+                        [
+                            'i' => 3,
+                            'opciones' => [
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 3, 'url' => 'https://articulo.mercadolibre.cl/MLC-2'],
+                                ['sitio' => 'sodimac', 'titulo' => self::DESC_WEB, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => null, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/2'],
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB.' pack', 'precio_clp' => 35700, 'unidades_por_pack' => 10, 'stock_disponible' => 1, 'url' => 'https://articulo.mercadolibre.cl/MLC-3'],
+                            ],
+                        ],
+                    ],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $lineas = collect($preview['lineas'])->keyBy('descripcion');
+
+        // Pide 4 unidades: stock 0 y 2 no alcanzan.
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $lineas[self::DESC_IA]['estado']);
+        $this->assertStringContainsString('stock suficiente para 4', (string) $lineas[self::DESC_IA]['stock_nota']);
+
+        // Pide 5 unidades: la más barata tiene 3 (no alcanza); 1 pack de 10 sí alcanza y gana a la de stock desconocido.
+        $ref = $lineas[self::DESC_WEB]['referencia'];
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $lineas[self::DESC_WEB]['estado']);
+        $this->assertSame('https://articulo.mercadolibre.cl/MLC-3', $ref['url']);
+        $this->assertTrue($ref['stock_verificado']);
+        $this->assertSame(1, $ref['stock']);
+        $this->assertSame(3000, $ref['neto_unitario']);
+
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, '1 línea(s) sin publicaciones con stock suficiente')));
+        $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'stock no verificado')));
     }
 
     public function test_busqueda_web_por_tandas_sigue_si_una_tanda_falla(): void

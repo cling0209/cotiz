@@ -141,6 +141,12 @@
         el('cotizar-ia-barra').style.width = Math.max(3, Math.round(((p.paso - 0.5) / total) * 100)) + '%';
     }
 
+    const PROGRESO_LISTO = @json(\App\Services\CotizarIaService::PROGRESO_LISTO);
+    const PROGRESO_ERROR = @json(\App\Services\CotizarIaService::PROGRESO_ERROR);
+    const SIN_PROGRESO_MAX_MS = 60000;
+    const ESPERA_MAX_MS = 25 * 60000;
+
+    /** Sondea el progreso; resuelve con el resultado cuando el servidor termina la vista previa. */
     function iniciarSeguimiento(progresoId) {
         inicio = Date.now();
         el('cotizar-ia-etapa').textContent = 'Iniciando\u2026';
@@ -153,22 +159,44 @@
         }, 1000);
         const url = urlProgresoTpl.replace('0'.repeat(32), progresoId);
         let consultando = false;
-        sondeoId = setInterval(async () => {
-            if (consultando) {
-                return;
-            }
-            consultando = true;
-            try {
-                const resp = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (resp.ok) {
-                    pintarProgreso((await resp.json()).progreso);
+        let ultimoConProgreso = Date.now();
+        return new Promise((resolve, reject) => {
+            sondeoId = setInterval(async () => {
+                if (consultando) {
+                    return;
                 }
-            } catch (e) {
-                // el sondeo es informativo; se ignoran fallos puntuales
-            } finally {
-                consultando = false;
-            }
-        }, 1500);
+                if (Date.now() - inicio > ESPERA_MAX_MS) {
+                    reject(new Error('La IA no termin\u00f3 a tiempo. Intente nuevamente.'));
+                    return;
+                }
+                consultando = true;
+                try {
+                    const resp = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (!resp.ok) {
+                        return;
+                    }
+                    const p = (await resp.json()).progreso;
+                    if (!p) {
+                        if (Date.now() - ultimoConProgreso > SIN_PROGRESO_MAX_MS) {
+                            reject(new Error('Se perdi\u00f3 el seguimiento de la cotizaci\u00f3n con IA (el servidor pudo reiniciarse). Intente nuevamente.'));
+                        }
+                        return;
+                    }
+                    ultimoConProgreso = Date.now();
+                    if (p.estado === PROGRESO_LISTO) {
+                        resolve(p.resultado);
+                    } else if (p.estado === PROGRESO_ERROR) {
+                        reject(new Error(p.error || 'No se pudo cotizar con IA.'));
+                    } else {
+                        pintarProgreso(p);
+                    }
+                } catch (e) {
+                    // fallos puntuales de red en el sondeo se ignoran; el siguiente intento reintenta
+                } finally {
+                    consultando = false;
+                }
+            }, 1500);
+        });
     }
 
     function detenerSeguimiento() {
@@ -252,9 +280,16 @@
         if (linea.estado === 'referencia_web' && linea.referencia) {
             const ref = linea.referencia;
             const pack = ref.unidades_por_pack > 1 ? ' <span class="text-muted">(pack ' + esc(ref.unidades_por_pack) + ' un.)</span>' : '';
+            let stock = '';
+            if (ref.stock_verificado === true) {
+                stock = ' <span class="badge text-bg-success">Stock: ' + esc(ref.stock) + (ref.unidades_por_pack > 1 ? ' packs' : '') + '</span>';
+            } else if (ref.stock_verificado === false) {
+                stock = ' <span class="badge text-bg-warning" title="La publicación no muestra stock; revíselo con «ver»">Stock no verificado</span>';
+            }
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
                 + esc(ref.titulo) + pack
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
+                + stock
                 + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>'
                 + notaStock(linea);
         }
@@ -383,9 +418,10 @@
         modal.show();
         estado(true);
         const progresoId = nuevoProgresoId();
-        iniciarSeguimiento(progresoId);
+        const terminado = iniciarSeguimiento(progresoId);
         try {
-            const data = await postJson(urlCon(urlPreviewTpl), { codigo, progreso_id: progresoId });
+            await postJson(urlCon(urlPreviewTpl), { codigo, progreso_id: progresoId, async: true });
+            const data = await terminado;
             const tiempo = detenerSeguimiento();
             pintar(data);
             el('cotizar-ia-resumen').textContent += ' Tiempo: ' + tiempo + '.';

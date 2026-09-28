@@ -74,10 +74,18 @@ class CotizarIaService
 
     private const TOTAL_ETAPAS = 7;
 
+    public const PROGRESO_EN_CURSO = 'en_curso';
+
+    public const PROGRESO_LISTO = 'listo';
+
+    public const PROGRESO_ERROR = 'error';
+
+    private const PROGRESO_TTL_MINUTOS = 30;
+
     private ?string $progresoKey = null;
 
-    /** @var array{paso: int, total: int, etapa: string, detalle: string} */
-    private array $progreso = ['paso' => 0, 'total' => self::TOTAL_ETAPAS, 'etapa' => '', 'detalle' => ''];
+    /** @var array{paso: int, total: int, etapa: string, detalle: string, estado: string} */
+    private array $progreso = ['paso' => 0, 'total' => self::TOTAL_ETAPAS, 'etapa' => '', 'detalle' => '', 'estado' => self::PROGRESO_EN_CURSO];
 
     public function __construct(
         protected GeminiClientService $gemini,
@@ -127,8 +135,39 @@ class CotizarIaService
         }
     }
 
+    public function marcarPreviewEnCurso(string $usuario, string $progresoId): void
+    {
+        Cache::put(
+            $this->progresoKey($usuario, $progresoId),
+            ['paso' => 0, 'total' => self::TOTAL_ETAPAS, 'etapa' => 'Iniciando…', 'detalle' => '', 'estado' => self::PROGRESO_EN_CURSO],
+            now()->addMinutes(self::PROGRESO_TTL_MINUTOS),
+        );
+    }
+
     /**
-     * @return array{paso: int, total: int, etapa: string, detalle: string}|null
+     * preview() para correr después de responder: una cotización grande supera el timeout del
+     * proxy (600 s), así que el resultado o el error quedan en el progreso y el navegador los recoge.
+     */
+    public function previewEnSegundoPlano(Nota $nota, string $usuario, ?string $codigo, string $progresoId): void
+    {
+        try {
+            $final = ['estado' => self::PROGRESO_LISTO, 'resultado' => $this->preview($nota, $usuario, $codigo, $progresoId)];
+        } catch (RuntimeException $e) {
+            $final = ['estado' => self::PROGRESO_ERROR, 'error' => $e->getMessage()];
+        } catch (Throwable $e) {
+            report($e);
+            $final = ['estado' => self::PROGRESO_ERROR, 'error' => 'No se pudo cotizar con IA. Intente nuevamente.'];
+        }
+
+        Cache::put(
+            $this->progresoKey($usuario, $progresoId),
+            $final + $this->progreso,
+            now()->addMinutes(self::PROGRESO_TTL_MINUTOS),
+        );
+    }
+
+    /**
+     * @return array{paso: int, total: int, etapa: string, detalle: string, estado: string, resultado?: array<string, mixed>, error?: string}|null
      */
     public function leerProgreso(string $usuario, string $progresoId): ?array
     {
@@ -1240,12 +1279,13 @@ TXT];
 
         $lotes = array_chunk($pendientes, max(1, (int) config('cotiz.gemini.lote_web', 10)));
         $lotesIlegibles = 0;
+        $sinStockSuficiente = 0;
         foreach ($lotes as $n => $lote) {
             if (count($lotes) > 1) {
                 $this->detalle('Tanda '.($n + 1).' de '.count($lotes).' ('.count($lote).' línea(s))');
             }
             try {
-                $items = $this->buscarLoteWeb($items, $lote);
+                $items = $this->buscarLoteWeb($items, $lote, $sinStockSuficiente);
             } catch (GeminiRespuestaInvalidaException $e) {
                 Log::warning('CotizarIa: búsqueda web sin JSON legible tras reintento', ['message' => $e->getMessage(), 'tanda' => $n + 1]);
                 $lotesIlegibles++;
@@ -1267,6 +1307,16 @@ TXT];
                 ? "La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible en {$lotesIlegibles} de ".count($lotes).' tanda(s) (se reintentó); esas líneas quedaron pendientes.'
                 : 'La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.';
         }
+        if ($sinStockSuficiente > 0) {
+            $this->avisos[] = "Mercado Libre / Sodimac: {$sinStockSuficiente} línea(s) sin publicaciones con stock suficiente para la cantidad pedida; quedaron pendientes.";
+        }
+        $noVerificadas = count(array_filter(
+            $items,
+            static fn (array $item) => $item['estado'] === self::ESTADO_REFERENCIA_WEB && ($item['referencia']['stock_verificado'] ?? true) === false,
+        ));
+        if ($noVerificadas > 0) {
+            $this->avisos[] = "{$noVerificadas} referencia(s) web con stock no verificado; revíselas con «ver» antes de cotizar.";
+        }
 
         return $items;
     }
@@ -1280,19 +1330,23 @@ TXT];
      * @throws GeminiRespuestaInvalidaException
      * @throws RuntimeException
      */
-    private function buscarLoteWeb(array $items, array $pendientes): array
+    private function buscarLoteWeb(array $items, array $pendientes, int &$sinStockSuficiente): array
     {
         $entrada = array_map(static fn (int $i) => [
             'i' => $i,
             'solicitado' => $items[$i]['descripcion'],
+            'cantidad' => (int) $items[$i]['cantidad'],
         ], $pendientes);
 
         $prompt = "Busca en Google cada producto SOLO en mercadolibre.cl y sodimac.cl (Chile).\n"
-            ."Para cada uno devuelve hasta 3 publicaciones del mismo producto (mismo tipo, medida y formato) con su precio actual en pesos chilenos IVA incluido.\n"
+            ."Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, medida y formato) con su precio actual en pesos chilenos IVA incluido.\n"
             ."Si la publicación vende un pack o caja, indica cuántas unidades trae en unidades_por_pack (si es unitario, 1).\n"
+            ."En stock_disponible indica cuántas unidades de la publicación (packs, si vende packs) muestra disponibles la página: "
+            ."\"+50 disponibles\" = 50, \"Últimas 3\" = 3, agotado o sin stock = 0; si la página no lo muestra, null. No lo inventes.\n"
+            ."Se necesita al menos la cantidad indicada: prioriza publicaciones con stock suficiente para esa cantidad.\n"
             ."Usa solo URLs reales de páginas encontradas en la búsqueda; no inventes URLs ni precios. Si no encuentras, deja opciones vacío.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
-            .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"url":""}]}]}';
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"stock_disponible":null,"url":""}]}]}';
 
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
@@ -1312,11 +1366,17 @@ TXT];
             if (! isset($pendientesSet[$i])) {
                 continue;
             }
-            $mejor = $this->mejorReferencia($items[$i]['descripcion'], (array) ($fila['opciones'] ?? []));
+            $cantidad = max(1, (int) $items[$i]['cantidad']);
+            [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, (array) ($fila['opciones'] ?? []));
             if ($mejor !== null) {
                 $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                 $items[$i]['origen'] = self::ORIGEN_WEB;
                 $items[$i]['referencia'] = $mejor;
+            } elseif ($todasSinStock) {
+                $sinStockSuficiente++;
+                $nota = "Mercado Libre / Sodimac: ninguna publicación tiene stock suficiente para {$cantidad} unidad(es).";
+                $previa = trim((string) ($items[$i]['stock_nota'] ?? ''));
+                $items[$i]['stock_nota'] = $previa === '' ? $nota : $previa.' '.$nota;
             }
         }
 
@@ -1324,12 +1384,19 @@ TXT];
     }
 
     /**
+     * Elige la opción más económica con stock suficiente para la cantidad pedida; si ninguna lo confirma,
+     * la más económica con stock desconocido (queda marcada como no verificada). El segundo valor indica
+     * que todas las opciones válidas tienen stock insuficiente.
+     *
      * @param  list<mixed>  $opciones
-     * @return ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, neto_unitario: int, url: string, fecha: string}
+     * @return array{0: ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, neto_unitario: int, url: string, fecha: string, stock: ?int, stock_verificado: bool}, 1: bool}
      */
-    private function mejorReferencia(string $descripcion, array $opciones): ?array
+    private function mejorReferencia(string $descripcion, int $cantidad, array $opciones): array
     {
-        $mejor = null;
+        $confirmada = null;
+        $desconocida = null;
+        $insuficientes = 0;
+        $validas = 0;
         foreach ($opciones as $opcion) {
             if (! is_array($opcion)) {
                 continue;
@@ -1349,20 +1416,37 @@ TXT];
             if ($neto <= 0) {
                 continue;
             }
-            if ($mejor === null || $neto < $mejor['neto_unitario']) {
-                $mejor = [
-                    'sitio' => $sitio,
-                    'titulo' => $titulo,
-                    'precio_clp' => $precio,
-                    'unidades_por_pack' => $unidades,
-                    'neto_unitario' => $neto,
-                    'url' => mb_substr($url, 0, 1000),
-                    'fecha' => now()->format('d-m-Y'),
-                ];
+            $validas++;
+
+            $stockBruto = $opcion['stock_disponible'] ?? null;
+            $stock = is_numeric($stockBruto) && (float) $stockBruto >= 0 ? (int) floor((float) $stockBruto) : null;
+            if ($stock !== null && $stock < (int) ceil($cantidad / $unidades)) {
+                $insuficientes++;
+
+                continue;
+            }
+
+            $candidata = [
+                'sitio' => $sitio,
+                'titulo' => $titulo,
+                'precio_clp' => $precio,
+                'unidades_por_pack' => $unidades,
+                'neto_unitario' => $neto,
+                'url' => mb_substr($url, 0, 1000),
+                'fecha' => now()->format('d-m-Y'),
+                'stock' => $stock,
+                'stock_verificado' => $stock !== null,
+            ];
+            if ($stock !== null) {
+                if ($confirmada === null || $neto < $confirmada['neto_unitario']) {
+                    $confirmada = $candidata;
+                }
+            } elseif ($desconocida === null || $neto < $desconocida['neto_unitario']) {
+                $desconocida = $candidata;
             }
         }
 
-        return $mejor;
+        return [$confirmada ?? $desconocida, $validas > 0 && $insuficientes === $validas];
     }
 
     public function sitioPermitido(string $url): ?string
@@ -1392,8 +1476,14 @@ TXT];
         $neto = '$'.number_format($ref['neto_unitario'], 0, ',', '.');
         $pack = $ref['unidades_por_pack'] > 1 ? ' pack '.$ref['unidades_por_pack'].' un.' : '';
         $netoTxt = $ref['unidades_por_pack'] > 1 ? $neto.' neto c/u' : $neto.' neto';
+        $stock = '';
+        if (array_key_exists('stock_verificado', $ref)) {
+            $stock = $ref['stock_verificado']
+                ? ' - stock '.$ref['stock'].($ref['unidades_por_pack'] > 1 ? ' packs' : '')
+                : ' - stock no verificado';
+        }
 
-        return "Ref. {$ref['sitio']} {$ref['fecha']}: {$ref['titulo']} - {$precio} c/IVA{$pack} ({$netoTxt}) - {$ref['url']}";
+        return "Ref. {$ref['sitio']} {$ref['fecha']}: {$ref['titulo']} - {$precio} c/IVA{$pack} ({$netoTxt}){$stock} - {$ref['url']}";
     }
 
     /**
@@ -1498,7 +1588,7 @@ TXT];
 
     private function etapa(int $paso, string $texto): void
     {
-        $this->progreso = ['paso' => $paso, 'total' => self::TOTAL_ETAPAS, 'etapa' => $texto, 'detalle' => ''];
+        $this->progreso = ['paso' => $paso, 'total' => self::TOTAL_ETAPAS, 'etapa' => $texto, 'detalle' => '', 'estado' => self::PROGRESO_EN_CURSO];
         $this->guardarProgreso();
     }
 
@@ -1514,7 +1604,7 @@ TXT];
             return;
         }
         try {
-            Cache::put($this->progresoKey, $this->progreso, now()->addMinutes(10));
+            Cache::put($this->progresoKey, $this->progreso, now()->addMinutes(self::PROGRESO_TTL_MINUTOS));
         } catch (Throwable $e) {
             report($e);
         }
