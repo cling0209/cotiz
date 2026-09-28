@@ -75,6 +75,7 @@
                     </div>
                     <p class="small text-muted mb-0 mt-1">
                         Las l&iacute;neas con referencia web quedan pendientes (NOK) con el costo neto (precio publicado sin IVA) y la URL en la observaci&oacute;n interna; el precio de venta es costo &times; factor.
+                        Si un producto del maestro no tiene costo, se estima como su precio / {{ number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.') }} (factor Metropolitana).
                         Los v&iacute;nculos por IA que agregue se guardan como aprendizaje.
                     </p>
                 </div>
@@ -127,6 +128,7 @@
     };
 
     const REGION_METROPOLITANA = @json(\App\Services\CompraAgilRegionScope::REGION_METROPOLITANA);
+    const FACTOR_RM_TEXTO = @json(number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.'));
 
     let token = null;
     let factorInicial = null;
@@ -327,13 +329,17 @@
         if (linea.estado === 'pendiente') {
             return '';
         }
+        if (linea.costo > 0 && linea.costo_estimado) {
+            return '$' + numero.format(linea.costo)
+                + ' <span class="text-warning" title="Sin costo en el maestro: se estima como su precio / ' + esc(FACTOR_RM_TEXTO) + ' (factor Metropolitana)">(est.)</span>';
+        }
         if (linea.costo > 0) {
             return '$' + numero.format(linea.costo);
         }
-        return '<span class="text-danger" title="El producto no tiene costo en el maestro: se usa su precio de venta sin factor">sin costo</span>';
+        return '<span class="text-danger" title="El producto no tiene costo ni precio en el maestro">sin costo</span>';
     }
 
-    /** Igual que al aplicar: con costo, costo × factor; sin costo, el precio del maestro sin factor. */
+    /** Igual que al aplicar: costo × factor; sin costo ni precio, el precio que traiga la línea. */
     function precioVenta(fila, factor) {
         const costo = parseInt(fila.dataset.costo, 10) || 0;
         return costo > 0 ? Math.round(costo * factor) : (parseInt(fila.dataset.venta, 10) || 0);

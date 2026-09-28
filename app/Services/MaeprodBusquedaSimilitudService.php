@@ -544,7 +544,7 @@ class MaeprodBusquedaSimilitudService
             return $costo;
         }
         if ($valor > 0) {
-            return $valor;
+            return NotaDetalleService::costoDesdePrecioRm($valor);
         }
 
         return PHP_INT_MAX;

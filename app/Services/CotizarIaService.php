@@ -437,8 +437,15 @@ class CotizarIaService
             $mae = $maeprods->get($item['producto']['prod_item']);
             $conteo['vinculadas']++;
             $unidades = max(1, (int) ($item['producto']['unidades'] ?? 1));
+            $valor = (int) ($mae->prod_valor ?? 0) * $unidades;
+            $costo = (int) ($mae->prod_valor_costo ?? 0) * $unidades;
+            $costoEstimado = $costo <= 0 && $valor > 0;
+            if ($costoEstimado) {
+                $costo = NotaDetalleService::costoDesdePrecioRm($valor);
+            }
             $observacion = trim(
                 ($unidades > 1 ? NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item) : '')
+                .($costoEstimado ? ' '.$this->observacionCostoEstimado() : '')
                 .(($item['producto']['foto'] ?? '') !== ''
                     ? ' Elegido por foto: se ve '.$item['producto']['foto'].' en la imagen de '.trim((string) $mae->prod_item).'.'
                     : ''),
@@ -446,8 +453,8 @@ class CotizarIaService
 
             return $base + [
                 'prod_item' => (string) $mae->prod_item,
-                'prod_valor' => (int) ($mae->prod_valor ?? 0) * $unidades,
-                'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0) * $unidades,
+                'prod_valor' => $valor,
+                'prod_valor_costo' => $costo,
                 'prod_nombre' => (string) $mae->prod_nombre,
             ] + ($observacion !== '' ? ['observacion' => $observacion] : []);
         }
@@ -1885,8 +1892,8 @@ TXT];
     }
 
     /**
-     * costo y precio_venta por unidad solicitada, calculados igual que al aplicar: con costo,
-     * costo × factor; sin costo en el maestro, se mantiene su precio (no se le aplica factor).
+     * costo y precio_venta por unidad solicitada, calculados igual que al aplicar: costo × factor;
+     * sin costo en el maestro, el costo se estima desde su precio (que ya trae el factor Metropolitana).
      *
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
@@ -1897,9 +1904,14 @@ TXT];
         $referencia = $item['referencia'];
         $costo = 0;
         $precioVenta = 0;
+        $costoEstimado = false;
         if ($producto !== null) {
             $costo = max(0, (int) $producto['prod_valor_costo']);
-            $precioVenta = $costo > 0 ? (int) round($costo * $factor) : max(0, (int) $producto['prod_valor']);
+            if ($costo === 0 && (int) $producto['prod_valor'] > 0) {
+                $costo = NotaDetalleService::costoDesdePrecioRm((int) $producto['prod_valor']);
+                $costoEstimado = true;
+            }
+            $precioVenta = (int) round($costo * $factor);
         } elseif (is_array($referencia)) {
             $costo = (int) $referencia['neto_unitario'];
             $precioVenta = (int) round($costo * $factor);
@@ -1920,6 +1932,7 @@ TXT];
                 'foto' => (string) ($producto['foto'] ?? ''),
             ],
             'costo' => $costo,
+            'costo_estimado' => $costoEstimado,
             'precio_venta' => $precioVenta,
             'referencia' => $referencia,
             'stock_prisa' => $item['stock_prisa'] ?? null,
@@ -1963,6 +1976,12 @@ TXT];
         }
 
         return $grupos;
+    }
+
+    private function observacionCostoEstimado(): string
+    {
+        return 'Sin costo en el maestro: costo estimado = precio / '
+            .number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.').'.';
     }
 
     private function instruccionSistema(): string

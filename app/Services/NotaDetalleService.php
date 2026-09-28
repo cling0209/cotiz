@@ -388,6 +388,26 @@ class NotaDetalleService
     /**
      * Precio de venta de la nota: costo × factor (sin tocar maeprod).
      */
+    /**
+     * Costo de un producto sin costo en el maestro: su precio ya trae el factor de la Metropolitana,
+     * así que se descuenta. Se busca el costo que con ese factor devuelve exactamente el precio.
+     */
+    public static function costoDesdePrecioRm(int $precio): int
+    {
+        $factor = round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2);
+        if ($precio <= 0 || $factor <= 0) {
+            return 0;
+        }
+        $costo = (int) round($precio / $factor);
+        foreach ([$costo, $costo - 1, $costo + 1] as $candidato) {
+            if ($candidato > 0 && (int) round($candidato * $factor) === $precio) {
+                return $candidato;
+            }
+        }
+
+        return max(1, $costo);
+    }
+
     public function precioVentaSegunFactor(Nota $nota, int $costo, ?int $fallbackCatalogo = null, ?float $factorOverride = null): int
     {
         $factor = $factorOverride !== null

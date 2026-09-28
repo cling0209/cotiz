@@ -209,4 +209,18 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
 
         $this->assertSame('BARATO', $elegido['prod_item'] ?? null);
     }
+
+    public function test_sin_costo_compara_con_el_precio_descontado_el_factor_metropolitana(): void
+    {
+        config(['cotiz.factor_precio_venta_rm' => 1.22]);
+
+        $elegido = $this->service->elegirMasEconomico([
+            ['prod_item' => 'CON_COSTO', 'prod_nombre' => 'X', 'prod_valor' => 1400, 'prod_valor_costo' => 1100],
+            ['prod_item' => 'SIN_COSTO', 'prod_nombre' => 'X', 'prod_valor' => 1220, 'prod_valor_costo' => 0],
+        ]);
+
+        $this->assertSame('SIN_COSTO', $elegido['prod_item'] ?? null);
+        $this->assertSame(1000, $this->service->costoPropuesta(1220, 0));
+        $this->assertSame(11475, $this->service->costoPropuesta(14000, 0));
+    }
 }

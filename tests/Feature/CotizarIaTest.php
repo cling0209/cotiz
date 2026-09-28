@@ -480,6 +480,86 @@ class CotizarIaTest extends TestCase
         $this->assertSame(1.5, (float) $nota->fresh()->factor_precio_venta);
     }
 
+    public function test_producto_sin_costo_estima_costo_desde_precio_metropolitana_y_aplica_factor_de_region(): void
+    {
+        Maeprod::query()->where('prod_item', 'HIG002')->update(['prod_valor' => 14000, 'prod_valor_costo' => 0]);
+        $nota = $this->crearNotaConLineas();
+        $nota->update(['region' => 8]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame('HIG002', $ia['producto']['prod_item']);
+        $this->assertTrue($ia['costo_estimado']);
+        $this->assertSame(11475, $ia['costo']);
+        $this->assertSame(14918, $ia['precio_venta']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk();
+
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
+        $this->assertSame(11475, (int) $linea->prod_valor_costo);
+        $this->assertSame(14918, (int) $linea->prod_valor);
+        $this->assertStringContainsString('Sin costo en el maestro: costo estimado = precio / 1,22', (string) $linea->observacion);
+    }
+
+    public function test_producto_sin_costo_en_metropolitana_mantiene_el_precio_del_maestro(): void
+    {
+        Maeprod::query()->where('prod_item', 'HIG002')->update(['prod_valor' => 14000, 'prod_valor_costo' => 0]);
+        $nota = $this->crearNotaConLineas();
+        $nota->update(['region' => 13]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(1.22, $preview['venta']['factor']);
+        $this->assertSame(14000, $ia['precio_venta']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk();
+
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
+        $this->assertSame(14000, (int) $linea->prod_valor);
+    }
+
     public function test_preview_sin_region_avisa_y_usa_factor_de_la_nota(): void
     {
         $nota = $this->crearNotaConLineas();
