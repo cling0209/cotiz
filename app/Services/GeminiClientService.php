@@ -71,12 +71,48 @@ class GeminiClientService
      */
     private function enviarConReintento(array $payload): Response
     {
-        $model = trim((string) config('cotiz.gemini.model', 'gemini-3.8-flash'));
-        $url = config('cotiz.gemini.endpoint').'/models/'.rawurlencode($model).':generateContent';
-        $timeout = (int) config('cotiz.gemini.timeout', 120);
+        $modelos = array_values(array_unique(array_filter(array_map('trim', array_merge(
+            [(string) config('cotiz.gemini.model', 'gemini-3.8-flash')],
+            (array) config('cotiz.gemini.modelos_respaldo', []),
+        )))));
 
         $ultimoError = 'Gemini no respondió.';
-        for ($intento = 1; $intento <= 2; $intento++) {
+        $todosSinCuota = true;
+        foreach ($modelos as $model) {
+            $resultado = $this->enviarAModelo($model, $payload);
+            if ($resultado instanceof Response) {
+                return $resultado;
+            }
+            [$status, $ultimoError] = $resultado;
+            $todosSinCuota = $todosSinCuota && $status === 429;
+            // 400/401/403: el pedido o la key son inválidos; otro modelo no lo arregla.
+            if (! in_array($status, [0, 404, 429], true) && $status < 500) {
+                throw new RuntimeException($ultimoError);
+            }
+        }
+
+        if ($todosSinCuota) {
+            throw new GeminiCuotaAgotadaException(
+                'Gemini sin cuota gratuita disponible por ahora (límite por minuto o diario).',
+            );
+        }
+
+        throw new RuntimeException($ultimoError);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return Response|array{0: int, 1: string} respuesta exitosa o [status (0 = conexión), mensaje]
+     */
+    private function enviarAModelo(string $model, array $payload): Response|array
+    {
+        $url = config('cotiz.gemini.endpoint').'/models/'.rawurlencode($model).':generateContent';
+        $timeout = (int) config('cotiz.gemini.timeout', 120);
+        $esperaMs = (int) config('cotiz.gemini.reintento_espera_ms', 2500);
+        $intentos = 2;
+
+        $fallo = [0, 'Gemini no respondió.'];
+        for ($intento = 1; $intento <= $intentos; $intento++) {
             try {
                 $response = Http::timeout($timeout)
                     ->connectTimeout(20)
@@ -85,9 +121,9 @@ class GeminiClientService
                     ->asJson()
                     ->post($url, $payload);
             } catch (ConnectionException $e) {
-                $ultimoError = 'No se pudo conectar con Gemini: '.$e->getMessage();
-                if ($intento < 2) {
-                    usleep(1_500_000);
+                $fallo = [0, 'No se pudo conectar con Gemini: '.$e->getMessage()];
+                if ($intento < $intentos) {
+                    usleep($esperaMs * 1000);
                 }
 
                 continue;
@@ -102,23 +138,18 @@ class GeminiClientService
             Log::warning('Gemini: respuesta HTTP no exitosa', [
                 'status' => $status,
                 'model' => $model,
+                'intento' => $intento,
                 'message' => mb_substr($mensaje, 0, 500),
             ]);
 
-            if ($status === 429) {
-                throw new GeminiCuotaAgotadaException(
-                    'Gemini sin cuota gratuita disponible por ahora (límite por minuto o diario).',
-                );
-            }
-
-            $ultimoError = 'Gemini respondió HTTP '.$status.($mensaje !== '' ? ': '.mb_substr($mensaje, 0, 300) : '');
-            if ($status < 500 || $intento >= 2) {
+            $fallo = [$status, 'Gemini respondió HTTP '.$status.($mensaje !== '' ? ': '.mb_substr($mensaje, 0, 300) : '')];
+            if ($status < 500 || $intento >= $intentos) {
                 break;
             }
-            usleep(2_000_000);
+            usleep($esperaMs * $intento * 1000);
         }
 
-        throw new RuntimeException($ultimoError);
+        return $fallo;
     }
 
     /**

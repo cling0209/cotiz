@@ -148,6 +148,9 @@ return [
     'gemini' => [
         'api_key' => (string) env('GEMINI_API_KEY', ''),
         'model' => env('COTIZ_GEMINI_MODEL', 'gemini-3.8-flash'),
+        // Si el principal responde 503/429/404 se prueba el siguiente (la cuota gratuita es por modelo).
+        'modelos_respaldo' => array_values(array_filter(array_map('trim', explode(',', (string) env('COTIZ_GEMINI_MODELOS_RESPALDO', 'gemini-3.7-flash,gemini-3.5-flash'))))),
+        'reintento_espera_ms' => max(0, (int) env('COTIZ_GEMINI_REINTENTO_ESPERA_MS', 2500)),
         'endpoint' => rtrim((string) env('COTIZ_GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'), '/'),
         'timeout' => max(20, min(300, (int) env('COTIZ_GEMINI_TIMEOUT', 120))),
         // Búsqueda web (Google Search grounding) para referencias en Mercado Libre / Sodimac.

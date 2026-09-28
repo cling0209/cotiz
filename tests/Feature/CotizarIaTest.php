@@ -44,6 +44,9 @@ class CotizarIaTest extends TestCase
             'filesystems.disks.r2_adjuntos.bucket' => null,
             'cotiz.gemini.api_key' => 'test-key',
             'cotiz.gemini.busqueda_web' => true,
+            'cotiz.gemini.model' => 'gemini-principal',
+            'cotiz.gemini.modelos_respaldo' => ['gemini-respaldo'],
+            'cotiz.gemini.reintento_espera_ms' => 0,
         ]);
 
         $this->admin = User::factory()->create([
@@ -243,7 +246,33 @@ class CotizarIaTest extends TestCase
         $this->assertSame(2, $preview['resumen']['pendientes']);
         $this->assertNotEmpty($preview['avisos']);
         $this->assertStringContainsString('sin cuota', mb_strtolower(implode(' ', $preview['avisos'])));
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
+    }
+
+    public function test_modelo_saturado_usa_modelo_de_respaldo(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake(function (HttpRequest $request) {
+            if (str_contains($request->url(), 'gemini-principal')) {
+                return Http::response(['error' => ['code' => 503, 'message' => 'high demand']], 503);
+            }
+            $cuerpo = $request->body();
+
+            return Http::response($this->respuestaGemini(str_contains($cuerpo, 'google_search')
+                ? ['resultados' => []]
+                : ['resultados' => [['i' => 2, 'equivalentes' => ['HIG002'], 'busqueda' => []]]]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(CotizarIaService::ORIGEN_IA, $ia['origen']);
+        $this->assertSame('HIG002', $ia['producto']['prod_item']);
+        Http::assertSent(fn (HttpRequest $r) => str_contains($r->url(), 'gemini-respaldo'));
     }
 
     public function test_preview_exige_codigo_de_cotizacion(): void

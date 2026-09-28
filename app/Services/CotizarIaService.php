@@ -616,6 +616,17 @@ TXT];
             throw new RuntimeException('La cotización no trae productos en Mercado Público y la IA no pudo leer los adjuntos. Intente más tarde.');
         }
 
+        $remitenAlAdjunto = array_filter(
+            $lineasMp,
+            static fn (array $l) => preg_match('/ADJUNT|SEG[UÚ]N\s+(EL\s+|LAS?\s+)?(REQUERIMIENTO|DETALLE|BASES|ANEXO)/iu', $l['descripcion']) === 1,
+        );
+        if (count($remitenAlAdjunto) === count($lineasMp)) {
+            throw new RuntimeException(
+                'Los productos de Mercado Público solo remiten al adjunto y la IA no pudo leerlo en este momento. '
+                .'Intente nuevamente en unos minutos.',
+            );
+        }
+
         return [
             'fuente' => self::FUENTE_COTIZACION,
             'motivo' => 'Sin análisis de IA: se usan los productos de Mercado Público.',
