@@ -58,6 +58,15 @@ class CotizarIaTest extends TestCase
             'perfil' => User::PERFIL_SUPERADMIN,
         ]);
 
+        Http::fake(function (HttpRequest $request) {
+            $prefijo = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/';
+            if (! str_starts_with($request->url(), $prefijo)) {
+                return null;
+            }
+
+            return Http::response('', 302, ['Location' => base64_decode(strtr(substr($request->url(), strlen($prefijo)), '-_', '+/'))]);
+        });
+
         foreach ([
             ['ARTE001', 'LAPIZ AZUL ESCOLAR 12 UNIDADES', 3500, 2800],
             ['PAPEL001', 'GREDAS ESCOLARES 1 KG', 1200, 900],
@@ -123,9 +132,9 @@ class CotizarIaTest extends TestCase
                     'resultados' => [[
                         'i' => 3,
                         'opciones' => [
-                            ['sitio' => 'otro', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 50, 'unidades_por_pack' => 1, 'url' => 'https://www.falabella.com/tornillo'],
-                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/123'],
-                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada pack', 'precio_clp' => 11900, 'unidades_por_pack' => 100, 'url' => 'https://articulo.mercadolibre.cl/MLC-123-tornillo'],
+                            ['sitio' => 'otro', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 50, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://www.falabella.com/tornillo')],
+                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://www.sodimac.cl/sodimac-cl/product/123')],
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada pack', 'precio_clp' => 11900, 'unidades_por_pack' => 100, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-123-tornillo')],
                         ],
                     ]],
                 ])),
@@ -254,7 +263,7 @@ class CotizarIaTest extends TestCase
                     'resultados' => [[
                         'i' => 3,
                         'opciones' => [
-                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/123'],
+                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://www.sodimac.cl/sodimac-cl/product/123')],
                         ],
                     ]],
                 ])),
@@ -268,7 +277,7 @@ class CotizarIaTest extends TestCase
         $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
         $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'JSON')));
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
     }
 
     public function test_busqueda_web_sin_json_tras_reintento_deja_pendiente_y_avisa(): void
@@ -298,13 +307,13 @@ class CotizarIaTest extends TestCase
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no devolvió un resultado legible')));
     }
 
-    public function test_busqueda_web_sin_candidatos_usa_respaldo_con_pensamiento_bajo_y_resuelve_redireccion(): void
+    public function test_busqueda_web_usa_modelo_web_y_sin_candidatos_pasa_al_siguiente(): void
     {
+        config(['cotiz.gemini.modelo_web' => 'gemini-web']);
         $nota = $this->crearNotaConLineas();
-        $redireccion = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQabc123';
+        $redireccion = $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-999-tornillo');
 
         Http::fake([
-            'vertexaisearch.cloud.google.com/*' => Http::response('', 302, ['Location' => 'https://articulo.mercadolibre.cl/MLC-999-tornillo']),
             'generativelanguage.googleapis.com/*' => Http::sequence()
                 ->push($this->respuestaGemini([
                     'resultados' => [
@@ -332,9 +341,60 @@ class CotizarIaTest extends TestCase
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
         $this->assertSame('https://articulo.mercadolibre.cl/MLC-999-tornillo', $web['referencia']['url']);
 
-        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'gemini-respaldo')
-            && ($request->data()['generationConfig']['thinkingConfig']['thinkingLevel'] ?? null) === 'low'
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'models/gemini-web:')
+            && isset($request->data()['tools'])
+            && ! isset($request->data()['generationConfig']['thinkingConfig']));
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'models/gemini-principal:')
             && isset($request->data()['tools']));
+    }
+
+    public function test_busqueda_web_descarta_urls_escritas_por_el_modelo_y_listados(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 3,
+                        'opciones' => [
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 500, 'unidades_por_pack' => 1, 'url' => 'https://articulo.mercadolibre.cl/MLC-111-tornillo'],
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 600, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://listado.mercadolibre.cl/tornillo-autoperforante')],
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 700, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://www.mercadolibre.cl/tornillo-autoperforante/p')],
+                        ],
+                    ]],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $web['estado']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'Se descartaron 3 publicación(es) web')));
+    }
+
+    public function test_es_pagina_producto(): void
+    {
+        $service = app(CotizarIaService::class);
+
+        $this->assertTrue($service->esPaginaProducto('https://articulo.mercadolibre.cl/MLC-1430030589-pack-6-plumon-_JM'));
+        $this->assertTrue($service->esPaginaProducto('https://www.mercadolibre.cl/cartulina-metalica-fucsia/p/MLC12345678'));
+        $this->assertTrue($service->esPaginaProducto('https://www.mercadolibre.cl/cartulina/up/MLCU987654'));
+        $this->assertTrue($service->esPaginaProducto('https://www.sodimac.cl/sodimac-cl/product/110311/tornillo/110311/'));
+        $this->assertFalse($service->esPaginaProducto('https://articulo.mercadolibre.cl/MLC-cartulina-metalica-celeste-pliego-50x70cms'));
+        $this->assertFalse($service->esPaginaProducto('https://www.mercadolibre.cl/pliego-cartulina-metalica-50x70-cm-manualidades-color-fucsia/p'));
+        $this->assertFalse($service->esPaginaProducto('https://listado.mercadolibre.cl/pliego-cartulina-metalica-50x70-cm'));
+        $this->assertFalse($service->esPaginaProducto('https://www.sodimac.cl/sodimac-cl/search?Ntt=tornillo'));
+        $this->assertFalse($service->esPaginaProducto('https://www.lider.cl/product/123'));
     }
 
     public function test_busqueda_web_exige_stock_suficiente_para_la_cantidad(): void
@@ -354,16 +414,16 @@ class CotizarIaTest extends TestCase
                         [
                             'i' => 2,
                             'opciones' => [
-                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_IA, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 0, 'url' => 'https://articulo.mercadolibre.cl/MLC-1'],
-                                ['sitio' => 'sodimac', 'titulo' => self::DESC_IA, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => 2, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/1'],
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_IA, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 0, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-1')],
+                                ['sitio' => 'sodimac', 'titulo' => self::DESC_IA, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => 2, 'url' => $this->urlBusqueda('https://www.sodimac.cl/sodimac-cl/product/1')],
                             ],
                         ],
                         [
                             'i' => 3,
                             'opciones' => [
-                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 3, 'url' => 'https://articulo.mercadolibre.cl/MLC-2'],
-                                ['sitio' => 'sodimac', 'titulo' => self::DESC_WEB, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => null, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/2'],
-                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB.' pack', 'precio_clp' => 35700, 'unidades_por_pack' => 10, 'stock_disponible' => 1, 'url' => 'https://articulo.mercadolibre.cl/MLC-3'],
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB, 'precio_clp' => 1190, 'unidades_por_pack' => 1, 'stock_disponible' => 3, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-2')],
+                                ['sitio' => 'sodimac', 'titulo' => self::DESC_WEB, 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'stock_disponible' => null, 'url' => $this->urlBusqueda('https://www.sodimac.cl/sodimac-cl/product/2')],
+                                ['sitio' => 'mercadolibre', 'titulo' => self::DESC_WEB.' pack', 'precio_clp' => 35700, 'unidades_por_pack' => 10, 'stock_disponible' => 1, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-3')],
                             ],
                         ],
                     ],
@@ -413,7 +473,7 @@ class CotizarIaTest extends TestCase
                     'resultados' => [[
                         'i' => 3,
                         'opciones' => [
-                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/123'],
+                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => $this->urlBusqueda('https://www.sodimac.cl/sodimac-cl/product/123')],
                         ],
                     ]],
                 ])),
@@ -428,7 +488,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $lineas[self::DESC_IA]['estado']);
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $lineas[self::DESC_WEB]['estado']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, '1 de 2 tanda(s)')));
-        Http::assertSentCount(4);
+        Http::assertSentCount(5);
     }
 
     public function test_sin_cuota_gemini_vincula_solo_con_reglas_y_avisa(): void
@@ -911,6 +971,12 @@ class CotizarIaTest extends TestCase
     /**
      * @param  array<string, mixed>  $json
      */
+    /** Enlace de resultado de búsqueda de Google que redirige a $destino. */
+    private function urlBusqueda(string $destino): string
+    {
+        return 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/'.rtrim(strtr(base64_encode($destino), '+/', '-_'), '=');
+    }
+
     private function respuestaGemini(array $json): array
     {
         return [

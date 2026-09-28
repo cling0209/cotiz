@@ -75,6 +75,8 @@ class CotizarIaService
 
     private bool $iaSinCuota = false;
 
+    private int $urlsWebDescartadas = 0;
+
     private const TOTAL_ETAPAS = 7;
 
     public const PROGRESO_EN_CURSO = 'en_curso';
@@ -1283,6 +1285,7 @@ TXT];
         $lotes = array_chunk($pendientes, max(1, (int) config('cotiz.gemini.lote_web', 10)));
         $lotesIlegibles = 0;
         $sinStockSuficiente = 0;
+        $this->urlsWebDescartadas = 0;
         foreach ($lotes as $n => $lote) {
             if (count($lotes) > 1) {
                 $this->detalle('Tanda '.($n + 1).' de '.count($lotes).' ('.count($lote).' línea(s))');
@@ -1312,6 +1315,9 @@ TXT];
         }
         if ($sinStockSuficiente > 0) {
             $this->avisos[] = "Mercado Libre / Sodimac: {$sinStockSuficiente} línea(s) sin publicaciones con stock suficiente para la cantidad pedida; quedaron pendientes.";
+        }
+        if ($this->urlsWebDescartadas > 0) {
+            $this->avisos[] = "Se descartaron {$this->urlsWebDescartadas} publicación(es) web cuyo enlace no venía de la búsqueda de Google o no era la página de un producto.";
         }
         $noVerificadas = count(array_filter(
             $items,
@@ -1347,11 +1353,16 @@ TXT];
             ."En stock_disponible indica cuántas unidades de la publicación (packs, si vende packs) muestra disponibles la página: "
             ."\"+50 disponibles\" = 50, \"Últimas 3\" = 3, agotado o sin stock = 0; si la página no lo muestra, null. No lo inventes.\n"
             ."Se necesita al menos la cantidad indicada: prioriza publicaciones con stock suficiente para esa cantidad.\n"
-            ."Usa solo URLs reales de páginas encontradas en la búsqueda; no inventes URLs ni precios. Si no encuentras, deja opciones vacío.\n\n"
+            ."En url copia exactamente el enlace del resultado de búsqueda de esa publicación (página del producto, no un listado ni una búsqueda); no armes ni inventes URLs ni precios. Si no encuentras, deja opciones vacío.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
             .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"stock_disponible":null,"url":""}]}]}';
 
-        $opciones = ['json' => true, 'google_search' => true, 'thinking_level' => (string) config('cotiz.gemini.thinking_web', 'low')];
+        $opciones = [
+            'json' => true,
+            'google_search' => true,
+            'modelo' => (string) config('cotiz.gemini.modelo_web', ''),
+            'thinking_level' => (string) config('cotiz.gemini.thinking_web', ''),
+        ];
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], $opciones);
         } catch (GeminiRespuestaInvalidaException) {
@@ -1361,7 +1372,7 @@ TXT];
         }
 
         $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
-        $json['resultados'] = $this->resolverUrlsGrounding((array) ($json['resultados'] ?? []));
+        $json['resultados'] = $this->urlsDeBusquedaReal((array) ($json['resultados'] ?? []));
         $pendientesSet = array_fill_keys($pendientes, true);
         foreach ((array) ($json['resultados'] ?? []) as $fila) {
             if (! is_array($fila) || ! isset($fila['i'])) {
@@ -1455,13 +1466,15 @@ TXT];
     }
 
     /**
-     * Algunos modelos devuelven la URL de redirección de Google (vertexaisearch…/grounding-api-redirect/…)
-     * en vez de la publicación: se reemplaza por su Location para que pase el filtro de sitios.
+     * Solo se aceptan enlaces que vienen de la búsqueda de Google (vertexaisearch…/grounding-api-redirect/…),
+     * reemplazados por su destino, y que sean la página de un producto. Las URLs que escribe el modelo
+     * suelen ser inventadas o de publicaciones terminadas (Mercado Libre las manda a un listado), y el
+     * servidor no puede comprobarlas: Mercado Libre y Sodimac bloquean las consultas automáticas.
      *
      * @param  list<mixed>  $resultados
      * @return list<mixed>
      */
-    private function resolverUrlsGrounding(array $resultados): array
+    private function urlsDeBusquedaReal(array $resultados): array
     {
         $redirecciones = [];
         foreach ($resultados as $fila) {
@@ -1472,28 +1485,24 @@ TXT];
                 }
             }
         }
-        if ($redirecciones === []) {
-            return $resultados;
-        }
-
-        $urls = array_keys($redirecciones);
-        try {
-            $respuestas = Http::pool(fn (Pool $pool) => array_map(
-                static fn (string $url) => $pool->timeout(8)->withOptions(['allow_redirects' => false])->get($url),
-                $urls,
-            ));
-        } catch (Throwable $e) {
-            report($e);
-
-            return $resultados;
-        }
 
         $destinos = [];
-        foreach ($urls as $n => $url) {
-            $respuesta = $respuestas[$n] ?? null;
-            $destino = $respuesta instanceof Response ? trim((string) $respuesta->header('Location')) : '';
-            if ($destino !== '') {
-                $destinos[$url] = $destino;
+        if ($redirecciones !== []) {
+            $urls = array_keys($redirecciones);
+            try {
+                $respuestas = Http::pool(fn (Pool $pool) => array_map(
+                    static fn (string $url) => $pool->timeout(8)->withOptions(['allow_redirects' => false])->get($url),
+                    $urls,
+                ));
+                foreach ($urls as $n => $url) {
+                    $respuesta = $respuestas[$n] ?? null;
+                    $destino = $respuesta instanceof Response ? trim((string) $respuesta->header('Location')) : '';
+                    if ($destino !== '' && $this->esPaginaProducto($destino)) {
+                        $destinos[$url] = $destino;
+                    }
+                }
+            } catch (Throwable $e) {
+                report($e);
             }
         }
 
@@ -1502,14 +1511,42 @@ TXT];
                 continue;
             }
             foreach ($fila['opciones'] as $o => $opcion) {
-                $url = is_array($opcion) ? trim((string) ($opcion['url'] ?? '')) : '';
+                if (! is_array($opcion)) {
+                    continue;
+                }
+                $url = trim((string) ($opcion['url'] ?? ''));
                 if (isset($destinos[$url])) {
                     $resultados[$f]['opciones'][$o]['url'] = $destinos[$url];
+
+                    continue;
                 }
+                if ($url !== '') {
+                    $this->urlsWebDescartadas++;
+                }
+                $resultados[$f]['opciones'][$o]['url'] = '';
             }
         }
 
         return $resultados;
+    }
+
+    /**
+     * Publicación con ID: Mercado Libre (articulo…/MLC-123…, …/p/MLC123, …/up/MLCU123) o Sodimac (…/product/123…).
+     * Descarta listados, búsquedas y URLs de catálogo sin ID, que Mercado Libre convierte en una búsqueda.
+     */
+    public function esPaginaProducto(string $url): bool
+    {
+        $sitio = $this->sitioPermitido($url);
+        $partes = parse_url($url);
+        $host = strtolower((string) ($partes['host'] ?? ''));
+        $path = (string) ($partes['path'] ?? '');
+
+        return match ($sitio) {
+            'Mercado Libre' => ($host === 'articulo.mercadolibre.cl' && preg_match('#^/MLC-?\d+#i', $path) === 1)
+                || (in_array($host, ['mercadolibre.cl', 'www.mercadolibre.cl'], true) && preg_match('#/(p|up)/MLCU?\d+#i', $path) === 1),
+            'Sodimac' => preg_match('#/product/\d+#i', $path) === 1,
+            default => false,
+        };
     }
 
     private function esRedireccionGrounding(string $url): bool

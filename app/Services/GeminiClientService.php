@@ -53,7 +53,7 @@ class GeminiClientService
 
     /**
      * @param  list<array<string, mixed>>  $parts  partes del mensaje de usuario (text / inline_data)
-     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float, thinking_level?: string}  $opciones
+     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float, thinking_level?: string, modelo?: string}  $opciones
      * @return array{json: mixed, texto: string, fuentes: list<array{uri: string, title: string}>}
      *
      * @throws GeminiCuotaAgotadaException
@@ -92,7 +92,7 @@ class GeminiClientService
         }
 
         // La cuenta gratuita no tiene cuota de búsqueda web: con key pagada se va directo a ella.
-        $response = $this->enviarConReintento($payload, $conBusqueda);
+        $response = $this->enviarConReintento($payload, $conBusqueda, trim((string) ($opciones['modelo'] ?? '')));
         $data = $response->json();
         $data = is_array($data) ? $data : [];
         $texto = $this->textoRespuesta($data);
@@ -127,7 +127,7 @@ class GeminiClientService
      *
      * @param  array<string, mixed>  $payload
      */
-    private function enviarConReintento(array $payload, bool $pagoPrimero): Response
+    private function enviarConReintento(array $payload, bool $pagoPrimero, string $modeloPreferido = ''): Response
     {
         $cuentas = array_values(array_filter(
             [self::CUENTA_GRATIS, self::CUENTA_PAGO],
@@ -152,7 +152,7 @@ class GeminiClientService
                     $this->avisar('Cuenta gratuita sin respuesta; usando la cuenta pagada de Gemini…');
                 }
             }
-            $resultado = $this->enviarConModelos($cuenta, $payload);
+            $resultado = $this->enviarConModelos($cuenta, $payload, $modeloPreferido);
             if ($resultado instanceof Response) {
                 return $resultado;
             }
@@ -173,10 +173,10 @@ class GeminiClientService
      * @param  array<string, mixed>  $payload
      * @return Response|array{0: bool, 1: string} respuesta exitosa o [todos los modelos sin cuota (429), mensaje]
      */
-    private function enviarConModelos(string $cuenta, array $payload): Response|array
+    private function enviarConModelos(string $cuenta, array $payload, string $modeloPreferido = ''): Response|array
     {
         $modelos = array_values(array_unique(array_filter(array_map('trim', array_merge(
-            [(string) config('cotiz.gemini.model', 'gemini-3.8-flash')],
+            [$modeloPreferido, (string) config('cotiz.gemini.model', 'gemini-3.8-flash')],
             (array) config('cotiz.gemini.modelos_respaldo', []),
         )))));
 
