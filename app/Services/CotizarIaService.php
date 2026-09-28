@@ -342,7 +342,7 @@ class CotizarIaService
 
                 $lote = [];
                 foreach ($indices as $i) {
-                    $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $conteo);
+                    $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $factor, $conteo);
                     if (! isset($rechazados[$i]) && $items[$i]['estado'] === self::ESTADO_VINCULADO
                         && $items[$i]['origen'] === self::ORIGEN_IA && $maeprods->has($items[$i]['producto']['prod_item'])
                         && (int) ($items[$i]['producto']['unidades'] ?? 1) === 1) {
@@ -353,9 +353,11 @@ class CotizarIaService
                 if ($n === 0 && $reemplazar) {
                     $conteo['eliminadas'] = $this->detalleService->eliminarTodasLineasAgile($destino);
                 }
+                $ordenInicial = max(1, (int) NotaDetalle::query()->where('nronota', $destino->nronota)->max('orden') + 1);
                 $agregadas = $this->detalleService->agregarLineasImportacionLote($destino, $lote);
                 $conteo['agregadas'] += $agregadas;
                 $this->detalleService->aplicarFactorPrecioVenta($destino->fresh(), $factor, $usuario);
+                $this->fijarPrecioMaestro($destino, $lote, $ordenInicial, $factor);
 
                 if ($solicitante !== '') {
                     $obsActual = $n === 0 ? trim((string) $destino->fresh()->observacion_ejecutivo) : '';
@@ -424,7 +426,7 @@ class CotizarIaService
      * @param  array<string, int>  $conteo
      * @return array<string, mixed>
      */
-    private function lineaLote(array $item, bool $rechazado, $maeprods, array &$conteo): array
+    private function lineaLote(array $item, bool $rechazado, $maeprods, float $factor, array &$conteo): array
     {
         $base = [
             'cantidad' => (int) $item['cantidad'],
@@ -437,15 +439,13 @@ class CotizarIaService
             $mae = $maeprods->get($item['producto']['prod_item']);
             $conteo['vinculadas']++;
             $unidades = max(1, (int) ($item['producto']['unidades'] ?? 1));
-            $valor = (int) ($mae->prod_valor ?? 0) * $unidades;
-            $costo = (int) ($mae->prod_valor_costo ?? 0) * $unidades;
-            $costoEstimado = $costo <= 0 && $valor > 0;
-            if ($costoEstimado) {
-                $costo = NotaDetalleService::costoDesdePrecioRm($valor);
-            }
+            $precios = $this->preciosMaestro(
+                (int) ($mae->prod_valor ?? 0) * $unidades,
+                (int) ($mae->prod_valor_costo ?? 0) * $unidades,
+                $factor,
+            );
             $observacion = trim(
                 ($unidades > 1 ? NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item) : '')
-                .($costoEstimado ? ' '.$this->observacionCostoEstimado() : '')
                 .(($item['producto']['foto'] ?? '') !== ''
                     ? ' Elegido por foto: se ve '.$item['producto']['foto'].' en la imagen de '.trim((string) $mae->prod_item).'.'
                     : ''),
@@ -453,8 +453,8 @@ class CotizarIaService
 
             return $base + [
                 'prod_item' => (string) $mae->prod_item,
-                'prod_valor' => $valor,
-                'prod_valor_costo' => $costo,
+                'prod_valor' => $precios['precio_venta'],
+                'prod_valor_costo' => $precios['costo'],
                 'prod_nombre' => (string) $mae->prod_nombre,
             ] + ($observacion !== '' ? ['observacion' => $observacion] : []);
         }
@@ -472,6 +472,60 @@ class CotizarIaService
         $conteo['pendientes']++;
 
         return $base + ['pendiente' => true];
+    }
+
+    /**
+     * El precio del maestro es el de la Metropolitana y es el que manda; su costo es solo referencia.
+     * Costo = precio / factor Metropolitana; en la Metropolitana se cobra el precio del maestro y en
+     * otras regiones costo × factor. Sin precio en el maestro se usa su costo × factor.
+     *
+     * @return array{costo: int, precio_venta: int, precio_rm: int}
+     */
+    private function preciosMaestro(int $valor, int $costoMaestro, float $factor): array
+    {
+        if ($valor > 0) {
+            $costo = NotaDetalleService::costoDesdePrecioRm($valor);
+
+            return [
+                'costo' => $costo,
+                'precio_venta' => $this->esFactorMetropolitana($factor) ? $valor : (int) round($costo * $factor),
+                'precio_rm' => $valor,
+            ];
+        }
+        if ($costoMaestro > 0) {
+            return ['costo' => $costoMaestro, 'precio_venta' => (int) round($costoMaestro * $factor), 'precio_rm' => 0];
+        }
+
+        return ['costo' => 0, 'precio_venta' => 0, 'precio_rm' => 0];
+    }
+
+    private function esFactorMetropolitana(float $factor): bool
+    {
+        return abs(round($factor, 2) - round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2)) < 0.001;
+    }
+
+    /**
+     * aplicarFactorPrecioVenta deja costo × factor; si ningún costo entero da exacto el precio del
+     * maestro (ej. $330 / 1,22), se restituye el precio del maestro en las líneas vinculadas.
+     *
+     * @param  list<array<string, mixed>>  $lote
+     */
+    private function fijarPrecioMaestro(Nota $nota, array $lote, int $ordenInicial, float $factor): void
+    {
+        foreach ($lote as $k => $linea) {
+            if (! empty($linea['pendiente']) || ! isset($linea['prod_item'])) {
+                continue;
+            }
+            $precio = (int) $linea['prod_valor'];
+            if ($precio <= 0 || (int) round((int) $linea['prod_valor_costo'] * round($factor, 2)) === $precio) {
+                continue;
+            }
+            NotaDetalle::query()
+                ->where('nronota', $nota->nronota)
+                ->where('orden', $ordenInicial + $k)
+                ->where('prod_item', $linea['prod_item'])
+                ->update(['prod_valor' => $precio]);
+        }
     }
 
     /**
@@ -954,7 +1008,7 @@ TXT];
         $porFoto = [];
         foreach ($paraIa as $i) {
             $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? []);
-            $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
+            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -985,7 +1039,7 @@ TXT];
             $resultado2 = $candidatos2 === [] ? [] : $this->equivalenciasIa($items, $candidatos2, false);
             foreach ($candidatos2 as $i => $lista) {
                 $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
-                $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
+                $elegido = $this->elegirPorPrecio(array_values($equivalentes));
                 if ($elegido !== null) {
                     $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                     $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -1085,7 +1139,7 @@ TXT];
         }
 
         foreach ($confirmados as $i => $equivalentes) {
-            $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
+            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_FOTO);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -1429,6 +1483,35 @@ TXT];
     }
 
     /**
+     * El equivalente de menor precio del maestro (ya multiplicado por las unidades del pack). El costo
+     * del maestro es solo referencia: sin precio se compara costo × factor Metropolitana.
+     *
+     * @template T of array{prod_item: string, prod_valor: int, prod_valor_costo: int}
+     *
+     * @param  list<T>  $productos
+     * @return ?T
+     */
+    private function elegirPorPrecio(array $productos): ?array
+    {
+        $factorRm = round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2);
+        $mejor = null;
+        $mejorPrecio = PHP_INT_MAX;
+        foreach ($productos as $producto) {
+            $precio = (int) ($producto['prod_valor'] ?? 0);
+            if ($precio <= 0) {
+                $costo = (int) ($producto['prod_valor_costo'] ?? 0);
+                $precio = $costo > 0 ? (int) round($costo * $factorRm) : PHP_INT_MAX;
+            }
+            if ($precio < $mejorPrecio) {
+                $mejorPrecio = $precio;
+                $mejor = $producto;
+            }
+        }
+
+        return $mejor;
+    }
+
+    /**
      * Otros equivalentes que marcó la IA, por si el elegido no tiene stock en Prisa.
      *
      * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int}>  $equivalentes
@@ -1491,7 +1574,7 @@ TXT];
                 $items[$i]['alternativas'],
                 static fn (array $p) => in_array($estados[$p['prod_item']]['estado'] ?? null, $conStock, true),
             ));
-            $reemplazo = $opciones === [] ? null : $this->busqueda->elegirMasEconomico($opciones);
+            $reemplazo = $opciones === [] ? null : $this->elegirPorPrecio($opciones);
             if ($reemplazo !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $reemplazo, (string) $items[$i]['origen']);
                 $items[$i]['stock_prisa'] = $estados[$reemplazo['prod_item']];
@@ -1892,8 +1975,7 @@ TXT];
     }
 
     /**
-     * costo y precio_venta por unidad solicitada, calculados igual que al aplicar: costo × factor;
-     * sin costo en el maestro, el costo se estima desde su precio (que ya trae el factor Metropolitana).
+     * costo y precio_venta por unidad solicitada, calculados igual que al aplicar (ver preciosMaestro).
      *
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
@@ -1904,14 +1986,13 @@ TXT];
         $referencia = $item['referencia'];
         $costo = 0;
         $precioVenta = 0;
-        $costoEstimado = false;
+        $precioRm = 0;
         if ($producto !== null) {
-            $costo = max(0, (int) $producto['prod_valor_costo']);
-            if ($costo === 0 && (int) $producto['prod_valor'] > 0) {
-                $costo = NotaDetalleService::costoDesdePrecioRm((int) $producto['prod_valor']);
-                $costoEstimado = true;
-            }
-            $precioVenta = (int) round($costo * $factor);
+            [
+                'costo' => $costo,
+                'precio_venta' => $precioVenta,
+                'precio_rm' => $precioRm,
+            ] = $this->preciosMaestro((int) $producto['prod_valor'], (int) $producto['prod_valor_costo'], $factor);
         } elseif (is_array($referencia)) {
             $costo = (int) $referencia['neto_unitario'];
             $precioVenta = (int) round($costo * $factor);
@@ -1932,8 +2013,9 @@ TXT];
                 'foto' => (string) ($producto['foto'] ?? ''),
             ],
             'costo' => $costo,
-            'costo_estimado' => $costoEstimado,
+            'costo_estimado' => $precioRm > 0,
             'precio_venta' => $precioVenta,
+            'precio_rm' => $precioRm,
             'referencia' => $referencia,
             'stock_prisa' => $item['stock_prisa'] ?? null,
             'stock_nota' => $item['stock_nota'] ?? null,
@@ -1976,12 +2058,6 @@ TXT];
         }
 
         return $grupos;
-    }
-
-    private function observacionCostoEstimado(): string
-    {
-        return 'Sin costo en el maestro: costo estimado = precio / '
-            .number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.').'.';
     }
 
     private function instruccionSistema(): string

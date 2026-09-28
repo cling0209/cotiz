@@ -75,7 +75,7 @@
                     </div>
                     <p class="small text-muted mb-0 mt-1">
                         Las l&iacute;neas con referencia web quedan pendientes (NOK) con el costo neto (precio publicado sin IVA) y la URL en la observaci&oacute;n interna; el precio de venta es costo &times; factor.
-                        Si un producto del maestro no tiene costo, se estima como su precio / {{ number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.') }} (factor Metropolitana).
+                        En los productos del maestro manda el precio (es el de la Metropolitana): el costo es referencial = precio / {{ number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.') }}; en la Metropolitana se cobra el precio del maestro y en otras regiones costo &times; factor.
                         Los v&iacute;nculos por IA que agregue se guardan como aprendizaje.
                     </p>
                 </div>
@@ -129,6 +129,7 @@
 
     const REGION_METROPOLITANA = @json(\App\Services\CompraAgilRegionScope::REGION_METROPOLITANA);
     const FACTOR_RM_TEXTO = {{ \Illuminate\Support\Js::from(number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.')) }};
+    const FACTOR_RM = {{ \Illuminate\Support\Js::from(round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2)) }};
 
     let token = null;
     let factorInicial = null;
@@ -331,7 +332,7 @@
         }
         if (linea.costo > 0 && linea.costo_estimado) {
             return '$' + numero.format(linea.costo)
-                + ' <span class="text-warning" title="Sin costo en el maestro: se estima como su precio / ' + esc(FACTOR_RM_TEXTO) + ' (factor Metropolitana)">(est.)</span>';
+                + ' <span class="text-muted" title="Costo referencial: precio del maestro / ' + esc(FACTOR_RM_TEXTO) + ' (factor Metropolitana)">(ref.)</span>';
         }
         if (linea.costo > 0) {
             return '$' + numero.format(linea.costo);
@@ -339,8 +340,12 @@
         return '<span class="text-danger" title="El producto no tiene costo ni precio en el maestro">sin costo</span>';
     }
 
-    /** Igual que al aplicar: costo × factor; sin costo ni precio, el precio que traiga la línea. */
+    /** Igual que al aplicar: en la Metropolitana el precio del maestro; si no, costo × factor. */
     function precioVenta(fila, factor) {
+        const precioRm = parseInt(fila.dataset.precioRm, 10) || 0;
+        if (precioRm > 0 && Math.abs(factor - FACTOR_RM) < 0.001) {
+            return precioRm;
+        }
         const costo = parseInt(fila.dataset.costo, 10) || 0;
         return costo > 0 ? Math.round(costo * factor) : (parseInt(fila.dataset.venta, 10) || 0);
     }
@@ -371,7 +376,8 @@
         const conVinculo = linea.estado !== 'pendiente';
         const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
         return '<tr data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
-            + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0) + '">'
+            + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0)
+            + '" data-precio-rm="' + (parseInt(linea.precio_rm, 10) || 0) + '">'
             + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
             + '<td>' + esc(linea.descripcion) + fuente + '</td>'
             + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
