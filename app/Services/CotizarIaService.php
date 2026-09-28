@@ -1009,13 +1009,13 @@ TXT];
         foreach ($paraIa as $i) {
             $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? []);
             $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+            $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? []);
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
 
                 continue;
             }
-            $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? []);
             if (($resultado[$i]['busqueda'] ?? []) !== []) {
                 $sinEquivalente[$i] = $resultado[$i]['busqueda'];
             }
@@ -1040,13 +1040,19 @@ TXT];
             foreach ($candidatos2 as $i => $lista) {
                 $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
                 $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+                $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? []);
                 if ($elegido !== null) {
                     $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                     $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
-                    unset($porFoto[$i]);
-                } else {
-                    $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? []);
                 }
+            }
+        }
+
+        // Con equivalente ya elegido, solo vale la pena mirar la foto de los dudosos más baratos.
+        foreach ($porFoto as $i => $lista) {
+            if ($items[$i]['estado'] === self::ESTADO_VINCULADO) {
+                $tope = $this->precioComparable($items[$i]['producto']);
+                $porFoto[$i] = array_filter($lista, fn (array $p) => $this->precioComparable($p) < $tope);
             }
         }
 
@@ -1140,10 +1146,20 @@ TXT];
 
         foreach ($confirmados as $i => $equivalentes) {
             $elegido = $this->elegirPorPrecio(array_values($equivalentes));
-            if ($elegido !== null) {
-                $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_FOTO);
-                $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
+            if ($elegido === null) {
+                continue;
             }
+            $actual = $items[$i]['estado'] === self::ESTADO_VINCULADO ? $items[$i]['producto'] : null;
+            if ($actual !== null && $this->precioComparable($elegido) >= $this->precioComparable($actual)) {
+                continue;
+            }
+            $alternativas = array_merge(
+                $actual !== null ? [$actual] : [],
+                $actual !== null ? $items[$i]['alternativas'] : [],
+                $this->alternativas($equivalentes, $elegido),
+            );
+            $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_FOTO);
+            $items[$i]['alternativas'] = $alternativas;
         }
 
         return $items;
@@ -1389,6 +1405,9 @@ TXT];
             ."vendido por unidad o en un pack menor de M unidades, sí es equivalente con unidades = N / M redondeado hacia arriba: los packs del catálogo "
             ."necesarios para completar al menos N (ej. piden caja de 100: pack de 50 → 2, pack de 30 → 4, por unidad → 100). "
             ."Un pack del catálogo mayor que lo solicitado no es equivalente. En los demás casos unidades = 1. "
+            ."Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente "
+            ."(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), "
+            ."con las unidades calculadas por la cantidad del producto solicitado que trae el kit. "
             ."No consideres precio. Puedes marcar varios equivalentes.\n"
             ."Si un candidato es el mismo producto pero su nombre no dice si trae un accesorio o característica que el solicitado exige "
             ."(ej. cordón o lanyard, mosquetón, tapa, estuche, pilas, color), no lo marques como equivalente: ponlo en \"revisar_foto\" "
@@ -1484,7 +1503,7 @@ TXT];
 
     /**
      * El equivalente de menor precio del maestro (ya multiplicado por las unidades del pack). El costo
-     * del maestro es solo referencia: sin precio se compara costo × factor Metropolitana.
+     * del maestro es solo referencia (ver precioComparable).
      *
      * @template T of array{prod_item: string, prod_valor: int, prod_valor_costo: int}
      *
@@ -1493,15 +1512,10 @@ TXT];
      */
     private function elegirPorPrecio(array $productos): ?array
     {
-        $factorRm = round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2);
         $mejor = null;
         $mejorPrecio = PHP_INT_MAX;
         foreach ($productos as $producto) {
-            $precio = (int) ($producto['prod_valor'] ?? 0);
-            if ($precio <= 0) {
-                $costo = (int) ($producto['prod_valor_costo'] ?? 0);
-                $precio = $costo > 0 ? (int) round($costo * $factorRm) : PHP_INT_MAX;
-            }
+            $precio = $this->precioComparable($producto);
             if ($precio < $mejorPrecio) {
                 $mejorPrecio = $precio;
                 $mejor = $producto;
@@ -1509,6 +1523,25 @@ TXT];
         }
 
         return $mejor;
+    }
+
+    /**
+     * Orden para elegir: los productos con precio de venta van antes que cualquiera sin precio; entre
+     * los sin precio se compara costo × factor Metropolitana; sin precio ni costo, nunca se eligen.
+     *
+     * @param  array{prod_valor?: int, prod_valor_costo?: int}  $producto
+     */
+    private function precioComparable(array $producto): int
+    {
+        $precio = (int) ($producto['prod_valor'] ?? 0);
+        if ($precio > 0) {
+            return $precio;
+        }
+        $costo = (int) ($producto['prod_valor_costo'] ?? 0);
+
+        return $costo > 0
+            ? intdiv(PHP_INT_MAX, 2) + (int) round($costo * round((float) config('cotiz.factor_precio_venta_rm', 1.22), 2))
+            : PHP_INT_MAX;
     }
 
     /**

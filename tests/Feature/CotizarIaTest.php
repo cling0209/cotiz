@@ -369,6 +369,73 @@ class CotizarIaTest extends TestCase
         $this->assertStringContainsString('Elegido por foto: se ve rollo con hoja doble en el envase en la imagen de HIG001', (string) $ia->observacion);
     }
 
+    public function test_dudoso_mas_barato_que_el_equivalente_se_revisa_por_foto_y_lo_reemplaza(): void
+    {
+        config(['products.image_base_url' => 'https://img.test']);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'img.test/*' => Http::response('JPEG', 200, ['Content-Type' => 'image/jpeg']),
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'revisar_foto' => [
+                            ['codigo' => 'HIG002', 'unidades' => 1, 'falta' => 'hoja doble'],
+                        ], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'codigo' => 'HIG002', 'coincide' => true, 'se_ve' => 'hoja doble en el envase'],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(CotizarIaService::ORIGEN_FOTO, $linea['origen']);
+        $this->assertSame('HIG002', $linea['producto']['prod_item']);
+        $this->assertSame(1000, $linea['precio_venta']);
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'Confirmar: hoja doble'));
+    }
+
+    public function test_dudoso_mas_caro_que_el_equivalente_no_se_revisa_por_foto(): void
+    {
+        config(['products.image_base_url' => 'https://img.test']);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'img.test/*' => Http::response('JPEG', 200, ['Content-Type' => 'image/jpeg']),
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG002'], 'revisar_foto' => [
+                            ['codigo' => 'HIG001', 'unidades' => 1, 'falta' => 'hoja doble'],
+                        ], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(CotizarIaService::ORIGEN_IA, $linea['origen']);
+        $this->assertSame('HIG002', $linea['producto']['prod_item']);
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->body(), 'inline_data'));
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'incluye 100 lanyard'));
+    }
+
     public function test_sin_foto_en_el_maestro_no_se_consulta_a_la_ia_y_queda_sin_vinculo(): void
     {
         config(['products.image_base_url' => 'https://img.test']);
@@ -617,6 +684,47 @@ class CotizarIaTest extends TestCase
         $this->assertSame('HIG001', $ia['producto']['prod_item']);
         $this->assertSame(11475, $ia['costo']);
         $this->assertSame(14000, $ia['precio_venta']);
+    }
+
+    public function test_prefiere_productos_con_precio_de_venta_sobre_los_que_solo_tienen_costo(): void
+    {
+        Maeprod::query()->where('prod_item', 'HIG001')->update(['prod_valor' => 14000, 'prod_valor_costo' => 0]);
+        Maeprod::query()->where('prod_item', 'HIG002')->update(['prod_valor' => 0, 'prod_valor_costo' => 10992]);
+        $nota = $this->crearNotaConLineas();
+        $nota->update(['region' => 13]);
+
+        $this->fakeGeminiEquivalentes([
+            ['codigo' => 'HIG002', 'unidades' => 1],
+            ['codigo' => 'HIG001', 'unidades' => 1],
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame('HIG001', $ia['producto']['prod_item']);
+        $this->assertSame(14000, $ia['precio_venta']);
+    }
+
+    public function test_sin_precio_de_venta_en_ningun_equivalente_usa_el_costo_como_respaldo(): void
+    {
+        Maeprod::query()->where('prod_item', 'HIG002')->update(['prod_valor' => 0, 'prod_valor_costo' => 10992]);
+        $nota = $this->crearNotaConLineas();
+        $nota->update(['region' => 13]);
+
+        $this->fakeGeminiEquivalentes([['codigo' => 'HIG002', 'unidades' => 1]]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame('HIG002', $ia['producto']['prod_item']);
+        $this->assertSame(10992, $ia['costo']);
+        $this->assertSame(13410, $ia['precio_venta']);
     }
 
     public function test_en_metropolitana_se_cobra_el_precio_del_maestro_aunque_no_haya_costo_exacto(): void
