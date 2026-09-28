@@ -826,7 +826,12 @@ class CotizacionController extends Controller
         @set_time_limit(300);
 
         try {
-            return response()->json($cotizarIa->preview($nota, (string) $request->user()->username, $codigo));
+            return response()->json($cotizarIa->preview(
+                $nota,
+                (string) $request->user()->username,
+                $codigo,
+                is_string($request->input('progreso_id')) ? $request->input('progreso_id') : null,
+            ));
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
@@ -834,6 +839,15 @@ class CotizacionController extends Controller
 
             return response()->json(['error' => 'No se pudo cotizar con IA. Intente nuevamente.'], 500);
         }
+    }
+
+    public function cotizarIaProgreso(Request $request, string $progresoId, CotizarIaService $cotizarIa): JsonResponse
+    {
+        abort_unless(CotizarIaService::usuarioPermitido($request->user()), 403);
+
+        return response()->json([
+            'progreso' => $cotizarIa->leerProgreso((string) $request->user()->username, $progresoId),
+        ]);
     }
 
     public function cotizarIaAplicar(Request $request, int $nronota, CotizarIaService $cotizarIa): JsonResponse

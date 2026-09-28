@@ -14,6 +14,19 @@ use RuntimeException;
  */
 class GeminiClientService
 {
+    /** @var (callable(string): void)|null */
+    private $observador = null;
+
+    /**
+     * Recibe avisos de reintento / cambio de modelo (para mostrar avance al usuario).
+     *
+     * @param  (callable(string): void)|null  $observador
+     */
+    public function observar(?callable $observador): void
+    {
+        $this->observador = $observador;
+    }
+
     public function isConfigured(): bool
     {
         return trim((string) config('cotiz.gemini.api_key', '')) !== '';
@@ -78,7 +91,10 @@ class GeminiClientService
 
         $ultimoError = 'Gemini no respondió.';
         $todosSinCuota = true;
-        foreach ($modelos as $model) {
+        foreach ($modelos as $n => $model) {
+            if ($n > 0) {
+                $this->avisar('Modelo anterior no disponible; probando '.$model.'…');
+            }
             $resultado = $this->enviarAModelo($model, $payload);
             if ($resultado instanceof Response) {
                 return $resultado;
@@ -146,10 +162,18 @@ class GeminiClientService
             if ($status < 500 || $intento >= $intentos) {
                 break;
             }
+            $this->avisar('Gemini saturado (HTTP '.$status.'); reintentando…');
             usleep($esperaMs * $intento * 1000);
         }
 
         return $fallo;
+    }
+
+    private function avisar(string $mensaje): void
+    {
+        if ($this->observador !== null) {
+            ($this->observador)($mensaje);
+        }
     }
 
     /**

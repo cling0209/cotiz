@@ -249,6 +249,43 @@ class CotizarIaTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_progreso_informa_etapa_y_se_limpia_al_terminar(): void
+    {
+        $nota = $this->crearNotaConLineas();
+        $progresoId = str_repeat('ab12', 8);
+        $vistos = [];
+
+        Http::fake(function (HttpRequest $request) use ($progresoId, &$vistos) {
+            $vistos[] = app(CotizarIaService::class)->leerProgreso('admin', $progresoId);
+            if (str_contains($request->url(), 'gemini-principal')) {
+                return Http::response(['error' => ['code' => 503, 'message' => 'high demand']], 503);
+            }
+
+            return Http::response($this->respuestaGemini(['resultados' => []]));
+        });
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota), ['progreso_id' => $progresoId])
+            ->assertOk();
+
+        $this->assertSame(5, $vistos[0]['paso']);
+        $this->assertSame(6, $vistos[0]['total']);
+        $this->assertStringContainsString('equivalencias', $vistos[0]['etapa']);
+        $this->assertTrue(collect($vistos)->contains(
+            fn ($p) => is_array($p) && str_contains($p['detalle'], 'gemini-respaldo'),
+        ));
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.cotizaciones.cotizar-ia.progreso', $progresoId))
+            ->assertOk()
+            ->assertJsonPath('progreso', null);
+
+        $ejecutivo = User::factory()->create(['username' => 'jperez', 'perfil' => User::PERFIL_EJECUTIVO]);
+        $this->actingAs($ejecutivo)
+            ->getJson(route('admin.cotizaciones.cotizar-ia.progreso', $progresoId))
+            ->assertForbidden();
+    }
+
     public function test_modelo_saturado_usa_modelo_de_respaldo(): void
     {
         $nota = $this->crearNotaConLineas();

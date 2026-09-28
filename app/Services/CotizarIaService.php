@@ -68,6 +68,13 @@ class CotizarIaService
 
     private bool $iaSinCuota = false;
 
+    private const TOTAL_ETAPAS = 6;
+
+    private ?string $progresoKey = null;
+
+    /** @var array{paso: int, total: int, etapa: string, detalle: string} */
+    private array $progreso = ['paso' => 0, 'total' => self::TOTAL_ETAPAS, 'etapa' => '', 'detalle' => ''];
+
     public function __construct(
         protected GeminiClientService $gemini,
         protected AgileVinculoAprendizajeService $aprendizaje,
@@ -92,13 +99,43 @@ class CotizarIaService
      * Solo lectura: no graba nada en la nota hasta aplicar().
      *
      * @param  string|null  $codigo  código MP cuando la nota aún no lo tiene guardado (borrador)
+     * @param  string|null  $progresoId  id del cliente para consultar la etapa en curso (leerProgreso)
      * @return array<string, mixed>
      */
-    public function preview(Nota $nota, string $usuario, ?string $codigo = null): array
+    public function preview(Nota $nota, string $usuario, ?string $codigo = null, ?string $progresoId = null): array
     {
         $this->avisos = [];
         $this->iaSinCuota = false;
+        $this->progresoKey = $progresoId !== null && preg_match('/^[A-Za-z0-9]{16,64}$/', $progresoId) === 1
+            ? $this->progresoKey($usuario, $progresoId)
+            : null;
+        $this->gemini->observar(fn (string $mensaje) => $this->detalle($mensaje));
 
+        try {
+            return $this->ejecutarPreview($nota, $usuario, $codigo);
+        } finally {
+            $this->gemini->observar(null);
+            if ($this->progresoKey !== null) {
+                Cache::forget($this->progresoKey);
+            }
+        }
+    }
+
+    /**
+     * @return array{paso: int, total: int, etapa: string, detalle: string}|null
+     */
+    public function leerProgreso(string $usuario, string $progresoId): ?array
+    {
+        $valor = Cache::get($this->progresoKey($usuario, $progresoId));
+
+        return is_array($valor) ? $valor : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ejecutarPreview(Nota $nota, string $usuario, ?string $codigo): array
+    {
         $codigo = strtoupper(trim((string) ($nota->requiereNumeroCotizacion() ? $codigo : $nota->encargado)));
         if ($codigo === '') {
             throw new RuntimeException('Ingrese el número de cotización de Mercado Público.');
@@ -107,9 +144,14 @@ class CotizarIaService
             throw new RuntimeException('Gemini no está configurado. Defina GEMINI_API_KEY en el servidor.');
         }
 
+        $this->etapa(1, 'Leyendo productos de Mercado Público');
         [$lineasMp, $regionMp, $cabeceraMp] = $this->lineasCotizacion($nota, $codigo);
+        $this->etapa(2, 'Descargando adjuntos de la cotización');
         $adjuntos = $this->cargarAdjuntos($codigo);
 
+        $this->etapa(3, $adjuntos === []
+            ? 'Sin adjuntos legibles; se usan los productos de Mercado Público'
+            : 'IA leyendo '.count($adjuntos).' adjunto(s) para decidir los productos');
         $decision = $this->decidirFuente($lineasMp, $adjuntos);
         $items = $this->armarItems($decision, $lineasMp);
         if ($items === []) {
@@ -120,7 +162,9 @@ class CotizarIaService
             $items = array_slice($items, 0, self::MAX_LINEAS);
         }
 
+        $this->etapa(4, 'Vinculando '.count($items).' línea(s) con frases y aprendidos');
         $items = $this->vincular($items);
+        $this->etapa(6, 'Buscando referencias en Mercado Libre / Sodimac');
         $items = $this->buscarReferenciasWeb($items);
 
         $token = Str::random(32);
@@ -698,6 +742,7 @@ TXT];
             return $items;
         }
 
+        $this->etapa(5, 'IA buscando equivalencias en el maestro para '.count($paraIa).' línea(s)');
         $candidatos = [];
         foreach ($paraIa as $i) {
             $candidatos[$i] = $this->candidatosMaeprod($items[$i]['descripcion'], [$items[$i]['descripcion']]);
@@ -719,6 +764,7 @@ TXT];
         }
 
         // Segunda pasada: términos alternativos que sugirió la IA (sinónimos / nombre comercial).
+        $this->detalle('Segunda pasada con términos alternativos para '.count($sinEquivalente).' línea(s)');
         $candidatos2 = [];
         foreach ($sinEquivalente as $i => $terminos) {
             $yaEnviados = array_fill_keys(array_keys($candidatos[$i]), true);
@@ -816,9 +862,13 @@ TXT];
     private function equivalenciasIa(array $items, array $candidatos, bool $pedirBusqueda): array
     {
         $resultado = [];
-        foreach (array_chunk(array_keys($candidatos), self::LINEAS_POR_LLAMADA) as $bloque) {
+        $bloques = array_chunk(array_keys($candidatos), self::LINEAS_POR_LLAMADA);
+        foreach ($bloques as $nBloque => $bloque) {
             if ($this->iaSinCuota) {
                 break;
+            }
+            if (count($bloques) > 1) {
+                $this->detalle('Lote '.($nBloque + 1).' de '.count($bloques));
             }
 
             $entrada = [];
@@ -1127,6 +1177,35 @@ TXT];
         $norm = $this->busqueda->normalizarTexto($descripcion);
 
         return 'ia:'.substr(md5($norm !== '' ? $norm : $descripcion), 0, 46);
+    }
+
+    private function etapa(int $paso, string $texto): void
+    {
+        $this->progreso = ['paso' => $paso, 'total' => self::TOTAL_ETAPAS, 'etapa' => $texto, 'detalle' => ''];
+        $this->guardarProgreso();
+    }
+
+    private function detalle(string $texto): void
+    {
+        $this->progreso['detalle'] = $texto;
+        $this->guardarProgreso();
+    }
+
+    private function guardarProgreso(): void
+    {
+        if ($this->progresoKey === null) {
+            return;
+        }
+        try {
+            Cache::put($this->progresoKey, $this->progreso, now()->addMinutes(10));
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function progresoKey(string $usuario, string $progresoId): string
+    {
+        return 'cotizar_ia:progreso:'.md5(mb_strtolower($usuario)).':'.$progresoId;
     }
 
     private function cacheKey(string $usuario, string $token): string

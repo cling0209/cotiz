@@ -7,9 +7,20 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body py-2">
-                <div id="cotizar-ia-cargando" class="text-center py-4 d-none" role="status">
-                    <div class="spinner-border text-success" aria-hidden="true"></div>
-                    <p class="small text-muted mt-2 mb-0">Analizando la cotizaci&oacute;n y sus adjuntos&hellip; puede tardar 1 a 2 minutos.</p>
+                <div id="cotizar-ia-cargando" class="py-4 px-3 d-none" role="status" aria-live="polite">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div class="spinner-border spinner-border-sm text-success flex-shrink-0" aria-hidden="true"></div>
+                        <strong class="small" id="cotizar-ia-etapa">Iniciando&hellip;</strong>
+                        <span class="ms-auto small text-muted font-monospace" id="cotizar-ia-tiempo" title="Tiempo transcurrido">0:00</span>
+                    </div>
+                    <div class="progress mb-1" style="height: 6px;">
+                        <div class="progress-bar bg-success" id="cotizar-ia-barra" style="width: 3%;"></div>
+                    </div>
+                    <div class="d-flex small text-muted">
+                        <span id="cotizar-ia-detalle"></span>
+                        <span class="ms-auto" id="cotizar-ia-paso"></span>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0">Puede tardar 1 a 2 minutos. No se graba nada hasta que confirme.</p>
                 </div>
                 <div id="cotizar-ia-error" class="alert alert-danger py-2 small d-none" role="alert"></div>
                 <div id="cotizar-ia-resultado" class="d-none">
@@ -66,6 +77,7 @@
 
     const urlPreviewTpl = @json(route('admin.cotizaciones.cotizar-ia.preview', 999999999));
     const urlAplicarTpl = @json(route('admin.cotizaciones.cotizar-ia.aplicar', 999999999));
+    const urlProgresoTpl = @json(route('admin.cotizaciones.cotizar-ia.progreso', str_repeat('0', 32)));
     const nronotaActual = () => String(parseInt(document.getElementById('nronota')?.value || '0', 10) || 0);
     const urlCon = (tpl) => tpl.replace('999999999', nronotaActual());
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -92,6 +104,69 @@
 
     let token = null;
     let enCurso = false;
+    let relojId = null;
+    let sondeoId = null;
+    let inicio = 0;
+
+    function formatoTiempo(ms) {
+        const seg = Math.max(0, Math.floor(ms / 1000));
+        return Math.floor(seg / 60) + ':' + String(seg % 60).padStart(2, '0');
+    }
+
+    function nuevoProgresoId() {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function pintarProgreso(p) {
+        if (!p) {
+            return;
+        }
+        el('cotizar-ia-etapa').textContent = p.etapa || 'Procesando\u2026';
+        el('cotizar-ia-detalle').textContent = p.detalle || '';
+        const total = p.total || 1;
+        el('cotizar-ia-paso').textContent = 'Etapa ' + p.paso + ' de ' + total;
+        el('cotizar-ia-barra').style.width = Math.max(3, Math.round(((p.paso - 0.5) / total) * 100)) + '%';
+    }
+
+    function iniciarSeguimiento(progresoId) {
+        inicio = Date.now();
+        el('cotizar-ia-etapa').textContent = 'Iniciando\u2026';
+        el('cotizar-ia-detalle').textContent = '';
+        el('cotizar-ia-paso').textContent = '';
+        el('cotizar-ia-barra').style.width = '3%';
+        el('cotizar-ia-tiempo').textContent = '0:00';
+        relojId = setInterval(() => {
+            el('cotizar-ia-tiempo').textContent = formatoTiempo(Date.now() - inicio);
+        }, 1000);
+        const url = urlProgresoTpl.replace('0'.repeat(32), progresoId);
+        let consultando = false;
+        sondeoId = setInterval(async () => {
+            if (consultando) {
+                return;
+            }
+            consultando = true;
+            try {
+                const resp = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (resp.ok) {
+                    pintarProgreso((await resp.json()).progreso);
+                }
+            } catch (e) {
+                // el sondeo es informativo; se ignoran fallos puntuales
+            } finally {
+                consultando = false;
+            }
+        }, 1500);
+    }
+
+    function detenerSeguimiento() {
+        clearInterval(relojId);
+        clearInterval(sondeoId);
+        relojId = null;
+        sondeoId = null;
+        return formatoTiempo(Date.now() - inicio);
+    }
 
     function esc(valor) {
         const div = document.createElement('div');
@@ -226,10 +301,16 @@
         btnAplicar.classList.add('d-none');
         modal.show();
         estado(true);
+        const progresoId = nuevoProgresoId();
+        iniciarSeguimiento(progresoId);
         try {
-            pintar(await postJson(urlCon(urlPreviewTpl), { codigo }));
+            const data = await postJson(urlCon(urlPreviewTpl), { codigo, progreso_id: progresoId });
+            const tiempo = detenerSeguimiento();
+            pintar(data);
+            el('cotizar-ia-resumen').textContent += ' Tiempo: ' + tiempo + '.';
         } catch (e) {
-            mostrarError(e.message || 'No se pudo cotizar con IA.');
+            const tiempo = detenerSeguimiento();
+            mostrarError((e.message || 'No se pudo cotizar con IA.') + ' (tras ' + tiempo + ')');
         } finally {
             estado(false);
             enCurso = false;

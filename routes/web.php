@@ -122,6 +122,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('cotizaciones/{nronota}/factor', [CotizacionController::class, 'aplicarFactor'])->name('cotizaciones.factor')->whereNumber('nronota');
         Route::get('cotizaciones/{nronota}/envio-dex/catalogo', [CotizacionEnvioDexController::class, 'catalogo'])->name('cotizaciones.envio-dex.catalogo')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/envio-dex/cotizar', [CotizacionEnvioDexController::class, 'cotizar'])->name('cotizaciones.envio-dex.cotizar')->whereNumber('nronota');
+        Route::get('cotizaciones/cotizar-ia/progreso/{progresoId}', [CotizacionController::class, 'cotizarIaProgreso'])->name('cotizaciones.cotizar-ia.progreso')->where('progresoId', '[A-Za-z0-9]{16,64}');
         Route::post('cotizaciones/{nronota}/cotizar-ia/preview', [CotizacionController::class, 'cotizarIaPreview'])->name('cotizaciones.cotizar-ia.preview')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/cotizar-ia/aplicar', [CotizacionController::class, 'cotizarIaAplicar'])->name('cotizaciones.cotizar-ia.aplicar')->whereNumber('nronota');
         Route::post('cotizaciones/{nronota}/importar-compra-agil/preview', [CotizacionController::class, 'importarCompraAgilPreview'])->name('cotizaciones.importar-compra-agil.preview')->whereNumber('nronota');
