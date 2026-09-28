@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\GeminiCuotaAgotadaException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -14,8 +15,14 @@ use RuntimeException;
  */
 class GeminiClientService
 {
+    private const CUENTA_GRATIS = 'gratis';
+
+    private const CUENTA_PAGO = 'pago';
+
     /** @var (callable(string): void)|null */
     private $observador = null;
+
+    private int $llamadasPago = 0;
 
     /**
      * Recibe avisos de reintento / cambio de modelo (para mostrar avance al usuario).
@@ -29,7 +36,18 @@ class GeminiClientService
 
     public function isConfigured(): bool
     {
-        return trim((string) config('cotiz.gemini.api_key', '')) !== '';
+        return $this->key(self::CUENTA_GRATIS) !== '' || $this->key(self::CUENTA_PAGO) !== '';
+    }
+
+    public function reiniciarUsoPago(): void
+    {
+        $this->llamadasPago = 0;
+    }
+
+    /** Llamadas hechas con la cuenta pagada desde reiniciarUsoPago(). */
+    public function llamadasPago(): int
+    {
+        return $this->llamadasPago;
     }
 
     /**
@@ -68,7 +86,8 @@ class GeminiClientService
             $payload['systemInstruction'] = ['parts' => [['text' => $system]]];
         }
 
-        $response = $this->enviarConReintento($payload);
+        // La cuenta gratuita no tiene cuota de búsqueda web: con key pagada se va directo a ella.
+        $response = $this->enviarConReintento($payload, $conBusqueda);
         $data = $response->json();
         $texto = $this->textoRespuesta(is_array($data) ? $data : []);
 
@@ -80,9 +99,57 @@ class GeminiClientService
     }
 
     /**
+     * Cuenta gratuita primero; si falla (sin cuota, saturada o error) se reintenta con la pagada.
+     *
      * @param  array<string, mixed>  $payload
      */
-    private function enviarConReintento(array $payload): Response
+    private function enviarConReintento(array $payload, bool $pagoPrimero): Response
+    {
+        $cuentas = array_values(array_filter(
+            [self::CUENTA_GRATIS, self::CUENTA_PAGO],
+            fn (string $cuenta) => $this->key($cuenta) !== '',
+        ));
+        if ($pagoPrimero && in_array(self::CUENTA_PAGO, $cuentas, true)) {
+            $cuentas = [self::CUENTA_PAGO];
+        }
+
+        $ultimoError = 'Gemini no respondió.';
+        $todosSinCuota = true;
+        $topeAlcanzado = false;
+        foreach ($cuentas as $n => $cuenta) {
+            if ($cuenta === self::CUENTA_PAGO) {
+                if (! $this->reservarLlamadaPago()) {
+                    $topeAlcanzado = true;
+                    Log::warning('Gemini: tope mensual de la cuenta pagada alcanzado');
+
+                    continue;
+                }
+                if ($n > 0) {
+                    $this->avisar('Cuenta gratuita sin respuesta; usando la cuenta pagada de Gemini…');
+                }
+            }
+            $resultado = $this->enviarConModelos($cuenta, $payload);
+            if ($resultado instanceof Response) {
+                return $resultado;
+            }
+            [$sinCuota, $ultimoError] = $resultado;
+            $todosSinCuota = $todosSinCuota && $sinCuota;
+        }
+
+        if ($todosSinCuota) {
+            throw new GeminiCuotaAgotadaException($topeAlcanzado
+                ? 'Gemini sin cuota disponible: la cuenta gratuita no responde y se alcanzó el tope mensual de la cuenta pagada.'
+                : 'Gemini sin cuota gratuita disponible por ahora (límite por minuto o diario).');
+        }
+
+        throw new RuntimeException($ultimoError);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return Response|array{0: bool, 1: string} respuesta exitosa o [todos los modelos sin cuota (429), mensaje]
+     */
+    private function enviarConModelos(string $cuenta, array $payload): Response|array
     {
         $modelos = array_values(array_unique(array_filter(array_map('trim', array_merge(
             [(string) config('cotiz.gemini.model', 'gemini-3.8-flash')],
@@ -95,7 +162,7 @@ class GeminiClientService
             if ($n > 0) {
                 $this->avisar('Modelo anterior no disponible; probando '.$model.'…');
             }
-            $resultado = $this->enviarAModelo($model, $payload);
+            $resultado = $this->enviarAModelo($cuenta, $model, $payload);
             if ($resultado instanceof Response) {
                 return $resultado;
             }
@@ -103,24 +170,38 @@ class GeminiClientService
             $todosSinCuota = $todosSinCuota && $status === 429;
             // 400/401/403: el pedido o la key son inválidos; otro modelo no lo arregla.
             if (! in_array($status, [0, 404, 429], true) && $status < 500) {
-                throw new RuntimeException($ultimoError);
+                return [false, $ultimoError];
             }
         }
 
-        if ($todosSinCuota) {
-            throw new GeminiCuotaAgotadaException(
-                'Gemini sin cuota gratuita disponible por ahora (límite por minuto o diario).',
-            );
-        }
+        return [$todosSinCuota, $ultimoError];
+    }
 
-        throw new RuntimeException($ultimoError);
+    private function reservarLlamadaPago(): bool
+    {
+        $clave = 'gemini:pago:'.now()->format('Y-m');
+        $max = (int) config('cotiz.gemini.pago_max_mes', 300);
+        if ($max > 0 && (int) Cache::get($clave, 0) >= $max) {
+            return false;
+        }
+        Cache::add($clave, 0, now()->endOfMonth()->addDays(7));
+        $total = (int) Cache::increment($clave);
+        $this->llamadasPago++;
+        Log::info('Gemini: llamada con cuenta pagada', ['mes' => now()->format('Y-m'), 'total_mes' => $total]);
+
+        return true;
+    }
+
+    private function key(string $cuenta): string
+    {
+        return trim((string) config($cuenta === self::CUENTA_PAGO ? 'cotiz.gemini.api_key_pago' : 'cotiz.gemini.api_key', ''));
     }
 
     /**
      * @param  array<string, mixed>  $payload
      * @return Response|array{0: int, 1: string} respuesta exitosa o [status (0 = conexión), mensaje]
      */
-    private function enviarAModelo(string $model, array $payload): Response|array
+    private function enviarAModelo(string $cuenta, string $model, array $payload): Response|array
     {
         $url = config('cotiz.gemini.endpoint').'/models/'.rawurlencode($model).':generateContent';
         $timeout = (int) config('cotiz.gemini.timeout', 120);
@@ -132,7 +213,7 @@ class GeminiClientService
             try {
                 $response = Http::timeout($timeout)
                     ->connectTimeout(20)
-                    ->withHeaders(['x-goog-api-key' => (string) config('cotiz.gemini.api_key')])
+                    ->withHeaders(['x-goog-api-key' => $this->key($cuenta)])
                     ->acceptJson()
                     ->asJson()
                     ->post($url, $payload);
@@ -153,6 +234,7 @@ class GeminiClientService
             $mensaje = trim((string) ($response->json('error.message') ?? ''));
             Log::warning('Gemini: respuesta HTTP no exitosa', [
                 'status' => $status,
+                'cuenta' => $cuenta,
                 'model' => $model,
                 'intento' => $intento,
                 'message' => mb_substr($mensaje, 0, 500),

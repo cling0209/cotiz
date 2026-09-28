@@ -17,6 +17,7 @@ use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -251,6 +252,67 @@ class CotizarIaTest extends TestCase
         $this->assertNotEmpty($preview['avisos']);
         $this->assertStringContainsString('sin cuota', mb_strtolower(implode(' ', $preview['avisos'])));
         Http::assertSentCount(2);
+    }
+
+    public function test_sin_cuota_gratuita_usa_cuenta_pagada_y_busqueda_web_va_directo_a_pago(): void
+    {
+        config(['cotiz.gemini.api_key_pago' => 'test-key-pago']);
+        $nota = $this->crearNotaConLineas();
+        $envios = [];
+
+        Http::fake(function (HttpRequest $request) use (&$envios) {
+            $cuenta = $request->header('x-goog-api-key')[0] === 'test-key-pago' ? 'pago' : 'gratis';
+            $envios[] = [$cuenta, str_contains($request->body(), 'google_search')];
+            if ($cuenta === 'gratis') {
+                return Http::response(['error' => ['code' => 429, 'message' => 'quota']], 429);
+            }
+
+            return str_contains($request->body(), 'google_search')
+                ? $this->respuestaGemini(['resultados' => []])
+                : $this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]);
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $lineaIa = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(CotizarIaService::ORIGEN_IA, $lineaIa['origen']);
+        $this->assertSame('HIG001', $lineaIa['producto']['prod_item']);
+        $this->assertSame([
+            ['gratis', false],
+            ['gratis', false],
+            ['pago', false],
+            ['pago', true],
+        ], $envios);
+        $this->assertContains('Se usó la cuenta pagada de Gemini en 2 llamada(s).', $preview['avisos']);
+        $this->assertSame(2, Cache::get('gemini:pago:'.now()->format('Y-m')));
+    }
+
+    public function test_tope_mensual_de_cuenta_pagada_no_la_usa(): void
+    {
+        config(['cotiz.gemini.api_key_pago' => 'test-key-pago', 'cotiz.gemini.pago_max_mes' => 5]);
+        Cache::put('gemini:pago:'.now()->format('Y-m'), 5, now()->addDay());
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response(['error' => ['code' => 429, 'message' => 'quota']], 429),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        Http::assertNotSent(fn (HttpRequest $request) => $request->header('x-goog-api-key')[0] === 'test-key-pago');
+        $this->assertStringContainsString('sin cuota', mb_strtolower(implode(' ', $preview['avisos'])));
+        $this->assertSame(2, $preview['resumen']['pendientes']);
     }
 
     public function test_progreso_informa_etapa_y_se_limpia_al_terminar(): void

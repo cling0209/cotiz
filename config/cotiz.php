@@ -147,6 +147,10 @@ return [
     // Sin cuota disponible (429) se vincula solo con reglas y se avisa al usuario.
     'gemini' => [
         'api_key' => (string) env('GEMINI_API_KEY', ''),
+        // Key de un proyecto con facturación: solo se usa si la gratuita falla, y directo en la búsqueda web.
+        'api_key_pago' => (string) env('GEMINI_API_KEY_PAGO', ''),
+        // Llamadas pagadas por mes calendario; 0 = sin tope.
+        'pago_max_mes' => max(0, (int) env('COTIZ_GEMINI_PAGO_MAX_MES', 300)),
         'model' => env('COTIZ_GEMINI_MODEL', 'gemini-3.8-flash'),
         // Si el principal responde 503/429/404 se prueba el siguiente (la cuota gratuita es por modelo).
         'modelos_respaldo' => array_values(array_filter(array_map('trim', explode(',', (string) env('COTIZ_GEMINI_MODELOS_RESPALDO', 'gemini-3.7-flash,gemini-3.5-flash'))))),

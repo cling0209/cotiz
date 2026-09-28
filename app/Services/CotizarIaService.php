@@ -114,6 +114,7 @@ class CotizarIaService
             ? $this->progresoKey($usuario, $progresoId)
             : null;
         $this->gemini->observar(fn (string $mensaje) => $this->detalle($mensaje));
+        $this->gemini->reiniciarUsoPago();
 
         try {
             return $this->ejecutarPreview($nota, $usuario, $codigo);
@@ -177,6 +178,9 @@ class CotizarIaService
         $items = $this->revisarStockPrisa($items);
         $this->etapa(7, 'Buscando referencias en Mercado Libre / Sodimac');
         $items = $this->buscarReferenciasWeb($items);
+        if ($this->gemini->llamadasPago() > 0) {
+            $this->avisos[] = 'Se usó la cuenta pagada de Gemini en '.$this->gemini->llamadasPago().' llamada(s).';
+        }
 
         $token = Str::random(32);
         Cache::put($this->cacheKey($usuario, $token), [
@@ -1219,7 +1223,7 @@ TXT];
             return $items;
         }
         if (Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
-            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota gratuita por ahora; las líneas sin vínculo quedaron pendientes.';
+            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
 
             return $items;
         }
@@ -1249,7 +1253,7 @@ TXT];
             $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
         } catch (GeminiCuotaAgotadaException) {
             Cache::put(self::CACHE_WEB_SIN_CUOTA, true, now()->addHour());
-            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota gratuita por ahora; las líneas sin vínculo quedaron pendientes.';
+            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
 
             return $items;
         } catch (RuntimeException $e) {
