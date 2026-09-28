@@ -20,7 +20,7 @@
                         <span id="cotizar-ia-detalle"></span>
                         <span class="ms-auto" id="cotizar-ia-paso"></span>
                     </div>
-                    <p class="small text-muted mt-2 mb-0">Puede tardar 1 a 2 minutos. No se graba nada hasta que confirme.</p>
+                    <p class="small text-muted mt-2 mb-0">Puede tardar varios minutos si la cotizaci&oacute;n tiene muchas l&iacute;neas. No se graba nada hasta que confirme.</p>
                 </div>
                 <div id="cotizar-ia-error" class="alert alert-danger py-2 small d-none" role="alert"></div>
                 <div id="cotizar-ia-creadas" class="alert alert-success py-2 small d-none" role="status"></div>
@@ -420,8 +420,8 @@
         const progresoId = nuevoProgresoId();
         const terminado = iniciarSeguimiento(progresoId);
         try {
-            await postJson(urlCon(urlPreviewTpl), { codigo, progreso_id: progresoId, async: true });
-            const data = await terminado;
+            const inicial = await postJson(urlCon(urlPreviewTpl), { codigo, progreso_id: progresoId, async: true });
+            const data = inicial.token ? inicial : await terminado;
             const tiempo = detenerSeguimiento();
             pintar(data);
             el('cotizar-ia-resumen').textContent += ' Tiempo: ' + tiempo + '.';

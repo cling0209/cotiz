@@ -510,6 +510,49 @@ class CotizarIaTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_preview_async_responde_202_y_deja_el_resultado_en_el_progreso(): void
+    {
+        $nota = $this->crearNotaConLineas();
+        $progresoId = str_repeat('cd34', 8);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota), ['progreso_id' => $progresoId, 'async' => true])
+            ->assertStatus(202)
+            ->assertJsonPath('progreso_id', $progresoId);
+
+        $progreso = $this->actingAs($this->admin)
+            ->getJson(route('admin.cotizaciones.cotizar-ia.progreso', $progresoId))
+            ->assertOk()
+            ->json('progreso');
+
+        $this->assertSame(CotizarIaService::PROGRESO_LISTO, $progreso['estado']);
+        $this->assertSame(4, $progreso['resultado']['resumen']['total']);
+        $this->assertNotEmpty($progreso['resultado']['token']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota), ['async' => true])
+            ->assertStatus(422);
+    }
+
+    public function test_preview_async_deja_el_error_en_el_progreso(): void
+    {
+        config(['cotiz.gemini.api_key' => '', 'cotiz.gemini.api_key_pago' => '']);
+        $nota = $this->crearNotaConLineas();
+        $progresoId = str_repeat('ef56', 8);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota), ['progreso_id' => $progresoId, 'async' => true])
+            ->assertStatus(202);
+
+        $progreso = app(CotizarIaService::class)->leerProgreso('admin', $progresoId);
+        $this->assertSame(CotizarIaService::PROGRESO_ERROR, $progreso['estado']);
+        $this->assertStringContainsString('Gemini no está configurado', $progreso['error']);
+    }
+
     public function test_lote_saturado_se_reintenta_y_color_no_distingue_genero(): void
     {
         $nota = $this->crearNota();

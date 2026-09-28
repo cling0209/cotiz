@@ -823,12 +823,28 @@ class CotizacionController extends Controller
             }
         }
 
+        $usuario = (string) $request->user()->username;
+
+        if ($request->boolean('async')) {
+            $progresoId = (string) $request->validate([
+                'progreso_id' => ['required', 'string', 'regex:/^[A-Za-z0-9]{16,64}$/'],
+            ])['progreso_id'];
+            $cotizarIa->marcarPreviewEnCurso($usuario, $progresoId);
+            app()->terminating(function () use ($cotizarIa, $nota, $usuario, $codigo, $progresoId) {
+                ignore_user_abort(true);
+                @set_time_limit(1800);
+                $cotizarIa->previewEnSegundoPlano($nota, $usuario, $codigo, $progresoId);
+            });
+
+            return response()->json(['progreso_id' => $progresoId], 202);
+        }
+
         @set_time_limit(300);
 
         try {
             return response()->json($cotizarIa->preview(
                 $nota,
-                (string) $request->user()->username,
+                $usuario,
                 $codigo,
                 is_string($request->input('progreso_id')) ? $request->input('progreso_id') : null,
             ));
