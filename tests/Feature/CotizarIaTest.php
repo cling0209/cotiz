@@ -295,6 +295,44 @@ class CotizarIaTest extends TestCase
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no devolvió un resultado legible')));
     }
 
+    public function test_busqueda_web_por_tandas_sigue_si_una_tanda_falla(): void
+    {
+        config(['cotiz.gemini.lote_web' => 1]);
+        $nota = $this->crearNotaConLineas();
+        $textoInvalido = ['candidates' => [['content' => ['parts' => [['text' => 'No encontré resultados.']]]]]];
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => [], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($textoInvalido)
+                ->push($textoInvalido)
+                ->push($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 3,
+                        'opciones' => [
+                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/123'],
+                        ],
+                    ]],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $lineas = collect($preview['lineas'])->keyBy('descripcion');
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $lineas[self::DESC_IA]['estado']);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $lineas[self::DESC_WEB]['estado']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, '1 de 2 tanda(s)')));
+        Http::assertSentCount(4);
+    }
+
     public function test_sin_cuota_gemini_vincula_solo_con_reglas_y_avisa(): void
     {
         $nota = $this->crearNotaConLineas();

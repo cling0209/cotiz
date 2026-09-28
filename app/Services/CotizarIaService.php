@@ -1229,7 +1229,7 @@ TXT];
             return $items;
         }
 
-        $max = (int) config('cotiz.gemini.max_lineas_web', 10);
+        $max = (int) config('cotiz.gemini.max_lineas_web', 50);
         if ($max <= 0) {
             return $items;
         }
@@ -1238,6 +1238,50 @@ TXT];
             $pendientes = array_slice($pendientes, 0, $max);
         }
 
+        $lotes = array_chunk($pendientes, max(1, (int) config('cotiz.gemini.lote_web', 10)));
+        $lotesIlegibles = 0;
+        foreach ($lotes as $n => $lote) {
+            if (count($lotes) > 1) {
+                $this->detalle('Tanda '.($n + 1).' de '.count($lotes).' ('.count($lote).' línea(s))');
+            }
+            try {
+                $items = $this->buscarLoteWeb($items, $lote);
+            } catch (GeminiRespuestaInvalidaException $e) {
+                Log::warning('CotizarIa: búsqueda web sin JSON legible tras reintento', ['message' => $e->getMessage(), 'tanda' => $n + 1]);
+                $lotesIlegibles++;
+            } catch (GeminiCuotaAgotadaException) {
+                Cache::put(self::CACHE_WEB_SIN_CUOTA, true, now()->addHour());
+                $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo restantes quedaron pendientes.';
+
+                break;
+            } catch (RuntimeException $e) {
+                Log::warning('CotizarIa: fallo en búsqueda web', ['message' => $e->getMessage(), 'tanda' => $n + 1]);
+                $this->avisos[] = 'No se pudo buscar referencias web: '.$e->getMessage();
+
+                break;
+            }
+        }
+
+        if ($lotesIlegibles > 0) {
+            $this->avisos[] = count($lotes) > 1
+                ? "La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible en {$lotesIlegibles} de ".count($lotes).' tanda(s) (se reintentó); esas líneas quedaron pendientes.'
+                : 'La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.';
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @param  list<int>  $pendientes
+     * @return list<array<string, mixed>>
+     *
+     * @throws GeminiCuotaAgotadaException
+     * @throws GeminiRespuestaInvalidaException
+     * @throws RuntimeException
+     */
+    private function buscarLoteWeb(array $items, array $pendientes): array
+    {
         $entrada = array_map(static fn (int $i) => [
             'i' => $i,
             'solicitado' => $items[$i]['descripcion'],
@@ -1251,28 +1295,11 @@ TXT];
             .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"url":""}]}]}';
 
         try {
-            try {
-                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
-            } catch (GeminiRespuestaInvalidaException) {
-                $respuesta = $this->gemini->generar([['text' => $prompt
-                    ."\n\nIMPORTANTE: tu respuesta anterior no era JSON válido. Responde únicamente el objeto JSON, sin texto antes ni después y sin bloques ```."]],
-                    ['json' => true, 'google_search' => true]);
-            }
-        } catch (GeminiRespuestaInvalidaException $e) {
-            Log::warning('CotizarIa: búsqueda web sin JSON legible tras reintento', ['message' => $e->getMessage()]);
-            $this->avisos[] = 'La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.';
-
-            return $items;
-        } catch (GeminiCuotaAgotadaException) {
-            Cache::put(self::CACHE_WEB_SIN_CUOTA, true, now()->addHour());
-            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
-
-            return $items;
-        } catch (RuntimeException $e) {
-            Log::warning('CotizarIa: fallo en búsqueda web', ['message' => $e->getMessage()]);
-            $this->avisos[] = 'No se pudo buscar referencias web: '.$e->getMessage();
-
-            return $items;
+            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
+        } catch (GeminiRespuestaInvalidaException) {
+            $respuesta = $this->gemini->generar([['text' => $prompt
+                ."\n\nIMPORTANTE: tu respuesta anterior no era JSON válido. Responde únicamente el objeto JSON, sin texto antes ni después y sin bloques ```."]],
+                ['json' => true, 'google_search' => true]);
         }
 
         $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
