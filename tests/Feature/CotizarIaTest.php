@@ -59,6 +59,7 @@ class CotizarIaTest extends TestCase
             ['PAPEL001', 'GREDAS ESCOLARES 1 KG', 1200, 900],
             ['HIG001', 'PAPEL HIGIENICO HOJA DOBLE 50 MTS', 1300, 900],
             ['HIG002', 'PAPEL HIGIENICO HOJA DOBLE 50 MTS ECONOMICO', 1000, 700],
+            ['CARTB', 'CARTULINA COLOR 53.5 X 77 BLANCA HALLEY PRECIO X UNIDAD', 250, 150],
         ] as [$item, $nombre, $valor, $costo]) {
             Maeprod::query()->create([
                 'prod_item' => $item,
@@ -77,11 +78,11 @@ class CotizarIaTest extends TestCase
         app(AgileVinculoAprendizajeService::class)->guardarAprendizaje(self::DESC_APRENDIDO, 'PAPEL001');
 
         $this->partialMock(MaeprodBusquedaSimilitudService::class, function ($mock) {
-            $mock->shouldReceive('buscar')->andReturnUsing(
-                fn (string $term) => str_contains(mb_strtoupper($term), 'HIGIENICO')
-                    ? Maeprod::query()->whereIn('prod_item', ['HIG001', 'HIG002'])->get()
-                    : collect(),
-            );
+            $mock->shouldReceive('buscar')->andReturnUsing(fn (string $term) => match (true) {
+                str_contains(mb_strtoupper($term), 'HIGIENICO') => Maeprod::query()->whereIn('prod_item', ['HIG001', 'HIG002'])->get(),
+                str_contains(mb_strtoupper($term), 'CARTULINA') => Maeprod::query()->where('prod_item', 'CARTB')->get(),
+                default => collect(),
+            });
         });
     }
 
@@ -284,6 +285,45 @@ class CotizarIaTest extends TestCase
         $this->actingAs($ejecutivo)
             ->getJson(route('admin.cotizaciones.cotizar-ia.progreso', $progresoId))
             ->assertForbidden();
+    }
+
+    public function test_lote_saturado_se_reintenta_y_color_no_distingue_genero(): void
+    {
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 40,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => 'CARTULINA COLOR BLANCO 140 GR. 53X75 CM. UNIDAD (ESCUELA CHOMIO)',
+            'prod_descripcion_maestro' => 'CARTULINA COLOR BLANCO',
+        ]);
+
+        $llamadas = 0;
+        Http::fake(function (HttpRequest $request) use (&$llamadas) {
+            $llamadas++;
+            // Primera ronda: principal y respaldo saturados (2 intentos cada uno).
+            if ($llamadas <= 4) {
+                return Http::response(['error' => ['code' => 503, 'message' => 'high demand']], 503);
+            }
+
+            return Http::response($this->respuestaGemini(str_contains($request->body(), 'google_search')
+                ? ['resultados' => []]
+                : ['resultados' => [['i' => 0, 'equivalentes' => ['CARTB'], 'busqueda' => []]]]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(CotizarIaService::ORIGEN_IA, $preview['lineas'][0]['origen']);
+        $this->assertSame('CARTB', $preview['lineas'][0]['producto']['prod_item']);
+        $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no respondió')));
     }
 
     public function test_modelo_saturado_usa_modelo_de_respaldo(): void

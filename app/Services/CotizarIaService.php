@@ -817,7 +817,7 @@ TXT];
                 if ($producto === null || isset($out[$producto['prod_item']])) {
                     continue;
                 }
-                if (! $this->busqueda->pasaFiltrosAtributos($descripcion, $producto['prod_nombre'])) {
+                if (! $this->pasaFiltros($descripcion, $producto['prod_nombre'])) {
                     continue;
                 }
                 $out[$producto['prod_item']] = $producto;
@@ -828,6 +828,27 @@ TXT];
         }
 
         return $out;
+    }
+
+    /**
+     * Filtros del maestro, pero sin distinguir género del color (BLANCO = BLANCA): el filtro
+     * compartido compara literal y descartaba «CARTULINA … BLANCA» para «CARTULINA BLANCO».
+     */
+    private function pasaFiltros(string $descripcion, string $nombreProducto): bool
+    {
+        return $this->busqueda->pasaFiltrosAtributos(
+            $this->colorMasculino($descripcion),
+            $this->colorMasculino($nombreProducto),
+        );
+    }
+
+    private function colorMasculino(string $texto): string
+    {
+        return (string) preg_replace_callback(
+            '/\b(ROJ|NEGR|BLANC|AMARILL|ROSAD|MORAD)A\b/iu',
+            static fn (array $m) => $m[1].(ctype_upper(substr($m[0], -1)) ? 'O' : 'o'),
+            $texto,
+        );
     }
 
     /**
@@ -862,75 +883,104 @@ TXT];
     private function equivalenciasIa(array $items, array $candidatos, bool $pedirBusqueda): array
     {
         $resultado = [];
-        $bloques = array_chunk(array_keys($candidatos), self::LINEAS_POR_LLAMADA);
-        foreach ($bloques as $nBloque => $bloque) {
-            if ($this->iaSinCuota) {
-                break;
+        $pendientes = array_chunk(array_keys($candidatos), self::LINEAS_POR_LLAMADA);
+        $totalBloques = count($pendientes);
+        for ($ronda = 1; $ronda <= 2 && $pendientes !== [] && ! $this->iaSinCuota; $ronda++) {
+            if ($ronda === 2) {
+                // Los 503 de Gemini suelen durar segundos: una pausa y un segundo intento recuperan el lote.
+                $this->detalle('Reintentando '.count($pendientes).' lote(s) que no respondieron');
+                usleep(4 * (int) config('cotiz.gemini.reintento_espera_ms', 2500) * 1000);
             }
-            if (count($bloques) > 1) {
-                $this->detalle('Lote '.($nBloque + 1).' de '.count($bloques));
-            }
-
-            $entrada = [];
-            foreach ($bloque as $i) {
-                $entrada[] = [
-                    'i' => $i,
-                    'solicitado' => $items[$i]['descripcion'],
-                    'candidatos' => array_values(array_map(
-                        static fn (array $c) => ['codigo' => $c['prod_item'], 'nombre' => $c['prod_nombre']],
-                        $candidatos[$i],
-                    )),
-                ];
-            }
-
-            $instruccionBusqueda = $pedirBusqueda
-                ? 'Si ninguno es equivalente (o no hay candidatos), devuelve "equivalentes": [] y en "busqueda" 2 o 3 términos cortos alternativos para buscar ese producto en el catálogo (nombre genérico o comercial usado en Chile, sin cantidades).'
-                : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
-
-            $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
-                ."Criterios: mismo tipo de producto; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color, marca o material, deben coincidir; "
-                ."un pack o caja solo es equivalente si el solicitado pide ese formato. No consideres precio. Puedes marcar varios equivalentes.\n"
-                .$instruccionBusqueda."\n"
-                ."Usa solo códigos que aparezcan en los candidatos de ese producto.\n\n"
-                .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
-                .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":["CODIGO"],"busqueda":["termino"]}]}';
-
-            try {
-                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
-            } catch (GeminiCuotaAgotadaException $e) {
-                $this->iaSinCuota = true;
-                $this->avisos[] = $e->getMessage().' Las líneas restantes quedaron sin vincular por IA.';
-                break;
-            } catch (RuntimeException $e) {
-                Log::warning('CotizarIa: fallo en equivalencias', ['message' => $e->getMessage()]);
-                $this->avisos[] = 'La IA no respondió para algunas líneas: '.$e->getMessage();
-
-                continue;
-            }
-
-            $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
-            foreach ((array) ($json['resultados'] ?? []) as $fila) {
-                if (! is_array($fila) || ! isset($fila['i'])) {
-                    continue;
+            $fallidos = [];
+            foreach ($pendientes as $nBloque => $bloque) {
+                if ($this->iaSinCuota) {
+                    break;
                 }
-                $i = (int) $fila['i'];
-                if (! isset($candidatos[$i])) {
-                    continue;
+                if ($ronda === 1 && $totalBloques > 1) {
+                    $this->detalle('Lote '.($nBloque + 1).' de '.$totalBloques);
                 }
-                $resultado[$i] = [
-                    'equivalentes' => array_values(array_filter(
-                        array_map(static fn ($c) => trim((string) $c), (array) ($fila['equivalentes'] ?? [])),
-                        static fn (string $c) => isset($candidatos[$i][$c]),
-                    )),
-                    'busqueda' => array_values(array_filter(
-                        array_map(static fn ($t) => mb_substr(trim((string) $t), 0, 80), (array) ($fila['busqueda'] ?? [])),
-                        static fn (string $t) => $t !== '',
-                    )),
-                ];
+                $error = $this->equivalenciasBloque($items, $candidatos, $bloque, $pedirBusqueda, $resultado);
+                if ($error !== null) {
+                    $fallidos[] = $bloque;
+                    if ($ronda === 2) {
+                        $this->avisos[] = 'La IA no respondió para '.count($bloque).' línea(s): '.$error;
+                    }
+                }
             }
+            $pendientes = $fallidos;
         }
 
         return $resultado;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
+     * @param  list<int>  $bloque
+     * @param  array<int, array{equivalentes: list<string>, busqueda: list<string>}>  $resultado
+     * @return string|null mensaje de error si Gemini no respondió (el bloque se puede reintentar)
+     */
+    private function equivalenciasBloque(array $items, array $candidatos, array $bloque, bool $pedirBusqueda, array &$resultado): ?string
+    {
+        $entrada = [];
+        foreach ($bloque as $i) {
+            $entrada[] = [
+                'i' => $i,
+                'solicitado' => $items[$i]['descripcion'],
+                'candidatos' => array_values(array_map(
+                    static fn (array $c) => ['codigo' => $c['prod_item'], 'nombre' => $c['prod_nombre']],
+                    $candidatos[$i],
+                )),
+            ];
+        }
+
+        $instruccionBusqueda = $pedirBusqueda
+            ? 'Si ninguno es equivalente (o no hay candidatos), devuelve "equivalentes": [] y en "busqueda" 2 o 3 términos cortos alternativos para buscar ese producto en el catálogo (nombre genérico o comercial usado en Chile, sin cantidades).'
+            : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
+
+        $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
+            ."Criterios: mismo tipo de producto; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color, marca o material, deben coincidir; "
+            ."un pack o caja solo es equivalente si el solicitado pide ese formato. No consideres precio. Puedes marcar varios equivalentes.\n"
+            .$instruccionBusqueda."\n"
+            ."Usa solo códigos que aparezcan en los candidatos de ese producto.\n\n"
+            .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":["CODIGO"],"busqueda":["termino"]}]}';
+
+        try {
+            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
+        } catch (GeminiCuotaAgotadaException $e) {
+            $this->iaSinCuota = true;
+            $this->avisos[] = $e->getMessage().' Las líneas restantes quedaron sin vincular por IA.';
+
+            return null;
+        } catch (RuntimeException $e) {
+            Log::warning('CotizarIa: fallo en equivalencias', ['message' => $e->getMessage()]);
+
+            return $e->getMessage();
+        }
+
+        $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
+        foreach ((array) ($json['resultados'] ?? []) as $fila) {
+            if (! is_array($fila) || ! isset($fila['i'])) {
+                continue;
+            }
+            $i = (int) $fila['i'];
+            if (! isset($candidatos[$i])) {
+                continue;
+            }
+            $resultado[$i] = [
+                'equivalentes' => array_values(array_filter(
+                    array_map(static fn ($c) => trim((string) $c), (array) ($fila['equivalentes'] ?? [])),
+                    static fn (string $c) => isset($candidatos[$i][$c]),
+                )),
+                'busqueda' => array_values(array_filter(
+                    array_map(static fn ($t) => mb_substr(trim((string) $t), 0, 80), (array) ($fila['busqueda'] ?? [])),
+                    static fn (string $t) => $t !== '',
+                )),
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -1047,7 +1097,7 @@ TXT];
             if ($sitio === null || $precio <= 0 || $titulo === '') {
                 continue;
             }
-            if (! $this->busqueda->pasaFiltrosAtributos($descripcion, $titulo)) {
+            if (! $this->pasaFiltros($descripcion, $titulo)) {
                 continue;
             }
             $unidades = max(1, (int) ($opcion['unidades_por_pack'] ?? 1));
