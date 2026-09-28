@@ -234,6 +234,67 @@ class CotizarIaTest extends TestCase
         $this->assertFalse(AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->exists());
     }
 
+    public function test_busqueda_web_con_texto_no_json_se_reintenta_una_vez(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push(['candidates' => [['content' => ['parts' => [['text' => 'Busqué en [sodimac.cl] pero no pude']]]]]])
+                ->push($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 3,
+                        'opciones' => [
+                            ['sitio' => 'sodimac', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => 'https://www.sodimac.cl/sodimac-cl/product/123'],
+                        ],
+                    ]],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'JSON')));
+        Http::assertSentCount(3);
+    }
+
+    public function test_busqueda_web_sin_json_tras_reintento_deja_pendiente_y_avisa(): void
+    {
+        $nota = $this->crearNotaConLineas();
+        $textoInvalido = ['candidates' => [['content' => ['parts' => [['text' => 'No encontré resultados.']]]]]];
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($textoInvalido)
+                ->push($textoInvalido),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $web['estado']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no devolvió un resultado legible')));
+    }
+
     public function test_sin_cuota_gemini_vincula_solo_con_reglas_y_avisa(): void
     {
         $nota = $this->crearNotaConLineas();

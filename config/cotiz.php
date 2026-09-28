@@ -159,7 +159,7 @@ return [
         'timeout' => max(20, min(300, (int) env('COTIZ_GEMINI_TIMEOUT', 120))),
         // Búsqueda web (Google Search grounding) para referencias en Mercado Libre / Sodimac.
         'busqueda_web' => filter_var(env('COTIZ_GEMINI_BUSQUEDA_WEB', true), FILTER_VALIDATE_BOOL),
-        'max_lineas_web' => max(0, min(30, (int) env('COTIZ_GEMINI_MAX_LINEAS_WEB', 10))),
+        'max_lineas_web' => max(0, min(30, (int) env('COTIZ_GEMINI_MAX_LINEAS_WEB', 20))),
         'max_adjuntos' => max(1, min(10, (int) env('COTIZ_GEMINI_MAX_ADJUNTOS', 4))),
         'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
     ],

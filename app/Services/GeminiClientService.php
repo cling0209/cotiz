@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\GeminiCuotaAgotadaException;
+use App\Exceptions\GeminiRespuestaInvalidaException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -89,12 +90,31 @@ class GeminiClientService
         // La cuenta gratuita no tiene cuota de búsqueda web: con key pagada se va directo a ella.
         $response = $this->enviarConReintento($payload, $conBusqueda);
         $data = $response->json();
-        $texto = $this->textoRespuesta(is_array($data) ? $data : []);
+        $data = is_array($data) ? $data : [];
+        $texto = $this->textoRespuesta($data);
+
+        $json = null;
+        if ($esperaJson) {
+            $json = $this->decodificarJson($texto);
+            if ($json === null) {
+                Log::warning('Gemini: respuesta sin JSON legible', [
+                    'finish_reason' => $data['candidates'][0]['finishReason'] ?? null,
+                    'google_search' => $conBusqueda,
+                    'largo' => mb_strlen($texto),
+                    'inicio' => mb_substr($texto, 0, 400),
+                    'fin' => mb_substr($texto, -400),
+                ]);
+                $motivo = ($data['candidates'][0]['finishReason'] ?? '') === 'MAX_TOKENS'
+                    ? 'Gemini cortó la respuesta antes de terminar el JSON.'
+                    : 'Gemini devolvió una respuesta que no es JSON válido.';
+                throw new GeminiRespuestaInvalidaException($motivo);
+            }
+        }
 
         return [
-            'json' => $esperaJson ? $this->decodificarJson($texto) : null,
+            'json' => $json,
             'texto' => $texto,
-            'fuentes' => $this->fuentesGrounding(is_array($data) ? $data : []),
+            'fuentes' => $this->fuentesGrounding($data),
         ];
     }
 
@@ -279,31 +299,122 @@ class GeminiClientService
         return trim($texto);
     }
 
-    private function decodificarJson(string $texto): mixed
+    /**
+     * Con google_search la API no fuerza JSON: el modelo puede agregar texto, bloques ``` o comas finales.
+     */
+    public function decodificarJson(string $texto): mixed
     {
-        $limpio = trim($texto);
-        if (preg_match('/```(?:json)?\s*(.+?)\s*```/su', $limpio, $m)) {
-            $limpio = $m[1];
+        $candidatos = [trim($texto)];
+        if (preg_match_all('/```(?:json)?\s*(.+?)\s*```/su', $texto, $m)) {
+            array_push($candidatos, ...$m[1]);
         }
 
-        $data = json_decode($limpio, true);
+        foreach ($candidatos as $candidato) {
+            $data = $this->jsonODesdeTexto($candidato);
+            if ($data !== null) {
+                return $data;
+            }
+        }
+
+        return null;
+    }
+
+    private function jsonODesdeTexto(string $texto): mixed
+    {
+        $data = $this->decodificarTolerante($texto);
+        if ($data !== null) {
+            return $data;
+        }
+
+        $mejor = null;
+        $largoMejor = 0;
+        foreach ($this->bloquesBalanceados($texto) as $bloque) {
+            if (strlen($bloque) <= $largoMejor) {
+                continue;
+            }
+            $data = $this->decodificarTolerante($bloque);
+            if (is_array($data)) {
+                $mejor = $data;
+                $largoMejor = strlen($bloque);
+            }
+        }
+
+        return $mejor;
+    }
+
+    private function decodificarTolerante(string $texto): mixed
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return null;
+        }
+
+        $data = json_decode($texto, true);
         if (json_last_error() === JSON_ERROR_NONE) {
             return $data;
         }
 
-        // Respuesta con texto alrededor: tomar el primer bloque {...} o [...].
-        $ini = strcspn($limpio, '{[');
-        $finObj = strrpos($limpio, '}');
-        $finArr = strrpos($limpio, ']');
-        $fin = max($finObj === false ? -1 : $finObj, $finArr === false ? -1 : $finArr);
-        if ($ini < strlen($limpio) && $fin > $ini) {
-            $data = json_decode(substr($limpio, $ini, $fin - $ini + 1), true);
+        $sinComasFinales = preg_replace('/,(\s*[}\]])/u', '$1', $texto);
+        if (is_string($sinComasFinales) && $sinComasFinales !== $texto) {
+            $data = json_decode($sinComasFinales, true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $data;
             }
         }
 
-        throw new RuntimeException('Gemini devolvió una respuesta que no es JSON válido.');
+        return null;
+    }
+
+    /**
+     * Bloques {...} / [...] de nivel superior, ignorando llaves dentro de strings.
+     *
+     * @return list<string>
+     */
+    private function bloquesBalanceados(string $texto): array
+    {
+        $bloques = [];
+        $largo = strlen($texto);
+        $pila = [];
+        $inicio = -1;
+        $enString = false;
+        $escape = false;
+
+        for ($i = 0; $i < $largo; $i++) {
+            $c = $texto[$i];
+            if ($enString) {
+                if ($escape) {
+                    $escape = false;
+                } elseif ($c === '\\') {
+                    $escape = true;
+                } elseif ($c === '"') {
+                    $enString = false;
+                }
+
+                continue;
+            }
+
+            if ($c === '"') {
+                if ($pila !== []) {
+                    $enString = true;
+                }
+            } elseif ($c === '{' || $c === '[') {
+                if ($pila === []) {
+                    $inicio = $i;
+                }
+                $pila[] = $c === '{' ? '}' : ']';
+            } elseif (($c === '}' || $c === ']') && $pila !== []) {
+                if (array_pop($pila) !== $c) {
+                    $pila = [];
+
+                    continue;
+                }
+                if ($pila === []) {
+                    $bloques[] = substr($texto, $inicio, $i - $inicio + 1);
+                }
+            }
+        }
+
+        return $bloques;
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\VinculoOrigen;
 use App\Exceptions\GeminiCuotaAgotadaException;
+use App\Exceptions\GeminiRespuestaInvalidaException;
 use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
@@ -1250,7 +1251,18 @@ TXT];
             .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"url":""}]}]}';
 
         try {
-            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
+            try {
+                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
+            } catch (GeminiRespuestaInvalidaException) {
+                $respuesta = $this->gemini->generar([['text' => $prompt
+                    ."\n\nIMPORTANTE: tu respuesta anterior no era JSON válido. Responde únicamente el objeto JSON, sin texto antes ni después y sin bloques ```."]],
+                    ['json' => true, 'google_search' => true]);
+            }
+        } catch (GeminiRespuestaInvalidaException $e) {
+            Log::warning('CotizarIa: búsqueda web sin JSON legible tras reintento', ['message' => $e->getMessage()]);
+            $this->avisos[] = 'La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.';
+
+            return $items;
         } catch (GeminiCuotaAgotadaException) {
             Cache::put(self::CACHE_WEB_SIN_CUOTA, true, now()->addHour());
             $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
