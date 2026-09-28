@@ -99,6 +99,17 @@ class CotizarIaTest extends TestCase
         });
     }
 
+    public function test_modal_compila_a_php_valido(): void
+    {
+        $compilado = app('blade.compiler')->compileString(
+            file_get_contents(resource_path('views/admin/cotizaciones/partials/cotizar-ia-modal.blade.php'))
+        );
+
+        $tokens = token_get_all($compilado, TOKEN_PARSE);
+
+        $this->assertNotEmpty($tokens);
+    }
+
     public function test_usuario_no_permitido_recibe_403(): void
     {
         $ejecutivo = User::factory()->create([

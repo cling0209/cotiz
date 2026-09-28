@@ -128,7 +128,7 @@
     };
 
     const REGION_METROPOLITANA = @json(\App\Services\CompraAgilRegionScope::REGION_METROPOLITANA);
-    const FACTOR_RM_TEXTO = @json(number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.'));
+    const FACTOR_RM_TEXTO = {{ \Illuminate\Support\Js::from(number_format((float) config('cotiz.factor_precio_venta_rm', 1.22), 2, ',', '.')) }};
 
     let token = null;
     let factorInicial = null;
