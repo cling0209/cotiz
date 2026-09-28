@@ -64,8 +64,10 @@
         return;
     }
 
-    const urlPreview = @json(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota));
-    const urlAplicar = @json(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota));
+    const urlPreviewTpl = @json(route('admin.cotizaciones.cotizar-ia.preview', 999999999));
+    const urlAplicarTpl = @json(route('admin.cotizaciones.cotizar-ia.aplicar', 999999999));
+    const nronotaActual = () => String(parseInt(document.getElementById('nronota')?.value || '0', 10) || 0);
+    const urlCon = (tpl) => tpl.replace('999999999', nronotaActual());
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
 
@@ -209,6 +211,14 @@
         if (enCurso) {
             return;
         }
+        const codigo = String(document.getElementById('encargado')?.value || '').trim().toUpperCase();
+        if (!codigo) {
+            mostrarError('Ingrese el n\u00famero de cotizaci\u00f3n de Mercado P\u00fablico.');
+            resultado.classList.add('d-none');
+            btnAplicar.classList.add('d-none');
+            modal.show();
+            return;
+        }
         enCurso = true;
         token = null;
         errorBox.classList.add('d-none');
@@ -217,7 +227,7 @@
         modal.show();
         estado(true);
         try {
-            pintar(await postJson(urlPreview));
+            pintar(await postJson(urlCon(urlPreviewTpl), { codigo }));
         } catch (e) {
             mostrarError(e.message || 'No se pudo cotizar con IA.');
         } finally {
@@ -239,8 +249,12 @@
         const reemplazar = !el('cotizar-ia-wrap-reemplazar').classList.contains('d-none')
             && el('cotizar-ia-reemplazar').checked;
         try {
-            await postJson(urlAplicar, { token, rechazados, reemplazar });
-            window.location.reload();
+            const data = await postJson(urlCon(urlAplicarTpl), { token, rechazados, reemplazar });
+            if (data.edit_url) {
+                window.location.href = data.edit_url;
+            } else {
+                window.location.reload();
+            }
         } catch (e) {
             mostrarError(e.message || 'No se pudieron agregar las l\u00edneas.');
             btnAplicar.disabled = false;

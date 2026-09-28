@@ -10,8 +10,10 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use App\Services\AgileVinculoAprendizajeService;
+use App\Services\CompraAgilOportunidadService;
 use App\Services\CotizarIaService;
 use App\Services\MaeprodBusquedaSimilitudService;
+use App\Services\OportunidadVinculoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
@@ -252,9 +254,69 @@ class CotizarIaTest extends TestCase
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
             ->assertStatus(422)
-            ->assertJsonPath('error', 'La cotización no tiene código de Mercado Público. Importe o guarde el número primero.');
+            ->assertJsonValidationErrors('codigo');
 
         Http::assertNothingSent();
+    }
+
+    public function test_borrador_preview_no_graba_y_aplicar_crea_nota_con_cabecera_mp(): void
+    {
+        $codigo = '2547-205-COT26';
+        $this->partialMock(CompraAgilOportunidadService::class, function ($mock) {
+            $mock->shouldReceive('assertExisteEnMpSiCompraAgil')->andReturnNull();
+        });
+        $this->partialMock(OportunidadVinculoService::class, function ($mock) use ($codigo) {
+            $mock->shouldReceive('previewGuardado')->with($codigo)->andReturn([
+                'cabecera' => [
+                    'codigo_cotizacion' => $codigo,
+                    'empresa' => 'MUNICIPALIDAD DE PRUEBA',
+                    'rutempresa' => '69.000.000-1',
+                    'nombre' => 'Compra de papel',
+                    'region' => 5,
+                ],
+                'lineas' => [
+                    ['id_agile' => 'MP1', 'descripcion' => self::DESC_FRASE, 'cantidad' => 3],
+                    ['id_agile' => 'MP2', 'descripcion' => self::DESC_IA, 'cantidad' => 10],
+                ],
+            ]);
+        });
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [['i' => 1, 'equivalentes' => ['HIG002'], 'busqueda' => []]],
+                ])),
+        ]);
+
+        $notasAntes = Nota::query()->count();
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', 0), ['codigo' => strtolower($codigo)])
+            ->assertOk()
+            ->assertJsonPath('codigo', $codigo)
+            ->json();
+
+        $this->assertSame($notasAntes, Nota::query()->count());
+
+        $aplicar = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', 0), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => false,
+            ])
+            ->assertOk()
+            ->assertJsonPath('vinculadas', 2)
+            ->assertJsonPath('recien_creada', true);
+
+        $nota = Nota::query()->findOrFail($aplicar->json('nronota'));
+        $this->assertSame($codigo, $nota->encargado);
+        $this->assertSame('MUNICIPALIDAD DE PRUEBA', $nota->empresa);
+        $this->assertSame(5, (int) $nota->region);
+        $this->assertSame(1.30, (float) $nota->factor_precio_venta);
+
+        $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
+        $this->assertSame('HIG002', trim($ia->prod_item));
+        $this->assertSame(910, (int) $ia->prod_valor);
     }
 
     public function test_sitio_permitido_solo_mercado_libre_y_sodimac(): void

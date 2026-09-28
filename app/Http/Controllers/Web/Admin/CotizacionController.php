@@ -804,17 +804,29 @@ class CotizacionController extends Controller
         abort_unless(CotizarIaService::usuarioPermitido($request->user()), 403);
 
         [$nota] = $this->resolverNota($request, $nronota, false);
-        if (! $nota || (int) $nota->nronota === 0) {
+        if (! $nota) {
             return $this->respuestaNotaNoExiste($nronota);
         }
         if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
             return $respuesta;
         }
 
+        $codigo = null;
+        if ($nota->requiereNumeroCotizacion()) {
+            $codigo = strtoupper(trim((string) $request->validate([
+                'codigo' => ['required', 'string', 'max:100'],
+            ], [
+                'codigo.required' => 'Ingrese el número de cotización de Mercado Público.',
+            ])['codigo']));
+            if ($error = $this->errorCodigoCotizarIa($nota, $codigo)) {
+                return response()->json(['error' => $error], 422);
+            }
+        }
+
         @set_time_limit(300);
 
         try {
-            return response()->json($cotizarIa->preview($nota, (string) $request->user()->username));
+            return response()->json($cotizarIa->preview($nota, (string) $request->user()->username, $codigo));
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
@@ -828,11 +840,11 @@ class CotizacionController extends Controller
     {
         abort_unless(CotizarIaService::usuarioPermitido($request->user()), 403);
 
-        [$nota] = $this->resolverNota($request, $nronota, false);
-        if (! $nota || (int) $nota->nronota === 0) {
+        [$notaCheck] = $this->resolverNota($request, $nronota, false);
+        if (! $notaCheck) {
             return $this->respuestaNotaNoExiste($nronota);
         }
-        if ($respuesta = $this->rechazarSiInternaNoUsaMp($nota)) {
+        if ($respuesta = $this->rechazarSiInternaNoUsaMp($notaCheck)) {
             return $respuesta;
         }
 
@@ -843,10 +855,25 @@ class CotizacionController extends Controller
             'reemplazar' => ['nullable', 'boolean'],
         ]);
 
+        $usuario = (string) $request->user()->username;
+        try {
+            $codigo = (string) $cotizarIa->previewGuardado($usuario, $datos['token'])['codigo'];
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+        if ($notaCheck->requiereNumeroCotizacion() && ($error = $this->errorCodigoCotizarIa($notaCheck, $codigo))) {
+            return response()->json(['error' => $error], 422);
+        }
+
+        [$nota, $recienCreada] = $this->resolverNota($request, $nronota, true);
+        if (! $nota) {
+            return $this->respuestaNotaNoExiste($nronota);
+        }
+
         try {
             $resultado = $cotizarIa->aplicar(
                 $nota,
-                (string) $request->user()->username,
+                $usuario,
                 $datos['token'],
                 $datos['rechazados'] ?? [],
                 (bool) ($datos['reemplazar'] ?? false),
@@ -859,7 +886,22 @@ class CotizacionController extends Controller
             return response()->json(['error' => 'No se pudieron agregar las líneas. Intente nuevamente.'], 500);
         }
 
-        return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota)));
+        return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota, $recienCreada)));
+    }
+
+    private function errorCodigoCotizarIa(Nota $nota, string $codigo): ?string
+    {
+        if ($error = $this->notaService->validarNumeroCotizacionDisponible($nota, $codigo, false, true)) {
+            return $error;
+        }
+
+        try {
+            $this->compraAgilOportunidad->assertExisteEnMpSiCompraAgil($codigo);
+        } catch (RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        return null;
     }
 
     public function importarCompraAgilPreview(Request $request, int $nronota): JsonResponse

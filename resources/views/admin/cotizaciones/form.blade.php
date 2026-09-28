@@ -21,6 +21,8 @@
     }
     $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
     $esInterna = $esInterna ?? $nota->esCotizacionInterna();
+    $cotizarIaHabilitado = ! $desdeAdjudicadas && ! $esInterna
+        && \App\Services\CotizarIaService::usuarioPermitido(auth()->user());
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
@@ -210,14 +212,12 @@
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
                     <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil 2.0
                 </button>
-                @if(\App\Services\CotizarIaService::usuarioPermitido(auth()->user()))
-                    @php $cotizarIaSinCodigo = $esBorrador || trim((string) $nota->encargado) === ''; @endphp
+                @if($cotizarIaHabilitado)
                     <button
                         type="button"
                         class="btn btn-outline-success btn-sm"
                         id="btn-cotizar-ia"
-                        @disabled($cotizarIaSinCodigo)
-                        title="{{ $cotizarIaSinCodigo ? 'Guarde o importe el número de cotización primero' : 'La IA toma los productos de la cotización o de sus adjuntos y los vincula al más económico' }}"
+                        title="La IA toma los productos de la cotización o de sus adjuntos y los vincula al más económico. No graba nada hasta que confirme."
                     >
                         <i class="bi bi-stars"></i> Cotizar con IA
                     </button>
@@ -452,7 +452,7 @@
     </div>
     @endunless
 
-    @if(! $desdeAdjudicadas && ! $esInterna && ! $esBorrador && \App\Services\CotizarIaService::usuarioPermitido(auth()->user()))
+    @if($cotizarIaHabilitado)
         @include('admin.cotizaciones.partials.cotizar-ia-modal')
     @endif
 
@@ -5627,7 +5627,7 @@
         });
     @endif
 
-    if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar) {
+    if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar && !@json($cotizarIaHabilitado)) {
         if (desdeOportunidades && codigoImportarCompraAgil) {
             mostrarDetalleImportarOportunidades();
             bsModalImportar.show();

@@ -77,6 +77,8 @@ class CotizarIaService
         protected CompraAgilApiService $compraAgilApi,
         protected CompraAgilPayloadMapper $payloadMapper,
         protected NotaDetalleService $detalleService,
+        protected NotaService $notaService,
+        protected CompraAgilImportService $compraAgilImport,
     ) {}
 
     public static function usuarioPermitido(?User $user): bool
@@ -87,22 +89,25 @@ class CotizarIaService
     }
 
     /**
+     * Solo lectura: no graba nada en la nota hasta aplicar().
+     *
+     * @param  string|null  $codigo  código MP cuando la nota aún no lo tiene guardado (borrador)
      * @return array<string, mixed>
      */
-    public function preview(Nota $nota, string $usuario): array
+    public function preview(Nota $nota, string $usuario, ?string $codigo = null): array
     {
         $this->avisos = [];
         $this->iaSinCuota = false;
 
-        $codigo = strtoupper(trim((string) $nota->encargado));
+        $codigo = strtoupper(trim((string) ($nota->requiereNumeroCotizacion() ? $codigo : $nota->encargado)));
         if ($codigo === '') {
-            throw new RuntimeException('La cotización no tiene código de Mercado Público. Importe o guarde el número primero.');
+            throw new RuntimeException('Ingrese el número de cotización de Mercado Público.');
         }
         if (! $this->gemini->isConfigured()) {
             throw new RuntimeException('Gemini no está configurado. Defina GEMINI_API_KEY en el servidor.');
         }
 
-        [$lineasMp, $regionMp] = $this->lineasCotizacion($nota, $codigo);
+        [$lineasMp, $regionMp, $cabeceraMp] = $this->lineasCotizacion($nota, $codigo);
         $adjuntos = $this->cargarAdjuntos($codigo);
 
         $decision = $this->decidirFuente($lineasMp, $adjuntos);
@@ -119,9 +124,11 @@ class CotizarIaService
         $items = $this->buscarReferenciasWeb($items);
 
         $token = Str::random(32);
-        Cache::put($this->cacheKey((int) $nota->nronota, $usuario, $token), [
+        Cache::put($this->cacheKey($usuario, $token), [
+            'codigo' => $codigo,
             'items' => $items,
             'region' => $regionMp,
+            'cabecera' => $cabeceraMp,
         ], now()->addMinutes(self::CACHE_TTL_MINUTOS));
 
         $lineasActuales = NotaDetalle::query()->where('nronota', $nota->nronota)->count();
@@ -152,10 +159,19 @@ class CotizarIaService
      */
     public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar): array
     {
-        $key = $this->cacheKey((int) $nota->nronota, $usuario, $token);
-        $guardado = Cache::get($key);
-        if (! is_array($guardado) || ! is_array($guardado['items'] ?? null)) {
-            throw new RuntimeException('La vista previa expiró. Vuelva a presionar «Cotizar con IA».');
+        $key = $this->cacheKey($usuario, $token);
+        $guardado = $this->previewGuardado($usuario, $token);
+        $codigo = (string) $guardado['codigo'];
+
+        if ($nota->requiereNumeroCotizacion()) {
+            $this->notaService->modificarCabecera(
+                $nota,
+                $this->datosCabeceraNueva($codigo, (array) ($guardado['cabecera'] ?? [])),
+                $usuario,
+            );
+            $nota = $nota->fresh();
+        } elseif (strtoupper(trim((string) $nota->encargado)) !== $codigo) {
+            throw new RuntimeException('La vista previa corresponde a otra cotización ('.$codigo.'). Vuelva a presionar «Cotizar con IA».');
         }
 
         $rechazados = array_fill_keys(array_map('intval', $rechazados), true);
@@ -251,18 +267,73 @@ class CotizarIaService
     }
 
     /**
+     * @return array{codigo: string, items: array<int, array<string, mixed>>, region: ?int, cabecera: array<string, mixed>}
+     */
+    public function previewGuardado(string $usuario, string $token): array
+    {
+        $guardado = Cache::get($this->cacheKey($usuario, $token));
+        if (! is_array($guardado) || ! is_array($guardado['items'] ?? null) || trim((string) ($guardado['codigo'] ?? '')) === '') {
+            throw new RuntimeException('La vista previa expiró. Vuelva a presionar «Cotizar con IA».');
+        }
+
+        return $guardado;
+    }
+
+    /**
+     * Cabecera para una nota sin número, con los mismos campos que la importación de Compra Ágil.
+     *
+     * @param  array<string, mixed>  $cabecera
+     * @return array<string, mixed>
+     */
+    private function datosCabeceraNueva(string $codigo, array $cabecera): array
+    {
+        $cabecera['codigo_cotizacion'] = $codigo;
+        $cab = $this->compraAgilImport->enriquecerCabeceraDesdeOportunidad(['cabecera' => $cabecera, 'lineas' => []])['cabecera'];
+
+        $datos = ['encargado' => $codigo];
+        foreach (['empresa' => 'empresa', 'rutempresa' => 'rutempresa', 'nombre' => 'descripcion'] as $origen => $destino) {
+            $valor = trim((string) ($cab[$origen] ?? ''));
+            if ($valor !== '') {
+                $datos[$destino] = $valor;
+            }
+        }
+
+        $region = isset($cab['region']) && is_numeric($cab['region']) ? (int) $cab['region'] : 0;
+        if ($region > 0) {
+            $datos['region'] = $region;
+            $nombreRegion = trim((string) ($cab['nombre_region'] ?? ''));
+            $datos['nombre_region'] = $nombreRegion !== '' ? $nombreRegion : CompraAgilRegionScope::nombreRegion($region);
+            if (($factor = CompraAgilRegionScope::factorPrecioVentaPorRegion($region)) !== null) {
+                $datos['factor_precio_venta'] = $factor;
+            }
+            if (($dias = CompraAgilRegionScope::diasHabilesPorRegion($region)) !== null) {
+                $datos['diashabiles'] = $dias;
+            }
+        }
+        if (($comuna = trim((string) ($cab['comuna'] ?? ''))) !== '') {
+            $datos['comuna'] = mb_substr($comuna, 0, 120);
+        }
+        if (($direccion = trim((string) ($cab['direccion_entrega'] ?? ''))) !== '') {
+            $datos['direccion_entrega'] = mb_substr($direccion, 0, 255);
+        }
+
+        return $datos;
+    }
+
+    /**
      * Líneas solicitadas en Mercado Público: caché de Oportunidades → API → líneas actuales de la nota.
      *
-     * @return array{0: list<array{id_agile: string, descripcion: string, cantidad: int}>, 1: ?int}
+     * @return array{0: list<array{id_agile: string, descripcion: string, cantidad: int}>, 1: ?int, 2: array<string, mixed>}
      */
     private function lineasCotizacion(Nota $nota, string $codigo): array
     {
         try {
             $preview = $this->oportunidadVinculo->previewGuardado($codigo);
             if (is_array($preview) && ($preview['lineas'] ?? []) !== []) {
-                $region = isset($preview['cabecera']['region']) ? (int) $preview['cabecera']['region'] : null;
+                $cabecera = is_array($preview['cabecera'] ?? null) ? $preview['cabecera'] : [];
+                $region = isset($cabecera['region']) ? (int) $cabecera['region'] : null;
 
-                return [$this->normalizarLineasMp($preview['lineas']), $region ?: null];
+                return [$this->normalizarLineasMp($preview['lineas']), $region ?: null, $cabecera];
             }
         } catch (Throwable $e) {
             report($e);
@@ -272,7 +343,9 @@ class CotizarIaService
             try {
                 $mapeado = $this->payloadMapper->fromDetalle($this->compraAgilApi->detalle($codigo));
                 if ($mapeado['lineas'] !== []) {
-                    return [$this->normalizarLineasMp($mapeado['lineas']), $mapeado['cabecera']['region'] ?? null];
+                    $cabecera = is_array($mapeado['cabecera'] ?? null) ? $mapeado['cabecera'] : [];
+
+                    return [$this->normalizarLineasMp($mapeado['lineas']), $cabecera['region'] ?? null, $cabecera];
                 }
             } catch (Throwable $e) {
                 $this->avisos[] = 'No se pudo consultar Mercado Público: '.$e->getMessage();
@@ -292,7 +365,7 @@ class CotizarIaService
             ])
             ->all();
 
-        return [$this->normalizarLineasMp($desdeNota), null];
+        return [$this->normalizarLineasMp($desdeNota), null, []];
     }
 
     /**
@@ -1045,8 +1118,8 @@ TXT];
         return 'ia:'.substr(md5($norm !== '' ? $norm : $descripcion), 0, 46);
     }
 
-    private function cacheKey(int $nronota, string $usuario, string $token): string
+    private function cacheKey(string $usuario, string $token): string
     {
-        return 'cotizar_ia:'.$nronota.':'.md5(mb_strtolower($usuario)).':'.$token;
+        return 'cotizar_ia:'.md5(mb_strtolower($usuario)).':'.$token;
     }
 }
