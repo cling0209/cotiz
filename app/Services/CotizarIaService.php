@@ -1759,7 +1759,8 @@ TXT];
             foreach ($pendientes as $i) {
                 $opciones = $this->mercadolibre->buscar((string) $items[$i]['descripcion']);
                 $cantidad = max(1, (int) $items[$i]['cantidad']);
-                [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, $opciones);
+                $unidadesSolicitud = min(self::MAX_UNIDADES_POR_SOLICITADO, $this->mercadolibre->unidadesPorPack((string) $items[$i]['descripcion']));
+                [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, $opciones, $unidadesSolicitud);
                 if ($mejor !== null) {
                     $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                     $items[$i]['origen'] = self::ORIGEN_WEB;

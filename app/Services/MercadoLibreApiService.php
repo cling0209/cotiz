@@ -260,7 +260,8 @@ class MercadoLibreApiService
         return '';
     }
 
-    private function unidadesPorPack(string $titulo): int
+    /** Unidades que trae un pack/caja según el texto («Caja 12 Unidades», «pack x 6», «1000un»); 1 si no lo indica. */
+    public function unidadesPorPack(string $titulo): int
     {
         if (preg_match('/\b(?:pack|set|caja|bolsa)\s*(?:de|x|por)?\s*(\d{1,4})\b/iu', $titulo, $coincide) !== 1
             && preg_match('/\b(\d{1,4})\s*(?:u|un|und|unds|unid|unidades)\b\.?/iu', $titulo, $coincide) !== 1) {
