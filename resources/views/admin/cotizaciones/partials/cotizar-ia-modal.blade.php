@@ -23,6 +23,7 @@
                     <p class="small text-muted mt-2 mb-0">Puede tardar 1 a 2 minutos. No se graba nada hasta que confirme.</p>
                 </div>
                 <div id="cotizar-ia-error" class="alert alert-danger py-2 small d-none" role="alert"></div>
+                <div id="cotizar-ia-creadas" class="alert alert-success py-2 small d-none" role="status"></div>
                 <div id="cotizar-ia-resultado" class="d-none">
                     <div class="border rounded p-2 mb-2 small">
                         <strong>Productos tomados de:</strong> <span id="cotizar-ia-fuente" class="badge text-bg-dark"></span>
@@ -30,6 +31,14 @@
                         <div id="cotizar-ia-adjuntos" class="text-muted mt-1"></div>
                     </div>
                     <div id="cotizar-ia-avisos" class="alert alert-warning py-2 small d-none" role="status"></div>
+                    <div id="cotizar-ia-separar" class="alert alert-info py-2 small d-none" role="status">
+                        <div class="fw-semibold mb-1"><i class="bi bi-diagram-3"></i> El comprador pide cotizaciones separadas por solicitante</div>
+                        <ol class="mb-1 ps-3" id="cotizar-ia-separar-lista"></ol>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="cotizar-ia-separar-check" checked>
+                            <label class="form-check-label" for="cotizar-ia-separar-check" id="cotizar-ia-separar-label"></label>
+                        </div>
+                    </div>
                     <p class="small mb-2" id="cotizar-ia-resumen"></p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle small mb-2">
@@ -59,7 +68,7 @@
             <div class="modal-footer py-2">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
                 <button type="button" class="btn btn-success btn-sm d-none" id="btn-cotizar-ia-aplicar">
-                    <i class="bi bi-check2-circle"></i> Agregar a la cotizaci&oacute;n
+                    <i class="bi bi-check2-circle"></i> <span id="btn-cotizar-ia-aplicar-texto">Agregar a la cotizaci&oacute;n</span>
                 </button>
             </div>
         </div>
@@ -103,6 +112,8 @@
     };
 
     let token = null;
+    let grupos = [];
+    let destinoAlCerrar = null;
     let enCurso = false;
     let relojId = null;
     let sondeoId = null;
@@ -235,6 +246,45 @@
         return '';
     }
 
+    function filaLinea(linea) {
+        const conVinculo = linea.estado !== 'pendiente';
+        const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
+        return '<tr>'
+            + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
+            + '<td>' + esc(linea.descripcion) + fuente + '</td>'
+            + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
+            + '<td>' + celdaVinculo(linea) + '</td>'
+            + '<td class="text-end tabular-nums">' + costoLinea(linea) + '</td>'
+            + '<td class="text-center">'
+            + (conVinculo
+                ? '<input type="checkbox" class="form-check-input cotizar-ia-usar" data-indice="' + linea.indice + '" checked aria-label="Usar v\u00ednculo de la l\u00ednea ' + (linea.indice + 1) + '">'
+                : '')
+            + '</td>'
+            + '</tr>';
+    }
+
+    function separarActivo() {
+        return grupos.length > 1 && el('cotizar-ia-separar-check').checked;
+    }
+
+    function actualizarBotonAplicar() {
+        el('btn-cotizar-ia-aplicar-texto').textContent = separarActivo()
+            ? 'Crear ' + grupos.length + ' cotizaciones'
+            : 'Agregar a la cotizaci\u00f3n';
+    }
+
+    function mostrarCreadas(cotizaciones) {
+        const creadas = el('cotizar-ia-creadas');
+        creadas.innerHTML = '<div class="fw-semibold mb-1"><i class="bi bi-check2-circle"></i> Se crearon '
+            + cotizaciones.length + ' cotizaciones:</div><ul class="mb-0 ps-3">'
+            + cotizaciones.map((c) => '<li><a href="' + esc(c.edit_url) + '">#' + esc(c.nronota) + '</a> \u2014 '
+                + esc(c.solicitante) + ' (' + esc(c.agregadas) + ' l\u00ednea(s))</li>').join('')
+            + '</ul>';
+        creadas.classList.remove('d-none');
+        resultado.classList.add('d-none');
+        btnAplicar.classList.add('d-none');
+    }
+
     function pintar(data) {
         token = data.token;
         el('cotizar-ia-fuente').textContent = FUENTES[data.fuente] || data.fuente;
@@ -254,22 +304,26 @@
             + (r.referencias_web || 0) + ' con referencia web, '
             + (r.pendientes || 0) + ' sin v\u00ednculo.';
 
-        tbody.innerHTML = (data.lineas || []).map((linea) => {
-            const conVinculo = linea.estado !== 'pendiente';
-            const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
-            return '<tr>'
-                + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
-                + '<td>' + esc(linea.descripcion) + fuente + '</td>'
-                + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
-                + '<td>' + celdaVinculo(linea) + '</td>'
-                + '<td class="text-end tabular-nums">' + costoLinea(linea) + '</td>'
-                + '<td class="text-center">'
-                + (conVinculo
-                    ? '<input type="checkbox" class="form-check-input cotizar-ia-usar" data-indice="' + linea.indice + '" checked aria-label="Usar v\u00ednculo de la l\u00ednea ' + (linea.indice + 1) + '">'
-                    : '')
-                + '</td>'
-                + '</tr>';
-        }).join('');
+        const lineas = data.lineas || [];
+        grupos = data.separar ? (data.grupos || []) : [];
+        if (grupos.length > 1) {
+            const porIndice = new Map(lineas.map((l) => [l.indice, l]));
+            tbody.innerHTML = grupos.map((g, k) => '<tr class="table-info">'
+                + '<td colspan="6"><strong>Cotizaci\u00f3n ' + (k + 1) + (k === 0 ? ' (esta)' : ' (copia)') + ':</strong> '
+                + esc(g.solicitante) + ' <span class="text-muted">\u2014 ' + g.indices.length + ' l\u00ednea(s)</span></td>'
+                + '</tr>'
+                + g.indices.map((i) => porIndice.get(i)).filter(Boolean).map(filaLinea).join('')).join('');
+            el('cotizar-ia-separar-lista').innerHTML = grupos.map((g, k) => '<li><strong>' + esc(g.solicitante) + '</strong> \u2014 '
+                + g.indices.length + ' l\u00ednea(s)' + (k === 0 ? ' <span class="text-muted">(en esta cotizaci\u00f3n)</span>' : ' <span class="text-muted">(copia nueva)</span>')
+                + '</li>').join('');
+            el('cotizar-ia-separar-label').textContent = 'Separar en ' + grupos.length + ' cotizaciones: esta y '
+                + (grupos.length - 1) + ' copia(s) con el mismo c\u00f3digo. El solicitante queda en \u00abObs. ejecutivo\u00bb.';
+            el('cotizar-ia-separar-check').checked = true;
+        } else {
+            tbody.innerHTML = lineas.map(filaLinea).join('');
+        }
+        el('cotizar-ia-separar').classList.toggle('d-none', grupos.length < 2);
+        actualizarBotonAplicar();
 
         const actuales = data.lineas_actuales_agile || 0;
         el('cotizar-ia-wrap-reemplazar').classList.toggle('d-none', actuales === 0);
@@ -296,7 +350,9 @@
         }
         enCurso = true;
         token = null;
+        grupos = [];
         errorBox.classList.add('d-none');
+        el('cotizar-ia-creadas').classList.add('d-none');
         resultado.classList.add('d-none');
         btnAplicar.classList.add('d-none');
         modal.show();
@@ -329,8 +385,17 @@
             .map((cb) => parseInt(cb.dataset.indice, 10));
         const reemplazar = !el('cotizar-ia-wrap-reemplazar').classList.contains('d-none')
             && el('cotizar-ia-reemplazar').checked;
+        const separar = separarActivo();
         try {
-            const data = await postJson(urlCon(urlAplicarTpl), { token, rechazados, reemplazar });
+            const data = await postJson(urlCon(urlAplicarTpl), { token, rechazados, reemplazar, separar });
+            const cotizaciones = data.cotizaciones || [];
+            if (cotizaciones.length > 1) {
+                token = null;
+                enCurso = false;
+                destinoAlCerrar = cotizaciones[0].edit_url;
+                mostrarCreadas(cotizaciones);
+                return;
+            }
             if (data.edit_url) {
                 window.location.href = data.edit_url;
             } else {
@@ -340,6 +405,14 @@
             mostrarError(e.message || 'No se pudieron agregar las l\u00edneas.');
             btnAplicar.disabled = false;
             enCurso = false;
+        }
+    });
+
+    el('cotizar-ia-separar-check').addEventListener('change', actualizarBotonAplicar);
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+        if (destinoAlCerrar) {
+            window.location.href = destinoAlCerrar;
         }
     });
 })();

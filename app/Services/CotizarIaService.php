@@ -9,6 +9,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -62,6 +63,8 @@ class CotizarIaService
     private const CACHE_TTL_MINUTOS = 60;
 
     private const CACHE_WEB_SIN_CUOTA = 'cotizar_ia:web_sin_cuota';
+
+    private const SIN_SOLICITANTE = 'Sin solicitante indicado';
 
     /** @var list<string> */
     private array $avisos = [];
@@ -161,6 +164,12 @@ class CotizarIaService
             $this->avisos[] = 'Se procesaron solo las primeras '.self::MAX_LINEAS.' líneas.';
             $items = array_slice($items, 0, self::MAX_LINEAS);
         }
+        $separar = count(array_filter(array_keys($this->grupos($items)), static fn (string $s) => $s !== self::SIN_SOLICITANTE)) >= 2;
+        if (! $separar) {
+            foreach ($items as $i => $item) {
+                $items[$i]['solicitante'] = '';
+            }
+        }
 
         $this->etapa(4, 'Vinculando '.count($items).' línea(s) con frases y aprendidos');
         $items = $this->vincular($items);
@@ -173,6 +182,7 @@ class CotizarIaService
             'items' => $items,
             'region' => $regionMp,
             'cabecera' => $cabeceraMp,
+            'separar' => $separar,
         ], now()->addMinutes(self::CACHE_TTL_MINUTOS));
 
         $lineasActuales = NotaDetalle::query()->where('nronota', $nota->nronota)->count();
@@ -192,16 +202,27 @@ class CotizarIaService
             'avisos' => array_values(array_unique($this->avisos)),
             'lineas' => array_map(fn (array $item, int $i) => $this->itemParaRespuesta($item, $i), $items, array_keys($items)),
             'resumen' => $this->resumen($items),
+            'separar' => $separar,
+            'grupos' => $separar
+                ? array_map(
+                    static fn (string $solicitante, array $indices) => ['solicitante' => $solicitante, 'indices' => $indices],
+                    array_keys($this->grupos($items)),
+                    array_values($this->grupos($items)),
+                )
+                : [],
             'lineas_actuales' => $lineasActuales,
             'lineas_actuales_agile' => $lineasActualesAgile,
         ];
     }
 
     /**
+     * Con $separar y varios solicitantes, el primero queda en $nota y cada uno de los demás
+     * en una copia (mismo código MP), con el solicitante en la observación del ejecutivo.
+     *
      * @param  list<int>  $rechazados  índices cuyo vínculo/referencia el usuario descartó (quedan pendientes)
-     * @return array{agregadas: int, vinculadas: int, referencias_web: int, pendientes: int, eliminadas: int, aprendidas: int}
+     * @return array{agregadas: int, vinculadas: int, referencias_web: int, pendientes: int, eliminadas: int, aprendidas: int, cotizaciones: list<array{nronota: int, solicitante: string, agregadas: int}>}
      */
-    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar): array
+    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar, bool $separar = false): array
     {
         $key = $this->cacheKey($usuario, $token);
         $guardado = $this->previewGuardado($usuario, $token);
@@ -231,60 +252,60 @@ class CotizarIaService
             ? collect()
             : Maeprod::query()->whereIn('prod_item', array_keys($codigosVinculados))->get()->keyBy(fn (Maeprod $m) => (string) $m->prod_item);
 
-        $lote = [];
-        $conteo = ['vinculadas' => 0, 'referencias_web' => 0, 'pendientes' => 0];
-        $paraAprender = [];
-
-        foreach ($items as $i => $item) {
-            $base = [
-                'cantidad' => (int) $item['cantidad'],
-                'prod_item_agile' => $item['id_agile'],
-                'prod_descripcion_agile' => $item['descripcion'],
-            ];
-            $usar = ! isset($rechazados[$i]);
-
-            if ($usar && $item['estado'] === self::ESTADO_VINCULADO && $maeprods->has($item['producto']['prod_item'])) {
-                /** @var Maeprod $mae */
-                $mae = $maeprods->get($item['producto']['prod_item']);
-                $lote[] = $base + [
-                    'prod_item' => (string) $mae->prod_item,
-                    'prod_valor' => (int) ($mae->prod_valor ?? 0),
-                    'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0),
-                    'prod_nombre' => (string) $mae->prod_nombre,
-                ];
-                $conteo['vinculadas']++;
-                if ($item['origen'] === self::ORIGEN_IA) {
-                    $paraAprender[] = $item;
-                }
-
-                continue;
-            }
-
-            if ($usar && $item['estado'] === self::ESTADO_REFERENCIA_WEB && is_array($item['referencia'] ?? null)) {
-                $lote[] = $base + [
-                    'pendiente' => true,
-                    'prod_valor_costo' => (int) $item['referencia']['neto_unitario'],
-                    'observacion' => $this->observacionReferencia($item['referencia']),
-                ];
-                $conteo['referencias_web']++;
-
-                continue;
-            }
-
-            $lote[] = $base + ['pendiente' => true];
-            $conteo['pendientes']++;
+        $grupos = $separar && ($guardado['separar'] ?? false) ? $this->grupos($items) : [];
+        if (count($grupos) < 2) {
+            $grupos = ['' => array_keys($items)];
         }
-
-        $eliminadas = $reemplazar ? $this->detalleService->eliminarTodasLineasAgile($nota) : 0;
-        $agregadas = $this->detalleService->agregarLineasImportacionLote($nota, $lote);
 
         $region = (int) ($nota->region ?: ($guardado['region'] ?? 0));
         $factor = CompraAgilRegionScope::factorPrecioVentaPorRegion($region > 0 ? $region : null)
             ?? (float) ($nota->factor_precio_venta ?: config('cotiz.factor_precio_venta', 1.22));
-        $this->detalleService->aplicarFactorPrecioVenta($nota->fresh(), $factor, $usuario);
+
+        $conteo = ['vinculadas' => 0, 'referencias_web' => 0, 'pendientes' => 0, 'agregadas' => 0, 'eliminadas' => 0];
+        $paraAprender = [];
+        $cotizaciones = [];
+
+        DB::transaction(function () use ($nota, $usuario, $items, $grupos, $rechazados, $maeprods, $reemplazar, $factor, &$conteo, &$paraAprender, &$cotizaciones) {
+            $n = 0;
+            foreach ($grupos as $solicitante => $indices) {
+                $solicitante = (string) $solicitante;
+                $destino = $n === 0 ? $nota : $this->notaService->duplicar($nota, $usuario, false);
+
+                $lote = [];
+                foreach ($indices as $i) {
+                    $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $conteo);
+                    if (! isset($rechazados[$i]) && $items[$i]['estado'] === self::ESTADO_VINCULADO
+                        && $items[$i]['origen'] === self::ORIGEN_IA && $maeprods->has($items[$i]['producto']['prod_item'])) {
+                        $paraAprender[] = [$items[$i], (int) $destino->nronota];
+                    }
+                }
+
+                if ($n === 0 && $reemplazar) {
+                    $conteo['eliminadas'] = $this->detalleService->eliminarTodasLineasAgile($destino);
+                }
+                $agregadas = $this->detalleService->agregarLineasImportacionLote($destino, $lote);
+                $conteo['agregadas'] += $agregadas;
+                $this->detalleService->aplicarFactorPrecioVenta($destino->fresh(), $factor, $usuario);
+
+                if ($solicitante !== '') {
+                    $obsActual = $n === 0 ? trim((string) $destino->fresh()->observacion_ejecutivo) : '';
+                    $obs = 'Requerimiento de: '.$solicitante;
+                    $this->notaService->modificarCabecera($destino->fresh(), [
+                        'observacion_ejecutivo' => $obsActual === '' ? $obs : $obsActual."\n".$obs,
+                    ], $usuario);
+                }
+
+                $cotizaciones[] = [
+                    'nronota' => (int) $destino->nronota,
+                    'solicitante' => $solicitante,
+                    'agregadas' => $agregadas,
+                ];
+                $n++;
+            }
+        });
 
         $aprendidas = 0;
-        foreach ($paraAprender as $item) {
+        foreach ($paraAprender as [$item, $nronota]) {
             try {
                 $this->aprendizaje->guardarAprendizaje(
                     $item['descripcion'],
@@ -293,7 +314,7 @@ class CotizarIaService
                     $item['id_agile'],
                     $usuario,
                     VinculoOrigen::IA,
-                    (int) $nota->nronota,
+                    $nronota,
                 );
                 $aprendidas++;
             } catch (Throwable $e) {
@@ -304,10 +325,51 @@ class CotizarIaService
         Cache::forget($key);
 
         return $conteo + [
-            'agregadas' => $agregadas,
-            'eliminadas' => $eliminadas,
             'aprendidas' => $aprendidas,
+            'cotizaciones' => $cotizaciones,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  \Illuminate\Support\Collection<string, Maeprod>  $maeprods
+     * @param  array<string, int>  $conteo
+     * @return array<string, mixed>
+     */
+    private function lineaLote(array $item, bool $rechazado, $maeprods, array &$conteo): array
+    {
+        $base = [
+            'cantidad' => (int) $item['cantidad'],
+            'prod_item_agile' => $item['id_agile'],
+            'prod_descripcion_agile' => $item['descripcion'],
+        ];
+
+        if (! $rechazado && $item['estado'] === self::ESTADO_VINCULADO && $maeprods->has($item['producto']['prod_item'])) {
+            /** @var Maeprod $mae */
+            $mae = $maeprods->get($item['producto']['prod_item']);
+            $conteo['vinculadas']++;
+
+            return $base + [
+                'prod_item' => (string) $mae->prod_item,
+                'prod_valor' => (int) ($mae->prod_valor ?? 0),
+                'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0),
+                'prod_nombre' => (string) $mae->prod_nombre,
+            ];
+        }
+
+        if (! $rechazado && $item['estado'] === self::ESTADO_REFERENCIA_WEB && is_array($item['referencia'] ?? null)) {
+            $conteo['referencias_web']++;
+
+            return $base + [
+                'pendiente' => true,
+                'prod_valor_costo' => (int) $item['referencia']['neto_unitario'],
+                'observacion' => $this->observacionReferencia($item['referencia']),
+            ];
+        }
+
+        $conteo['pendientes']++;
+
+        return $base + ['pendiente' => true];
     }
 
     /**
@@ -555,6 +617,8 @@ class CotizarIaService
                 'motivo' => 'La cotización no tiene adjuntos legibles; se usan los productos de Mercado Público.',
                 'adjuntos_usados' => [],
                 'lineas_adjunto' => [],
+                'separar' => false,
+                'solicitantes_ficha' => [],
             ];
         }
 
@@ -589,10 +653,12 @@ Extrae en "lineas" los productos del adjunto que se deben cotizar:
 - Con "ambos": solo los que no están ya en la ficha.
 - Con "cotizacion": lista vacía.
 Cada línea: descripción completa tal como la pide el comprador (tipo de producto, medida, capacidad, formato, color, marca si la exige) y cantidad entera (mínimo 1). Ignora totales, subtotales, encabezados, firmas y condiciones.
-No agrupes ni sumes productos repetidos: si el mismo producto aparece varias veces (por establecimiento, sección, lote o destino), devuelve una línea por cada aparición con su propia cantidad y, si el adjunto lo indica, agrega entre paréntesis el establecimiento o sección.
+No agrupes ni sumes productos repetidos: si el mismo producto aparece varias veces (por establecimiento, sección, lote o destino), devuelve una línea por cada aparición con su propia cantidad.
+
+Cotizaciones separadas: si el comprador pide cotizar u ofertar por separado para cada solicitante (ej. una cotización por escuela, jardín, establecimiento, departamento o sucursal), responde "separar": true e indica en cada línea el "solicitante" (nombre corto de quien hace ese requerimiento, igual para todas sus líneas). Con "cotizacion" o "ambos" indica además en "grupos_ficha" el solicitante de cada producto de la ficha según su número. Si no pide cotizaciones separadas: "separar": false, "solicitante" vacío y "grupos_ficha" vacío; en ese caso, si el adjunto indica establecimiento o sección de un producto repetido, agrégalo entre paréntesis en la descripción.
 
 Responde SOLO JSON:
-{"fuente":"adjunto|cotizacion|ambos","motivo":"explicación breve en español","adjuntos_usados":["nombre archivo"],"lineas":[{"descripcion":"...","cantidad":1}]}
+{"fuente":"adjunto|cotizacion|ambos","motivo":"explicación breve en español","adjuntos_usados":["nombre archivo"],"separar":false,"grupos_ficha":[{"n":1,"solicitante":""}],"lineas":[{"descripcion":"...","cantidad":1,"solicitante":""}]}
 TXT];
 
         try {
@@ -627,7 +693,16 @@ TXT];
             $lineasAdjunto[] = [
                 'descripcion' => mb_substr($descripcion, 0, 500),
                 'cantidad' => max(1, min(1_000_000, (int) round((float) ($linea['cantidad'] ?? 1)))),
+                'solicitante' => $this->limpiarSolicitante($linea['solicitante'] ?? ''),
             ];
+        }
+
+        $solicitantesFicha = [];
+        foreach ((array) ($json['grupos_ficha'] ?? []) as $grupo) {
+            $n = is_array($grupo) ? (int) ($grupo['n'] ?? 0) : 0;
+            if ($n >= 1 && $n <= count($lineasMp)) {
+                $solicitantesFicha[$n - 1] = $this->limpiarSolicitante($grupo['solicitante'] ?? '');
+            }
         }
 
         if ($fuente !== self::FUENTE_COTIZACION && $lineasAdjunto === []) {
@@ -648,7 +723,16 @@ TXT];
             'motivo' => mb_substr(trim((string) ($json['motivo'] ?? '')), 0, 500),
             'adjuntos_usados' => $fuente === self::FUENTE_COTIZACION ? [] : $usados,
             'lineas_adjunto' => $fuente === self::FUENTE_COTIZACION ? [] : $lineasAdjunto,
+            'separar' => ($json['separar'] ?? false) === true,
+            'solicitantes_ficha' => $fuente === self::FUENTE_ADJUNTO ? [] : $solicitantesFicha,
         ];
+    }
+
+    private function limpiarSolicitante(mixed $valor): string
+    {
+        $texto = trim((string) preg_replace('/\s+/u', ' ', is_scalar($valor) ? (string) $valor : ''));
+
+        return mb_substr($texto, 0, 120);
     }
 
     /**
@@ -677,6 +761,8 @@ TXT];
             'motivo' => 'Sin análisis de IA: se usan los productos de Mercado Público.',
             'adjuntos_usados' => [],
             'lineas_adjunto' => [],
+            'separar' => false,
+            'solicitantes_ficha' => [],
         ];
     }
 
@@ -687,10 +773,14 @@ TXT];
      */
     private function armarItems(array $decision, array $lineasMp): array
     {
+        $separar = (bool) ($decision['separar'] ?? false);
         $items = [];
         if ($decision['fuente'] !== self::FUENTE_ADJUNTO) {
-            foreach ($lineasMp as $linea) {
-                $items[] = $linea + ['fuente' => self::FUENTE_COTIZACION];
+            foreach ($lineasMp as $n => $linea) {
+                $items[] = $linea + [
+                    'fuente' => self::FUENTE_COTIZACION,
+                    'solicitante' => $separar ? ($decision['solicitantes_ficha'][$n] ?? '') : '',
+                ];
             }
         }
         foreach ($decision['lineas_adjunto'] as $linea) {
@@ -699,6 +789,7 @@ TXT];
                 'descripcion' => $linea['descripcion'],
                 'cantidad' => $linea['cantidad'],
                 'fuente' => self::FUENTE_ADJUNTO,
+                'solicitante' => $separar ? ($linea['solicitante'] ?? '') : '',
             ];
         }
 
@@ -1189,6 +1280,7 @@ TXT];
             'descripcion' => $item['descripcion'],
             'cantidad' => $item['cantidad'],
             'fuente' => $item['fuente'],
+            'solicitante' => (string) ($item['solicitante'] ?? ''),
             'estado' => $item['estado'],
             'origen' => $item['origen'],
             'producto' => $producto === null ? null : [
@@ -1219,6 +1311,23 @@ TXT];
         }
 
         return $r;
+    }
+
+    /**
+     * Índices de línea por solicitante, en el orden en que aparece cada uno.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<string, list<int>>
+     */
+    private function grupos(array $items): array
+    {
+        $grupos = [];
+        foreach ($items as $i => $item) {
+            $solicitante = trim((string) ($item['solicitante'] ?? ''));
+            $grupos[$solicitante !== '' ? $solicitante : self::SIN_SOLICITANTE][] = $i;
+        }
+
+        return $grupos;
     }
 
     private function instruccionSistema(): string

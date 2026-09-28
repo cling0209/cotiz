@@ -13,6 +13,7 @@ use App\Services\AgileVinculoAprendizajeService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CotizarIaService;
 use App\Services\MaeprodBusquedaSimilitudService;
+use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -356,6 +357,72 @@ class CotizarIaTest extends TestCase
         $this->assertSame([10, 25], $lineas->pluck('cantidad')->map(fn ($c) => (int) $c)->all());
         $this->assertNotSame($lineas[0]->prod_item_agile, $lineas[1]->prod_item_agile);
         Http::assertNothingSent();
+    }
+
+    public function test_solicitantes_separados_crean_copias_con_obs_ejecutivo_al_confirmar(): void
+    {
+        $nota = $this->crearNota(['encargado' => '3000-2-COT26', 'observacion_ejecutivo' => 'Revisar plazo']);
+        $this->partialMock(OportunidadVinculoService::class, function ($mock) {
+            $mock->shouldReceive('previewGuardado')->andReturn([
+                'cabecera' => [],
+                'lineas' => [['id_agile' => 'MP1', 'descripcion' => 'MATERIALES SEGUN ADJUNTO', 'cantidad' => 1]],
+            ]);
+        });
+        $this->partialMock(OportunidadAdjuntoService::class, function ($mock) {
+            $mock->shouldReceive('isConfigured')->andReturnTrue();
+            $mock->shouldReceive('buscarSiPendiente')->andReturnNull();
+            $mock->shouldReceive('listar')->andReturn([['nombre' => 'pedido.xlsx', 'bytes' => 100]]);
+            $mock->shouldReceive('contenido')->andReturn('binario');
+            $mock->shouldReceive('textoExcel')->andReturn('Escuela A: lapices. Escuela B: lapices y gredas. Cotizar por separado.');
+        });
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()->push($this->respuestaGemini([
+                'fuente' => 'adjunto',
+                'motivo' => 'Pide una cotización por escuela.',
+                'adjuntos_usados' => ['pedido.xlsx'],
+                'separar' => true,
+                'grupos_ficha' => [],
+                'lineas' => [
+                    ['descripcion' => self::DESC_FRASE, 'cantidad' => 10, 'solicitante' => 'Escuela A'],
+                    ['descripcion' => self::DESC_FRASE, 'cantidad' => 5, 'solicitante' => 'Escuela B'],
+                    ['descripcion' => self::DESC_APRENDIDO, 'cantidad' => 3, 'solicitante' => 'Escuela B'],
+                ],
+            ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->assertJsonPath('separar', true)
+            ->assertJsonPath('grupos.0.solicitante', 'Escuela A')
+            ->assertJsonPath('grupos.0.indices', [0])
+            ->assertJsonPath('grupos.1.solicitante', 'Escuela B')
+            ->assertJsonPath('grupos.1.indices', [1, 2])
+            ->json();
+        $this->assertSame(1, Nota::query()->count());
+
+        $aplicar = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'separar' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('agregadas', 3)
+            ->assertJsonCount(2, 'cotizaciones')
+            ->assertJsonPath('cotizaciones.0.nronota', $nota->nronota);
+
+        $this->assertSame("Revisar plazo\nRequerimiento de: Escuela A", $nota->fresh()->observacion_ejecutivo);
+        $this->assertSame([10], NotaDetalle::query()->where('nronota', $nota->nronota)->pluck('cantidad')->map(fn ($c) => (int) $c)->all());
+
+        $copia = Nota::query()->findOrFail($aplicar->json('cotizaciones.1.nronota'));
+        $this->assertSame('3000-2-COT26', $copia->encargado);
+        $this->assertSame('Requerimiento de: Escuela B', $copia->observacion_ejecutivo);
+        $this->assertSame(
+            ['ARTE001' => 5, 'PAPEL001' => 3],
+            NotaDetalle::query()->where('nronota', $copia->nronota)->get()
+                ->mapWithKeys(fn (NotaDetalle $d) => [trim($d->prod_item) => (int) $d->cantidad])->sortKeys()->all(),
+        );
+        $this->assertStringContainsString(route('admin.cotizaciones.edit', $copia->nronota), (string) $aplicar->json('cotizaciones.1.edit_url'));
     }
 
     public function test_modelo_saturado_usa_modelo_de_respaldo(): void

@@ -867,6 +867,7 @@ class CotizacionController extends Controller
             'rechazados' => ['nullable', 'array'],
             'rechazados.*' => ['integer', 'min:0'],
             'reemplazar' => ['nullable', 'boolean'],
+            'separar' => ['nullable', 'boolean'],
         ]);
 
         $usuario = (string) $request->user()->username;
@@ -891,6 +892,7 @@ class CotizacionController extends Controller
                 $datos['token'],
                 $datos['rechazados'] ?? [],
                 (bool) ($datos['reemplazar'] ?? false),
+                (bool) ($datos['separar'] ?? false),
             );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
@@ -899,6 +901,11 @@ class CotizacionController extends Controller
 
             return response()->json(['error' => 'No se pudieron agregar las líneas. Intente nuevamente.'], 500);
         }
+
+        $resultado['cotizaciones'] = array_map(
+            static fn (array $c) => $c + ['edit_url' => route('admin.cotizaciones.edit', $c['nronota'])],
+            $resultado['cotizaciones'],
+        );
 
         return response()->json(array_merge(['ok' => true], $resultado, $this->metaNotaJson($nota, $recienCreada)));
     }
