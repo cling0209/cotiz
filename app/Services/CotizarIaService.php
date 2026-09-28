@@ -50,6 +50,8 @@ class CotizarIaService
 
     public const ORIGEN_WEB = 'web';
 
+    public const ORIGEN_FOTO = 'ia_foto';
+
     /** Dominio permitido => nombre visible. Incluye subdominios (articulo.mercadolibre.cl). */
     private const SITIOS_WEB = [
         'mercadolibre.cl' => 'Mercado Libre',
@@ -62,7 +64,14 @@ class CotizarIaService
 
     private const CANDIDATOS_POR_LINEA = 20;
 
-    private const MAX_UNIDADES_POR_SOLICITADO = 100;
+    private const MAX_UNIDADES_POR_SOLICITADO = 1000;
+
+    private const FOTOS_POR_LINEA = 4;
+
+    private const MAX_FOTO_BYTES = 2 * 1024 * 1024;
+
+    // Request inline de Gemini ≤ 20 MB y base64 infla ~33%.
+    private const PRESUPUESTO_FOTOS_BYTES = 12 * 1024 * 1024;
 
     private const LINEAS_POR_LLAMADA = 20;
 
@@ -428,15 +437,19 @@ class CotizarIaService
             $mae = $maeprods->get($item['producto']['prod_item']);
             $conteo['vinculadas']++;
             $unidades = max(1, (int) ($item['producto']['unidades'] ?? 1));
+            $observacion = trim(
+                ($unidades > 1 ? NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item) : '')
+                .(($item['producto']['foto'] ?? '') !== ''
+                    ? ' Elegido por foto: se ve '.$item['producto']['foto'].' en la imagen de '.trim((string) $mae->prod_item).'.'
+                    : ''),
+            );
 
             return $base + [
                 'prod_item' => (string) $mae->prod_item,
                 'prod_valor' => (int) ($mae->prod_valor ?? 0) * $unidades,
                 'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0) * $unidades,
                 'prod_nombre' => (string) $mae->prod_nombre,
-            ] + ($unidades > 1 ? [
-                'observacion' => NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item),
-            ] : []);
+            ] + ($observacion !== '' ? ['observacion' => $observacion] : []);
         }
 
         if (! $rechazado && $item['estado'] === self::ESTADO_REFERENCIA_WEB && is_array($item['referencia'] ?? null)) {
@@ -931,49 +944,234 @@ TXT];
 
         $resultado = $this->equivalenciasIa($items, $candidatos, true);
         $sinEquivalente = [];
+        $porFoto = [];
         foreach ($paraIa as $i) {
             $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? []);
             $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
-            } elseif (($resultado[$i]['busqueda'] ?? []) !== []) {
+
+                continue;
+            }
+            $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? []);
+            if (($resultado[$i]['busqueda'] ?? []) !== []) {
                 $sinEquivalente[$i] = $resultado[$i]['busqueda'];
             }
         }
 
-        if ($sinEquivalente === [] || $this->iaSinCuota) {
-            return $items;
-        }
+        if ($sinEquivalente !== [] && ! $this->iaSinCuota) {
+            // Segunda pasada: términos alternativos que sugirió la IA (sinónimos / nombre comercial).
+            $this->detalle('Segunda pasada con términos alternativos para '.count($sinEquivalente).' línea(s)');
+            $candidatos2 = [];
+            foreach ($sinEquivalente as $i => $terminos) {
+                $yaEnviados = array_fill_keys(array_keys($candidatos[$i]), true);
+                $nuevos = array_diff_key(
+                    $this->candidatosMaeprod($items[$i]['descripcion'], $terminos),
+                    $yaEnviados,
+                );
+                if ($nuevos !== []) {
+                    $candidatos2[$i] = $nuevos;
+                }
+            }
 
-        // Segunda pasada: términos alternativos que sugirió la IA (sinónimos / nombre comercial).
-        $this->detalle('Segunda pasada con términos alternativos para '.count($sinEquivalente).' línea(s)');
-        $candidatos2 = [];
-        foreach ($sinEquivalente as $i => $terminos) {
-            $yaEnviados = array_fill_keys(array_keys($candidatos[$i]), true);
-            $nuevos = array_diff_key(
-                $this->candidatosMaeprod($items[$i]['descripcion'], $terminos),
-                $yaEnviados,
-            );
-            if ($nuevos !== []) {
-                $candidatos2[$i] = $nuevos;
+            $resultado2 = $candidatos2 === [] ? [] : $this->equivalenciasIa($items, $candidatos2, false);
+            foreach ($candidatos2 as $i => $lista) {
+                $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
+                $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
+                if ($elegido !== null) {
+                    $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
+                    $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
+                    unset($porFoto[$i]);
+                } else {
+                    $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? []);
+                }
             }
         }
-        if ($candidatos2 === []) {
+
+        return $this->vincularPorFoto($items, array_filter($porFoto));
+    }
+
+    /**
+     * Candidatos que la IA dejó para confirmar en la foto (el nombre no dice si trae lo exigido).
+     *
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
+     * @param  array{revisar_foto?: array<string, array{unidades: int, falta: string}>}  $resultado
+     * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int, falta: string}>
+     */
+    private function candidatosParaFoto(array $candidatos, array $resultado): array
+    {
+        $revisar = $resultado['revisar_foto'] ?? [];
+        $equivalentes = $this->equivalentesPorUnidades($candidatos, [
+            'equivalentes' => array_map('strval', array_keys($revisar)),
+            'unidades' => array_map(static fn (array $r) => $r['unidades'], $revisar),
+        ]);
+        foreach ($equivalentes as $codigo => $producto) {
+            $equivalentes[$codigo]['falta'] = $revisar[$codigo]['falta'];
+        }
+
+        return array_slice($equivalentes, 0, self::FOTOS_POR_LINEA, true);
+    }
+
+    /**
+     * La IA mira la foto del maestro de cada candidato dudoso y confirma si trae lo que exige el
+     * solicitado (ej. el cordón de un porta credencial). Los confirmados se vinculan con lo que se ve.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @param  array<int, array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int, falta: string}>>  $porFoto
+     * @return list<array<string, mixed>>
+     */
+    private function vincularPorFoto(array $items, array $porFoto): array
+    {
+        $maxFotos = (int) config('cotiz.gemini.max_fotos', 24);
+        if ($porFoto === [] || $this->iaSinCuota || $maxFotos <= 0) {
             return $items;
         }
 
-        $resultado2 = $this->equivalenciasIa($items, $candidatos2, false);
-        foreach ($candidatos2 as $i => $lista) {
-            $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
+        $this->detalle('IA revisando fotos del maestro para '.count($porFoto).' línea(s)');
+        $fotos = $this->descargarFotos($porFoto, $maxFotos);
+        if ($fotos === []) {
+            return $items;
+        }
+
+        $parts = [['text' => "Para cada producto solicitado se muestran fotos de productos del catálogo cuyo nombre no confirma lo que el solicitado exige.\n"
+            .'Mirando SOLO la foto, indica si el producto trae lo indicado en «confirmar» y describe brevemente lo que se ve que lo demuestra. '
+            .'Si la foto no es del producto (imagen genérica, logo, «sin imagen») o no se aprecia, coincide = false.'."\n\n"
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"codigo":"CODIGO","coincide":true,"se_ve":"cordón negro con mosquetón"}]}']];
+        foreach ($fotos as $i => $porCodigo) {
+            $parts[] = ['text' => "\nSolicitado i={$i}: {$items[$i]['descripcion']}"];
+            foreach ($porCodigo as $codigo => $foto) {
+                $parts[] = ['text' => "Candidato codigo={$codigo}: {$porFoto[$i][$codigo]['prod_nombre']}. Confirmar: {$porFoto[$i][$codigo]['falta']}"];
+                $parts[] = ['inline_data' => ['mime_type' => $foto['mime'], 'data' => base64_encode($foto['body'])]];
+            }
+        }
+
+        try {
+            $respuesta = $this->gemini->generar($parts, ['json' => true, 'system' => $this->instruccionSistema()]);
+        } catch (GeminiCuotaAgotadaException $e) {
+            $this->iaSinCuota = true;
+            $this->avisos[] = $e->getMessage().' No se revisaron las fotos del maestro.';
+
+            return $items;
+        } catch (RuntimeException $e) {
+            Log::warning('CotizarIa: fallo revisando fotos', ['message' => $e->getMessage()]);
+            $this->avisos[] = 'No se pudieron revisar las fotos del maestro: '.$e->getMessage();
+
+            return $items;
+        }
+
+        $confirmados = [];
+        $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
+        foreach ((array) ($json['resultados'] ?? []) as $fila) {
+            if (! is_array($fila) || ! isset($fila['i']) || ($fila['coincide'] ?? false) !== true) {
+                continue;
+            }
+            $i = (int) $fila['i'];
+            $codigo = trim((string) ($fila['codigo'] ?? ''));
+            if (! isset($fotos[$i][$codigo])) {
+                continue;
+            }
+            $seVe = mb_substr(trim((string) ($fila['se_ve'] ?? '')), 0, 120);
+            $producto = $porFoto[$i][$codigo];
+            unset($producto['falta']);
+            $confirmados[$i][$codigo] = $producto + ['foto' => $seVe !== '' ? $seVe : $porFoto[$i][$codigo]['falta']];
+        }
+
+        foreach ($confirmados as $i => $equivalentes) {
             $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
             if ($elegido !== null) {
-                $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
+                $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_FOTO);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
             }
         }
 
         return $items;
+    }
+
+    /**
+     * @param  array<int, array<string, array<string, mixed>>>  $porFoto
+     * @return array<int, array<string, array{mime: string, body: string}>>
+     */
+    private function descargarFotos(array $porFoto, int $maxFotos): array
+    {
+        $codigos = [];
+        foreach ($porFoto as $porCodigo) {
+            foreach (array_keys($porCodigo) as $codigo) {
+                $codigos[(string) $codigo] = true;
+            }
+        }
+        $maeprods = Maeprod::query()->whereIn('prod_item', array_keys($codigos))->get()
+            ->keyBy(static fn (Maeprod $m) => trim((string) $m->prod_item));
+
+        $urls = [];
+        foreach ($porFoto as $i => $porCodigo) {
+            foreach (array_keys($porCodigo) as $codigo) {
+                $codigo = (string) $codigo;
+                if (count($urls) >= $maxFotos) {
+                    break 2;
+                }
+                if (isset($urls[$codigo]) || ! $maeprods->has($codigo)) {
+                    continue;
+                }
+                $candidatas = array_map(
+                    static fn (string $url) => str_replace(' ', '%20', $url),
+                    $maeprods->get($codigo)->imageUrlCandidates(),
+                );
+                if ($candidatas !== []) {
+                    $urls[$codigo] = $candidatas;
+                }
+            }
+        }
+        if ($urls === []) {
+            return [];
+        }
+
+        $descargadas = [];
+        try {
+            $respuestas = Http::pool(function (Pool $pool) use ($urls) {
+                $out = [];
+                foreach ($urls as $codigo => $candidatas) {
+                    foreach ($candidatas as $n => $url) {
+                        $out[] = $pool->as($codigo.'|'.$n)->timeout(10)->get($url);
+                    }
+                }
+
+                return $out;
+            });
+        } catch (Throwable $e) {
+            report($e);
+
+            return [];
+        }
+        foreach ($urls as $codigo => $candidatas) {
+            foreach (array_keys($candidatas) as $n) {
+                $resp = $respuestas[$codigo.'|'.$n] ?? null;
+                if (! $resp instanceof Response || ! $resp->successful()) {
+                    continue;
+                }
+                $mime = strtolower(trim(explode(';', (string) $resp->header('Content-Type'))[0]));
+                $body = $resp->body();
+                if (in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true) && $body !== '' && strlen($body) <= self::MAX_FOTO_BYTES) {
+                    $descargadas[$codigo] = ['mime' => $mime, 'body' => $body];
+                    break;
+                }
+            }
+        }
+
+        $presupuesto = self::PRESUPUESTO_FOTOS_BYTES;
+        $out = [];
+        foreach ($porFoto as $i => $porCodigo) {
+            foreach (array_keys($porCodigo) as $codigo) {
+                $foto = $descargadas[(string) $codigo] ?? null;
+                if ($foto === null || strlen($foto['body']) > $presupuesto) {
+                    continue;
+                }
+                $presupuesto -= strlen($foto['body']);
+                $out[$i][(string) $codigo] = $foto;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1063,7 +1261,7 @@ TXT];
      *
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
-     * @return array<int, array{equivalentes: list<string>, unidades: array<string, int>, busqueda: list<string>}>
+     * @return array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>}>
      */
     private function equivalenciasIa(array $items, array $candidatos, bool $pedirBusqueda): array
     {
@@ -1102,7 +1300,7 @@ TXT];
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
      * @param  list<int>  $bloque
-     * @param  array<int, array{equivalentes: list<string>, unidades: array<string, int>, busqueda: list<string>}>  $resultado
+     * @param  array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>}>  $resultado
      * @return string|null mensaje de error si Gemini no respondió (el bloque se puede reintentar)
      */
     private function equivalenciasBloque(array $items, array $candidatos, array $bloque, bool $pedirBusqueda, array &$resultado): ?string
@@ -1125,14 +1323,20 @@ TXT];
 
         $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
             ."Criterios: mismo tipo de producto; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color, marca o material, deben coincidir; "
-            ."un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato. "
-            ."Si el solicitado es un pack de N unidades (ej. «pack 2U», «set de 3») y el candidato es el mismo producto vendido por unidad, "
-            ."sí es equivalente con unidades = N (se cotizan N del catálogo por cada uno solicitado); en los demás casos unidades = 1. "
+            ."un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato o uno mayor. "
+            ."Si el solicitado es un pack o caja de N unidades (ej. «pack 2U», «set de 3», «caja 100 unidades») y el candidato es el mismo producto "
+            ."vendido por unidad o en un pack menor de M unidades, sí es equivalente con unidades = N / M redondeado hacia arriba: los packs del catálogo "
+            ."necesarios para completar al menos N (ej. piden caja de 100: pack de 50 → 2, pack de 30 → 4, por unidad → 100). "
+            ."Un pack del catálogo mayor que lo solicitado no es equivalente. En los demás casos unidades = 1. "
             ."No consideres precio. Puedes marcar varios equivalentes.\n"
+            ."Si un candidato es el mismo producto pero su nombre no dice si trae un accesorio o característica que el solicitado exige "
+            ."(ej. cordón o lanyard, mosquetón, tapa, estuche, pilas, color), no lo marques como equivalente: ponlo en \"revisar_foto\" "
+            ."con lo que falta confirmar (máximo ".self::FOTOS_POR_LINEA." por producto); se revisará en la foto del catálogo.\n"
             .$instruccionBusqueda."\n"
             ."Usa solo códigos que aparezcan en los candidatos de ese producto.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
-            .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":[{"codigo":"CODIGO","unidades":1}],"busqueda":["termino"]}]}';
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":[{"codigo":"CODIGO","unidades":1}],'
+            .'"revisar_foto":[{"codigo":"CODIGO","unidades":1,"falta":"cordón"}],"busqueda":["termino"]}]}';
 
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
@@ -1159,14 +1363,27 @@ TXT];
             $unidades = [];
             foreach ((array) ($fila['equivalentes'] ?? []) as $equivalente) {
                 $codigo = trim((string) (is_array($equivalente) ? ($equivalente['codigo'] ?? '') : $equivalente));
-                if (isset($candidatos[$i][$codigo])) {
-                    $n = is_array($equivalente) ? (int) ($equivalente['unidades'] ?? 1) : 1;
-                    $unidades[$codigo] = max(1, min(self::MAX_UNIDADES_POR_SOLICITADO, $n));
+                $n = is_array($equivalente) ? (int) ($equivalente['unidades'] ?? 1) : 1;
+                if (isset($candidatos[$i][$codigo]) && $n <= self::MAX_UNIDADES_POR_SOLICITADO) {
+                    $unidades[$codigo] = max(1, $n);
+                }
+            }
+            $revisarFoto = [];
+            foreach ((array) ($fila['revisar_foto'] ?? []) as $dudoso) {
+                if (! is_array($dudoso)) {
+                    continue;
+                }
+                $codigo = trim((string) ($dudoso['codigo'] ?? ''));
+                $n = (int) ($dudoso['unidades'] ?? 1);
+                $falta = mb_substr(trim((string) ($dudoso['falta'] ?? '')), 0, 80);
+                if (isset($candidatos[$i][$codigo]) && ! isset($unidades[$codigo]) && $n <= self::MAX_UNIDADES_POR_SOLICITADO && $falta !== '') {
+                    $revisarFoto[$codigo] = ['unidades' => max(1, $n), 'falta' => $falta];
                 }
             }
             $resultado[$i] = [
                 'equivalentes' => array_map('strval', array_keys($unidades)),
                 'unidades' => $unidades,
+                'revisar_foto' => $revisarFoto,
                 'busqueda' => array_values(array_filter(
                     array_map(static fn ($t) => mb_substr(trim((string) $t), 0, 80), (array) ($fila['busqueda'] ?? [])),
                     static fn (string $t) => $t !== '',
@@ -1700,6 +1917,7 @@ TXT];
                 'prod_item' => $producto['prod_item'],
                 'prod_nombre' => $producto['prod_nombre'],
                 'unidades' => max(1, (int) ($producto['unidades'] ?? 1)),
+                'foto' => (string) ($producto['foto'] ?? ''),
             ],
             'costo' => $costo,
             'precio_venta' => $precioVenta,

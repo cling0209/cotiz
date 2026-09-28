@@ -168,6 +168,8 @@ return [
         'lote_web' => max(1, min(20, (int) env('COTIZ_GEMINI_LOTE_WEB', 10))),
         'max_adjuntos' => max(1, min(10, (int) env('COTIZ_GEMINI_MAX_ADJUNTOS', 4))),
         'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
+        // Fotos del maestro que la IA revisa por cotización cuando el nombre no confirma un accesorio; 0 = no revisar.
+        'max_fotos' => max(0, min(60, (int) env('COTIZ_GEMINI_MAX_FOTOS', 24))),
     ],
 
     // Estado de stock en Prisa (búsqueda pública por código = prod_item) para «Cotizar con IA».

@@ -123,6 +123,7 @@
         frase_maeprod: ['Frase', 'text-bg-primary'],
         aprendido_exacto: ['Aprendido', 'text-bg-info'],
         ia: ['IA', 'text-bg-success'],
+        ia_foto: ['IA \u00b7 foto', 'text-bg-success'],
     };
 
     const REGION_METROPOLITANA = @json(\App\Services\CompraAgilRegionScope::REGION_METROPOLITANA);
@@ -295,6 +296,9 @@
                     ? ' <span class="badge text-bg-info" title="Se cotizan ' + esc(linea.producto.unidades) + ' unidades del maestro por cada una solicitada">x' + esc(linea.producto.unidades) + ' un.</span>'
                     : '')
                 + badgeStockPrisa(linea.stock_prisa)
+                + (linea.producto.foto
+                    ? '<div class="text-success small">Elegido por foto: se ve ' + esc(linea.producto.foto) + '</div>'
+                    : '')
                 + notaStock(linea);
         }
         if (linea.estado === 'referencia_web' && linea.referencia) {

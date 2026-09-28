@@ -510,7 +510,7 @@ class NotaDetalleService
      */
     public static function observacionPack(int $unidades, string $prodItem): string
     {
-        return "Pack de {$unidades}: precio por {$unidades} unidades de {$prodItem} por cada una solicitada.";
+        return "Pack de {$unidades}: se cotizan {$unidades} x {$prodItem} por cada unidad solicitada.";
     }
 
     public static function esObservacionPack(?string $observacion): bool
