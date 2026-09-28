@@ -274,6 +274,9 @@
             return '<span class="badge ' + cls + ' me-1">' + esc(txt) + '</span>'
                 + '<span class="font-monospace">' + esc(linea.producto.prod_item) + '</span> '
                 + esc(linea.producto.prod_nombre)
+                + (linea.producto.unidades > 1
+                    ? ' <span class="badge text-bg-info" title="Se cotizan ' + esc(linea.producto.unidades) + ' unidades del maestro por cada una solicitada">x' + esc(linea.producto.unidades) + ' un.</span>'
+                    : '')
                 + badgeStockPrisa(linea.stock_prisa)
                 + notaStock(linea);
         }

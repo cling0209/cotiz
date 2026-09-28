@@ -62,6 +62,8 @@ class CotizarIaService
 
     private const CANDIDATOS_POR_LINEA = 20;
 
+    private const MAX_UNIDADES_POR_SOLICITADO = 100;
+
     private const LINEAS_POR_LLAMADA = 20;
 
     private const CACHE_TTL_MINUTOS = 60;
@@ -326,7 +328,8 @@ class CotizarIaService
                 foreach ($indices as $i) {
                     $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $conteo);
                     if (! isset($rechazados[$i]) && $items[$i]['estado'] === self::ESTADO_VINCULADO
-                        && $items[$i]['origen'] === self::ORIGEN_IA && $maeprods->has($items[$i]['producto']['prod_item'])) {
+                        && $items[$i]['origen'] === self::ORIGEN_IA && $maeprods->has($items[$i]['producto']['prod_item'])
+                        && (int) ($items[$i]['producto']['unidades'] ?? 1) === 1) {
                         $paraAprender[] = [$items[$i], (int) $destino->nronota];
                     }
                 }
@@ -399,13 +402,16 @@ class CotizarIaService
             /** @var Maeprod $mae */
             $mae = $maeprods->get($item['producto']['prod_item']);
             $conteo['vinculadas']++;
+            $unidades = max(1, (int) ($item['producto']['unidades'] ?? 1));
 
             return $base + [
                 'prod_item' => (string) $mae->prod_item,
-                'prod_valor' => (int) ($mae->prod_valor ?? 0),
-                'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0),
+                'prod_valor' => (int) ($mae->prod_valor ?? 0) * $unidades,
+                'prod_valor_costo' => (int) ($mae->prod_valor_costo ?? 0) * $unidades,
                 'prod_nombre' => (string) $mae->prod_nombre,
-            ];
+            ] + ($unidades > 1 ? [
+                'observacion' => NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item),
+            ] : []);
         }
 
         if (! $rechazado && $item['estado'] === self::ESTADO_REFERENCIA_WEB && is_array($item['referencia'] ?? null)) {
@@ -901,10 +907,11 @@ TXT];
         $resultado = $this->equivalenciasIa($items, $candidatos, true);
         $sinEquivalente = [];
         foreach ($paraIa as $i) {
-            $elegido = $this->masEconomico($candidatos[$i], $resultado[$i]['equivalentes'] ?? []);
+            $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? []);
+            $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
-                $items[$i]['alternativas'] = $this->alternativas($candidatos[$i], $resultado[$i]['equivalentes'], $elegido);
+                $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
             } elseif (($resultado[$i]['busqueda'] ?? []) !== []) {
                 $sinEquivalente[$i] = $resultado[$i]['busqueda'];
             }
@@ -933,10 +940,11 @@ TXT];
 
         $resultado2 = $this->equivalenciasIa($items, $candidatos2, false);
         foreach ($candidatos2 as $i => $lista) {
-            $elegido = $this->masEconomico($lista, $resultado2[$i]['equivalentes'] ?? []);
+            $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
+            $elegido = $this->busqueda->elegirMasEconomico(array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
-                $items[$i]['alternativas'] = $this->alternativas($lista, $resultado2[$i]['equivalentes'], $elegido);
+                $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
             }
         }
 
@@ -1030,7 +1038,7 @@ TXT];
      *
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
-     * @return array<int, array{equivalentes: list<string>, busqueda: list<string>}>
+     * @return array<int, array{equivalentes: list<string>, unidades: array<string, int>, busqueda: list<string>}>
      */
     private function equivalenciasIa(array $items, array $candidatos, bool $pedirBusqueda): array
     {
@@ -1069,7 +1077,7 @@ TXT];
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
      * @param  list<int>  $bloque
-     * @param  array<int, array{equivalentes: list<string>, busqueda: list<string>}>  $resultado
+     * @param  array<int, array{equivalentes: list<string>, unidades: array<string, int>, busqueda: list<string>}>  $resultado
      * @return string|null mensaje de error si Gemini no respondió (el bloque se puede reintentar)
      */
     private function equivalenciasBloque(array $items, array $candidatos, array $bloque, bool $pedirBusqueda, array &$resultado): ?string
@@ -1092,11 +1100,14 @@ TXT];
 
         $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
             ."Criterios: mismo tipo de producto; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color, marca o material, deben coincidir; "
-            ."un pack o caja solo es equivalente si el solicitado pide ese formato. No consideres precio. Puedes marcar varios equivalentes.\n"
+            ."un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato. "
+            ."Si el solicitado es un pack de N unidades (ej. «pack 2U», «set de 3») y el candidato es el mismo producto vendido por unidad, "
+            ."sí es equivalente con unidades = N (se cotizan N del catálogo por cada uno solicitado); en los demás casos unidades = 1. "
+            ."No consideres precio. Puedes marcar varios equivalentes.\n"
             .$instruccionBusqueda."\n"
             ."Usa solo códigos que aparezcan en los candidatos de ese producto.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
-            .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":["CODIGO"],"busqueda":["termino"]}]}';
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":[{"codigo":"CODIGO","unidades":1}],"busqueda":["termino"]}]}';
 
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
@@ -1120,11 +1131,17 @@ TXT];
             if (! isset($candidatos[$i])) {
                 continue;
             }
+            $unidades = [];
+            foreach ((array) ($fila['equivalentes'] ?? []) as $equivalente) {
+                $codigo = trim((string) (is_array($equivalente) ? ($equivalente['codigo'] ?? '') : $equivalente));
+                if (isset($candidatos[$i][$codigo])) {
+                    $n = is_array($equivalente) ? (int) ($equivalente['unidades'] ?? 1) : 1;
+                    $unidades[$codigo] = max(1, min(self::MAX_UNIDADES_POR_SOLICITADO, $n));
+                }
+            }
             $resultado[$i] = [
-                'equivalentes' => array_values(array_filter(
-                    array_map(static fn ($c) => trim((string) $c), (array) ($fila['equivalentes'] ?? [])),
-                    static fn (string $c) => isset($candidatos[$i][$c]),
-                )),
+                'equivalentes' => array_map('strval', array_keys($unidades)),
+                'unidades' => $unidades,
                 'busqueda' => array_values(array_filter(
                     array_map(static fn ($t) => mb_substr(trim((string) $t), 0, 80), (array) ($fila['busqueda'] ?? [])),
                     static fn (string $t) => $t !== '',
@@ -1136,40 +1153,45 @@ TXT];
     }
 
     /**
+     * Equivalentes marcados por la IA con el precio por unidad solicitada: si el solicitado es un pack
+     * de N y el producto del maestro va por unidad, valor y costo se multiplican por N.
+     *
      * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
-     * @param  list<string>  $equivalentes
-     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     * @param  array{equivalentes?: list<string>, unidades?: array<string, int>}  $resultado
+     * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int}>
      */
-    private function masEconomico(array $candidatos, array $equivalentes): ?array
+    private function equivalentesPorUnidades(array $candidatos, array $resultado): array
     {
-        $productos = [];
-        foreach ($equivalentes as $codigo) {
-            if (isset($candidatos[$codigo])) {
-                $productos[] = $candidatos[$codigo];
+        $out = [];
+        foreach ($resultado['equivalentes'] ?? [] as $codigo) {
+            if (! isset($candidatos[$codigo])) {
+                continue;
             }
+            $n = max(1, (int) ($resultado['unidades'][$codigo] ?? 1));
+            $producto = $candidatos[$codigo];
+            $out[$codigo] = [
+                'prod_valor' => $producto['prod_valor'] * $n,
+                'prod_valor_costo' => $producto['prod_valor_costo'] * $n,
+                'unidades' => $n,
+            ] + $producto;
         }
 
-        return $this->busqueda->elegirMasEconomico($productos);
+        return $out;
     }
 
     /**
      * Otros equivalentes que marcó la IA, por si el elegido no tiene stock en Prisa.
      *
-     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
-     * @param  list<string>  $equivalentes
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int}>  $equivalentes
      * @param  array{prod_item: string}  $elegido
-     * @return list<array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>
+     * @return list<array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int}>
      */
-    private function alternativas(array $candidatos, array $equivalentes, array $elegido): array
+    private function alternativas(array $equivalentes, array $elegido): array
     {
-        $out = [];
-        foreach ($equivalentes as $codigo) {
-            if (isset($candidatos[$codigo]) && $codigo !== $elegido['prod_item']) {
-                $out[] = $candidatos[$codigo];
-            }
-        }
-
-        return $out;
+        return array_values(array_filter(
+            $equivalentes,
+            static fn (array $p) => $p['prod_item'] !== $elegido['prod_item'],
+        ));
     }
 
     /**
@@ -1633,6 +1655,7 @@ TXT];
                 'prod_item' => $producto['prod_item'],
                 'prod_nombre' => $producto['prod_nombre'],
                 'costo' => $costo === PHP_INT_MAX ? 0 : $costo,
+                'unidades' => max(1, (int) ($producto['unidades'] ?? 1)),
             ],
             'referencia' => $referencia,
             'stock_prisa' => $item['stock_prisa'] ?? null,

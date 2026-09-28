@@ -204,6 +204,52 @@ class CotizarIaTest extends TestCase
         $this->assertSame(VinculoOrigen::IA->value, $aprendido->vinculado_origen);
     }
 
+    public function test_pack_de_n_se_vincula_al_producto_unitario_con_costo_por_n_y_sin_aprendizaje(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => [['codigo' => 'HIG002', 'unidades' => 2]], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame('HIG002', $linea['producto']['prod_item']);
+        $this->assertSame(2, $linea['producto']['unidades']);
+        $this->assertSame(1400, $linea['producto']['costo']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('aprendidas', 0);
+
+        $detalle = NotaDetalle::query()->where('nronota', $nota->nronota)->get()->keyBy('prod_descripcion_agile');
+        $ia = $detalle[self::DESC_IA];
+        $this->assertSame('HIG002', trim($ia->prod_item));
+        $this->assertSame(4, (int) $ia->cantidad);
+        $this->assertSame(1400, (int) $ia->prod_valor_costo);
+        $this->assertSame(1708, (int) $ia->prod_valor);
+        $this->assertStringContainsString('Pack de 2', (string) $ia->observacion);
+
+        $hash = app(AgileVinculoAprendizajeService::class)->hashDescripcion(self::DESC_IA);
+        $this->assertNull(AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first());
+    }
+
     public function test_rechazar_vinculo_deja_linea_pendiente_sin_aprendizaje(): void
     {
         $nota = $this->crearNotaConLineas();

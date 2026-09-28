@@ -287,6 +287,7 @@ class NotaDetalleService
             || $codigoInterno === '0'
             || $codigoInterno === $agileId
             || self::esCodigoNokPendiente($codigoInterno)
+            || self::esObservacionPack($linea->observacion)
         ) {
             return;
         }
@@ -501,6 +502,20 @@ class NotaDetalleService
     public static function esCodigoNokPendiente(string $prodItem): bool
     {
         return str_starts_with(strtoupper(trim($prodItem)), 'NOK-');
+    }
+
+    /**
+     * Línea que cotiza un pack de N con N unidades del producto: su precio no es el del producto,
+     * así que no se aprende como vínculo 1 a 1 descripción → producto.
+     */
+    public static function observacionPack(int $unidades, string $prodItem): string
+    {
+        return "Pack de {$unidades}: precio por {$unidades} unidades de {$prodItem} por cada una solicitada.";
+    }
+
+    public static function esObservacionPack(?string $observacion): bool
+    {
+        return preg_match('/^Pack de \d+:/', trim((string) $observacion)) === 1;
     }
 
     public static function codigoNokParaOrden(int $orden): string
