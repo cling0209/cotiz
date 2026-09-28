@@ -53,7 +53,7 @@ class GeminiClientService
 
     /**
      * @param  list<array<string, mixed>>  $parts  partes del mensaje de usuario (text / inline_data)
-     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float}  $opciones
+     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float, thinking_level?: string}  $opciones
      * @return array{json: mixed, texto: string, fuentes: list<array{uri: string, title: string}>}
      *
      * @throws GeminiCuotaAgotadaException
@@ -81,6 +81,10 @@ class GeminiClientService
         }
         if ($conBusqueda) {
             $payload['tools'] = [['google_search' => (object) []]];
+        }
+        $thinkingLevel = trim((string) ($opciones['thinking_level'] ?? ''));
+        if ($thinkingLevel !== '') {
+            $payload['generationConfig']['thinkingConfig'] = ['thinkingLevel' => $thinkingLevel];
         }
         $system = trim((string) ($opciones['system'] ?? ''));
         if ($system !== '') {
@@ -247,7 +251,18 @@ class GeminiClientService
             }
 
             if ($response->successful()) {
-                return $response;
+                $candidatos = $response->json('candidates');
+                if (is_array($candidatos) && $candidatos !== []) {
+                    return $response;
+                }
+                // Con google_search y pensamiento alto el modelo a veces responde 200 sin candidatos.
+                Log::warning('Gemini: respuesta sin candidatos', [
+                    'cuenta' => $cuenta,
+                    'model' => $model,
+                    'thoughts' => $response->json('usageMetadata.thoughtsTokenCount'),
+                ]);
+
+                return [0, 'Gemini respondió sin contenido.'];
             }
 
             $status = $response->status();

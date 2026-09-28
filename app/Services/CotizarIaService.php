@@ -9,8 +9,11 @@ use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -1348,15 +1351,17 @@ TXT];
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
             .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"stock_disponible":null,"url":""}]}]}';
 
+        $opciones = ['json' => true, 'google_search' => true, 'thinking_level' => (string) config('cotiz.gemini.thinking_web', 'low')];
         try {
-            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'google_search' => true]);
+            $respuesta = $this->gemini->generar([['text' => $prompt]], $opciones);
         } catch (GeminiRespuestaInvalidaException) {
             $respuesta = $this->gemini->generar([['text' => $prompt
                 ."\n\nIMPORTANTE: tu respuesta anterior no era JSON válido. Responde únicamente el objeto JSON, sin texto antes ni después y sin bloques ```."]],
-                ['json' => true, 'google_search' => true]);
+                $opciones);
         }
 
         $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
+        $json['resultados'] = $this->resolverUrlsGrounding((array) ($json['resultados'] ?? []));
         $pendientesSet = array_fill_keys($pendientes, true);
         foreach ((array) ($json['resultados'] ?? []) as $fila) {
             if (! is_array($fila) || ! isset($fila['i'])) {
@@ -1447,6 +1452,72 @@ TXT];
         }
 
         return [$confirmada ?? $desconocida, $validas > 0 && $insuficientes === $validas];
+    }
+
+    /**
+     * Algunos modelos devuelven la URL de redirección de Google (vertexaisearch…/grounding-api-redirect/…)
+     * en vez de la publicación: se reemplaza por su Location para que pase el filtro de sitios.
+     *
+     * @param  list<mixed>  $resultados
+     * @return list<mixed>
+     */
+    private function resolverUrlsGrounding(array $resultados): array
+    {
+        $redirecciones = [];
+        foreach ($resultados as $fila) {
+            foreach ((array) (is_array($fila) ? ($fila['opciones'] ?? []) : []) as $opcion) {
+                $url = is_array($opcion) ? trim((string) ($opcion['url'] ?? '')) : '';
+                if ($this->esRedireccionGrounding($url)) {
+                    $redirecciones[$url] = true;
+                }
+            }
+        }
+        if ($redirecciones === []) {
+            return $resultados;
+        }
+
+        $urls = array_keys($redirecciones);
+        try {
+            $respuestas = Http::pool(fn (Pool $pool) => array_map(
+                static fn (string $url) => $pool->timeout(8)->withOptions(['allow_redirects' => false])->get($url),
+                $urls,
+            ));
+        } catch (Throwable $e) {
+            report($e);
+
+            return $resultados;
+        }
+
+        $destinos = [];
+        foreach ($urls as $n => $url) {
+            $respuesta = $respuestas[$n] ?? null;
+            $destino = $respuesta instanceof Response ? trim((string) $respuesta->header('Location')) : '';
+            if ($destino !== '') {
+                $destinos[$url] = $destino;
+            }
+        }
+
+        foreach ($resultados as $f => $fila) {
+            if (! is_array($fila) || ! is_array($fila['opciones'] ?? null)) {
+                continue;
+            }
+            foreach ($fila['opciones'] as $o => $opcion) {
+                $url = is_array($opcion) ? trim((string) ($opcion['url'] ?? '')) : '';
+                if (isset($destinos[$url])) {
+                    $resultados[$f]['opciones'][$o]['url'] = $destinos[$url];
+                }
+            }
+        }
+
+        return $resultados;
+    }
+
+    private function esRedireccionGrounding(string $url): bool
+    {
+        $partes = parse_url($url);
+
+        return strtolower((string) ($partes['host'] ?? '')) === 'vertexaisearch.cloud.google.com'
+            && str_starts_with((string) ($partes['path'] ?? ''), '/grounding-api-redirect/');
     }
 
     public function sitioPermitido(string $url): ?string

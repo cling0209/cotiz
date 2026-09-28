@@ -298,6 +298,45 @@ class CotizarIaTest extends TestCase
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no devolvió un resultado legible')));
     }
 
+    public function test_busqueda_web_sin_candidatos_usa_respaldo_con_pensamiento_bajo_y_resuelve_redireccion(): void
+    {
+        $nota = $this->crearNotaConLineas();
+        $redireccion = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQabc123';
+
+        Http::fake([
+            'vertexaisearch.cloud.google.com/*' => Http::response('', 302, ['Location' => 'https://articulo.mercadolibre.cl/MLC-999-tornillo']),
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push(['usageMetadata' => ['thoughtsTokenCount' => 4000]])
+                ->push($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 3,
+                        'opciones' => [
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada', 'precio_clp' => 2380, 'unidades_por_pack' => 1, 'url' => $redireccion],
+                        ],
+                    ]],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('https://articulo.mercadolibre.cl/MLC-999-tornillo', $web['referencia']['url']);
+
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'gemini-respaldo')
+            && ($request->data()['generationConfig']['thinkingConfig']['thinkingLevel'] ?? null) === 'low'
+            && isset($request->data()['tools']));
+    }
+
     public function test_busqueda_web_exige_stock_suficiente_para_la_cantidad(): void
     {
         $nota = $this->crearNotaConLineas();
