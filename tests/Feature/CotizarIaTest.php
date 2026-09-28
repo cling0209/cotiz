@@ -326,6 +326,38 @@ class CotizarIaTest extends TestCase
         $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'no respondió')));
     }
 
+    public function test_lineas_iguales_quedan_separadas(): void
+    {
+        $nota = $this->crearNota(['encargado' => '3000-1-COT26']);
+        $this->partialMock(OportunidadVinculoService::class, function ($mock) {
+            $mock->shouldReceive('previewGuardado')->andReturn([
+                'cabecera' => [],
+                'lineas' => [
+                    ['id_agile' => '', 'descripcion' => self::DESC_FRASE, 'cantidad' => 10],
+                    ['id_agile' => '', 'descripcion' => self::DESC_FRASE, 'cantidad' => 25],
+                ],
+            ]);
+        });
+        Http::fake();
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->assertJsonPath('resumen.total', 2)
+            ->json();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), ['token' => $preview['token']])
+            ->assertOk()
+            ->assertJsonPath('agregadas', 2);
+
+        $lineas = NotaDetalle::query()->where('nronota', $nota->nronota)->orderBy('orden')->get();
+        $this->assertCount(2, $lineas);
+        $this->assertSame([10, 25], $lineas->pluck('cantidad')->map(fn ($c) => (int) $c)->all());
+        $this->assertNotSame($lineas[0]->prod_item_agile, $lineas[1]->prod_item_agile);
+        Http::assertNothingSent();
+    }
+
     public function test_modelo_saturado_usa_modelo_de_respaldo(): void
     {
         $nota = $this->crearNotaConLineas();

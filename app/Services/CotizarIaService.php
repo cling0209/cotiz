@@ -589,6 +589,7 @@ Extrae en "lineas" los productos del adjunto que se deben cotizar:
 - Con "ambos": solo los que no están ya en la ficha.
 - Con "cotizacion": lista vacía.
 Cada línea: descripción completa tal como la pide el comprador (tipo de producto, medida, capacidad, formato, color, marca si la exige) y cantidad entera (mínimo 1). Ignora totales, subtotales, encabezados, firmas y condiciones.
+No agrupes ni sumes productos repetidos: si el mismo producto aparece varias veces (por establecimiento, sección, lote o destino), devuelve una línea por cada aparición con su propia cantidad y, si el adjunto lo indica, agrega entre paréntesis el establecimiento o sección.
 
 Responde SOLO JSON:
 {"fuente":"adjunto|cotizacion|ambos","motivo":"explicación breve en español","adjuntos_usados":["nombre archivo"],"lineas":[{"descripcion":"...","cantidad":1}]}
@@ -702,6 +703,10 @@ TXT];
         }
 
         foreach ($items as $i => $item) {
+            // Líneas iguales se mantienen separadas: cada una con su propio ID Agile.
+            if (str_starts_with((string) $item['id_agile'], 'ia:')) {
+                $items[$i]['id_agile'] = $this->idAgileAdjunto($item['descripcion'], $i);
+            }
             $items[$i] += [
                 'estado' => self::ESTADO_PENDIENTE,
                 'origen' => null,
@@ -1222,11 +1227,14 @@ TXT];
             .'(insumos de aseo, oficina, ferretería, alimentos, etc.). Respondes siempre en español y solo con el JSON pedido.';
     }
 
-    private function idAgileAdjunto(string $descripcion): string
+    private function idAgileAdjunto(string $descripcion, ?int $posicion = null): string
     {
         $norm = $this->busqueda->normalizarTexto($descripcion);
+        $hash = md5($norm !== '' ? $norm : $descripcion);
 
-        return 'ia:'.substr(md5($norm !== '' ? $norm : $descripcion), 0, 46);
+        return $posicion === null
+            ? 'ia:'.substr($hash, 0, 46)
+            : 'ia:'.substr($hash, 0, 40).'-'.$posicion;
     }
 
     private function etapa(int $paso, string $texto): void
