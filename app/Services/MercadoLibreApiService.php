@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * Búsqueda pública de publicaciones en Mercado Libre Chile.
+ * Precios de referencia desde el catálogo de productos de Mercado Libre Chile.
  * El access token sale de client credentials o, si la API lo rechaza, de un refresh token
  * obtenido una vez con Authorization Code.
  */
@@ -15,7 +18,13 @@ class MercadoLibreApiService
 {
     private const CACHE_ACCESS = 'mercadolibre:access_token';
 
-    private const ARCHIVO_TOKEN = 'app/mercadolibre-oauth.json';
+    /** En la base de datos: el contenedor se recrea en cada deploy y storage/ no persiste. */
+    private const TABLA_TOKEN = 'integracion_tokens';
+
+    private const PROVEEDOR = 'mercadolibre';
+
+    /** Muchos productos del catálogo no tienen publicaciones activas; se piden más para encontrar precio. */
+    private const PRODUCTOS_POR_BUSQUEDA = 10;
 
     public function configurado(): bool
     {
@@ -51,9 +60,11 @@ class MercadoLibreApiService
     }
 
     /**
-     * Hasta 5 publicaciones con precio, stock y enlace de ficha.
+     * Hasta 5 productos del catálogo con el precio vigente más bajo de sus publicaciones.
+     * La API no permite a esta app buscar publicaciones (/sites/{site}/search) ni leer /items/{id};
+     * el catálogo (/products/search + /products/{id}/items) sí. El catálogo no informa stock.
      *
-     * @return list<array{titulo: string, precio_clp: int, unidades_por_pack: int, stock_disponible: int, url: string}>
+     * @return list<array{titulo: string, precio_clp: int, unidades_por_pack: int, stock_disponible: null, url: string, imagen_url: string}>
      */
     public function buscar(string $consulta): array
     {
@@ -62,10 +73,12 @@ class MercadoLibreApiService
             return [];
         }
 
-        $respuesta = $this->consultarBusqueda($consulta, $this->accessToken());
+        $token = $this->accessToken();
+        $respuesta = $this->consultarCatalogo($consulta, $token);
         if ($respuesta['status'] === 401) {
             Cache::forget(self::CACHE_ACCESS);
-            $respuesta = $this->consultarBusqueda($consulta, $this->accessToken());
+            $token = $this->accessToken();
+            $respuesta = $this->consultarCatalogo($consulta, $token);
         }
         if ($respuesta['status'] === 403) {
             throw new RuntimeException(
@@ -73,27 +86,32 @@ class MercadoLibreApiService
             );
         }
         if ($respuesta['status'] < 200 || $respuesta['status'] >= 300) {
-            throw new RuntimeException('Mercado Libre respondió HTTP '.$respuesta['status'].' al buscar publicaciones.');
+            throw new RuntimeException('Mercado Libre respondió HTTP '.$respuesta['status'].' al buscar productos.');
+        }
+
+        $productos = [];
+        $fotos = [];
+        foreach ((array) ($respuesta['json']['results'] ?? []) as $fila) {
+            $id = is_array($fila) ? trim((string) ($fila['id'] ?? '')) : '';
+            $nombre = is_array($fila) ? mb_substr(trim((string) ($fila['name'] ?? '')), 0, 200) : '';
+            if ($id !== '' && $nombre !== '' && preg_match('/^[A-Z]{3}\d+$/', $id) === 1) {
+                $productos[$id] = $nombre;
+                $fotos[$id] = $this->primeraFoto($fila);
+            }
         }
 
         $opciones = [];
-        foreach ((array) ($respuesta['json']['results'] ?? []) as $fila) {
-            if (! is_array($fila) || count($opciones) >= 5) {
+        foreach ($this->preciosMinimos(array_keys($productos), $token) as $id => $precio) {
+            if (count($opciones) >= 5) {
                 break;
             }
-            $titulo = mb_substr(trim((string) ($fila['title'] ?? '')), 0, 200);
-            $url = trim((string) ($fila['permalink'] ?? ''));
-            $precio = (int) round((float) ($fila['price'] ?? 0));
-            if ($titulo === '' || $url === '' || $precio <= 0) {
-                continue;
-            }
-            $stock = $fila['available_quantity'] ?? null;
             $opciones[] = [
-                'titulo' => $titulo,
+                'titulo' => $productos[$id],
                 'precio_clp' => $precio,
-                'unidades_por_pack' => $this->unidadesPorPack($titulo),
-                'stock_disponible' => is_numeric($stock) ? max(0, (int) $stock) : null,
-                'url' => mb_substr($url, 0, 1000),
+                'unidades_por_pack' => $this->unidadesPorPack($productos[$id]),
+                'stock_disponible' => null,
+                'url' => 'https://www.mercadolibre.cl/p/'.$id,
+                'imagen_url' => $fotos[$id],
             ];
         }
 
@@ -110,15 +128,16 @@ class MercadoLibreApiService
     /**
      * @return array{status: int, json: array<string, mixed>}
      */
-    private function consultarBusqueda(string $consulta, string $token): array
+    private function consultarCatalogo(string $consulta, string $token): array
     {
-        $site = rawurlencode((string) config('cotiz.mercadolibre.site_id', 'MLC'));
         $respuesta = Http::timeout($this->timeout())
             ->withToken($token)
             ->acceptJson()
-            ->get("https://api.mercadolibre.com/sites/{$site}/search", [
+            ->get('https://api.mercadolibre.com/products/search', [
+                'status' => 'active',
+                'site_id' => (string) config('cotiz.mercadolibre.site_id', 'MLC'),
                 'q' => mb_substr($consulta, 0, 180),
-                'limit' => 5,
+                'limit' => self::PRODUCTOS_POR_BUSQUEDA,
             ]);
 
         $json = $respuesta->json();
@@ -127,6 +146,48 @@ class MercadoLibreApiService
             'status' => $respuesta->status(),
             'json' => is_array($json) ? $json : [],
         ];
+    }
+
+    /**
+     * Precio más bajo de las publicaciones activas de cada producto, en el orden recibido.
+     * Los productos sin publicaciones (404) o con error se omiten.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, int>
+     */
+    private function preciosMinimos(array $ids, string $token): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $respuestas = Http::pool(fn (Pool $pool) => array_map(
+            fn (string $id) => $pool->timeout($this->timeout())
+                ->withToken($token)
+                ->acceptJson()
+                ->get('https://api.mercadolibre.com/products/'.rawurlencode($id).'/items'),
+            $ids,
+        ));
+
+        $precios = [];
+        foreach ($ids as $n => $id) {
+            $respuesta = $respuestas[$n] ?? null;
+            if (! $respuesta instanceof Response || ! $respuesta->successful()) {
+                continue;
+            }
+            $minimo = null;
+            foreach ((array) ($respuesta->json('results') ?? []) as $item) {
+                $precio = is_array($item) ? (int) round((float) ($item['price'] ?? 0)) : 0;
+                if ($precio > 0 && ($minimo === null || $precio < $minimo)) {
+                    $minimo = $precio;
+                }
+            }
+            if ($minimo !== null) {
+                $precios[$id] = $minimo;
+            }
+        }
+
+        return $precios;
     }
 
     private function accessToken(): string
@@ -184,9 +245,25 @@ class MercadoLibreApiService
         return $token;
     }
 
+    /**
+     * @param  array<string, mixed>  $producto
+     */
+    private function primeraFoto(array $producto): string
+    {
+        foreach ((array) ($producto['pictures'] ?? []) as $foto) {
+            $url = is_array($foto) ? trim((string) ($foto['secure_url'] ?? $foto['url'] ?? '')) : '';
+            if (ImagenReferenciaWebService::urlPermitida($url)) {
+                return mb_substr($url, 0, 500);
+            }
+        }
+
+        return '';
+    }
+
     private function unidadesPorPack(string $titulo): int
     {
-        if (preg_match('/\b(?:pack|set|caja|bolsa)\s*(?:de|x|por)?\s*(\d{1,4})\b/iu', $titulo, $coincide) !== 1) {
+        if (preg_match('/\b(?:pack|set|caja|bolsa)\s*(?:de|x|por)?\s*(\d{1,4})\b/iu', $titulo, $coincide) !== 1
+            && preg_match('/\b(\d{1,4})\s*(?:u|un|und|unds|unid|unidades)\b\.?/iu', $titulo, $coincide) !== 1) {
             return 1;
         }
         $unidades = (int) $coincide[1];
@@ -201,41 +278,21 @@ class MercadoLibreApiService
             return $deEnv;
         }
 
-        $archivo = $this->leerArchivoToken();
-
-        return trim((string) ($archivo['refresh_token'] ?? ''));
+        return trim((string) DB::table(self::TABLA_TOKEN)->where('proveedor', self::PROVEEDOR)->value('refresh_token'));
     }
 
     private function guardarRefresh(string $refresh): void
     {
-        $ruta = storage_path(self::ARCHIVO_TOKEN);
-        $directorio = dirname($ruta);
-        if (! is_dir($directorio)) {
-            mkdir($directorio, 0755, true);
-        }
-        file_put_contents($ruta, json_encode(['refresh_token' => $refresh], JSON_UNESCAPED_UNICODE));
+        $ahora = now();
+        DB::table(self::TABLA_TOKEN)->updateOrInsert(
+            ['proveedor' => self::PROVEEDOR],
+            ['refresh_token' => $refresh, 'created_at' => $ahora, 'updated_at' => $ahora],
+        );
     }
 
     private function olvidarRefresh(): void
     {
-        $ruta = storage_path(self::ARCHIVO_TOKEN);
-        if (is_file($ruta)) {
-            unlink($ruta);
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function leerArchivoToken(): array
-    {
-        $ruta = storage_path(self::ARCHIVO_TOKEN);
-        if (! is_file($ruta)) {
-            return [];
-        }
-        $json = json_decode((string) file_get_contents($ruta), true);
-
-        return is_array($json) ? $json : [];
+        DB::table(self::TABLA_TOKEN)->where('proveedor', self::PROVEEDOR)->delete();
     }
 
     private function exigirConfigurado(): void

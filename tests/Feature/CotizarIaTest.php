@@ -13,12 +13,16 @@ use App\Services\AgileVinculoAprendizajeService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CotizarIaService;
 use App\Services\MaeprodBusquedaSimilitudService;
+use App\Services\ImagenReferenciaWebService;
+use App\Services\MercadoLibreApiService;
+use App\Services\NotaDetalleService;
 use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadVinculoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class CotizarIaTest extends TestCase
@@ -1571,13 +1575,22 @@ class CotizarIaTest extends TestCase
                 'access_token' => 'token-ml',
                 'expires_in' => 21600,
             ]),
-            'api.mercadolibre.com/sites/MLC/search*' => Http::response([
-                'results' => [[
-                    'title' => 'Tornillo autoperforante 8 x 1 pulgada pack 100',
-                    'price' => 11900,
-                    'available_quantity' => 4,
-                    'permalink' => 'https://articulo.mercadolibre.cl/MLC-555-tornillo',
-                ]],
+            'api.mercadolibre.com/products/search*' => Http::response([
+                'results' => [
+                    ['id' => 'MLC777', 'name' => 'Tornillo autoperforante 8 x 1 pulgada pack 100 sin publicaciones'],
+                    ['id' => 'MLC555', 'name' => 'Tornillo autoperforante 8 x 1 pulgada pack 100', 'pictures' => [
+                        ['id' => 'x', 'url' => 'https://evil.example.com/foto.jpg'],
+                        ['id' => 'y', 'url' => 'https://http2.mlstatic.com/D_NQ_NP_555-F.jpg'],
+                    ]],
+                ],
+            ]),
+            'http2.mlstatic.com/*' => Http::response('jpeg-falso', 200, ['Content-Type' => 'image/jpeg']),
+            'api.mercadolibre.com/products/MLC777/items' => Http::response(['message' => 'not found'], 404),
+            'api.mercadolibre.com/products/MLC555/items' => Http::response([
+                'results' => [
+                    ['item_id' => 'MLC9001', 'price' => 12900],
+                    ['item_id' => 'MLC9002', 'price' => 11900],
+                ],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini([
                 'resultados' => [
@@ -1595,15 +1608,112 @@ class CotizarIaTest extends TestCase
         $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
         $this->assertSame('Mercado Libre', $web['referencia']['sitio']);
-        $this->assertSame('https://articulo.mercadolibre.cl/MLC-555-tornillo', $web['referencia']['url']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC555', $web['referencia']['url']);
+        $this->assertSame(11900, $web['referencia']['precio_clp']);
         $this->assertSame(100, $web['referencia']['unidades_por_pack']);
         $this->assertSame(100, $web['referencia']['neto_unitario']);
-        $this->assertTrue($web['referencia']['stock_verificado']);
-        $this->assertSame(4, $web['referencia']['stock']);
+        $this->assertFalse($web['referencia']['stock_verificado']);
+        $this->assertNull($web['referencia']['stock']);
+        $this->assertSame('https://http2.mlstatic.com/D_NQ_NP_555-F.jpg', $web['referencia']['imagen_url']);
 
-        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/sites/MLC/search')
+        config([
+            'products.storage_disk' => 'r2',
+            'products.r2_prefix' => 'productos',
+            'products.image_base_url' => 'https://pub.r2.dev/productos',
+            'filesystems.disks.r2.bucket' => 'bucket',
+            'filesystems.disks.r2.key' => 'key',
+            'filesystems.disks.r2.secret' => 'secret',
+        ]);
+        Storage::fake('r2');
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('referencias_web', 1);
+
+        $relativa = 'MERCADOLIBRE/'.now()->format('Y/m').'/MLC555.jpg';
+        Storage::disk('r2')->assertExists('productos/'.$relativa);
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_WEB)->firstOrFail();
+        $this->assertSame($relativa, $linea->imagen_ref);
+
+        $fila = app(NotaDetalleService::class)->lineasDeNota($nota->fresh())
+            ->first(fn (array $row) => (int) $row['linea']->orden === (int) $linea->orden);
+        $this->assertSame('https://pub.r2.dev/productos/'.$relativa, $fila['image_url']);
+
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/products/search')
             && $request->hasHeader('Authorization', 'Bearer token-ml'));
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/products/MLC555/items')
+            && $request->hasHeader('Authorization', 'Bearer token-ml'));
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/sites/'));
         Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->body(), 'google_search'));
+    }
+
+    public function test_mercado_libre_lee_unidades_del_nombre_del_catalogo(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]),
+            'api.mercadolibre.com/products/search*' => Http::response([
+                'results' => [
+                    ['id' => 'MLC1', 'name' => 'Tornillo Autoperforante Cabeza Lenteja 8 X 1 1000un'],
+                    ['id' => 'MLC2', 'name' => 'Tornillo Autoperforante Zincado 6 X 1-5/8 - 520 Unidades'],
+                    ['id' => 'MLC3', 'name' => 'Resma Papel Carta 500 Hojas'],
+                ],
+            ]),
+            'api.mercadolibre.com/products/*/items' => Http::response(['results' => [['price' => 5000]]]),
+        ]);
+
+        $opciones = app(MercadoLibreApiService::class)->buscar('tornillo autoperforante');
+
+        $this->assertSame([1000, 520, 1], array_column($opciones, 'unidades_por_pack'));
+        $this->assertSame([null, null, null], array_column($opciones, 'stock_disponible'));
+    }
+
+    public function test_limpieza_borra_meses_antiguos_de_imagenes_de_mercado_libre(): void
+    {
+        config([
+            'products.storage_disk' => 'r2',
+            'products.r2_prefix' => 'productos',
+            'filesystems.disks.r2.bucket' => 'bucket',
+            'filesystems.disks.r2.key' => 'key',
+            'filesystems.disks.r2.secret' => 'secret',
+        ]);
+        Storage::fake('r2');
+        $this->travelTo(now()->setDate(2026, 9, 15));
+
+        $disk = Storage::disk('r2');
+        foreach (['2026/03', '2026/04', '2026/09', '2025/12'] as $mes) {
+            $disk->put('productos/MERCADOLIBRE/'.$mes.'/MLC1.jpg', 'x');
+        }
+        $disk->put('productos/VARIOS/HIG001.jpg', 'x');
+
+        $nota = $this->crearNotaConLineas();
+        $antigua = NotaDetalle::query()->where('nronota', $nota->nronota)->orderBy('orden')->firstOrFail();
+        NotaDetalle::query()->where('nronota', $nota->nronota)->where('orden', $antigua->orden)
+            ->update(['imagen_ref' => 'MERCADOLIBRE/2026/03/MLC1.jpg']);
+        NotaDetalle::query()->where('nronota', $nota->nronota)->where('orden', '>', $antigua->orden)
+            ->update(['imagen_ref' => 'MERCADOLIBRE/2026/04/MLC1.jpg']);
+
+        $borrados = app(ImagenReferenciaWebService::class)->limpiar(6);
+
+        $this->assertSame(['2025/12', '2026/03'], collect($borrados)->sort()->values()->all());
+        $disk->assertMissing('productos/MERCADOLIBRE/2026/03/MLC1.jpg');
+        $disk->assertMissing('productos/MERCADOLIBRE/2025/12/MLC1.jpg');
+        $disk->assertExists('productos/MERCADOLIBRE/2026/04/MLC1.jpg');
+        $disk->assertExists('productos/MERCADOLIBRE/2026/09/MLC1.jpg');
+        $disk->assertExists('productos/VARIOS/HIG001.jpg');
+        $this->assertNull(NotaDetalle::query()->where('nronota', $nota->nronota)->where('orden', $antigua->orden)->value('imagen_ref'));
+        $this->assertSame(0, NotaDetalle::query()->where('imagen_ref', 'like', 'MERCADOLIBRE/2026/03/%')->count());
+        $this->assertGreaterThan(0, NotaDetalle::query()->where('imagen_ref', 'MERCADOLIBRE/2026/04/MLC1.jpg')->count());
     }
 
     public function test_callback_de_mercadolibre_guarda_el_refresh_token(): void
@@ -1622,23 +1732,14 @@ class CotizarIaTest extends TestCase
             ]),
         ]);
 
-        $ruta = storage_path('app/mercadolibre-oauth.json');
-        if (is_file($ruta)) {
-            unlink($ruta);
-        }
+        $this->actingAs($this->admin)
+            ->get(route('admin.mercadolibre.callback', ['code' => 'TG-codigo']))
+            ->assertOk();
 
-        try {
-            $this->actingAs($this->admin)
-                ->get(route('admin.mercadolibre.callback', ['code' => 'TG-codigo']))
-                ->assertOk();
-
-            $guardado = json_decode((string) file_get_contents($ruta), true);
-            $this->assertSame('refresh-ml', $guardado['refresh_token'] ?? null);
-        } finally {
-            if (is_file($ruta)) {
-                unlink($ruta);
-            }
-        }
+        $this->assertDatabaseHas('integracion_tokens', [
+            'proveedor' => 'mercadolibre',
+            'refresh_token' => 'refresh-ml',
+        ]);
 
         Http::assertSent(function (HttpRequest $request) {
             $datos = $request->data();

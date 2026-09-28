@@ -68,6 +68,13 @@ Schedule::command('organismo:analizar-perfiles')
     ->withoutOverlapping(120)
     ->runInBackground();
 
+// Fotos de referencias de Mercado Libre en R2: se conservan MERCADOLIBRE_IMAGENES_MESES meses.
+Schedule::command('mercadolibre:limpiar-imagenes')
+    ->monthlyOn(1, '4:30')
+    ->timezone($tz)
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
 // Rellenar región faltante en notas (prioriza las con OC). Romulo/Reicol en minutos distintos para no pelear cuota MP.
 if (config('cotiz.mercadopublico.regiones_backfill_schedule', true)) {
     $sistema = mb_strtolower((string) config('cotiz.sistema', ''));

@@ -116,6 +116,7 @@ class CotizarIaService
         protected CompraAgilImportService $compraAgilImport,
         protected PrisaStockService $prisa,
         protected MercadoLibreApiService $mercadolibre,
+        protected ImagenReferenciaWebService $imagenesWeb,
     ) {}
 
     public static function usuarioPermitido(?User $user): bool
@@ -310,7 +311,7 @@ class CotizarIaService
         }
 
         $rechazados = array_fill_keys(array_map('intval', $rechazados), true);
-        $items = $guardado['items'];
+        $items = $this->copiarImagenesReferencia($guardado['items'], $rechazados);
 
         $codigosVinculados = [];
         foreach ($items as $i => $item) {
@@ -467,12 +468,38 @@ class CotizarIaService
                 'pendiente' => true,
                 'prod_valor_costo' => (int) $item['referencia']['neto_unitario'],
                 'observacion' => $this->observacionReferencia($item['referencia']),
-            ];
+            ] + (($item['referencia']['imagen_ref'] ?? '') !== '' ? ['imagen_ref' => $item['referencia']['imagen_ref']] : []);
         }
 
         $conteo['pendientes']++;
 
         return $base + ['pendiente' => true];
+    }
+
+    /**
+     * Copia al bucket la foto de cada referencia de Mercado Libre aceptada (antes de la
+     * transacción: son descargas). Si una falla, la línea queda sin foto.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @param  array<int, true>  $rechazados
+     * @return list<array<string, mixed>>
+     */
+    private function copiarImagenesReferencia(array $items, array $rechazados): array
+    {
+        foreach ($items as $i => $item) {
+            $url = (string) ($item['referencia']['imagen_url'] ?? '');
+            if (isset($rechazados[$i]) || $item['estado'] !== self::ESTADO_REFERENCIA_WEB || $url === ''
+                || preg_match('~/p/([A-Z]{3}\d+)~', (string) ($item['referencia']['url'] ?? ''), $id) !== 1) {
+                continue;
+            }
+            try {
+                $items[$i]['referencia']['imagen_ref'] = $this->imagenesWeb->guardar($url, $id[1]);
+            } catch (Throwable $e) {
+                Log::warning('CotizarIa: no se copió la imagen de Mercado Libre', ['url' => $url, 'message' => $e->getMessage()]);
+            }
+        }
+
+        return $items;
     }
 
     /**
@@ -1859,7 +1886,7 @@ TXT];
      * $unidadesSolicitud, es el costo de esas unidades.
      *
      * @param  list<mixed>  $opciones
-     * @return array{0: ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, unidades_solicitud: int, neto_unitario: int, url: string, fecha: string, stock: ?int, stock_verificado: bool}, 1: bool}
+     * @return array{0: ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, unidades_solicitud: int, neto_unitario: int, url: string, fecha: string, stock: ?int, stock_verificado: bool, imagen_url?: string}, 1: bool}
      */
     private function mejorReferencia(string $descripcion, int $cantidad, array $opciones, int $unidadesSolicitud = 1): array
     {
@@ -1908,6 +1935,10 @@ TXT];
                 'stock' => $stock,
                 'stock_verificado' => $stock !== null,
             ];
+            $imagen = trim((string) ($opcion['imagen_url'] ?? ''));
+            if (ImagenReferenciaWebService::urlPermitida($imagen)) {
+                $candidata['imagen_url'] = $imagen;
+            }
             if ($stock !== null) {
                 if ($confirmada === null || $neto < $confirmada['neto_unitario']) {
                     $confirmada = $candidata;

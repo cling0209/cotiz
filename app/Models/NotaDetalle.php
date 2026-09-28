@@ -18,7 +18,7 @@ class NotaDetalle extends Model
     protected $fillable = [
         'nronota', 'prod_item', 'prod_valor', 'cantidad', 'fechahora',
         'orden', 'prod_valor_costo', 'prod_item_agile', 'prod_descripcion_agile',
-        'prod_descripcion_maestro', 'observacion', 'observacion_cliente',
+        'prod_descripcion_maestro', 'observacion', 'observacion_cliente', 'imagen_ref',
     ];
 
     protected function casts(): array
@@ -48,6 +48,15 @@ class NotaDetalle extends Model
         $codigo = $this->codigoProducto();
 
         return $codigo !== '' ? Maeprod::query()->find($codigo) : null;
+    }
+
+    /** Foto de la referencia web aplicada (ruta relativa a products.image_base_url). */
+    public function imagenRefUrl(): string
+    {
+        $ruta = trim((string) ($this->imagen_ref ?? ''));
+        $base = rtrim((string) config('products.image_base_url'), '/');
+
+        return $ruta !== '' && $base !== '' ? $base.'/'.ltrim($ruta, '/') : '';
     }
 
     public function lineTotal(): int

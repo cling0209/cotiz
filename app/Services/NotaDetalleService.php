@@ -122,7 +122,7 @@ class NotaDetalleService
             $descripcionMaestro = $nombreProducto !== '' ? $nombreProducto : $descripcionAgile;
         }
 
-        $imageUrl = $producto?->imageUrl() ?? '';
+        $imageUrl = $producto?->imageUrl() ?? $linea->imagenRefUrl();
 
         return [
             'linea' => $linea,
@@ -684,6 +684,10 @@ class NotaDetalleService
                         'prod_descripcion_agile' => $agileDesc,
                         'prod_descripcion_maestro' => $agileDesc,
                     ];
+                    $imagenRef = trim((string) ($linea['imagen_ref'] ?? ''));
+                    if ($imagenRef !== '') {
+                        $row['imagen_ref'] = mb_substr($imagenRef, 0, 300);
+                    }
                 } else {
                     $prodItem = trim((string) ($linea['prod_item'] ?? ''));
                     /** @var Maeprod|null $producto */
@@ -718,9 +722,11 @@ class NotaDetalleService
             }
 
             // insert() por chunk exige las mismas columnas en todas las filas.
-            if ($this->algunaTieneColumna($rows, 'observacion')) {
-                foreach ($rows as $i => $row) {
-                    $rows[$i]['observacion'] ??= null;
+            foreach (['observacion', 'imagen_ref'] as $columna) {
+                if ($this->algunaTieneColumna($rows, $columna)) {
+                    foreach ($rows as $i => $row) {
+                        $rows[$i][$columna] ??= null;
+                    }
                 }
             }
 

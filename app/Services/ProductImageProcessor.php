@@ -31,7 +31,7 @@ class ProductImageProcessor
     /**
      * @return array{contents: string, mime: string, extension: string}|null
      */
-    private function processBinary(string $contents, string $mime): ?array
+    public function processBinary(string $contents, string $mime): ?array
     {
         if (! $this->isAvailable()) {
             return null;

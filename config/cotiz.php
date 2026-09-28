@@ -181,6 +181,8 @@ return [
         'redirect_uri' => trim((string) env('MERCADOLIBRE_REDIRECT_URI', '')),
         'site_id' => trim((string) env('MERCADOLIBRE_SITE_ID', 'MLC')) ?: 'MLC',
         'timeout' => max(5, min(60, (int) env('MERCADOLIBRE_TIMEOUT', 20))),
+        // Fotos de referencia en R2 ({prefijo}/MERCADOLIBRE/AAAA/MM/); se borran los meses más antiguos.
+        'imagenes_meses' => max(1, (int) env('MERCADOLIBRE_IMAGENES_MESES', 6)),
     ],
 
     // Estado de stock en Prisa (búsqueda pública por código = prod_item) para «Cotizar con IA».
