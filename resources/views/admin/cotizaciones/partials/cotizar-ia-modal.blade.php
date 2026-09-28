@@ -218,12 +218,36 @@
         return data;
     }
 
+    const STOCK_PRISA = {
+        disponible: 'text-bg-success',
+        ultimas_unidades: 'text-bg-warning',
+        sin_stock: 'text-bg-danger',
+        desconocido: 'text-bg-secondary',
+    };
+
+    function badgeStockPrisa(stock) {
+        if (!stock) {
+            return '';
+        }
+        const txt = 'Prisa: ' + stock.etiqueta;
+        const badge = '<span class="badge ' + (STOCK_PRISA[stock.estado] || 'text-bg-secondary') + ' ms-1">' + esc(txt) + '</span>';
+        return stock.url
+            ? '<a href="' + esc(stock.url) + '" target="_blank" rel="noopener noreferrer" class="text-decoration-none" title="Ver en Prisa">' + badge + '</a>'
+            : badge;
+    }
+
+    function notaStock(linea) {
+        return linea.stock_nota ? '<div class="text-danger">' + esc(linea.stock_nota) + '</div>' : '';
+    }
+
     function celdaVinculo(linea) {
         if (linea.estado === 'vinculado' && linea.producto) {
             const [txt, cls] = ORIGENES[linea.origen] || ['Maestro', 'text-bg-secondary'];
             return '<span class="badge ' + cls + ' me-1">' + esc(txt) + '</span>'
                 + '<span class="font-monospace">' + esc(linea.producto.prod_item) + '</span> '
-                + esc(linea.producto.prod_nombre);
+                + esc(linea.producto.prod_nombre)
+                + badgeStockPrisa(linea.stock_prisa)
+                + notaStock(linea);
         }
         if (linea.estado === 'referencia_web' && linea.referencia) {
             const ref = linea.referencia;
@@ -231,9 +255,10 @@
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
                 + esc(ref.titulo) + pack
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
-                + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>';
+                + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>'
+                + notaStock(linea);
         }
-        return '<span class="badge text-bg-secondary">Sin v\u00ednculo</span>';
+        return '<span class="badge text-bg-secondary">Sin v\u00ednculo</span>' + notaStock(linea);
     }
 
     function costoLinea(linea) {

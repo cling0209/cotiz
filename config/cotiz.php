@@ -160,6 +160,23 @@ return [
         'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
     ],
 
+    // Estado de stock en Prisa (búsqueda pública por código = prod_item) para «Cotizar con IA».
+    'prisa' => [
+        'habilitado' => (bool) env('COTIZ_PRISA_STOCK', true),
+        // Solo esquema + dominio: una URL con ruta (ej. la del login) no cambia dónde se busca.
+        'base_url' => (static function (string $url): string {
+            $partes = parse_url($url);
+
+            return isset($partes['scheme'], $partes['host'])
+                ? $partes['scheme'].'://'.$partes['host'].(isset($partes['port']) ? ':'.$partes['port'] : '')
+                : 'https://www.prisa.cl';
+        })((string) env('COTIZ_PRISA_URL', 'https://www.prisa.cl')),
+        'cache_horas' => max(0, min(24, (int) env('COTIZ_PRISA_CACHE_HORAS', 3))),
+        'timeout' => max(5, min(60, (int) env('COTIZ_PRISA_TIMEOUT', 15))),
+        'concurrencia' => max(1, min(10, (int) env('COTIZ_PRISA_CONCURRENCIA', 5))),
+        'max_codigos' => max(1, min(400, (int) env('COTIZ_PRISA_MAX_CODIGOS', 200))),
+    ],
+
     // Sidecar PaddleOCR (tablas escaneadas producto/cantidad). En Docker: http://paddleocr:8080
     'paddleocr' => [
         'enabled' => filter_var(env('COTIZ_PADDLEOCR_ENABLED', true), FILTER_VALIDATE_BOOL),

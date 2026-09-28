@@ -48,6 +48,8 @@ class CotizarIaTest extends TestCase
             'cotiz.gemini.model' => 'gemini-principal',
             'cotiz.gemini.modelos_respaldo' => ['gemini-respaldo'],
             'cotiz.gemini.reintento_espera_ms' => 0,
+            'cotiz.prisa.habilitado' => false,
+            'cotiz.prisa.base_url' => 'https://prisa.test',
         ]);
 
         $this->admin = User::factory()->create([
@@ -271,7 +273,7 @@ class CotizarIaTest extends TestCase
             ->assertOk();
 
         $this->assertSame(5, $vistos[0]['paso']);
-        $this->assertSame(6, $vistos[0]['total']);
+        $this->assertSame(7, $vistos[0]['total']);
         $this->assertStringContainsString('equivalencias', $vistos[0]['etapa']);
         $this->assertTrue(collect($vistos)->contains(
             fn ($p) => is_array($p) && str_contains($p['detalle'], 'gemini-respaldo'),
@@ -423,6 +425,74 @@ class CotizarIaTest extends TestCase
                 ->mapWithKeys(fn (NotaDetalle $d) => [trim($d->prod_item) => (int) $d->cantidad])->sortKeys()->all(),
         );
         $this->assertStringContainsString(route('admin.cotizaciones.edit', $copia->nronota), (string) $aplicar->json('cotizaciones.1.edit_url'));
+    }
+
+    public function test_stock_prisa_cambia_agotado_por_equivalente_y_a_pedido_queda_pendiente(): void
+    {
+        config(['cotiz.prisa.habilitado' => true]);
+        $nota = $this->crearNota();
+        foreach ([self::DESC_FRASE, self::DESC_APRENDIDO, self::DESC_IA] as $n => $desc) {
+            NotaDetalle::query()->create([
+                'nronota' => $nota->nronota,
+                'prod_item' => 'NOK-'.($n + 1),
+                'prod_valor' => 0,
+                'cantidad' => 5,
+                'fechahora' => now(),
+                'orden' => $n + 1,
+                'prod_valor_costo' => 0,
+                'prod_item_agile' => 'MP'.($n + 1),
+                'prod_descripcion_agile' => $desc,
+                'prod_descripcion_maestro' => $desc,
+            ]);
+        }
+
+        $estadosPrisa = ['HIG002' => '9102', 'HIG001' => '9103', 'PAPEL001' => '9105'];
+        Http::fake(function (HttpRequest $request) use ($estadosPrisa) {
+            if (str_starts_with($request->url(), 'https://prisa.test/')) {
+                if (! str_contains($request->header('Cookie')[0] ?? '', 'OCXS=')) {
+                    return Http::response('<script>var a=toNumbers("'.str_repeat('a1', 16).'"),b=toNumbers("'.str_repeat('b2', 16).'"),'
+                        .'c=toNumbers("'.str_repeat('c3', 16).'");document.cookie="OCXS="+toHex(slowAES.decrypt(c,2,a,b));</script>');
+                }
+                $codigo = (string) ($request->data()['search'] ?? '');
+                $filas = isset($estadosPrisa[$codigo])
+                    ? [['sku' => $codigo, 'availability' => $estadosPrisa[$codigo], 'view_link' => '/producto-'.strtolower($codigo)]]
+                    : [];
+
+                return Http::response('<div data-page-component-options="'
+                    .htmlspecialchars(json_encode(['data' => ['data' => $filas]]), ENT_QUOTES).'"></div>');
+            }
+
+            return Http::response($this->respuestaGemini(str_contains($request->body(), 'google_search')
+                ? ['resultados' => []]
+                : ['resultados' => [['i' => 2, 'equivalentes' => ['HIG001', 'HIG002'], 'busqueda' => []]]]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+        $lineas = collect($preview['lineas'])->keyBy('descripcion');
+
+        $frase = $lineas[self::DESC_FRASE];
+        $this->assertSame('ARTE001', $frase['producto']['prod_item']);
+        $this->assertNull($frase['stock_prisa']);
+
+        $ia = $lineas[self::DESC_IA];
+        $this->assertSame(CotizarIaService::ESTADO_VINCULADO, $ia['estado']);
+        $this->assertSame('HIG001', $ia['producto']['prod_item']);
+        $this->assertSame('DISPONIBLE', $ia['stock_prisa']['etiqueta']);
+        $this->assertSame('https://prisa.test/producto-hig001', $ia['stock_prisa']['url']);
+        $this->assertStringContainsString('HIG002 AGOTADO', (string) $ia['stock_nota']);
+
+        $aPedido = $lineas[self::DESC_APRENDIDO];
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $aPedido['estado']);
+        $this->assertNull($aPedido['producto']);
+        $this->assertStringContainsString('PAPEL001', (string) $aPedido['stock_nota']);
+        $this->assertStringContainsString('A PEDIDO', (string) $aPedido['stock_nota']);
+
+        Http::assertSent(fn (HttpRequest $r) => str_starts_with($r->url(), 'https://prisa.test/')
+            && str_contains($r->header('Cookie')[0] ?? '', 'OCXS='));
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, '2 producto(s) sin stock')));
     }
 
     public function test_modelo_saturado_usa_modelo_de_respaldo(): void

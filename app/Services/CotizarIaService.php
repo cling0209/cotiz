@@ -71,7 +71,7 @@ class CotizarIaService
 
     private bool $iaSinCuota = false;
 
-    private const TOTAL_ETAPAS = 6;
+    private const TOTAL_ETAPAS = 7;
 
     private ?string $progresoKey = null;
 
@@ -89,6 +89,7 @@ class CotizarIaService
         protected NotaDetalleService $detalleService,
         protected NotaService $notaService,
         protected CompraAgilImportService $compraAgilImport,
+        protected PrisaStockService $prisa,
     ) {}
 
     public static function usuarioPermitido(?User $user): bool
@@ -173,7 +174,8 @@ class CotizarIaService
 
         $this->etapa(4, 'Vinculando '.count($items).' línea(s) con frases y aprendidos');
         $items = $this->vincular($items);
-        $this->etapa(6, 'Buscando referencias en Mercado Libre / Sodimac');
+        $items = $this->revisarStockPrisa($items);
+        $this->etapa(7, 'Buscando referencias en Mercado Libre / Sodimac');
         $items = $this->buscarReferenciasWeb($items);
 
         $token = Str::random(32);
@@ -803,6 +805,9 @@ TXT];
                 'origen' => null,
                 'producto' => null,
                 'referencia' => null,
+                'alternativas' => [],
+                'stock_prisa' => null,
+                'stock_nota' => null,
             ];
         }
 
@@ -850,6 +855,7 @@ TXT];
             $elegido = $this->masEconomico($candidatos[$i], $resultado[$i]['equivalentes'] ?? []);
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
+                $items[$i]['alternativas'] = $this->alternativas($candidatos[$i], $resultado[$i]['equivalentes'], $elegido);
             } elseif (($resultado[$i]['busqueda'] ?? []) !== []) {
                 $sinEquivalente[$i] = $resultado[$i]['busqueda'];
             }
@@ -881,6 +887,7 @@ TXT];
             $elegido = $this->masEconomico($lista, $resultado2[$i]['equivalentes'] ?? []);
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
+                $items[$i]['alternativas'] = $this->alternativas($lista, $resultado2[$i]['equivalentes'], $elegido);
             }
         }
 
@@ -1097,6 +1104,104 @@ TXT];
     }
 
     /**
+     * Otros equivalentes que marcó la IA, por si el elegido no tiene stock en Prisa.
+     *
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
+     * @param  list<string>  $equivalentes
+     * @param  array{prod_item: string}  $elegido
+     * @return list<array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>
+     */
+    private function alternativas(array $candidatos, array $equivalentes, array $elegido): array
+    {
+        $out = [];
+        foreach ($equivalentes as $codigo) {
+            if (isset($candidatos[$codigo]) && $codigo !== $elegido['prod_item']) {
+                $out[] = $candidatos[$codigo];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Revisa en Prisa el producto vinculado (código = prod_item). Sin stock (agotado, a pedido,
+     * descontinuado…) se cambia por el equivalente más económico con stock o, si no hay, la línea
+     * queda pendiente y pasa a la búsqueda en Mercado Libre / Sodimac. Si Prisa no tiene el código,
+     * no se revisa el stock.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function revisarStockPrisa(array $items): array
+    {
+        $vinculados = array_keys(array_filter($items, static fn (array $item) => $item['estado'] === self::ESTADO_VINCULADO));
+        if ($vinculados === [] || ! $this->prisa->habilitado()) {
+            return $items;
+        }
+
+        $this->etapa(6, 'Revisando stock en Prisa para '.count($vinculados).' producto(s)');
+        $codigos = [];
+        foreach ($vinculados as $i) {
+            $codigos[] = $items[$i]['producto']['prod_item'];
+            foreach ($items[$i]['alternativas'] as $alternativa) {
+                $codigos[] = $alternativa['prod_item'];
+            }
+        }
+        $estados = $this->prisa->consultar($codigos);
+        $conStock = [PrisaStockService::ESTADO_DISPONIBLE, PrisaStockService::ESTADO_ULTIMAS_UNIDADES];
+
+        $noVerificados = 0;
+        $sinStock = 0;
+        $reemplazados = 0;
+        foreach ($vinculados as $i) {
+            $original = $items[$i]['producto'];
+            if (! array_key_exists($original['prod_item'], $estados)) {
+                $noVerificados++;
+
+                continue;
+            }
+            $estado = $estados[$original['prod_item']];
+            $items[$i]['stock_prisa'] = $estado;
+            if ($estado === null || $estado['estado'] !== PrisaStockService::ESTADO_SIN_STOCK) {
+                continue;
+            }
+
+            $sinStock++;
+            $opciones = array_values(array_filter(
+                $items[$i]['alternativas'],
+                static fn (array $p) => in_array($estados[$p['prod_item']]['estado'] ?? null, $conStock, true),
+            ));
+            $reemplazo = $opciones === [] ? null : $this->busqueda->elegirMasEconomico($opciones);
+            if ($reemplazo !== null) {
+                $items[$i] = $this->marcarVinculado($items[$i], $reemplazo, (string) $items[$i]['origen']);
+                $items[$i]['stock_prisa'] = $estados[$reemplazo['prod_item']];
+                $items[$i]['stock_nota'] = 'Prisa: '.$original['prod_item'].' '.$estado['etiqueta'].'; se usó '.$reemplazo['prod_item'].'.';
+                $reemplazados++;
+
+                continue;
+            }
+
+            $items[$i]['estado'] = self::ESTADO_PENDIENTE;
+            $items[$i]['origen'] = null;
+            $items[$i]['producto'] = null;
+            $items[$i]['stock_nota'] = 'Prisa: '.$original['prod_item'].' '.$original['prod_nombre'].' '.$estado['etiqueta'].'.';
+        }
+
+        if ($noVerificados === count($vinculados)) {
+            $this->avisos[] = 'No se pudo revisar el stock en Prisa; los vínculos quedaron sin verificar.';
+        } elseif ($noVerificados > 0) {
+            $this->avisos[] = "No se pudo revisar el stock en Prisa de {$noVerificados} producto(s).";
+        }
+        if ($sinStock > 0) {
+            $this->avisos[] = "Prisa: {$sinStock} producto(s) sin stock (agotado, a pedido o descontinuado). "
+                ."{$reemplazados} se cambiaron por otro equivalente con stock y "
+                .($sinStock - $reemplazados).' pasan a buscar en Mercado Libre / Sodimac.';
+        }
+
+        return $items;
+    }
+
+    /**
      * Sin equivalente en el maestro: referencia en Mercado Libre / Sodimac vía Google Search.
      *
      * @param  list<array<string, mixed>>  $items
@@ -1289,6 +1394,8 @@ TXT];
                 'costo' => $costo === PHP_INT_MAX ? 0 : $costo,
             ],
             'referencia' => $referencia,
+            'stock_prisa' => $item['stock_prisa'] ?? null,
+            'stock_nota' => $item['stock_nota'] ?? null,
         ];
     }
 
