@@ -172,6 +172,17 @@ return [
         'max_fotos' => max(0, min(60, (int) env('COTIZ_GEMINI_MAX_FOTOS', 24))),
     ],
 
+    // Búsqueda de publicaciones en Mercado Libre (API). Sodimac sigue por Gemini.
+    'mercadolibre' => [
+        'habilitado' => filter_var(env('MERCADOLIBRE_HABILITADO', true), FILTER_VALIDATE_BOOL),
+        'client_id' => trim((string) (env('MERCADOLIBRE_CLIENTE_ID') ?: env('MERCADOLIBRE_CLIENT_ID', ''))),
+        'client_secret' => trim((string) env('MERCADOLIBRE_CLIENT_SECRET', '')),
+        'refresh_token' => trim((string) env('MERCADOLIBRE_REFRESH_TOKEN', '')),
+        'redirect_uri' => trim((string) env('MERCADOLIBRE_REDIRECT_URI', '')),
+        'site_id' => trim((string) env('MERCADOLIBRE_SITE_ID', 'MLC')) ?: 'MLC',
+        'timeout' => max(5, min(60, (int) env('MERCADOLIBRE_TIMEOUT', 20))),
+    ],
+
     // Estado de stock en Prisa (búsqueda pública por código = prod_item) para «Cotizar con IA».
     'prisa' => [
         'habilitado' => (bool) env('COTIZ_PRISA_STOCK', true),

@@ -115,6 +115,7 @@ class CotizarIaService
         protected NotaService $notaService,
         protected CompraAgilImportService $compraAgilImport,
         protected PrisaStockService $prisa,
+        protected MercadoLibreApiService $mercadolibre,
     ) {}
 
     public static function usuarioPermitido(?User $user): bool
@@ -1638,7 +1639,7 @@ TXT];
     }
 
     /**
-     * Sin equivalente en el maestro: referencia en Mercado Libre / Sodimac vía Google Search.
+     * Sin equivalente en el maestro: Mercado Libre por su API y, si queda pendiente, Sodimac vía Google Search.
      *
      * @param  list<array<string, mixed>>  $items
      * @return list<array<string, mixed>>
@@ -1651,11 +1652,14 @@ TXT];
                 $pendientes[] = $i;
             }
         }
-        if ($pendientes === [] || $this->iaSinCuota || ! config('cotiz.gemini.busqueda_web', true)) {
-            return $items;
-        }
-        if (Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
-            $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
+        $buscarGemini = ! $this->iaSinCuota
+            && (bool) config('cotiz.gemini.busqueda_web', true)
+            && ! Cache::has(self::CACHE_WEB_SIN_CUOTA);
+        $buscarMl = $this->mercadolibre->configurado();
+        if ($pendientes === [] || (! $buscarMl && ! $buscarGemini)) {
+            if ($pendientes !== [] && ! $buscarMl && ! $this->iaSinCuota && config('cotiz.gemini.busqueda_web', true) && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
+                $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
+            }
 
             return $items;
         }
@@ -1669,10 +1673,26 @@ TXT];
             $pendientes = array_slice($pendientes, 0, $max);
         }
 
-        $lotes = array_chunk($pendientes, max(1, (int) config('cotiz.gemini.lote_web', 10)));
-        $lotesIlegibles = 0;
         $sinStockSuficiente = 0;
         $this->urlsWebDescartadas = 0;
+        if ($buscarMl) {
+            $items = $this->referenciasMercadoLibre($items, $pendientes, $sinStockSuficiente, $buscarGemini);
+            $pendientes = array_values(array_filter(
+                $pendientes,
+                static fn (int $i) => $items[$i]['estado'] === self::ESTADO_PENDIENTE,
+            ));
+        }
+        if (! $buscarGemini || $pendientes === []) {
+            if ($pendientes !== [] && ! $buscarGemini && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
+                $this->avisos[] = 'Búsqueda en Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
+            }
+            $this->avisarReferenciasWeb($items, $sinStockSuficiente, 0, 0);
+
+            return $items;
+        }
+
+        $lotes = array_chunk($pendientes, max(1, (int) config('cotiz.gemini.lote_web', 10)));
+        $lotesIlegibles = 0;
         foreach ($lotes as $n => $lote) {
             if (count($lotes) > 1) {
                 $this->detalle('Tanda '.($n + 1).' de '.count($lotes).' ('.count($lote).' línea(s))');
@@ -1695,10 +1715,53 @@ TXT];
             }
         }
 
+        $this->avisarReferenciasWeb($items, $sinStockSuficiente, $lotesIlegibles, count($lotes));
+
+        return $items;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @param  list<int>  $pendientes
+     * @return list<array<string, mixed>>
+     */
+    private function referenciasMercadoLibre(array $items, array $pendientes, int &$sinStockSuficiente, bool $buscarGemini): array
+    {
+        $this->detalle('Buscando en Mercado Libre…');
+        try {
+            foreach ($pendientes as $i) {
+                $opciones = $this->mercadolibre->buscar((string) $items[$i]['descripcion']);
+                $cantidad = max(1, (int) $items[$i]['cantidad']);
+                [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, $opciones);
+                if ($mejor !== null) {
+                    $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
+                    $items[$i]['origen'] = self::ORIGEN_WEB;
+                    $items[$i]['referencia'] = $mejor;
+                } elseif ($todasSinStock && ! $buscarGemini) {
+                    $sinStockSuficiente++;
+                    $nota = "Mercado Libre: ninguna publicación tiene stock suficiente para {$cantidad} unidad(es).";
+                    $previa = trim((string) ($items[$i]['stock_nota'] ?? ''));
+                    $items[$i]['stock_nota'] = $previa === '' ? $nota : $previa.' '.$nota;
+                }
+            }
+        } catch (RuntimeException $e) {
+            Log::warning('CotizarIa: fallo en Mercado Libre', ['message' => $e->getMessage()]);
+            $this->avisos[] = 'No se pudo buscar en Mercado Libre: '.$e->getMessage();
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function avisarReferenciasWeb(array $items, int $sinStockSuficiente, int $lotesIlegibles, int $lotes): void
+    {
         if ($lotesIlegibles > 0) {
-            $this->avisos[] = count($lotes) > 1
-                ? "La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible en {$lotesIlegibles} de ".count($lotes).' tanda(s) (se reintentó); esas líneas quedaron pendientes.'
-                : 'La búsqueda en Mercado Libre / Sodimac no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.';
+            $donde = $this->mercadolibre->configurado() ? 'Sodimac' : 'Mercado Libre / Sodimac';
+            $this->avisos[] = $lotes > 1
+                ? "La búsqueda en {$donde} no devolvió un resultado legible en {$lotesIlegibles} de {$lotes} tanda(s) (se reintentó); esas líneas quedaron pendientes."
+                : "La búsqueda en {$donde} no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.";
         }
         if ($sinStockSuficiente > 0) {
             $this->avisos[] = "Mercado Libre / Sodimac: {$sinStockSuficiente} línea(s) sin publicaciones con stock suficiente para la cantidad pedida; quedaron pendientes.";
@@ -1713,8 +1776,6 @@ TXT];
         if ($noVerificadas > 0) {
             $this->avisos[] = "{$noVerificadas} referencia(s) web con stock no verificado; revíselas con «ver» antes de cotizar.";
         }
-
-        return $items;
     }
 
     /**
@@ -1734,7 +1795,8 @@ TXT];
             'cantidad' => (int) $items[$i]['cantidad'],
         ], $pendientes);
 
-        $prompt = "Busca en Google cada producto SOLO en mercadolibre.cl y sodimac.cl (Chile).\n"
+        $soloSodimac = $this->mercadolibre->configurado();
+        $prompt = 'Busca en Google cada producto SOLO en '.($soloSodimac ? 'sodimac.cl' : 'mercadolibre.cl y sodimac.cl')." (Chile).\n"
             ."Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, medida y formato) con su precio actual en pesos chilenos IVA incluido.\n"
             ."Si la publicación vende un pack o caja, indica cuántas unidades trae en unidades_por_pack (si es unitario, 1).\n"
             ."En unidades_solicitud indica cuántas unidades trae UNO de los productos solicitados: si pide un pack de N (ej. «pack 2U», «set de 3», «caja de 12») es N; si pide un producto suelto, 1.\n"

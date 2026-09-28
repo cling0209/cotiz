@@ -51,6 +51,7 @@ class CotizarIaTest extends TestCase
             'cotiz.gemini.reintento_espera_ms' => 0,
             'cotiz.prisa.habilitado' => false,
             'cotiz.prisa.base_url' => 'https://prisa.test',
+            'cotiz.mercadolibre.habilitado' => false,
         ]);
 
         $this->admin = User::factory()->create([
@@ -1552,6 +1553,101 @@ class CotizarIaTest extends TestCase
         $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
         $this->assertSame('HIG002', trim($ia->prod_item));
         $this->assertSame(1066, (int) $ia->prod_valor);
+    }
+
+    public function test_mercado_libre_sale_de_la_api_y_no_de_gemini(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.site_id' => 'MLC',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response([
+                'access_token' => 'token-ml',
+                'expires_in' => 21600,
+            ]),
+            'api.mercadolibre.com/sites/MLC/search*' => Http::response([
+                'results' => [[
+                    'title' => 'Tornillo autoperforante 8 x 1 pulgada pack 100',
+                    'price' => 11900,
+                    'available_quantity' => 4,
+                    'permalink' => 'https://articulo.mercadolibre.cl/MLC-555-tornillo',
+                ]],
+            ]),
+            'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini([
+                'resultados' => [
+                    ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                    ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                ],
+            ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('Mercado Libre', $web['referencia']['sitio']);
+        $this->assertSame('https://articulo.mercadolibre.cl/MLC-555-tornillo', $web['referencia']['url']);
+        $this->assertSame(100, $web['referencia']['unidades_por_pack']);
+        $this->assertSame(100, $web['referencia']['neto_unitario']);
+        $this->assertTrue($web['referencia']['stock_verificado']);
+        $this->assertSame(4, $web['referencia']['stock']);
+
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/sites/MLC/search')
+            && $request->hasHeader('Authorization', 'Bearer token-ml'));
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->body(), 'google_search'));
+    }
+
+    public function test_callback_de_mercadolibre_guarda_el_refresh_token(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.redirect_uri' => 'https://cotiz.romulo.cl/admin/mercadolibre/callback',
+        ]);
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response([
+                'access_token' => 'token-ml',
+                'refresh_token' => 'refresh-ml',
+                'expires_in' => 21600,
+            ]),
+        ]);
+
+        $ruta = storage_path('app/mercadolibre-oauth.json');
+        if (is_file($ruta)) {
+            unlink($ruta);
+        }
+
+        try {
+            $this->actingAs($this->admin)
+                ->get(route('admin.mercadolibre.callback', ['code' => 'TG-codigo']))
+                ->assertOk();
+
+            $guardado = json_decode((string) file_get_contents($ruta), true);
+            $this->assertSame('refresh-ml', $guardado['refresh_token'] ?? null);
+        } finally {
+            if (is_file($ruta)) {
+                unlink($ruta);
+            }
+        }
+
+        Http::assertSent(function (HttpRequest $request) {
+            $datos = $request->data();
+
+            return str_contains($request->url(), 'oauth/token')
+                && ($datos['grant_type'] ?? '') === 'authorization_code'
+                && ($datos['code'] ?? '') === 'TG-codigo'
+                && ($datos['redirect_uri'] ?? '') === 'https://cotiz.romulo.cl/admin/mercadolibre/callback';
+        });
     }
 
     public function test_sitio_permitido_solo_mercado_libre_y_sodimac(): void
