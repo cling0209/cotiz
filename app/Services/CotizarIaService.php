@@ -1883,7 +1883,7 @@ TXT];
      * la más económica con stock desconocido (queda marcada como no verificada). El segundo valor indica
      * que todas las opciones válidas tienen stock insuficiente.
      *
-     * neto_unitario es el costo neto de UNO de los solicitados: si la línea pide un pack de
+     * neto_unitario es el costo de UNO de los solicitados (con IVA si es Mercado Libre): si la línea pide un pack de
      * $unidadesSolicitud, es el costo de esas unidades.
      *
      * @param  list<mixed>  $opciones
@@ -1910,7 +1910,9 @@ TXT];
                 continue;
             }
             $unidades = max(1, (int) ($opcion['unidades_por_pack'] ?? 1));
-            $neto = (int) round($precio / self::IVA / $unidades * $unidadesSolicitud);
+            // En Mercado Libre el costo es el precio publicado, con IVA; en Sodimac, el neto.
+            $conIva = $sitio === self::SITIOS_WEB['mercadolibre.cl'];
+            $neto = (int) round($precio / ($conIva ? 1 : self::IVA) / $unidades * $unidadesSolicitud);
             if ($neto <= 0) {
                 continue;
             }
@@ -1931,6 +1933,7 @@ TXT];
                 'unidades_por_pack' => $unidades,
                 'unidades_solicitud' => $unidadesSolicitud,
                 'neto_unitario' => $neto,
+                'costo_con_iva' => $conIva,
                 'url' => mb_substr($url, 0, 1000),
                 'fecha' => now()->format('d-m-Y'),
                 'stock' => $stock,
@@ -2071,10 +2074,11 @@ TXT];
         $neto = '$'.number_format($ref['neto_unitario'], 0, ',', '.');
         $pack = $ref['unidades_por_pack'] > 1 ? ' pack '.$ref['unidades_por_pack'].' un.' : '';
         $solicitud = (int) ($ref['unidades_solicitud'] ?? 1);
+        $tipo = ($ref['costo_con_iva'] ?? false) ? 'costo c/IVA' : 'neto';
         $netoTxt = match (true) {
-            $solicitud > 1 => $neto.' neto por pack de '.$solicitud,
-            $ref['unidades_por_pack'] > 1 => $neto.' neto c/u',
-            default => $neto.' neto',
+            $solicitud > 1 => $neto.' '.$tipo.' por pack de '.$solicitud,
+            $ref['unidades_por_pack'] > 1 => $neto.' '.$tipo.' c/u',
+            default => $neto.' '.$tipo,
         };
         $stock = '';
         if (array_key_exists('stock_verificado', $ref)) {

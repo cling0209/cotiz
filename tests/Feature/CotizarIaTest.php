@@ -171,7 +171,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame('HIG002', $lineas[self::DESC_IA]['producto']['prod_item']);
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $lineas[self::DESC_WEB]['estado']);
         $this->assertSame('Mercado Libre', $lineas[self::DESC_WEB]['referencia']['sitio']);
-        $this->assertSame(100, $lineas[self::DESC_WEB]['referencia']['neto_unitario']);
+        $this->assertSame(119, $lineas[self::DESC_WEB]['referencia']['neto_unitario']);
         $this->assertFalse($lineas[self::DESC_WEB]['referencia']['stock_verificado']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'stock no verificado')));
 
@@ -207,8 +207,8 @@ class CotizarIaTest extends TestCase
 
         $web = $detalle[self::DESC_WEB];
         $this->assertStringStartsWith('NOK-', (string) $web->prod_item);
-        $this->assertSame(100, (int) $web->prod_valor_costo);
-        $this->assertSame(122, (int) $web->prod_valor);
+        $this->assertSame(119, (int) $web->prod_valor_costo);
+        $this->assertSame(145, (int) $web->prod_valor);
         $this->assertStringContainsString('Ref. Mercado Libre', (string) $web->observacion);
         $this->assertStringContainsString('https://articulo.mercadolibre.cl/MLC-123-tornillo', (string) $web->observacion);
         $this->assertStringContainsString('stock no verificado', (string) $web->observacion);
@@ -504,9 +504,9 @@ class CotizarIaTest extends TestCase
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
         $this->assertSame('https://articulo.mercadolibre.cl/MLC-2-tornillo', $web['referencia']['url']);
         $this->assertSame(2, $web['referencia']['unidades_solicitud']);
-        $this->assertSame(1200, $web['referencia']['neto_unitario']);
-        $this->assertSame(1200, $web['costo']);
-        $this->assertSame(1464, $web['precio_venta']);
+        $this->assertSame(1428, $web['referencia']['neto_unitario']);
+        $this->assertSame(1428, $web['costo']);
+        $this->assertSame(1742, $web['precio_venta']);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
@@ -517,9 +517,9 @@ class CotizarIaTest extends TestCase
             ->assertOk();
 
         $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_WEB)->firstOrFail();
-        $this->assertSame(1200, (int) $linea->prod_valor_costo);
-        $this->assertSame(1464, (int) $linea->prod_valor);
-        $this->assertStringContainsString('neto por pack de 2', (string) $linea->observacion);
+        $this->assertSame(1428, (int) $linea->prod_valor_costo);
+        $this->assertSame(1742, (int) $linea->prod_valor);
+        $this->assertStringContainsString('costo c/IVA por pack de 2', (string) $linea->observacion);
     }
 
     public function test_factor_de_venta_por_region_en_preview_y_factor_manual_al_aplicar(): void
@@ -1050,7 +1050,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame('https://articulo.mercadolibre.cl/MLC-3', $ref['url']);
         $this->assertTrue($ref['stock_verificado']);
         $this->assertSame(1, $ref['stock']);
-        $this->assertSame(3000, $ref['neto_unitario']);
+        $this->assertSame(3570, $ref['neto_unitario']);
 
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, '1 línea(s) sin publicaciones con stock suficiente')));
         $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'stock no verificado')));
@@ -1611,7 +1611,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame('https://www.mercadolibre.cl/p/MLC555', $web['referencia']['url']);
         $this->assertSame(11900, $web['referencia']['precio_clp']);
         $this->assertSame(100, $web['referencia']['unidades_por_pack']);
-        $this->assertSame(100, $web['referencia']['neto_unitario']);
+        $this->assertSame(119, $web['referencia']['neto_unitario']);
         $this->assertFalse($web['referencia']['stock_verificado']);
         $this->assertNull($web['referencia']['stock']);
         $this->assertSame('https://http2.mlstatic.com/D_NQ_NP_555-F.jpg', $web['referencia']['imagen_url']);
@@ -1695,7 +1695,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
         $this->assertSame(12, $web['referencia']['unidades_por_pack']);
         $this->assertSame(12, $web['referencia']['unidades_solicitud']);
-        $this->assertSame(6353, $web['referencia']['neto_unitario']);
+        $this->assertSame(7560, $web['referencia']['neto_unitario']);
     }
 
     public function test_mercado_libre_lee_unidades_del_nombre_del_catalogo(): void
