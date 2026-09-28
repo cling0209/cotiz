@@ -238,6 +238,12 @@ class CotizarIaService
             'separar' => $separar,
         ], now()->addMinutes(self::CACHE_TTL_MINUTOS));
 
+        $venta = $this->factorVenta($nota, $regionMp);
+        if ($venta['region'] === null) {
+            $this->avisos[] = 'No se pudo determinar la región del organismo: el precio de venta usa el factor '
+                .number_format($venta['factor'], 2, ',', '.').'. Revíselo antes de aplicar.';
+        }
+
         $lineasActuales = NotaDetalle::query()->where('nronota', $nota->nronota)->count();
         $lineasActualesAgile = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
@@ -253,7 +259,8 @@ class CotizarIaService
             'adjuntos_usados' => $decision['adjuntos_usados'],
             'adjuntos_disponibles' => array_map(static fn (array $a) => $a['nombre'], $adjuntos),
             'avisos' => array_values(array_unique($this->avisos)),
-            'lineas' => array_map(fn (array $item, int $i) => $this->itemParaRespuesta($item, $i), $items, array_keys($items)),
+            'venta' => $venta,
+            'lineas' => array_map(fn (array $item, int $i) => $this->itemParaRespuesta($item, $i, $venta['factor']), $items, array_keys($items)),
             'resumen' => $this->resumen($items),
             'separar' => $separar,
             'grupos' => $separar
@@ -275,7 +282,7 @@ class CotizarIaService
      * @param  list<int>  $rechazados  índices cuyo vínculo/referencia el usuario descartó (quedan pendientes)
      * @return array{agregadas: int, vinculadas: int, referencias_web: int, pendientes: int, eliminadas: int, aprendidas: int, cotizaciones: list<array{nronota: int, solicitante: string, agregadas: int}>}
      */
-    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar, bool $separar = false): array
+    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar, bool $separar = false, ?float $factorManual = null): array
     {
         $key = $this->cacheKey($usuario, $token);
         $guardado = $this->previewGuardado($usuario, $token);
@@ -310,9 +317,9 @@ class CotizarIaService
             $grupos = ['' => array_keys($items)];
         }
 
-        $region = (int) ($nota->region ?: ($guardado['region'] ?? 0));
-        $factor = CompraAgilRegionScope::factorPrecioVentaPorRegion($region > 0 ? $region : null)
-            ?? (float) ($nota->factor_precio_venta ?: config('cotiz.factor_precio_venta', 1.22));
+        $factor = $factorManual !== null && $factorManual > 0
+            ? round($factorManual, 2)
+            : $this->factorVenta($nota, $guardado['region'] ?? null)['factor'];
 
         $conteo = ['vinculadas' => 0, 'referencias_web' => 0, 'pendientes' => 0, 'agregadas' => 0, 'eliminadas' => 0];
         $paraAprender = [];
@@ -381,6 +388,24 @@ class CotizarIaService
         return $conteo + [
             'aprendidas' => $aprendidas,
             'cotizaciones' => $cotizaciones,
+        ];
+    }
+
+    /**
+     * Factor de precio de venta según la región del organismo (Metropolitana u otras); sin región,
+     * el factor de la nota.
+     *
+     * @return array{factor: float, region: ?int, nombre_region: string}
+     */
+    private function factorVenta(Nota $nota, mixed $regionMp): array
+    {
+        $region = (int) ($nota->region ?: (is_numeric($regionMp) ? $regionMp : 0));
+        $porRegion = CompraAgilRegionScope::factorPrecioVentaPorRegion($region > 0 ? $region : null);
+
+        return [
+            'factor' => $porRegion ?? round((float) ($nota->factor_precio_venta ?: config('cotiz.factor_precio_venta', 1.22)), 2),
+            'region' => $porRegion !== null ? $region : null,
+            'nombre_region' => $porRegion !== null ? CompraAgilRegionScope::nombreRegion($region) : '',
         ];
     }
 
@@ -1372,12 +1397,13 @@ TXT];
         $prompt = "Busca en Google cada producto SOLO en mercadolibre.cl y sodimac.cl (Chile).\n"
             ."Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, medida y formato) con su precio actual en pesos chilenos IVA incluido.\n"
             ."Si la publicación vende un pack o caja, indica cuántas unidades trae en unidades_por_pack (si es unitario, 1).\n"
+            ."En unidades_solicitud indica cuántas unidades trae UNO de los productos solicitados: si pide un pack de N (ej. «pack 2U», «set de 3», «caja de 12») es N; si pide un producto suelto, 1.\n"
             ."En stock_disponible indica cuántas unidades de la publicación (packs, si vende packs) muestra disponibles la página: "
             ."\"+50 disponibles\" = 50, \"Últimas 3\" = 3, agotado o sin stock = 0; si la página no lo muestra, null. No lo inventes.\n"
             ."Se necesita al menos la cantidad indicada: prioriza publicaciones con stock suficiente para esa cantidad.\n"
             ."En url copia exactamente el enlace del resultado de búsqueda de esa publicación (página del producto, no un listado ni una búsqueda); no armes ni inventes URLs ni precios. Si no encuentras, deja opciones vacío.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
-            .'Responde SOLO JSON: {"resultados":[{"i":0,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"stock_disponible":null,"url":""}]}]}';
+            .'Responde SOLO JSON: {"resultados":[{"i":0,"unidades_solicitud":1,"opciones":[{"sitio":"mercadolibre|sodimac","titulo":"","precio_clp":0,"unidades_por_pack":1,"stock_disponible":null,"url":""}]}]}';
 
         $opciones = [
             'json' => true,
@@ -1405,7 +1431,8 @@ TXT];
                 continue;
             }
             $cantidad = max(1, (int) $items[$i]['cantidad']);
-            [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, (array) ($fila['opciones'] ?? []));
+            $unidadesSolicitud = max(1, min(self::MAX_UNIDADES_POR_SOLICITADO, (int) ($fila['unidades_solicitud'] ?? 1)));
+            [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, (array) ($fila['opciones'] ?? []), $unidadesSolicitud);
             if ($mejor !== null) {
                 $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                 $items[$i]['origen'] = self::ORIGEN_WEB;
@@ -1426,10 +1453,13 @@ TXT];
      * la más económica con stock desconocido (queda marcada como no verificada). El segundo valor indica
      * que todas las opciones válidas tienen stock insuficiente.
      *
+     * neto_unitario es el costo neto de UNO de los solicitados: si la línea pide un pack de
+     * $unidadesSolicitud, es el costo de esas unidades.
+     *
      * @param  list<mixed>  $opciones
-     * @return array{0: ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, neto_unitario: int, url: string, fecha: string, stock: ?int, stock_verificado: bool}, 1: bool}
+     * @return array{0: ?array{sitio: string, titulo: string, precio_clp: int, unidades_por_pack: int, unidades_solicitud: int, neto_unitario: int, url: string, fecha: string, stock: ?int, stock_verificado: bool}, 1: bool}
      */
-    private function mejorReferencia(string $descripcion, int $cantidad, array $opciones): array
+    private function mejorReferencia(string $descripcion, int $cantidad, array $opciones, int $unidadesSolicitud = 1): array
     {
         $confirmada = null;
         $desconocida = null;
@@ -1450,7 +1480,7 @@ TXT];
                 continue;
             }
             $unidades = max(1, (int) ($opcion['unidades_por_pack'] ?? 1));
-            $neto = (int) round($precio / self::IVA / $unidades);
+            $neto = (int) round($precio / self::IVA / $unidades * $unidadesSolicitud);
             if ($neto <= 0) {
                 continue;
             }
@@ -1458,7 +1488,7 @@ TXT];
 
             $stockBruto = $opcion['stock_disponible'] ?? null;
             $stock = is_numeric($stockBruto) && (float) $stockBruto >= 0 ? (int) floor((float) $stockBruto) : null;
-            if ($stock !== null && $stock < (int) ceil($cantidad / $unidades)) {
+            if ($stock !== null && $stock < (int) ceil($cantidad * $unidadesSolicitud / $unidades)) {
                 $insuficientes++;
 
                 continue;
@@ -1469,6 +1499,7 @@ TXT];
                 'titulo' => $titulo,
                 'precio_clp' => $precio,
                 'unidades_por_pack' => $unidades,
+                'unidades_solicitud' => $unidadesSolicitud,
                 'neto_unitario' => $neto,
                 'url' => mb_substr($url, 0, 1000),
                 'fecha' => now()->format('d-m-Y'),
@@ -1605,7 +1636,12 @@ TXT];
         $precio = '$'.number_format($ref['precio_clp'], 0, ',', '.');
         $neto = '$'.number_format($ref['neto_unitario'], 0, ',', '.');
         $pack = $ref['unidades_por_pack'] > 1 ? ' pack '.$ref['unidades_por_pack'].' un.' : '';
-        $netoTxt = $ref['unidades_por_pack'] > 1 ? $neto.' neto c/u' : $neto.' neto';
+        $solicitud = (int) ($ref['unidades_solicitud'] ?? 1);
+        $netoTxt = match (true) {
+            $solicitud > 1 => $neto.' neto por pack de '.$solicitud,
+            $ref['unidades_por_pack'] > 1 => $neto.' neto c/u',
+            default => $neto.' neto',
+        };
         $stock = '';
         if (array_key_exists('stock_verificado', $ref)) {
             $stock = $ref['stock_verificado']
@@ -1632,16 +1668,25 @@ TXT];
     }
 
     /**
+     * costo y precio_venta por unidad solicitada, calculados igual que al aplicar: con costo,
+     * costo × factor; sin costo en el maestro, se mantiene su precio (no se le aplica factor).
+     *
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    private function itemParaRespuesta(array $item, int $indice): array
+    private function itemParaRespuesta(array $item, int $indice, float $factor): array
     {
         $producto = $item['producto'];
         $referencia = $item['referencia'];
-        $costo = $producto === null
-            ? 0
-            : $this->busqueda->costoPropuesta($producto['prod_valor'], $producto['prod_valor_costo']);
+        $costo = 0;
+        $precioVenta = 0;
+        if ($producto !== null) {
+            $costo = max(0, (int) $producto['prod_valor_costo']);
+            $precioVenta = $costo > 0 ? (int) round($costo * $factor) : max(0, (int) $producto['prod_valor']);
+        } elseif (is_array($referencia)) {
+            $costo = (int) $referencia['neto_unitario'];
+            $precioVenta = (int) round($costo * $factor);
+        }
 
         return [
             'indice' => $indice,
@@ -1654,9 +1699,10 @@ TXT];
             'producto' => $producto === null ? null : [
                 'prod_item' => $producto['prod_item'],
                 'prod_nombre' => $producto['prod_nombre'],
-                'costo' => $costo === PHP_INT_MAX ? 0 : $costo,
                 'unidades' => max(1, (int) ($producto['unidades'] ?? 1)),
             ],
+            'costo' => $costo,
+            'precio_venta' => $precioVenta,
             'referencia' => $referencia,
             'stock_prisa' => $item['stock_prisa'] ?? null,
             'stock_nota' => $item['stock_nota'] ?? null,

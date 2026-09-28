@@ -884,6 +884,7 @@ class CotizacionController extends Controller
             'rechazados.*' => ['integer', 'min:0'],
             'reemplazar' => ['nullable', 'boolean'],
             'separar' => ['nullable', 'boolean'],
+            'factor' => ['nullable', 'numeric', 'min:1', 'max:5'],
         ]);
 
         $usuario = (string) $request->user()->username;
@@ -909,6 +910,7 @@ class CotizacionController extends Controller
                 $datos['rechazados'] ?? [],
                 (bool) ($datos['reemplazar'] ?? false),
                 (bool) ($datos['separar'] ?? false),
+                isset($datos['factor']) ? (float) $datos['factor'] : null,
             );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);

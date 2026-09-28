@@ -40,6 +40,11 @@
                         </div>
                     </div>
                     <p class="small mb-2" id="cotizar-ia-resumen"></p>
+                    <div class="d-flex flex-wrap align-items-center gap-2 small mb-2">
+                        <label class="fw-semibold mb-0" for="cotizar-ia-factor">Factor de venta</label>
+                        <input type="number" class="form-control form-control-sm tabular-nums" id="cotizar-ia-factor" style="width: 6rem;" min="1" max="5" step="0.01">
+                        <span class="text-muted" id="cotizar-ia-region"></span>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle small mb-2">
                             <thead class="table-light">
@@ -48,11 +53,20 @@
                                     <th>Solicitado</th>
                                     <th class="text-end" style="width: 5rem;">Cant.</th>
                                     <th>V&iacute;nculo propuesto</th>
-                                    <th class="text-end" style="width: 7rem;">Costo neto</th>
+                                    <th class="text-end" style="width: 6.5rem;" title="Costo neto por unidad solicitada">Costo</th>
+                                    <th class="text-end" style="width: 6.5rem;" title="Precio neto por unidad solicitada (costo &times; factor)">Precio venta</th>
+                                    <th class="text-end" style="width: 7rem;">Total venta</th>
                                     <th class="text-center" style="width: 4rem;" title="Desmarque para dejar la l&iacute;nea pendiente sin v&iacute;nculo">Usar</th>
                                 </tr>
                             </thead>
                             <tbody id="cotizar-ia-lineas"></tbody>
+                            <tfoot>
+                                <tr class="table-light fw-semibold">
+                                    <td colspan="6" class="text-end">Total venta neto (l&iacute;neas marcadas)</td>
+                                    <td class="text-end tabular-nums" id="cotizar-ia-total"></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                     <div class="form-check small d-none" id="cotizar-ia-wrap-reemplazar">
@@ -60,7 +74,7 @@
                         <label class="form-check-label" for="cotizar-ia-reemplazar" id="cotizar-ia-reemplazar-label"></label>
                     </div>
                     <p class="small text-muted mb-0 mt-1">
-                        Las l&iacute;neas con referencia web quedan pendientes (NOK) con el costo neto y la URL en la observaci&oacute;n interna.
+                        Las l&iacute;neas con referencia web quedan pendientes (NOK) con el costo neto (precio publicado sin IVA) y la URL en la observaci&oacute;n interna; el precio de venta es costo &times; factor.
                         Los v&iacute;nculos por IA que agregue se guardan como aprendizaje.
                     </p>
                 </div>
@@ -111,7 +125,10 @@
         ia: ['IA', 'text-bg-success'],
     };
 
+    const REGION_METROPOLITANA = @json(\App\Services\CompraAgilRegionScope::REGION_METROPOLITANA);
+
     let token = null;
+    let factorInicial = null;
     let grupos = [];
     let destinoAlCerrar = null;
     let enCurso = false;
@@ -289,8 +306,11 @@
             } else if (ref.stock_verificado === false) {
                 stock = ' <span class="badge text-bg-warning" title="La publicación no muestra stock; revíselo con «ver»">Stock no verificado</span>';
             }
+            const solicitud = ref.unidades_solicitud > 1
+                ? ' <span class="badge text-bg-info" title="La l\u00ednea pide un pack de ' + esc(ref.unidades_solicitud) + '; el costo es el de esas unidades">pack de ' + esc(ref.unidades_solicitud) + ' solicitado</span>'
+                : '';
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
-                + esc(ref.titulo) + pack
+                + esc(ref.titulo) + pack + solicitud
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
                 + stock
                 + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>'
@@ -300,24 +320,55 @@
     }
 
     function costoLinea(linea) {
-        if (linea.estado === 'vinculado' && linea.producto && linea.producto.costo > 0) {
-            return '$' + numero.format(linea.producto.costo);
+        if (linea.estado === 'pendiente') {
+            return '';
         }
-        if (linea.estado === 'referencia_web' && linea.referencia) {
-            return '$' + numero.format(linea.referencia.neto_unitario);
+        if (linea.costo > 0) {
+            return '$' + numero.format(linea.costo);
         }
-        return '';
+        return '<span class="text-danger" title="El producto no tiene costo en el maestro: se usa su precio de venta sin factor">sin costo</span>';
+    }
+
+    /** Igual que al aplicar: con costo, costo × factor; sin costo, el precio del maestro sin factor. */
+    function precioVenta(fila, factor) {
+        const costo = parseInt(fila.dataset.costo, 10) || 0;
+        return costo > 0 ? Math.round(costo * factor) : (parseInt(fila.dataset.venta, 10) || 0);
+    }
+
+    function factorActual() {
+        const f = parseFloat(el('cotizar-ia-factor').value);
+        return Number.isFinite(f) && f >= 1 && f <= 5 ? f : null;
+    }
+
+    function recalcularVenta() {
+        const factor = factorActual();
+        let total = 0;
+        tbody.querySelectorAll('tr[data-indice]').forEach((fila) => {
+            const cantidad = parseInt(fila.dataset.cantidad, 10) || 0;
+            const conPrecio = fila.dataset.estado !== 'pendiente' && factor !== null;
+            const precio = conPrecio ? precioVenta(fila, factor) : 0;
+            fila.querySelector('.cotizar-ia-venta').textContent = conPrecio && precio > 0 ? '$' + numero.format(precio) : '';
+            fila.querySelector('.cotizar-ia-subtotal').textContent = conPrecio && precio > 0 ? '$' + numero.format(precio * cantidad) : '';
+            const usar = fila.querySelector('.cotizar-ia-usar');
+            if (conPrecio && usar && usar.checked) {
+                total += precio * cantidad;
+            }
+        });
+        el('cotizar-ia-total').textContent = factor === null ? 'Factor inv\u00e1lido' : '$' + numero.format(total);
     }
 
     function filaLinea(linea) {
         const conVinculo = linea.estado !== 'pendiente';
         const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
-        return '<tr>'
+        return '<tr data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
+            + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0) + '">'
             + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
             + '<td>' + esc(linea.descripcion) + fuente + '</td>'
             + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
             + '<td>' + celdaVinculo(linea) + '</td>'
             + '<td class="text-end tabular-nums">' + costoLinea(linea) + '</td>'
+            + '<td class="text-end tabular-nums cotizar-ia-venta"></td>'
+            + '<td class="text-end tabular-nums cotizar-ia-subtotal"></td>'
             + '<td class="text-center">'
             + (conVinculo
                 ? '<input type="checkbox" class="form-check-input cotizar-ia-usar" data-indice="' + linea.indice + '" checked aria-label="Usar v\u00ednculo de la l\u00ednea ' + (linea.indice + 1) + '">'
@@ -372,7 +423,7 @@
         if (grupos.length > 1) {
             const porIndice = new Map(lineas.map((l) => [l.indice, l]));
             tbody.innerHTML = grupos.map((g, k) => '<tr class="table-info">'
-                + '<td colspan="6"><strong>Cotizaci\u00f3n ' + (k + 1) + (k === 0 ? ' (esta)' : ' (copia)') + ':</strong> '
+                + '<td colspan="8"><strong>Cotizaci\u00f3n ' + (k + 1) + (k === 0 ? ' (esta)' : ' (copia)') + ':</strong> '
                 + esc(g.solicitante) + ' <span class="text-muted">\u2014 ' + g.indices.length + ' l\u00ednea(s)</span></td>'
                 + '</tr>'
                 + g.indices.map((i) => porIndice.get(i)).filter(Boolean).map(filaLinea).join('')).join('');
@@ -387,6 +438,15 @@
         }
         el('cotizar-ia-separar').classList.toggle('d-none', grupos.length < 2);
         actualizarBotonAplicar();
+
+        const venta = data.venta || {};
+        factorInicial = Number(venta.factor) || null;
+        el('cotizar-ia-factor').value = factorInicial ? factorInicial.toFixed(2) : '';
+        el('cotizar-ia-region').innerHTML = venta.region
+            ? 'Regi\u00f3n del organismo: <strong>' + esc(venta.nombre_region) + '</strong> ('
+                + (venta.region === REGION_METROPOLITANA ? 'factor Metropolitana' : 'factor regiones') + ')'
+            : '<span class="text-danger">Regi\u00f3n del organismo desconocida: se usa el factor de la cotizaci\u00f3n; rev\u00edselo.</span>';
+        recalcularVenta();
 
         const actuales = data.lineas_actuales_agile || 0;
         el('cotizar-ia-wrap-reemplazar').classList.toggle('d-none', actuales === 0);
@@ -441,6 +501,11 @@
         if (!token || enCurso) {
             return;
         }
+        const factor = factorActual();
+        if (factor === null) {
+            mostrarError('Ingrese un factor de venta entre 1 y 5.');
+            return;
+        }
         enCurso = true;
         btnAplicar.disabled = true;
         errorBox.classList.add('d-none');
@@ -451,7 +516,11 @@
             && el('cotizar-ia-reemplazar').checked;
         const separar = separarActivo();
         try {
-            const data = await postJson(urlCon(urlAplicarTpl), { token, rechazados, reemplazar, separar });
+            const cuerpo = { token, rechazados, reemplazar, separar };
+            if (factorInicial === null || Math.abs(factor - factorInicial) >= 0.005) {
+                cuerpo.factor = Math.round(factor * 100) / 100;
+            }
+            const data = await postJson(urlCon(urlAplicarTpl), cuerpo);
             const cotizaciones = data.cotizaciones || [];
             if (cotizaciones.length > 1) {
                 token = null;
@@ -473,6 +542,12 @@
     });
 
     el('cotizar-ia-separar-check').addEventListener('change', actualizarBotonAplicar);
+    el('cotizar-ia-factor').addEventListener('input', recalcularVenta);
+    tbody.addEventListener('change', (e) => {
+        if (e.target.classList.contains('cotizar-ia-usar')) {
+            recalcularVenta();
+        }
+    });
 
     modalEl.addEventListener('hidden.bs.modal', () => {
         if (destinoAlCerrar) {

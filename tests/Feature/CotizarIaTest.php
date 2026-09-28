@@ -227,7 +227,8 @@ class CotizarIaTest extends TestCase
         $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
         $this->assertSame('HIG002', $linea['producto']['prod_item']);
         $this->assertSame(2, $linea['producto']['unidades']);
-        $this->assertSame(1400, $linea['producto']['costo']);
+        $this->assertSame(1400, $linea['costo']);
+        $this->assertSame(1708, $linea['precio_venta']);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
@@ -248,6 +249,120 @@ class CotizarIaTest extends TestCase
 
         $hash = app(AgileVinculoAprendizajeService::class)->hashDescripcion(self::DESC_IA);
         $this->assertNull(AgileMaeprod::query()->where('descripcion_norm_hash', $hash)->first());
+    }
+
+    public function test_referencia_web_de_pack_solicitado_usa_costo_del_pack_completo(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 3,
+                        'unidades_solicitud' => 2,
+                        'opciones' => [
+                            // Pide 5 packs de 2 = 10 unidades: 4 packs de 2 no alcanzan; 5 sí.
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada pack 2', 'precio_clp' => 1190, 'unidades_por_pack' => 2, 'stock_disponible' => 4, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-1-tornillo')],
+                            ['sitio' => 'mercadolibre', 'titulo' => 'Tornillo autoperforante 8 x 1 pulgada pack 2', 'precio_clp' => 1428, 'unidades_por_pack' => 2, 'stock_disponible' => 5, 'url' => $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-2-tornillo')],
+                        ],
+                    ]],
+                ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('https://articulo.mercadolibre.cl/MLC-2-tornillo', $web['referencia']['url']);
+        $this->assertSame(2, $web['referencia']['unidades_solicitud']);
+        $this->assertSame(1200, $web['referencia']['neto_unitario']);
+        $this->assertSame(1200, $web['costo']);
+        $this->assertSame(1464, $web['precio_venta']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk();
+
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_WEB)->firstOrFail();
+        $this->assertSame(1200, (int) $linea->prod_valor_costo);
+        $this->assertSame(1464, (int) $linea->prod_valor);
+        $this->assertStringContainsString('neto por pack de 2', (string) $linea->observacion);
+    }
+
+    public function test_factor_de_venta_por_region_en_preview_y_factor_manual_al_aplicar(): void
+    {
+        $nota = $this->crearNotaConLineas();
+        $nota->update(['region' => 8]);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(1.3, $preview['venta']['factor']);
+        $this->assertSame(8, $preview['venta']['region']);
+        $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'región del organismo')));
+        $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(700, $ia['costo']);
+        $this->assertSame(910, $ia['precio_venta']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+                'factor' => 1.5,
+            ])
+            ->assertOk();
+
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
+        $this->assertSame(1050, (int) $linea->prod_valor);
+        $this->assertSame(1.5, (float) $nota->fresh()->factor_precio_venta);
+    }
+
+    public function test_preview_sin_region_avisa_y_usa_factor_de_la_nota(): void
+    {
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini(['resultados' => []]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(1.22, $preview['venta']['factor']);
+        $this->assertNull($preview['venta']['region']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'región del organismo')));
     }
 
     public function test_rechazar_vinculo_deja_linea_pendiente_sin_aprendizaje(): void
