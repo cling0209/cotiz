@@ -162,7 +162,7 @@ class MaeprodBusquedaSimilitudService
 
     public function normalizarTexto(string $texto): string
     {
-        $texto = mb_strtoupper($texto, 'UTF-8');
+        $texto = $this->sinTildes(mb_strtoupper($texto, 'UTF-8'));
         $texto = preg_replace('/[^A-Z0-9ÁÉÍÓÚÑ\s]/u', ' ', $texto) ?? '';
         $texto = preg_replace('/\s+/u', ' ', $texto) ?? '';
 
@@ -391,7 +391,14 @@ class MaeprodBusquedaSimilitudService
             $frase = mb_substr($frase, 0, 140, 'UTF-8');
         }
 
-        $tokens = $this->tokensConsultaSql($this->extraerTokens($norm));
+        $extraidos = $this->extraerTokens($norm);
+        $tokens = $this->tokensConsultaSql($extraidos);
+        // Números de 2 dígitos (40 hojas, caja 12) suman puntaje; van al final para no cortar bigramas de palabras.
+        foreach ($extraidos as $t) {
+            if (preg_match('/^\d{2}$/', $t) && ! in_array($t, $tokens, true)) {
+                $tokens[] = $t;
+            }
+        }
         $parts = [];
         foreach ($tokens as $t) {
             $t = trim((string) $t);
@@ -452,6 +459,11 @@ class MaeprodBusquedaSimilitudService
 
         // VINILICOS → VINIL, METALICA → METAL.
         if (! preg_match('/\d/u', $token) && preg_match('/^(.{5,})IC[OA]S?$/u', $token, $m)) {
+            $vars[] = $m[1];
+        }
+
+        // Género: PERFORADORA → PERFORADOR, METALICO → METALIC (raíz que cae en ambas formas).
+        if (! preg_match('/\d/u', $token) && preg_match('/^(.{5,}[^AEIOUÁÉÍÓÚ])[AO]S?$/u', $token, $m)) {
             $vars[] = $m[1];
         }
 
@@ -894,16 +906,19 @@ class MaeprodBusquedaSimilitudService
     private function construirExpresionPuntajeSql(string $phrase, array $tokens): ?array
     {
         $like = $this->likeOperator();
+        $nombre = $this->columnaNombreSinTildesSql();
+        $phrase = $this->sinTildes($phrase);
+        $tokens = array_map(fn ($t) => $this->sinTildes((string) $t), $tokens);
         $scoreParts = [];
         $whereParts = [];
         $scoreBindings = [];
         $whereBindings = [];
 
         if ($phrase !== '') {
-            $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 200 ELSE 0 END)';
+            $scoreParts[] = '(CASE WHEN '.$nombre.' '.$like.' ? OR prod_item '.$like.' ? THEN 200 ELSE 0 END)';
             $scoreBindings[] = '%'.$phrase.'%';
             $scoreBindings[] = '%'.$phrase.'%';
-            $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
+            $whereParts[] = '('.$nombre.' '.$like.' ? OR prod_item '.$like.' ?)';
             $whereBindings[] = '%'.$phrase.'%';
             $whereBindings[] = '%'.$phrase.'%';
         }
@@ -920,13 +935,13 @@ class MaeprodBusquedaSimilitudService
                 && ! $generico && ! $this->esTokenGenerico($prevTok)) {
                 $bigram = $prevTok.' '.$tok;
                 $ordered = '%'.$prevTok.'%'.$tok.'%';
-                $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 75 '
-                    .'WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 55 ELSE 0 END)';
+                $scoreParts[] = '(CASE WHEN '.$nombre.' '.$like.' ? OR prod_item '.$like.' ? THEN 75 '
+                    .'WHEN '.$nombre.' '.$like.' ? OR prod_item '.$like.' ? THEN 55 ELSE 0 END)';
                 $scoreBindings[] = '%'.$bigram.'%';
                 $scoreBindings[] = '%'.$bigram.'%';
                 $scoreBindings[] = $ordered;
                 $scoreBindings[] = $ordered;
-                $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ? OR prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
+                $whereParts[] = '('.$nombre.' '.$like.' ? OR prod_item '.$like.' ? OR '.$nombre.' '.$like.' ? OR prod_item '.$like.' ?)';
                 $whereBindings[] = '%'.$bigram.'%';
                 $whereBindings[] = '%'.$bigram.'%';
                 $whereBindings[] = $ordered;
@@ -940,9 +955,9 @@ class MaeprodBusquedaSimilitudService
                     $scoreParts[] = '(CASE WHEN prod_nombre ~* ? THEN 30 ELSE 0 END)';
                     $scoreBindings[] = $regex;
                 } else {
-                    $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? THEN 30 ELSE 0 END)';
+                    $scoreParts[] = '(CASE WHEN '.$nombre.' '.$like.' ? THEN 30 ELSE 0 END)';
                     $scoreBindings[] = '%'.$tok.'%';
-                    $whereParts[] = 'prod_nombre '.$like.' ?';
+                    $whereParts[] = $nombre.' '.$like.' ?';
                     $whereBindings[] = '%'.$tok.'%';
                 }
             } else {
@@ -950,10 +965,10 @@ class MaeprodBusquedaSimilitudService
                 $w = $generico ? 10 : 2 * (42 + min(27, max(0, mb_strlen($tok, 'UTF-8') - 5) * 3));
                 $condiciones = [];
                 foreach ($this->tokenVariantes($tok) as $variante) {
-                    $condiciones[] = 'prod_nombre '.$like.' ? OR prod_item '.$like.' ?';
+                    $condiciones[] = $nombre.' '.$like.' ? OR prod_item '.$like.' ?';
                     $scoreBindings[] = '%'.$variante.'%';
                     $scoreBindings[] = '%'.$variante.'%';
-                    $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
+                    $whereParts[] = '('.$nombre.' '.$like.' ? OR prod_item '.$like.' ?)';
                     $whereBindings[] = '%'.$variante.'%';
                     $whereBindings[] = '%'.$variante.'%';
                 }
@@ -1014,6 +1029,24 @@ class MaeprodBusquedaSimilitudService
     private function isPostgres(): bool
     {
         return DB::connection()->getDriverName() === 'pgsql';
+    }
+
+    /**
+     * ILIKE de Postgres distingue tildes (COLÓN ≠ COLON) y el maestro las mezcla; se comparan ambos lados sin tildes.
+     */
+    private function columnaNombreSinTildesSql(): string
+    {
+        return $this->isPostgres()
+            ? "translate(prod_nombre, 'ÁÉÍÓÚÜáéíóúü', 'AEIOUUaeiouu')"
+            : 'prod_nombre';
+    }
+
+    public function sinTildes(string $texto): string
+    {
+        return strtr($texto, [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ü' => 'U',
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u',
+        ]);
     }
 
     /**

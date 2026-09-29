@@ -62,6 +62,21 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertContains('VINIL', $this->service->tokenVariantes('VINILICOS'));
         $this->assertContains('METAL', $this->service->tokenVariantes('METALICA'));
         $this->assertNotContains('MES', $this->service->tokenVariantes('MESES'));
+        $this->assertContains('PERFORADOR', $this->service->tokenVariantes('PERFORADORA'));
+        $this->assertNotContains('CAJ', $this->service->tokenVariantes('CAJAS'));
+    }
+
+    public function test_normaliza_sin_tildes_y_payload_incluye_numeros_de_dos_digitos(): void
+    {
+        $this->assertSame('PERFORADORA 40 HOJAS TIPO COLON', $this->service->normalizarTexto('Perforadora 40 hojas Tipo Colón'));
+        $this->assertSame('PAÑO LENCI', $this->service->normalizarTexto('Paño Lenci'));
+
+        [, $tokens] = $this->service->parsearPayloadSimilitud(
+            $this->service->codificarPayloadBuscarSimilitud('Perforadora grande 40 hojas Tipo Colón')
+        );
+        $this->assertContains('40', $tokens);
+        $this->assertContains('COLON', $tokens);
+        $this->assertSame('40', end($tokens));
     }
 
     public function test_separadores_vinilicos_tiene_solape_con_separador_vinil(): void
