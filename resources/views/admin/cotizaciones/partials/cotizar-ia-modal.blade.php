@@ -298,6 +298,9 @@
                 + (linea.producto.unidades > 1
                     ? ' <span class="badge text-bg-info" title="Se cotizan ' + esc(linea.producto.unidades) + ' unidades del maestro por cada una solicitada">x' + esc(linea.producto.unidades) + ' un.</span>'
                     : '')
+                + (linea.producto.pack_maestro > linea.producto.unidades_solicitud
+                    ? ' <span class="badge text-bg-info" title="El maestro es un pack de ' + esc(linea.producto.pack_maestro) + '; el precio es el de ' + esc(linea.producto.unidades_solicitud) + ' unidad(es) solicitada(s)">prorrateado pack ' + esc(linea.producto.pack_maestro) + '</span>'
+                    : '')
                 + badgeStockPrisa(linea.stock_prisa)
                 + (linea.producto.foto
                     ? '<div class="text-success small">Elegido por foto: se ve ' + esc(linea.producto.foto) + '</div>'

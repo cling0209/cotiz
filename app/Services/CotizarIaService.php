@@ -441,13 +441,21 @@ class CotizarIaService
             $mae = $maeprods->get($item['producto']['prod_item']);
             $conteo['vinculadas']++;
             $unidades = max(1, (int) ($item['producto']['unidades'] ?? 1));
-            $precios = $this->preciosMaestro(
-                (int) ($mae->prod_valor ?? 0) * $unidades,
-                (int) ($mae->prod_valor_costo ?? 0) * $unidades,
-                $factor,
-            );
+            $valor = (int) ($mae->prod_valor ?? 0) * $unidades;
+            $costoMaestro = (int) ($mae->prod_valor_costo ?? 0) * $unidades;
+            $pack = (int) ($item['producto']['pack_maestro'] ?? 0);
+            $solicitadas = max(1, (int) ($item['producto']['unidades_solicitud'] ?? 1));
+            if ($pack > $solicitadas) {
+                $valor = self::prorrateo($valor, $solicitadas, $pack);
+                $costoMaestro = self::prorrateo($costoMaestro, $solicitadas, $pack);
+            }
+            $precios = $this->preciosMaestro($valor, $costoMaestro, $factor);
             $observacion = trim(
                 ($unidades > 1 ? NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item) : '')
+                .($pack > $solicitadas
+                    ? 'Precio prorrateado: '.trim((string) $mae->prod_item)." viene en pack de {$pack}; se cotiza "
+                        .($solicitadas > 1 ? "el pack de {$solicitadas} solicitado." : 'por unidad solicitada.')
+                    : '')
                 .(($item['producto']['foto'] ?? '') !== ''
                     ? ' Elegido por foto: se ve '.$item['producto']['foto'].' en la imagen de '.trim((string) $mae->prod_item).'.'
                     : ''),
@@ -1008,13 +1016,13 @@ TXT];
         foreach ($items as $i => $item) {
             $porFrase = $this->aprendizaje->resolverProductoPorFrase($item['descripcion']);
             if ($porFrase !== null) {
-                $items[$i] = $this->marcarVinculado($item, $porFrase, self::ORIGEN_FRASE);
+                $items[$i] = $this->marcarVinculado($item, $this->prorratearPackMaestro($porFrase, $item['descripcion']), self::ORIGEN_FRASE);
 
                 continue;
             }
             $exacto = $this->aprendizaje->buscarAprendidoExacto($item['descripcion']);
             if ($exacto !== null) {
-                $items[$i] = $this->marcarVinculado($item, $exacto, self::ORIGEN_APRENDIDO);
+                $items[$i] = $this->marcarVinculado($item, $this->prorratearPackMaestro($exacto, $item['descripcion']), self::ORIGEN_APRENDIDO);
 
                 continue;
             }
@@ -1035,9 +1043,9 @@ TXT];
         $sinEquivalente = [];
         $porFoto = [];
         foreach ($paraIa as $i) {
-            $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? []);
+            $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? [], $items[$i]['descripcion']);
             $elegido = $this->elegirPorPrecio(array_values($equivalentes));
-            $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? []);
+            $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? [], $items[$i]['descripcion']);
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -1066,9 +1074,9 @@ TXT];
 
             $resultado2 = $candidatos2 === [] ? [] : $this->equivalenciasIa($items, $candidatos2, false);
             foreach ($candidatos2 as $i => $lista) {
-                $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? []);
+                $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? [], $items[$i]['descripcion']);
                 $elegido = $this->elegirPorPrecio(array_values($equivalentes));
-                $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? []);
+                $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? [], $items[$i]['descripcion']);
                 if ($elegido !== null) {
                     $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                     $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -1094,13 +1102,13 @@ TXT];
      * @param  array{revisar_foto?: array<string, array{unidades: int, falta: string}>}  $resultado
      * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int, falta: string}>
      */
-    private function candidatosParaFoto(array $candidatos, array $resultado): array
+    private function candidatosParaFoto(array $candidatos, array $resultado, string $descripcion): array
     {
         $revisar = $resultado['revisar_foto'] ?? [];
         $equivalentes = $this->equivalentesPorUnidades($candidatos, [
             'equivalentes' => array_map('strval', array_keys($revisar)),
             'unidades' => array_map(static fn (array $r) => $r['unidades'], $revisar),
-        ]);
+        ], $descripcion);
         foreach ($equivalentes as $codigo => $producto) {
             $equivalentes[$codigo]['falta'] = $revisar[$codigo]['falta'];
         }
@@ -1504,13 +1512,14 @@ TXT];
 
     /**
      * Equivalentes marcados por la IA con el precio por unidad solicitada: si el solicitado es un pack
-     * de N y el producto del maestro va por unidad, valor y costo se multiplican por N.
+     * de N y el producto del maestro va por unidad, valor y costo se multiplican por N; si el maestro
+     * es un pack mayor que lo solicitado, se prorratean (ver prorratearPackMaestro).
      *
      * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
      * @param  array{equivalentes?: list<string>, unidades?: array<string, int>}  $resultado
      * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int, unidades: int}>
      */
-    private function equivalentesPorUnidades(array $candidatos, array $resultado): array
+    private function equivalentesPorUnidades(array $candidatos, array $resultado, string $descripcion): array
     {
         $out = [];
         foreach ($resultado['equivalentes'] ?? [] as $codigo) {
@@ -1519,14 +1528,47 @@ TXT];
             }
             $n = max(1, (int) ($resultado['unidades'][$codigo] ?? 1));
             $producto = $candidatos[$codigo];
-            $out[$codigo] = [
-                'prod_valor' => $producto['prod_valor'] * $n,
-                'prod_valor_costo' => $producto['prod_valor_costo'] * $n,
-                'unidades' => $n,
-            ] + $producto;
+            $out[$codigo] = $n > 1
+                ? [
+                    'prod_valor' => $producto['prod_valor'] * $n,
+                    'prod_valor_costo' => $producto['prod_valor_costo'] * $n,
+                    'unidades' => $n,
+                ] + $producto
+                : $this->prorratearPackMaestro(['unidades' => 1] + $producto, $descripcion);
         }
 
         return $out;
+    }
+
+    /**
+     * Si el producto del maestro es un pack mayor que lo solicitado (ej. «(100 UNIDADES)» cuando se
+     * piden bolsas sueltas), valor y costo quedan por las unidades solicitadas: valor × S / M.
+     *
+     * @param  array<string, mixed>  $producto
+     * @return array<string, mixed>
+     */
+    private function prorratearPackMaestro(array $producto, string $descripcion): array
+    {
+        if (max(1, (int) ($producto['unidades'] ?? 1)) > 1) {
+            return $producto;
+        }
+        $pack = $this->mercadolibre->unidadesPorPack((string) ($producto['prod_nombre'] ?? ''));
+        $solicitadas = $this->mercadolibre->unidadesPorPack($descripcion);
+        if ($pack <= $solicitadas) {
+            return $producto;
+        }
+
+        return [
+            'prod_valor' => self::prorrateo((int) ($producto['prod_valor'] ?? 0), $solicitadas, $pack),
+            'prod_valor_costo' => self::prorrateo((int) ($producto['prod_valor_costo'] ?? 0), $solicitadas, $pack),
+            'pack_maestro' => $pack,
+            'unidades_solicitud' => $solicitadas,
+        ] + $producto;
+    }
+
+    private static function prorrateo(int $valor, int $solicitadas, int $pack): int
+    {
+        return $valor > 0 ? (int) ceil($valor * $solicitadas / $pack) : 0;
     }
 
     /**
@@ -2141,6 +2183,8 @@ TXT];
                 'prod_item' => $producto['prod_item'],
                 'prod_nombre' => $producto['prod_nombre'],
                 'unidades' => max(1, (int) ($producto['unidades'] ?? 1)),
+                'pack_maestro' => (int) ($producto['pack_maestro'] ?? 0),
+                'unidades_solicitud' => max(1, (int) ($producto['unidades_solicitud'] ?? 1)),
                 'foto' => (string) ($producto['foto'] ?? ''),
             ],
             'costo' => $costo,

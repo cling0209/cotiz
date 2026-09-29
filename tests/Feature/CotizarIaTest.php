@@ -297,6 +297,52 @@ class CotizarIaTest extends TestCase
         Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'redondeado hacia arriba'));
     }
 
+    public function test_pack_mayor_del_maestro_prorratea_precio_por_unidad_solicitada(): void
+    {
+        Maeprod::query()->where('prod_item', 'HIG002')->update([
+            'prod_nombre' => 'PAPEL HIGIENICO HOJA DOBLE 50 MTS (100 UNIDADES)',
+            'prod_valor' => 3900,
+            'prod_valor_costo' => 3000,
+        ]);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => [['codigo' => 'HIG002', 'unidades' => 1]], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame('HIG002', $linea['producto']['prod_item']);
+        $this->assertSame(100, $linea['producto']['pack_maestro']);
+        $this->assertSame(39, $linea['precio_venta']);
+        $this->assertSame(32, $linea['costo']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk();
+
+        $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
+        $this->assertSame('HIG002', trim($ia->prod_item));
+        $this->assertSame(39, (int) $ia->prod_valor);
+        $this->assertSame(32, (int) $ia->prod_valor_costo);
+        $this->assertStringContainsString('Precio prorrateado', (string) $ia->observacion);
+    }
+
     public function test_unidades_sobre_el_maximo_se_descartan_en_vez_de_truncarse(): void
     {
         $nota = $this->crearNotaConLineas();
