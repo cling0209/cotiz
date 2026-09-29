@@ -11,6 +11,7 @@ use App\Models\NotaDetalle;
 use App\Models\User;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -424,7 +425,7 @@ class CotizarIaService
 
     /**
      * @param  array<string, mixed>  $item
-     * @param  \Illuminate\Support\Collection<string, Maeprod>  $maeprods
+     * @param  Collection<string, Maeprod>  $maeprods
      * @param  array<string, int>  $conteo
      * @return array<string, mixed>
      */
@@ -997,6 +998,7 @@ TXT];
                 'producto' => null,
                 'referencia' => null,
                 'alternativas' => [],
+                'generico' => '',
                 'stock_prisa' => null,
                 'stock_nota' => null,
             ];
@@ -1042,28 +1044,30 @@ TXT];
         }
 
         $resultado = $this->equivalenciasIa($items, $candidatos, true);
-        $sinEquivalente = [];
+        $terminos2 = [];
+        $equivalentesPorLinea = [];
         $porFoto = [];
         foreach ($paraIa as $i) {
-            $equivalentes = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? [], $items[$i]['descripcion']);
-            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+            $generico = (string) ($resultado[$i]['generico'] ?? '');
+            $items[$i]['generico'] = $generico;
+            $equivalentesPorLinea[$i] = $this->equivalentesPorUnidades($candidatos[$i], $resultado[$i] ?? [], $items[$i]['descripcion']);
             $porFoto[$i] = $this->candidatosParaFoto($candidatos[$i], $resultado[$i] ?? [], $items[$i]['descripcion']);
-            if ($elegido !== null) {
-                $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
-                $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
 
-                continue;
+            // La marca no importa: con el nombre genérico aparecen candidatos de otras marcas que pueden ser más baratos.
+            $terminos = $this->esGenericoDistinto($generico, $items[$i]['descripcion']) ? [$generico] : [];
+            if ($equivalentesPorLinea[$i] === []) {
+                $terminos = array_merge($terminos, $resultado[$i]['busqueda'] ?? []);
             }
-            if (($resultado[$i]['busqueda'] ?? []) !== []) {
-                $sinEquivalente[$i] = $resultado[$i]['busqueda'];
+            if ($terminos !== []) {
+                $terminos2[$i] = $terminos;
             }
         }
 
-        if ($sinEquivalente !== [] && ! $this->iaSinCuota) {
-            // Segunda pasada: términos alternativos que sugirió la IA (sinónimos / nombre comercial).
-            $this->detalle('Segunda pasada con términos alternativos para '.count($sinEquivalente).' línea(s)');
+        if ($terminos2 !== [] && ! $this->iaSinCuota) {
+            // Segunda pasada: nombre genérico sin marca y términos alternativos que sugirió la IA.
+            $this->detalle('Segunda pasada con términos alternativos para '.count($terminos2).' línea(s)');
             $candidatos2 = [];
-            foreach ($sinEquivalente as $i => $terminos) {
+            foreach ($terminos2 as $i => $terminos) {
                 $yaEnviados = array_fill_keys(array_keys($candidatos[$i]), true);
                 $nuevos = array_diff_key(
                     $this->candidatosMaeprod($items[$i]['descripcion'], $terminos),
@@ -1076,13 +1080,16 @@ TXT];
 
             $resultado2 = $candidatos2 === [] ? [] : $this->equivalenciasIa($items, $candidatos2, false);
             foreach ($candidatos2 as $i => $lista) {
-                $equivalentes = $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? [], $items[$i]['descripcion']);
-                $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+                $equivalentesPorLinea[$i] += $this->equivalentesPorUnidades($lista, $resultado2[$i] ?? [], $items[$i]['descripcion']);
                 $porFoto[$i] = ($porFoto[$i] ?? []) + $this->candidatosParaFoto($lista, $resultado2[$i] ?? [], $items[$i]['descripcion']);
-                if ($elegido !== null) {
-                    $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
-                    $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
-                }
+            }
+        }
+
+        foreach ($equivalentesPorLinea as $i => $equivalentes) {
+            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+            if ($elegido !== null) {
+                $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
+                $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
             }
         }
 
@@ -1329,15 +1336,33 @@ TXT];
     }
 
     /**
-     * Filtros del maestro, pero sin distinguir género del color (BLANCO = BLANCA): el filtro
-     * compartido compara literal y descartaba «CARTULINA … BLANCA» para «CARTULINA BLANCO».
+     * Familia, medida y color del filtro del maestro, sin marca: se cotiza el más barato de cualquier
+     * marca. El color no distingue género (BLANCO = BLANCA): el filtro compartido compara literal y
+     * descartaba «CARTULINA … BLANCA» para «CARTULINA BLANCO».
      */
     private function pasaFiltros(string $descripcion, string $nombreProducto): bool
     {
-        return $this->busqueda->pasaFiltrosAtributos(
-            $this->colorMasculino($descripcion),
-            $this->colorMasculino($nombreProducto),
-        );
+        $descripcion = $this->colorMasculino($descripcion);
+        $nombreProducto = $this->colorMasculino($nombreProducto);
+
+        return ! $this->busqueda->hayConflictoFamilia($descripcion, $nombreProducto)
+            && $this->busqueda->medidasCompatibles($descripcion, $nombreProducto)
+            && $this->busqueda->coloresCompatibles($descripcion, $nombreProducto);
+    }
+
+    private function esGenericoDistinto(string $generico, string $descripcion): bool
+    {
+        $generico = $this->busqueda->normalizarTexto($generico);
+
+        return $generico !== '' && $generico !== $this->busqueda->normalizarTexto($descripcion);
+    }
+
+    /** Término para buscar la línea fuera del maestro: el nombre genérico sin marca si la IA lo dio. */
+    private function terminoBusqueda(array $item): string
+    {
+        $generico = trim((string) ($item['generico'] ?? ''));
+
+        return $generico !== '' ? $generico : (string) $item['descripcion'];
     }
 
     private function colorMasculino(string $texto): string
@@ -1376,7 +1401,7 @@ TXT];
      *
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
-     * @return array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>}>
+     * @return array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>, generico: string}>
      */
     private function equivalenciasIa(array $items, array $candidatos, bool $pedirBusqueda): array
     {
@@ -1415,7 +1440,7 @@ TXT];
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, array<string, array{prod_item: string, prod_nombre: string}>>  $candidatos
      * @param  list<int>  $bloque
-     * @param  array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>}>  $resultado
+     * @param  array<int, array{equivalentes: list<string>, unidades: array<string, int>, revisar_foto: array<string, array{unidades: int, falta: string}>, busqueda: list<string>, generico: string}>  $resultado
      * @return string|null mensaje de error si Gemini no respondió (el bloque se puede reintentar)
      */
     private function equivalenciasBloque(array $items, array $candidatos, array $bloque, bool $pedirBusqueda, array &$resultado): ?string
@@ -1437,24 +1462,28 @@ TXT];
             : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
 
         $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
-            ."Criterios: mismo tipo de producto; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color, marca o material, deben coincidir; "
-            ."un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato o uno mayor. "
-            ."Si el solicitado es un pack o caja de N unidades (ej. «pack 2U», «set de 3», «caja 100 unidades») y el candidato es el mismo producto "
-            ."vendido por unidad o en un pack menor de M unidades, sí es equivalente con unidades = N / M redondeado hacia arriba: los packs del catálogo "
-            ."necesarios para completar al menos N (ej. piden caja de 100: pack de 50 → 2, pack de 30 → 4, por unidad → 100). "
-            ."Un pack del catálogo mayor que lo solicitado no es equivalente. En los demás casos unidades = 1. "
-            ."Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente "
-            ."(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), "
-            ."con las unidades calculadas por la cantidad del producto solicitado que trae el kit. "
+            .'Criterios: mismo tipo de producto y misma función; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color o material, deben coincidir. '
+            .'La marca NO importa: el mismo producto de otra marca es equivalente aunque el solicitado nombre una marca. '
+            .'un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato o uno mayor. '
+            .'Si el solicitado es un pack o caja de N unidades (ej. «pack 2U», «set de 3», «caja 100 unidades») y el candidato es el mismo producto '
+            .'vendido por unidad o en un pack menor de M unidades, sí es equivalente con unidades = N / M redondeado hacia arriba: los packs del catálogo '
+            .'necesarios para completar al menos N (ej. piden caja de 100: pack de 50 → 2, pack de 30 → 4, por unidad → 100). '
+            .'Un pack del catálogo mayor que lo solicitado no es equivalente. En los demás casos unidades = 1. '
+            .'Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente '
+            .'(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), '
+            .'con las unidades calculadas por la cantidad del producto solicitado que trae el kit. '
             ."No consideres precio. Puedes marcar varios equivalentes.\n"
-            ."Si un candidato es el mismo producto pero su nombre no dice si trae un accesorio o característica que el solicitado exige "
-            ."(ej. cordón o lanyard, mosquetón, tapa, estuche, pilas, color), no lo marques como equivalente: ponlo en \"revisar_foto\" "
-            ."con lo que falta confirmar (máximo ".self::FOTOS_POR_LINEA." por producto); se revisará en la foto del catálogo.\n"
+            .'Si un candidato es el mismo producto pero su nombre no dice si trae un accesorio o característica que el solicitado exige '
+            .'(ej. cordón o lanyard, mosquetón, tapa, estuche, pilas, color), no lo marques como equivalente: ponlo en "revisar_foto" '
+            .'con lo que falta confirmar (máximo '.self::FOTOS_POR_LINEA." por producto); se revisará en la foto del catálogo.\n"
             .$instruccionBusqueda."\n"
+            .'En "generico" escribe el producto solicitado como nombre genérico para buscarlo en cualquier tienda: '
+            .'sin marca, modelo ni nombre comercial, conservando tipo, medida, capacidad, formato y pack '
+            ."(ej. «Lápiz grafito Faber-Castell HB caja 12» → «lápiz grafito HB caja 12 unidades»).\n"
             ."Usa solo códigos que aparezcan en los candidatos de ese producto.\n\n"
             .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
             .'Responde SOLO JSON: {"resultados":[{"i":0,"equivalentes":[{"codigo":"CODIGO","unidades":1}],'
-            .'"revisar_foto":[{"codigo":"CODIGO","unidades":1,"falta":"cordón"}],"busqueda":["termino"]}]}';
+            .'"revisar_foto":[{"codigo":"CODIGO","unidades":1,"falta":"cordón"}],"busqueda":["termino"],"generico":"nombre genérico"}]}';
 
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
@@ -1506,6 +1535,7 @@ TXT];
                     array_map(static fn ($t) => mb_substr(trim((string) $t), 0, 80), (array) ($fila['busqueda'] ?? [])),
                     static fn (string $t) => $t !== '',
                 )),
+                'generico' => is_string($fila['generico'] ?? null) ? mb_substr(trim($fila['generico']), 0, 200) : '',
             ];
         }
 
@@ -1811,11 +1841,16 @@ TXT];
     {
         $this->detalle('Buscando en Mercado Libre…');
         try {
+            $opcionesPorLinea = [];
             foreach ($pendientes as $i) {
-                $opciones = $this->mercadolibre->buscar((string) $items[$i]['descripcion']);
+                $opcionesPorLinea[$i] = $this->mercadolibre->buscar($this->terminoBusqueda($items[$i]));
+            }
+            $opcionesPorLinea = $this->descartarOtrosProductosWeb($items, $opcionesPorLinea);
+
+            foreach ($pendientes as $i) {
                 $cantidad = max(1, (int) $items[$i]['cantidad']);
                 $unidadesSolicitud = min(self::MAX_UNIDADES_POR_SOLICITADO, $this->mercadolibre->unidadesPorPack((string) $items[$i]['descripcion']));
-                [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, $opciones, $unidadesSolicitud);
+                [$mejor, $todasSinStock] = $this->mejorReferencia($items[$i]['descripcion'], $cantidad, $opcionesPorLinea[$i], $unidadesSolicitud);
                 if ($mejor !== null) {
                     $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                     $items[$i]['origen'] = self::ORIGEN_WEB;
@@ -1833,6 +1868,71 @@ TXT];
         }
 
         return $items;
+    }
+
+    /**
+     * La IA marca qué publicaciones no son el mismo producto (otro tipo, función, medida o formato; la
+     * marca no cuenta), para que el más barato no sea, por ejemplo, un repuesto o un producto distinto
+     * con nombre parecido. Sin IA o sin respuesta legible se conservan todas.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @param  array<int, list<mixed>>  $opcionesPorLinea
+     * @return array<int, list<mixed>>
+     */
+    private function descartarOtrosProductosWeb(array $items, array $opcionesPorLinea): array
+    {
+        $conOpciones = array_keys(array_filter($opcionesPorLinea, static fn (array $o) => $o !== []));
+        if ($conOpciones === [] || $this->iaSinCuota) {
+            return $opcionesPorLinea;
+        }
+
+        $this->detalle('IA revisando publicaciones de Mercado Libre para '.count($conOpciones).' línea(s)');
+        foreach (array_chunk($conOpciones, self::LINEAS_POR_LLAMADA) as $bloque) {
+            $entrada = [];
+            foreach ($bloque as $i) {
+                $publicaciones = [];
+                foreach ($opcionesPorLinea[$i] as $n => $opcion) {
+                    $publicaciones[] = ['n' => $n, 'titulo' => mb_substr(trim((string) (is_array($opcion) ? ($opcion['titulo'] ?? '') : '')), 0, 200)];
+                }
+                $entrada[] = ['i' => $i, 'solicitado' => $items[$i]['descripcion'], 'publicaciones' => $publicaciones];
+            }
+
+            $prompt = 'Para cada producto solicitado indica qué publicaciones NO son el mismo producto: otro tipo de producto, otra función, '
+                .'medida o formato incompatible, o un repuesto/accesorio del producto. La marca NO importa: el mismo producto de otra marca sirve. '
+                ."Un pack con otra cantidad de unidades del mismo producto sirve (el precio se ajusta por unidades).\n\n"
+                .'Productos: '.json_encode($entrada, JSON_UNESCAPED_UNICODE)."\n\n"
+                .'Responde SOLO JSON: {"resultados":[{"i":0,"descartar":[1,3]}]}';
+
+            try {
+                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
+            } catch (GeminiCuotaAgotadaException $e) {
+                $this->iaSinCuota = true;
+                $this->avisos[] = $e->getMessage().' No se revisaron con IA las publicaciones de Mercado Libre.';
+
+                return $opcionesPorLinea;
+            } catch (RuntimeException $e) {
+                Log::warning('CotizarIa: fallo revisando publicaciones web', ['message' => $e->getMessage()]);
+
+                continue;
+            }
+
+            $json = is_array($respuesta['json']) ? $respuesta['json'] : [];
+            $enBloque = array_fill_keys($bloque, true);
+            foreach ((array) ($json['resultados'] ?? []) as $fila) {
+                if (! is_array($fila) || ! isset($fila['i'], $enBloque[(int) $fila['i']])) {
+                    continue;
+                }
+                $i = (int) $fila['i'];
+                $descartar = array_fill_keys(array_map('intval', array_filter((array) ($fila['descartar'] ?? []), 'is_numeric')), true);
+                $opcionesPorLinea[$i] = array_values(array_filter(
+                    $opcionesPorLinea[$i],
+                    static fn (int $n) => ! isset($descartar[$n]),
+                    ARRAY_FILTER_USE_KEY,
+                ));
+            }
+        }
+
+        return $opcionesPorLinea;
     }
 
     /**
@@ -1872,18 +1972,19 @@ TXT];
      */
     private function buscarLoteWeb(array $items, array $pendientes, int &$sinStockSuficiente): array
     {
-        $entrada = array_map(static fn (int $i) => [
+        $entrada = array_map(fn (int $i) => [
             'i' => $i,
-            'solicitado' => $items[$i]['descripcion'],
+            'solicitado' => $this->terminoBusqueda($items[$i]),
             'cantidad' => (int) $items[$i]['cantidad'],
         ], $pendientes);
 
         $soloSodimac = $this->mercadolibre->configurado();
         $prompt = 'Busca en Google cada producto SOLO en '.($soloSodimac ? 'sodimac.cl' : 'mercadolibre.cl y sodimac.cl')." (Chile).\n"
-            ."Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, medida y formato) con su precio actual en pesos chilenos IVA incluido.\n"
+            .'Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, función, medida y formato; de cualquier marca), '
+            ."priorizando las más baratas, con su precio actual en pesos chilenos IVA incluido.\n"
             ."Si la publicación vende un pack o caja, indica cuántas unidades trae en unidades_por_pack (si es unitario, 1).\n"
             ."En unidades_solicitud indica cuántas unidades trae UNO de los productos solicitados: si pide un pack de N (ej. «pack 2U», «set de 3», «caja de 12») es N; si pide un producto suelto, 1.\n"
-            ."En stock_disponible indica cuántas unidades de la publicación (packs, si vende packs) muestra disponibles la página: "
+            .'En stock_disponible indica cuántas unidades de la publicación (packs, si vende packs) muestra disponibles la página: '
             ."\"+50 disponibles\" = 50, \"Últimas 3\" = 3, agotado o sin stock = 0; si la página no lo muestra, null. No lo inventes.\n"
             ."Se necesita al menos la cantidad indicada: prioriza publicaciones con stock suficiente para esa cantidad.\n"
             ."En url copia exactamente el enlace del resultado de búsqueda de esa publicación (página del producto, no un listado ni una búsqueda); no armes ni inventes URLs ni precios. Si no encuentras, deja opciones vacío.\n\n"

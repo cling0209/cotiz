@@ -12,8 +12,8 @@ use App\Models\User;
 use App\Services\AgileVinculoAprendizajeService;
 use App\Services\CompraAgilOportunidadService;
 use App\Services\CotizarIaService;
-use App\Services\MaeprodBusquedaSimilitudService;
 use App\Services\ImagenReferenciaWebService;
+use App\Services\MaeprodBusquedaSimilitudService;
 use App\Services\MercadoLibreApiService;
 use App\Services\NotaDetalleService;
 use App\Services\OportunidadAdjuntoService;
@@ -1759,6 +1759,62 @@ class CotizarIaTest extends TestCase
         $this->assertSame(12, $web['referencia']['unidades_por_pack']);
         $this->assertSame(12, $web['referencia']['unidades_solicitud']);
         $this->assertSame(7560, $web['referencia']['neto_unitario']);
+    }
+
+    public function test_mercado_libre_descarta_publicaciones_que_la_ia_marca_como_otro_producto(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'CORRECTOR CINTA 5MM CAJA 12 UNIDADES TORRE';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+
+        Http::fake(function (HttpRequest $request) {
+            $url = $request->url();
+            if (str_contains($url, 'api.mercadolibre.com/oauth/token')) {
+                return Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/search')) {
+                return Http::response(['results' => [
+                    ['id' => 'MLC20', 'name' => 'Corrector Liquido Caja 12 Unidades'],
+                    ['id' => 'MLC21', 'name' => 'Corrector Cinta 5mm Caja 12 Unidades'],
+                ]]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/MLC20/items')) {
+                return Http::response(['results' => [['price' => 3000]]]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/MLC21/items')) {
+                return Http::response(['results' => [['price' => 6000]]]);
+            }
+
+            return Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+                ? ['resultados' => [['i' => 0, 'descartar' => [0]]]]
+                : ['resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => [], 'generico' => 'corrector cinta 5 mm caja 12 unidades']]]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC21', $web['referencia']['url']);
     }
 
     public function test_mercado_libre_lee_unidades_del_nombre_del_catalogo(): void
