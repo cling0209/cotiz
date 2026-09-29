@@ -202,8 +202,8 @@ class CotizarIaTest extends TestCase
         $this->assertSame('ARTE001', trim($detalle[self::DESC_FRASE]->prod_item));
         $this->assertSame('PAPEL001', trim($detalle[self::DESC_APRENDIDO]->prod_item));
         $this->assertSame('HIG002', trim($detalle[self::DESC_IA]->prod_item));
-        $this->assertSame(1000, (int) $detalle[self::DESC_IA]->prod_valor);
-        $this->assertSame(820, (int) $detalle[self::DESC_IA]->prod_valor_costo);
+        $this->assertSame(854, (int) $detalle[self::DESC_IA]->prod_valor);
+        $this->assertSame(700, (int) $detalle[self::DESC_IA]->prod_valor_costo);
 
         $web = $detalle[self::DESC_WEB];
         $this->assertStringStartsWith('NOK-', (string) $web->prod_item);
@@ -244,8 +244,8 @@ class CotizarIaTest extends TestCase
         $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
         $this->assertSame('HIG002', $linea['producto']['prod_item']);
         $this->assertSame(2, $linea['producto']['unidades']);
-        $this->assertSame(1639, $linea['costo']);
-        $this->assertSame(2000, $linea['precio_venta']);
+        $this->assertSame(1400, $linea['costo']);
+        $this->assertSame(1708, $linea['precio_venta']);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
@@ -260,8 +260,8 @@ class CotizarIaTest extends TestCase
         $ia = $detalle[self::DESC_IA];
         $this->assertSame('HIG002', trim($ia->prod_item));
         $this->assertSame(4, (int) $ia->cantidad);
-        $this->assertSame(1639, (int) $ia->prod_valor_costo);
-        $this->assertSame(2000, (int) $ia->prod_valor);
+        $this->assertSame(1400, (int) $ia->prod_valor_costo);
+        $this->assertSame(1708, (int) $ia->prod_valor);
         $this->assertStringContainsString('Pack de 2', (string) $ia->observacion);
 
         $hash = app(AgileVinculoAprendizajeService::class)->hashDescripcion(self::DESC_IA);
@@ -291,8 +291,8 @@ class CotizarIaTest extends TestCase
         $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
         $this->assertSame('HIG002', $linea['producto']['prod_item']);
         $this->assertSame(4, $linea['producto']['unidades']);
-        $this->assertSame(3279, $linea['costo']);
-        $this->assertSame(4000, $linea['precio_venta']);
+        $this->assertSame(2800, $linea['costo']);
+        $this->assertSame(3416, $linea['precio_venta']);
 
         Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'redondeado hacia arriba'));
     }
@@ -325,8 +325,8 @@ class CotizarIaTest extends TestCase
         $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
         $this->assertSame('HIG002', $linea['producto']['prod_item']);
         $this->assertSame(100, $linea['producto']['pack_maestro']);
-        $this->assertSame(39, $linea['precio_venta']);
-        $this->assertSame(32, $linea['costo']);
+        $this->assertSame(37, $linea['precio_venta']);
+        $this->assertSame(30, $linea['costo']);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
@@ -338,8 +338,8 @@ class CotizarIaTest extends TestCase
 
         $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
         $this->assertSame('HIG002', trim($ia->prod_item));
-        $this->assertSame(39, (int) $ia->prod_valor);
-        $this->assertSame(32, (int) $ia->prod_valor_costo);
+        $this->assertSame(37, (int) $ia->prod_valor);
+        $this->assertSame(30, (int) $ia->prod_valor_costo);
         $this->assertStringContainsString('Precio prorrateado', (string) $ia->observacion);
     }
 
@@ -452,7 +452,7 @@ class CotizarIaTest extends TestCase
         $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
         $this->assertSame(CotizarIaService::ORIGEN_FOTO, $linea['origen']);
         $this->assertSame('HIG002', $linea['producto']['prod_item']);
-        $this->assertSame(1000, $linea['precio_venta']);
+        $this->assertSame(854, $linea['precio_venta']);
         Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'Confirmar: hoja doble'));
     }
 
@@ -593,8 +593,8 @@ class CotizarIaTest extends TestCase
         $this->assertSame(8, $preview['venta']['region']);
         $this->assertFalse(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'región del organismo')));
         $ia = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
-        $this->assertSame(820, $ia['costo']);
-        $this->assertSame(1066, $ia['precio_venta']);
+        $this->assertSame(700, $ia['costo']);
+        $this->assertSame(910, $ia['precio_venta']);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
@@ -606,7 +606,7 @@ class CotizarIaTest extends TestCase
             ->assertOk();
 
         $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
-        $this->assertSame(1230, (int) $linea->prod_valor);
+        $this->assertSame(1050, (int) $linea->prod_valor);
         $this->assertSame(1.5, (float) $nota->fresh()->factor_precio_venta);
     }
 
@@ -1602,7 +1602,7 @@ class CotizarIaTest extends TestCase
 
         $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_IA)->firstOrFail();
         $this->assertSame('HIG002', trim($ia->prod_item));
-        $this->assertSame(1066, (int) $ia->prod_valor);
+        $this->assertSame(910, (int) $ia->prod_valor);
     }
 
     public function test_mercado_libre_sale_de_la_api_y_no_de_gemini(): void

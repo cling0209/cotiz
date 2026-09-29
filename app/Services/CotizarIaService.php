@@ -511,14 +511,18 @@ class CotizarIaService
     }
 
     /**
-     * El precio del maestro es el de la Metropolitana y es el que manda; su costo es solo referencia.
-     * Costo = precio / factor Metropolitana; en la Metropolitana se cobra el precio del maestro y en
-     * otras regiones costo × factor. Sin precio en el maestro se usa su costo × factor.
+     * Con costo en el maestro coherente con su precio (entre la mitad del precio y el precio), venta =
+     * costo × factor. Si el costo falta o está mal cargado (ej. $8 para un precio de $8.400), manda el
+     * precio: costo = precio / factor Metropolitana; en la Metropolitana se cobra el precio del maestro
+     * y en otras regiones costo × factor.
      *
      * @return array{costo: int, precio_venta: int, precio_rm: int}
      */
     private function preciosMaestro(int $valor, int $costoMaestro, float $factor): array
     {
+        if ($costoMaestro > 0 && ($valor <= 0 || ($costoMaestro * 2 >= $valor && $costoMaestro <= $valor))) {
+            return ['costo' => $costoMaestro, 'precio_venta' => (int) round($costoMaestro * $factor), 'precio_rm' => 0];
+        }
         if ($valor > 0) {
             $costo = NotaDetalleService::costoDesdePrecioRm($valor);
 
@@ -527,9 +531,6 @@ class CotizarIaService
                 'precio_venta' => $this->esFactorMetropolitana($factor) ? $valor : (int) round($costo * $factor),
                 'precio_rm' => $valor,
             ];
-        }
-        if ($costoMaestro > 0) {
-            return ['costo' => $costoMaestro, 'precio_venta' => (int) round($costoMaestro * $factor), 'precio_rm' => 0];
         }
 
         return ['costo' => 0, 'precio_venta' => 0, 'precio_rm' => 0];
