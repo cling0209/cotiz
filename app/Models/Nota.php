@@ -97,4 +97,11 @@ class Nota extends Model
     {
         return $this->es_compra_agil === false;
     }
+
+    public static function siguienteNotaSoftland(): int
+    {
+        $max = (int) static::query()->where('nota_softland', '>', 0)->max('nota_softland');
+
+        return max($max + 1, (int) config('cotiz.nota_softland_inicio', 10000));
+    }
 }

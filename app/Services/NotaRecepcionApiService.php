@@ -48,8 +48,7 @@ class NotaRecepcionApiService
             $nronota = $this->siguienteNronota();
             $notaSoftland = (int) ($payload['nota_softland'] ?? 0);
             if ($notaSoftland <= 0) {
-                $max = Nota::query()->where('nota_softland', '>', 0)->max('nota_softland');
-                $notaSoftland = $max ? ((int) $max + 1) : 10000;
+                $notaSoftland = Nota::siguienteNotaSoftland();
             }
 
             $fecha = $this->parseFecha($payload['fecha'] ?? null) ?? now()->toDateString();

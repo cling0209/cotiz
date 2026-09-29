@@ -16,6 +16,8 @@ return [
     'factor_precio_venta' => (float) env('COTIZ_FACTOR_PRECIO_VENTA', 1.22),
     // Prefijo fijo del código de cotizaciones internas (no Mercado Público).
     'cotizacion_interna_prefijo' => env('COTIZ_COTIZACION_INTERNA_PREFIJO', 'CM-'),
+    // Primer número Softland (archivo TXT del detalle); si ya hay notas mayores, sigue desde el máximo.
+    'nota_softland_inicio' => (int) env('COTIZ_NOTA_SOFTLAND_INICIO', 10000),
     // Factor por región al importar Compra Ágil / Oportunidades (editable después en la nota).
     'factor_precio_venta_rm' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_RM', 1.22),
     'factor_precio_venta_otras' => (float) env('COTIZ_FACTOR_PRECIO_VENTA_OTRAS', 1.30),

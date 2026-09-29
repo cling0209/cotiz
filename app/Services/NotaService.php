@@ -666,8 +666,6 @@ class NotaService
 
     private function siguienteNotaSoftland(): int
     {
-        $max = Nota::query()->where('nota_softland', '>', 0)->max('nota_softland');
-
-        return $max ? ((int) $max + 1) : 10000;
+        return Nota::siguienteNotaSoftland();
     }
 }
