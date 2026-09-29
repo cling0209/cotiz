@@ -1,5 +1,5 @@
 {{-- «Cotizar con IA»: solo usuarios de CotizarIaService::USUARIOS_PERMITIDOS. --}}
-<div class="modal fade" id="modal-cotizar-ia" tabindex="-1" aria-labelledby="modal-cotizar-ia-label" aria-hidden="true">
+<div class="modal fade" id="modal-cotizar-ia" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="modal-cotizar-ia-label" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header py-2">
