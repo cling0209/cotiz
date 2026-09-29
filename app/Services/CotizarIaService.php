@@ -1015,13 +1015,14 @@ TXT];
         $paraIa = [];
 
         foreach ($items as $i => $item) {
-            $porFrase = $this->aprendizaje->resolverProductoPorFrase($item['descripcion']);
+            // Un vínculo guardado a un producto sin precio ni costo no sirve para cotizar: se busca otro.
+            $porFrase = $this->conPrecioOCosto($this->aprendizaje->resolverProductoPorFrase($item['descripcion']));
             if ($porFrase !== null) {
                 $items[$i] = $this->marcarVinculado($item, $this->prorratearPackMaestro($porFrase, $item['descripcion']), self::ORIGEN_FRASE);
 
                 continue;
             }
-            $exacto = $this->aprendizaje->buscarAprendidoExacto($item['descripcion']);
+            $exacto = $this->conPrecioOCosto($this->aprendizaje->buscarAprendidoExacto($item['descripcion']));
             if ($exacto !== null) {
                 $items[$i] = $this->marcarVinculado($item, $this->prorratearPackMaestro($exacto, $item['descripcion']), self::ORIGEN_APRENDIDO);
 
@@ -1565,6 +1566,17 @@ TXT];
             'pack_maestro' => $pack,
             'unidades_solicitud' => $solicitadas,
         ] + $producto;
+    }
+
+    /**
+     * @param  ?array<string, mixed>  $producto
+     * @return ?array<string, mixed>
+     */
+    private function conPrecioOCosto(?array $producto): ?array
+    {
+        return $producto !== null && ((int) ($producto['prod_valor'] ?? 0) > 0 || (int) ($producto['prod_valor_costo'] ?? 0) > 0)
+            ? $producto
+            : null;
     }
 
     private static function prorrateo(int $valor, int $solicitadas, int $pack): int

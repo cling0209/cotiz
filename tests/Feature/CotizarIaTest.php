@@ -297,6 +297,23 @@ class CotizarIaTest extends TestCase
         Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'redondeado hacia arriba'));
     }
 
+    public function test_aprendido_a_producto_sin_precio_ni_costo_no_se_usa_y_se_busca_otro(): void
+    {
+        Maeprod::query()->where('prod_item', 'PAPEL001')->update(['prod_valor' => 0, 'prod_valor_costo' => 0]);
+        $nota = $this->crearNotaConLineas();
+        $this->fakeGeminiEquivalentes([['codigo' => 'HIG002', 'unidades' => 1]]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_APRENDIDO);
+        $this->assertNotSame(CotizarIaService::ORIGEN_APRENDIDO, $linea['origen']);
+        $this->assertSame(CotizarIaService::ESTADO_PENDIENTE, $linea['estado']);
+        $this->assertNull($linea['producto']);
+    }
+
     public function test_pack_mayor_del_maestro_prorratea_precio_por_unidad_solicitada(): void
     {
         Maeprod::query()->where('prod_item', 'HIG002')->update([
