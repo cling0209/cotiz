@@ -221,6 +221,16 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         );
     }
 
+    public function test_diferencia_medida_relativa_y_texto_para_aviso(): void
+    {
+        $this->assertSame(0.0, $this->service->diferenciaMedida('TAMPON 70 MM', 'TAMPON HAND 70MM'));
+        $this->assertEqualsWithDelta(5 / 70, $this->service->diferenciaMedida('TAMPON 70 MM', 'TAMPON REYSOL 65 MM'), 1e-9);
+        $this->assertEqualsWithDelta(0.5, $this->service->diferenciaMedida('CINTA 1 CM', 'CINTA 5 MM'), 1e-9);
+        $this->assertNull($this->service->diferenciaMedida('TAMPON 70 MM', 'TAMPON DACTILAR NEGRO'));
+        $this->assertSame(1.0, $this->service->diferenciaMedida('PAPEL CARTA', 'PAPEL OFICIO'));
+        $this->assertSame(['70 MM'], $this->service->medidasTexto('Tampón huella 70 mm'));
+    }
+
     public function test_elige_el_mas_economico(): void
     {
         $elegido = $this->service->elegirMasEconomico([

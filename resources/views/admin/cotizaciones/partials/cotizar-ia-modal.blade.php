@@ -286,7 +286,8 @@
     }
 
     function notaStock(linea) {
-        return linea.stock_nota ? '<div class="text-danger">' + esc(linea.stock_nota) + '</div>' : '';
+        return (linea.medida_nota ? '<div class="text-warning-emphasis">' + esc(linea.medida_nota) + '</div>' : '')
+            + (linea.stock_nota ? '<div class="text-danger">' + esc(linea.stock_nota) + '</div>' : '');
     }
 
     function celdaVinculo(linea) {

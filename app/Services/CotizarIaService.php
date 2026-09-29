@@ -1001,6 +1001,7 @@ TXT];
                 'generico' => '',
                 'stock_prisa' => null,
                 'stock_nota' => null,
+                'medida_nota' => null,
             ];
         }
 
@@ -1086,7 +1087,7 @@ TXT];
         }
 
         foreach ($equivalentesPorLinea as $i => $equivalentes) {
-            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+            $elegido = $this->elegirEquivalente($items[$i]['descripcion'], array_values($equivalentes));
             if ($elegido !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $elegido, self::ORIGEN_IA);
                 $items[$i]['alternativas'] = $this->alternativas($equivalentes, $elegido);
@@ -1190,13 +1191,19 @@ TXT];
         }
 
         foreach ($confirmados as $i => $equivalentes) {
-            $elegido = $this->elegirPorPrecio(array_values($equivalentes));
+            $descripcion = (string) $items[$i]['descripcion'];
+            $elegido = $this->elegirEquivalente($descripcion, array_values($equivalentes));
             if ($elegido === null) {
                 continue;
             }
             $actual = $items[$i]['estado'] === self::ESTADO_VINCULADO ? $items[$i]['producto'] : null;
-            if ($actual !== null && $this->precioComparable($elegido) >= $this->precioComparable($actual)) {
-                continue;
+            if ($actual !== null) {
+                $medidaElegido = $this->diferenciaMedida($descripcion, (string) $elegido['prod_nombre']);
+                $medidaActual = $this->diferenciaMedida($descripcion, (string) $actual['prod_nombre']);
+                if ($medidaElegido > $medidaActual + 1e-9
+                    || ($medidaElegido >= $medidaActual - 1e-9 && $this->precioComparable($elegido) >= $this->precioComparable($actual))) {
+                    continue;
+                }
             }
             $alternativas = array_merge(
                 $actual !== null ? [$actual] : [],
@@ -1346,8 +1353,62 @@ TXT];
         $nombreProducto = $this->colorMasculino($nombreProducto);
 
         return ! $this->busqueda->hayConflictoFamilia($descripcion, $nombreProducto)
-            && $this->busqueda->medidasCompatibles($descripcion, $nombreProducto)
+            && $this->diferenciaMedida($descripcion, $nombreProducto) <= $this->toleranciaMedida()
             && $this->busqueda->coloresCompatibles($descripcion, $nombreProducto);
+    }
+
+    /**
+     * Diferencia relativa de medida entre lo solicitado y el producto; 0 si coinciden o alguno no la indica.
+     */
+    private function diferenciaMedida(string $descripcion, string $nombreProducto): float
+    {
+        return $this->busqueda->diferenciaMedida($descripcion, $nombreProducto) ?? 0.0;
+    }
+
+    /**
+     * Hasta cuánto puede diferir la medida (0,2 = 20 %) para cotizar la más cercana con aviso.
+     */
+    private function toleranciaMedida(): float
+    {
+        return max(0.0, (float) config('cotiz.tolerancia_medida', 0.2)) + 1e-9;
+    }
+
+    /**
+     * Entre los equivalentes, los de medida exacta (o sin medida declarada); si ninguno, los de medida más cercana.
+     * De ellos, el más barato.
+     *
+     * @template T of array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     *
+     * @param  list<T>  $productos
+     * @return ?T
+     */
+    private function elegirEquivalente(string $descripcion, array $productos): ?array
+    {
+        if ($productos === []) {
+            return null;
+        }
+        $diferencias = array_map(fn (array $p) => $this->diferenciaMedida($descripcion, (string) $p['prod_nombre']), $productos);
+        $menor = min($diferencias);
+
+        return $this->elegirPorPrecio(array_values(array_filter(
+            $productos,
+            static fn (int $n) => $diferencias[$n] <= $menor + 1e-9,
+            ARRAY_FILTER_USE_KEY,
+        )));
+    }
+
+    /**
+     * Aviso cuando el producto elegido tiene una medida distinta a la pedida.
+     */
+    private function notaMedida(string $descripcion, string $nombreProducto): ?string
+    {
+        if ($this->diferenciaMedida($descripcion, $nombreProducto) <= 1e-9) {
+            return null;
+        }
+        $pedida = implode(' / ', $this->busqueda->medidasTexto($descripcion));
+        $producto = implode(' / ', $this->busqueda->medidasTexto($nombreProducto));
+
+        return "Medida distinta: se pidió {$pedida} y el producto es de {$producto}.";
     }
 
     private function esGenericoDistinto(string $generico, string $descripcion): bool
@@ -1462,7 +1523,8 @@ TXT];
             : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
 
         $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
-            .'Criterios: mismo tipo de producto y misma función; medida, capacidad, gramaje y formato compatibles; si el solicitado exige color o material, deben coincidir. '
+            .'Criterios: mismo tipo de producto y misma función; capacidad, gramaje y formato compatibles; si el solicitado exige color o material, deben coincidir. '
+            .'Una medida algo distinta (ej. 65 mm por 70 mm) no descarta el candidato: inclúyelo igual, el sistema prefiere la medida exacta y avisa la diferencia. '
             .'La marca NO importa: el mismo producto de otra marca es equivalente aunque el solicitado nombre una marca. '
             .'un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato o uno mayor. '
             .'Si el solicitado es un pack o caja de N unidades (ej. «pack 2U», «set de 3», «caja 100 unidades») y el candidato es el mismo producto '
@@ -1720,7 +1782,7 @@ TXT];
                 $items[$i]['alternativas'],
                 static fn (array $p) => in_array($estados[$p['prod_item']]['estado'] ?? null, $conStock, true),
             ));
-            $reemplazo = $opciones === [] ? null : $this->elegirPorPrecio($opciones);
+            $reemplazo = $this->elegirEquivalente((string) $items[$i]['descripcion'], $opciones);
             if ($reemplazo !== null) {
                 $items[$i] = $this->marcarVinculado($items[$i], $reemplazo, (string) $items[$i]['origen']);
                 $items[$i]['stock_prisa'] = $estados[$reemplazo['prod_item']];
@@ -1733,6 +1795,7 @@ TXT];
             $items[$i]['estado'] = self::ESTADO_PENDIENTE;
             $items[$i]['origen'] = null;
             $items[$i]['producto'] = null;
+            $items[$i]['medida_nota'] = null;
             $items[$i]['stock_nota'] = 'Prisa: '.$original['prod_item'].' '.$original['prod_nombre'].' '.$estado['etiqueta'].'.';
         }
 
@@ -1758,6 +1821,7 @@ TXT];
      */
     private function buscarReferenciasWeb(array $items): array
     {
+        $items = $this->medidaExactaEnMercadoLibre($items);
         $pendientes = [];
         foreach ($items as $i => $item) {
             if ($item['estado'] === self::ESTADO_PENDIENTE) {
@@ -1833,6 +1897,66 @@ TXT];
     }
 
     /**
+     * Líneas vinculadas al maestro con otra medida: si Mercado Libre tiene el producto con la medida
+     * pedida (declarada en el título), se cotiza ese en vez del maestro aproximado.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function medidaExactaEnMercadoLibre(array $items): array
+    {
+        $aproximados = array_keys(array_filter(
+            $items,
+            static fn (array $item) => $item['estado'] === self::ESTADO_VINCULADO && ($item['medida_nota'] ?? null) !== null,
+        ));
+        if ($aproximados === [] || ! $this->mercadolibre->configurado()) {
+            return $items;
+        }
+
+        $this->detalle('Buscando en Mercado Libre la medida exacta para '.count($aproximados).' línea(s)');
+        try {
+            $opcionesPorLinea = [];
+            foreach ($aproximados as $i) {
+                $opcionesPorLinea[$i] = $this->mercadolibre->buscar($this->terminoBusqueda($items[$i]));
+            }
+            $opcionesPorLinea = $this->descartarOtrosProductosWeb($items, $opcionesPorLinea);
+
+            foreach ($aproximados as $i) {
+                $descripcion = (string) $items[$i]['descripcion'];
+                $exactas = array_values(array_filter(
+                    $opcionesPorLinea[$i],
+                    fn ($o) => is_array($o) && $this->busqueda->diferenciaMedida($descripcion, (string) ($o['titulo'] ?? '')) === 0.0,
+                ));
+                if ($exactas === []) {
+                    continue;
+                }
+                $cantidad = max(1, (int) $items[$i]['cantidad']);
+                $unidadesSolicitud = min(self::MAX_UNIDADES_POR_SOLICITADO, $this->mercadolibre->unidadesPorPack($descripcion));
+                [$mejor] = $this->mejorReferencia($descripcion, $cantidad, $exactas, $unidadesSolicitud);
+                if ($mejor === null) {
+                    continue;
+                }
+
+                $maestro = $items[$i]['producto'];
+                $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
+                $items[$i]['origen'] = self::ORIGEN_WEB;
+                $items[$i]['referencia'] = $mejor;
+                $items[$i]['producto'] = null;
+                $items[$i]['stock_prisa'] = null;
+                $items[$i]['medida_nota'] = null;
+                $nota = 'Maestro '.$maestro['prod_item'].' '.$maestro['prod_nombre'].' es de otra medida; se usó Mercado Libre con la medida pedida.';
+                $previa = trim((string) ($items[$i]['stock_nota'] ?? ''));
+                $items[$i]['stock_nota'] = $previa === '' ? $nota : $previa.' '.$nota;
+            }
+        } catch (RuntimeException $e) {
+            Log::warning('CotizarIa: fallo buscando medida exacta en Mercado Libre', ['message' => $e->getMessage()]);
+            $this->avisos[] = 'No se pudo buscar en Mercado Libre la medida exacta: '.$e->getMessage();
+        }
+
+        return $items;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $items
      * @param  list<int>  $pendientes
      * @return list<array<string, mixed>>
@@ -1855,6 +1979,7 @@ TXT];
                     $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                     $items[$i]['origen'] = self::ORIGEN_WEB;
                     $items[$i]['referencia'] = $mejor;
+                    $items[$i]['medida_nota'] = $this->notaMedida((string) $items[$i]['descripcion'], $mejor['titulo']);
                 } elseif ($todasSinStock && ! $buscarGemini) {
                     $sinStockSuficiente++;
                     $nota = "Mercado Libre: ninguna publicación tiene stock suficiente para {$cantidad} unidad(es).";
@@ -2023,6 +2148,7 @@ TXT];
                 $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
                 $items[$i]['origen'] = self::ORIGEN_WEB;
                 $items[$i]['referencia'] = $mejor;
+                $items[$i]['medida_nota'] = $this->notaMedida((string) $items[$i]['descripcion'], $mejor['titulo']);
             } elseif ($todasSinStock) {
                 $sinStockSuficiente++;
                 $nota = "Mercado Libre / Sodimac: ninguna publicación tiene stock suficiente para {$cantidad} unidad(es).";
@@ -2100,15 +2226,42 @@ TXT];
                 $candidata['imagen_url'] = $imagen;
             }
             if ($stock !== null) {
-                if ($confirmada === null || $neto < $confirmada['neto_unitario']) {
+                if ($this->referenciaMejor($descripcion, $candidata, $confirmada)) {
                     $confirmada = $candidata;
                 }
-            } elseif ($desconocida === null || $neto < $desconocida['neto_unitario']) {
+            } elseif ($this->referenciaMejor($descripcion, $candidata, $desconocida)) {
                 $desconocida = $candidata;
             }
         }
 
-        return [$confirmada ?? $desconocida, $validas > 0 && $insuficientes === $validas];
+        // Con stock verificado gana, salvo que la otra tenga una medida más cercana a la pedida.
+        $mejor = $confirmada ?? $desconocida;
+        if ($confirmada !== null && $desconocida !== null
+            && $this->diferenciaMedida($descripcion, $desconocida['titulo']) < $this->diferenciaMedida($descripcion, $confirmada['titulo']) - 1e-9) {
+            $mejor = $desconocida;
+        }
+
+        return [$mejor, $validas > 0 && $insuficientes === $validas];
+    }
+
+    /**
+     * Primero la medida más cercana a la pedida; a igual medida, el menor costo.
+     *
+     * @param  array{titulo: string, neto_unitario: int}  $candidata
+     * @param  ?array{titulo: string, neto_unitario: int}  $actual
+     */
+    private function referenciaMejor(string $descripcion, array $candidata, ?array $actual): bool
+    {
+        if ($actual === null) {
+            return true;
+        }
+        $medidaCandidata = $this->diferenciaMedida($descripcion, $candidata['titulo']);
+        $medidaActual = $this->diferenciaMedida($descripcion, $actual['titulo']);
+        if (abs($medidaCandidata - $medidaActual) > 1e-9) {
+            return $medidaCandidata < $medidaActual;
+        }
+
+        return $candidata['neto_unitario'] < $actual['neto_unitario'];
     }
 
     /**
@@ -2257,6 +2410,7 @@ TXT];
         $item['origen'] = $origen;
         $item['producto'] = $producto;
         $item['referencia'] = null;
+        $item['medida_nota'] = $this->notaMedida((string) $item['descripcion'], (string) $producto['prod_nombre']);
 
         return $item;
     }
@@ -2308,6 +2462,7 @@ TXT];
             'referencia' => $referencia,
             'stock_prisa' => $item['stock_prisa'] ?? null,
             'stock_nota' => $item['stock_nota'] ?? null,
+            'medida_nota' => $item['medida_nota'] ?? null,
         ];
     }
 

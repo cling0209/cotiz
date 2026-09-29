@@ -684,6 +684,55 @@ class MaeprodBusquedaSimilitudService
         return true;
     }
 
+    /**
+     * Diferencia relativa (0 = igual, 0,1 = 10 %) de la medida más distinta que declaran ambos textos.
+     * null si alguno no trae medida o no comparten tipo (largo, masa, volumen, formato de papel).
+     */
+    public function diferenciaMedida(string $textoConsulta, string $textoCandidato): ?float
+    {
+        $consulta = $this->extraerMedidas($textoConsulta);
+        $candidato = $this->extraerMedidas($textoCandidato);
+        if ($consulta === [] || $candidato === []) {
+            return null;
+        }
+
+        $porTipoCandidato = $this->agruparMedidasPorTipo($candidato);
+        $peor = null;
+        foreach ($this->agruparMedidasPorTipo($consulta) as $tipo => $valores) {
+            if (! isset($porTipoCandidato[$tipo])) {
+                continue;
+            }
+            if ($tipo === 'papel') {
+                $diferencia = array_intersect($valores, $porTipoCandidato[$tipo]) === [] ? 1.0 : 0.0;
+            } else {
+                $diferencia = 1.0;
+                foreach ($valores as $valor) {
+                    foreach ($porTipoCandidato[$tipo] as $otro) {
+                        $delta = abs((float) $valor - (float) $otro);
+                        $escala = max(abs((float) $valor), abs((float) $otro));
+                        $diferencia = min($diferencia, $delta < 0.05 || $escala <= 0 ? 0.0 : $delta / $escala);
+                    }
+                }
+            }
+            $peor = max($peor ?? 0.0, $diferencia);
+        }
+
+        return $peor;
+    }
+
+    /**
+     * Medidas tal como aparecen en el texto (ej. «70 MM», «500 GR»), para avisos.
+     *
+     * @return list<string>
+     */
+    public function medidasTexto(string $texto): array
+    {
+        $unidades = implode('|', array_keys(self::UNIDADES_MEDIDA));
+        preg_match_all('/\d+(?:[.,]\d+)?\s*(?:'.$unidades.')\b/u', $this->normalizarTexto($texto), $matches);
+
+        return array_values(array_unique($matches[0]));
+    }
+
     public function coloresCompatibles(string $textoConsulta, string $textoCandidato): bool
     {
         $consulta = $this->extraerColores($textoConsulta);

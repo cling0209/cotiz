@@ -1817,6 +1817,101 @@ class CotizarIaTest extends TestCase
         $this->assertSame('https://www.mercadolibre.cl/p/MLC21', $web['referencia']['url']);
     }
 
+    public function test_medida_cercana_del_maestro_se_cotiza_con_aviso(): void
+    {
+        $nota = $this->notaConMedidaDistinta();
+        Http::fake(fn (HttpRequest $request) => Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+            ? ['resultados' => []]
+            : ['resultados' => [['i' => 0, 'equivalentes' => ['TAMP65'], 'busqueda' => []]]])));
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', 'TAMPON DACTILAR 70 MM');
+        $this->assertSame(CotizarIaService::ESTADO_VINCULADO, $linea['estado']);
+        $this->assertSame('TAMP65', $linea['producto']['prod_item']);
+        $this->assertStringContainsString('70 MM', (string) $linea['medida_nota']);
+        $this->assertStringContainsString('65 MM', (string) $linea['medida_nota']);
+    }
+
+    public function test_medida_exacta_en_mercado_libre_reemplaza_al_maestro_aproximado(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $nota = $this->notaConMedidaDistinta();
+        Http::fake(function (HttpRequest $request) {
+            $url = $request->url();
+            if (str_contains($url, 'api.mercadolibre.com/oauth/token')) {
+                return Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/search')) {
+                return Http::response(['results' => [
+                    ['id' => 'MLC60', 'name' => 'Tampon Dactilar 60 mm Negro'],
+                    ['id' => 'MLC70', 'name' => 'Tampon Dactilar 70 mm Negro'],
+                ]]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/MLC60/items')) {
+                return Http::response(['results' => [['price' => 500]]]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/MLC70/items')) {
+                return Http::response(['results' => [['price' => 1100]]]);
+            }
+
+            return Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+                ? ['resultados' => []]
+                : ['resultados' => [['i' => 0, 'equivalentes' => ['TAMP65'], 'busqueda' => []]]]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', 'TAMPON DACTILAR 70 MM');
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $linea['estado']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC70', $linea['referencia']['url']);
+        $this->assertNull($linea['medida_nota']);
+        $this->assertStringContainsString('TAMP65', (string) $linea['stock_nota']);
+    }
+
+    private function notaConMedidaDistinta(): Nota
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'TAMP65',
+            'prod_nombre' => 'TAMPON DACTILAR NEGRO 65 MM',
+            'prod_valor' => 692,
+            'prod_valor_costo' => 532,
+            'prod_familia' => 'VARIOS',
+        ]);
+        $this->partialMock(MaeprodBusquedaSimilitudService::class, function ($mock) {
+            $mock->shouldReceive('buscar')->andReturnUsing(fn (string $term) => str_contains(mb_strtoupper($term), 'TAMPON')
+                ? Maeprod::query()->where('prod_item', 'TAMP65')->get()
+                : collect());
+        });
+
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 1,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => 'TAMPON DACTILAR 70 MM',
+            'prod_descripcion_maestro' => 'TAMPON DACTILAR 70 MM',
+        ]);
+
+        return $nota;
+    }
+
     public function test_mercado_libre_lee_unidades_del_nombre_del_catalogo(): void
     {
         config([
