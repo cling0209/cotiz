@@ -444,6 +444,15 @@ class MaeprodBusquedaSimilitudService
             if (mb_strlen($singular, 'UTF-8') >= 4) {
                 $vars[] = $singular;
             }
+            // SEPARADORES → SEPARADOR: en SQL «%SEPARADORE%» no cae en «SEPARADOR».
+            if (str_ends_with($token, 'ES') && mb_strlen($token, 'UTF-8') >= 6) {
+                $vars[] = mb_substr($token, 0, -2, 'UTF-8');
+            }
+        }
+
+        // VINILICOS → VINIL, METALICA → METAL.
+        if (! preg_match('/\d/u', $token) && preg_match('/^(.{5,})IC[OA]S?$/u', $token, $m)) {
+            $vars[] = $m[1];
         }
 
         if (mb_strlen($token, 'UTF-8') >= 6 && ! preg_match('/\d/u', $token)) {
@@ -906,7 +915,9 @@ class MaeprodBusquedaSimilitudService
                 continue;
             }
 
-            if ($prevTok !== '' && ! preg_match('/^\d+$/', $prevTok) && ! preg_match('/^\d+$/', $tok)) {
+            $generico = $this->esTokenGenerico($tok);
+            if ($prevTok !== '' && ! preg_match('/^\d+$/', $prevTok) && ! preg_match('/^\d+$/', $tok)
+                && ! $generico && ! $this->esTokenGenerico($prevTok)) {
                 $bigram = $prevTok.' '.$tok;
                 $ordered = '%'.$prevTok.'%'.$tok.'%';
                 $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN 75 '
@@ -935,15 +946,18 @@ class MaeprodBusquedaSimilitudService
                     $whereBindings[] = '%'.$tok.'%';
                 }
             } else {
+                // Un solo CASE por token: sumar cada variante (COLORES, COLORE, OLORES) triplicaba el peso.
+                $w = $generico ? 10 : 2 * (42 + min(27, max(0, mb_strlen($tok, 'UTF-8') - 5) * 3));
+                $condiciones = [];
                 foreach ($this->tokenVariantes($tok) as $variante) {
-                    $w = 42 + min(27, max(0, mb_strlen($variante, 'UTF-8') - 5) * 3);
-                    $scoreParts[] = '(CASE WHEN prod_nombre '.$like.' ? OR prod_item '.$like.' ? THEN '.$w.' ELSE 0 END)';
+                    $condiciones[] = 'prod_nombre '.$like.' ? OR prod_item '.$like.' ?';
                     $scoreBindings[] = '%'.$variante.'%';
                     $scoreBindings[] = '%'.$variante.'%';
                     $whereParts[] = '(prod_nombre '.$like.' ? OR prod_item '.$like.' ?)';
                     $whereBindings[] = '%'.$variante.'%';
                     $whereBindings[] = '%'.$variante.'%';
                 }
+                $scoreParts[] = '(CASE WHEN '.implode(' OR ', $condiciones).' THEN '.$w.' ELSE 0 END)';
             }
 
             $prevTok = $tok;

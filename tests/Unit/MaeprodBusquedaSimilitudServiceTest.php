@@ -56,6 +56,22 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertContains('CAJA', $variantes);
     }
 
+    public function test_variantes_incluyen_singular_es_y_raiz_de_adjetivo(): void
+    {
+        $this->assertContains('SEPARADOR', $this->service->tokenVariantes('SEPARADORES'));
+        $this->assertContains('VINIL', $this->service->tokenVariantes('VINILICOS'));
+        $this->assertContains('METAL', $this->service->tokenVariantes('METALICA'));
+        $this->assertNotContains('MES', $this->service->tokenVariantes('MESES'));
+    }
+
+    public function test_separadores_vinilicos_tiene_solape_con_separador_vinil(): void
+    {
+        $consulta = 'SEPARADORES COLORES OFICIO TIPO LAVORO O TORRE O ARTESANO (SET 6 COLORES) VINILICOS';
+
+        $this->assertTrue($this->service->tieneSolapeDistintivo($consulta, 'SEPARADOR OFICIO VINIL LAVORO 6 POSICIONES'));
+        $this->assertTrue($this->service->pasaFiltrosAtributos($consulta, 'SEPARADOR OFICIO VINIL LAVORO 6 POSICIONES'));
+    }
+
     public function test_stopword_para_se_filtra_en_tokens_sql(): void
     {
         $tokens = $this->service->tokensConsultaSql(
