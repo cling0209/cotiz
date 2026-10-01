@@ -9,6 +9,7 @@ use App\Models\Parametro;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\LazyCollection;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -80,15 +81,16 @@ class CompraAgilComisionesService
     }
 
     /**
+     * Todas las filas que cumplen el filtro, leídas en bloques (sin tope).
+     *
      * @param  array<string, mixed>  $filtros
-     * @return Collection<int, object>
+     * @return LazyCollection<int, object>
      */
-    public function listadoDetalle(array $filtros = [], int $limite = 10000): Collection
+    public function cursorDetalle(array $filtros = [], int $bloque = 500): LazyCollection
     {
         return $this->aplicarOrden($this->buildQuery($filtros), $filtros)
             ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas'])
-            ->limit($limite)
-            ->get()
+            ->lazy($bloque)
             ->map(fn (NotaMpSeguimiento $seg) => $this->enriquecerFila($seg));
     }
 
@@ -101,7 +103,7 @@ class CompraAgilComisionesService
      */
     public function resumenPorEjecutivo(array $filtros = []): Collection
     {
-        $filas = $this->listadoDetalle($filtros);
+        $filas = $this->cursorDetalle($filtros)->collect();
 
         return $filas
             ->groupBy(function (object $fila) {
@@ -139,10 +141,11 @@ class CompraAgilComisionesService
      */
     public function exportarDetalle(array $filtros = []): StreamedResponse
     {
-        $filas = $this->listadoDetalle($filtros);
         $filename = 'comisiones_detalle_'.now()->format('Ymd_His').'.csv';
 
-        return response()->streamDownload(function () use ($filas) {
+        return response()->streamDownload(function () use ($filtros) {
+            set_time_limit(0);
+
             $out = fopen('php://output', 'w');
             fprintf($out, "\xEF\xBB\xBF");
             fputcsv($out, [
@@ -168,7 +171,7 @@ class CompraAgilComisionesService
                 'Pago',
                 'A pagar',
             ], ';');
-            foreach ($filas as $fila) {
+            foreach ($this->cursorDetalle($filtros) as $fila) {
                 fputcsv($out, [
                     $fila->nronota,
                     $fila->fecha_creacion?->format('d/m/Y') ?? '',
@@ -193,6 +196,90 @@ class CompraAgilComisionesService
                     $fila->a_pagar,
                 ], ';');
             }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Solo cotizaciones ganadas; una fila por línea de la nota (sin líneas: una fila con producto vacío).
+     *
+     * @param  array<string, mixed>  $filtros
+     */
+    public function exportarDetalleProductos(array $filtros = []): StreamedResponse
+    {
+        $filename = 'comisiones_detalle_productos_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($filtros) {
+            set_time_limit(0);
+
+            $out = fopen('php://output', 'w');
+            fprintf($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'Nota',
+                'Fecha de creación',
+                'Código CA',
+                'Seguimiento',
+                'Participó MP',
+                'Ganada',
+                'Orden compra',
+                'Fecha envío OC o última modificación',
+                'Ejecutivo',
+                'Región',
+                'Factor',
+                'Código producto',
+                'Código Agile',
+                'Descripción',
+                'Cantidad',
+                'Costo unitario',
+                'Costo total',
+                'Precio venta unitario',
+                'Total venta',
+            ], ';');
+
+            $ganadas = $this->cursorDetalle($filtros)->filter(fn (object $fila) => $fila->es_ganada);
+
+            foreach ($ganadas as $fila) {
+                $cabecera = [
+                    $fila->nronota,
+                    $fila->fecha_creacion?->format('d/m/Y') ?? '',
+                    $fila->codigo_proceso,
+                    $fila->resultado_propio,
+                    $fila->participacion_mp_label,
+                    $fila->es_ganada ? 'Sí' : 'No',
+                    $fila->orden_compra,
+                    $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
+                    $fila->ejecutivo,
+                    $fila->region_nombre,
+                    number_format($fila->factor, 2, ',', ''),
+                ];
+
+                $lineas = ($fila->seguimiento->nota?->detalle ?? collect())->sortBy('orden');
+
+                if ($lineas->isEmpty()) {
+                    fputcsv($out, array_merge($cabecera, array_fill(0, 8, '')), ';');
+
+                    continue;
+                }
+
+                foreach ($lineas as $linea) {
+                    $cantidad = (int) $linea->cantidad;
+                    $costoUnitario = (int) $linea->prod_valor_costo;
+
+                    fputcsv($out, array_merge($cabecera, [
+                        $linea->codigoProducto(),
+                        (string) ($linea->prod_item_agile ?? ''),
+                        $linea->descripcionMaestroVisible(),
+                        $cantidad,
+                        $costoUnitario,
+                        $costoUnitario * $cantidad,
+                        (int) $linea->prod_valor,
+                        (int) $linea->prod_valor * $cantidad,
+                    ]), ';');
+                }
+            }
+
             fclose($out);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',

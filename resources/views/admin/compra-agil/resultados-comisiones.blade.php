@@ -91,6 +91,9 @@
                     <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                         <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                     </a>
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle-productos', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle con productos
+                    </a>
                     <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                         <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
                     </a>

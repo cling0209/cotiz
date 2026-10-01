@@ -471,6 +471,13 @@ class CompraAgilResultadosController extends Controller
         return $this->comisiones->exportarDetalle($this->filtrosComisiones($request));
     }
 
+    public function comisionesExportarDetalleProductos(Request $request): StreamedResponse
+    {
+        $this->assertPuedeVerComisiones($request);
+
+        return $this->comisiones->exportarDetalleProductos($this->filtrosComisiones($request));
+    }
+
     public function comisionesExportarResumen(Request $request): StreamedResponse
     {
         $this->assertPuedeVerComisiones($request);
