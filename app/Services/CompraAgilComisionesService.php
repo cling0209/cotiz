@@ -6,7 +6,6 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\NotaMpSeguimiento;
 use App\Models\Parametro;
-use App\Support\ProdValorFechaUi;
 use App\Support\ProductCodeNormalizer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -238,7 +237,6 @@ class CompraAgilComisionesService
                 'Descripción Agile (MP)',
                 'Obs. interna',
                 'Obs. cliente',
-                'Fecha act. precio',
                 'Precio costo',
                 'Precio unitario',
                 'Cantidad',
@@ -265,7 +263,7 @@ class CompraAgilComisionesService
                 $lineas = ($fila->seguimiento->nota?->detalle ?? collect())->sortBy('orden');
 
                 if ($lineas->isEmpty()) {
-                    fputcsv($out, array_merge($cabecera, array_fill(0, 12, '')), ';');
+                    fputcsv($out, array_merge($cabecera, array_fill(0, 11, '')), ';');
 
                     continue;
                 }
@@ -301,7 +299,6 @@ class CompraAgilComisionesService
             $descripcionMaestro = $nombreProducto !== '' ? $nombreProducto : $descripcionAgile;
         }
 
-        [$fechaPrecio] = ProdValorFechaUi::textoYAntigua($producto?->prod_valor_fecha);
         $cantidad = (int) $linea->cantidad;
         $precioUnitario = (int) $linea->prod_valor;
 
@@ -313,7 +310,6 @@ class CompraAgilComisionesService
             $descripcionAgile,
             trim((string) ($linea->observacion ?? '')),
             trim((string) ($linea->observacion_cliente ?? '')),
-            $fechaPrecio,
             (int) $linea->prod_valor_costo,
             $precioUnitario,
             $cantidad,
