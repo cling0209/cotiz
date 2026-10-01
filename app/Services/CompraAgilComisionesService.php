@@ -6,6 +6,8 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\NotaMpSeguimiento;
 use App\Models\Parametro;
+use App\Support\ProdValorFechaUi;
+use App\Support\ProductCodeNormalizer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -84,12 +86,13 @@ class CompraAgilComisionesService
      * Todas las filas que cumplen el filtro, leídas en bloques (sin tope).
      *
      * @param  array<string, mixed>  $filtros
+     * @param  list<string>  $relacionesExtra
      * @return LazyCollection<int, object>
      */
-    public function cursorDetalle(array $filtros = [], int $bloque = 500): LazyCollection
+    public function cursorDetalle(array $filtros = [], int $bloque = 500, array $relacionesExtra = []): LazyCollection
     {
         return $this->aplicarOrden($this->buildQuery($filtros), $filtros)
-            ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas'])
+            ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas', ...$relacionesExtra])
             ->lazy($bloque)
             ->map(fn (NotaMpSeguimiento $seg) => $this->enriquecerFila($seg));
     }
@@ -228,17 +231,21 @@ class CompraAgilComisionesService
                 'Ejecutivo',
                 'Región',
                 'Factor',
-                'Código producto',
-                'Código Agile',
-                'Descripción',
+                'Código',
+                'Descripción maestro',
+                'Cod. Softland',
+                'ID Agile',
+                'Descripción Agile (MP)',
+                'Obs. interna',
+                'Obs. cliente',
+                'Fecha act. precio',
+                'Precio costo',
+                'Precio unitario',
                 'Cantidad',
-                'Costo unitario',
-                'Costo total',
-                'Precio venta unitario',
-                'Total venta',
+                'Total',
             ], ';');
 
-            $ganadas = $this->cursorDetalle($filtros)->filter(fn (object $fila) => $fila->es_ganada);
+            $ganadas = $this->cursorDetalle($filtros, 500, ['nota.detalle.producto'])->filter(fn (object $fila) => $fila->es_ganada);
 
             foreach ($ganadas as $fila) {
                 $cabecera = [
@@ -258,25 +265,13 @@ class CompraAgilComisionesService
                 $lineas = ($fila->seguimiento->nota?->detalle ?? collect())->sortBy('orden');
 
                 if ($lineas->isEmpty()) {
-                    fputcsv($out, array_merge($cabecera, array_fill(0, 8, '')), ';');
+                    fputcsv($out, array_merge($cabecera, array_fill(0, 12, '')), ';');
 
                     continue;
                 }
 
                 foreach ($lineas as $linea) {
-                    $cantidad = (int) $linea->cantidad;
-                    $costoUnitario = (int) $linea->prod_valor_costo;
-
-                    fputcsv($out, array_merge($cabecera, [
-                        $linea->codigoProducto(),
-                        (string) ($linea->prod_item_agile ?? ''),
-                        $linea->descripcionMaestroVisible(),
-                        $cantidad,
-                        $costoUnitario,
-                        $costoUnitario * $cantidad,
-                        (int) $linea->prod_valor,
-                        (int) $linea->prod_valor * $cantidad,
-                    ]), ';');
+                    fputcsv($out, array_merge($cabecera, $this->columnasLineaProducto($linea)), ';');
                 }
             }
 
@@ -284,6 +279,46 @@ class CompraAgilComisionesService
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * Columnas de la línea con el mismo criterio de la pantalla de la nota
+     * (descripción maestro: la de la línea, si no el nombre en maestro, si no la de Agile).
+     *
+     * @return list<string|int>
+     */
+    private function columnasLineaProducto(NotaDetalle $linea): array
+    {
+        $producto = $linea->relationLoaded('producto') ? $linea->producto : null;
+        if ($producto === null && $linea->codigoProducto() !== '') {
+            $producto = $linea->resolveProducto();
+        }
+
+        $descripcionAgile = trim((string) ($linea->prod_descripcion_agile ?? ''));
+        $descripcionMaestro = trim((string) ($linea->prod_descripcion_maestro ?? ''));
+        if ($descripcionMaestro === '') {
+            $nombreProducto = trim((string) ($producto?->prod_nombre ?? ''));
+            $descripcionMaestro = $nombreProducto !== '' ? $nombreProducto : $descripcionAgile;
+        }
+
+        [$fechaPrecio] = ProdValorFechaUi::textoYAntigua($producto?->prod_valor_fecha);
+        $cantidad = (int) $linea->cantidad;
+        $precioUnitario = (int) $linea->prod_valor;
+
+        return [
+            ProductCodeNormalizer::normalize($linea->prod_item),
+            $descripcionMaestro,
+            (string) ($producto?->prod_item_softland ?? ''),
+            trim((string) ($linea->prod_item_agile ?? '')),
+            $descripcionAgile,
+            trim((string) ($linea->observacion ?? '')),
+            trim((string) ($linea->observacion_cliente ?? '')),
+            $fechaPrecio,
+            (int) $linea->prod_valor_costo,
+            $precioUnitario,
+            $cantidad,
+            $precioUnitario * $cantidad,
+        ];
     }
 
     /**
