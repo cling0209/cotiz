@@ -55,14 +55,20 @@ class CompraAgilComisionesServiceTest extends TestCase
         $esGanada = $ref->getMethod('esGanadaParaComision');
         $esGanada->setAccessible(true);
 
-        $notaConOc = new \App\Models\Nota(['ocompra' => '4500123456']);
-        $notaSinOc = new \App\Models\Nota(['ocompra' => '']);
+        $seg = function (string $rut, string $ocompraNota, ?string $ocompraMp = null): \App\Models\NotaMpSeguimiento {
+            $s = new \App\Models\NotaMpSeguimiento(['rut_ganador' => $rut, 'ocompra_mp' => $ocompraMp]);
+            $s->setRelation('nota', new \App\Models\Nota(['ocompra' => $ocompraNota]));
 
-        $this->assertTrue($esGanada->invoke($service, '76.111.111-1', $notaConOc));
-        $this->assertFalse($esGanada->invoke($service, '76.111.111-1', $notaSinOc));
+            return $s;
+        };
+
+        $this->assertTrue($esGanada->invoke($service, $seg('76.111.111-1', '4500123456')));
+        $this->assertFalse($esGanada->invoke($service, $seg('76.111.111-1', '')));
+        // Sin código en la nota, cuenta el resuelto en MP.
+        $this->assertTrue($esGanada->invoke($service, $seg('76.111.111-1', '', '911-171-AG26')));
         // La otra empresa del grupo no cuenta para la comisión de esta instancia.
-        $this->assertFalse($esGanada->invoke($service, '76.222.222-2', $notaConOc));
-        $this->assertFalse($esGanada->invoke($service, '11.111.111-1', $notaConOc));
+        $this->assertFalse($esGanada->invoke($service, $seg('76.222.222-2', '4500123456')));
+        $this->assertFalse($esGanada->invoke($service, $seg('11.111.111-1', '4500123456')));
     }
 
     #[Test]

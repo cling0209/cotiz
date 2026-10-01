@@ -145,9 +145,14 @@ class BackfillOcFechasTest extends TestCase
         $resultado = $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota);
 
         $this->assertSame('updated', $resultado);
+        $this->assertDatabaseHas('nota_mp_seguimientos', [
+            'nronota' => 14406,
+            'ocompra_mp' => '3560-120-AG26',
+        ]);
+        // notas.ocompra es el código manual: el backfill no lo escribe.
         $this->assertDatabaseHas('notas', [
             'nronota' => 14406,
-            'ocompra' => '3560-120-AG26',
+            'ocompra' => '',
         ]);
 
         Http::assertNotSent(function ($request) {
@@ -161,7 +166,7 @@ class BackfillOcFechasTest extends TestCase
         });
     }
 
-    public function test_rellenar_ocompra_skip_si_ya_tiene_codigo(): void
+    public function test_rellenar_ocompra_skip_si_ya_tiene_codigo_mp(): void
     {
         $nota = Nota::query()->create([
             'nronota' => 14407,
@@ -170,7 +175,7 @@ class BackfillOcFechasTest extends TestCase
             'usuario' => 'admin',
             'empresa' => 'Cliente',
             'encargado' => '3560-69-COT26',
-            'ocompra' => '3560-120-AG26',
+            'ocompra' => '',
             'nota_softland' => 1440700,
             'enviadoapi' => 0,
             'factor_precio_venta' => 1.22,
@@ -180,6 +185,7 @@ class BackfillOcFechasTest extends TestCase
             'nronota' => $nota->nronota,
             'codigo_proceso' => '3560-69-COT26',
             'id_orden_compra' => 54528069,
+            'ocompra_mp' => '3560-120-AG26',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
@@ -189,6 +195,57 @@ class BackfillOcFechasTest extends TestCase
         $service = app(NotaMpResultadosService::class);
         $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra((int) $nota->nronota));
         Http::assertNothingSent();
+    }
+
+    public function test_revalidar_ocompra_mp_borra_codigo_que_no_calza(): void
+    {
+        config([
+            'cotiz.mercadopublico.ticket' => 'test-ticket',
+            'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
+        ]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 16319,
+            'descripcion' => 'OC equivocada',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '911-119-COT26',
+            'ocompra' => '911-171-AG26',
+            'nota_softland' => 1631900,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.30,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '911-119-COT26',
+            'id_orden_compra' => 55500001,
+            'ocompra_mp' => '911-171-AG26',
+            'monto_total_ganador' => 543302,
+            'oc_estado' => 'Aceptada',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        Http::fake([
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [['Codigo' => '911-171-AG26', 'Nombre' => 'ARTICULOS DE ASEO', 'Total' => 120000]],
+            ]),
+        ]);
+
+        $service = app(NotaMpResultadosService::class);
+
+        $simulado = $service->revalidarOcompraMp(16319);
+        $this->assertSame('no_coincide', $simulado['resultado']);
+        $this->assertDatabaseHas('nota_mp_seguimientos', ['nronota' => 16319, 'ocompra_mp' => '911-171-AG26']);
+
+        $aplicado = $service->revalidarOcompraMp(16319, aplicar: true, limpiarNota: true);
+        $this->assertSame('no_coincide', $aplicado['resultado']);
+        $this->assertTrue($aplicado['nota_limpiada']);
+        $this->assertDatabaseHas('nota_mp_seguimientos', ['nronota' => 16319, 'ocompra_mp' => null, 'oc_estado' => null]);
+        $this->assertDatabaseHas('notas', ['nronota' => 16319, 'ocompra' => '']);
     }
 
     public function test_rellenar_ocompra_skip_si_no_esta_cerrada(): void

@@ -66,7 +66,75 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
             'orden_compra' => null,
             'orden_compra_estado' => 'otra_empresa',
             'orden_compra_texto' => 'OC entregada a otra empresa',
+            'orden_compra_nota' => '3482-106-AG26',
+            'orden_compra_mp' => null,
+            'orden_compra_no_coincide' => false,
         ], $seg->ordenCompraParaJson());
+    }
+
+    public function test_codigo_de_nota_prevalece_sobre_el_de_mp(): void
+    {
+        $seg = $this->seguimiento([
+            'rut_ganador' => '76356855-5',
+            'id_orden_compra' => 55258095,
+            'estado_mp_codigo' => 'oc_emitida',
+            'ocompra_mp' => '911-171-AG26',
+        ], '911-150-AG26');
+
+        $this->assertSame('911-150-AG26', $seg->ocompraEfectiva());
+        $this->assertSame('911-150-AG26', $seg->textoOrdenCompraMp());
+        $this->assertTrue($seg->ocompraNoCoincide());
+        $this->assertSame('911-150-AG26 (MP: 911-171-AG26)', $seg->valorOrdenCompraExport());
+
+        $json = $seg->ordenCompraParaJson();
+        $this->assertSame('911-150-AG26', $json['orden_compra']);
+        $this->assertSame('911-150-AG26', $json['orden_compra_nota']);
+        $this->assertSame('911-171-AG26', $json['orden_compra_mp']);
+        $this->assertTrue($json['orden_compra_no_coincide']);
+    }
+
+    public function test_sin_codigo_en_nota_usa_el_de_mp(): void
+    {
+        $seg = $this->seguimiento([
+            'rut_ganador' => '76356855-5',
+            'id_orden_compra' => 55258095,
+            'estado_mp_codigo' => 'oc_emitida',
+            'ocompra_mp' => '911-171-ag26',
+        ]);
+
+        $this->assertSame(EstadoOrdenCompraMp::CODIGO, $seg->estadoOrdenCompraMp());
+        $this->assertSame('911-171-AG26', $seg->textoOrdenCompraMp());
+        $this->assertFalse($seg->ocompraNoCoincide());
+    }
+
+    public function test_mismo_codigo_en_nota_y_mp_no_marca_diferencia(): void
+    {
+        $seg = $this->seguimiento([
+            'rut_ganador' => '76356855-5',
+            'ocompra_mp' => '911-171-AG26',
+        ], ' 911-171-ag26 ');
+
+        $this->assertFalse($seg->ocompraNoCoincide());
+    }
+
+    public function test_con_codigo_manual_sigue_buscando_el_de_mp_dentro_del_plazo(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-27 12:00:00'));
+
+        $seg = $this->seguimiento([
+            'rut_ganador' => '76356855-5',
+            'id_orden_compra' => 55258095,
+            'estado_mp_codigo' => 'oc_emitida',
+            'fecha_ultimo_cambio' => Carbon::parse('2026-09-20 10:00:00'),
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ], '911-150-AG26');
+
+        $this->assertSame(EstadoOrdenCompraMp::CODIGO, $seg->estadoOrdenCompraMp());
+        $this->assertSame(EstadoOrdenCompraMp::BUSCANDO, $seg->estadoOrdenCompraSoloMp());
+        $this->assertTrue($seg->puedeReconsultarMp());
+
+        Carbon::setTestNow();
     }
 
     public function test_id_oc_de_otra_empresa_con_proveedor_seleccionado_cuenta_como_entregada(): void

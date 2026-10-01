@@ -153,6 +153,9 @@ class CompraAgilComisionesService
                 'Participó MP',
                 'Ganada',
                 'Orden compra',
+                'OC nota',
+                'OC MP',
+                'OC no coincide',
                 'Fecha envío OC o última modificación',
                 'Ejecutivo',
                 'Región',
@@ -174,6 +177,9 @@ class CompraAgilComisionesService
                     $fila->participacion_mp_label,
                     $fila->es_ganada ? 'Sí' : 'No',
                     $fila->orden_compra,
+                    $fila->orden_compra_nota,
+                    $fila->orden_compra_mp,
+                    $fila->orden_compra_no_coincide ? 'Sí' : '',
                     $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
                     $fila->ejecutivo,
                     $fila->region_nombre,
@@ -435,21 +441,16 @@ class CompraAgilComisionesService
     }
 
     /**
-     * Ganada para comisión: RUT de la empresa propia y con orden de compra alfanumérica
-     * en la nota (no basta id_orden_compra de MP).
+     * Ganada para comisión: RUT de la empresa propia y con código OC alfanumérico
+     * (el de la nota si existe; si no, el resuelto en MP). No basta id_orden_compra de MP.
      */
-    private function esGanadaParaComision(?string $rutGanador, ?Nota $nota): bool
+    private function esGanadaParaComision(NotaMpSeguimiento $seg): bool
     {
-        if (! $this->esGanadaPropia($rutGanador)) {
+        if (! $this->esGanadaPropia($seg->rut_ganador)) {
             return false;
         }
 
-        return $this->tieneOrdenCompra($nota);
-    }
-
-    private function tieneOrdenCompra(?Nota $nota): bool
-    {
-        return trim((string) ($nota?->ocompra ?? '')) !== '';
+        return $seg->ocompraEfectiva() !== '';
     }
 
     /**
@@ -550,7 +551,7 @@ class CompraAgilComisionesService
             $factor = round((float) config('cotiz.factor_precio_venta', 1.22), 2);
         }
 
-        $esGanada = $this->esGanadaParaComision($seg->rut_ganador, $nota);
+        $esGanada = $this->esGanadaParaComision($seg);
         $estadoParticipacion = $this->estadoParticipacionMp($seg);
         $participoMp = $estadoParticipacion === self::PARTICIPACION_SI;
         $factorBase = $this->factorComisionBase();
@@ -578,6 +579,9 @@ class CompraAgilComisionesService
             'participo_mp' => $participoMp,
             'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,
+            'orden_compra_nota' => $seg->ocompraNota(),
+            'orden_compra_mp' => $seg->ocompraMp(),
+            'orden_compra_no_coincide' => $seg->ocompraNoCoincide(),
             'fecha_envio_oc' => $this->fechaEnvioOUltimaModificacion($seg),
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,

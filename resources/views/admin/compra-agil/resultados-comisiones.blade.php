@@ -22,8 +22,8 @@
         Solo cotizaciones con seguimiento <strong>cerrada</strong>, <strong>desierta</strong> o <strong>cancelada</strong>.
         La columna de fecha muestra el <strong>envío de OC</strong> si la cerrada es propia (ganador Reicol/Rómulo);
         si es ajena (u otras), usa la <strong>última modificación</strong> del seguimiento.
-        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con orden de compra en la nota
-        (si en MP hay OC pero aún no está el número, no aplica comisión).
+        La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con código de orden de compra
+        (cuenta el de la nota; si la nota no tiene, el resuelto en MP; si en MP hay OC pero aún no está el número, no aplica comisión).
         El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP.
         Si MP aún no muestra proveedores cotizando, se indica <em>Sin proveedores en MP</em> (pago $0 hasta confirmar).
         Si ya hay proveedores y no está esta empresa, <em>No participó</em> (pago $0).
@@ -111,7 +111,8 @@
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'seguimiento', 'label' => 'Seguimiento', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Participó MP</th>
                         <th>Ganada</th>
-                        <th>Código OC</th>
+                        <th title="Código ingresado en la nota (prevalece para la comisión)">OC nota</th>
+                        <th title="Código resuelto desde Mercado Público">OC MP</th>
                         @include('admin.compra-agil.partials.th-sortable', ['col' => 'fecha_envio', 'label' => 'Fecha envío OC o última modificación', 'route' => 'admin.compra-agil.resultados.comisiones'])
                         <th>Ejecutivo</th>
                         <th>Región</th>
@@ -150,7 +151,21 @@
                                 @endif
                             </td>
                             <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
-                            <td class="small font-monospace">{{ $fila->orden_compra ?: '—' }}</td>
+                            <td class="small">
+                                <span class="font-monospace">{{ $fila->orden_compra_nota ?: '—' }}</span>
+                                @if($fila->orden_compra_no_coincide)
+                                    <div><span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span></div>
+                                @endif
+                            </td>
+                            <td class="small">
+                                @if($fila->orden_compra_mp !== '')
+                                    <span class="font-monospace">{{ $fila->orden_compra_mp }}</span>
+                                @elseif($fila->orden_compra_nota === '' && $fila->orden_compra !== '')
+                                    <span class="text-muted">{{ $fila->orden_compra }}</span>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td class="small text-muted">{{ $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—' }}</td>
                             <td class="small">{{ $fila->ejecutivo }}</td>
                             <td class="small">{{ $fila->region_nombre }}</td>
@@ -179,7 +194,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="19" class="text-center text-muted py-4">Sin cotizaciones cerradas, desiertas o canceladas para los filtros aplicados.</td>
+                            <td colspan="20" class="text-center text-muted py-4">Sin cotizaciones cerradas, desiertas o canceladas para los filtros aplicados.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -18,6 +18,9 @@ use RuntimeException;
  */
 class MercadoPublicoOrdenCompraService
 {
+    /** @var array<string, array{total: ?float, total_neto: ?float}|null> */
+    private array $totalesOcMemo = [];
+
     public function __construct(
         protected CompraAgilTextoParserService $parser,
     ) {}
@@ -144,8 +147,8 @@ class MercadoPublicoOrdenCompraService
 
     /**
      * Pasada 1: COT exacto en todas las fechas (recientes primero).
-     * Pasada 2: nombre/prefijo/monto solo en la ventana corta, para no tomar
-     * una OC de otra compra del mismo organismo en fechas lejanas.
+     * Pasada 2: nombre/prefijo solo en la ventana corta y con el total de la OC
+     * igual al monto ganado, para no tomar otra OC del mismo organismo.
      *
      * @param  list<string>  $fechas
      * @param  list<string>  $fechasSimilitud
@@ -160,6 +163,7 @@ class MercadoPublicoOrdenCompraService
         int $diasSinProveedor,
         ?int $maxLlamadas,
     ): ?string {
+        $this->totalesOcMemo = [];
         $conProveedor = $codigoProveedor !== null && $codigoProveedor !== '';
         $permiteSimilitud = array_flip($fechasSimilitud);
         $listadosSimilitud = [];
@@ -312,11 +316,14 @@ class MercadoPublicoOrdenCompraService
      *
      * @return array{
      *     codigo: string,
+     *     nombre: string,
+     *     descripcion: string,
      *     fecha_envio: ?Carbon,
      *     fecha_creacion: ?Carbon,
      *     fecha_aceptacion: ?Carbon,
      *     estado: ?string,
-     *     total: ?float
+     *     total: ?float,
+     *     total_neto: ?float
      * }|null
      */
     public function obtenerDetallePorCodigo(string $codigoOc): ?array
@@ -373,12 +380,48 @@ class MercadoPublicoOrdenCompraService
 
         return [
             'codigo' => strtoupper(trim((string) ($item['Codigo'] ?? $codigoOc))),
+            'nombre' => trim((string) ($item['Nombre'] ?? '')),
+            'descripcion' => trim((string) ($item['Descripcion'] ?? '')),
             'fecha_envio' => $this->parsearFechaMp((string) ($fechas['FechaEnvio'] ?? '')),
             'fecha_creacion' => $this->parsearFechaMp((string) ($fechas['FechaCreacion'] ?? '')),
             'fecha_aceptacion' => $this->parsearFechaMp((string) ($fechas['FechaAceptacion'] ?? '')),
             'estado' => ($e = trim((string) ($item['Estado'] ?? ''))) !== '' ? $e : null,
             'total' => isset($item['Total']) && is_numeric($item['Total']) ? (float) $item['Total'] : null,
+            'total_neto' => isset($item['TotalNeto']) && is_numeric($item['TotalNeto']) ? (float) $item['TotalNeto'] : null,
         ];
+    }
+
+    /**
+     * El total (o neto) de la OC coincide con el monto ganado. Sin monto no se puede confirmar.
+     * Puede lanzar RuntimeException si se agota la cuota.
+     */
+    public function ocCoincideConMonto(string $codigoOc, ?float $montoGanador): bool
+    {
+        if ($montoGanador === null || $montoGanador <= 0) {
+            return false;
+        }
+
+        $codigoOc = strtoupper(trim($codigoOc));
+        if (! array_key_exists($codigoOc, $this->totalesOcMemo)) {
+            $detalle = $this->obtenerDetallePorCodigo($codigoOc);
+            $this->totalesOcMemo[$codigoOc] = $detalle === null ? null : [
+                'total' => $detalle['total'],
+                'total_neto' => $detalle['total_neto'],
+            ];
+        }
+
+        $totales = $this->totalesOcMemo[$codigoOc];
+        if ($totales === null) {
+            return false;
+        }
+
+        foreach ([$totales['total'], $totales['total_neto']] as $valor) {
+            if ($valor !== null && abs($valor - $montoGanador) < 0.51) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -508,14 +551,29 @@ class MercadoPublicoOrdenCompraService
             return $porCot;
         }
 
+        // Sin el COT en la OC, el nombre o el prefijo del organismo pueden apuntar a otra
+        // compra del mismo organismo: solo se acepta si el total de la OC calza con el monto ganado.
         $porNombre = $this->buscarCodigoPorNombreProceso($listado, $codigoCot, $nombreProceso, $montoGanador);
-        if ($porNombre !== null) {
+        if ($porNombre !== null && $this->ocCoincideConMontoSinCuota($porNombre, $montoGanador)) {
             return $porNombre;
         }
 
-        // Casos como COT «Materiales pedagogicos utp» ↔ OC «ARTICULOS PEDAGOGICOS UTP»
-        // (sin el código COT en el nombre del listado).
-        return $this->buscarCodigoPorPrefijoYSimilitud($listado, $codigoCot, $nombreProceso, $montoGanador);
+        // Casos como COT «Materiales pedagogicos utp» ↔ OC «ARTICULOS PEDAGOGICOS UTP».
+        $porPrefijo = $this->buscarCodigoPorPrefijoYSimilitud($listado, $codigoCot, $nombreProceso, $montoGanador);
+        if ($porPrefijo !== null && $this->ocCoincideConMontoSinCuota($porPrefijo, $montoGanador)) {
+            return $porPrefijo;
+        }
+
+        return null;
+    }
+
+    private function ocCoincideConMontoSinCuota(string $codigoOc, ?float $montoGanador): bool
+    {
+        try {
+            return $this->ocCoincideConMonto($codigoOc, $montoGanador);
+        } catch (RuntimeException) {
+            return false;
+        }
     }
 
     /**
@@ -648,10 +706,6 @@ class MercadoPublicoOrdenCompraService
             return null;
         }
 
-        if (count($candidatos) === 1) {
-            return array_key_first($candidatos);
-        }
-
         $tokensProceso = $this->tokensNombreSignificativos((string) ($nombreProceso ?? ''));
         if ($tokensProceso !== []) {
             $mejores = [];
@@ -755,15 +809,7 @@ class MercadoPublicoOrdenCompraService
         $codigosAg = array_slice($codigosAg, 0, 5);
         $matches = [];
         foreach ($codigosAg as $codigo) {
-            try {
-                $detalle = $this->obtenerDetallePorCodigo($codigo);
-            } catch (RuntimeException) {
-                continue;
-            }
-            if ($detalle === null || ! isset($detalle['total']) || $detalle['total'] === null) {
-                continue;
-            }
-            if (abs((float) $detalle['total'] - $montoGanador) < 0.51) {
+            if ($this->ocCoincideConMontoSinCuota($codigo, $montoGanador)) {
                 $matches[] = $codigo;
             }
         }

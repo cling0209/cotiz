@@ -38,8 +38,38 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         );
     }
 
+    /**
+     * Fake: detalle ?codigo= con el total indicado; listados ?fecha= según $listados[fecha].
+     *
+     * @param  array<string, float>  $totales
+     * @param  array<string, list<array<string, mixed>>>  $listados
+     */
+    private function fakeMp(array $totales, array $listados = [], ?string $fechaCuota = null): void
+    {
+        Http::fake(function ($request) use ($totales, $listados, $fechaCuota) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $q);
+            if (isset($q['codigo'])) {
+                $codigo = (string) $q['codigo'];
+
+                return isset($totales[$codigo])
+                    ? Http::response(['Cantidad' => 1, 'Listado' => [['Codigo' => $codigo, 'Total' => $totales[$codigo]]]])
+                    : Http::response(['Cantidad' => 0, 'Listado' => []]);
+            }
+            $fecha = (string) ($q['fecha'] ?? '');
+            if ($fechaCuota !== null && $fecha === $fechaCuota) {
+                return Http::response(['Codigo' => 10500, 'Mensaje' => 'cuota'], 429);
+            }
+
+            $listado = $listados[$fecha] ?? [];
+
+            return Http::response(['Cantidad' => count($listado), 'Listado' => $listado]);
+        });
+    }
+
     public function test_buscar_codigo_en_listado_por_nombre_proceso_sin_cot(): void
     {
+        $this->fakeMp(['4034-510-AG26' => 1780516]);
+
         $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850 - SOLICITUDES 47-48-49-50 FONDOS SEP 90%';
         $listado = [
             ['Codigo' => '956-578-AG26', 'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 956-388-COT26'],
@@ -48,8 +78,77 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         $this->assertSame(
             '4034-510-AG26',
-            $this->service->buscarCodigoEnListado($listado, '4034-452-COT26', $nombre),
+            $this->service->buscarCodigoEnListado($listado, '4034-452-COT26', $nombre, 1780516.0),
         );
+    }
+
+    public function test_por_nombre_sin_monto_no_se_acepta(): void
+    {
+        Http::fake();
+
+        $nombre = 'MATERIAL DE LIBRERIA ESCUELA G-850';
+        $listado = [['Codigo' => '4034-510-AG26', 'Nombre' => $nombre]];
+
+        $this->assertNull($this->service->buscarCodigoEnListado($listado, '4034-452-COT26', $nombre));
+        Http::assertNothingSent();
+    }
+
+    public function test_por_nombre_con_total_distinto_no_se_acepta(): void
+    {
+        $this->fakeMp(['4034-510-AG26' => 999999]);
+
+        $nombre = 'MATERIAL DE LIBRERIA ESCUELA G-850';
+        $listado = [['Codigo' => '4034-510-AG26', 'Nombre' => $nombre]];
+
+        $this->assertNull($this->service->buscarCodigoEnListado($listado, '4034-452-COT26', $nombre, 1780516.0));
+    }
+
+    public function test_unica_oc_del_mismo_organismo_con_otro_monto_no_se_toma(): void
+    {
+        // Caso nota 16319: COT 911-119-COT26 y en el listado solo hay otra OC del organismo 911.
+        $this->fakeMp(['911-171-AG26' => 120000]);
+
+        $listado = [
+            ['Codigo' => '911-171-AG26', 'Nombre' => 'ARTICULOS DE ASEO'],
+            ['Codigo' => '1978-946-AG26', 'Nombre' => 'OTRA'],
+        ];
+
+        $this->assertNull($this->service->buscarCodigoEnListado(
+            $listado,
+            '911-119-COT26',
+            'Materiales de oficina',
+            543302.0,
+        ));
+    }
+
+    public function test_cot_exacto_no_requiere_monto(): void
+    {
+        Http::fake();
+
+        $listado = [
+            ['Codigo' => '911-171-AG26', 'Nombre' => 'ARTICULOS DE ASEO'],
+            ['Codigo' => '911-180-AG26', 'Nombre' => 'OC generada por invitación a compra ágil: 911-119-COT26'],
+        ];
+
+        $this->assertSame('911-180-AG26', $this->service->buscarCodigoEnListado($listado, '911-119-COT26'));
+        Http::assertNothingSent();
+    }
+
+    public function test_oc_coincide_con_monto_acepta_total_neto(): void
+    {
+        Http::fake([
+            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
+                'Cantidad' => 1,
+                'Listado' => [['Codigo' => '911-171-AG26', 'Total' => 119000, 'TotalNeto' => 100000]],
+            ]),
+        ]);
+
+        $this->assertTrue($this->service->ocCoincideConMonto('911-171-AG26', 100000.0));
+        $this->assertTrue($this->service->ocCoincideConMonto('911-171-AG26', 119000.0));
+        $this->assertFalse($this->service->ocCoincideConMonto('911-171-AG26', 50000.0));
+        $this->assertFalse($this->service->ocCoincideConMonto('911-171-AG26', null));
+        // Memo: una sola llamada de detalle por código.
+        Http::assertSentCount(1);
     }
 
     public function test_buscar_por_nombre_desambigua_con_prefijo_cot(): void
@@ -223,19 +322,10 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850 - SOLICITUDES 47-48-49-50 FONDOS SEP 90%';
 
-        Http::fake(function ($request) use ($nombre) {
-            $url = $request->url();
-            if (str_contains($url, 'fecha=04092026')) {
-                return Http::response([
-                    'Cantidad' => 1,
-                    'Listado' => [
-                        ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre, 'CodigoEstado' => 6],
-                    ],
-                ]);
-            }
-
-            return Http::response(['Cantidad' => 0, 'Listado' => []]);
-        });
+        $this->fakeMp(
+            ['4034-510-AG26' => 1780516],
+            ['04092026' => [['Codigo' => '4034-510-AG26', 'Nombre' => $nombre, 'CodigoEstado' => 6]]],
+        );
 
         $codigo = $this->service->resolverCodigoPorCotizacion(
             '4034-452-COT26',
@@ -243,6 +333,9 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
                 'id_orden_compra' => 55427925,
                 'nombre' => $nombre,
                 'fechas' => ['fecha_ultimo_cambio' => '2026-09-02 15:35:00'],
+                'proveedores_cotizando' => [
+                    ['rut_proveedor' => '76.185.139-K', 'proveedor_seleccionado' => 1, 'monto_total' => 1780516],
+                ],
             ],
             '76.185.139-K',
         );
@@ -259,22 +352,11 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         $nombre = 'ADQUISICION DE MATERIAL DE LIBRERIA Y KIT DE TECLADOS PARA ESCUELA G-850';
 
-        Http::fake(function ($request) use ($nombre) {
-            $url = $request->url();
-            if (str_contains($url, 'fecha=03092026')) {
-                return Http::response(['Codigo' => 10500, 'Mensaje' => 'cuota'], 429);
-            }
-            if (str_contains($url, 'fecha=04092026')) {
-                return Http::response([
-                    'Cantidad' => 1,
-                    'Listado' => [
-                        ['Codigo' => '4034-510-AG26', 'Nombre' => $nombre],
-                    ],
-                ]);
-            }
-
-            return Http::response(['Cantidad' => 0, 'Listado' => []]);
-        });
+        $this->fakeMp(
+            ['4034-510-AG26' => 1780516],
+            ['04092026' => [['Codigo' => '4034-510-AG26', 'Nombre' => $nombre]]],
+            '03092026',
+        );
 
         $codigo = $this->service->resolverCodigoPorCotizacion(
             '4034-452-COT26',
@@ -282,6 +364,9 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
                 'id_orden_compra' => 55427925,
                 'nombre' => $nombre,
                 'fechas' => ['fecha_ultimo_cambio' => '2026-09-02 15:35:00'],
+                'proveedores_cotizando' => [
+                    ['rut_proveedor' => '76.185.139-K', 'proveedor_seleccionado' => 1, 'monto_total' => 1780516],
+                ],
             ],
             '76.185.139-K',
         );
@@ -400,6 +485,8 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
     public function test_buscar_por_prefijo_y_similitud_nombre_distinto(): void
     {
+        $this->fakeMp(['3958-181-AG26' => 392903]);
+
         $listado = [
             ['Codigo' => '1469-2396-AG26', 'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 1469-2548-COT26'],
             ['Codigo' => '3958-181-AG26', 'Nombre' => 'ARTICULOS PEDAGOGICOS UTP'],
@@ -412,12 +499,27 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
                 $listado,
                 '3958-91-COT26',
                 'Materiales pedagogicos utp',
+                392903.0,
             ),
         );
     }
 
-    public function test_buscar_por_prefijo_unico_sin_nombre(): void
+    public function test_prefijo_unico_sin_nombre_ni_monto_no_se_toma(): void
     {
+        Http::fake();
+
+        $listado = [
+            ['Codigo' => '3958-181-AG26', 'Nombre' => 'OC SIN RELACION CON EL NOMBRE'],
+            ['Codigo' => '1978-946-AG26', 'Nombre' => 'OTRA'],
+        ];
+
+        $this->assertNull($this->service->buscarCodigoPorPrefijoYSimilitud($listado, '3958-91-COT26'));
+    }
+
+    public function test_prefijo_unico_se_toma_si_calza_el_monto(): void
+    {
+        $this->fakeMp(['3958-181-AG26' => 392903]);
+
         $listado = [
             ['Codigo' => '3958-181-AG26', 'Nombre' => 'OC SIN RELACION CON EL NOMBRE'],
             ['Codigo' => '1978-946-AG26', 'Nombre' => 'OTRA'],
@@ -425,7 +527,7 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         $this->assertSame(
             '3958-181-AG26',
-            $this->service->buscarCodigoPorPrefijoYSimilitud($listado, '3958-91-COT26'),
+            $this->service->buscarCodigoEnListado($listado, '3958-91-COT26', null, 392903.0),
         );
     }
 
@@ -472,6 +574,12 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
 
         Http::fake(function ($request) {
             $url = $request->url();
+            if (str_contains($url, 'codigo=3958-181-AG26')) {
+                return Http::response([
+                    'Cantidad' => 1,
+                    'Listado' => [['Codigo' => '3958-181-AG26', 'Total' => 392903]],
+                ]);
+            }
             if (str_contains($url, 'fecha=08092026') && str_contains($url, 'CodigoProveedor=1276139')) {
                 return Http::response([
                     'Cantidad' => 2,

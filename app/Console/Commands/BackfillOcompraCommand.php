@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Nota;
+use App\Models\NotaMpSeguimiento;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Console\Command;
 
@@ -15,7 +16,7 @@ class BackfillOcompraCommand extends Command
                             {--nronota= : Solo esta nota}
                             {--dry-run : Lista candidatas sin llamar a MP}';
 
-    protected $description = 'Copia código OC (AG) a notas cerradas de la empresa propia sin ocompra';
+    protected $description = 'Resuelve el código OC (AG) de MP en seguimientos cerrados de la empresa propia sin ocompra_mp';
 
     public function handle(NotaMpResultadosService $resultados): int
     {
@@ -46,7 +47,7 @@ class BackfillOcompraCommand extends Command
             ])
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->where('seg.resultado_propio', 'cerrada')
-            ->whereRaw("trim(coalesce(notas.ocompra, '')) = ''")
+            ->whereRaw("trim(coalesce(seg.ocompra_mp, '')) = ''")
             ->whereNotNull('seg.id_orden_compra')
             ->where('seg.id_orden_compra', '>', 0)
             ->whereRaw("coalesce(seg.estado_mp_codigo, '') <> 'proveedor_seleccionado'")
@@ -70,7 +71,7 @@ class BackfillOcompraCommand extends Command
         $candidatas = $query->limit($limit)->get();
 
         if ($candidatas->isEmpty()) {
-            $this->info('No hay notas cerradas propias con id_orden_compra y ocompra vacío.');
+            $this->info('No hay notas cerradas propias con id_orden_compra y ocompra_mp vacío.');
 
             return self::SUCCESS;
         }
@@ -114,7 +115,7 @@ class BackfillOcompraCommand extends Command
             };
 
             $ocompra = $resultado === 'updated'
-                ? trim((string) (Nota::query()->whereKey($nota->nronota)->value('ocompra') ?? ''))
+                ? trim((string) (NotaMpSeguimiento::query()->whereKey($nota->nronota)->value('ocompra_mp') ?? ''))
                 : '';
 
             $this->line(sprintf(

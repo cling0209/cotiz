@@ -283,6 +283,24 @@
     const ESTADO_OC = @json(collect(\App\Enums\EstadoOrdenCompraMp::cases())->mapWithKeys(fn ($e) => [$e->name => $e->value]));
     const CLASE_ESTADO_OC = @json(collect(\App\Enums\EstadoOrdenCompraMp::cases())->mapWithKeys(fn ($e) => [$e->value => $e->claseCss()]));
 
+    const BADGE_OC_NO_COINCIDE = '<span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span>';
+
+    function fmtCodigosOc(r, fmt) {
+        const nota = r.orden_compra_nota || null;
+        const mp = r.orden_compra_mp || null;
+        if (!nota && !mp) {
+            return fmt('Código OC', r.orden_compra || '');
+        }
+        let html = '';
+        if (nota) {
+            html += fmt('OC nota', nota);
+        }
+        if (mp) {
+            html += fmt('OC MP', mp);
+        }
+        return html;
+    }
+
     function fmtOrdenCompraCell(r) {
         const idOc = r.id_orden_compra || null;
         const estado = r.orden_compra_estado || null;
@@ -294,7 +312,12 @@
             html += '<div><span class="text-muted">ID OC:</span> <span class="font-monospace">' + escapeHtml(String(idOc)) + '</span></div>';
         }
         if (estado === ESTADO_OC.CODIGO) {
-            html += '<div><span class="text-muted">Código OC:</span> <span class="font-monospace">' + escapeHtml(String(r.orden_compra || '')) + '</span></div>';
+            html += fmtCodigosOc(r, function (label, codigo) {
+                return '<div><span class="text-muted">' + label + ':</span> <span class="font-monospace">' + escapeHtml(String(codigo)) + '</span></div>';
+            });
+            if (r.orden_compra_no_coincide) {
+                html += '<div>' + BADGE_OC_NO_COINCIDE + '</div>';
+            }
         } else if (estado === ESTADO_OC.OTRA_EMPRESA) {
             html += '<div class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(r.orden_compra_texto || '') + '</div>';
             if (r.razon_social_ganador) {
@@ -320,7 +343,12 @@
             html += '<br>ID OC: <strong class="font-monospace">' + escapeHtml(String(idOc)) + '</strong>';
         }
         if (estado === ESTADO_OC.CODIGO) {
-            html += '<br>Código OC: <strong class="font-monospace">' + escapeHtml(String(s.orden_compra || '')) + '</strong>';
+            html += fmtCodigosOc(s, function (label, codigo) {
+                return '<br>' + label + ': <strong class="font-monospace">' + escapeHtml(String(codigo)) + '</strong>';
+            });
+            if (s.orden_compra_no_coincide) {
+                html += ' ' + BADGE_OC_NO_COINCIDE;
+            }
         } else if (estado === ESTADO_OC.OTRA_EMPRESA) {
             html += '<br><strong class="' + CLASE_ESTADO_OC[estado] + '">' + escapeHtml(s.orden_compra_texto || '') + '</strong>';
             if (s.razon_social_ganador) {
