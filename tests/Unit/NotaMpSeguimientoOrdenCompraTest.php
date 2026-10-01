@@ -37,6 +37,32 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         return $seg;
     }
 
+    public function test_ocompra_mp_verificada_solo_si_la_marca_es_del_codigo_actual(): void
+    {
+        $this->assertFalse($this->seguimiento(['ocompra_mp' => '931-177-AG26'])->ocompraMpVerificada());
+        $this->assertTrue($this->seguimiento([
+            'ocompra_mp' => '931-177-AG26',
+            'ocompra_verificada_codigo' => '931-177-ag26 ',
+        ])->ocompraMpVerificada());
+        // Cambió el código: hay que revisarlo de nuevo.
+        $this->assertFalse($this->seguimiento([
+            'ocompra_mp' => '931-177-AG26',
+            'ocompra_verificada_codigo' => '931-171-AG26',
+        ])->ocompraMpVerificada());
+        $this->assertFalse($this->seguimiento([
+            'ocompra_mp' => null,
+            'ocompra_verificada_codigo' => '931-171-AG26',
+        ])->ocompraMpVerificada());
+    }
+
+    public function test_nota_aceptada_por_boton(): void
+    {
+        $this->assertTrue((new Nota(['estado' => 'aceptada']))->estaAceptada());
+        $this->assertTrue((new Nota(['estado' => ' Aceptada ']))->estaAceptada());
+        $this->assertFalse((new Nota(['estado' => '']))->estaAceptada());
+        $this->assertFalse((new Nota(['estado' => null]))->estaAceptada());
+    }
+
     public function test_muestra_codigo_solo_si_ganador_propio(): void
     {
         $propio = $this->seguimiento([

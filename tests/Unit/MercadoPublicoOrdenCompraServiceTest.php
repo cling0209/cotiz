@@ -147,6 +147,9 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         $this->assertTrue($this->service->ocCoincideConMonto('911-171-AG26', 119000.0));
         $this->assertFalse($this->service->ocCoincideConMonto('911-171-AG26', 50000.0));
         $this->assertFalse($this->service->ocCoincideConMonto('911-171-AG26', null));
+        // Redondeo de IVA de MP: ±$1.
+        $this->assertTrue($this->service->ocCoincideConMonto('911-171-AG26', 119001.0));
+        $this->assertFalse($this->service->ocCoincideConMonto('911-171-AG26', 119002.0));
         // Memo: una sola llamada de detalle por código.
         Http::assertSentCount(1);
     }

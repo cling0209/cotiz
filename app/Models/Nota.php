@@ -80,6 +80,12 @@ class Nota extends Model
         return trim((string) $this->encargado) === '';
     }
 
+    /** Adjudicada a mano con el botón «Aceptar» del listado. */
+    public function estaAceptada(): bool
+    {
+        return strtolower(trim((string) $this->estado)) === 'aceptada';
+    }
+
     public function fueRecibidaPorApi(): bool
     {
         return (int) $this->notaorigen > 0;

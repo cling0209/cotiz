@@ -35,7 +35,7 @@ class BackfillOcompraCommand extends Command
 
         $rutPropio = strtoupper(preg_replace('/[^0-9kK]/', '', (string) config('cotiz.empresa_rut', '')) ?? '');
 
-        // Solo cerradas de la empresa propia, con OC ya emitida y sin código OC.
+        // Solo cerradas de la empresa propia, no aceptadas a mano, con OC ya emitida y sin código OC.
         $query = Nota::query()
             ->select([
                 'notas.nronota',
@@ -47,6 +47,7 @@ class BackfillOcompraCommand extends Command
             ])
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
             ->where('seg.resultado_propio', 'cerrada')
+            ->whereRaw("lower(trim(coalesce(notas.estado, ''))) <> 'aceptada'")
             ->whereRaw("trim(coalesce(seg.ocompra_mp, '')) = ''")
             ->whereNotNull('seg.id_orden_compra')
             ->where('seg.id_orden_compra', '>', 0)

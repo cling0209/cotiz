@@ -18,6 +18,9 @@ use RuntimeException;
  */
 class MercadoPublicoOrdenCompraService
 {
+    /** MP redondea el IVA por línea: el total de la OC puede diferir en $1 del monto ganado. */
+    public const TOLERANCIA_MONTO_OC = 1.5;
+
     /** @var array<string, array{total: ?float, total_neto: ?float}|null> */
     private array $totalesOcMemo = [];
 
@@ -416,7 +419,7 @@ class MercadoPublicoOrdenCompraService
         }
 
         foreach ([$totales['total'], $totales['total_neto']] as $valor) {
-            if ($valor !== null && abs($valor - $montoGanador) < 0.51) {
+            if ($valor !== null && abs($valor - $montoGanador) <= self::TOLERANCIA_MONTO_OC) {
                 return true;
             }
         }

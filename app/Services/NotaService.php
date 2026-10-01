@@ -602,7 +602,7 @@ class NotaService
 
     public function estaAceptada(Nota $nota): bool
     {
-        return strtolower(trim((string) $nota->estado)) === 'aceptada';
+        return $nota->estaAceptada();
     }
 
     public function parseFactorPrecioVenta(mixed $valor): ?float

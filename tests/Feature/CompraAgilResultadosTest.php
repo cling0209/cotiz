@@ -1603,6 +1603,55 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_pendientes_incluye_cerrada_con_ocompra_mp_sin_verificar_salvo_aceptada(): void
+    {
+        config([
+            'app.timezone' => 'America/Santiago',
+            'cotiz.mercadopublico.resultados_skip_consultadas_mismo_dia' => true,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-10-01 10:00:00', 'America/Santiago'));
+
+        $crear = function (int $nronota, string $estado, ?string $verificada) {
+            Nota::query()->create([
+                'nronota' => $nronota,
+                'descripcion' => 'Cerrada con OC del proceso',
+                'fecha' => '2026-09-20',
+                'usuario' => 'admin',
+                'empresa' => 'Cliente',
+                'encargado' => '931-'.$nronota.'-COT26',
+                'ocompra' => '',
+                'estado' => $estado,
+                'nota_softland' => $nronota * 100,
+                'enviadoapi' => 0,
+                'factor_precio_venta' => 1.30,
+                'es_compra_agil' => true,
+            ]);
+            NotaMpSeguimiento::query()->create([
+                'nronota' => $nronota,
+                'codigo_proceso' => '931-'.$nronota.'-COT26',
+                'estado_mp_codigo' => 'oc_emitida',
+                'resultado_propio' => 'cerrada',
+                'finalizado' => true,
+                'id_orden_compra' => 55556573,
+                'ocompra_mp' => '931-171-AG26',
+                'ocompra_verificada_codigo' => $verificada,
+                'rut_ganador' => '76.356.855-5',
+                'ultimo_consultado_en' => Carbon::parse('2026-09-30 10:30:00', 'America/Santiago'),
+            ]);
+        };
+
+        $crear(16319, '', null);
+        $crear(16320, '', '931-171-AG26');
+        $crear(16321, 'aceptada', null);
+
+        $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
+
+        $this->assertSame([16319], $pendientes->pluck('nronota')->map(fn ($n) => (int) $n)->all());
+
+        Carbon::setTestNow();
+    }
+
     public function test_pendientes_incluye_oc_emitida_sin_ocompra_al_dia_siguiente(): void
     {
         config([
