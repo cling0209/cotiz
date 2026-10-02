@@ -401,6 +401,33 @@ class NotaService
             $payload += Nota::registroOcompra($nota->ocompra, $payload['ocompra'], $usuarioModifica);
         }
 
+        if (array_key_exists('fecha_envio_oc', $datos)) {
+            $fechaMp = $nota->mpSeguimiento?->oc_fecha_envio;
+            $nueva = Nota::normalizarFechaEnvioOcManual($datos['fecha_envio_oc']);
+            if ($fechaMp !== null && $nueva !== null) {
+                $desdeMp = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
+                if (! $nueva->equalTo($desdeMp)) {
+                    throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
+                }
+            }
+
+            $anterior = $nota->fecha_envio_oc;
+            $anteriorDia = $anterior?->format('Y-m-d');
+            $nuevaDia = $nueva?->format('Y-m-d');
+            if ($anteriorDia !== $nuevaDia) {
+                if ($nueva === null) {
+                    $payload['fecha_envio_oc'] = null;
+                    $payload['fecha_envio_oc_usuario'] = null;
+                    $payload['fecha_envio_oc_registrada_en'] = null;
+                } else {
+                    $usuario = trim((string) ($usuarioModifica ?? ''));
+                    $payload['fecha_envio_oc'] = $nueva;
+                    $payload['fecha_envio_oc_usuario'] = $usuario !== '' ? mb_substr($usuario, 0, 50) : null;
+                    $payload['fecha_envio_oc_registrada_en'] = now();
+                }
+            }
+        }
+
         $nota->update($payload);
 
         $this->auditoria->registrarModificar(

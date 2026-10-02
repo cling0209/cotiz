@@ -515,7 +515,7 @@ $filtros,
         const texto = document.getElementById('modalAceptarCotizacionTexto');
         const wrapOcompraManual = document.getElementById('wrapAceptarOcompraManual');
         const wrapOcompraMp = document.getElementById('wrapAceptarOcompraMp');
-        const ocompraMpDisplay = document.getElementById('acompraMpDisplay');
+        const ocompraMpDisplay = document.getElementById('ocompraMpDisplay');
         const wrapFechaManual = document.getElementById('wrapAceptarFechaManual');
         const wrapFechaMp = document.getElementById('wrapAceptarFechaMp');
         const fechaMpDisplay = document.getElementById('fechaMpDisplay');

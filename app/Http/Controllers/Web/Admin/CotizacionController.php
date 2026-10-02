@@ -189,6 +189,7 @@ class CotizacionController extends Controller
             'cotizacionListadoQuery' => $cotizacionListadoQuery,
             'mostrarSoftland' => $request->user()->isSuperAdmin(),
             'puedeEditarObservacionEjecutivo' => $this->puedeEditarObservacionEjecutivo($request, $nota),
+            'puedeEditarOcompraYFechaEnvioOc' => $this->puedeEditarOcompraYFechaEnvioOc($request),
             'observacionesOrganismo' => $this->organismoObservacion->observacionesParaRut($nota->rutempresa),
         ]);
     }
@@ -446,6 +447,7 @@ class CotizacionController extends Controller
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
         $datos = $this->filtrarObservacionEjecutivoSegunPermiso($request, $nota, $datos);
+        $datos = $this->filtrarOcompraYFechaEnvioOcSegunPermiso($request, $nota, $datos);
 
         try {
             $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
@@ -518,6 +520,7 @@ class CotizacionController extends Controller
         $eraSinNumero = $nota->requiereNumeroCotizacion();
 
         $datos = $this->filtrarObservacionEjecutivoSegunPermiso($request, $nota, $datos);
+        $datos = $this->filtrarOcompraYFechaEnvioOcSegunPermiso($request, $nota, $datos);
 
         try {
             $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
@@ -1640,6 +1643,7 @@ class CotizacionController extends Controller
             'nombre_region' => ['nullable', 'string', 'max:100'],
             'comuna' => ['nullable', 'string', 'max:120'],
             'observacion_ejecutivo' => ['nullable', 'string', 'max:5000'],
+            'fecha_envio_oc' => ['nullable', 'date'],
         ];
     }
 
@@ -1789,6 +1793,12 @@ class CotizacionController extends Controller
         return strcasecmp(trim((string) $nota->usuario), trim((string) $user->username)) === 0;
     }
 
+    /** OC manual y fecha envío OC manual: solo superadministrador. */
+    private function puedeEditarOcompraYFechaEnvioOc(Request $request): bool
+    {
+        return $request->user()->isSuperAdmin();
+    }
+
     /**
      * @param  array<string, mixed>  $datos
      * @return array<string, mixed>
@@ -1798,6 +1808,25 @@ class CotizacionController extends Controller
         if (! $this->puedeEditarObservacionEjecutivo($request, $nota)) {
             unset($datos['observacion_ejecutivo']);
         }
+
+        return $datos;
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function filtrarOcompraYFechaEnvioOcSegunPermiso(Request $request, Nota $nota, array $datos): array
+    {
+        if ($this->puedeEditarOcompraYFechaEnvioOc($request)) {
+            if (! $nota->estaAceptada()) {
+                unset($datos['fecha_envio_oc']);
+            }
+
+            return $datos;
+        }
+
+        unset($datos['ocompra'], $datos['fecha_envio_oc']);
 
         return $datos;
     }

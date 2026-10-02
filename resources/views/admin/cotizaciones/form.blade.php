@@ -24,6 +24,7 @@
     $cotizarIaHabilitado = ! $desdeAdjudicadas && ! $esInterna
         && \App\Services\CotizarIaService::usuarioPermitido(auth()->user());
     $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
+    $puedeEditarOcompraYFechaEnvioOc = $puedeEditarOcompraYFechaEnvioOc ?? auth()->user()?->isSuperAdmin();
     $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
     $factorMostrado = number_format($factorValor, 2, ',', '');
     $factorInput = old('factor_precio_venta', $factorMostrado);
@@ -138,9 +139,11 @@
                             $bloquearOcompraPorMp = $nota->exists && $nota->ocompraDesdeApi();
                         @endphp
                         <input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"
-                            @if($bloquearOcompraPorMp) readonly @endif>
+                            @if($bloquearOcompraPorMp || ! $puedeEditarOcompraYFechaEnvioOc) readonly @endif>
                         @if($bloquearOcompraPorMp)
                             <small class="text-muted d-block">C&oacute;digo de Mercado P&uacute;blico; no se puede modificar aqu&iacute;.</small>
+                        @elseif(! $puedeEditarOcompraYFechaEnvioOc)
+                            <small class="text-muted d-block">Solo un administrador puede ingresar o cambiar la orden de compra manual.</small>
                         @endif
                         @if($registroOcManual !== '')
                             <small class="text-muted d-block" title="Usuario y fecha en que se ingresó el código manual">Ingresada: {{ $registroOcManual }}</small>
@@ -165,19 +168,39 @@
                         @php
                             $fechaEnvioOcManual = $nota->fecha_envio_oc;
                             $registroFechaEnvioOc = $fechaEnvioOcManual !== null ? $nota->textoRegistroFechaEnvioOc() : '';
+                            $fechaMpSoloDia = ($segOc?->oc_fecha_envio)
+                                ? \App\Models\Nota::fechaEnvioOcManualDesdeMp($segOc->oc_fecha_envio)->format('Y-m-d')
+                                : '';
+                            $valorFechaEnvioOcInput = old(
+                                'fecha_envio_oc',
+                                $fechaEnvioOcManual?->format('Y-m-d') ?? ($fechaMpSoloDia !== '' ? $fechaMpSoloDia : ''),
+                            );
                         @endphp
-                        @if($fechaEnvioOcManual !== null)
+                        @if($puedeEditarOcompraYFechaEnvioOc && $nota->exists && $nota->estaAceptada())
+                            <input type="date" name="fecha_envio_oc" id="fecha_envio_oc" class="form-control form-control-sm d-inline-block w-auto"
+                                value="{{ $valorFechaEnvioOcInput }}">
+                            @if($nota->fechaEnvioOcDesdeApi())
+                                <small class="text-muted d-block mt-1">
+                                    Mercado P&uacute;blico: {{ $nota->mpSeguimiento->oc_fecha_envio->format('d/m/Y H:i') }}.
+                                    Solo puede guardar la fecha (d&iacute;a) de MP, sin cambiarla.
+                                </small>
+                            @endif
+                            @if($registroFechaEnvioOc !== '')
+                                <small class="text-muted d-block" title="Usuario y fecha de registro">Registrada: {{ $registroFechaEnvioOc }}</small>
+                            @endif
+                        @elseif($fechaEnvioOcManual !== null)
                             <span class="fw-medium">{{ $fechaEnvioOcManual->format('d/m/Y') }}</span>
                             @if($registroFechaEnvioOc !== '')
-                                <small class="text-muted ms-2" title="Usuario y fecha de registro al aceptar">Registrada: {{ $registroFechaEnvioOc }}</small>
+                                <small class="text-muted ms-2" title="Usuario y fecha de registro">Registrada: {{ $registroFechaEnvioOc }}</small>
                             @endif
                         @elseif($nota->exists && $nota->fechaEnvioOcDesdeApi())
                             <span class="text-muted">Mercado P&uacute;blico: {{ $nota->mpSeguimiento->oc_fecha_envio->format('d/m/Y H:i') }}</span>
                             <small class="text-muted d-block">La hora queda en MP. Al aceptar la cotizaci&oacute;n se guarda solo la fecha en la nota.</small>
                         @elseif($nota->exists && $nota->estaAceptada())
                             <span class="text-muted">&mdash;</span>
+                            <small class="text-muted d-block">Solo un administrador puede registrar la fecha de env&iacute;o OC.</small>
                         @else
-                            <span class="text-muted">Se registra al aceptar la cotizaci&oacute;n (solo fecha, sin hora).</span>
+                            <span class="text-muted">Se registra al aceptar la cotizaci&oacute;n (solo fecha, sin hora; administrador).</span>
                         @endif
                     </td>
                 </tr>
@@ -1216,6 +1239,7 @@
             rutempresa: val('rutempresa'),
             diashabiles: val('diashabiles') !== '' ? parseInt(val('diashabiles'), 10) : null,
             ocompra: val('ocompra'),
+            fecha_envio_oc: val('fecha_envio_oc') || null,
             fechaentrega: val('fechaentrega') || null,
             direccion_entrega: val('direccion_entrega'),
             region: val('region') !== '' ? parseInt(val('region'), 10) : null,
