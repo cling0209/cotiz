@@ -20,13 +20,39 @@ class Nota extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'nronota', 'descripcion', 'fecha', 'usuario', 'asignado_por', 'asignado_at', 'empresa', 'encargado', 'correlativo',
-        'celular', 'contacto', 'contactocorreo', 'rutempresa', 'nota_softland',
-        'diashabiles', 'notaorigen', 'sistema', 'enviadoapi', 'estado',
-        'estadofecha', 'estadousuario', 'ocompra', 'ocompra_usuario', 'ocompra_registrada_en',
-        'fecha_envio_oc', 'fecha_envio_oc_usuario', 'fecha_envio_oc_registrada_en',
-        'fechaentrega', 'factor_precio_venta',
-        'direccion_entrega', 'region', 'nombre_region', 'comuna',
+        'nronota',
+        'descripcion',
+        'fecha',
+        'usuario',
+        'asignado_por',
+        'asignado_at',
+        'empresa',
+        'encargado',
+        'correlativo',
+        'celular',
+        'contacto',
+        'contactocorreo',
+        'rutempresa',
+        'nota_softland',
+        'diashabiles',
+        'notaorigen',
+        'sistema',
+        'enviadoapi',
+        'estado',
+        'estadofecha',
+        'estadousuario',
+        'ocompra',
+        'ocompra_usuario',
+        'ocompra_registrada_en',
+        'fecha_envio_oc',
+        'fecha_envio_oc_usuario',
+        'fecha_envio_oc_registrada_en',
+        'fechaentrega',
+        'factor_precio_venta',
+        'direccion_entrega',
+        'region',
+        'nombre_region',
+        'comuna',
         'observacion_ejecutivo',
         'es_compra_agil',
     ];
@@ -38,7 +64,7 @@ class Nota extends Model
             'fechaentrega' => 'date',
             'estadofecha' => 'datetime',
             'ocompra_registrada_en' => 'datetime',
-            'fecha_envio_oc' => 'datetime',
+            'fecha_envio_oc' => 'date',
             'fecha_envio_oc_registrada_en' => 'datetime',
             'asignado_at' => 'datetime',
             'factor_precio_venta' => 'decimal:4',
@@ -118,15 +144,61 @@ class Nota extends Model
         $partes = array_filter([
             trim((string) ($this->ocompra_usuario ?? '')),
             $this->ocompra_registrada_en?->format('d/m/Y H:i') ?? '',
-        ], fn (string $parte) => $parte !== '');
+        ], fn(string $parte) => $parte !== '');
 
         return implode(' · ', $partes);
+    }
+
+    /** Normaliza fecha manual de envío OC (solo día, zona app). */
+    public static function normalizarFechaEnvioOcManual(\Carbon\Carbon|string|null $valor): ?\Illuminate\Support\Carbon
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        $tz = (string) config('app.timezone', 'America/Santiago');
+
+        return \Illuminate\Support\Carbon::parse($valor, $tz)->startOfDay();
+    }
+
+    /** Copia solo la fecha de envío desde MP a valor manual (sin hora). */
+    public static function fechaEnvioOcManualDesdeMp(\Illuminate\Support\Carbon $fechaMp): \Illuminate\Support\Carbon
+    {
+        $tz = (string) config('app.timezone', 'America/Santiago');
+
+        return $fechaMp->copy()->timezone($tz)->startOfDay();
     }
 
     /** Fecha de envío OC manual (al aceptar o vacío). */
     public function fechaEnvioOcManual(): ?\Illuminate\Support\Carbon
     {
         return $this->fecha_envio_oc;
+    }
+
+    /** «usuario · dd/mm/aaaa hh:mm» del registro de fecha envío OC manual, o vacío. */
+    public function textoRegistroFechaEnvioOc(): string
+    {
+        $partes = array_filter([
+            trim((string) ($this->fecha_envio_oc_usuario ?? '')),
+            $this->fecha_envio_oc_registrada_en?->format('d/m/Y H:i') ?? '',
+        ], fn (string $parte) => $parte !== '');
+
+        return implode(' · ', $partes);
+    }
+
+    /** Formato de lista: manual sin hora; solo MP con hora si aplica. */
+    public function formatoFechaEnvioOcEfectiva(): string
+    {
+        $fecha = $this->fechaEnvioOcEfectiva();
+        if ($fecha === null) {
+            return '';
+        }
+
+        if ($this->fecha_envio_oc !== null) {
+            return $fecha->format('d/m/Y');
+        }
+
+        return $fecha->format('d/m/Y H:i');
     }
 
     /**
@@ -167,7 +239,7 @@ class Nota extends Model
 
     public function total(): int
     {
-        return (int) $this->detalle->sum(fn (NotaDetalle $linea) => $linea->prod_valor * $linea->cantidad);
+        return (int) $this->detalle->sum(fn(NotaDetalle $linea) => $linea->prod_valor * $linea->cantidad);
     }
 
     public function requiereNumeroCotizacion(): bool

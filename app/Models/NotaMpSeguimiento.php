@@ -20,15 +20,34 @@ class NotaMpSeguimiento extends Model
     protected $keyType = 'int';
 
     protected $fillable = [
-        'nronota', 'codigo_proceso', 'estado_mp_codigo', 'estado_mp_glosa', 'organismo',
-        'fecha_publicacion', 'fecha_cierre', 'fecha_ultimo_cambio', 'fecha_cancelacion',
-        'convocatoria_estado', 'convocatoria_descripcion',
-        'fecha_cierre_primer_llamado', 'fecha_cierre_segundo_llamado',
-        'rut_ganador', 'razon_social_ganador', 'id_orden_compra',
-        'ocompra_mp', 'ocompra_mp_resuelta_en',
-        'oc_fecha_envio', 'oc_fecha_creacion', 'oc_fecha_aceptacion', 'oc_estado',
+        'nronota',
+        'codigo_proceso',
+        'estado_mp_codigo',
+        'estado_mp_glosa',
+        'organismo',
+        'fecha_publicacion',
+        'fecha_cierre',
+        'fecha_ultimo_cambio',
+        'fecha_cancelacion',
+        'convocatoria_estado',
+        'convocatoria_descripcion',
+        'fecha_cierre_primer_llamado',
+        'fecha_cierre_segundo_llamado',
+        'rut_ganador',
+        'razon_social_ganador',
+        'id_orden_compra',
+        'ocompra_mp',
+        'ocompra_mp_resuelta_en',
+        'oc_fecha_envio',
+        'oc_fecha_creacion',
+        'oc_fecha_aceptacion',
+        'oc_estado',
         'monto_total_ganador',
-        'resultado_propio', 'finalizado', 'ultimo_usuario', 'ultimo_consultado_en', 'ultima_corrida_id',
+        'resultado_propio',
+        'finalizado',
+        'ultimo_usuario',
+        'ultimo_consultado_en',
+        'ultima_corrida_id',
     ];
 
     protected function casts(): array
@@ -80,7 +99,7 @@ class NotaMpSeguimiento extends Model
             $usuario = 'sistema';
         }
 
-        return $this->ultimo_consultado_en->format('d/m/Y H:i').' ('.$usuario.')';
+        return $this->ultimo_consultado_en->format('d/m/Y H:i') . ' (' . $usuario . ')';
     }
 
     /** Ganador Reicol o Romulo (grupo), según RUTs configurados en cotiz.php. */
@@ -183,11 +202,11 @@ class NotaMpSeguimiento extends Model
 
         $empresa = trim((string) ($this->razon_social_ganador ?? ''));
         if ($this->estadoOrdenCompraMp() === EstadoOrdenCompraMp::OTRA_EMPRESA && $empresa !== '') {
-            return $texto.' ('.$empresa.')';
+            return $texto . ' (' . $empresa . ')';
         }
 
         if ($this->ocompraNoCoincide()) {
-            return $texto.' (MP: '.$this->ocompraMp().')';
+            return $texto . ' (MP: ' . $this->ocompraMp() . ')';
         }
 
         return $texto;

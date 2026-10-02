@@ -156,6 +156,40 @@ class CompraAgilComisionesServiceTest extends TestCase
     }
 
     #[Test]
+    public function fecha_envio_cerrada_propia_prefiere_manual_sobre_mp(): void
+    {
+        config([
+            'cotiz.empresa_rut' => '76.111.111-1',
+            'cotiz.reicol_rut' => '76.111.111-1',
+            'cotiz.romulo_rut' => '76.222.222-2',
+        ]);
+
+        $service = app(CompraAgilComisionesService::class);
+        $ref = new \ReflectionClass($service);
+        $metodo = $ref->getMethod('fechaEnvioOcParaFila');
+        $metodo->setAccessible(true);
+
+        $envioMp = \Illuminate\Support\Carbon::parse('2026-09-01 10:00:00');
+        $manual = \Illuminate\Support\Carbon::parse('2026-10-15');
+        $cambio = \Illuminate\Support\Carbon::parse('2026-09-05 15:30:00');
+
+        $seg = new \App\Models\NotaMpSeguimiento([
+            'resultado_propio' => 'cerrada',
+            'rut_ganador' => '76.111.111-1',
+            'oc_fecha_envio' => $envioMp,
+            'fecha_ultimo_cambio' => $cambio,
+        ]);
+        $nota = new \App\Models\Nota(['fecha_envio_oc' => $manual]);
+        $nota->setRelation('mpSeguimiento', $seg);
+
+        $this->assertTrue($manual->equalTo($metodo->invoke($service, $nota, $seg)));
+
+        $notaSinManual = new \App\Models\Nota();
+        $notaSinManual->setRelation('mpSeguimiento', $seg);
+        $this->assertTrue($envioMp->equalTo($metodo->invoke($service, $notaSinManual, $seg)));
+    }
+
+    #[Test]
     public function resultados_visibles_solo_cerrada_desierta_cancelada(): void
     {
         $this->assertSame(

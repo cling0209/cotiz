@@ -92,10 +92,7 @@ class CotizacionListadoController extends Controller
 
         $fechaEnvioOc = null;
         if (! $nota->tieneFechaEnvioOcApiObtenida() && $request->filled('fecha_envio_oc')) {
-            $fechaEnvioOc = Carbon::parse(
-                (string) $request->input('fecha_envio_oc'),
-                (string) config('app.timezone', 'America/Santiago'),
-            );
+            $fechaEnvioOc = Nota::normalizarFechaEnvioOcManual((string) $request->input('fecha_envio_oc'));
         }
 
         $ocompra = null;
@@ -147,7 +144,7 @@ class CotizacionListadoController extends Controller
 
                 return $this->volverListado($request)->with('error', sprintf(
                     'La cotización #%d no tiene cambios respecto de la #%d: mismos productos, cantidades y precios. '
-                    .'Modifíquela antes de crear otra copia del código «%s».',
+                        . 'Modifíquela antes de crear otra copia del código «%s».',
                     $sinCambios->nronota,
                     $original->nronota,
                     trim((string) $nota->encargado),
@@ -208,7 +205,7 @@ class CotizacionListadoController extends Controller
 
         return redirect()
             ->route('admin.cotizaciones.index')
-            ->with('success', 'Cotización asignada a '.$validated['usuario'].'.');
+            ->with('success', 'Cotización asignada a ' . $validated['usuario'] . '.');
     }
 
     public function exportSinCodigoSoftland(Request $request): StreamedResponse|RedirectResponse
@@ -223,7 +220,7 @@ class CotizacionListadoController extends Controller
                 ->with(
                     'warning',
                     'No hay productos sin código Softland en cotizaciones aceptadas. '
-                    .'Use el botón Aceptar en la cotización y vuelva a descargar.',
+                        . 'Use el botón Aceptar en la cotización y vuelva a descargar.',
                 );
         }
 
@@ -242,7 +239,7 @@ class CotizacionListadoController extends Controller
                 ->with(
                     'warning',
                     'No hay productos sin código Softland en cotizaciones aceptadas. '
-                    .'Use el botón Aceptar en la cotización y vuelva a descargar.',
+                        . 'Use el botón Aceptar en la cotización y vuelva a descargar.',
                 );
         }
 
@@ -317,7 +314,7 @@ class CotizacionListadoController extends Controller
             'orden_campo' => $request->input('orden_campo'),
             'orden_dir' => $request->input('orden_dir'),
             'page' => $request->input('page'),
-        ], fn ($v) => $v !== null && $v !== '');
+        ], fn($v) => $v !== null && $v !== '');
 
         return redirect()->route('admin.cotizaciones.index', $query);
     }

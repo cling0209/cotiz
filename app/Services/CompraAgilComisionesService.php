@@ -75,7 +75,7 @@ class CompraAgilComisionesService
             ->withQueryString();
 
         $paginator->setCollection(
-            $paginator->getCollection()->map(fn (NotaMpSeguimiento $seg) => $this->enriquecerFila($seg))
+            $paginator->getCollection()->map(fn(NotaMpSeguimiento $seg) => $this->enriquecerFila($seg))
         );
 
         return $paginator;
@@ -93,7 +93,7 @@ class CompraAgilComisionesService
         return $this->aplicarOrden($this->buildQuery($filtros), $filtros)
             ->with(['nota.usuarioRel', 'nota.detalle', 'ofertas', ...$relacionesExtra])
             ->lazy($bloque)
-            ->map(fn (NotaMpSeguimiento $seg) => $this->enriquecerFila($seg));
+            ->map(fn(NotaMpSeguimiento $seg) => $this->enriquecerFila($seg));
     }
 
     /**
@@ -111,7 +111,7 @@ class CompraAgilComisionesService
             ->groupBy(function (object $fila) {
                 $user = $fila->ejecutivo_username ?: '(sin ejecutivo)';
 
-                return $user.'|'.$fila->zona_resumen;
+                return $user . '|' . $fila->zona_resumen;
             })
             ->map(function (Collection $grupo) {
                 $primera = $grupo->first();
@@ -131,8 +131,8 @@ class CompraAgilComisionesService
                 ];
             })
             ->sortBy(
-                fn (object $fila) => mb_strtolower((string) $fila->ejecutivo)
-                    .'|'.($fila->zona === self::ZONA_METROPOLITANA ? '0' : '1'),
+                fn(object $fila) => mb_strtolower((string) $fila->ejecutivo)
+                    . '|' . ($fila->zona === self::ZONA_METROPOLITANA ? '0' : '1'),
                 SORT_NATURAL,
             )
             ->values();
@@ -143,7 +143,7 @@ class CompraAgilComisionesService
      */
     public function exportarDetalle(array $filtros = []): StreamedResponse
     {
-        $filename = 'comisiones_detalle_'.now()->format('Ymd_His').'.csv';
+        $filename = 'comisiones_detalle_' . now()->format('Ymd_His') . '.csv';
 
         return response()->streamDownload(function () use ($filtros) {
             set_time_limit(0);
@@ -185,7 +185,7 @@ class CompraAgilComisionesService
                     $fila->orden_compra_nota,
                     $fila->orden_compra_mp,
                     $fila->orden_compra_no_coincide ? 'Sí' : '',
-                    $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
+                    $fila->fecha_envio_oc_label ?? $this->formatoFechaEnvioOcFila($fila),
                     $fila->ejecutivo,
                     $fila->region_nombre,
                     number_format($fila->factor, 2, ',', ''),
@@ -211,7 +211,7 @@ class CompraAgilComisionesService
      */
     public function exportarDetalleProductos(array $filtros = []): StreamedResponse
     {
-        $filename = 'comisiones_detalle_productos_'.now()->format('Ymd_His').'.csv';
+        $filename = 'comisiones_detalle_productos_' . now()->format('Ymd_His') . '.csv';
 
         return response()->streamDownload(function () use ($filtros) {
             set_time_limit(0);
@@ -243,7 +243,7 @@ class CompraAgilComisionesService
                 'Total',
             ], ';');
 
-            $ganadas = $this->cursorDetalle($filtros, 500, ['nota.detalle.producto'])->filter(fn (object $fila) => $fila->es_ganada);
+            $ganadas = $this->cursorDetalle($filtros, 500, ['nota.detalle.producto'])->filter(fn(object $fila) => $fila->es_ganada);
 
             foreach ($ganadas as $fila) {
                 $cabecera = [
@@ -254,7 +254,7 @@ class CompraAgilComisionesService
                     $fila->participacion_mp_label,
                     $fila->es_ganada ? 'Sí' : 'No',
                     $fila->orden_compra,
-                    $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '',
+                    $fila->fecha_envio_oc_label ?? $this->formatoFechaEnvioOcFila($fila),
                     $fila->ejecutivo,
                     $fila->region_nombre,
                     number_format($fila->factor, 2, ',', ''),
@@ -323,7 +323,7 @@ class CompraAgilComisionesService
     public function exportarResumen(array $filtros = []): StreamedResponse
     {
         $filas = $this->resumenPorEjecutivo($filtros);
-        $filename = 'comisiones_resumen_ejecutivo_'.now()->format('Ymd_His').'.xlsx';
+        $filename = 'comisiones_resumen_ejecutivo_' . now()->format('Ymd_His') . '.xlsx';
 
         return response()->streamDownload(function () use ($filas) {
             $spreadsheet = new Spreadsheet;
@@ -381,7 +381,7 @@ class CompraAgilComisionesService
                     (int) $fila->comision_20,
                     (int) $fila->pago,
                     (int) $fila->a_pagar,
-                ]], null, 'A'.$row);
+                ]], null, 'A' . $row);
 
                 $ejecutivoAnterior = $userKey;
                 $row++;
@@ -389,10 +389,10 @@ class CompraAgilComisionesService
 
             $lastDataRow = max(2, $row - 1);
             if ($filas->isNotEmpty()) {
-                $sheet->getStyle('C2:J'.$lastDataRow)
+                $sheet->getStyle('C2:J' . $lastDataRow)
                     ->getNumberFormat()
                     ->setFormatCode('#,##0');
-                $sheet->getStyle('C2:J'.$lastDataRow)
+                $sheet->getStyle('C2:J' . $lastDataRow)
                     ->getAlignment()
                     ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
             }
@@ -447,12 +447,12 @@ class CompraAgilComisionesService
         }
 
         if (! empty($filtros['codigo_proceso'])) {
-            $query->where('codigo_proceso', 'ilike', '%'.$filtros['codigo_proceso'].'%');
+            $query->where('codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
         }
 
         $usuario = trim((string) ($filtros['usuario'] ?? ''));
         if ($usuario !== '') {
-            $query->whereHas('nota', fn (Builder $q) => $q->where('usuario', $usuario));
+            $query->whereHas('nota', fn(Builder $q) => $q->where('usuario', $usuario));
         }
 
         [$sqlFecha, $bindingsFecha] = $this->sqlExpresionFechaEnvioVisible();
@@ -460,28 +460,28 @@ class CompraAgilComisionesService
         if (! empty($filtros['fecha_envio_desde'])) {
             $query->whereRaw(
                 "({$sqlFecha}) >= ?",
-                [...$bindingsFecha, $filtros['fecha_envio_desde'].' 00:00:00'],
+                [...$bindingsFecha, $filtros['fecha_envio_desde'] . ' 00:00:00'],
             );
         }
 
         if (! empty($filtros['fecha_envio_hasta'])) {
             $query->whereRaw(
                 "({$sqlFecha}) <= ?",
-                [...$bindingsFecha, $filtros['fecha_envio_hasta'].' 23:59:59'],
+                [...$bindingsFecha, $filtros['fecha_envio_hasta'] . ' 23:59:59'],
             );
         }
 
         if (! empty($filtros['fecha_creacion_desde'])) {
             $query->whereHas(
                 'nota',
-                fn (Builder $q) => $q->whereDate('fecha', '>=', $filtros['fecha_creacion_desde']),
+                fn(Builder $q) => $q->whereDate('fecha', '>=', $filtros['fecha_creacion_desde']),
             );
         }
 
         if (! empty($filtros['fecha_creacion_hasta'])) {
             $query->whereHas(
                 'nota',
-                fn (Builder $q) => $q->whereDate('fecha', '<=', $filtros['fecha_creacion_hasta']),
+                fn(Builder $q) => $q->whereDate('fecha', '<=', $filtros['fecha_creacion_hasta']),
             );
         }
 
@@ -490,7 +490,7 @@ class CompraAgilComisionesService
 
     /**
      * Fecha mostrada/filtrada en Comisiones:
-     * - cerrada propia (ganador = empresa de esta instancia): oc_fecha_envio (fallback último cambio)
+     * - cerrada propia: fecha_envio_oc manual en nota, si no oc_fecha_envio MP, si no último cambio
      * - cerrada ajena / desierta / cancelada: fecha_ultimo_cambio
      *
      * @return array{0: string, 1: list<string>}
@@ -508,7 +508,11 @@ class CompraAgilComisionesService
         $sql = "CASE
             WHEN {$alias}.resultado_propio = 'cerrada'
              AND {$rutNormSql} IN ({$placeholders})
-            THEN COALESCE({$alias}.oc_fecha_envio, {$alias}.fecha_ultimo_cambio)
+            THEN COALESCE(
+                (SELECT n.fecha_envio_oc FROM notas n WHERE n.nronota = {$alias}.nronota),
+                {$alias}.oc_fecha_envio,
+                {$alias}.fecha_ultimo_cambio
+            )
             ELSE {$alias}.fecha_ultimo_cambio
         END";
 
@@ -520,23 +524,48 @@ class CompraAgilComisionesService
      */
     private function fechaEnvioOcParaFila(?Nota $nota, NotaMpSeguimiento $seg): mixed
     {
-        if ($nota?->estaAceptada()) {
-            return $nota->fechaEnvioOcEfectiva();
-        }
+        if ($this->esCerradaPropia($seg)) {
+            $efectiva = $nota?->fechaEnvioOcEfectiva();
+            if ($efectiva !== null) {
+                return $efectiva;
+            }
 
-        return $this->fechaEnvioOUltimaModificacion($seg);
-    }
-
-    private function fechaEnvioOUltimaModificacion(NotaMpSeguimiento $seg): mixed
-    {
-        $resultado = (string) ($seg->resultado_propio ?? '');
-        $propia = $this->esGanadaPropia($seg->rut_ganador);
-
-        if ($resultado === 'cerrada' && $propia) {
             return $seg->oc_fecha_envio ?? $seg->fecha_ultimo_cambio;
         }
 
         return $seg->fecha_ultimo_cambio;
+    }
+
+    private function formatoFechaEnvioOcFila(object $fila): string
+    {
+        $fecha = $fila->fecha_envio_oc ?? null;
+        if (! $fecha instanceof \Illuminate\Support\Carbon) {
+            return '';
+        }
+
+        $seg = $fila->seguimiento;
+        $nota = $seg->nota ?? null;
+        if ($nota instanceof Nota && $this->esCerradaPropia($seg)) {
+            if ($nota->fecha_envio_oc !== null) {
+                return $nota->fecha_envio_oc->format('d/m/Y');
+            }
+            if ($seg->oc_fecha_envio !== null && $fecha->equalTo($seg->oc_fecha_envio)) {
+                return $seg->oc_fecha_envio->format('d/m/Y H:i');
+            }
+        }
+
+        return $fecha->format('d/m/Y H:i');
+    }
+
+    private function fechaEnvioOUltimaModificacion(NotaMpSeguimiento $seg, ?Nota $nota = null): mixed
+    {
+        return $this->fechaEnvioOcParaFila($nota, $seg);
+    }
+
+    private function esCerradaPropia(NotaMpSeguimiento $seg): bool
+    {
+        return (string) ($seg->resultado_propio ?? '') === 'cerrada'
+            && $this->esGanadaPropia($seg->rut_ganador);
     }
 
     /**
@@ -696,7 +725,7 @@ class CompraAgilComisionesService
             $ordenCompra = '';
         }
 
-        return (object) [
+        $fila = (object) [
             'nronota' => $seg->nronota,
             'fecha_creacion' => $nota?->fecha,
             'codigo_proceso' => (string) ($seg->codigo_proceso ?? ''),
@@ -726,6 +755,9 @@ class CompraAgilComisionesService
             'a_pagar' => $comision + $pago,
             'seguimiento' => $seg,
         ];
+        $fila->fecha_envio_oc_label = $this->formatoFechaEnvioOcFila($fila);
+
+        return $fila;
     }
 
     /**
@@ -734,7 +766,7 @@ class CompraAgilComisionesService
     private function costoNota($detalle): int
     {
         return (int) $detalle->sum(
-            fn (NotaDetalle $linea) => (int) $linea->prod_valor_costo * (int) $linea->cantidad
+            fn(NotaDetalle $linea) => (int) $linea->prod_valor_costo * (int) $linea->cantidad
         );
     }
 

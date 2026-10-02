@@ -117,7 +117,7 @@ class CotizacionController extends Controller
         }
 
         // Sin eager load de detalle/producto: lineasDeNota() ya los resuelve en lote.
-        $nota = Nota::query()->find($nronota);
+        $nota = Nota::query()->with('mpSeguimiento')->find($nronota);
 
         if (! $nota) {
             return $this->notaNoEncontrada($nronota);

@@ -79,14 +79,15 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
     public function test_fecha_envio_oc_efectiva_manual_prevalece_sobre_mp(): void
     {
         $nota = new Nota([
-            'fecha_envio_oc' => '2026-10-01 10:00:00',
+            'fecha_envio_oc' => '2026-10-01',
         ]);
         $seg = new NotaMpSeguimiento([
             'oc_fecha_envio' => '2026-09-02 17:24:14',
         ]);
         $nota->setRelation('mpSeguimiento', $seg);
 
-        $this->assertSame('2026-10-01 10:00:00', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-10-01', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d'));
+        $this->assertSame('01/10/2026', $nota->formatoFechaEnvioOcEfectiva());
         $this->assertFalse($nota->fechaEnvioOcDesdeApi());
     }
 

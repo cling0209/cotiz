@@ -41,7 +41,7 @@ class CotizacionListadoAccionesTest extends TestCase
 
         $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota), [
             'ocompra' => '1234567890',
-            'fecha_envio_oc' => '2026-10-15T14:30',
+            'fecha_envio_oc' => '2026-10-15',
         ]);
 
         $response->assertRedirect(route('admin.cotizaciones.index'));
@@ -54,7 +54,7 @@ class CotizacionListadoAccionesTest extends TestCase
             'fecha_envio_oc_usuario' => 'admin',
         ]);
         $nota->refresh();
-        $this->assertNotNull($nota->fecha_envio_oc);
+        $this->assertSame('2026-10-15', $nota->fecha_envio_oc?->format('Y-m-d'));
         $this->assertNotNull($nota->ocompra_registrada_en);
     }
 
@@ -80,7 +80,7 @@ class CotizacionListadoAccionesTest extends TestCase
         $this->assertSame('9876543210', $nota->ocompraEfectiva());
     }
 
-    public function test_aceptar_ignora_fecha_post_si_mp_tiene_fecha(): void
+    public function test_aceptar_rescata_solo_fecha_mp_a_manual(): void
     {
         $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
         NotaMpSeguimiento::query()->create([
@@ -98,8 +98,8 @@ class CotizacionListadoAccionesTest extends TestCase
         $response->assertRedirect(route('admin.cotizaciones.index'));
         $nota->refresh();
         $this->assertTrue($nota->estaAceptada());
-        $this->assertNull($nota->fecha_envio_oc);
-        $this->assertSame('2026-09-02 17:24:14', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-02', $nota->fecha_envio_oc?->format('Y-m-d'));
+        $this->assertSame('02/09/2026', $nota->formatoFechaEnvioOcEfectiva());
     }
 
     public function test_aceptar_usa_fecha_envio_de_mp_si_no_se_envia_manual(): void
@@ -117,9 +117,9 @@ class CotizacionListadoAccionesTest extends TestCase
 
         $nota->refresh();
         $this->assertTrue($nota->estaAceptada());
-        $this->assertNull($nota->fecha_envio_oc);
-        $this->assertSame('2026-09-02 17:24:14', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
-        $this->assertTrue($nota->fechaEnvioOcDesdeApi());
+        $this->assertSame('2026-09-02', $nota->fecha_envio_oc?->format('Y-m-d'));
+        $this->assertFalse($nota->fechaEnvioOcDesdeApi());
+        $this->assertSame('2026-09-02', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d'));
     }
 
     public function test_aceptada_sin_fecha_manual_muestra_fecha_mp_en_efectiva(): void

@@ -172,7 +172,7 @@ class NotaMpResultadosService
                 $corrida,
                 $nronota,
                 $codigo,
-                self::mensajeTiempoMaximoNota().' ('.$this->notaMaxSegundos().' s, recuperación automática).',
+                self::mensajeTiempoMaximoNota() . ' (' . $this->notaMaxSegundos() . ' s, recuperación automática).',
                 $empresa !== '' ? $empresa : null,
             );
             $this->pushReciente($corrida, [
@@ -307,8 +307,8 @@ class NotaMpResultadosService
                 'message' => $e->getMessage(),
             ]);
 
-            $mensaje = 'Consulta interrumpida tras '.$minutos.' min ('.$procesadas.'/'.$total
-                .' procesadas). No se pudo reanudar: '.$e->getMessage().'. Reintente.';
+            $mensaje = 'Consulta interrumpida tras ' . $minutos . ' min (' . $procesadas . '/' . $total
+                . ' procesadas). No se pudo reanudar: ' . $e->getMessage() . '. Reintente.';
 
             $this->finalizarCorrida($corrida, 'error', $mensaje);
 
@@ -510,7 +510,7 @@ class NotaMpResultadosService
         $corrida->refresh();
         $enCurso = array_values(array_filter(
             is_array($corrida->en_curso_json) ? $corrida->en_curso_json : [],
-            static fn ($row) => ! (is_array($row) && strtoupper((string) ($row['codigo'] ?? '')) === $codigo),
+            static fn($row) => ! (is_array($row) && strtoupper((string) ($row['codigo'] ?? '')) === $codigo),
         ));
 
         $primero = $enCurso[0] ?? null;
@@ -619,14 +619,14 @@ class NotaMpResultadosService
             ->orderBy('notas.nronota')
             ->get();
 
-        $nronotas = $rows->pluck('nronota')->map(fn ($n) => (int) $n)->all();
+        $nronotas = $rows->pluck('nronota')->map(fn($n) => (int) $n)->all();
         $reintentosTrasFallo = $this->nronotasConUltimoDetalleFallido($nronotas);
         $codigosOportunidadHoy = $this->codigosOportunidadEncontradaHoy();
         $momento = $this->cutoffUltimoCambioCorrida();
         $filtrarHorario = (bool) config('cotiz.mercadopublico.resultados_filtrar_por_ultimo_cambio', true);
 
         $filtered = $rows
-            ->filter(fn (Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
+            ->filter(fn(Nota $nota) => $this->esCodigoCompraAgil((string) $nota->encargado))
             ->filter(function (Nota $nota) use ($codigosOportunidadHoy, $reintentosTrasFallo) {
                 return ! $this->omitirCotizacionDelDiaSinSeguimientoMp($nota, $codigosOportunidadHoy, $reintentosTrasFallo);
             })
@@ -658,7 +658,7 @@ class NotaMpResultadosService
             $filtered = $filtered->take($limite);
         }
 
-        return $filtered->map(fn (Nota $nota) => [
+        return $filtered->map(fn(Nota $nota) => [
             'nronota' => (int) $nota->nronota,
             'codigo' => strtoupper(trim((string) $nota->encargado)),
             'fecha' => $nota->fecha?->format('Y-m-d'),
@@ -786,7 +786,7 @@ class NotaMpResultadosService
                 'd.id = (SELECT MAX(d2.id) FROM nota_mp_corrida_detalle d2 WHERE d2.nronota = d.nronota)',
             )
             ->pluck('d.nronota')
-            ->map(fn ($n) => (int) $n)
+            ->map(fn($n) => (int) $n)
             ->all();
 
         return array_fill_keys($ids, true);
@@ -1010,8 +1010,8 @@ class NotaMpResultadosService
     public function horasScheduleResultados(): array
     {
         return collect(explode(',', (string) config('cotiz.mercadopublico.resultados_schedule_hours', '10,19')))
-            ->map(fn ($h) => (int) trim((string) $h))
-            ->filter(fn ($h) => $h >= 0 && $h <= 23)
+            ->map(fn($h) => (int) trim((string) $h))
+            ->filter(fn($h) => $h >= 0 && $h <= 23)
             ->unique()
             ->sort()
             ->values()
@@ -1047,7 +1047,7 @@ class NotaMpResultadosService
             return null;
         }
 
-        usort($candidatos, static fn (Carbon $a, Carbon $b) => $a->getTimestamp() <=> $b->getTimestamp());
+        usort($candidatos, static fn(Carbon $a, Carbon $b) => $a->getTimestamp() <=> $b->getTimestamp());
 
         return end($candidatos) ?: null;
     }
@@ -1099,7 +1099,7 @@ class NotaMpResultadosService
             return $this->registrarYDevolverCatchUp($origen, [
                 'accion' => 'omitido',
                 'slot' => $slot->toIso8601String(),
-                'mensaje' => 'Ya hubo corrida masiva desde el slot '.$slot->format('Y-m-d H:i'),
+                'mensaje' => 'Ya hubo corrida masiva desde el slot ' . $slot->format('Y-m-d H:i'),
             ]);
         }
 
@@ -1140,7 +1140,7 @@ class NotaMpResultadosService
             'accion' => 'encolada',
             'slot' => $slot->toIso8601String(),
             'corrida_id' => $corrida->id,
-            'mensaje' => 'Catch-up: consulta encolada para slot '.$slot->format('Y-m-d H:i'),
+            'mensaje' => 'Catch-up: consulta encolada para slot ' . $slot->format('Y-m-d H:i'),
         ]);
     }
 
@@ -1196,28 +1196,28 @@ class NotaMpResultadosService
         $horario = '';
         if ($u['slot'] !== null && $u['slot'] !== '') {
             try {
-                $horario = ' (horario '.Carbon::parse($u['slot'])
+                $horario = ' (horario ' . Carbon::parse($u['slot'])
                     ->timezone((string) config('app.timezone', 'America/Santiago'))
-                    ->format('H:i').')';
+                    ->format('H:i') . ')';
             } catch (\Throwable) {
                 $horario = '';
             }
         }
 
         if ($u['accion'] === 'encolada') {
-            return 'Catch-up: encolado el '.$hora.' por '.$origenLabel.$horario.'.';
+            return 'Catch-up: encolado el ' . $hora . ' por ' . $origenLabel . $horario . '.';
         }
 
         if ($u['accion'] === 'pospuesto') {
             $motivo = trim($u['mensaje']) !== '' ? $u['mensaje'] : 'pipeline ocupado';
 
-            return 'Catch-up: pospuesto el '.$hora.' ('.$origenLabel.'): '.$motivo
-                .' Se reintentará automáticamente al liberarse el pipeline.';
+            return 'Catch-up: pospuesto el ' . $hora . ' (' . $origenLabel . '): ' . $motivo
+                . ' Se reintentará automáticamente al liberarse el pipeline.';
         }
 
         $motivo = trim($u['mensaje']) !== '' ? $u['mensaje'] : 'sin detalle';
 
-        return 'Catch-up: omitido el '.$hora.' ('.$origenLabel.'): '.$motivo;
+        return 'Catch-up: omitido el ' . $hora . ' (' . $origenLabel . '): ' . $motivo;
     }
 
     /**
@@ -1308,7 +1308,7 @@ class NotaMpResultadosService
         }
 
         return 'Hay un proceso anterior del pipeline en curso (búsqueda, vinculación, adjuntos o limpieza). '
-            .'Los cambios de estado se encolarán al terminar ese proceso.';
+            . 'Los cambios de estado se encolarán al terminar ese proceso.';
     }
 
     public function encolarCorrida(string $usuario): NotaMpCorrida
@@ -1326,8 +1326,8 @@ class NotaMpResultadosService
         if ($pendientes->isEmpty()) {
             throw new RuntimeException(
                 'No hay cotizaciones pendientes de consultar a MP '
-                .'(sin pendientes de seguimiento, ya finalizadas, ya consultadas hoy '
-                .'o con último cambio aún no elegible para este horario de proceso).',
+                    . '(sin pendientes de seguimiento, ya finalizadas, ya consultadas hoy '
+                    . 'o con último cambio aún no elegible para este horario de proceso).',
             );
         }
 
@@ -1358,11 +1358,11 @@ class NotaMpResultadosService
                 $corrida = $this->encolarCorridaConLista(
                     $usuario,
                     $lista,
-                    'Retomada desde corrida #'.$origen->id.' ('.$procesadas.'/'.$total.' procesadas).',
+                    'Retomada desde corrida #' . $origen->id . ' (' . $procesadas . '/' . $total . ' procesadas).',
                 );
 
                 $origen->update([
-                    'mensaje' => trim((string) $origen->mensaje).' Retomada en corrida #'.$corrida->id.'.',
+                    'mensaje' => trim((string) $origen->mensaje) . ' Retomada en corrida #' . $corrida->id . '.',
                 ]);
 
                 Log::info('Pipeline: cambios de estado retomados desde corrida cancelada', [
@@ -1387,7 +1387,7 @@ class NotaMpResultadosService
         return NotaMpCorrida::query()
             ->masivas()
             ->where('estado', 'cancelled')
-            ->where('mensaje', 'like', '%'.self::MENSAJE_CANCELADA_POR_PIPELINE.'%')
+            ->where('mensaje', 'like', '%' . self::MENSAJE_CANCELADA_POR_PIPELINE . '%')
             ->where('mensaje', 'not like', '%Retomada en corrida #%')
             ->whereColumn('notas_procesadas', '<', 'total_notas')
             ->latest('id')
@@ -1430,15 +1430,15 @@ class NotaMpResultadosService
         $notasByNronota = $nronotas === []
             ? collect()
             : Nota::query()
-                ->select([
-                    'notas.nronota',
-                    'notas.encargado',
-                    'seg.nronota as mp_seg_nronota',
-                ])
-                ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-                ->whereIn('notas.nronota', $nronotas)
-                ->get()
-                ->keyBy('nronota');
+            ->select([
+                'notas.nronota',
+                'notas.encargado',
+                'seg.nronota as mp_seg_nronota',
+            ])
+            ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
+            ->whereIn('notas.nronota', $nronotas)
+            ->get()
+            ->keyBy('nronota');
 
         $codigosOportunidadHoy = $this->codigosOportunidadEncontradaHoy();
         $reintentosTrasFallo = $this->nronotasConUltimoDetalleFallido($nronotas);
@@ -1461,8 +1461,10 @@ class NotaMpResultadosService
 
             /** @var Nota|null $nota */
             $nota = $notasByNronota->get($nronota);
-            if ($nota !== null
-                && $this->omitirCotizacionDelDiaSinSeguimientoMp($nota, $codigosOportunidadHoy, $reintentosTrasFallo)) {
+            if (
+                $nota !== null
+                && $this->omitirCotizacionDelDiaSinSeguimientoMp($nota, $codigosOportunidadHoy, $reintentosTrasFallo)
+            ) {
                 continue;
             }
 
@@ -1517,11 +1519,11 @@ class NotaMpResultadosService
             $this->finalizarCorrida(
                 $corrida,
                 'error',
-                'No se pudo encolar la consulta: '.$e->getMessage(),
+                'No se pudo encolar la consulta: ' . $e->getMessage(),
             );
 
             throw new RuntimeException(
-                'No se pudo encolar la consulta: '.$e->getMessage(),
+                'No se pudo encolar la consulta: ' . $e->getMessage(),
                 0,
                 $e,
             );
@@ -1548,7 +1550,7 @@ class NotaMpResultadosService
         $query = DB::table('jobs')->where('payload', 'like', '%ProcessNotaMpCorridaJob%');
 
         if ($corridaId !== null) {
-            $query->where('payload', 'like', '%i:'.$corridaId.';%');
+            $query->where('payload', 'like', '%i:' . $corridaId . ';%');
         }
 
         return $query->delete();
@@ -1561,7 +1563,7 @@ class NotaMpResultadosService
         }
 
         // Payload Laravel: PHP serialize dentro de JSON → corridaId";i:8; o corridaId\";i:8;
-        return $query->where('payload', 'like', '%i:'.$corridaId.';%');
+        return $query->where('payload', 'like', '%i:' . $corridaId . ';%');
     }
 
     public function jobResultadosMpEncolado(int $corridaId): bool
@@ -1634,13 +1636,13 @@ class NotaMpResultadosService
             $umbralMaxNota = $this->notaMaxSegundos();
             $umbralRecuperacion = $umbralMaxNota + 30;
             if ($segundosEnNotaActual >= $umbralRecuperacion) {
-                $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
-                    .self::formatearDuracionSegundos($segundosEnNotaActual)
-                    .' — recuperación automática en curso (umbral '.$umbralRecuperacion.' s).';
+                $alerta = 'Consultando ' . $corrida->codigo_actual . ' lleva '
+                    . self::formatearDuracionSegundos($segundosEnNotaActual)
+                    . ' — recuperación automática en curso (umbral ' . $umbralRecuperacion . ' s).';
             } elseif ($segundosEnNotaActual >= $umbralAlertaNota) {
-                $alerta = 'Consultando '.$corrida->codigo_actual.' lleva '
-                    .self::formatearDuracionSegundos($segundosEnNotaActual)
-                    .'. Si supera '.$umbralRecuperacion.' s se marcará fallo y continuará sola.';
+                $alerta = 'Consultando ' . $corrida->codigo_actual . ' lleva '
+                    . self::formatearDuracionSegundos($segundosEnNotaActual)
+                    . '. Si supera ' . $umbralRecuperacion . ' s se marcará fallo y continuará sola.';
             }
         }
 
@@ -1648,14 +1650,14 @@ class NotaMpResultadosService
             if ($colaDriver === 'sync' && app()->isProduction() && $segundosEnCurso >= 30) {
                 $alerta = 'QUEUE_CONNECTION=sync en producción: el worker no procesará la cola. Use database y RUN_QUEUE_WORKER=true.';
             } elseif ($jobsEnCola > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 90) {
-                $alerta = 'Hay '.$jobsEnCola.' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
+                $alerta = 'Hay ' . $jobsEnCola . ' job(s) en cola esperando worker. Confirme RUN_QUEUE_WORKER=true y redeploy en Render.';
             } elseif ($jobsReservados > 0 && ! $tieneCodigoActual && $segundosEnCurso >= 150) {
                 $alerta = 'Hay un job reservado sin avance. Espere o use «Cancelar consulta» y reintente.';
             } elseif ($tieneCodigoActual && $segundosEnCurso >= 180) {
-                $alerta = 'Sin avance consultando '.$corrida->codigo_actual.' tras '
-                    .(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
+                $alerta = 'Sin avance consultando ' . $corrida->codigo_actual . ' tras '
+                    . (int) floor($segundosEnCurso / 60) . ' min. Use «Cancelar consulta» y reintente.';
             } elseif (! $tieneCodigoActual && $segundosEnCurso >= 150) {
-                $alerta = 'Sin avance tras '.(int) floor($segundosEnCurso / 60).' min. Use «Cancelar consulta» y reintente.';
+                $alerta = 'Sin avance tras ' . (int) floor($segundosEnCurso / 60) . ' min. Use «Cancelar consulta» y reintente.';
             }
         }
 
@@ -1952,9 +1954,9 @@ class NotaMpResultadosService
         $procesadas = (int) $corrida->notas_procesadas;
 
         if ($guardadas === 0 && $procesadas > 0) {
-            $mensaje = 'Ninguna de las '.$procesadas.' consultas guardó seguimiento.';
+            $mensaje = 'Ninguna de las ' . $procesadas . ' consultas guardó seguimiento.';
             if ($ultimoError !== null && trim($ultimoError) !== '') {
-                $mensaje .= ' Último error: '.trim($ultimoError);
+                $mensaje .= ' Último error: ' . trim($ultimoError);
             } else {
                 $mensaje .= ' Revise MERCADOPUBLICO_TICKET, cuota diaria de MP y logs del servidor.';
             }
@@ -1963,9 +1965,9 @@ class NotaMpResultadosService
         }
 
         if ($fallidas > 0) {
-            $mensaje = $guardadas.' consultadas ok, '.$fallidas.' con error.';
+            $mensaje = $guardadas . ' consultadas ok, ' . $fallidas . ' con error.';
             if ($ultimoError !== null && trim($ultimoError) !== '') {
-                $mensaje .= ' Último error: '.trim($ultimoError);
+                $mensaje .= ' Último error: ' . trim($ultimoError);
             }
 
             return $this->finalizarCorrida($corrida, 'ok', $mensaje);
@@ -1985,7 +1987,7 @@ class NotaMpResultadosService
 
         $mensaje = trim((string) $motivo);
         if ($mensaje === '') {
-            $mensaje = 'Cancelada por '.trim($usuario).'.';
+            $mensaje = 'Cancelada por ' . trim($usuario) . '.';
         }
 
         return $this->finalizarCorrida($corrida, 'cancelled', $mensaje);
@@ -2138,12 +2140,12 @@ class NotaMpResultadosService
                     ? 'sin reintento'
                     : (CompraAgilApiService::esErrorGatewayMp((string) $ultimoError)
                         ? 'sin reintento inmediato'
-                        : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)).' intentos HTTP'));
+                        : (max(1, (int) config('cotiz.mercadopublico.api_reintentos_http', 3)) . ' intentos HTTP'));
                 $this->registrarDetalleFallo(
                     $corrida,
                     $nronota,
                     $codigo,
-                    mb_substr(($ultimoError ?: 'Error desconocido').' ('.$sufijo.')', 0, 500),
+                    mb_substr(($ultimoError ?: 'Error desconocido') . ' (' . $sufijo . ')', 0, 500),
                     $empresa !== '' ? $empresa : null,
                 );
                 Log::warning('NotaMpResultados: nota fallida en pipeline', [
@@ -2204,7 +2206,7 @@ class NotaMpResultadosService
                 $corrida,
                 $nronota,
                 '',
-                $ultimoError.' (sin reintento)',
+                $ultimoError . ' (sin reintento)',
                 trim((string) ($item['empresa'] ?? '')) ?: null,
             );
             $fallidas++;
@@ -2637,7 +2639,8 @@ class NotaMpResultadosService
                 $update['oc_estado'] = null;
             }
             $resultado = (string) ($seg->resultado_propio ?? '');
-            if (in_array($resultado, ['cerrada', 'desierta', 'cancelada', 'no_encontrada'], true)
+            if (
+                in_array($resultado, ['cerrada', 'desierta', 'cancelada', 'no_encontrada'], true)
                 && ! $seg->finalizado
             ) {
                 $update['finalizado'] = true;
@@ -3220,7 +3223,7 @@ class NotaMpResultadosService
     public function listadoCerradas(int $limite = 50): Collection
     {
         $items = $this->aplicarOrdenListado($this->buildCerradasQuery([]))
-            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->with(['nota.usuarioRel', 'ofertas' => fn($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->limit($limite)
             ->get();
 
@@ -3278,7 +3281,7 @@ class NotaMpResultadosService
                     FROM notas n
                     LEFT JOIN users u ON u.username = n.usuario
                     WHERE n.nronota = nota_mp_seguimientos.nronota
-                    LIMIT 1) '.$dirSql
+                    LIMIT 1) ' . $dirSql
                 )
                 ->orderByDesc('nota_mp_seguimientos.nronota');
         }
@@ -3342,11 +3345,11 @@ class NotaMpResultadosService
             ->join('nota_mp_seguimientos as s', 's.nronota', '=', 'o.nronota')
             ->leftJoin('nota_mp_ofertas as op', function ($join) {
                 $join->on('op.nronota', '=', 'o.nronota')
-                     ->whereRaw('op.es_propio IS TRUE');
+                    ->whereRaw('op.es_propio IS TRUE');
             })
             ->leftJoin('nota_mp_oferta_lineas as lp', function ($join) {
                 $join->on('lp.oferta_id', '=', 'op.id')
-                     ->on('lp.codigo_producto', '=', 'nota_mp_oferta_lineas.codigo_producto');
+                    ->on('lp.codigo_producto', '=', 'nota_mp_oferta_lineas.codigo_producto');
             })
             ->select([
                 'nota_mp_oferta_lineas.codigo_producto',
@@ -3374,8 +3377,8 @@ class NotaMpResultadosService
                 $term = '%' . $palabra . '%';
                 $query->where(function ($q) use ($term) {
                     $q->where('nota_mp_oferta_lineas.nombre_producto', 'ilike', $term)
-                      ->orWhere('nota_mp_oferta_lineas.descripcion', 'ilike', $term)
-                      ->orWhere('nota_mp_oferta_lineas.codigo_producto', 'ilike', $term);
+                        ->orWhere('nota_mp_oferta_lineas.descripcion', 'ilike', $term)
+                        ->orWhere('nota_mp_oferta_lineas.codigo_producto', 'ilike', $term);
                 });
             }
         }
@@ -3468,7 +3471,7 @@ class NotaMpResultadosService
         return $this->buildProductosGanadosQuery($filtros)
             ->limit(10000)
             ->get()
-            ->map(fn ($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
+            ->map(fn($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
     }
 
     /**
@@ -3480,7 +3483,7 @@ class NotaMpResultadosService
         return $this->buildProductosGanadosDetalleQuery($filtros)
             ->limit(50000)
             ->get()
-            ->map(fn ($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
+            ->map(fn($row) => $this->enriquecerFilaProductoProveedorSeleccionado($row));
     }
 
     /**
@@ -3513,10 +3516,10 @@ class NotaMpResultadosService
     private function sqlNombreProductoReporte(): string
     {
         return "COALESCE("
-            ."NULLIF(TRIM(mp.prod_nombre), ''), "
-            ."NULLIF(TRIM(notasdetalle.prod_descripcion_maestro), ''), "
-            ."NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
-            ."'')";
+            . "NULLIF(TRIM(mp.prod_nombre), ''), "
+            . "NULLIF(TRIM(notasdetalle.prod_descripcion_maestro), ''), "
+            . "NULLIF(TRIM(notasdetalle.prod_descripcion_agile), ''), "
+            . "'')";
     }
 
     /**
@@ -3619,7 +3622,7 @@ class NotaMpResultadosService
 
         $query->where(function ($q) use ($patrones): void {
             foreach ($patrones as $patron) {
-                $q->orWhereRaw('lower(o.razon_social) like ?', ['%'.mb_strtolower($patron).'%']);
+                $q->orWhereRaw('lower(o.razon_social) like ?', ['%' . mb_strtolower($patron) . '%']);
             }
         });
     }
@@ -3633,8 +3636,8 @@ class NotaMpResultadosService
         array $filtros,
     ): void {
         $tipo = strtolower(trim((string) ($filtros['tipo_fecha'] ?? 'cierre')));
-        $desde = ! empty($filtros['fecha_desde']) ? $filtros['fecha_desde'].' 00:00:00' : null;
-        $hasta = ! empty($filtros['fecha_hasta']) ? $filtros['fecha_hasta'].' 23:59:59' : null;
+        $desde = ! empty($filtros['fecha_desde']) ? $filtros['fecha_desde'] . ' 00:00:00' : null;
+        $hasta = ! empty($filtros['fecha_hasta']) ? $filtros['fecha_hasta'] . ' 23:59:59' : null;
 
         if ($tipo === 'publicacion') {
             if ($desde !== null) {
@@ -3717,13 +3720,13 @@ class NotaMpResultadosService
         $paginator = $this->buildTodasNotasQuery($filtros)
             ->with([
                 'usuarioRel',
-                'mpSeguimiento.ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas'),
+                'mpSeguimiento.ofertas' => fn($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas'),
             ])
             ->paginate($porPagina)
             ->withQueryString();
 
         $items = $paginator->getCollection()
-            ->map(fn (Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
+            ->map(fn(Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
 
         $this->marcarCerradasConFlags($items);
         $paginator->setCollection($items);
@@ -3741,7 +3744,7 @@ class NotaMpResultadosService
             ->limit($limite)
             ->get();
 
-        $items = $notas->map(fn (Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
+        $items = $notas->map(fn(Nota $nota) => $this->itemListadoTodasDesdeNota($nota));
 
         return $this->marcarCerradasConFlags($items);
     }
@@ -3749,7 +3752,7 @@ class NotaMpResultadosService
     public function listadoPendientesPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $paginator = $this->aplicarOrdenListado($this->buildPendientesSeguimientoQuery($filtros), $filtros)
-            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->with(['nota.usuarioRel', 'ofertas' => fn($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->paginate($porPagina)
             ->withQueryString();
 
@@ -3804,7 +3807,7 @@ class NotaMpResultadosService
 
         try {
             $resultado = $this->consultarNota($nronota, $corrida, $usuario, null);
-            $this->finalizarCorrida($corrida, 'ok', 'Consulta individual nota '.$nronota.'.');
+            $this->finalizarCorrida($corrida, 'ok', 'Consulta individual nota ' . $nronota . '.');
 
             return $resultado;
         } catch (RuntimeException $e) {
@@ -3852,7 +3855,7 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['codigo_proceso'])) {
-            $term = '%'.$filtros['codigo_proceso'].'%';
+            $term = '%' . $filtros['codigo_proceso'] . '%';
             $query->where(function ($q) use ($term): void {
                 $q->where('seg.codigo_proceso', 'ilike', $term)
                     ->orWhere(function ($q2) use ($term): void {
@@ -3863,7 +3866,7 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['organismo'])) {
-            $term = '%'.$filtros['organismo'].'%';
+            $term = '%' . $filtros['organismo'] . '%';
             $query->where(function ($q) use ($term): void {
                 $q->where('seg.organismo', 'ilike', $term)
                     ->orWhere(function ($q2) use ($term): void {
@@ -3874,7 +3877,7 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['proveedor'])) {
-            $query->where('seg.razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+            $query->where('seg.razon_social_ganador', 'ilike', '%' . $filtros['proveedor'] . '%');
         }
 
         $usuario = trim((string) ($filtros['usuario'] ?? ''));
@@ -3884,7 +3887,7 @@ class NotaMpResultadosService
 
         if (! empty($filtros['fecha_desde'])) {
             $query->where(function ($q) use ($filtros): void {
-                $q->where('seg.fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00')
+                $q->where('seg.fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00')
                     ->orWhere(function ($q2) use ($filtros): void {
                         $q2->whereNull('seg.nronota')
                             ->where('notas.fecha', '>=', $filtros['fecha_desde']);
@@ -3894,7 +3897,7 @@ class NotaMpResultadosService
 
         if (! empty($filtros['fecha_hasta'])) {
             $query->where(function ($q) use ($filtros): void {
-                $q->where('seg.fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59')
+                $q->where('seg.fecha_publicacion', '<=', $filtros['fecha_hasta'] . ' 23:59:59')
                     ->orWhere(function ($q2) use ($filtros): void {
                         $q2->whereNull('seg.nronota')
                             ->where('notas.fecha', '<=', $filtros['fecha_hasta']);
@@ -3903,11 +3906,11 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['cambio_desde'])) {
-            $query->where('seg.fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
+            $query->where('seg.fecha_ultimo_cambio', '>=', $filtros['cambio_desde'] . ' 00:00:00');
         }
 
         if (! empty($filtros['cambio_hasta'])) {
-            $query->where('seg.fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+            $query->where('seg.fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'] . ' 23:59:59');
         }
 
         if (! empty($filtros['seguimiento'])) {
@@ -3919,7 +3922,7 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['estado_mp'])) {
-            $term = '%'.$filtros['estado_mp'].'%';
+            $term = '%' . $filtros['estado_mp'] . '%';
             $query->where(function ($q) use ($term): void {
                 $q->where('seg.estado_mp_glosa', 'ilike', $term)
                     ->orWhere('seg.estado_mp_codigo', 'ilike', $term);
@@ -3984,36 +3987,36 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['codigo_proceso'])) {
-            $query->where('codigo_proceso', 'ilike', '%'.$filtros['codigo_proceso'].'%');
+            $query->where('codigo_proceso', 'ilike', '%' . $filtros['codigo_proceso'] . '%');
         }
 
         if (! empty($filtros['organismo'])) {
-            $query->where('organismo', 'ilike', '%'.$filtros['organismo'].'%');
+            $query->where('organismo', 'ilike', '%' . $filtros['organismo'] . '%');
         }
 
         if (! empty($filtros['proveedor'])) {
-            $query->where('razon_social_ganador', 'ilike', '%'.$filtros['proveedor'].'%');
+            $query->where('razon_social_ganador', 'ilike', '%' . $filtros['proveedor'] . '%');
         }
 
         $usuario = trim((string) ($filtros['usuario'] ?? ''));
         if ($usuario !== '') {
-            $query->whereHas('nota', fn ($q) => $q->where('usuario', $usuario));
+            $query->whereHas('nota', fn($q) => $q->where('usuario', $usuario));
         }
 
         if (! empty($filtros['fecha_desde'])) {
-            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'].' 00:00:00');
+            $query->where('fecha_publicacion', '>=', $filtros['fecha_desde'] . ' 00:00:00');
         }
 
         if (! empty($filtros['fecha_hasta'])) {
-            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'].' 23:59:59');
+            $query->where('fecha_publicacion', '<=', $filtros['fecha_hasta'] . ' 23:59:59');
         }
 
         if (! empty($filtros['cambio_desde'])) {
-            $query->where('fecha_ultimo_cambio', '>=', $filtros['cambio_desde'].' 00:00:00');
+            $query->where('fecha_ultimo_cambio', '>=', $filtros['cambio_desde'] . ' 00:00:00');
         }
 
         if (! empty($filtros['cambio_hasta'])) {
-            $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'].' 23:59:59');
+            $query->where('fecha_ultimo_cambio', '<=', $filtros['cambio_hasta'] . ' 23:59:59');
         }
 
         if (! empty($filtros['seguimiento'])) {
@@ -4021,7 +4024,7 @@ class NotaMpResultadosService
         }
 
         if (! empty($filtros['estado_mp'])) {
-            $term = '%'.mb_strtolower(trim((string) $filtros['estado_mp'])).'%';
+            $term = '%' . mb_strtolower(trim((string) $filtros['estado_mp'])) . '%';
             $query->where(function ($q) use ($term): void {
                 $q->whereRaw('lower(estado_mp_glosa) like ?', [$term])
                     ->orWhereRaw('lower(estado_mp_codigo) like ?', [$term]);
@@ -4047,8 +4050,8 @@ class NotaMpResultadosService
             return;
         }
 
-        $colDesc = $prefix.'convocatoria_descripcion';
-        $colEstado = $prefix.'convocatoria_estado';
+        $colDesc = $prefix . 'convocatoria_descripcion';
+        $colEstado = $prefix . 'convocatoria_estado';
 
         if ($valor === 'sin') {
             $query->where(function ($q) use ($colDesc, $colEstado): void {
@@ -4063,7 +4066,7 @@ class NotaMpResultadosService
         }
 
         $query->where(function ($q) use ($valor, $colDesc, $colEstado): void {
-            $q->whereRaw('lower('.$colDesc.') like ?', ['%'.mb_strtolower($valor).'%']);
+            $q->whereRaw('lower(' . $colDesc . ') like ?', ['%' . mb_strtolower($valor) . '%']);
             if (ctype_digit($valor)) {
                 $q->orWhere($colEstado, (int) $valor);
             }
@@ -4073,7 +4076,7 @@ class NotaMpResultadosService
     public function listadoCerradasPaginado(int $porPagina = 20, array $filtros = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $paginator = $this->aplicarOrdenListado($this->buildCerradasQuery($filtros), $filtros)
-            ->with(['nota.usuarioRel', 'ofertas' => fn ($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
+            ->with(['nota.usuarioRel', 'ofertas' => fn($q) => $q->whereRaw('proveedor_seleccionado IS TRUE')->with('lineas')])
             ->paginate($porPagina)
             ->withQueryString();
 
@@ -4206,7 +4209,7 @@ class NotaMpResultadosService
             'seguimiento' => $seg,
             'ofertas' => $seg->ofertas,
             'lineas_ganador' => $seg->ofertas
-                ->first(fn (NotaMpOferta $o) => $o->proveedor_seleccionado)
+                ->first(fn(NotaMpOferta $o) => $o->proveedor_seleccionado)
                 ?->lineas ?? collect(),
         ];
     }

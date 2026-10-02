@@ -27,7 +27,7 @@ class NotaService
 
             $nota = Nota::create([
                 'nronota' => $nronota,
-                'descripcion' => $descripcion ?? ($interna ? 'Cotización interna '.$nronota : 'Cotización '.$nronota),
+                'descripcion' => $descripcion ?? ($interna ? 'Cotización interna ' . $nronota : 'Cotización ' . $nronota),
                 'fecha' => now()->toDateString(),
                 'usuario' => $usuario,
                 'encargado' => $interna ? $this->codigoInternoParaNota($nronota) : '',
@@ -60,7 +60,7 @@ class NotaService
     {
         $prefijo = (string) config('cotiz.cotizacion_interna_prefijo', 'CM-');
 
-        return $prefijo.$nronota;
+        return $prefijo . $nronota;
     }
 
     /**
@@ -156,7 +156,7 @@ class NotaService
             $this->auditoria->registrarAgregar(
                 $copia,
                 $usuarioAccion ?: $origen->usuario,
-                'Duplicación desde nota #'.$origen->nronota.($copiarDetalle ? '' : ' (solo encabezado)'),
+                'Duplicación desde nota #' . $origen->nronota . ($copiarDetalle ? '' : ' (solo encabezado)'),
             );
 
             return $copia;
@@ -252,7 +252,7 @@ class NotaService
     {
         $lineas = $nota->detalle()
             ->get(['prod_item', 'cantidad', 'prod_valor'])
-            ->map(fn ($linea) => sprintf(
+            ->map(fn($linea) => sprintf(
                 '%s|%s|%s',
                 strtoupper(trim((string) $linea->prod_item)),
                 (float) $linea->cantidad,
@@ -597,8 +597,12 @@ class NotaService
             }
         }
 
-        if ($fechaMp !== null && $fechaEnvioOc !== null && ! $fechaEnvioOc->equalTo($fechaMp)) {
-            throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
+        if ($fechaMp !== null && $fechaEnvioOc !== null) {
+            $solicitada = Nota::normalizarFechaEnvioOcManual($fechaEnvioOc);
+            $desdeMp = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
+            if ($solicitada !== null && ! $solicitada->equalTo($desdeMp)) {
+                throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
+            }
         }
 
         $payload = [
@@ -615,9 +619,16 @@ class NotaService
             }
         }
 
-        if ($fechaMp === null && $fechaEnvioOc !== null) {
+        $fechaManual = null;
+        if ($fechaMp !== null) {
+            $fechaManual = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
+        } elseif ($fechaEnvioOc !== null) {
+            $fechaManual = Nota::normalizarFechaEnvioOcManual($fechaEnvioOc);
+        }
+
+        if ($fechaManual !== null) {
             $usuario = trim($usuario);
-            $payload['fecha_envio_oc'] = $fechaEnvioOc;
+            $payload['fecha_envio_oc'] = $fechaManual;
             $payload['fecha_envio_oc_usuario'] = $usuario !== '' ? mb_substr($usuario, 0, 50) : null;
             $payload['fecha_envio_oc_registrada_en'] = now();
         }

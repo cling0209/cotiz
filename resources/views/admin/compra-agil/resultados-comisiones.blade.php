@@ -4,10 +4,10 @@
 
 @section('content')
 @php
-    $comisionesRetorno = \App\Support\CotizacionListadoRetorno::paraComisiones(
-        array_merge($filtros, ['por_pagina' => $items->perPage()]),
-        (int) $items->currentPage()
-    );
+$comisionesRetorno = \App\Support\CotizacionListadoRetorno::paraComisiones(
+array_merge($filtros, ['por_pagina' => $items->perPage()]),
+(int) $items->currentPage()
+);
 @endphp
 <div class="container-fluid py-4">
     <div class="d-flex align-items-center gap-2 mb-4">
@@ -20,8 +20,9 @@
 
     <p class="text-muted small mb-3">
         Solo cotizaciones con seguimiento <strong>cerrada</strong>, <strong>desierta</strong> o <strong>cancelada</strong>.
-        La columna de fecha muestra el <strong>envío de OC</strong> si la cerrada es propia (ganador Reicol/Rómulo);
-        si es ajena (u otras), usa la <strong>última modificación</strong> del seguimiento.
+        La columna de fecha en <strong>cerradas propias</strong> (ganador Reicol/Rómulo) usa la fecha de envío OC
+        <strong>manual de la nota</strong> si existe; si no, la de <strong>Mercado Público</strong>; si no hay ninguna, la
+        <strong>última modificación</strong> del seguimiento. En cerradas ajenas, desiertas o canceladas se usa solo la última modificación.
         La <strong>comisión 20%</strong> solo aplica a <strong>ganadas</strong>: ganador Reicol/Rómulo <strong>y</strong> con código de orden de compra
         (cuenta el de la nota; si la nota no tiene, el resuelto en MP; si en MP hay OC pero aún no está el número, no aplica comisión).
         El <strong>pago</strong> (${{ number_format($pagoFijo, 0, ',', '.') }}) solo aplica si <strong>esta empresa participó</strong> en MP.
@@ -31,10 +32,10 @@
 
     <form method="GET" action="{{ route('admin.compra-agil.resultados.comisiones') }}" class="card shadow-sm mb-3" data-no-loader>
         @if(!empty($filtros['sort']))
-            <input type="hidden" name="sort" value="{{ $filtros['sort'] }}">
+        <input type="hidden" name="sort" value="{{ $filtros['sort'] }}">
         @endif
         @if(!empty($filtros['dir']))
-            <input type="hidden" name="dir" value="{{ $filtros['dir'] }}">
+        <input type="hidden" name="dir" value="{{ $filtros['dir'] }}">
         @endif
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
@@ -74,9 +75,9 @@
                         <i class="bi bi-search"></i> Filtrar
                     </button>
                     @if(collect($filtros)->except(['sort', 'dir'])->filter()->isNotEmpty())
-                        <a href="{{ route('admin.compra-agil.resultados.comisiones', request()->only(['sort', 'dir'])) }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
-                            <i class="bi bi-x-lg"></i> Limpiar
-                        </a>
+                    <a href="{{ route('admin.compra-agil.resultados.comisiones', request()->only(['sort', 'dir'])) }}" class="btn btn-outline-secondary btn-sm ms-1" data-no-loader>
+                        <i class="bi bi-x-lg"></i> Limpiar
+                    </a>
                     @endif
                 </div>
             </div>
@@ -87,21 +88,21 @@
         <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <p class="text-muted small mb-0">La descarga respeta los filtros actuales (todos o la selección filtrada).</p>
             @if($items->total() > 0)
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
-                        <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
-                    </a>
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle-productos', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
-                        <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle con productos
-                    </a>
-                    <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
-                        <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
-                    </a>
-                    <span class="small text-primary fw-semibold d-none" id="comisiones-export-hint" aria-live="polite">
-                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                        Descargando… revise la barra de descargas del navegador.
-                    </span>
-                </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
+                </a>
+                <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle-productos', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle con productos
+                </a>
+                <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
+                    <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
+                </a>
+                <span class="small text-primary fw-semibold d-none" id="comisiones-export-hint" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    Descargando… revise la barra de descargas del navegador.
+                </span>
+            </div>
             @endif
         </div>
         <div class="table-responsive">
@@ -132,79 +133,79 @@
                 </thead>
                 <tbody>
                     @forelse($items as $fila)
-                        @php
-                            $filaClass = $fila->es_ganada
-                                ? 'table-success'
-                                : ($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_NO
-                                    ? 'table-warning'
-                                    : '');
-                        @endphp
-                        <tr class="{{ $filaClass }}">
-                            <td class="text-nowrap">{{ $fila->nronota }}</td>
-                            <td class="small text-nowrap">{{ $fila->fecha_creacion?->format('d/m/Y') ?? '—' }}</td>
-                            <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
-                            <td class="cell-seguimiento">@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $fila->resultado_propio])</td>
-                            <td class="small">
-                                @if($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SI)
-                                    <span class="badge text-bg-success">Sí</span>
-                                @elseif($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SIN_PROVEEDORES)
-                                    <span class="badge text-bg-info" title="Mercado Público aún no muestra proveedores cotizando">Sin proveedores en MP</span>
-                                @else
-                                    <span class="badge text-bg-warning">No participó</span>
-                                @endif
-                            </td>
-                            <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
-                            <td class="small">
-                                <span class="font-monospace">{{ $fila->orden_compra_nota ?: '—' }}</span>
-                                @if($fila->orden_compra_nota_registro !== '')
-                                    <div class="text-muted">{{ $fila->orden_compra_nota_registro }}</div>
-                                @endif
-                                @if($fila->orden_compra_no_coincide)
-                                    <div><span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span></div>
-                                @endif
-                            </td>
-                            <td class="small">
-                                @if($fila->orden_compra_mp !== '')
-                                    <span class="font-monospace">{{ $fila->orden_compra_mp }}</span>
-                                    @if($fila->orden_compra_mp_resuelta_en)
-                                        <div class="text-muted">Obtenida {{ $fila->orden_compra_mp_resuelta_en->format('d/m/Y H:i') }}</div>
-                                    @endif
-                                @elseif($fila->orden_compra_nota === '' && $fila->orden_compra !== '')
-                                    <span class="text-muted">{{ $fila->orden_compra }}</span>
-                                @else
-                                    —
-                                @endif
-                            </td>
-                            <td class="small text-muted">{{ $fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—' }}</td>
-                            <td class="small">{{ $fila->ejecutivo }}</td>
-                            <td class="small">{{ $fila->region_nombre }}</td>
-                            <td class="text-end small tabular-nums">{{ number_format($fila->factor, 2, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->costo, 0, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->venta, 0, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->venta_12, 0, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->utilidad, 0, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->comision_20, 0, ',', '.') }}</td>
-                            <td class="text-end small tabular-nums">${{ number_format($fila->pago, 0, ',', '.') }}</td>
-                            <td class="text-end small fw-semibold tabular-nums">${{ number_format($fila->a_pagar, 0, ',', '.') }}</td>
-                            <td class="text-end text-nowrap">
-                                <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                    <button type="button"
-                                            class="btn btn-outline-secondary btn-sm btn-detalle-mp"
-                                            data-nronota="{{ $fila->nronota }}"
-                                            title="Ver participantes y detalle en Mercado Público">
-                                        Detalle MP
-                                    </button>
-                                    <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $fila->nronota], $comisionesRetorno)) }}"
-                                       class="btn btn-outline-primary btn-sm" title="Ir a la nota">
-                                        <i class="bi bi-box-arrow-up-right"></i> Nota
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
+                    @php
+                    $filaClass = $fila->es_ganada
+                    ? 'table-success'
+                    : ($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_NO
+                    ? 'table-warning'
+                    : '');
+                    @endphp
+                    <tr class="{{ $filaClass }}">
+                        <td class="text-nowrap">{{ $fila->nronota }}</td>
+                        <td class="small text-nowrap">{{ $fila->fecha_creacion?->format('d/m/Y') ?? '—' }}</td>
+                        <td class="font-monospace small">{{ $fila->codigo_proceso ?: '—' }}</td>
+                        <td class="cell-seguimiento">@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $fila->resultado_propio])</td>
+                        <td class="small">
+                            @if($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SI)
+                            <span class="badge text-bg-success">Sí</span>
+                            @elseif($fila->participacion_mp === \App\Services\CompraAgilComisionesService::PARTICIPACION_SIN_PROVEEDORES)
+                            <span class="badge text-bg-info" title="Mercado Público aún no muestra proveedores cotizando">Sin proveedores en MP</span>
+                            @else
+                            <span class="badge text-bg-warning">No participó</span>
+                            @endif
+                        </td>
+                        <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
+                        <td class="small">
+                            <span class="font-monospace">{{ $fila->orden_compra_nota ?: '—' }}</span>
+                            @if($fila->orden_compra_nota_registro !== '')
+                            <div class="text-muted">{{ $fila->orden_compra_nota_registro }}</div>
+                            @endif
+                            @if($fila->orden_compra_no_coincide)
+                            <div><span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span></div>
+                            @endif
+                        </td>
+                        <td class="small">
+                            @if($fila->orden_compra_mp !== '')
+                            <span class="font-monospace">{{ $fila->orden_compra_mp }}</span>
+                            @if($fila->orden_compra_mp_resuelta_en)
+                            <div class="text-muted">Obtenida {{ $fila->orden_compra_mp_resuelta_en->format('d/m/Y H:i') }}</div>
+                            @endif
+                            @elseif($fila->orden_compra_nota === '' && $fila->orden_compra !== '')
+                            <span class="text-muted">{{ $fila->orden_compra }}</span>
+                            @else
+                            —
+                            @endif
+                        </td>
+                        <td class="small text-muted">{{ $fila->fecha_envio_oc_label ?? ($fila->fecha_envio_oc?->format('d/m/Y H:i') ?? '—') }}</td>
+                        <td class="small">{{ $fila->ejecutivo }}</td>
+                        <td class="small">{{ $fila->region_nombre }}</td>
+                        <td class="text-end small tabular-nums">{{ number_format($fila->factor, 2, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->costo, 0, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->venta, 0, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->venta_12, 0, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->utilidad, 0, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->comision_20, 0, ',', '.') }}</td>
+                        <td class="text-end small tabular-nums">${{ number_format($fila->pago, 0, ',', '.') }}</td>
+                        <td class="text-end small fw-semibold tabular-nums">${{ number_format($fila->a_pagar, 0, ',', '.') }}</td>
+                        <td class="text-end text-nowrap">
+                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                                <button type="button"
+                                    class="btn btn-outline-secondary btn-sm btn-detalle-mp"
+                                    data-nronota="{{ $fila->nronota }}"
+                                    title="Ver participantes y detalle en Mercado Público">
+                                    Detalle MP
+                                </button>
+                                <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $fila->nronota], $comisionesRetorno)) }}"
+                                    class="btn btn-outline-primary btn-sm" title="Ir a la nota">
+                                    <i class="bi bi-box-arrow-up-right"></i> Nota
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
                     @empty
-                        <tr>
-                            <td colspan="20" class="text-center text-muted py-4">Sin cotizaciones cerradas, desiertas o canceladas para los filtros aplicados.</td>
-                        </tr>
+                    <tr>
+                        <td colspan="20" class="text-center text-muted py-4">Sin cotizaciones cerradas, desiertas o canceladas para los filtros aplicados.</td>
+                    </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -219,45 +220,45 @@
 
 @push('scripts')
 <script>
-(function () {
-    // Si quedó un overlay de una descarga anterior, liberar la UI de inmediato.
-    try {
-        document.documentElement.classList.remove('page-loader-active');
-        document.body.classList.remove('is-loading');
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-            loader.classList.remove('is-active');
-            loader.setAttribute('aria-hidden', 'true');
-        }
-        if (window.PageLoader && typeof window.PageLoader.hide === 'function') {
-            window.PageLoader.hide();
-        }
-        sessionStorage.removeItem('page-loader-pending');
-    } catch (e) {}
+    (function() {
+        // Si quedó un overlay de una descarga anterior, liberar la UI de inmediato.
+        try {
+            document.documentElement.classList.remove('page-loader-active');
+            document.body.classList.remove('is-loading');
+            const loader = document.getElementById('page-loader');
+            if (loader) {
+                loader.classList.remove('is-active');
+                loader.setAttribute('aria-hidden', 'true');
+            }
+            if (window.PageLoader && typeof window.PageLoader.hide === 'function') {
+                window.PageLoader.hide();
+            }
+            sessionStorage.removeItem('page-loader-pending');
+        } catch (e) {}
 
-    const hint = document.getElementById('comisiones-export-hint');
-    const links = document.querySelectorAll('a.js-comisiones-export');
-    if (!hint || !links.length) {
-        return;
-    }
+        const hint = document.getElementById('comisiones-export-hint');
+        const links = document.querySelectorAll('a.js-comisiones-export');
+        if (!hint || !links.length) {
+            return;
+        }
 
-    links.forEach(function (link) {
-        link.addEventListener('click', function () {
-            hint.classList.remove('d-none');
-            links.forEach(function (el) {
-                el.classList.add('disabled');
-                el.setAttribute('aria-disabled', 'true');
-            });
-            setTimeout(function () {
-                hint.classList.add('d-none');
-                links.forEach(function (el) {
-                    el.classList.remove('disabled');
-                    el.removeAttribute('aria-disabled');
+        links.forEach(function(link) {
+            link.addEventListener('click', function() {
+                hint.classList.remove('d-none');
+                links.forEach(function(el) {
+                    el.classList.add('disabled');
+                    el.setAttribute('aria-disabled', 'true');
                 });
-            }, 12000);
+                setTimeout(function() {
+                    hint.classList.add('d-none');
+                    links.forEach(function(el) {
+                        el.classList.remove('disabled');
+                        el.removeAttribute('aria-disabled');
+                    });
+                }, 12000);
+            });
         });
-    });
-})();
+    })();
 </script>
 @endpush
 @endsection
