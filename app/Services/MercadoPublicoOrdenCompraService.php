@@ -21,6 +21,9 @@ class MercadoPublicoOrdenCompraService
     /** MP redondea el IVA por línea: el total de la OC puede diferir en $1 del monto ganado. */
     public const TOLERANCIA_MONTO_OC = 1.5;
 
+    /** Código Compra Ágil en nombre/descripción de una OC (ej. 1057496-852-COT26). */
+    private const PATRON_CODIGO_COT = '/\b(\d+-\d+-COT\d+)\b/i';
+
     /** @var array<string, array{total: ?float, total_neto: ?float}|null> */
     private array $totalesOcMemo = [];
 
@@ -631,6 +634,9 @@ class MercadoPublicoOrdenCompraService
             if (! is_array($item)) {
                 continue;
             }
+            if ($this->itemCitaOtraCotizacion($item, $codigoCot)) {
+                continue;
+            }
             $itemNombre = $this->normalizarNombreOc((string) ($item['Nombre'] ?? ''));
             if ($itemNombre === '') {
                 continue;
@@ -700,6 +706,9 @@ class MercadoPublicoOrdenCompraService
             }
             $codigo = $this->codigoAgDesdeItem($item);
             if ($codigo === null || ! str_starts_with($codigo, $prefix.'-')) {
+                continue;
+            }
+            if ($this->itemCitaOtraCotizacion($item, $codigoCot)) {
                 continue;
             }
             $candidatos[$codigo] = $item;
@@ -796,6 +805,35 @@ class MercadoPublicoOrdenCompraService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * True si Nombre/Descripción de la OC menciona un COT distinto al buscado
+     * (hermano del mismo organismo, p. ej. 850 vs 852).
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public function itemCitaOtraCotizacion(array $item, string $codigoCot): bool
+    {
+        $texto = trim((string) ($item['Nombre'] ?? '')).' '.trim((string) ($item['Descripcion'] ?? ''));
+
+        return $this->textoCitaOtraCotizacion($texto, $codigoCot);
+    }
+
+    public function textoCitaOtraCotizacion(string $texto, string $codigoCot): bool
+    {
+        $codigoCot = strtoupper(trim($codigoCot));
+        if ($codigoCot === '' || ! preg_match_all(self::PATRON_CODIGO_COT, $texto, $m)) {
+            return false;
+        }
+
+        foreach ($m[1] as $citado) {
+            if (strtoupper(trim((string) $citado)) !== $codigoCot) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

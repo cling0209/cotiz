@@ -534,6 +534,61 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
         );
     }
 
+    public function test_no_toma_oc_que_cita_otro_cot_aunque_el_monto_calce(): void
+    {
+        Http::fake();
+
+        $listado = [
+            [
+                'Codigo' => '1057496-1734-AG26',
+                'Nombre' => 'Adquisición de cajas archivo americana desde compra ágil: 1057496-852-COT26',
+            ],
+        ];
+
+        $this->assertNull($this->service->buscarCodigoEnListado(
+            $listado,
+            '1057496-850-COT26',
+            'Catéter pig tail',
+            215300.0,
+        ));
+        Http::assertNothingSent();
+    }
+
+    public function test_por_nombre_omite_oc_que_cita_otro_cot(): void
+    {
+        Http::fake();
+
+        $nombre = 'MATERIAL HOSPITAL SAN LUIS';
+        $listado = [
+            [
+                'Codigo' => '1057496-1734-AG26',
+                'Nombre' => $nombre.' compra ágil: 1057496-852-COT26',
+            ],
+        ];
+
+        $this->assertNull($this->service->buscarCodigoPorNombreProceso(
+            $listado,
+            '1057496-850-COT26',
+            $nombre,
+        ));
+    }
+
+    public function test_texto_cita_otra_cotizacion(): void
+    {
+        $this->assertTrue($this->service->textoCitaOtraCotizacion(
+            'desde compra ágil: 1057496-852-COT26',
+            '1057496-850-COT26',
+        ));
+        $this->assertFalse($this->service->textoCitaOtraCotizacion(
+            'desde compra ágil: 1057496-850-COT26',
+            '1057496-850-COT26',
+        ));
+        $this->assertFalse($this->service->textoCitaOtraCotizacion(
+            'ARTICULOS PEDAGOGICOS UTP',
+            '3958-91-COT26',
+        ));
+    }
+
     public function test_desambigua_prefijos_multiples_por_monto_detalle(): void
     {
         Http::fake(function ($request) {
