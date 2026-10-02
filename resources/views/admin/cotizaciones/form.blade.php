@@ -8,74 +8,74 @@
 
 @section('content')
 @php
-$desdeAdjudicadas = $desdeAdjudicadas ?? false;
-$desdeOportunidades = $desdeOportunidades ?? false;
-$oportunidadYaVinculada = $oportunidadYaVinculada ?? false;
-$codigoImportarCompraAgil = strtoupper(trim((string) ($codigoImportarCompraAgil ?? '')));
-$cotizacionListadoUrl = $cotizacionListadoUrl ?? route('admin.cotizaciones.index');
-$cotizacionListadoLabel = $cotizacionListadoLabel ?? 'Listado';
-$cotizacionListadoQuery = $cotizacionListadoQuery ?? [];
-$encargadoMostrado = old('encargado', $nota->encargado);
-if ($desdeOportunidades && $codigoImportarCompraAgil !== '') {
-$encargadoMostrado = $codigoImportarCompraAgil;
-}
-$esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
-$esInterna = $esInterna ?? $nota->esCotizacionInterna();
-$cotizarIaHabilitado = ! $desdeAdjudicadas && ! $esInterna
-&& \App\Services\CotizarIaService::usuarioPermitido(auth()->user());
-$mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
-$factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
-$factorMostrado = number_format($factorValor, 2, ',', '');
-$factorInput = old('factor_precio_venta', $factorMostrado);
-$detalleColspan = ($desdeAdjudicadas ? 15 : 16) - ($mostrarSoftland ? 0 : 1);
-$totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
+    $desdeAdjudicadas = $desdeAdjudicadas ?? false;
+    $desdeOportunidades = $desdeOportunidades ?? false;
+    $oportunidadYaVinculada = $oportunidadYaVinculada ?? false;
+    $codigoImportarCompraAgil = strtoupper(trim((string) ($codigoImportarCompraAgil ?? '')));
+    $cotizacionListadoUrl = $cotizacionListadoUrl ?? route('admin.cotizaciones.index');
+    $cotizacionListadoLabel = $cotizacionListadoLabel ?? 'Listado';
+    $cotizacionListadoQuery = $cotizacionListadoQuery ?? [];
+    $encargadoMostrado = old('encargado', $nota->encargado);
+    if ($desdeOportunidades && $codigoImportarCompraAgil !== '') {
+        $encargadoMostrado = $codigoImportarCompraAgil;
+    }
+    $esBorrador = $esBorrador ?? ((int) $nota->nronota === 0);
+    $esInterna = $esInterna ?? $nota->esCotizacionInterna();
+    $cotizarIaHabilitado = ! $desdeAdjudicadas && ! $esInterna
+        && \App\Services\CotizarIaService::usuarioPermitido(auth()->user());
+    $mostrarSoftland = $mostrarSoftland ?? auth()->user()?->isSuperAdmin();
+    $factorValor = (float) ($nota->factor_precio_venta ?? config('cotiz.factor_precio_venta'));
+    $factorMostrado = number_format($factorValor, 2, ',', '');
+    $factorInput = old('factor_precio_venta', $factorMostrado);
+    $detalleColspan = ($desdeAdjudicadas ? 15 : 16) - ($mostrarSoftland ? 0 : 1);
+    $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
 @endphp
 
 <div class="cotizacion-ingreso">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <h1 class="h5 mb-0" id="cotiz-titulo-nota">
             @if($desdeAdjudicadas)
-            Cotizaciones adjudicadas
+                Cotizaciones adjudicadas
             @elseif($esInterna && $esBorrador)
-            Nueva cotizaci&oacute;n interna
+                Nueva cotizaci&oacute;n interna
             @elseif($esBorrador)
-            Nueva cotizaci&oacute;n
+                Nueva cotizaci&oacute;n
             @else
-            Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
-            @if($nota->esCopiaDeCotizacion())
-            <span class="badge text-bg-secondary align-middle" title="Copia {{ $nota->correlativo }} del mismo c&oacute;digo de Mercado P&uacute;blico">
-                Copia {{ $nota->correlativo }}
-            </span>
-            @endif
+                Ingreso Cotizaci&oacute;n #{{ $nota->nronota }}
+                @if($nota->esCopiaDeCotizacion())
+                    <span class="badge text-bg-secondary align-middle" title="Copia {{ $nota->correlativo }} del mismo c&oacute;digo de Mercado P&uacute;blico">
+                        Copia {{ $nota->correlativo }}
+                    </span>
+                @endif
             @endif
         </h1>
         <a href="{{ $cotizacionListadoUrl }}" class="btn btn-outline-secondary btn-sm">&larr; {{ $cotizacionListadoLabel }}</a>
     </div>
 
     @if($requiereNumeroCotizacion && ! $desdeAdjudicadas && ! $esInterna)
-    <div class="alert alert-info py-2 mb-2" role="alert">
-        @if($esBorrador)
-        Use <strong>Importar desde Compra &Aacute;gil</strong> o <strong>Grabar</strong> para comenzar.
-        El <strong>n&uacute;mero de nota</strong> se genera solo al importar productos o al grabar.
-        @else
-        Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF / Word</strong>.
-        @endif
-    </div>
+        <div class="alert alert-info py-2 mb-2" role="alert">
+            @if($esBorrador)
+                Use <strong>Importar desde Compra &Aacute;gil</strong> o <strong>Grabar</strong> para comenzar.
+                El <strong>n&uacute;mero de nota</strong> se genera solo al importar productos o al grabar.
+            @else
+                Use <strong>Importar desde Compra &Aacute;gil</strong> para comenzar. El n&uacute;mero de cotizaci&oacute;n debe estar <strong>guardado</strong> antes de <strong>Agregar producto</strong> o analizar un <strong>PDF / Word</strong>.
+            @endif
+        </div>
     @endif
 
     @if($hayPrecioAntiguo)
-    <div class="alert alert-warning py-2 alert-precio-antiguo mb-2">
-        Hay productos con precio de actualizaci&oacute;n anterior a {{ $umbralPrecioMeses }} mes(es) (fechas en rojo).
-    </div>
+        <div class="alert alert-warning py-2 alert-precio-antiguo mb-2">
+            Hay productos con precio de actualizaci&oacute;n anterior a {{ $umbralPrecioMeses }} mes(es) (fechas en rojo).
+        </div>
     @endif
 
     <form method="post" action="{{ route('admin.cotizaciones.update', $nota->nronota) }}" id="form-cotizacion" data-no-loader>
         @csrf
         @foreach($cotizacionListadoQuery as $retornoKey => $retornoValor)
-        <input type="hidden" name="{{ $retornoKey }}" value="{{ $retornoValor }}">
+            <input type="hidden" name="{{ $retornoKey }}" value="{{ $retornoValor }}">
         @endforeach
         @if($esInterna)
-        <input type="hidden" name="es_interna" id="es_interna" value="1">
+            <input type="hidden" name="es_interna" id="es_interna" value="1">
         @endif
 
         <fieldset class="cotiz-cabecera">
@@ -97,13 +97,14 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                             maxlength="100"
                             value="{{ $encargadoMostrado }}"
                             @if($esInterna || $desdeOportunidades) readonly @endif
-                            @class([ 'cotiz-campo-numero-cotiz'=> $requiereNumeroCotizacion || (isset($errors) && $errors->has('encargado')),
-                        'is-invalid' => isset($errors) && $errors->has('encargado'),
-                        ])
-                        placeholder="{{ $esInterna ? 'CM- + n° de nota al grabar' : ($requiereNumeroCotizacion ? 'Se completa al importar o para PDF / Word' : '') }}"
+                            @class([
+                                'cotiz-campo-numero-cotiz' => $requiereNumeroCotizacion || (isset($errors) && $errors->has('encargado')),
+                                'is-invalid' => isset($errors) && $errors->has('encargado'),
+                            ])
+                            placeholder="{{ $esInterna ? 'CM- + n° de nota al grabar' : ($requiereNumeroCotizacion ? 'Se completa al importar o para PDF / Word' : '') }}"
                         >
                         @error('encargado')
-                        <div class="text-danger small mt-1">{{ $message }}</div>
+                            <div class="text-danger small mt-1">{{ $message }}</div>
                         @enderror
                     </td>
                     <th>Celular</th>
@@ -128,29 +129,29 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                 <tr>
                     <th>O.Compra</th>
                     @php
-                    $segOc = $nota->exists ? $nota->mpSeguimiento : null;
-                    $ocompraMp = $segOc?->ocompraMp() ?? '';
-                    $registroOcManual = trim((string) $nota->ocompra) !== '' ? $nota->textoRegistroOcompra() : '';
+                        $segOc = $nota->exists ? $nota->mpSeguimiento : null;
+                        $ocompraMp = $segOc?->ocompraMp() ?? '';
+                        $registroOcManual = trim((string) $nota->ocompra) !== '' ? $nota->textoRegistroOcompra() : '';
                     @endphp
                     <td>
                         @php
-                        $bloquearOcompraPorMp = $nota->exists && $nota->ocompraDesdeApi();
+                            $bloquearOcompraPorMp = $nota->exists && $nota->ocompraDesdeApi();
                         @endphp
                         <input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"
                             @if($bloquearOcompraPorMp) readonly @endif>
                         @if($bloquearOcompraPorMp)
-                        <small class="text-muted d-block">C&oacute;digo de Mercado P&uacute;blico; no se puede modificar aqu&iacute;.</small>
+                            <small class="text-muted d-block">C&oacute;digo de Mercado P&uacute;blico; no se puede modificar aqu&iacute;.</small>
                         @endif
                         @if($registroOcManual !== '')
-                        <small class="text-muted d-block" title="Usuario y fecha en que se ingresó el código manual">Ingresada: {{ $registroOcManual }}</small>
+                            <small class="text-muted d-block" title="Usuario y fecha en que se ingresó el código manual">Ingresada: {{ $registroOcManual }}</small>
                         @endif
                         @if($ocompraMp !== '')
-                        <small class="text-muted d-block" title="Código obtenido de Mercado Público; se usa mientras no se ingrese uno manual">
-                            MP: {{ $ocompraMp }}
-                            @if($segOc->ocompra_mp_resuelta_en)
-                            · obtenida {{ $segOc->ocompra_mp_resuelta_en->format('d/m/Y H:i') }}
-                            @endif
-                        </small>
+                            <small class="text-muted d-block" title="Código obtenido de Mercado Público; se usa mientras no se ingrese uno manual">
+                                MP: {{ $ocompraMp }}
+                                @if($segOc->ocompra_mp_resuelta_en)
+                                    · obtenida {{ $segOc->ocompra_mp_resuelta_en->format('d/m/Y H:i') }}
+                                @endif
+                            </small>
                         @endif
                     </td>
                     <th>Entrega</th>
@@ -197,8 +198,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                     <th>Obs. ejecutivo</th>
                     <td colspan="5">
                         @php
-                        $puedeEditarObsEjecutivo = $puedeEditarObservacionEjecutivo ?? true;
-                        $obsEjecutivoValor = old('observacion_ejecutivo', $nota->observacion_ejecutivo);
+                            $puedeEditarObsEjecutivo = $puedeEditarObservacionEjecutivo ?? true;
+                            $obsEjecutivoValor = old('observacion_ejecutivo', $nota->observacion_ejecutivo);
                         @endphp
                         <textarea
                             name="observacion_ejecutivo"
@@ -206,65 +207,67 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                             rows="2"
                             maxlength="5000"
                             placeholder="Comentario interno del ejecutivo"
-                            @if(! $puedeEditarObsEjecutivo) readonly @endif>{{ $obsEjecutivoValor }}</textarea>
+                            @if(! $puedeEditarObsEjecutivo) readonly @endif
+                        >{{ $obsEjecutivoValor }}</textarea>
                         <div class="small text-muted mt-1">Solo uso interno (no sale en PDF ni al cliente).</div>
                     </td>
                 </tr>
             </table>
 
             @if($requiereNumeroCotizacion)
-            <div class="cotiz-guardar-numero mt-2">
-                <button type="submit" name="accion" value="grabar" class="btn btn-primary btn-sm">Guardar n&uacute;mero</button>
-            </div>
+                <div class="cotiz-guardar-numero mt-2">
+                    <button type="submit" name="accion" value="grabar" class="btn btn-primary btn-sm">Guardar n&uacute;mero</button>
+                </div>
             @endif
         </fieldset>
 
         @php
-        $obsAdmin = $observacionesOrganismo['admin'] ?? null;
-        $obsAuto = $observacionesOrganismo['automatica'] ?? null;
+            $obsAdmin = $observacionesOrganismo['admin'] ?? null;
+            $obsAuto = $observacionesOrganismo['automatica'] ?? null;
         @endphp
         @if($obsAdmin || $obsAuto)
-        <div class="alert alert-info py-2 small mb-2" role="status" id="cotiz-observacion-organismo">
-            <div class="fw-semibold mb-1">
-                <i class="bi bi-building"></i> Observaciones del organismo
+            <div class="alert alert-info py-2 small mb-2" role="status" id="cotiz-observacion-organismo">
+                <div class="fw-semibold mb-1">
+                    <i class="bi bi-building"></i> Observaciones del organismo
+                </div>
+                @if($obsAuto)
+                    <div class="mb-1">
+                        <span class="badge text-bg-secondary">Automático</span>
+                        <span style="white-space: pre-wrap;">{{ $obsAuto }}</span>
+                    </div>
+                @endif
+                @if($obsAdmin)
+                    <div>
+                        <span class="badge text-bg-primary">Admin</span>
+                        <span style="white-space: pre-wrap;">{{ $obsAdmin }}</span>
+                    </div>
+                @endif
             </div>
-            @if($obsAuto)
-            <div class="mb-1">
-                <span class="badge text-bg-secondary">Automático</span>
-                <span style="white-space: pre-wrap;">{{ $obsAuto }}</span>
-            </div>
-            @endif
-            @if($obsAdmin)
-            <div>
-                <span class="badge text-bg-primary">Admin</span>
-                <span style="white-space: pre-wrap;">{{ $obsAdmin }}</span>
-            </div>
-            @endif
-        </div>
         @endif
 
         @if($desdeAdjudicadas)
-        <p class="small text-muted mb-2" id="cotiz-resumen-lineas-actual">
-            {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
-            ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
-        </p>
+            <p class="small text-muted mb-2" id="cotiz-resumen-lineas-actual">
+                {{ $resumenLineas['total'] }} l&iacute;nea(s) en la cotizaci&oacute;n
+                ({{ $resumenLineas['con_agile'] }} con ID Agile, {{ $resumenLineas['sin_agile'] }} sin ID Agile).
+            </p>
         @endif
 
         <div class="cotiz-contenido-detalle">
-            @unless($desdeAdjudicadas)
+        @unless($desdeAdjudicadas)
             <div class="cotiz-importar-mp mb-2 d-flex flex-wrap gap-2 align-items-center">
                 @unless($esInterna)
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btn-abrir-importar-compra-agil">
                     <i class="bi bi-clipboard-data"></i> Importar desde Compra &Aacute;gil 2.0
                 </button>
                 @if($cotizarIaHabilitado)
-                <button
-                    type="button"
-                    class="btn btn-outline-success btn-sm"
-                    id="btn-cotizar-ia"
-                    title="La IA toma los productos de la cotización o de sus adjuntos y los vincula al más económico. No graba nada hasta que confirme.">
-                    <i class="bi bi-stars"></i> Cotizar con IA
-                </button>
+                    <button
+                        type="button"
+                        class="btn btn-outline-success btn-sm"
+                        id="btn-cotizar-ia"
+                        title="La IA toma los productos de la cotización o de sus adjuntos y los vincula al más económico. No graba nada hasta que confirme."
+                    >
+                        <i class="bi bi-stars"></i> Cotizar con IA
+                    </button>
                 @endif
                 @endunless
                 <span class="small text-muted" id="cotiz-resumen-lineas-actual">
@@ -275,149 +278,147 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                 <span class="small text-muted">Importe desde Mercado P&uacute;blico, pegue texto, suba un PDF / Word o un Excel de listado de materiales.</span>
                 @endunless
             </div>
-            @endunless
+        @endunless
             @unless($desdeAdjudicadas)
-            <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
-                <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
-                    <span class="text-nowrap"><strong>&Uacute;ltimo factor guardado:</strong> <span id="factor_precio_venta_mostrado">{{ $factorMostrado }}</span></span>
-                    <label for="factor_precio_venta" class="mb-0 text-nowrap"><strong>Factor Aumento Precio Venta:</strong></label>
-                    <input type="text" name="factor_precio_venta" id="factor_precio_venta" size="7" maxlength="7" inputmode="decimal" autocomplete="off" title="Hasta 2 decimales (ej.: 1,30)" value="{{ $factorInput }}" @class(['is-invalid'=> $errors->has('factor_precio_venta')])>
-                    @error('factor_precio_venta')
-                    <span class="text-danger small">{{ $message }}</span>
-                    @enderror
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
-                </span>
-            </div>
+                <div id="notaventa-bloque-factor" class="cotiz-cabecera-factor mb-2">
+                    <span class="d-inline-flex flex-wrap align-items-center column-gap-3 row-gap-2">
+                        <span class="text-nowrap"><strong>&Uacute;ltimo factor guardado:</strong> <span id="factor_precio_venta_mostrado">{{ $factorMostrado }}</span></span>
+                        <label for="factor_precio_venta" class="mb-0 text-nowrap"><strong>Factor Aumento Precio Venta:</strong></label>
+                        <input type="text" name="factor_precio_venta" id="factor_precio_venta" size="7" maxlength="7" inputmode="decimal" autocomplete="off" title="Hasta 2 decimales (ej.: 1,30)" value="{{ $factorInput }}" @class(['is-invalid' => $errors->has('factor_precio_venta')])>
+                        @error('factor_precio_venta')
+                            <span class="text-danger small">{{ $message }}</span>
+                        @enderror
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnFactorAumentoAceptar">Aplicar Nuevo Factor</button>
+                    </span>
+                </div>
             @else
-            <p class="small text-muted mb-2"><strong>Factor de aumento:</strong> {{ $factorMostrado }}</p>
+                <p class="small text-muted mb-2"><strong>Factor de aumento:</strong> {{ $factorMostrado }}</p>
             @endunless
 
-            @unless($desdeAdjudicadas)
-            <div class="cotiz-agregar mb-2 d-flex flex-wrap gap-2 align-items-center">
-                <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
-                    <i class="bi bi-plus-circle"></i> Agregar producto
-                </button>
-                @if(auth()->user()->isEjecutivo())
+        @unless($desdeAdjudicadas)
+        <div class="cotiz-agregar mb-2 d-flex flex-wrap gap-2 align-items-center">
+            <button type="button" class="btn btn-success btn-sm" id="btn-abrir-buscar-producto">
+                <i class="bi bi-plus-circle"></i> Agregar producto
+            </button>
+            @if(auth()->user()->isEjecutivo())
                 <a href="{{ route('admin.productos.create') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-box-seam"></i> Crear producto en maestro
                 </a>
-                @endif
-            </div>
-            @endunless
-
-            <div id="notaventa-tabla-detalle-wrap" data-max-orden="{{ $lineas->count() }}">
-                <table id="tabla_detalle" class="table table-sm @if($mostrarSoftland) tabla-con-softland @endif">
-                    <colgroup>
-                        <col class="col-linea-drag">
-                        <col class="col-linea-img">
-                        <col class="col-linea-codigo">
-                        @if($mostrarSoftland)
-                        <col class="col-linea-softland">
-                        @endif
-                        <col class="col-linea-id-agile">
-                        <col class="col-linea-desc-agile">
-                        <col class="col-linea-desc-maestro">
-                        <col class="col-linea-observacion">
-                        <col class="col-linea-observacion-cliente">
-                        <col class="col-linea-fecha">
-                        <col class="col-linea-costo">
-                        <col class="col-linea-unitario">
-                        <col class="col-linea-cantidad">
-                        <col class="col-linea-total">
-                        <col class="col-linea-orden">
-                        @unless($desdeAdjudicadas)
-                        <col class="col-linea-eliminar">
-                        @endunless
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th class="linea-drag-col" title="Arrastrar para reordenar"></th>
-                            <th class="linea-img-col">Imagen</th>
-                            <th class="linea-codigo-col">C&oacute;digo</th>
-                            @if($mostrarSoftland)
-                            <th class="linea-softland-col">Cod. Softland</th>
-                            @endif
-                            <th class="linea-id-agile-col">ID Agile</th>
-                            <th class="linea-desc-agile-col">Descripci&oacute;n Agile (MP)</th>
-                            <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
-                            <th class="linea-observacion-col" title="Observaci&oacute;n interna (solo ejecutivo)">Obs.<br>interna</th>
-                            <th class="linea-observacion-cliente-col" title="Observaci&oacute;n cliente (sale en el PDF)">Obs.<br>cliente</th>
-                            <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
-                            <th class="linea-costo-col">Precio<br>Costo</th>
-                            <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
-                            <th class="linea-cantidad-col">Cantidad</th>
-                            <th class="linea-total-col">Total</th>
-                            <th class="linea-orden-col">Orden</th>
-                            @unless($desdeAdjudicadas)
-                            <th class="linea-eliminar-col">Acci&oacute;n</th>
-                            @endunless
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($lineas as $idx => $row)
-                        @include('admin.cotizaciones.partials.linea-detalle-row', [
-                        'idx' => $idx,
-                        'row' => $row,
-                        'isFirst' => $loop->first,
-                        'isLast' => $loop->last,
-                        'totalLineas' => $lineas->count(),
-                        'desdeAdjudicadas' => $desdeAdjudicadas,
-                        'mostrarSoftland' => $mostrarSoftland,
-                        ])
-                        @empty
-                        <tr>
-                            <td colspan="{{ $detalleColspan }}" class="text-muted text-center py-3">@if($desdeAdjudicadas)Sin l&iacute;neas.@else Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.@endif</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            @if($lineas->isNotEmpty() && ! $desdeAdjudicadas)
-            <div id="panelMercadoPublico" class="cotiz-panel-mp">
-                <p class="cotiz-panel-mp__texto mb-2">
-                    <strong>Mercado P&uacute;blico</strong> &mdash; <em>valor unitario</em> por l&iacute;nea (usa <strong>ID Agile</strong> del maestro; si falta, el prefijo num&eacute;rico del c&oacute;digo interno). El valor despacho en la copia es siempre <strong>0</strong> (sin despacho).
-                </p>
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <button type="button" id="btnCopiarMP" class="btn btn-outline-secondary btn-sm">Copiar para MP (portapapeles)</button>
-                    <span id="mpCopiaMsg" class="cotiz-panel-mp__msg" hidden></span>
-                </div>
-            </div>
             @endif
+        </div>
+        @endunless
 
-            <fieldset class="cotiz-botones">
-                @unless($requiereNumeroCotizacion)
+        <div id="notaventa-tabla-detalle-wrap" data-max-orden="{{ $lineas->count() }}">
+            <table id="tabla_detalle" class="table table-sm @if($mostrarSoftland) tabla-con-softland @endif">
+                <colgroup>
+                    <col class="col-linea-drag">
+                    <col class="col-linea-img">
+                    <col class="col-linea-codigo">
+                    @if($mostrarSoftland)
+                    <col class="col-linea-softland">
+                    @endif
+                    <col class="col-linea-id-agile">
+                    <col class="col-linea-desc-agile">
+                    <col class="col-linea-desc-maestro">
+                    <col class="col-linea-observacion">
+                    <col class="col-linea-observacion-cliente">
+                    <col class="col-linea-fecha">
+                    <col class="col-linea-costo">
+                    <col class="col-linea-unitario">
+                    <col class="col-linea-cantidad">
+                    <col class="col-linea-total">
+                    <col class="col-linea-orden">
+                    @unless($desdeAdjudicadas)
+                    <col class="col-linea-eliminar">
+                    @endunless
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="linea-drag-col" title="Arrastrar para reordenar"></th>
+                        <th class="linea-img-col">Imagen</th>
+                        <th class="linea-codigo-col">C&oacute;digo</th>
+                        @if($mostrarSoftland)
+                        <th class="linea-softland-col">Cod. Softland</th>
+                        @endif
+                        <th class="linea-id-agile-col">ID Agile</th>
+                        <th class="linea-desc-agile-col">Descripci&oacute;n Agile (MP)</th>
+                        <th class="linea-desc-maestro-col">Descripci&oacute;n maestro</th>
+                        <th class="linea-observacion-col" title="Observaci&oacute;n interna (solo ejecutivo)">Obs.<br>interna</th>
+                        <th class="linea-observacion-cliente-col" title="Observaci&oacute;n cliente (sale en el PDF)">Obs.<br>cliente</th>
+                        <th class="linea-fecha-col">Fecha<br>act.&nbsp;precio</th>
+                        <th class="linea-costo-col">Precio<br>Costo</th>
+                        <th class="linea-precio-unitario-col">Precio<br>Unitario</th>
+                        <th class="linea-cantidad-col">Cantidad</th>
+                        <th class="linea-total-col">Total</th>
+                        <th class="linea-orden-col">Orden</th>
+                        @unless($desdeAdjudicadas)
+                            <th class="linea-eliminar-col">Acci&oacute;n</th>
+                        @endunless
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($lineas as $idx => $row)
+                        @include('admin.cotizaciones.partials.linea-detalle-row', [
+                            'idx' => $idx,
+                            'row' => $row,
+                            'isFirst' => $loop->first,
+                            'isLast' => $loop->last,
+                            'totalLineas' => $lineas->count(),
+                            'desdeAdjudicadas' => $desdeAdjudicadas,
+                            'mostrarSoftland' => $mostrarSoftland,
+                        ])
+                    @empty
+                        <tr><td colspan="{{ $detalleColspan }}" class="text-muted text-center py-3">@if($desdeAdjudicadas)Sin l&iacute;neas.@else Sin l&iacute;neas. Use &laquo;Importar desde Compra &Aacute;gil&raquo; o &laquo;Agregar producto&raquo;.@endif</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        @if($lineas->isNotEmpty() && ! $desdeAdjudicadas)
+        <div id="panelMercadoPublico" class="cotiz-panel-mp">
+            <p class="cotiz-panel-mp__texto mb-2">
+                <strong>Mercado P&uacute;blico</strong> &mdash; <em>valor unitario</em> por l&iacute;nea (usa <strong>ID Agile</strong> del maestro; si falta, el prefijo num&eacute;rico del c&oacute;digo interno). El valor despacho en la copia es siempre <strong>0</strong> (sin despacho).
+            </p>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" id="btnCopiarMP" class="btn btn-outline-secondary btn-sm">Copiar para MP (portapapeles)</button>
+                <span id="mpCopiaMsg" class="cotiz-panel-mp__msg" hidden></span>
+            </div>
+        </div>
+        @endif
+
+        <fieldset class="cotiz-botones">
+            @unless($requiereNumeroCotizacion)
                 <button type="submit" name="accion" value="grabar" class="btn btn-primary btn-sm">Grabar</button>
-                @endunless
-                <input type="hidden" name="nronota" id="nronota" value="{{ $nota->nronota }}">
-                @if($lineas->isNotEmpty())
+            @endunless
+            <input type="hidden" name="nronota" id="nronota" value="{{ $nota->nronota }}">
+            @if($lineas->isNotEmpty())
                 @if(in_array(mb_strtolower(trim((string) auth()->user()?->username)), ['pame', 'admin'], true))
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-copiar-frase-cotiz" title="Copiar saludo para pegar en otro lado" aria-label="Copiar saludo de cotizaci&oacute;n">
-                    <i class="bi bi-clipboard" aria-hidden="true"></i>
-                </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-copiar-frase-cotiz" title="Copiar saludo para pegar en otro lado" aria-label="Copiar saludo de cotizaci&oacute;n">
+                        <i class="bi bi-clipboard" aria-hidden="true"></i>
+                    </button>
                 @endif
                 <a href="{{ route('admin.cotizaciones.export.pdf', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm" id="btn-descargar-pdf">Descargar PDF</a>
                 @unless($desdeAdjudicadas)
-                <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
+                    <a href="{{ route('admin.cotizaciones.export.archivo', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Archivo</a>
                 @endunless
                 <a href="{{ route('admin.cotizaciones.export.excel', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Excel</a>
                 @unless($desdeAdjudicadas)
-                <a href="{{ route('admin.cotizaciones.export.guia', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a</a>
-                <a href="{{ route('admin.cotizaciones.export.guia-ingreso', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a Ingreso</a>
+                    <a href="{{ route('admin.cotizaciones.export.guia', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a</a>
+                    <a href="{{ route('admin.cotizaciones.export.guia-ingreso', $nota->nronota) }}" class="btn btn-outline-secondary btn-sm">Descargar Gu&iacute;a Ingreso</a>
                 @endunless
-                @endif
-            </fieldset>
+            @endif
+        </fieldset>
         </div>
     </form>
 
     @unless($desdeAdjudicadas)
     <div id="cotiz-eliminar-lineas-forms">
-        @foreach($lineas as $idx => $row)
+    @foreach($lineas as $idx => $row)
         @include('admin.cotizaciones.partials.linea-detalle-delete-form', [
-        'nota' => $nota,
-        'row' => $row,
+            'nota' => $nota,
+            'row' => $row,
         ])
-        @endforeach
+    @endforeach
     </div>
     @endunless
 
@@ -451,7 +452,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 id="modal-buscar-input"
                                 class="form-control"
                                 placeholder="Texto del cliente, c&oacute;digo o descripci&oacute;n..."
-                                autocomplete="off">
+                                autocomplete="off"
+                            >
                             <button type="button" class="btn btn-outline-secondary" id="btn-modal-buscar-limpiar" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
                                 <i class="bi bi-x-lg"></i>
                             </button>
@@ -480,9 +482,7 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 </tr>
                             </thead>
                             <tbody id="modal-buscar-resultados">
-                                <tr>
-                                    <td colspan="6" class="text-muted text-center py-3">Sin resultados.</td>
-                                </tr>
+                                <tr><td colspan="6" class="text-muted text-center py-3">Sin resultados.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -500,7 +500,7 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
     @endunless
 
     @if($cotizarIaHabilitado)
-    @include('admin.cotizaciones.partials.cotizar-ia-modal')
+        @include('admin.cotizaciones.partials.cotizar-ia-modal')
     @endif
 
     @unless($desdeAdjudicadas)
@@ -543,7 +543,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                         class="form-control form-control-sm font-monospace{{ $desdeOportunidades ? ' bg-light' : '' }}"
                                         placeholder="1161-172-COT26"
                                         value="{{ $desdeOportunidades ? $codigoImportarCompraAgil : '' }}"
-                                        @if($desdeOportunidades) readonly @endif>
+                                        @if($desdeOportunidades) readonly @endif
+                                    >
                                 </div>
                                 <div class="col-md-auto{{ $oportunidadYaVinculada ? ' d-none' : '' }}" id="wrap-ca-buscar-codigo">
                                     <button type="button" class="btn btn-primary btn-sm" id="btn-ca-buscar-codigo"><i class="bi bi-hash"></i> Cargar</button>
@@ -556,7 +557,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 id="importar-compra-agil-texto"
                                 class="form-control form-control-sm font-monospace mb-2"
                                 rows="8"
-                                placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;..."></textarea>
+                                placeholder="Detalle de la cotización 1161-172-COT26&#10;Nombre&#10;...&#10;SERVICIO AGRICOLA Y GANADERO&#10;RUT 61.303.000-7&#10;..."
+                            ></textarea>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar">
                                 <i class="bi bi-search"></i> Analizar texto pegado
                             </button>
@@ -564,9 +566,9 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                         <div class="tab-pane fade" id="panel-ca-pdf" role="tabpanel">
                             <p class="small text-muted mb-2">Suba un PDF o Word (.docx), o pinche un adjunto abajo. Indique el <strong>nombre de las columnas</strong> de cantidad y producto (como aparecen en el encabezado de la tabla). Se procesan todas las hojas; si el t&iacute;tulo se repite en otras p&aacute;ginas, se omite autom&aacute;ticamente. M&aacute;ximo {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }} MB.</p>
                             @if($requiereNumeroCotizacion)
-                            <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
-                                Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
-                            </div>
+                                <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
+                                    Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
+                                </div>
                             @endif
                             <div class="row g-2 mb-2">
                                 <div class="col-md-4">
@@ -582,7 +584,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 type="file"
                                 id="importar-compra-agil-pdf"
                                 class="form-control form-control-sm mb-2"
-                                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            >
                             <p class="small text-muted mb-2 d-none" id="importar-compra-agil-pdf-adjunto-hint"></p>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-pdf">
                                 <i class="bi bi-file-earmark-text"></i> Analizar PDF / Word
@@ -596,9 +599,9 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 M&aacute;ximo {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }} MB.
                             </p>
                             @if($requiereNumeroCotizacion)
-                            <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
-                                Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
-                            </div>
+                                <div class="alert alert-warning py-2 px-3 small mb-2 cotiz-alerta-numero-pendiente">
+                                    Puede analizar sin n&uacute;mero; al importar se solicitar&aacute; el n&uacute;mero de cotizaci&oacute;n (se valida en este sitio y en el otro).
+                                </div>
                             @endif
                             <div class="row g-2 mb-2">
                                 <div class="col-md-4">
@@ -614,7 +617,8 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                                 type="file"
                                 id="importar-compra-agil-excel"
                                 class="form-control form-control-sm mb-2"
-                                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
+                                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                            >
                             <p class="small text-muted mb-2 d-none" id="importar-compra-agil-excel-adjunto-hint"></p>
                             <button type="button" class="btn btn-primary btn-sm" id="btn-importar-compra-agil-analizar-excel">
                                 <i class="bi bi-file-earmark-spreadsheet"></i> Analizar Excel
@@ -843,1849 +847,1750 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script>
-    (function() {
-        let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
-        const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
-        const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
-        const previewImportarCompraAgil = @json($previewImportarCompraAgil ?? null);
-        const desdeOportunidades = @json($desdeOportunidades ?? false);
-        const oportunidadYaVinculada = @json($oportunidadYaVinculada ?? false);
-        const oportunidadesUserId = @json((int)(auth() - > id() ?? 0));
+(function () {
+    let requiereNumeroCotizacion = @json($requiereNumeroCotizacion);
+    const abrirImportarAlInicio = @json($abrirImportarAlInicio ?? false);
+    const codigoImportarCompraAgil = @json($codigoImportarCompraAgil ?? '');
+    const previewImportarCompraAgil = @json($previewImportarCompraAgil ?? null);
+    const desdeOportunidades = @json($desdeOportunidades ?? false);
+    const oportunidadYaVinculada = @json($oportunidadYaVinculada ?? false);
+    const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
 
-        // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
-        (function marcarVisitaOportunidadLocal() {
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase().trim();
-            if (!codigo || oportunidadesUserId <= 0) {
+    // Si llegamos desde Oportunidades (?codigo=), marcar "visto" en este navegador.
+    (function marcarVisitaOportunidadLocal() {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase().trim();
+        if (!codigo || oportunidadesUserId <= 0) {
+            return;
+        }
+        const storageKey = 'cotiz.oportunidades.visitas.' + oportunidadesUserId;
+        const onceKey = 'cotiz.oportunidad_visita_once.' + oportunidadesUserId + '.' + codigo;
+        try {
+            const last = Number(sessionStorage.getItem(onceKey) || 0);
+            if (last && (Date.now() - last) < 20000) {
                 return;
             }
-            const storageKey = 'cotiz.oportunidades.visitas.' + oportunidadesUserId;
-            const onceKey = 'cotiz.oportunidad_visita_once.' + oportunidadesUserId + '.' + codigo;
-            try {
-                const last = Number(sessionStorage.getItem(onceKey) || 0);
-                if (last && (Date.now() - last) < 20000) {
-                    return;
-                }
-                sessionStorage.setItem(onceKey, String(Date.now()));
-                const mapa = JSON.parse(localStorage.getItem(storageKey) || '{}');
-                mapa[codigo] = (Number(mapa[codigo]) || 0) + 1;
-                localStorage.setItem(storageKey, JSON.stringify(mapa));
-            } catch (e) {
-                // storage no disponible
-            }
-        })();
-
-        const desdeAdjudicadas = @json($desdeAdjudicadas);
-        const detalleColspan = @json($detalleColspan);
-        const mensajeSinLineas = desdeAdjudicadas ?
-            'Sin líneas.' :
-            'Sin líneas. Use «Importar desde Compra Ágil» o «Agregar producto».';
-
-        function dlgAlert(message, opts = {}) {
-            if (window.AdminDialog) {
-                return AdminDialog.alert(message, {
-                    type: 'warning',
-                    ...opts
-                });
-            }
-            alert(message);
+            sessionStorage.setItem(onceKey, String(Date.now()));
+            const mapa = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            mapa[codigo] = (Number(mapa[codigo]) || 0) + 1;
+            localStorage.setItem(storageKey, JSON.stringify(mapa));
+        } catch (e) {
+            // storage no disponible
         }
+    })();
 
-        function dlgConfirm(message, opts = {}) {
-            if (window.AdminDialog) {
-                return AdminDialog.confirm(message, opts);
-            }
-            return Promise.resolve(confirm(message));
+    const desdeAdjudicadas = @json($desdeAdjudicadas);
+    const detalleColspan = @json($detalleColspan);
+    const mensajeSinLineas = desdeAdjudicadas
+        ? 'Sin líneas.'
+        : 'Sin líneas. Use «Importar desde Compra Ágil» o «Agregar producto».';
+
+    function dlgAlert(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.alert(message, { type: 'warning', ...opts });
         }
+        alert(message);
+    }
 
-        function dlgPrompt(message, opts = {}) {
-            if (window.AdminDialog?.prompt) {
-                return AdminDialog.prompt(message, opts);
-            }
-            const valor = window.prompt(message, opts.defaultValue || '');
-            return Promise.resolve(valor === null ? null : String(valor));
+    function dlgConfirm(message, opts = {}) {
+        if (window.AdminDialog) {
+            return AdminDialog.confirm(message, opts);
         }
+        return Promise.resolve(confirm(message));
+    }
 
-        function marcarNumeroCotizacionGuardadoEnUi(numero) {
-            encargadoActual = String(numero || '').trim();
-            requiereNumeroCotizacion = false;
-            const enc = document.getElementById('encargado');
-            if (enc) {
-                enc.value = encargadoActual;
-                enc.classList.remove('cotiz-campo-numero-cotiz', 'is-invalid');
-            }
-            document.querySelectorAll('.cotiz-guardar-numero').forEach((el) => el.classList.add('d-none'));
-            document.querySelectorAll('.cotiz-alerta-numero-pendiente').forEach((el) => el.classList.add('d-none'));
+    function dlgPrompt(message, opts = {}) {
+        if (window.AdminDialog?.prompt) {
+            return AdminDialog.prompt(message, opts);
         }
+        const valor = window.prompt(message, opts.defaultValue || '');
+        return Promise.resolve(valor === null ? null : String(valor));
+    }
 
-        function asegurarNumeroCotizacionGuardada(opciones = {}) {
-            if (!requiereNumeroCotizacion) {
-                return true;
-            }
-            const enc = document.getElementById('encargado');
-            const valor = String(enc?.value || '').trim();
-            const titulo = opciones.titulo || 'Cotización';
-            if (!valor) {
-                dlgAlert(opciones.mensajeVacio || 'Debe ingresar la cotización.', {
-                    title: titulo
-                });
-                enc?.focus();
-                return false;
-            }
-            dlgAlert(
-                opciones.mensajeGuardar || 'Guarde la cotización con el botón «Guardar número» antes de continuar.', {
-                    title: titulo
-                },
-            );
+    function marcarNumeroCotizacionGuardadoEnUi(numero) {
+        encargadoActual = String(numero || '').trim();
+        requiereNumeroCotizacion = false;
+        const enc = document.getElementById('encargado');
+        if (enc) {
+            enc.value = encargadoActual;
+            enc.classList.remove('cotiz-campo-numero-cotiz', 'is-invalid');
+        }
+        document.querySelectorAll('.cotiz-guardar-numero').forEach((el) => el.classList.add('d-none'));
+        document.querySelectorAll('.cotiz-alerta-numero-pendiente').forEach((el) => el.classList.add('d-none'));
+    }
+
+    function asegurarNumeroCotizacionGuardada(opciones = {}) {
+        if (!requiereNumeroCotizacion) {
+            return true;
+        }
+        const enc = document.getElementById('encargado');
+        const valor = String(enc?.value || '').trim();
+        const titulo = opciones.titulo || 'Cotización';
+        if (!valor) {
+            dlgAlert(opciones.mensajeVacio || 'Debe ingresar la cotización.', { title: titulo });
             enc?.focus();
             return false;
         }
+        dlgAlert(
+            opciones.mensajeGuardar || 'Guarde la cotización con el botón «Guardar número» antes de continuar.',
+            { title: titulo },
+        );
+        enc?.focus();
+        return false;
+    }
 
-        /**
-         * Si la nota aún no tiene número guardado: popup → valida sitio par → guarda cabecera (como Guardar número).
-         * @returns {Promise<boolean>}
-         */
-        async function asegurarNumeroCotizacionAlImportar(opciones = {}) {
-            if (!requiereNumeroCotizacion) {
-                return true;
-            }
-
-            const enc = document.getElementById('encargado');
-            const titulo = opciones.titulo || 'Número de cotización';
-            const predeterminado = String(enc?.value || encargadoActual || '').trim().toUpperCase();
-
-            const ingresado = await dlgPrompt(
-                opciones.mensaje || 'Ingrese el número de cotización para importar las líneas.', {
-                    title: titulo,
-                    defaultValue: predeterminado,
-                    placeholder: 'Ej: 1161-172-COT26',
-                    okText: opciones.okText || 'Guardar e importar',
-                    cancelText: 'Cancelar',
-                    type: 'warning',
-                    maxLength: 100,
-                },
-            );
-
-            if (ingresado === null) {
-                return false;
-            }
-
-            const numero = String(ingresado || '').trim().toUpperCase();
-            if (!numero) {
-                await dlgAlert('Debe ingresar el número de cotización.', {
-                    title: titulo,
-                    type: 'warning'
-                });
-                return false;
-            }
-
-            if (enc) {
-                enc.value = numero;
-            }
-
-            try {
-                mostrarProgresoImportar();
-                actualizarProgresoImportar(0, 0, 'Guardando número de cotización…');
-                const cabecera = collectCabeceraFromForm();
-                cabecera.encargado = numero;
-                const {
-                    res,
-                    json
-                } = await postJson(cabeceraUrl, cabecera);
-                if (!res.ok) {
-                    throw new Error(extraerMensajeError(json, 'No se pudo guardar el número de cotización.'));
-                }
-
-                marcarNumeroCotizacionGuardadoEnUi(numero);
-                ocultarProgresoImportar();
-                return true;
-            } catch (err) {
-                ocultarProgresoImportar();
-                await dlgAlert(err?.message || 'No se puede usar este número de cotización.', {
-                    title: titulo,
-                    type: 'danger',
-                });
-                enc?.focus();
-                return false;
-            }
-        }
-
-        const fmt = n => '$' + Math.round(n).toLocaleString('es-CL');
-
-        function codigoProductoTexto(val) {
-            if (val == null || val === '') return '';
-            if (typeof val === 'number' && Number.isFinite(val)) {
-                return Number.isInteger(val) ?
-                    String(val) :
-                    val.toLocaleString('fullwide', {
-                        useGrouping: false,
-                        maximumFractionDigits: 0
-                    });
-            }
-            const s = String(val).trim();
-            const m = s.replace(/\s/g, '').match(/^([\d]+(?:[,\.]\d+)?)[eE]([+\-]?\d+)$/);
-            if (!m) return s;
-            const mantissa = parseFloat(m[1].replace(',', '.'));
-            const exp = parseInt(m[2], 10);
-            if (!Number.isFinite(mantissa) || !Number.isFinite(exp)) return s;
-            return (mantissa * Math.pow(10, exp)).toLocaleString('fullwide', {
-                useGrouping: false,
-                maximumFractionDigits: 0
-            });
-        }
-
-        const montototal = document.getElementById('montototal');
-        const montototalIva = document.getElementById('montototal_iva');
-        const factorInput = document.getElementById('factor_precio_venta');
-        let factorUrl = @json(route('admin.cotizaciones.factor', $nota - > nronota));
-        let cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota - > nronota));
-        let envioDexUrls = {
-            catalogo: @json(route('admin.cotizaciones.envio-dex.catalogo', $nota - > nronota)),
-            cotizar: @json(route('admin.cotizaciones.envio-dex.cotizar', $nota - > nronota)),
-        };
-        let lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota - > nronota));
-        let encargadoActual = @json(trim((string) $encargadoMostrado));
-        let consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota - > nronota));
-        let cotizNronotaActual = @json((int) $nota - > nronota);
-        const cotizEditUrlTpl = @json(route('admin.cotizaciones.edit', ['nronota' => 999999999]));
-
-        function rewriteCotizUrl(url, fromNro, toNro) {
-            return String(url || '').split('/cotizaciones/' + fromNro).join('/cotizaciones/' + toNro);
-        }
-
-        function sincronizarNronotaDesdeJson(json) {
-            const n = Number(json?.nronota || 0);
-            if (!n || n === cotizNronotaActual) {
-                return false;
-            }
-            const prev = String(cotizNronotaActual);
-            const neu = String(n);
-            factorUrl = rewriteCotizUrl(factorUrl, prev, neu);
-            cabeceraUrl = rewriteCotizUrl(cabeceraUrl, prev, neu);
-            lineasLoteUrl = rewriteCotizUrl(lineasLoteUrl, prev, neu);
-            consultaParValidarUrl = rewriteCotizUrl(consultaParValidarUrl, prev, neu);
-            if (typeof ordenUrl !== 'undefined') ordenUrl = rewriteCotizUrl(ordenUrl, prev, neu);
-            if (typeof lineasUrl !== 'undefined') lineasUrl = rewriteCotizUrl(lineasUrl, prev, neu);
-            if (typeof vincularAgileUrl !== 'undefined') vincularAgileUrl = rewriteCotizUrl(vincularAgileUrl, prev, neu);
-            if (typeof importarMpUrls === 'object' && importarMpUrls) {
-                Object.keys(importarMpUrls).forEach((k) => {
-                    importarMpUrls[k] = rewriteCotizUrl(importarMpUrls[k], prev, neu);
-                });
-            }
-            if (typeof envioDexUrls === 'object' && envioDexUrls) {
-                Object.keys(envioDexUrls).forEach((k) => {
-                    envioDexUrls[k] = rewriteCotizUrl(envioDexUrls[k], prev, neu);
-                });
-            }
-            cotizNronotaActual = n;
-            const hidden = document.getElementById('nronota');
-            if (hidden) hidden.value = neu;
-            const form = document.getElementById('form-cotizacion');
-            if (form?.action) form.action = rewriteCotizUrl(form.action, prev, neu);
-            const titulo = document.getElementById('cotiz-titulo-nota');
-            if (titulo) titulo.innerHTML = 'Ingreso Cotizaci&oacute;n #' + neu;
-            const editUrl = json.edit_url || String(cotizEditUrlTpl).replace('999999999', neu);
-            try {
-                history.replaceState(null, '', editUrl);
-            } catch (e) {}
-            document.title = String(document.title || '').replace(/Cotización\s+\d+|Nueva cotización/i, 'Cotización ' + neu);
+    /**
+     * Si la nota aún no tiene número guardado: popup → valida sitio par → guarda cabecera (como Guardar número).
+     * @returns {Promise<boolean>}
+     */
+    async function asegurarNumeroCotizacionAlImportar(opciones = {}) {
+        if (!requiereNumeroCotizacion) {
             return true;
         }
 
-        function irANotaTrasAccion(json) {
-            const n = Number(json?.nronota || 0);
-            const url = json?.edit_url;
-            if (url && n > 0 && (cotizNronotaActual === 0 || Number(document.getElementById('nronota')?.value || 0) === 0)) {
-                window.location.href = url;
-                return true;
-            }
-            if (sincronizarNronotaDesdeJson(json) && url && json?.recien_creada) {
-                // Ya actualizado en la misma página; el caller decide si recarga.
-            }
+        const enc = document.getElementById('encargado');
+        const titulo = opciones.titulo || 'Número de cotización';
+        const predeterminado = String(enc?.value || encargadoActual || '').trim().toUpperCase();
+
+        const ingresado = await dlgPrompt(
+            opciones.mensaje || 'Ingrese el número de cotización para importar las líneas.',
+            {
+                title: titulo,
+                defaultValue: predeterminado,
+                placeholder: 'Ej: 1161-172-COT26',
+                okText: opciones.okText || 'Guardar e importar',
+                cancelText: 'Cancelar',
+                type: 'warning',
+                maxLength: 100,
+            },
+        );
+
+        if (ingresado === null) {
             return false;
         }
 
-        const consultaParConfig = {
-            mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
-            maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 30)),
-            esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 5) * 1000),
-            // Ping directo desde el browser al /up (+ login oculto) del par (Render free cold start).
-            wakeUrl: @json(\App\ Support\ CotizInstanciaPar::urlDespertarSitioPar()),
-            wakeLoginUrl: @json(\App\ Support\ CotizInstanciaPar::urlLoginSitioPar()),
+        const numero = String(ingresado || '').trim().toUpperCase();
+        if (!numero) {
+            await dlgAlert('Debe ingresar el número de cotización.', { title: titulo, type: 'warning' });
+            return false;
+        }
+
+        if (enc) {
+            enc.value = numero;
+        }
+
+        try {
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Guardando número de cotización…');
+            const cabecera = collectCabeceraFromForm();
+            cabecera.encargado = numero;
+            const { res, json } = await postJson(cabeceraUrl, cabecera);
+            if (!res.ok) {
+                throw new Error(extraerMensajeError(json, 'No se pudo guardar el número de cotización.'));
+            }
+
+            marcarNumeroCotizacionGuardadoEnUi(numero);
+            ocultarProgresoImportar();
+            return true;
+        } catch (err) {
+            ocultarProgresoImportar();
+            await dlgAlert(err?.message || 'No se puede usar este número de cotización.', {
+                title: titulo,
+                type: 'danger',
+            });
+            enc?.focus();
+            return false;
+        }
+    }
+
+    const fmt = n => '$' + Math.round(n).toLocaleString('es-CL');
+
+    function codigoProductoTexto(val) {
+        if (val == null || val === '') return '';
+        if (typeof val === 'number' && Number.isFinite(val)) {
+            return Number.isInteger(val)
+                ? String(val)
+                : val.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+        }
+        const s = String(val).trim();
+        const m = s.replace(/\s/g, '').match(/^([\d]+(?:[,\.]\d+)?)[eE]([+\-]?\d+)$/);
+        if (!m) return s;
+        const mantissa = parseFloat(m[1].replace(',', '.'));
+        const exp = parseInt(m[2], 10);
+        if (!Number.isFinite(mantissa) || !Number.isFinite(exp)) return s;
+        return (mantissa * Math.pow(10, exp)).toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+    }
+
+    const montototal = document.getElementById('montototal');
+    const montototalIva = document.getElementById('montototal_iva');
+    const factorInput = document.getElementById('factor_precio_venta');
+    let factorUrl = @json(route('admin.cotizaciones.factor', $nota->nronota));
+    let cabeceraUrl = @json(route('admin.cotizaciones.cabecera.store', $nota->nronota));
+    let envioDexUrls = {
+        catalogo: @json(route('admin.cotizaciones.envio-dex.catalogo', $nota->nronota)),
+        cotizar: @json(route('admin.cotizaciones.envio-dex.cotizar', $nota->nronota)),
+    };
+    let lineasLoteUrl = @json(route('admin.cotizaciones.lineas.lote', $nota->nronota));
+    let encargadoActual = @json(trim((string) $encargadoMostrado));
+    let consultaParValidarUrl = @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota));
+    let cotizNronotaActual = @json((int) $nota->nronota);
+    const cotizEditUrlTpl = @json(route('admin.cotizaciones.edit', ['nronota' => 999999999]));
+
+    function rewriteCotizUrl(url, fromNro, toNro) {
+        return String(url || '').split('/cotizaciones/' + fromNro).join('/cotizaciones/' + toNro);
+    }
+
+    function sincronizarNronotaDesdeJson(json) {
+        const n = Number(json?.nronota || 0);
+        if (!n || n === cotizNronotaActual) {
+            return false;
+        }
+        const prev = String(cotizNronotaActual);
+        const neu = String(n);
+        factorUrl = rewriteCotizUrl(factorUrl, prev, neu);
+        cabeceraUrl = rewriteCotizUrl(cabeceraUrl, prev, neu);
+        lineasLoteUrl = rewriteCotizUrl(lineasLoteUrl, prev, neu);
+        consultaParValidarUrl = rewriteCotizUrl(consultaParValidarUrl, prev, neu);
+        if (typeof ordenUrl !== 'undefined') ordenUrl = rewriteCotizUrl(ordenUrl, prev, neu);
+        if (typeof lineasUrl !== 'undefined') lineasUrl = rewriteCotizUrl(lineasUrl, prev, neu);
+        if (typeof vincularAgileUrl !== 'undefined') vincularAgileUrl = rewriteCotizUrl(vincularAgileUrl, prev, neu);
+        if (typeof importarMpUrls === 'object' && importarMpUrls) {
+            Object.keys(importarMpUrls).forEach((k) => {
+                importarMpUrls[k] = rewriteCotizUrl(importarMpUrls[k], prev, neu);
+            });
+        }
+        if (typeof envioDexUrls === 'object' && envioDexUrls) {
+            Object.keys(envioDexUrls).forEach((k) => {
+                envioDexUrls[k] = rewriteCotizUrl(envioDexUrls[k], prev, neu);
+            });
+        }
+        cotizNronotaActual = n;
+        const hidden = document.getElementById('nronota');
+        if (hidden) hidden.value = neu;
+        const form = document.getElementById('form-cotizacion');
+        if (form?.action) form.action = rewriteCotizUrl(form.action, prev, neu);
+        const titulo = document.getElementById('cotiz-titulo-nota');
+        if (titulo) titulo.innerHTML = 'Ingreso Cotizaci&oacute;n #' + neu;
+        const editUrl = json.edit_url || String(cotizEditUrlTpl).replace('999999999', neu);
+        try {
+            history.replaceState(null, '', editUrl);
+        } catch (e) {}
+        document.title = String(document.title || '').replace(/Cotización\s+\d+|Nueva cotización/i, 'Cotización ' + neu);
+        return true;
+    }
+
+    function irANotaTrasAccion(json) {
+        const n = Number(json?.nronota || 0);
+        const url = json?.edit_url;
+        if (url && n > 0 && (cotizNronotaActual === 0 || Number(document.getElementById('nronota')?.value || 0) === 0)) {
+            window.location.href = url;
+            return true;
+        }
+        if (sincronizarNronotaDesdeJson(json) && url && json?.recien_creada) {
+            // Ya actualizado en la misma página; el caller decide si recarga.
+        }
+        return false;
+    }
+
+    const consultaParConfig = {
+        mensaje: @json(config('cotiz.api_nota.consulta_par_mensaje_iniciando')),
+        maxIntentos: @json((int) config('cotiz.api_nota.consulta_par_max_intentos', 30)),
+        esperaMs: @json((int) config('cotiz.api_nota.consulta_par_espera_segundos', 5) * 1000),
+        // Ping directo desde el browser al /up (+ login oculto) del par (Render free cold start).
+        wakeUrl: @json(\App\Support\CotizInstanciaPar::urlDespertarSitioPar()),
+        wakeLoginUrl: @json(\App\Support\CotizInstanciaPar::urlLoginSitioPar()),
+    };
+    const lineasPorLote = 10;
+    const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
+
+    function parseFactorChile(texto) {
+        let t = String(texto ?? '').trim().replace(/\s/g, '');
+        if (!t) return null;
+        if (/^\d+[,.]$/.test(t)) {
+            t = t.slice(0, -1);
+        }
+        if (!t) return null;
+        const norm = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+        if (!/^\d+(?:\.\d{1,2})?$/.test(norm)) return null;
+        const f = parseFloat(norm);
+        return Number.isFinite(f) && f > 0 ? Math.round(f * 100) / 100 : null;
+    }
+
+    function formatFactorChile(f) {
+        return f.toFixed(2).replace('.', ',');
+    }
+
+    function factorActualCotiz() {
+        const parsed = factorInput ? parseFactorChile(factorInput.value) : null;
+        if (parsed !== null) return parsed;
+        const mostrado = document.getElementById('factor_precio_venta_mostrado')?.textContent;
+        const fromMostrado = parseFactorChile(mostrado);
+        if (fromMostrado !== null) return fromMostrado;
+        return 1.22;
+    }
+
+    function precioVentaSegunFactorJs(costo, fallbackCatalogo) {
+        const c = parseInt(costo, 10) || 0;
+        const factor = factorActualCotiz();
+        if (c > 0 && factor > 0) {
+            return Math.round(c * factor);
+        }
+        return parseInt(fallbackCatalogo, 10) || 0;
+    }
+
+    factorInput?.addEventListener('input', function () {
+        let out = '';
+        let sepUsed = false;
+        for (const ch of String(this.value || '')) {
+            if (ch >= '0' && ch <= '9') {
+                out += ch;
+            } else if ((ch === ',' || ch === '.') && !sepUsed) {
+                out += ch;
+                sepUsed = true;
+            }
+        }
+        if (out !== this.value) {
+            this.value = out;
+        }
+        this.classList.remove('is-invalid');
+    });
+
+    factorInput?.addEventListener('blur', function () {
+        const parsed = parseFactorChile(this.value);
+        if (parsed === null) {
+            if (String(this.value || '').trim() !== '') {
+                this.classList.add('is-invalid');
+            }
+            return;
+        }
+        this.classList.remove('is-invalid');
+        this.value = formatFactorChile(parsed);
+    });
+
+    function setLoaderMensaje(texto) {
+        if (window.PageLoader?.setStatus) {
+            window.PageLoader.setStatus(texto || '', { showBar: false });
+            return;
+        }
+        const msg = document.getElementById('page-loader-msg');
+        const status = document.getElementById('page-loader-status');
+        if (!msg || !status) return;
+        const valor = String(texto || '').trim();
+        status.hidden = !valor;
+        msg.textContent = valor;
+        msg.hidden = !valor;
+    }
+
+    function setLoaderConsultaParProgreso(intento, max, mensaje) {
+        const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
+        if (window.PageLoader?.setStatus) {
+            window.PageLoader.setStatus(texto, {
+                showBar: true,
+                intento: intento,
+                max: max,
+            });
+            return;
+        }
+        setLoaderMensaje(texto);
+    }
+
+    function extraerMensajeError(json, fallback) {
+        if (json?.error) return json.error;
+        if (json?.message) return json.message;
+        if (json?.errors) {
+            const first = Object.values(json.errors)[0];
+            if (Array.isArray(first) && first[0]) return first[0];
+        }
+        return fallback;
+    }
+
+    function collectCabeceraFromForm() {
+        const form = document.getElementById('form-cotizacion');
+        const val = (name) => form?.querySelector('[name="' + name + '"]')?.value ?? '';
+        const payload = {
+            descripcion: val('descripcion'),
+            empresa: val('empresa'),
+            encargado: val('encargado'),
+            celular: val('celular'),
+            contacto: val('contacto'),
+            contactocorreo: val('contactocorreo'),
+            rutempresa: val('rutempresa'),
+            diashabiles: val('diashabiles') !== '' ? parseInt(val('diashabiles'), 10) : null,
+            ocompra: val('ocompra'),
+            fechaentrega: val('fechaentrega') || null,
+            direccion_entrega: val('direccion_entrega'),
+            region: val('region') !== '' ? parseInt(val('region'), 10) : null,
+            nombre_region: val('nombre_region'),
+            comuna: val('comuna'),
+            observacion_ejecutivo: val('observacion_ejecutivo'),
         };
-        const lineasPorLote = 10;
-        const btnFactorAumento = document.getElementById('btnFactorAumentoAceptar');
-
-        function parseFactorChile(texto) {
-            let t = String(texto ?? '').trim().replace(/\s/g, '');
-            if (!t) return null;
-            if (/^\d+[,.]$/.test(t)) {
-                t = t.slice(0, -1);
-            }
-            if (!t) return null;
-            const norm = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
-            if (!/^\d+(?:\.\d{1,2})?$/.test(norm)) return null;
-            const f = parseFloat(norm);
-            return Number.isFinite(f) && f > 0 ? Math.round(f * 100) / 100 : null;
+        if (factorInput && String(factorInput.value || '').trim() !== '') {
+            payload.factor_precio_venta = factorInput.value;
         }
+        return payload;
+    }
 
-        function formatFactorChile(f) {
-            return f.toFixed(2).replace('.', ',');
-        }
+    function collectLineaDesdeFila(tr) {
+        const prodItem = String(tr.dataset.prod || tr.querySelector('input[name*="[prod_item]"]')?.value || '').trim();
+        const ordenRaw = tr.dataset.orden || tr.querySelector('input[name*="[orden]"]')?.value;
+        const orden = parseInt(String(ordenRaw || ''), 10);
+        if (!prodItem || Number.isNaN(orden)) return null;
 
-        function factorActualCotiz() {
-            const parsed = factorInput ? parseFactorChile(factorInput.value) : null;
-            if (parsed !== null) return parsed;
-            const mostrado = document.getElementById('factor_precio_venta_mostrado')?.textContent;
-            const fromMostrado = parseFactorChile(mostrado);
-            if (fromMostrado !== null) return fromMostrado;
-            return 1.22;
-        }
+        const linea = { prod_item: prodItem, orden: orden };
+        const softland = tr.querySelector('input[name*="[prod_item_softland]"]');
+        const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
+        const valor = tr.querySelector('input[name*="[prod_valor]"]');
+        const cantidad = tr.querySelector('input[name*="[cantidad]"]');
+        const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
+        const observacion = tr.querySelector('textarea[name$="[observacion]"]');
+        const observacionCliente = tr.querySelector('textarea[name$="[observacion_cliente]"]');
+        if (softland) linea.prod_item_softland = softland.value;
+        if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
+        if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
+        if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
+        if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
+        if (observacion) linea.observacion = observacion.value;
+        if (observacionCliente) linea.observacion_cliente = observacionCliente.value;
+        return linea;
+    }
 
-        function precioVentaSegunFactorJs(costo, fallbackCatalogo) {
-            const c = parseInt(costo, 10) || 0;
-            const factor = factorActualCotiz();
-            if (c > 0 && factor > 0) {
-                return Math.round(c * factor);
-            }
-            return parseInt(fallbackCatalogo, 10) || 0;
-        }
+    function esCampoOrdenLinea(el) {
+        return !!(el && (el.classList?.contains('linea-orden-destino') || el.closest?.('.linea-orden-controls')));
+    }
 
-        factorInput?.addEventListener('input', function() {
-            let out = '';
-            let sepUsed = false;
-            for (const ch of String(this.value || '')) {
-                if (ch >= '0' && ch <= '9') {
-                    out += ch;
-                } else if ((ch === ',' || ch === '.') && !sepUsed) {
-                    out += ch;
-                    sepUsed = true;
-                }
-            }
-            if (out !== this.value) {
-                this.value = out;
-            }
-            this.classList.remove('is-invalid');
+    function marcarLineaDirty(tr) {
+        if (!tr || !tr.matches('tr[data-linea]')) return;
+        tr.dataset.dirty = '1';
+    }
+
+    function limpiarLineaDirty(tr) {
+        if (!tr || !tr.matches('tr[data-linea]')) return;
+        delete tr.dataset.dirty;
+    }
+
+    function collectLineasFromTable(opciones) {
+        const soloDirty = !!(opciones && opciones.soloDirty);
+        syncLineasHiddenDesdeDataset();
+        const lineas = [];
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
+            if (soloDirty && tr.dataset.dirty !== '1') return;
+            const linea = collectLineaDesdeFila(tr);
+            if (linea) lineas.push(linea);
         });
+        return lineas;
+    }
 
-        factorInput?.addEventListener('blur', function() {
-            const parsed = parseFactorChile(this.value);
-            if (parsed === null) {
-                if (String(this.value || '').trim() !== '') {
-                    this.classList.add('is-invalid');
-                }
-                return;
-            }
-            this.classList.remove('is-invalid');
-            this.value = formatFactorChile(parsed);
+    function syncLineasHiddenDesdeDataset() {
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function (tr) {
+            const prod = String(tr.dataset.prod || '').trim();
+            const orden = String(tr.dataset.orden || '').trim();
+            const prodHidden = tr.querySelector('input[name*="[prod_item]"]');
+            const ordenHidden = tr.querySelector('input[name*="[orden]"]');
+            if (prodHidden && prod !== '') prodHidden.value = prod;
+            if (ordenHidden && orden !== '') ordenHidden.value = orden;
         });
+    }
 
-        function setLoaderMensaje(texto) {
-            if (window.PageLoader?.setStatus) {
-                window.PageLoader.setStatus(texto || '', {
-                    showBar: false
-                });
+    function chunkArray(items, size) {
+        const chunks = [];
+        for (let i = 0; i < items.length; i += size) {
+            chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+    }
+
+    async function postJson(url, body) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        return { res, json };
+    }
+
+    function sleepMs(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function necesitaConsultaParEncargado(encargado) {
+        const numero = String(encargado || '').trim();
+        if (numero === '') return false;
+
+        return numero.localeCompare(String(encargadoActual || '').trim(), undefined, { sensitivity: 'accent' }) !== 0;
+    }
+
+    async function fetchValidarEncargadoPar(codigo, csrfValue) {
+        const body = new FormData();
+        body.append('_token', csrfValue || '');
+        body.append('codigo', String(codigo || '').trim().toUpperCase());
+        const res = await fetch(consultaParValidarUrl, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
+        });
+        const json = await res.json().catch(() => ({}));
+
+        return { res, json };
+    }
+
+    function esRespuestaColdStartConsultaPar(res, json) {
+        if (json?.cold_start === true) {
+            return true;
+        }
+
+        if (res.status === 503 && String(json?.message || '').trim() === String(consultaParConfig.mensaje || '').trim()) {
+            return true;
+        }
+
+        // Compat: respuestas viejas que cortaban sin cold_start
+        const err = String(json?.error || json?.message || '');
+        return /otro sitio/i.test(err) && /reintent/i.test(err);
+    }
+
+    function mensajeErrorSinConexionConsultaPar() {
+        return 'Error al consultar el otro sitio. Reintente nuevamente.';
+    }
+
+    /**
+     * Despierta el sitio par desde el navegador (más efectivo que el ping corto del servidor).
+     * No requiere login: /up + carga oculta de /admin/login mantienen el cold start de Render.
+     */
+    function despertarSitioParDesdeBrowser() {
+        const wakeUrl = String(consultaParConfig.wakeUrl || '').trim();
+        const loginUrl = String(consultaParConfig.wakeLoginUrl || '').trim();
+        if (!wakeUrl && !loginUrl) {
+            return;
+        }
+        const stamp = String(Date.now());
+
+        const ping = (url) => {
+            if (!url) {
                 return;
             }
-            const msg = document.getElementById('page-loader-msg');
-            const status = document.getElementById('page-loader-status');
-            if (!msg || !status) return;
-            const valor = String(texto || '').trim();
-            status.hidden = !valor;
-            msg.textContent = valor;
-            msg.hidden = !valor;
-        }
-
-        function setLoaderConsultaParProgreso(intento, max, mensaje) {
-            const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
-            if (window.PageLoader?.setStatus) {
-                window.PageLoader.setStatus(texto, {
-                    showBar: true,
-                    intento: intento,
-                    max: max,
-                });
-                return;
+            const withTs = url + (url.includes('?') ? '&' : '?') + '_wake=' + stamp;
+            try {
+                const img = new Image();
+                img.referrerPolicy = 'no-referrer';
+                img.src = withTs;
+            } catch (e) {
+                // ignore
             }
-            setLoaderMensaje(texto);
-        }
-
-        function extraerMensajeError(json, fallback) {
-            if (json?.error) return json.error;
-            if (json?.message) return json.message;
-            if (json?.errors) {
-                const first = Object.values(json.errors)[0];
-                if (Array.isArray(first) && first[0]) return first[0];
+            try {
+                fetch(withTs, {
+                    mode: 'no-cors',
+                    cache: 'no-store',
+                    credentials: 'omit',
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (e) {
+                // ignore
             }
-            return fallback;
-        }
+        };
 
-        function collectCabeceraFromForm() {
-            const form = document.getElementById('form-cotizacion');
-            const val = (name) => form?.querySelector('[name="' + name + '"]')?.value ?? '';
-            const payload = {
-                descripcion: val('descripcion'),
-                empresa: val('empresa'),
-                encargado: val('encargado'),
-                celular: val('celular'),
-                contacto: val('contacto'),
-                contactocorreo: val('contactocorreo'),
-                rutempresa: val('rutempresa'),
-                diashabiles: val('diashabiles') !== '' ? parseInt(val('diashabiles'), 10) : null,
-                ocompra: val('ocompra'),
-                fechaentrega: val('fechaentrega') || null,
-                direccion_entrega: val('direccion_entrega'),
-                region: val('region') !== '' ? parseInt(val('region'), 10) : null,
-                nombre_region: val('nombre_region'),
-                comuna: val('comuna'),
-                observacion_ejecutivo: val('observacion_ejecutivo'),
-            };
-            if (factorInput && String(factorInput.value || '').trim() !== '') {
-                payload.factor_precio_venta = factorInput.value;
+        ping(wakeUrl);
+
+        // Iframe oculto: deja la conexión abierta mientras Render levanta (login o /up).
+        const iframeUrl = loginUrl || wakeUrl;
+        if (iframeUrl) {
+            let iframe = document.getElementById('cotiz-wake-par-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'cotiz-wake-par-iframe';
+                iframe.setAttribute('aria-hidden', 'true');
+                iframe.tabIndex = -1;
+                iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;left:-9999px;';
+                document.body.appendChild(iframe);
             }
-            return payload;
+            iframe.src = iframeUrl + (iframeUrl.includes('?') ? '&' : '?') + '_wake=' + stamp;
         }
+    }
 
-        function collectLineaDesdeFila(tr) {
-            const prodItem = String(tr.dataset.prod || tr.querySelector('input[name*="[prod_item]"]')?.value || '').trim();
-            const ordenRaw = tr.dataset.orden || tr.querySelector('input[name*="[orden]"]')?.value;
-            const orden = parseInt(String(ordenRaw || ''), 10);
-            if (!prodItem || Number.isNaN(orden)) return null;
-
-            const linea = {
-                prod_item: prodItem,
-                orden: orden
-            };
-            const softland = tr.querySelector('input[name*="[prod_item_softland]"]');
-            const costo = tr.querySelector('input[name*="[prod_valor_costo]"]');
-            const valor = tr.querySelector('input[name*="[prod_valor]"]');
-            const cantidad = tr.querySelector('input[name*="[cantidad]"]');
-            const descMaestro = tr.querySelector('input[name*="[prod_descripcion_maestro]"]');
-            const observacion = tr.querySelector('textarea[name$="[observacion]"]');
-            const observacionCliente = tr.querySelector('textarea[name$="[observacion_cliente]"]');
-            if (softland) linea.prod_item_softland = softland.value;
-            if (costo && costo.value !== '') linea.prod_valor_costo = parseInt(costo.value, 10);
-            if (valor && valor.value !== '') linea.prod_valor = parseInt(valor.value, 10);
-            if (cantidad && cantidad.value !== '') linea.cantidad = parseInt(cantidad.value, 10);
-            if (descMaestro) linea.prod_descripcion_maestro = descMaestro.value;
-            if (observacion) linea.observacion = observacion.value;
-            if (observacionCliente) linea.observacion_cliente = observacionCliente.value;
-            return linea;
+    function detenerWakeSitioParBrowser() {
+        const iframe = document.getElementById('cotiz-wake-par-iframe');
+        if (iframe) {
+            iframe.removeAttribute('src');
         }
+    }
 
-        function esCampoOrdenLinea(el) {
-            return !!(el && (el.classList?.contains('linea-orden-destino') || el.closest?.('.linea-orden-controls')));
-        }
+    async function validarEncargadoParConEspera(codigo, opciones = {}) {
+        const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const max = consultaParConfig.maxIntentos;
+        const mensajeIniciando = consultaParConfig.mensaje;
 
-        function marcarLineaDirty(tr) {
-            if (!tr || !tr.matches('tr[data-linea]')) return;
-            tr.dataset.dirty = '1';
-        }
+        // Barra visible desde el primer intento (Importar Compra Ágil / Guardar número)
+        opciones.onProgress?.(1, max, mensajeIniciando);
+        // Ping inmediato al par (antes del primer round-trip al servidor).
+        despertarSitioParDesdeBrowser();
 
-        function limpiarLineaDirty(tr) {
-            if (!tr || !tr.matches('tr[data-linea]')) return;
-            delete tr.dataset.dirty;
-        }
-
-        function collectLineasFromTable(opciones) {
-            const soloDirty = !!(opciones && opciones.soloDirty);
-            syncLineasHiddenDesdeDataset();
-            const lineas = [];
-            document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function(tr) {
-                if (soloDirty && tr.dataset.dirty !== '1') return;
-                const linea = collectLineaDesdeFila(tr);
-                if (linea) lineas.push(linea);
-            });
-            return lineas;
-        }
-
-        function syncLineasHiddenDesdeDataset() {
-            document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(function(tr) {
-                const prod = String(tr.dataset.prod || '').trim();
-                const orden = String(tr.dataset.orden || '').trim();
-                const prodHidden = tr.querySelector('input[name*="[prod_item]"]');
-                const ordenHidden = tr.querySelector('input[name*="[orden]"]');
-                if (prodHidden && prod !== '') prodHidden.value = prod;
-                if (ordenHidden && orden !== '') ordenHidden.value = orden;
-            });
-        }
-
-        function chunkArray(items, size) {
-            const chunks = [];
-            for (let i = 0; i < items.length; i += size) {
-                chunks.push(items.slice(i, i + size));
-            }
-            return chunks;
-        }
-
-        async function postJson(url, body) {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                body: JSON.stringify(body),
-            });
-            const json = await res.json().catch(() => ({}));
-            return {
-                res,
-                json
-            };
-        }
-
-        function sleepMs(ms) {
-            return new Promise((resolve) => setTimeout(resolve, ms));
-        }
-
-        function necesitaConsultaParEncargado(encargado) {
-            const numero = String(encargado || '').trim();
-            if (numero === '') return false;
-
-            return numero.localeCompare(String(encargadoActual || '').trim(), undefined, {
-                sensitivity: 'accent'
-            }) !== 0;
-        }
-
-        async function fetchValidarEncargadoPar(codigo, csrfValue) {
-            const body = new FormData();
-            body.append('_token', csrfValue || '');
-            body.append('codigo', String(codigo || '').trim().toUpperCase());
-            const res = await fetch(consultaParValidarUrl, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body,
-            });
-            const json = await res.json().catch(() => ({}));
-
-            return {
-                res,
-                json
-            };
-        }
-
-        function esRespuestaColdStartConsultaPar(res, json) {
-            if (json?.cold_start === true) {
-                return true;
+        for (let intento = 1; intento <= max; intento++) {
+            if (intento > 1) {
+                opciones.onProgress?.(intento, max, mensajeIniciando);
             }
 
-            if (res.status === 503 && String(json?.message || '').trim() === String(consultaParConfig.mensaje || '').trim()) {
-                return true;
-            }
-
-            // Compat: respuestas viejas que cortaban sin cold_start
-            const err = String(json?.error || json?.message || '');
-            return /otro sitio/i.test(err) && /reintent/i.test(err);
-        }
-
-        function mensajeErrorSinConexionConsultaPar() {
-            return 'Error al consultar el otro sitio. Reintente nuevamente.';
-        }
-
-        /**
-         * Despierta el sitio par desde el navegador (más efectivo que el ping corto del servidor).
-         * No requiere login: /up + carga oculta de /admin/login mantienen el cold start de Render.
-         */
-        function despertarSitioParDesdeBrowser() {
-            const wakeUrl = String(consultaParConfig.wakeUrl || '').trim();
-            const loginUrl = String(consultaParConfig.wakeLoginUrl || '').trim();
-            if (!wakeUrl && !loginUrl) {
-                return;
-            }
-            const stamp = String(Date.now());
-
-            const ping = (url) => {
-                if (!url) {
-                    return;
-                }
-                const withTs = url + (url.includes('?') ? '&' : '?') + '_wake=' + stamp;
-                try {
-                    const img = new Image();
-                    img.referrerPolicy = 'no-referrer';
-                    img.src = withTs;
-                } catch (e) {
-                    // ignore
-                }
-                try {
-                    fetch(withTs, {
-                        mode: 'no-cors',
-                        cache: 'no-store',
-                        credentials: 'omit',
-                        keepalive: true,
-                    }).catch(() => {});
-                } catch (e) {
-                    // ignore
-                }
-            };
-
-            ping(wakeUrl);
-
-            // Iframe oculto: deja la conexión abierta mientras Render levanta (login o /up).
-            const iframeUrl = loginUrl || wakeUrl;
-            if (iframeUrl) {
-                let iframe = document.getElementById('cotiz-wake-par-iframe');
-                if (!iframe) {
-                    iframe = document.createElement('iframe');
-                    iframe.id = 'cotiz-wake-par-iframe';
-                    iframe.setAttribute('aria-hidden', 'true');
-                    iframe.tabIndex = -1;
-                    iframe.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none;left:-9999px;';
-                    document.body.appendChild(iframe);
-                }
-                iframe.src = iframeUrl + (iframeUrl.includes('?') ? '&' : '?') + '_wake=' + stamp;
-            }
-        }
-
-        function detenerWakeSitioParBrowser() {
-            const iframe = document.getElementById('cotiz-wake-par-iframe');
-            if (iframe) {
-                iframe.removeAttribute('src');
-            }
-        }
-
-        async function validarEncargadoParConEspera(codigo, opciones = {}) {
-            const token = opciones.csrf || document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const max = consultaParConfig.maxIntentos;
-            const mensajeIniciando = consultaParConfig.mensaje;
-
-            // Barra visible desde el primer intento (Importar Compra Ágil / Guardar número)
-            opciones.onProgress?.(1, max, mensajeIniciando);
-            // Ping inmediato al par (antes del primer round-trip al servidor).
-            despertarSitioParDesdeBrowser();
-
-            for (let intento = 1; intento <= max; intento++) {
-                if (intento > 1) {
-                    opciones.onProgress?.(intento, max, mensajeIniciando);
-                }
-
-                const {
-                    res,
-                    json
-                } = await fetchValidarEncargadoPar(codigo, token);
-                if (res.ok && json.ok) {
-                    detenerWakeSitioParBrowser();
-                    opciones.onSuccess?.(json);
-
-                    return json;
-                }
-
-                if (esRespuestaColdStartConsultaPar(res, json)) {
-                    // Cada 2 intentos renovar ping/iframe (Render free puede tardar 1–3 min).
-                    if (intento === 1 || intento % 2 === 0) {
-                        despertarSitioParDesdeBrowser();
-                    }
-                    opciones.onProgress?.(intento, max, mensajeIniciando);
-                    if (intento >= max) {
-                        detenerWakeSitioParBrowser();
-                        throw new Error(mensajeErrorSinConexionConsultaPar());
-                    }
-                    await sleepMs(consultaParConfig.esperaMs);
-                    continue;
-                }
-
+            const { res, json } = await fetchValidarEncargadoPar(codigo, token);
+            if (res.ok && json.ok) {
                 detenerWakeSitioParBrowser();
-                throw new Error(extraerMensajeError(json, 'No se puede usar este número de cotización.'));
+                opciones.onSuccess?.(json);
+
+                return json;
+            }
+
+            if (esRespuestaColdStartConsultaPar(res, json)) {
+                // Cada 2 intentos renovar ping/iframe (Render free puede tardar 1–3 min).
+                if (intento === 1 || intento % 2 === 0) {
+                    despertarSitioParDesdeBrowser();
+                }
+                opciones.onProgress?.(intento, max, mensajeIniciando);
+                if (intento >= max) {
+                    detenerWakeSitioParBrowser();
+                    throw new Error(mensajeErrorSinConexionConsultaPar());
+                }
+                await sleepMs(consultaParConfig.esperaMs);
+                continue;
             }
 
             detenerWakeSitioParBrowser();
-            throw new Error(mensajeErrorSinConexionConsultaPar());
+            throw new Error(extraerMensajeError(json, 'No se puede usar este número de cotización.'));
         }
 
-        let grabandoCotizacion = false;
-        let cotizSinGrabar = false;
+        detenerWakeSitioParBrowser();
+        throw new Error(mensajeErrorSinConexionConsultaPar());
+    }
 
-        function marcarCotizSinGrabar() {
-            cotizSinGrabar = true;
+    let grabandoCotizacion = false;
+    let cotizSinGrabar = false;
+
+    function marcarCotizSinGrabar() {
+        cotizSinGrabar = true;
+    }
+
+    function limpiarCotizSinGrabar() {
+        cotizSinGrabar = false;
+    }
+
+    document.getElementById('form-cotizacion')?.addEventListener('input', marcarCotizSinGrabar);
+    document.getElementById('form-cotizacion')?.addEventListener('change', marcarCotizSinGrabar);
+
+    document.getElementById('tabla_detalle')?.addEventListener('input', function (e) {
+        if (esCampoOrdenLinea(e.target)) return;
+        const tr = e.target.closest('tr[data-linea]');
+        if (tr) marcarLineaDirty(tr);
+    });
+    document.getElementById('tabla_detalle')?.addEventListener('change', function (e) {
+        if (esCampoOrdenLinea(e.target)) return;
+        const tr = e.target.closest('tr[data-linea]');
+        if (tr) marcarLineaDirty(tr);
+    });
+
+    document.getElementById('btn-descargar-pdf')?.addEventListener('click', async function (e) {
+        if (!cotizSinGrabar) {
+            return;
         }
+        e.preventDefault();
+        e.stopPropagation();
+        await dlgAlert(
+            'Debe grabar la cotización antes de descargar el PDF. Pulse Grabar y luego descargue nuevamente.',
+            { title: 'Cambios sin grabar', type: 'warning' }
+        );
+    });
 
-        function limpiarCotizSinGrabar() {
-            cotizSinGrabar = false;
-        }
+    async function grabarCotizacionAjax() {
+        if (grabandoCotizacion) return;
+        grabandoCotizacion = true;
 
-        document.getElementById('form-cotizacion')?.addEventListener('input', marcarCotizSinGrabar);
-        document.getElementById('form-cotizacion')?.addEventListener('change', marcarCotizSinGrabar);
+        const form = document.getElementById('form-cotizacion');
+        const botonesGrabar = form?.querySelectorAll('button[name="accion"][value="grabar"]') ?? [];
+        botonesGrabar.forEach((btn) => { btn.disabled = true; });
 
-        document.getElementById('tabla_detalle')?.addEventListener('input', function(e) {
-            if (esCampoOrdenLinea(e.target)) return;
-            const tr = e.target.closest('tr[data-linea]');
-            if (tr) marcarLineaDirty(tr);
-        });
-        document.getElementById('tabla_detalle')?.addEventListener('change', function(e) {
-            if (esCampoOrdenLinea(e.target)) return;
-            const tr = e.target.closest('tr[data-linea]');
-            if (tr) marcarLineaDirty(tr);
-        });
+        mostrarLoaderCotiz();
+        setLoaderMensaje('Guardando cabecera…');
 
-        document.getElementById('btn-descargar-pdf')?.addEventListener('click', async function(e) {
-            if (!cotizSinGrabar) {
-                return;
-            }
-            e.preventDefault();
-            e.stopPropagation();
-            await dlgAlert(
-                'Debe grabar la cotización antes de descargar el PDF. Pulse Grabar y luego descargue nuevamente.', {
-                    title: 'Cambios sin grabar',
-                    type: 'warning'
-                }
-            );
-        });
+        try {
+            const cabecera = collectCabeceraFromForm();
 
-        async function grabarCotizacionAjax() {
-            if (grabandoCotizacion) return;
-            grabandoCotizacion = true;
-
-            const form = document.getElementById('form-cotizacion');
-            const botonesGrabar = form?.querySelectorAll('button[name="accion"][value="grabar"]') ?? [];
-            botonesGrabar.forEach((btn) => {
-                btn.disabled = true;
-            });
-
-            mostrarLoaderCotiz();
             setLoaderMensaje('Guardando cabecera…');
+            const { res: resCab, json: jsonCab } = await postJson(cabeceraUrl, cabecera);
+            if (!resCab.ok) {
+                throw new Error(extraerMensajeError(jsonCab, 'No se pudo guardar la cabecera.'));
+            }
+            sincronizarNronotaDesdeJson(jsonCab);
 
+            const lineas = collectLineasFromTable({ soloDirty: true });
+            const lotes = chunkArray(lineas, lineasPorLote);
+            let guardadasTotal = 0;
+            let omitidasTotal = 0;
+
+            if (lotes.length === 0) {
+                setLoaderMensaje('Sin cambios en el detalle…');
+            }
+
+            for (let i = 0; i < lotes.length; i++) {
+                setLoaderMensaje('Guardando detalle ' + (i + 1) + ' de ' + lotes.length + '…');
+                const { res, json } = await postJson(lineasLoteUrl, { lineas: lotes[i] });
+                if (!res.ok) {
+                    const parcial = guardadasTotal > 0
+                        ? ' Se guardaron ' + guardadasTotal + ' de ' + lineas.length + ' líneas modificadas.'
+                        : '';
+                    throw new Error(extraerMensajeError(json, 'No se pudo guardar el detalle.') + parcial);
+                }
+                sincronizarNronotaDesdeJson(json);
+                guardadasTotal += json.guardadas ?? lotes[i].length;
+                omitidasTotal += json.omitidas ?? 0;
+            }
+
+            document.querySelectorAll('#tabla_detalle tbody tr[data-linea][data-dirty="1"]').forEach(limpiarLineaDirty);
+
+            limpiarCotizSinGrabar();
+            setLoaderMensaje('');
+            ocultarLoaderCotiz();
             try {
-                const cabecera = collectCabeceraFromForm();
-
-                setLoaderMensaje('Guardando cabecera…');
-                const {
-                    res: resCab,
-                    json: jsonCab
-                } = await postJson(cabeceraUrl, cabecera);
-                if (!resCab.ok) {
-                    throw new Error(extraerMensajeError(jsonCab, 'No se pudo guardar la cabecera.'));
+                sessionStorage.setItem('page-loader-pending', '1');
+            } catch (e) {}
+            let mensajeOk = jsonCab.mensaje || 'Cotización guardada.';
+            if (lineas.length > 0) {
+                mensajeOk += ' Detalle: ' + guardadasTotal + ' línea' + (guardadasTotal === 1 ? '' : 's') + ' actualizada' + (guardadasTotal === 1 ? '' : 's');
+                if (omitidasTotal > 0) {
+                    mensajeOk += ', ' + omitidasTotal + ' sin cambios';
                 }
-                sincronizarNronotaDesdeJson(jsonCab);
-
-                const lineas = collectLineasFromTable({
-                    soloDirty: true
-                });
-                const lotes = chunkArray(lineas, lineasPorLote);
-                let guardadasTotal = 0;
-                let omitidasTotal = 0;
-
-                if (lotes.length === 0) {
-                    setLoaderMensaje('Sin cambios en el detalle…');
-                }
-
-                for (let i = 0; i < lotes.length; i++) {
-                    setLoaderMensaje('Guardando detalle ' + (i + 1) + ' de ' + lotes.length + '…');
-                    const {
-                        res,
-                        json
-                    } = await postJson(lineasLoteUrl, {
-                        lineas: lotes[i]
-                    });
-                    if (!res.ok) {
-                        const parcial = guardadasTotal > 0 ?
-                            ' Se guardaron ' + guardadasTotal + ' de ' + lineas.length + ' líneas modificadas.' :
-                            '';
-                        throw new Error(extraerMensajeError(json, 'No se pudo guardar el detalle.') + parcial);
-                    }
-                    sincronizarNronotaDesdeJson(json);
-                    guardadasTotal += json.guardadas ?? lotes[i].length;
-                    omitidasTotal += json.omitidas ?? 0;
-                }
-
-                document.querySelectorAll('#tabla_detalle tbody tr[data-linea][data-dirty="1"]').forEach(limpiarLineaDirty);
-
-                limpiarCotizSinGrabar();
-                setLoaderMensaje('');
-                ocultarLoaderCotiz();
-                try {
-                    sessionStorage.setItem('page-loader-pending', '1');
-                } catch (e) {}
-                let mensajeOk = jsonCab.mensaje || 'Cotización guardada.';
-                if (lineas.length > 0) {
-                    mensajeOk += ' Detalle: ' + guardadasTotal + ' línea' + (guardadasTotal === 1 ? '' : 's') + ' actualizada' + (guardadasTotal === 1 ? '' : 's');
-                    if (omitidasTotal > 0) {
-                        mensajeOk += ', ' + omitidasTotal + ' sin cambios';
-                    }
-                    mensajeOk += '.';
-                }
-                dlgAlert(mensajeOk, {
-                    title: 'Guardado',
-                    type: 'success'
-                });
-                if (jsonCab.edit_url && jsonCab.recien_creada) {
-                    window.location.href = jsonCab.edit_url;
-                } else {
-                    window.location.reload();
-                }
-            } catch (err) {
-                setLoaderMensaje('');
-                ocultarLoaderCotiz();
-                dlgAlert(err?.message || 'Error al guardar la cotización.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
-                botonesGrabar.forEach((btn) => {
-                    btn.disabled = false;
-                });
-                grabandoCotizacion = false;
+                mensajeOk += '.';
             }
+            dlgAlert(mensajeOk, { title: 'Guardado', type: 'success' });
+            if (jsonCab.edit_url && jsonCab.recien_creada) {
+                window.location.href = jsonCab.edit_url;
+            } else {
+                window.location.reload();
+            }
+        } catch (err) {
+            setLoaderMensaje('');
+            ocultarLoaderCotiz();
+            dlgAlert(err?.message || 'Error al guardar la cotización.', { title: 'Error', type: 'danger' });
+            botonesGrabar.forEach((btn) => { btn.disabled = false; });
+            grabandoCotizacion = false;
+        }
+    }
+
+    document.getElementById('form-cotizacion')?.addEventListener('submit', function (e) {
+        const submitter = e.submitter;
+        if (!submitter || submitter.name !== 'accion') return;
+        if (submitter.value !== 'grabar') return;
+
+        e.preventDefault();
+
+        if (!this.checkValidity()) {
+            this.reportValidity();
+            return;
         }
 
-        document.getElementById('form-cotizacion')?.addEventListener('submit', function(e) {
-            const submitter = e.submitter;
-            if (!submitter || submitter.name !== 'accion') return;
-            if (submitter.value !== 'grabar') return;
-
-            e.preventDefault();
-
-            if (!this.checkValidity()) {
-                this.reportValidity();
-                return;
-            }
-
-            if (factorInput && String(factorInput.value || '').trim() !== '') {
-                const parsed = parseFactorChile(factorInput.value);
-                if (parsed === null) {
-                    factorInput.classList.add('is-invalid');
-                    factorInput.focus();
-                    dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', {
-                        title: 'Factor inválido'
-                    });
-                    return;
-                }
-                factorInput.value = formatFactorChile(parsed);
-            }
-
-            grabarCotizacionAjax();
-        });
-
-        function encontrarFilaPorOrdenProd(orden, prodItem) {
-            const porProd = document.querySelector(
-                '#tabla_detalle tbody tr[data-orden="' + orden + '"][data-prod="' + CSS.escape(String(prodItem || '')) + '"]'
-            );
-            if (porProd) return porProd;
-            return document.querySelector('#tabla_detalle tbody tr[data-orden="' + orden + '"]');
-        }
-
-        async function aplicarFactorAjax() {
-            if (!factorInput || !btnFactorAumento) return;
-
+        if (factorInput && String(factorInput.value || '').trim() !== '') {
             const parsed = parseFactorChile(factorInput.value);
             if (parsed === null) {
                 factorInput.classList.add('is-invalid');
                 factorInput.focus();
-                dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', {
-                    title: 'Factor inválido'
-                });
+                dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
+                return;
+            }
+            factorInput.value = formatFactorChile(parsed);
+        }
+
+        grabarCotizacionAjax();
+    });
+
+    function encontrarFilaPorOrdenProd(orden, prodItem) {
+        const porProd = document.querySelector(
+            '#tabla_detalle tbody tr[data-orden="' + orden + '"][data-prod="' + CSS.escape(String(prodItem || '')) + '"]'
+        );
+        if (porProd) return porProd;
+        return document.querySelector('#tabla_detalle tbody tr[data-orden="' + orden + '"]');
+    }
+
+    async function aplicarFactorAjax() {
+        if (!factorInput || !btnFactorAumento) return;
+
+        const parsed = parseFactorChile(factorInput.value);
+        if (parsed === null) {
+            factorInput.classList.add('is-invalid');
+            factorInput.focus();
+            dlgAlert('El factor debe ser un número positivo con hasta 2 decimales (ej.: 1,30).', { title: 'Factor inválido' });
+            return;
+        }
+
+        factorInput.classList.remove('is-invalid');
+        factorInput.value = formatFactorChile(parsed);
+
+        const labelOriginal = btnFactorAumento.textContent;
+        btnFactorAumento.disabled = true;
+        btnFactorAumento.textContent = 'Aplicando...';
+
+        try {
+            const res = await fetch(factorUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ factor_precio_venta: factorInput.value }),
+            });
+            const json = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                dlgAlert(json.error || json.message || 'No se pudo aplicar el factor.', { title: 'Error', type: 'danger' });
                 return;
             }
 
-            factorInput.classList.remove('is-invalid');
-            factorInput.value = formatFactorChile(parsed);
-
-            const labelOriginal = btnFactorAumento.textContent;
-            btnFactorAumento.disabled = true;
-            btnFactorAumento.textContent = 'Aplicando...';
-
-            try {
-                const res = await fetch(factorUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({
-                        factor_precio_venta: factorInput.value
-                    }),
-                });
-                const json = await res.json().catch(() => ({}));
-
-                if (!res.ok) {
-                    dlgAlert(json.error || json.message || 'No se pudo aplicar el factor.', {
-                        title: 'Error',
-                        type: 'danger'
-                    });
-                    return;
-                }
-
-                const factorMostrado = document.getElementById('factor_precio_venta_mostrado');
-                if (factorMostrado && json.factor_precio_venta_fmt) {
-                    factorMostrado.textContent = json.factor_precio_venta_fmt;
-                }
-
-                let preciosCambiados = 0;
-                let lineasSinCosto = 0;
-
-                (json.lineas || []).forEach(linea => {
-                    const tr = encontrarFilaPorOrdenProd(linea.orden, linea.prod_item);
-                    if (!tr) return;
-
-                    const costo = parseInt(linea.prod_valor_costo, 10) || 0;
-                    if (costo <= 0) lineasSinCosto++;
-
-                    const ventaInput = tr.querySelector('.linea-prod-valor');
-                    const ventaAnterior = ventaInput ? parseInt(ventaInput.value || '0', 10) : 0;
-                    const ventaNueva = parseInt(linea.prod_valor, 10) || 0;
-
-                    if (ventaInput) ventaInput.value = ventaNueva;
-
-                    const totalTd = tr.querySelector('.linea-total');
-                    if (totalTd) totalTd.textContent = fmt(linea.subtotal ?? (ventaNueva * (parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1)));
-
-                    limpiarLineaDirty(tr);
-
-                    if (ventaNueva !== ventaAnterior) preciosCambiados++;
-                });
-
-                recalcularMontoTotal();
-
-                let mensaje = 'Factor ' + (json.factor_precio_venta_fmt || factorInput.value) + ' guardado.';
-                if (preciosCambiados > 0) {
-                    mensaje += ' ' + preciosCambiados + ' precio' + (preciosCambiados === 1 ? '' : 's') + ' actualizado' + (preciosCambiados === 1 ? '' : 's') + '.';
-                } else {
-                    mensaje += ' Los precios ya coincidían con ese factor.';
-                }
-                if (lineasSinCosto > 0) {
-                    mensaje += ' ' + lineasSinCosto + ' línea' + (lineasSinCosto === 1 ? '' : 's') + ' sin costo (no se recalcula venta).';
-                }
-
-                dlgAlert(mensaje, {
-                    title: 'Factor aplicado',
-                    type: 'success'
-                });
-            } catch (err) {
-                dlgAlert('Error de conexión al aplicar el factor.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
-            } finally {
-                btnFactorAumento.disabled = false;
-                btnFactorAumento.textContent = labelOriginal;
+            const factorMostrado = document.getElementById('factor_precio_venta_mostrado');
+            if (factorMostrado && json.factor_precio_venta_fmt) {
+                factorMostrado.textContent = json.factor_precio_venta_fmt;
             }
-        }
 
-        btnFactorAumento?.addEventListener('click', aplicarFactorAjax);
+            let preciosCambiados = 0;
+            let lineasSinCosto = 0;
 
-        function marcarLineasRepetidas() {
-            const rows = document.querySelectorAll('#tabla_detalle tbody tr[data-prod]');
-            const counts = {};
-            rows.forEach(tr => {
-                const prod = String(tr.dataset.prod || '').trim();
-                if (!prod) return;
-                counts[prod] = (counts[prod] || 0) + 1;
-            });
-            rows.forEach(tr => {
-                const prod = String(tr.dataset.prod || '').trim();
-                tr.classList.toggle('linea-repetida', prod && counts[prod] > 1);
-            });
-        }
+            (json.lineas || []).forEach(linea => {
+                const tr = encontrarFilaPorOrdenProd(linea.orden, linea.prod_item);
+                if (!tr) return;
 
-        function recalcularMontoTotal() {
-            let sum = 0;
-            document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
-                const valor = parseInt(tr.querySelector('.linea-prod-valor')?.value || '0', 10);
-                const cant = parseInt(tr.querySelector('.linea-cantidad')?.value || '0', 10);
-                const total = valor * cant;
-                const td = tr.querySelector('.linea-total');
-                if (td) td.textContent = fmt(total);
-                sum += total;
+                const costo = parseInt(linea.prod_valor_costo, 10) || 0;
+                if (costo <= 0) lineasSinCosto++;
+
+                const ventaInput = tr.querySelector('.linea-prod-valor');
+                const ventaAnterior = ventaInput ? parseInt(ventaInput.value || '0', 10) : 0;
+                const ventaNueva = parseInt(linea.prod_valor, 10) || 0;
+
+                if (ventaInput) ventaInput.value = ventaNueva;
+
+                const totalTd = tr.querySelector('.linea-total');
+                if (totalTd) totalTd.textContent = fmt(linea.subtotal ?? (ventaNueva * (parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1)));
+
+                limpiarLineaDirty(tr);
+
+                if (ventaNueva !== ventaAnterior) preciosCambiados++;
             });
-            if (montototal) montototal.value = fmt(sum);
-            if (montototalIva) {
-                const iva = Math.round(sum * 19 / 100);
-                montototalIva.value = fmt(sum + iva);
+
+            recalcularMontoTotal();
+
+            let mensaje = 'Factor ' + (json.factor_precio_venta_fmt || factorInput.value) + ' guardado.';
+            if (preciosCambiados > 0) {
+                mensaje += ' ' + preciosCambiados + ' precio' + (preciosCambiados === 1 ? '' : 's') + ' actualizado' + (preciosCambiados === 1 ? '' : 's') + '.';
+            } else {
+                mensaje += ' Los precios ya coincidían con ese factor.';
             }
+            if (lineasSinCosto > 0) {
+                mensaje += ' ' + lineasSinCosto + ' línea' + (lineasSinCosto === 1 ? '' : 's') + ' sin costo (no se recalcula venta).';
+            }
+
+            dlgAlert(mensaje, { title: 'Factor aplicado', type: 'success' });
+        } catch (err) {
+            dlgAlert('Error de conexión al aplicar el factor.', { title: 'Error', type: 'danger' });
+        } finally {
+            btnFactorAumento.disabled = false;
+            btnFactorAumento.textContent = labelOriginal;
+        }
+    }
+
+    btnFactorAumento?.addEventListener('click', aplicarFactorAjax);
+
+    function marcarLineasRepetidas() {
+        const rows = document.querySelectorAll('#tabla_detalle tbody tr[data-prod]');
+        const counts = {};
+        rows.forEach(tr => {
+            const prod = String(tr.dataset.prod || '').trim();
+            if (!prod) return;
+            counts[prod] = (counts[prod] || 0) + 1;
+        });
+        rows.forEach(tr => {
+            const prod = String(tr.dataset.prod || '').trim();
+            tr.classList.toggle('linea-repetida', prod && counts[prod] > 1);
+        });
+    }
+
+    function recalcularMontoTotal() {
+        let sum = 0;
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
+            const valor = parseInt(tr.querySelector('.linea-prod-valor')?.value || '0', 10);
+            const cant = parseInt(tr.querySelector('.linea-cantidad')?.value || '0', 10);
+            const total = valor * cant;
+            const td = tr.querySelector('.linea-total');
+            if (td) td.textContent = fmt(total);
+            sum += total;
+        });
+        if (montototal) montototal.value = fmt(sum);
+        if (montototalIva) {
+            const iva = Math.round(sum * 19 / 100);
+            montototalIva.value = fmt(sum + iva);
+        }
+    }
+
+    marcarLineasRepetidas();
+
+    document.getElementById('tabla_detalle')?.addEventListener('input', e => {
+        if (e.target.matches('.linea-prod-valor, .linea-cantidad')) {
+            recalcularMontoTotal();
+        }
+        if (e.target.matches('.js-tooltip-valor')) {
+            syncCampoTooltipValor(e.target);
+        }
+    });
+
+    function campoTextoTruncado(el) {
+        if (!el) return false;
+        if (el.tagName === 'TEXTAREA') {
+            return el.scrollHeight > el.clientHeight + 1;
+        }
+        return el.scrollWidth > el.clientWidth + 1;
+    }
+
+    function syncCampoTooltipValor(el) {
+        if (!el || typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+        const texto = String(el.value || '').trim();
+        const mostrar = texto !== '' && campoTextoTruncado(el);
+        let tip = bootstrap.Tooltip.getInstance(el);
+        if (!mostrar) {
+            if (tip) tip.dispose();
+            el.removeAttribute('data-bs-original-title');
+            el.setAttribute('title', '');
+            return;
+        }
+        el.setAttribute('title', texto);
+        if (!tip) {
+            tip = new bootstrap.Tooltip(el, {
+                customClass: 'tooltip-texto-campo',
+                container: 'body',
+                trigger: 'hover focus',
+                placement: 'top',
+                // Evita que el title nativo del navegador compita con Bootstrap
+                animation: true,
+            });
+        } else {
+            tip.setContent({ '.tooltip-inner': texto });
+        }
+    }
+
+    function wireTooltipsValorLinea(root) {
+        const scope = root || document;
+        scope.querySelectorAll('.js-tooltip-valor').forEach((el) => {
+            // Medir truncado tras layout
+            requestAnimationFrame(() => syncCampoTooltipValor(el));
+        });
+    }
+
+    document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
+        if (!desdeAdjudicadas) wireEliminarLinea(tr);
+    });
+    wireTooltipsValorLinea(document.getElementById('tabla_detalle'));
+
+    function quitarLineaDetalle(tr, delForm) {
+        tr?.remove();
+        delForm?.remove();
+
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (tbody && !tbody.querySelector('tr[data-linea]')) {
+            tbody.innerHTML = '<tr><td colspan="' + detalleColspan + '" class="text-muted text-center py-3">' + mensajeSinLineas + '</td></tr>';
         }
 
         marcarLineasRepetidas();
+        actualizarControlesOrdenVisual();
+        recalcularMontoTotal();
+    }
 
-        document.getElementById('tabla_detalle')?.addEventListener('input', e => {
-            if (e.target.matches('.linea-prod-valor, .linea-cantidad')) {
-                recalcularMontoTotal();
-            }
-            if (e.target.matches('.js-tooltip-valor')) {
-                syncCampoTooltipValor(e.target);
-            }
-        });
+    async function eliminarLineaAjax(tr, delForm) {
+        const prod = delForm.dataset.prod;
+        const orden = delForm.dataset.orden;
+        const btn = tr.querySelector('.eliminar-cell button');
 
-        function campoTextoTruncado(el) {
-            if (!el) return false;
-            if (el.tagName === 'TEXTAREA') {
-                return el.scrollHeight > el.clientHeight + 1;
-            }
-            return el.scrollWidth > el.clientWidth + 1;
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Eliminando...';
         }
 
-        function syncCampoTooltipValor(el) {
-            if (!el || typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
-            const texto = String(el.value || '').trim();
-            const mostrar = texto !== '' && campoTextoTruncado(el);
-            let tip = bootstrap.Tooltip.getInstance(el);
-            if (!mostrar) {
-                if (tip) tip.dispose();
-                el.removeAttribute('data-bs-original-title');
-                el.setAttribute('title', '');
-                return;
-            }
-            el.setAttribute('title', texto);
-            if (!tip) {
-                tip = new bootstrap.Tooltip(el, {
-                    customClass: 'tooltip-texto-campo',
-                    container: 'body',
-                    trigger: 'hover focus',
-                    placement: 'top',
-                    // Evita que el title nativo del navegador compita con Bootstrap
-                    animation: true,
-                });
-            } else {
-                tip.setContent({
-                    '.tooltip-inner': texto
-                });
-            }
-        }
-
-        function wireTooltipsValorLinea(root) {
-            const scope = root || document;
-            scope.querySelectorAll('.js-tooltip-valor').forEach((el) => {
-                // Medir truncado tras layout
-                requestAnimationFrame(() => syncCampoTooltipValor(el));
+        try {
+            const res = await fetch(delForm.action, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    prod_item: prod,
+                    orden: parseInt(orden, 10),
+                }),
             });
-        }
+            const json = await res.json().catch(() => ({}));
 
-        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
-            if (!desdeAdjudicadas) wireEliminarLinea(tr);
-        });
-        wireTooltipsValorLinea(document.getElementById('tabla_detalle'));
-
-        function quitarLineaDetalle(tr, delForm) {
-            tr?.remove();
-            delForm?.remove();
-
-            const tbody = document.querySelector('#tabla_detalle tbody');
-            if (tbody && !tbody.querySelector('tr[data-linea]')) {
-                tbody.innerHTML = '<tr><td colspan="' + detalleColspan + '" class="text-muted text-center py-3">' + mensajeSinLineas + '</td></tr>';
-            }
-
-            marcarLineasRepetidas();
-            actualizarControlesOrdenVisual();
-            recalcularMontoTotal();
-        }
-
-        async function eliminarLineaAjax(tr, delForm) {
-            const prod = delForm.dataset.prod;
-            const orden = delForm.dataset.orden;
-            const btn = tr.querySelector('.eliminar-cell button');
-
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = 'Eliminando...';
-            }
-
-            try {
-                const res = await fetch(delForm.action, {
-                    method: 'DELETE',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrf,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({
-                        prod_item: prod,
-                        orden: parseInt(orden, 10),
-                    }),
-                });
-                const json = await res.json().catch(() => ({}));
-
-                if (!res.ok) {
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.textContent = 'Eliminar';
-                    }
-                    dlgAlert(json.error || json.message || 'No se pudo eliminar la línea.', {
-                        title: 'Error',
-                        type: 'danger'
-                    });
-                    return;
-                }
-
-                quitarLineaDetalle(tr, delForm);
-                if (json.lineas) {
-                    aplicarOrdenDesdeServidor(json.lineas);
-                }
-                if (json.resumen) {
-                    actualizarResumenLineas(json.resumen);
-                }
-            } catch (err) {
+            if (!res.ok) {
                 if (btn) {
                     btn.disabled = false;
                     btn.textContent = 'Eliminar';
                 }
-                dlgAlert('Error de conexión al eliminar la línea.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
-            }
-        }
-
-        function wireEliminarLinea(tr) {
-            const elimTd = tr.querySelector('.eliminar-cell');
-            if (!elimTd || elimTd.querySelector('button')) return;
-            const prod = elimTd.dataset.prod;
-            const orden = elimTd.dataset.orden;
-            const delForm = document.querySelector('.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + orden + '"]');
-            if (!delForm) return;
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-outline-danger btn-sm py-0 px-2';
-            btn.textContent = 'Eliminar';
-            btn.addEventListener('click', () => {
-                dlgConfirm('¿Eliminar línea?', {
-                    title: 'Eliminar línea',
-                    type: 'danger'
-                }).then(ok => {
-                    if (ok) eliminarLineaAjax(tr, delForm);
-                });
-            });
-            elimTd.appendChild(btn);
-        }
-
-        function insertarLineaDetalle(json, productoBusqueda) {
-            const tbody = document.querySelector('#tabla_detalle tbody');
-            if (!tbody || !json?.html) return;
-
-            tbody.querySelector('tr:not([data-linea])')?.remove();
-
-            tbody.insertAdjacentHTML('beforeend', json.html.trim());
-            const tr = tbody.lastElementChild;
-            if (!tr || !tr.matches('tr[data-linea]')) return;
-
-            const formsContainer = document.getElementById('cotiz-eliminar-lineas-forms');
-            if (formsContainer && json.delete_form_html) {
-                formsContainer.insertAdjacentHTML('beforeend', json.delete_form_html);
+                dlgAlert(json.error || json.message || 'No se pudo eliminar la línea.', { title: 'Error', type: 'danger' });
+                return;
             }
 
-            if (!desdeAdjudicadas) wireEliminarLinea(tr);
-            wireTooltipsValorLinea(tr);
-            limpiarLineaDirty(tr);
-
-            const tituloImagen = (json.prod_item || tr.dataset.prod || '') +
-                (json.prod_nombre ? ' — ' + json.prod_nombre : '');
-            const imageUrl = String(json.image_url || productoBusqueda?.image_url || '').trim();
-            actualizarImagenLinea(tr, imageUrl, tituloImagen);
-            marcarLineasRepetidas();
-            actualizarControlesOrdenVisual();
-            recalcularMontoTotal();
-
-            const wrapDetalle = document.getElementById('notaventa-tabla-detalle-wrap');
-            if (wrapDetalle && json.orden) {
-                wrapDetalle.dataset.maxOrden = String(json.orden);
+            quitarLineaDetalle(tr, delForm);
+            if (json.lineas) {
+                aplicarOrdenDesdeServidor(json.lineas);
             }
             if (json.resumen) {
                 actualizarResumenLineas(json.resumen);
             }
+        } catch (err) {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Eliminar';
+            }
+            dlgAlert('Error de conexión al eliminar la línea.', { title: 'Error', type: 'danger' });
         }
+    }
 
-        let ordenUrl = @json(route('admin.cotizaciones.lineas.orden', $nota - > nronota));
-        const csrfOrden = document.querySelector('meta[name="csrf-token"]')?.content;
-        let ordenEnProceso = false;
-
-        function mostrarLoaderCotiz() {
-            try {
-                sessionStorage.setItem('page-loader-pending', '1');
-            } catch (e) {}
-            if (window.PageLoader?.show) {
-                window.PageLoader.show();
-            }
-        }
-
-        function ocultarLoaderCotiz() {
-            if (window.PageLoader?.hide) {
-                window.PageLoader.hide();
-            }
-        }
-
-        function sincronizarOrdenFila(row, ordenDb) {
-            const prod = row.dataset.prod;
-            const ordenAnterior = parseInt(row.dataset.orden, 10);
-            if (ordenAnterior === ordenDb) {
-                return;
-            }
-
-            const delForm = document.querySelector(
-                '.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + ordenAnterior + '"]'
-            );
-            if (delForm) {
-                delForm.dataset.orden = String(ordenDb);
-                const ordenInput = delForm.querySelector('input[name="orden"]');
-                if (ordenInput) ordenInput.value = String(ordenDb);
-            }
-
-            row.dataset.orden = String(ordenDb);
-
-            const elimTd = row.querySelector('.eliminar-cell');
-            if (elimTd) elimTd.dataset.orden = String(ordenDb);
-
-            row.querySelectorAll('.linea-orden-ir, .btn-buscar-linea-agile').forEach(btn => {
-                btn.dataset.orden = String(ordenDb);
+    function wireEliminarLinea(tr) {
+        const elimTd = tr.querySelector('.eliminar-cell');
+        if (!elimTd || elimTd.querySelector('button')) return;
+        const prod = elimTd.dataset.prod;
+        const orden = elimTd.dataset.orden;
+        const delForm = document.querySelector('.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + orden + '"]');
+        if (!delForm) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline-danger btn-sm py-0 px-2';
+        btn.textContent = 'Eliminar';
+        btn.addEventListener('click', () => {
+            dlgConfirm('¿Eliminar línea?', { title: 'Eliminar línea', type: 'danger' }).then(ok => {
+                if (ok) eliminarLineaAjax(tr, delForm);
             });
+        });
+        elimTd.appendChild(btn);
+    }
 
-            const ordenHidden = row.querySelector('input[name*="[orden]"]');
-            if (ordenHidden) ordenHidden.value = String(ordenDb);
+    function insertarLineaDetalle(json, productoBusqueda) {
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (!tbody || !json?.html) return;
+
+        tbody.querySelector('tr:not([data-linea])')?.remove();
+
+        tbody.insertAdjacentHTML('beforeend', json.html.trim());
+        const tr = tbody.lastElementChild;
+        if (!tr || !tr.matches('tr[data-linea]')) return;
+
+        const formsContainer = document.getElementById('cotiz-eliminar-lineas-forms');
+        if (formsContainer && json.delete_form_html) {
+            formsContainer.insertAdjacentHTML('beforeend', json.delete_form_html);
+        }
+
+        if (!desdeAdjudicadas) wireEliminarLinea(tr);
+        wireTooltipsValorLinea(tr);
+        limpiarLineaDirty(tr);
+
+        const tituloImagen = (json.prod_item || tr.dataset.prod || '')
+            + (json.prod_nombre ? ' — ' + json.prod_nombre : '');
+        const imageUrl = String(json.image_url || productoBusqueda?.image_url || '').trim();
+        actualizarImagenLinea(tr, imageUrl, tituloImagen);
+        marcarLineasRepetidas();
+        actualizarControlesOrdenVisual();
+        recalcularMontoTotal();
+
+        const wrapDetalle = document.getElementById('notaventa-tabla-detalle-wrap');
+        if (wrapDetalle && json.orden) {
+            wrapDetalle.dataset.maxOrden = String(json.orden);
+        }
+        if (json.resumen) {
+            actualizarResumenLineas(json.resumen);
+        }
+    }
+
+    let ordenUrl = @json(route('admin.cotizaciones.lineas.orden', $nota->nronota));
+    const csrfOrden = document.querySelector('meta[name="csrf-token"]')?.content;
+    let ordenEnProceso = false;
+
+    function mostrarLoaderCotiz() {
+        try {
+            sessionStorage.setItem('page-loader-pending', '1');
+        } catch (e) {}
+        if (window.PageLoader?.show) {
+            window.PageLoader.show();
+        }
+    }
+
+    function ocultarLoaderCotiz() {
+        if (window.PageLoader?.hide) {
+            window.PageLoader.hide();
+        }
+    }
+
+    function sincronizarOrdenFila(row, ordenDb) {
+        const prod = row.dataset.prod;
+        const ordenAnterior = parseInt(row.dataset.orden, 10);
+        if (ordenAnterior === ordenDb) {
+            return;
+        }
+
+        const delForm = document.querySelector(
+            '.form-eliminar-linea[data-prod="' + prod + '"][data-orden="' + ordenAnterior + '"]'
+        );
+        if (delForm) {
+            delForm.dataset.orden = String(ordenDb);
+            const ordenInput = delForm.querySelector('input[name="orden"]');
+            if (ordenInput) ordenInput.value = String(ordenDb);
+        }
+
+        row.dataset.orden = String(ordenDb);
+
+        const elimTd = row.querySelector('.eliminar-cell');
+        if (elimTd) elimTd.dataset.orden = String(ordenDb);
+
+        row.querySelectorAll('.linea-orden-ir, .btn-buscar-linea-agile').forEach(btn => {
+            btn.dataset.orden = String(ordenDb);
+        });
+
+        const ordenHidden = row.querySelector('input[name*="[orden]"]');
+        if (ordenHidden) ordenHidden.value = String(ordenDb);
+
+        const destinoInput = row.querySelector('.linea-orden-destino');
+        if (destinoInput && document.activeElement !== destinoInput) {
+            destinoInput.value = String(ordenDb);
+        }
+    }
+
+    function totalLineasGrilla() {
+        return document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').length;
+    }
+
+    function actualizarControlesOrdenVisual() {
+        const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'));
+        const total = rows.length;
+
+        rows.forEach((row, idx) => {
+            const pos = idx + 1;
+            const ordenNum = row.querySelector('.linea-orden-num');
+            if (ordenNum) ordenNum.textContent = String(pos);
 
             const destinoInput = row.querySelector('.linea-orden-destino');
-            if (destinoInput && document.activeElement !== destinoInput) {
-                destinoInput.value = String(ordenDb);
-            }
-        }
-
-        function totalLineasGrilla() {
-            return document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').length;
-        }
-
-        function actualizarControlesOrdenVisual() {
-            const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'));
-            const total = rows.length;
-
-            rows.forEach((row, idx) => {
-                const pos = idx + 1;
-                const ordenNum = row.querySelector('.linea-orden-num');
-                if (ordenNum) ordenNum.textContent = String(pos);
-
-                const destinoInput = row.querySelector('.linea-orden-destino');
-                if (destinoInput) {
-                    destinoInput.max = String(total);
-                    if (document.activeElement !== destinoInput) {
-                        destinoInput.value = String(pos);
-                    }
+            if (destinoInput) {
+                destinoInput.max = String(total);
+                if (document.activeElement !== destinoInput) {
+                    destinoInput.value = String(pos);
                 }
-            });
-        }
-
-        function aplicarOrdenDesdeServidor(lineas) {
-            if (!Array.isArray(lineas) || !lineas.length) {
-                actualizarControlesOrdenVisual();
-                return;
             }
+        });
+    }
 
-            const sorted = [...lineas].sort((a, b) => a.orden - b.orden);
-            const tbody = document.querySelector('#tabla_detalle tbody');
-            if (!tbody) return;
-
-            const rows = Array.from(tbody.querySelectorAll('tr[data-linea]'));
-            if (sorted.length !== rows.length) {
-                actualizarControlesOrdenVisual();
-                return;
-            }
-
-            const used = new Set();
-            const orderedRows = sorted.map((linea, idx) => {
-                const prod = linea.prod_item;
-                const agile = String(linea.prod_item_agile || '');
-                let row = rows.find(r => !used.has(r) &&
-                    r.dataset.prod === prod &&
-                    String(r.dataset.prodItemAgile || '') === agile);
-                if (!row) {
-                    row = rows.find(r => !used.has(r) && r.dataset.prod === prod);
-                }
-                if (!row) row = rows[idx];
-                if (row) used.add(row);
-                return row;
-            }).filter(Boolean);
-
-            orderedRows.forEach(row => tbody.appendChild(row));
-
-            sorted.forEach((linea, idx) => {
-                const row = orderedRows[idx];
-                if (row) sincronizarOrdenFila(row, parseInt(linea.orden, 10));
-            });
-
+    function aplicarOrdenDesdeServidor(lineas) {
+        if (!Array.isArray(lineas) || !lineas.length) {
             actualizarControlesOrdenVisual();
+            return;
         }
 
-        function revertirSortable(evt) {
-            const parent = evt.from;
-            const item = evt.item;
-            parent.removeChild(item);
-            const ref = parent.children[evt.oldIndex] || null;
-            parent.insertBefore(item, ref);
+        const sorted = [...lineas].sort((a, b) => a.orden - b.orden);
+        const tbody = document.querySelector('#tabla_detalle tbody');
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr[data-linea]'));
+        if (sorted.length !== rows.length) {
+            actualizarControlesOrdenVisual();
+            return;
         }
 
-        async function cambiarOrdenLinea(prodItem, orden, payload) {
-            if (ordenEnProceso) return false;
-            ordenEnProceso = true;
-            mostrarLoaderCotiz();
-
-            try {
-                const res = await fetch(ordenUrl, {
-                    method: 'PATCH',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfOrden,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({
-                        prod_item: prodItem,
-                        orden: orden,
-                        ...payload,
-                    }),
-                });
-
-                const json = await res.json().catch(() => ({}));
-
-                if (res.ok && json.ok) {
-                    ocultarLoaderCotiz();
-                    return json;
-                }
-
-                ocultarLoaderCotiz();
-                dlgAlert(json.error || json.message || 'No se pudo cambiar el orden.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
-                return null;
-            } catch (err) {
-                ocultarLoaderCotiz();
-                dlgAlert('Error de conexión al cambiar el orden.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
-                return null;
-            } finally {
-                ordenEnProceso = false;
+        const used = new Set();
+        const orderedRows = sorted.map((linea, idx) => {
+            const prod = linea.prod_item;
+            const agile = String(linea.prod_item_agile || '');
+            let row = rows.find(r => ! used.has(r)
+                && r.dataset.prod === prod
+                && String(r.dataset.prodItemAgile || '') === agile);
+            if (!row) {
+                row = rows.find(r => ! used.has(r) && r.dataset.prod === prod);
             }
-        }
+            if (!row) row = rows[idx];
+            if (row) used.add(row);
+            return row;
+        }).filter(Boolean);
 
-        async function irAPosicionLinea(btn, inputOverride) {
-            if (!btn || ordenEnProceso) return;
+        orderedRows.forEach(row => tbody.appendChild(row));
 
-            const row = btn.closest('tr[data-linea]');
-            const input = inputOverride || row?.querySelector('.linea-orden-destino');
-            if (!row || !input) return;
-
-            const total = totalLineasGrilla();
-            const ordenNuevo = parseInt(input.value, 10);
-            const ordenActual = parseInt(btn.dataset.orden || row.dataset.orden, 10);
-
-            if (!Number.isFinite(ordenNuevo) || ordenNuevo < 1 || ordenNuevo > total) {
-                dlgAlert('Indique una posición entre 1 y ' + total + '.', {
-                    title: 'Posición inválida'
-                });
-                input.focus();
-                input.select();
-                return;
-            }
-
-            if (ordenNuevo === ordenActual) {
-                input.value = String(ordenActual);
-                return;
-            }
-
-            const controles = row.querySelector('.linea-orden-controls');
-            controles?.querySelectorAll('button, input').forEach(el => {
-                el.disabled = true;
-            });
-
-            const result = await cambiarOrdenLinea(btn.dataset.prod, ordenActual, {
-                orden_nuevo: ordenNuevo
-            });
-
-            controles?.querySelectorAll('button, input').forEach(el => {
-                el.disabled = false;
-            });
-
-            if (result?.lineas) {
-                aplicarOrdenDesdeServidor(result.lineas);
-            }
-        }
-
-        document.getElementById('tabla_detalle')?.addEventListener('click', e => {
-            const ir = e.target.closest('.linea-orden-ir');
-            if (ir) {
-                e.preventDefault();
-                irAPosicionLinea(ir);
-            }
+        sorted.forEach((linea, idx) => {
+            const row = orderedRows[idx];
+            if (row) sincronizarOrdenFila(row, parseInt(linea.orden, 10));
         });
 
-        document.getElementById('tabla_detalle')?.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && e.target.matches('.linea-orden-destino')) {
-                e.preventDefault();
-                const row = e.target.closest('tr[data-linea]');
-                const ir = row?.querySelector('.linea-orden-ir');
-                if (ir) irAPosicionLinea(ir, e.target);
-            }
-        });
+        actualizarControlesOrdenVisual();
+    }
 
-        const detalleTbody = document.querySelector('#tabla_detalle tbody');
-        if (detalleTbody && detalleTbody.querySelector('tr[data-linea]') && typeof Sortable !== 'undefined') {
-            Sortable.create(detalleTbody, {
-                animation: 160,
-                handle: '.linea-drag-handle',
-                draggable: 'tr[data-linea]',
-                ghostClass: 'linea-sortable-ghost',
-                chosenClass: 'linea-sortable-chosen',
-                dragClass: 'linea-sortable-drag',
-                scroll: true,
-                forceAutoScrollFallback: true,
-                scrollSensitivity: 60,
-                scrollSpeed: 20,
-                bubbleScroll: true,
-                onStart: function(evt) {
-                    evt.item.dataset.ordenAntesDrag = evt.item.dataset.orden;
+    function revertirSortable(evt) {
+        const parent = evt.from;
+        const item = evt.item;
+        parent.removeChild(item);
+        const ref = parent.children[evt.oldIndex] || null;
+        parent.insertBefore(item, ref);
+    }
+
+    async function cambiarOrdenLinea(prodItem, orden, payload) {
+        if (ordenEnProceso) return false;
+        ordenEnProceso = true;
+        mostrarLoaderCotiz();
+
+        try {
+            const res = await fetch(ordenUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfOrden,
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
-                onEnd: async function(evt) {
-                    if (evt.oldIndex === evt.newIndex || evt.oldIndex == null || evt.newIndex == null) {
-                        delete evt.item.dataset.ordenAntesDrag;
-                        return;
-                    }
-
-                    const row = evt.item;
-                    const prodItem = row.dataset.prod;
-                    const orden = parseInt(row.dataset.ordenAntesDrag || row.dataset.orden, 10);
-                    const ordenNuevo = evt.newIndex + 1;
-                    delete row.dataset.ordenAntesDrag;
-
-                    const result = await cambiarOrdenLinea(prodItem, orden, {
-                        orden_nuevo: ordenNuevo
-                    });
-                    if (result) {
-                        if (result.lineas) {
-                            aplicarOrdenDesdeServidor(result.lineas);
-                        } else {
-                            actualizarControlesOrdenVisual();
-                        }
-                    } else {
-                        revertirSortable(evt);
-                    }
-                },
+                body: JSON.stringify({
+                    prod_item: prodItem,
+                    orden: orden,
+                    ...payload,
+                }),
             });
-        }
 
-        let lineasUrl = @json(route('admin.cotizaciones.lineas.store', $nota - > nronota));
-        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-        let agregandoLinea = false;
+            const json = await res.json().catch(() => ({}));
 
-        async function agregarProducto(p, options = {}) {
-            const quiet = options.quiet === true;
-            const inBatch = options.inBatch === true;
-
-            if (!p?.prod_item) {
-                return false;
-            }
-            if (agregandoLinea && !inBatch) {
-                return false;
+            if (res.ok && json.ok) {
+                ocultarLoaderCotiz();
+                return json;
             }
 
-            const cantidad = document.getElementById('modal-cantidad')?.value || '1';
-            const prodValorCosto = p.prod_valor_costo ?? '';
-            const costoNum = prodValorCosto !== '' && prodValorCosto != null ?
-                parseInt(prodValorCosto, 10) || 0 :
-                0;
-            const prodValor = precioVentaSegunFactorJs(costoNum, p.prod_valor ?? 0);
-            const factorEnvio = factorInput?.value || formatFactorChile(factorActualCotiz());
-
-            if (!inBatch) {
-                agregandoLinea = true;
-            }
-
-            try {
-                const body = new FormData();
-                body.append('_token', csrf);
-                body.append('prod_item', p.prod_item);
-                body.append('cantidad', cantidad);
-                body.append('prod_valor', String(prodValor));
-                body.append('factor_precio_venta', factorEnvio);
-                const esInternaInput = document.getElementById('es_interna');
-                if (esInternaInput) {
-                    body.append('es_interna', esInternaInput.value);
-                }
-                if (prodValorCosto !== '' && prodValorCosto != null) {
-                    body.append('prod_valor_costo', prodValorCosto);
-                }
-
-                const res = await fetch(lineasUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body,
-                });
-
-                const json = await res.json().catch(() => ({}));
-
-                if (res.ok && json.ok) {
-                    insertarLineaDetalle(json, p);
-                    if (!quiet) {
-                        ocultarLoaderCotiz();
-                        try {
-                            sessionStorage.removeItem('page-loader-pending');
-                        } catch (e) {}
-                    }
-                    return true;
-                }
-
-                if (!quiet) {
-                    ocultarLoaderCotiz();
-                    try {
-                        sessionStorage.removeItem('page-loader-pending');
-                    } catch (e) {}
-                    dlgAlert(json.error || json.message || 'No se pudo agregar la línea.', {
-                        title: 'Error',
-                        type: 'danger'
-                    });
-                }
-                return false;
-            } catch (err) {
-                if (!quiet) {
-                    ocultarLoaderCotiz();
-                    try {
-                        sessionStorage.removeItem('page-loader-pending');
-                    } catch (e) {}
-                    dlgAlert('Error de conexión al agregar producto.', {
-                        title: 'Error',
-                        type: 'danger'
-                    });
-                }
-                return false;
-            } finally {
-                if (!inBatch) {
-                    agregandoLinea = false;
-                }
-            }
-        }
-
-        const buscarConfig = {
-            url: @json(route('admin.productos.buscar')),
-            minChars: @json((int) config('cotiz.buscar_productos_min_chars', 2)),
-            limit: @json((int) config('cotiz.buscar_productos_limite', 15)),
-            placeholderImg: @json(asset('images/no-image.svg')),
-        };
-
-        const modalEl = document.getElementById('modal-buscar-producto');
-        const modalInput = document.getElementById('modal-buscar-input');
-        const modalEstado = document.getElementById('modal-buscar-estado');
-        const modalBody = document.getElementById('modal-buscar-resultados');
-        const btnAbrirBuscar = document.getElementById('btn-abrir-buscar-producto');
-        const btnModalBuscar = document.getElementById('btn-modal-buscar');
-        const btnModalAgregarSeleccionados = document.getElementById('btn-modal-agregar-seleccionados');
-        const chkSeleccionarTodos = document.getElementById('modal-buscar-seleccionar-todos');
-        const modalBuscarCantidadWrap = document.getElementById('modal-buscar-cantidad-wrap');
-        const modalBuscarFooterHint = document.getElementById('modal-buscar-footer-hint');
-        const modalBuscarTitulo = document.getElementById('modal-buscar-producto-label');
-        const modalBuscarChkHeader = document.querySelector('#tabla-buscar-productos thead th:first-child');
-        const productosMarcados = new Set();
-        let modalBuscarVincularActivo = false;
-
-        function obtenerModoBusquedaModal() {
-            const checked = document.querySelector('input[name="modalBuscarModo"]:checked');
-            return checked?.value === 'texto' ? 'texto' : 'similitud';
-        }
-
-        function setModoBusquedaModal(modo) {
-            const value = modo === 'texto' ? 'texto' : 'similitud';
-            const radio = document.querySelector('input[name="modalBuscarModo"][value="' + value + '"]');
-            if (radio) radio.checked = true;
-            actualizarAyudaModoBusquedaModal();
-        }
-
-        function actualizarAyudaModoBusquedaModal() {
-            const ayuda = document.getElementById('modalBuscarModoTextoAyuda');
-            if (ayuda) {
-                ayuda.classList.toggle('d-none', obtenerModoBusquedaModal() !== 'texto');
-            }
-        }
-
-        function setModalBuscarModoVincular(activo) {
-            modalBuscarVincularActivo = !!activo;
-            modalBuscarChkHeader?.classList.toggle('d-none', modalBuscarVincularActivo);
-            modalBuscarCantidadWrap?.classList.toggle('d-none', modalBuscarVincularActivo);
-            btnModalAgregarSeleccionados?.classList.toggle('d-none', modalBuscarVincularActivo);
-            if (modalBuscarTitulo) {
-                modalBuscarTitulo.textContent = modalBuscarVincularActivo ?
-                    'Cambiar producto de la línea' :
-                    'Buscar producto';
-            }
-            if (modalBuscarFooterHint) {
-                modalBuscarFooterHint.textContent = modalBuscarVincularActivo ?
-                    'Pulse una fila para reemplazar el producto de la línea (excepto la imagen).' :
-                    'Marque productos y pulse «Agregar seleccionados».';
-            }
-        }
-
-        function colsModalBuscar() {
-            return modalBuscarVincularActivo ? 5 : 6;
-        }
-
-        function setModalBuscarEstado(texto, cargando) {
-            if (!modalEstado) return;
-            modalEstado.textContent = texto;
-            modalEstado.classList.toggle('cotiz-buscar-loading', !!cargando);
-            modalEstado.classList.toggle('text-muted', !cargando);
-        }
-
-        function buscarLoadingHtml(texto) {
-            return '<p class="small cotiz-buscar-loading mb-0">' +
-                '<i class="bi bi-search me-1" aria-hidden="true"></i>' +
-                (texto || 'Buscando...') + '</p>';
-        }
-
-        const bsModal = modalEl && typeof bootstrap !== 'undefined' ?
-            bootstrap.Modal.getOrCreateInstance(modalEl) :
-            null;
-        let buscarAbort = null;
-        let resultadosActuales = [];
-        let filaActiva = -1;
-
-        function fmtPrecio(n) {
-            return '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
-        }
-
-        function buscarProductoThumbHtml(p) {
-            const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
-            const titulo = escHtml(codigoProductoTexto(p.prod_item) + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
-            const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="eager" ' +
-                'decoding="async" referrerpolicy="no-referrer" ' +
-                'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
-
-            if (p?.image_url) {
-                return '<button type="button" class="product-image-zoom-trigger cotiz-buscar-thumb-btn" ' +
-                    'data-image-url="' + escHtml(p.image_url) + '" ' +
-                    'data-image-title="' + titulo + '" ' +
-                    'title="Ver imagen ampliada">' + img + '</button>';
-            }
-
-            return img;
-        }
-
-        const modalImagenEl = document.getElementById('modal-imagen-producto-cotiz');
-        const modalImagenImg = document.getElementById('modal-imagen-producto-cotiz-img');
-        const modalImagenTitle = document.getElementById('modal-imagen-producto-cotiz-titulo');
-        const bsModalImagen = modalImagenEl ? bootstrap.Modal.getOrCreateInstance(modalImagenEl) : null;
-
-        function abrirImagenAmpliada(trigger) {
-            const url = trigger?.dataset?.imageUrl;
-            if (!url || !bsModalImagen || !modalImagenImg) return;
-            modalImagenImg.src = url;
-            modalImagenImg.alt = trigger.dataset.imageTitle || 'Imagen producto';
-            if (modalImagenTitle) {
-                modalImagenTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
-            }
-            if (modalImagenEl) {
-                modalImagenEl.dataset.zoomAbovePopup = trigger?.closest('.cotiz-popup-overlay') ? '1' : '0';
-            }
-            bsModalImagen.show();
-        }
-
-        function ajustarBackdropImagenAmpliada() {
-            if (!modalImagenEl || modalImagenEl.dataset.zoomAbovePopup !== '1') return;
-            document.querySelectorAll('.modal-backdrop.show').forEach(backdrop => {
-                backdrop.style.zIndex = '1085';
-            });
-        }
-
-        function enlazarZoomImagenes(contenedor) {
-            const root = contenedor || document;
-            root.querySelectorAll('.product-image-zoom-trigger:not([data-zoom-bound])').forEach(trigger => {
-                trigger.dataset.zoomBound = '1';
-                trigger.addEventListener('click', e => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    abrirImagenAmpliada(trigger);
-                });
-            });
-        }
-
-        enlazarZoomImagenes(document.querySelector('.cotizacion-ingreso'));
-
-        modalImagenEl?.addEventListener('shown.bs.modal', ajustarBackdropImagenAmpliada);
-
-        modalImagenEl?.addEventListener('hidden.bs.modal', () => {
-            if (modalImagenImg) {
-                modalImagenImg.removeAttribute('src');
-                modalImagenImg.alt = '';
-            }
-            if (modalImagenEl) {
-                delete modalImagenEl.dataset.zoomAbovePopup;
-            }
-        });
-
-        function actualizarBotonAgregarSeleccionados() {
-            if (!btnModalAgregarSeleccionados) {
-                return;
-            }
-            const n = productosMarcados.size;
-            btnModalAgregarSeleccionados.disabled = n === 0 || agregandoLinea;
-            btnModalAgregarSeleccionados.innerHTML = n > 0 ?
-                '<i class="bi bi-plus-circle"></i> Agregar seleccionados (' + n + ')' :
-                '<i class="bi bi-plus-circle"></i> Agregar seleccionados';
-        }
-
-        function sincronizarSeleccionarTodos() {
-            if (!chkSeleccionarTodos) {
-                return;
-            }
-            if (!resultadosActuales.length) {
-                chkSeleccionarTodos.checked = false;
-                chkSeleccionarTodos.indeterminate = false;
-                return;
-            }
-            const todos = resultadosActuales.every(p => productosMarcados.has(String(p.prod_item)));
-            const alguno = resultadosActuales.some(p => productosMarcados.has(String(p.prod_item)));
-            chkSeleccionarTodos.checked = todos;
-            chkSeleccionarTodos.indeterminate = alguno && !todos;
-        }
-
-        function togglearProductoMarcado(prodItem, marcado) {
-            const key = String(prodItem || '').trim();
-            if (!key) {
-                return;
-            }
-            if (marcado) {
-                productosMarcados.add(key);
-            } else {
-                productosMarcados.delete(key);
-            }
-            actualizarBotonAgregarSeleccionados();
-            sincronizarSeleccionarTodos();
-        }
-
-        function limpiarProductosMarcados() {
-            productosMarcados.clear();
-            actualizarBotonAgregarSeleccionados();
-            sincronizarSeleccionarTodos();
-        }
-
-        async function agregarProductosSeleccionados() {
-            const seleccionados = resultadosActuales.filter(p => productosMarcados.has(String(p.prod_item)));
-            if (!seleccionados.length || agregandoLinea) {
-                return;
-            }
-
-            agregandoLinea = true;
-            actualizarBotonAgregarSeleccionados();
-            mostrarLoaderCotiz();
-            if (modalEstado) {
-                setModalBuscarEstado('Agregando ' + seleccionados.length + ' producto(s)...', false);
-            }
-
-            let ok = 0;
-            let fail = 0;
-            const errores = [];
-
-            for (const p of seleccionados) {
-                const result = await agregarProducto(p, {
-                    quiet: true,
-                    inBatch: true
-                });
-                if (result) {
-                    ok++;
-                } else {
-                    fail++;
-                    errores.push(codigoProductoTexto(p.prod_item));
-                }
-            }
-
-            agregandoLinea = false;
             ocultarLoaderCotiz();
-            try {
-                sessionStorage.removeItem('page-loader-pending');
-            } catch (e) {}
+            dlgAlert(json.error || json.message || 'No se pudo cambiar el orden.', { title: 'Error', type: 'danger' });
+            return null;
+        } catch (err) {
+            ocultarLoaderCotiz();
+            dlgAlert('Error de conexión al cambiar el orden.', { title: 'Error', type: 'danger' });
+            return null;
+        } finally {
+            ordenEnProceso = false;
+        }
+    }
 
-            limpiarProductosMarcados();
-            modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
-                chk.checked = false;
-            });
+    async function irAPosicionLinea(btn, inputOverride) {
+        if (!btn || ordenEnProceso) return;
 
-            if (fail === 0) {
-                bsModal?.hide();
-                return;
-            }
+        const row = btn.closest('tr[data-linea]');
+        const input = inputOverride || row?.querySelector('.linea-orden-destino');
+        if (!row || !input) return;
 
-            const detalle = errores.length ? (' Productos con error: ' + errores.join(', ') + '.') : '';
-            dlgAlert('Agregados: ' + ok + '. Fallidos: ' + fail + '.' + detalle, {
-                title: 'Agregar productos',
-                type: fail === seleccionados.length ? 'danger' : 'warning',
-            });
-            if (modalEstado) {
-                setModalBuscarEstado('Algunos productos no se pudieron agregar. Revise la selección.', false);
-            }
+        const total = totalLineasGrilla();
+        const ordenNuevo = parseInt(input.value, 10);
+        const ordenActual = parseInt(btn.dataset.orden || row.dataset.orden, 10);
+
+        if (!Number.isFinite(ordenNuevo) || ordenNuevo < 1 || ordenNuevo > total) {
+            dlgAlert('Indique una posición entre 1 y ' + total + '.', { title: 'Posición inválida' });
+            input.focus();
+            input.select();
+            return;
         }
 
-        function marcarFilaActiva(idx) {
-            filaActiva = idx;
-            modalBody?.querySelectorAll('tr[data-idx]').forEach(tr => {
-                tr.classList.toggle('table-active', parseInt(tr.dataset.idx, 10) === idx);
-            });
+        if (ordenNuevo === ordenActual) {
+            input.value = String(ordenActual);
+            return;
         }
 
-        function renderResultados(items, meta) {
-            resultadosActuales = items || [];
-            filaActiva = resultadosActuales.length ? 0 : -1;
+        const controles = row.querySelector('.linea-orden-controls');
+        controles?.querySelectorAll('button, input').forEach(el => { el.disabled = true; });
 
-            if (!modalBody) return;
+        const result = await cambiarOrdenLinea(btn.dataset.prod, ordenActual, { orden_nuevo: ordenNuevo });
 
-            if (!resultadosActuales.length) {
-                modalBody.innerHTML = '<tr><td colspan="' + colsModalBuscar() + '" class="text-muted text-center py-3">Sin resultados.</td></tr>';
-                limpiarProductosMarcados();
-                if (modalEstado) {
-                    const modo = meta?.modo === 'texto' ? 'texto' : 'similitud';
-                    if (meta?.q) {
-                        setModalBuscarEstado(
-                            modo === 'texto' ?
-                            'No se encontraron productos con el texto «' + meta.q + '».' :
-                            'No se encontraron productos similares para «' + meta.q + '».',
-                            false
-                        );
+        controles?.querySelectorAll('button, input').forEach(el => { el.disabled = false; });
+
+        if (result?.lineas) {
+            aplicarOrdenDesdeServidor(result.lineas);
+        }
+    }
+
+    document.getElementById('tabla_detalle')?.addEventListener('click', e => {
+        const ir = e.target.closest('.linea-orden-ir');
+        if (ir) {
+            e.preventDefault();
+            irAPosicionLinea(ir);
+        }
+    });
+
+    document.getElementById('tabla_detalle')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.matches('.linea-orden-destino')) {
+            e.preventDefault();
+            const row = e.target.closest('tr[data-linea]');
+            const ir = row?.querySelector('.linea-orden-ir');
+            if (ir) irAPosicionLinea(ir, e.target);
+        }
+    });
+
+    const detalleTbody = document.querySelector('#tabla_detalle tbody');
+    if (detalleTbody && detalleTbody.querySelector('tr[data-linea]') && typeof Sortable !== 'undefined') {
+        Sortable.create(detalleTbody, {
+            animation: 160,
+            handle: '.linea-drag-handle',
+            draggable: 'tr[data-linea]',
+            ghostClass: 'linea-sortable-ghost',
+            chosenClass: 'linea-sortable-chosen',
+            dragClass: 'linea-sortable-drag',
+            scroll: true,
+            forceAutoScrollFallback: true,
+            scrollSensitivity: 60,
+            scrollSpeed: 20,
+            bubbleScroll: true,
+            onStart: function (evt) {
+                evt.item.dataset.ordenAntesDrag = evt.item.dataset.orden;
+            },
+            onEnd: async function (evt) {
+                if (evt.oldIndex === evt.newIndex || evt.oldIndex == null || evt.newIndex == null) {
+                    delete evt.item.dataset.ordenAntesDrag;
+                    return;
+                }
+
+                const row = evt.item;
+                const prodItem = row.dataset.prod;
+                const orden = parseInt(row.dataset.ordenAntesDrag || row.dataset.orden, 10);
+                const ordenNuevo = evt.newIndex + 1;
+                delete row.dataset.ordenAntesDrag;
+
+                const result = await cambiarOrdenLinea(prodItem, orden, { orden_nuevo: ordenNuevo });
+                if (result) {
+                    if (result.lineas) {
+                        aplicarOrdenDesdeServidor(result.lineas);
                     } else {
-                        setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
+                        actualizarControlesOrdenVisual();
                     }
+                } else {
+                    revertirSortable(evt);
                 }
-                return;
+            },
+        });
+    }
+
+    let lineasUrl = @json(route('admin.cotizaciones.lineas.store', $nota->nronota));
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+    let agregandoLinea = false;
+
+    async function agregarProducto(p, options = {}) {
+        const quiet = options.quiet === true;
+        const inBatch = options.inBatch === true;
+
+        if (!p?.prod_item) {
+            return false;
+        }
+        if (agregandoLinea && !inBatch) {
+            return false;
+        }
+
+        const cantidad = document.getElementById('modal-cantidad')?.value || '1';
+        const prodValorCosto = p.prod_valor_costo ?? '';
+        const costoNum = prodValorCosto !== '' && prodValorCosto != null
+            ? parseInt(prodValorCosto, 10) || 0
+            : 0;
+        const prodValor = precioVentaSegunFactorJs(costoNum, p.prod_valor ?? 0);
+        const factorEnvio = factorInput?.value || formatFactorChile(factorActualCotiz());
+
+        if (!inBatch) {
+            agregandoLinea = true;
+        }
+
+        try {
+            const body = new FormData();
+            body.append('_token', csrf);
+            body.append('prod_item', p.prod_item);
+            body.append('cantidad', cantidad);
+            body.append('prod_valor', String(prodValor));
+            body.append('factor_precio_venta', factorEnvio);
+            const esInternaInput = document.getElementById('es_interna');
+            if (esInternaInput) {
+                body.append('es_interna', esInternaInput.value);
+            }
+            if (prodValorCosto !== '' && prodValorCosto != null) {
+                body.append('prod_valor_costo', prodValorCosto);
             }
 
-            productosMarcados.clear();
-            modalBody.innerHTML = '';
-            resultadosActuales.forEach((p, idx) => {
-                const tr = document.createElement('tr');
-                tr.dataset.idx = String(idx);
-                tr.dataset.prodItem = String(p.prod_item || '');
-                tr.className = 'cotiz-buscar-fila' + (modalBuscarVincularActivo ? ' cotiz-buscar-fila-vincular' : '');
-                tr.tabIndex = 0;
-                if (modalBuscarVincularActivo) {
-                    tr.style.cursor = 'pointer';
-                    tr.innerHTML =
-                        '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
-                        '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
-                        '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
-                        '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
-                        '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
-                } else {
-                    tr.innerHTML =
-                        '<td class="text-center align-middle">' +
-                        '<input type="checkbox" class="form-check-input cotiz-buscar-check" aria-label="Seleccionar producto">' +
-                        '</td>' +
-                        '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
-                        '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
-                        '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
-                        '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
-                        '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            const res = await fetch(lineasUrl, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+
+            const json = await res.json().catch(() => ({}));
+
+            if (res.ok && json.ok) {
+                insertarLineaDetalle(json, p);
+                if (!quiet) {
+                    ocultarLoaderCotiz();
+                    try {
+                        sessionStorage.removeItem('page-loader-pending');
+                    } catch (e) {}
                 }
+                return true;
+            }
 
-                const chk = tr.querySelector('.cotiz-buscar-check');
-                chk?.addEventListener('change', () => togglearProductoMarcado(p.prod_item, chk.checked));
-                chk?.addEventListener('click', e => e.stopPropagation());
+            if (!quiet) {
+                ocultarLoaderCotiz();
+                try {
+                    sessionStorage.removeItem('page-loader-pending');
+                } catch (e) {}
+                dlgAlert(json.error || json.message || 'No se pudo agregar la línea.', { title: 'Error', type: 'danger' });
+            }
+            return false;
+        } catch (err) {
+            if (!quiet) {
+                ocultarLoaderCotiz();
+                try {
+                    sessionStorage.removeItem('page-loader-pending');
+                } catch (e) {}
+                dlgAlert('Error de conexión al agregar producto.', { title: 'Error', type: 'danger' });
+            }
+            return false;
+        } finally {
+            if (!inBatch) {
+                agregandoLinea = false;
+            }
+        }
+    }
 
-                tr.addEventListener('click', e => {
-                    if (e.target.closest('.product-image-zoom-trigger')) {
-                        return;
-                    }
+    const buscarConfig = {
+        url: @json(route('admin.productos.buscar')),
+        minChars: @json((int) config('cotiz.buscar_productos_min_chars', 2)),
+        limit: @json((int) config('cotiz.buscar_productos_limite', 15)),
+        placeholderImg: @json(asset('images/no-image.svg')),
+    };
+
+    const modalEl = document.getElementById('modal-buscar-producto');
+    const modalInput = document.getElementById('modal-buscar-input');
+    const modalEstado = document.getElementById('modal-buscar-estado');
+    const modalBody = document.getElementById('modal-buscar-resultados');
+    const btnAbrirBuscar = document.getElementById('btn-abrir-buscar-producto');
+    const btnModalBuscar = document.getElementById('btn-modal-buscar');
+    const btnModalAgregarSeleccionados = document.getElementById('btn-modal-agregar-seleccionados');
+    const chkSeleccionarTodos = document.getElementById('modal-buscar-seleccionar-todos');
+    const modalBuscarCantidadWrap = document.getElementById('modal-buscar-cantidad-wrap');
+    const modalBuscarFooterHint = document.getElementById('modal-buscar-footer-hint');
+    const modalBuscarTitulo = document.getElementById('modal-buscar-producto-label');
+    const modalBuscarChkHeader = document.querySelector('#tabla-buscar-productos thead th:first-child');
+    const productosMarcados = new Set();
+    let modalBuscarVincularActivo = false;
+
+    function obtenerModoBusquedaModal() {
+        const checked = document.querySelector('input[name="modalBuscarModo"]:checked');
+        return checked?.value === 'texto' ? 'texto' : 'similitud';
+    }
+
+    function setModoBusquedaModal(modo) {
+        const value = modo === 'texto' ? 'texto' : 'similitud';
+        const radio = document.querySelector('input[name="modalBuscarModo"][value="' + value + '"]');
+        if (radio) radio.checked = true;
+        actualizarAyudaModoBusquedaModal();
+    }
+
+    function actualizarAyudaModoBusquedaModal() {
+        const ayuda = document.getElementById('modalBuscarModoTextoAyuda');
+        if (ayuda) {
+            ayuda.classList.toggle('d-none', obtenerModoBusquedaModal() !== 'texto');
+        }
+    }
+
+    function setModalBuscarModoVincular(activo) {
+        modalBuscarVincularActivo = !!activo;
+        modalBuscarChkHeader?.classList.toggle('d-none', modalBuscarVincularActivo);
+        modalBuscarCantidadWrap?.classList.toggle('d-none', modalBuscarVincularActivo);
+        btnModalAgregarSeleccionados?.classList.toggle('d-none', modalBuscarVincularActivo);
+        if (modalBuscarTitulo) {
+            modalBuscarTitulo.textContent = modalBuscarVincularActivo
+                ? 'Cambiar producto de la línea'
+                : 'Buscar producto';
+        }
+        if (modalBuscarFooterHint) {
+            modalBuscarFooterHint.textContent = modalBuscarVincularActivo
+                ? 'Pulse una fila para reemplazar el producto de la línea (excepto la imagen).'
+                : 'Marque productos y pulse «Agregar seleccionados».';
+        }
+    }
+
+    function colsModalBuscar() {
+        return modalBuscarVincularActivo ? 5 : 6;
+    }
+
+    function setModalBuscarEstado(texto, cargando) {
+        if (!modalEstado) return;
+        modalEstado.textContent = texto;
+        modalEstado.classList.toggle('cotiz-buscar-loading', !!cargando);
+        modalEstado.classList.toggle('text-muted', !cargando);
+    }
+
+    function buscarLoadingHtml(texto) {
+        return '<p class="small cotiz-buscar-loading mb-0">'
+            + '<i class="bi bi-search me-1" aria-hidden="true"></i>'
+            + (texto || 'Buscando...') + '</p>';
+    }
+
+    const bsModal = modalEl && typeof bootstrap !== 'undefined'
+        ? bootstrap.Modal.getOrCreateInstance(modalEl)
+        : null;
+    let buscarAbort = null;
+    let resultadosActuales = [];
+    let filaActiva = -1;
+
+    function fmtPrecio(n) {
+        return '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
+    }
+
+    function buscarProductoThumbHtml(p) {
+        const src = p?.image_url ? escHtml(p.image_url) : buscarConfig.placeholderImg;
+        const titulo = escHtml(codigoProductoTexto(p.prod_item) + (p.prod_nombre ? ' — ' + p.prod_nombre : ''));
+        const img = '<img src="' + src + '" alt="" class="cotiz-buscar-thumb" loading="eager" '
+            + 'decoding="async" referrerpolicy="no-referrer" '
+            + 'onerror="this.onerror=null;this.src=\'' + buscarConfig.placeholderImg + '\'">';
+
+        if (p?.image_url) {
+            return '<button type="button" class="product-image-zoom-trigger cotiz-buscar-thumb-btn" '
+                + 'data-image-url="' + escHtml(p.image_url) + '" '
+                + 'data-image-title="' + titulo + '" '
+                + 'title="Ver imagen ampliada">' + img + '</button>';
+        }
+
+        return img;
+    }
+
+    const modalImagenEl = document.getElementById('modal-imagen-producto-cotiz');
+    const modalImagenImg = document.getElementById('modal-imagen-producto-cotiz-img');
+    const modalImagenTitle = document.getElementById('modal-imagen-producto-cotiz-titulo');
+    const bsModalImagen = modalImagenEl ? bootstrap.Modal.getOrCreateInstance(modalImagenEl) : null;
+
+    function abrirImagenAmpliada(trigger) {
+        const url = trigger?.dataset?.imageUrl;
+        if (!url || !bsModalImagen || !modalImagenImg) return;
+        modalImagenImg.src = url;
+        modalImagenImg.alt = trigger.dataset.imageTitle || 'Imagen producto';
+        if (modalImagenTitle) {
+            modalImagenTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
+        }
+        if (modalImagenEl) {
+            modalImagenEl.dataset.zoomAbovePopup = trigger?.closest('.cotiz-popup-overlay') ? '1' : '0';
+        }
+        bsModalImagen.show();
+    }
+
+    function ajustarBackdropImagenAmpliada() {
+        if (!modalImagenEl || modalImagenEl.dataset.zoomAbovePopup !== '1') return;
+        document.querySelectorAll('.modal-backdrop.show').forEach(backdrop => {
+            backdrop.style.zIndex = '1085';
+        });
+    }
+
+    function enlazarZoomImagenes(contenedor) {
+        const root = contenedor || document;
+        root.querySelectorAll('.product-image-zoom-trigger:not([data-zoom-bound])').forEach(trigger => {
+            trigger.dataset.zoomBound = '1';
+            trigger.addEventListener('click', e => {
+                e.stopPropagation();
+                e.preventDefault();
+                abrirImagenAmpliada(trigger);
+            });
+        });
+    }
+
+    enlazarZoomImagenes(document.querySelector('.cotizacion-ingreso'));
+
+    modalImagenEl?.addEventListener('shown.bs.modal', ajustarBackdropImagenAmpliada);
+
+    modalImagenEl?.addEventListener('hidden.bs.modal', () => {
+        if (modalImagenImg) {
+            modalImagenImg.removeAttribute('src');
+            modalImagenImg.alt = '';
+        }
+        if (modalImagenEl) {
+            delete modalImagenEl.dataset.zoomAbovePopup;
+        }
+    });
+
+    function actualizarBotonAgregarSeleccionados() {
+        if (!btnModalAgregarSeleccionados) {
+            return;
+        }
+        const n = productosMarcados.size;
+        btnModalAgregarSeleccionados.disabled = n === 0 || agregandoLinea;
+        btnModalAgregarSeleccionados.innerHTML = n > 0
+            ? '<i class="bi bi-plus-circle"></i> Agregar seleccionados (' + n + ')'
+            : '<i class="bi bi-plus-circle"></i> Agregar seleccionados';
+    }
+
+    function sincronizarSeleccionarTodos() {
+        if (!chkSeleccionarTodos) {
+            return;
+        }
+        if (!resultadosActuales.length) {
+            chkSeleccionarTodos.checked = false;
+            chkSeleccionarTodos.indeterminate = false;
+            return;
+        }
+        const todos = resultadosActuales.every(p => productosMarcados.has(String(p.prod_item)));
+        const alguno = resultadosActuales.some(p => productosMarcados.has(String(p.prod_item)));
+        chkSeleccionarTodos.checked = todos;
+        chkSeleccionarTodos.indeterminate = alguno && !todos;
+    }
+
+    function togglearProductoMarcado(prodItem, marcado) {
+        const key = String(prodItem || '').trim();
+        if (!key) {
+            return;
+        }
+        if (marcado) {
+            productosMarcados.add(key);
+        } else {
+            productosMarcados.delete(key);
+        }
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    }
+
+    function limpiarProductosMarcados() {
+        productosMarcados.clear();
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    }
+
+    async function agregarProductosSeleccionados() {
+        const seleccionados = resultadosActuales.filter(p => productosMarcados.has(String(p.prod_item)));
+        if (!seleccionados.length || agregandoLinea) {
+            return;
+        }
+
+        agregandoLinea = true;
+        actualizarBotonAgregarSeleccionados();
+        mostrarLoaderCotiz();
+        if (modalEstado) {
+            setModalBuscarEstado('Agregando ' + seleccionados.length + ' producto(s)...', false);
+        }
+
+        let ok = 0;
+        let fail = 0;
+        const errores = [];
+
+        for (const p of seleccionados) {
+            const result = await agregarProducto(p, { quiet: true, inBatch: true });
+            if (result) {
+                ok++;
+            } else {
+                fail++;
+                errores.push(codigoProductoTexto(p.prod_item));
+            }
+        }
+
+        agregandoLinea = false;
+        ocultarLoaderCotiz();
+        try {
+            sessionStorage.removeItem('page-loader-pending');
+        } catch (e) {}
+
+        limpiarProductosMarcados();
+        modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
+            chk.checked = false;
+        });
+
+        if (fail === 0) {
+            bsModal?.hide();
+            return;
+        }
+
+        const detalle = errores.length ? (' Productos con error: ' + errores.join(', ') + '.') : '';
+        dlgAlert('Agregados: ' + ok + '. Fallidos: ' + fail + '.' + detalle, {
+            title: 'Agregar productos',
+            type: fail === seleccionados.length ? 'danger' : 'warning',
+        });
+        if (modalEstado) {
+            setModalBuscarEstado('Algunos productos no se pudieron agregar. Revise la selección.', false);
+        }
+    }
+
+    function marcarFilaActiva(idx) {
+        filaActiva = idx;
+        modalBody?.querySelectorAll('tr[data-idx]').forEach(tr => {
+            tr.classList.toggle('table-active', parseInt(tr.dataset.idx, 10) === idx);
+        });
+    }
+
+    function renderResultados(items, meta) {
+        resultadosActuales = items || [];
+        filaActiva = resultadosActuales.length ? 0 : -1;
+
+        if (!modalBody) return;
+
+        if (!resultadosActuales.length) {
+            modalBody.innerHTML = '<tr><td colspan="' + colsModalBuscar() + '" class="text-muted text-center py-3">Sin resultados.</td></tr>';
+            limpiarProductosMarcados();
+            if (modalEstado) {
+                const modo = meta?.modo === 'texto' ? 'texto' : 'similitud';
+                if (meta?.q) {
+                    setModalBuscarEstado(
+                        modo === 'texto'
+                            ? 'No se encontraron productos con el texto «' + meta.q + '».'
+                            : 'No se encontraron productos similares para «' + meta.q + '».',
+                        false
+                    );
+                } else {
+                    setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
+                }
+            }
+            return;
+        }
+
+        productosMarcados.clear();
+        modalBody.innerHTML = '';
+        resultadosActuales.forEach((p, idx) => {
+            const tr = document.createElement('tr');
+            tr.dataset.idx = String(idx);
+            tr.dataset.prodItem = String(p.prod_item || '');
+            tr.className = 'cotiz-buscar-fila' + (modalBuscarVincularActivo ? ' cotiz-buscar-fila-vincular' : '');
+            tr.tabIndex = 0;
+            if (modalBuscarVincularActivo) {
+                tr.style.cursor = 'pointer';
+                tr.innerHTML =
+                    '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
+                    '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
+                    '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
+                    '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
+                    '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            } else {
+                tr.innerHTML =
+                    '<td class="text-center align-middle">' +
+                        '<input type="checkbox" class="form-check-input cotiz-buscar-check" aria-label="Seleccionar producto">' +
+                    '</td>' +
+                    '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
+                    '<td class="align-middle"><code class="small">' + escHtml(codigoProductoTexto(p.prod_item)) + '</code></td>' +
+                    '<td class="align-middle small">' + (p.prod_nombre || '') + '</td>' +
+                    '<td class="align-middle small text-muted text-end tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
+                    '<td class="align-middle text-end fw-semibold">' + fmtPrecio(precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor)) + '</td>';
+            }
+
+            const chk = tr.querySelector('.cotiz-buscar-check');
+            chk?.addEventListener('change', () => togglearProductoMarcado(p.prod_item, chk.checked));
+            chk?.addEventListener('click', e => e.stopPropagation());
+
+            tr.addEventListener('click', e => {
+                if (e.target.closest('.product-image-zoom-trigger')) {
+                    return;
+                }
+                if (modalBuscarVincularActivo) {
+                    seleccionarVinculoAgileDesdeModal(p);
+                    return;
+                }
+                if (e.target.closest('.cotiz-buscar-check')) {
+                    return;
+                }
+                if (!chk) {
+                    return;
+                }
+                chk.checked = !chk.checked;
+                togglearProductoMarcado(p.prod_item, chk.checked);
+            });
+            tr.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
                     if (modalBuscarVincularActivo) {
                         seleccionarVinculoAgileDesdeModal(p);
-                        return;
-                    }
-                    if (e.target.closest('.cotiz-buscar-check')) {
                         return;
                     }
                     if (!chk) {
@@ -2693,2542 +2598,2332 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                     }
                     chk.checked = !chk.checked;
                     togglearProductoMarcado(p.prod_item, chk.checked);
-                });
-                tr.addEventListener('keydown', e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        if (modalBuscarVincularActivo) {
-                            seleccionarVinculoAgileDesdeModal(p);
-                            return;
-                        }
-                        if (!chk) {
-                            return;
-                        }
-                        chk.checked = !chk.checked;
-                        togglearProductoMarcado(p.prod_item, chk.checked);
-                    }
-                });
-                modalBody.appendChild(tr);
+                }
             });
+            modalBody.appendChild(tr);
+        });
 
-            enlazarZoomImagenes(modalBody);
-            actualizarBotonAgregarSeleccionados();
-            sincronizarSeleccionarTodos();
+        enlazarZoomImagenes(modalBody);
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
 
-            if (modalEstado && meta) {
-                const modo = meta.modo === 'texto' ? 'texto' : 'similitud';
-                setModalBuscarEstado(
-                    modo === 'texto' ?
-                    meta.count + ' producto(s) — búsqueda por texto (sin límite de 50).' :
-                    meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).',
-                    false
-                );
-            }
-
-            marcarFilaActiva(0);
+        if (modalEstado && meta) {
+            const modo = meta.modo === 'texto' ? 'texto' : 'similitud';
+            setModalBuscarEstado(
+                modo === 'texto'
+                    ? meta.count + ' producto(s) — búsqueda por texto (sin límite de 50).'
+                    : meta.count + ' producto(s) — ordenados por similitud y precio (más barato primero).',
+                false
+            );
         }
 
-        async function ejecutarBusqueda(q, modoBusqueda) {
-            if (buscarAbort) buscarAbort.abort();
-            buscarAbort = new AbortController();
-            const signal = buscarAbort.signal;
-            const modo = modoBusqueda === 'texto' ? 'texto' : 'similitud';
+        marcarFilaActiva(0);
+    }
 
-            if (q.length < buscarConfig.minChars) {
-                renderResultados([], {
-                    q
-                });
-                if (modalEstado) {
-                    setModalBuscarEstado('Escriba al menos ' + buscarConfig.minChars + ' caracteres para buscar.', false);
-                }
-                return;
+    async function ejecutarBusqueda(q, modoBusqueda) {
+        if (buscarAbort) buscarAbort.abort();
+        buscarAbort = new AbortController();
+        const signal = buscarAbort.signal;
+        const modo = modoBusqueda === 'texto' ? 'texto' : 'similitud';
+
+        if (q.length < buscarConfig.minChars) {
+            renderResultados([], { q });
+            if (modalEstado) {
+                setModalBuscarEstado('Escriba al menos ' + buscarConfig.minChars + ' caracteres para buscar.', false);
             }
-
-            if (btnModalBuscar) btnModalBuscar.disabled = true;
-            setModalBuscarEstado('Buscando...', true);
-
-            try {
-                const params = new URLSearchParams({
-                    q,
-                    modo,
-                });
-                if (modo === 'similitud') {
-                    params.set('limit', String(buscarConfig.limit));
-                }
-                const res = await fetch(buscarConfig.url + '?' + params.toString(), {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    signal,
-                });
-                const json = await res.json();
-                renderResultados(json.data || [], json.meta || {
-                    q,
-                    count: (json.data || []).length
-                });
-            } catch (err) {
-                if (err.name === 'AbortError') return;
-                if (modalEstado) setModalBuscarEstado('Error al buscar. Intente de nuevo.', false);
-            } finally {
-                if (!signal.aborted && btnModalBuscar) {
-                    btnModalBuscar.disabled = false;
-                }
-            }
+            return;
         }
 
-        function abrirModalBuscar() {
-            if (!asegurarNumeroCotizacionGuardada({
-                    mensajeVacio: 'Debe ingresar la cotización.',
-                    mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de agregar productos.',
-                })) return;
-            if (!bsModal || !modalInput) return;
-            setModalBuscarModoVincular(false);
-            setModoBusquedaModal('similitud');
+        if (btnModalBuscar) btnModalBuscar.disabled = true;
+        setModalBuscarEstado('Buscando...', true);
+
+        try {
+            const params = new URLSearchParams({
+                q,
+                modo,
+            });
+            if (modo === 'similitud') {
+                params.set('limit', String(buscarConfig.limit));
+            }
+            const res = await fetch(buscarConfig.url + '?' + params.toString(), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                signal,
+            });
+            const json = await res.json();
+            renderResultados(json.data || [], json.meta || { q, count: (json.data || []).length });
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            if (modalEstado) setModalBuscarEstado('Error al buscar. Intente de nuevo.', false);
+        } finally {
+            if (!signal.aborted && btnModalBuscar) {
+                btnModalBuscar.disabled = false;
+            }
+        }
+    }
+
+    function abrirModalBuscar() {
+        if (!asegurarNumeroCotizacionGuardada({
+            mensajeVacio: 'Debe ingresar la cotización.',
+            mensajeGuardar: 'Guarde la cotización con el botón «Guardar número» antes de agregar productos.',
+        })) return;
+        if (!bsModal || !modalInput) return;
+        setModalBuscarModoVincular(false);
+        setModoBusquedaModal('similitud');
+        modalInput.value = '';
+        limpiarProductosMarcados();
+        renderResultados([], {});
+        if (modalEstado) {
+            setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
+        }
+        bsModal.show();
+        setTimeout(() => {
+            modalInput.focus();
+        }, 200);
+    }
+
+    function lanzarBusquedaModal() {
+        if (!modalInput) return;
+        ejecutarBusqueda(modalInput.value.trim(), obtenerModoBusquedaModal());
+    }
+
+    function limpiarBusquedaModal() {
+        if (modalInput) {
             modalInput.value = '';
-            limpiarProductosMarcados();
-            renderResultados([], {});
-            if (modalEstado) {
-                setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
-            }
-            bsModal.show();
-            setTimeout(() => {
-                modalInput.focus();
-            }, 200);
+            modalInput.focus();
         }
-
-        function lanzarBusquedaModal() {
-            if (!modalInput) return;
-            ejecutarBusqueda(modalInput.value.trim(), obtenerModoBusquedaModal());
+        renderResultados([], {});
+        if (modalEstado) {
+            setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
         }
+    }
 
-        function limpiarBusquedaModal() {
-            if (modalInput) {
-                modalInput.value = '';
-                modalInput.focus();
-            }
-            renderResultados([], {});
-            if (modalEstado) {
-                setModalBuscarEstado('Escriba el texto del cliente o descripción y pulse Buscar.', false);
-            }
-        }
-
-        btnAbrirBuscar?.addEventListener('click', () => abrirModalBuscar());
-        btnModalBuscar?.addEventListener('click', () => lanzarBusquedaModal());
-        document.querySelectorAll('input[name="modalBuscarModo"]').forEach((radio) => {
-            radio.addEventListener('change', () => {
-                actualizarAyudaModoBusquedaModal();
-                if (modalInput?.value.trim()) {
-                    lanzarBusquedaModal();
-                }
-            });
-        });
-        btnModalAgregarSeleccionados?.addEventListener('click', () => agregarProductosSeleccionados());
-        document.getElementById('btn-modal-buscar-limpiar')?.addEventListener('click', limpiarBusquedaModal);
-
-        chkSeleccionarTodos?.addEventListener('change', () => {
-            const marcar = !!chkSeleccionarTodos.checked;
-            resultadosActuales.forEach(p => {
-                if (marcar) {
-                    productosMarcados.add(String(p.prod_item));
-                } else {
-                    productosMarcados.delete(String(p.prod_item));
-                }
-            });
-            modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
-                chk.checked = marcar;
-            });
-            actualizarBotonAgregarSeleccionados();
-            sincronizarSeleccionarTodos();
-        });
-
-        modalInput?.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
+    btnAbrirBuscar?.addEventListener('click', () => abrirModalBuscar());
+    btnModalBuscar?.addEventListener('click', () => lanzarBusquedaModal());
+    document.querySelectorAll('input[name="modalBuscarModo"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            actualizarAyudaModoBusquedaModal();
+            if (modalInput?.value.trim()) {
                 lanzarBusquedaModal();
-                return;
-            }
-
-            if (!resultadosActuales.length) return;
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                marcarFilaActiva(Math.min(filaActiva + 1, resultadosActuales.length - 1));
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                marcarFilaActiva(Math.max(filaActiva - 1, 0));
             }
         });
+    });
+    btnModalAgregarSeleccionados?.addEventListener('click', () => agregarProductosSeleccionados());
+    document.getElementById('btn-modal-buscar-limpiar')?.addEventListener('click', limpiarBusquedaModal);
 
-        modalEl?.addEventListener('hidden.bs.modal', () => {
-            if (buscarAbort) buscarAbort.abort();
-            limpiarProductosMarcados();
-            setModalBuscarModoVincular(false);
-        });
-
-        function idAgileParaMercadoPublico(codigoInterno) {
-            const s = String(codigoInterno || '').trim().replace(/\s/g, '');
-            if (!s) return '';
-            const m = s.match(/^(\d+)/);
-            return (m && m[1]) ? m[1] : s;
-        }
-
-        function recolectarItemsMercadoPublico() {
-            const items = [];
-            document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
-                const codigo = String(tr.dataset.prod || '').trim();
-                const idAgileCell = String(tr.querySelector('td .linea-id-agile')?.textContent || '').trim().replace(/\s/g, '');
-                const idMp = idAgileCell || idAgileParaMercadoPublico(codigo) || codigo;
-                const precioNum = parseInt(tr.querySelector('.linea-prod-valor')?.value || '0', 10) || 0;
-                if (codigo) {
-                    items.push({
-                        idAgile: idMp,
-                        codigoInterno: codigo,
-                        valorUnitario: precioNum
-                    });
-                }
-            });
-            return items;
-        }
-
-        function copiarTextoPortapapeles(texto) {
-            if (navigator.clipboard?.writeText && window.isSecureContext) {
-                return navigator.clipboard.writeText(texto);
-            }
-            return new Promise((resolve, reject) => {
-                const ta = document.createElement('textarea');
-                ta.value = texto;
-                ta.setAttribute('readonly', '');
-                ta.style.position = 'fixed';
-                ta.style.left = '-9999px';
-                document.body.appendChild(ta);
-                ta.select();
-                try {
-                    const ok = document.execCommand('copy');
-                    document.body.removeChild(ta);
-                    ok ? resolve(true) : reject(new Error('No se pudo copiar'));
-                } catch (e) {
-                    document.body.removeChild(ta);
-                    reject(e);
-                }
-            });
-        }
-
-        function feedbackIconoCopiado(btn, tituloOk) {
-            if (!btn) {
-                return;
-            }
-            const icon = btn.querySelector('i');
-            const prevClass = icon ? icon.className : '';
-            const prevTitle = btn.title || '';
-            if (icon) {
-                icon.className = 'bi bi-clipboard-check text-success';
-            }
-            btn.title = '¡Copiado!';
-            window.setTimeout(() => {
-                if (icon) {
-                    icon.className = prevClass || 'bi bi-clipboard';
-                }
-                btn.title = tituloOk || prevTitle || 'Copiar';
-            }, 1500);
-        }
-
-        document.getElementById('btn-copiar-encargado')?.addEventListener('click', () => {
-            const enc = document.getElementById('encargado');
-            const cod = String(enc?.value || '').trim();
-            const btn = document.getElementById('btn-copiar-encargado');
-            if (!cod) {
-                if (btn) {
-                    btn.title = 'No hay número de cotización';
-                }
-                return;
-            }
-            copiarTextoPortapapeles(cod).then(() => {
-                feedbackIconoCopiado(btn, 'Copiar número de cotización');
-            }).catch(() => {
-                if (btn) {
-                    btn.title = 'No se pudo copiar';
-                }
-            });
-        });
-
-        document.getElementById('btn-copiar-frase-cotiz')?.addEventListener('click', () => {
-            const btn = document.getElementById('btn-copiar-frase-cotiz');
-            const frase = 'Buen día!, comparto la cotización con el detalle completo, según lo solicitado.(P.G.)';
-            copiarTextoPortapapeles(frase).then(() => {
-                feedbackIconoCopiado(btn, 'Copiar saludo para pegar en otro lado');
-            }).catch(() => {
-                if (btn) {
-                    btn.title = 'No se pudo copiar';
-                }
-            });
-        });
-
-        document.getElementById('btnCopiarMP')?.addEventListener('click', async () => {
-            const items = recolectarItemsMercadoPublico();
-            if (items.length === 0) {
-                dlgAlert('No hay filas válidas en la tabla de productos para copiar.', {
-                    title: 'Copiar para MP'
-                });
-                return;
-            }
-            const conPrecioCero = items.filter(it => it.valorUnitario <= 0);
-            if (conPrecioCero.length > 0) {
-                const ok = await dlgConfirm(
-                    'Hay ítems con precio unitario 0 o vacío. ¿Desea copiar igualmente para completar después en Mercado Público?', {
-                        title: 'Precio en cero',
-                        type: 'warning'
-                    },
-                );
-                if (!ok) return;
-            }
-            const payload = {
-                fuente: 'cotiz',
-                nronota: String(document.getElementById('nronota')?.value || '').trim(),
-                cotizacion: String(document.getElementById('encargado')?.value || '').trim(),
-                despacho: 0,
-                items,
-            };
-            const jsonStr = JSON.stringify(payload, null, 2);
-            const tsvLines = ['id_agile\tvalor_unitario', ...items.map(it => it.idAgile + '\t' + it.valorUnitario)];
-            const bloque = '--- JSON ---\n' + jsonStr + '\n\n--- TSV ---\n' + tsvLines.join('\n');
-            copiarTextoPortapapeles(bloque).then(() => {
-                const msg = document.getElementById('mpCopiaMsg');
-                if (msg) {
-                    msg.textContent = 'Copiado: ' + items.length + ' unitario(s).';
-                    msg.hidden = false;
-                    setTimeout(() => {
-                        msg.hidden = true;
-                    }, 5000);
-                } else {
-                    dlgAlert('Copiado al portapapeles (' + items.length + ' ítems).', {
-                        title: 'Copiado',
-                        type: 'success'
-                    });
-                }
-            }).catch(err => {
-                dlgAlert('No se pudo copiar (use HTTPS o localhost).\n' + (err?.message || ''), {
-                    title: 'Error al copiar',
-                    type: 'danger'
-                });
-            });
-        });
-
-        const resumenLineasInicial = @json($resumenLineas);
-        let importarMpUrls = {
-            preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota - > nronota)),
-            importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota - > nronota)),
-            coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota - > nronota)),
-            limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota - > nronota)),
-            pdfPreview: @json(route('admin.cotizaciones.importar-pdf.preview', $nota - > nronota)),
-            pdfImportar: @json(route('admin.cotizaciones.importar-pdf', $nota - > nronota)),
-            excelPreview: @json(route('admin.cotizaciones.importar-excel.preview', $nota - > nronota)),
-            excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota - > nronota)),
-            materialesLockStatus: @json(route('admin.cotizaciones.importar-materiales.lock-status')),
-            materialesLockRelease: @json(route('admin.cotizaciones.importar-materiales.lock-release')),
-            apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota - > nronota)),
-            apiExisteLocal: @json(route('admin.cotizaciones.compra-agil-api.existe-local', $nota - > nronota)),
-            apiPreviewOportunidades: @json(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota - > nronota)),
-            apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota - > nronota)),
-            apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota - > nronota)),
-            oportunidadesIndex: @json(route('admin.oportunidades.para-cotizar.index')),
-            adjuntosEstado: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
-            adjuntosBuscar: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
-            adjuntosListarBase: @json(($puedeAdjuntosOportunidad ?? false) ? url() - > route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
-            adjuntosVerBase: @json(($puedeAdjuntosOportunidad ?? false) ? url() - > route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
-        };
-        const modalImportarEl = document.getElementById('modal-importar-compra-agil');
-        const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
-        const importarTexto = document.getElementById('importar-compra-agil-texto');
-        const importarPdfInput = document.getElementById('importar-compra-agil-pdf');
-        const importarPdfColCant = document.getElementById('importar-compra-agil-pdf-col-cant');
-        const importarPdfColDesc = document.getElementById('importar-compra-agil-pdf-col-desc');
-        const btnImportarAnalizarPdf = document.getElementById('btn-importar-compra-agil-analizar-pdf');
-        const importarExcelInput = document.getElementById('importar-compra-agil-excel');
-        const importarExcelColDesc = document.getElementById('importar-compra-agil-excel-col-desc');
-        const importarExcelColCant = document.getElementById('importar-compra-agil-excel-col-cant');
-        const btnImportarAnalizarExcel = document.getElementById('btn-importar-compra-agil-analizar-excel');
-        const importarEstado = document.getElementById('importar-compra-agil-estado');
-        const importarCabecera = document.getElementById('importar-compra-agil-cabecera');
-        const importarCabeceraTexto = document.getElementById('importar-compra-agil-cabecera-texto');
-        const importarTablaWrap = document.getElementById('importar-compra-agil-tabla-wrap');
-        const importarResultados = document.getElementById('importar-compra-agil-resultados');
-        const importarResumen = document.getElementById('importar-compra-agil-resumen');
-        const importarProgresoWrap = document.getElementById('importar-compra-agil-progreso-wrap');
-        const importarProgresoBar = document.getElementById('importar-compra-agil-progreso');
-        const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
-        const importarAlerta = document.getElementById('importar-compra-agil-alerta');
-        const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
-        const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
-        const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
-        const importarAvisoMp = document.getElementById('importar-compra-agil-aviso-mp');
-        const importarAvisoMpTexto = document.getElementById('importar-compra-agil-aviso-mp-texto');
-        const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
-        const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
-        const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
-        let importPreviewData = null;
-        let importandoCompraAgil = false;
-        let importCodigoApi = null;
-        let importModo = 'texto';
-        let importPdfFile = null;
-        let importPdfColumnaCantidad = '';
-        let importPdfColumnaProducto = '';
-        let importExcelFile = null;
-        let importSimTimer = null;
-        let importMaterialesLockId = null;
-        let importMaterialesAnalisisActivo = false;
-        let importMaterialesAnalisisCancelado = false;
-
-        const TEXTO_ANALISIS_TEXTO = 'Analizando texto pegado…';
-        const TEXTO_ANALISIS_PDF = 'Analizando PDF / Word…';
-        const TEXTO_ANALISIS_EXCEL = 'Analizando Excel…';
-        const TEXTO_VINCULACION = 'Vinculando productos con catálogo…';
-
-        function escHtml(s) {
-            return String(s ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
-
-        const IMPORT_LOTE_SIZE = 40;
-        const PREVIEW_LOTE_SIZE = 40;
-        const IMPORT_MAX_ARCHIVO_MB = {
-            {
-                (int) config('cotiz.materiales_import.max_archivo_mb', 50)
-            }
-        };
-        const IMPORT_MAX_ARCHIVO_BYTES = IMPORT_MAX_ARCHIVO_MB * 1024 * 1024;
-
-        function mensajeArchivoSuperaLimite(nombre) {
-            const nom = String(nombre || '').trim();
-            const limite = IMPORT_MAX_ARCHIVO_MB + ' MB';
-            if (nom) {
-                return 'El archivo «' + nom + '» supera el límite de ' + limite + '.';
-            }
-            return 'El archivo supera el límite de ' + limite + '.';
-        }
-
-        function archivoSuperaLimiteImport(fileOrBytes, nombre) {
-            let bytes = 0;
-            let nom = String(nombre || '');
-            if (fileOrBytes && typeof fileOrBytes === 'object' && typeof fileOrBytes.size === 'number') {
-                bytes = Number(fileOrBytes.size) || 0;
-                if (!nom) nom = String(fileOrBytes.name || '');
+    chkSeleccionarTodos?.addEventListener('change', () => {
+        const marcar = !!chkSeleccionarTodos.checked;
+        resultadosActuales.forEach(p => {
+            if (marcar) {
+                productosMarcados.add(String(p.prod_item));
             } else {
-                bytes = Number(fileOrBytes) || 0;
+                productosMarcados.delete(String(p.prod_item));
             }
-            if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
-                mostrarImportError(mensajeArchivoSuperaLimite(nom));
-                return true;
+        });
+        modalBody?.querySelectorAll('.cotiz-buscar-check').forEach(chk => {
+            chk.checked = marcar;
+        });
+        actualizarBotonAgregarSeleccionados();
+        sincronizarSeleccionarTodos();
+    });
+
+    modalInput?.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            lanzarBusquedaModal();
+            return;
+        }
+
+        if (!resultadosActuales.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            marcarFilaActiva(Math.min(filaActiva + 1, resultadosActuales.length - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            marcarFilaActiva(Math.max(filaActiva - 1, 0));
+        }
+    });
+
+    modalEl?.addEventListener('hidden.bs.modal', () => {
+        if (buscarAbort) buscarAbort.abort();
+        limpiarProductosMarcados();
+        setModalBuscarModoVincular(false);
+    });
+
+    function idAgileParaMercadoPublico(codigoInterno) {
+        const s = String(codigoInterno || '').trim().replace(/\s/g, '');
+        if (!s) return '';
+        const m = s.match(/^(\d+)/);
+        return (m && m[1]) ? m[1] : s;
+    }
+
+    function recolectarItemsMercadoPublico() {
+        const items = [];
+        document.querySelectorAll('#tabla_detalle tbody tr[data-linea]').forEach(tr => {
+            const codigo = String(tr.dataset.prod || '').trim();
+            const idAgileCell = String(tr.querySelector('td .linea-id-agile')?.textContent || '').trim().replace(/\s/g, '');
+            const idMp = idAgileCell || idAgileParaMercadoPublico(codigo) || codigo;
+            const precioNum = parseInt(tr.querySelector('.linea-prod-valor')?.value || '0', 10) || 0;
+            if (codigo) {
+                items.push({ idAgile: idMp, codigoInterno: codigo, valorUnitario: precioNum });
             }
-            return false;
-        }
+        });
+        return items;
+    }
 
-        function tamanoLoteImportar(total) {
-            const n = Math.max(0, Number(total) || 0);
-            if (n === 0) return IMPORT_LOTE_SIZE;
-            return Math.min(IMPORT_LOTE_SIZE, n);
+    function copiarTextoPortapapeles(texto) {
+        if (navigator.clipboard?.writeText && window.isSecureContext) {
+            return navigator.clipboard.writeText(texto);
         }
-
-        function tamanoLotePreview(total) {
-            const n = Math.max(0, Number(total) || 0);
-            if (n === 0) return PREVIEW_LOTE_SIZE;
-            return Math.min(PREVIEW_LOTE_SIZE, n);
-        }
-
-        function construirResumenPreview(lineas) {
-            let vinculados = 0;
-            let conSugerencia = 0;
-            (lineas || []).forEach((ln) => {
-                if (ln.estado === 'vinculado') vinculados++;
-                if (ln.es_sugerencia) conSugerencia++;
-            });
-            const total = lineas.length;
-            return {
-                total,
-                vinculados,
-                pendientes: total - vinculados,
-                con_sugerencia: conSugerencia,
-            };
-        }
-
-        function limpiarImportAlerta() {
-            if (importarAlerta) {
-                importarAlerta.classList.add('d-none');
-                importarAlerta.classList.remove('alert-warning');
-                importarAlerta.classList.add('alert-danger');
+        return new Promise((resolve, reject) => {
+            const ta = document.createElement('textarea');
+            ta.value = texto;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                ok ? resolve(true) : reject(new Error('No se pudo copiar'));
+            } catch (e) {
+                document.body.removeChild(ta);
+                reject(e);
             }
-            if (importarAlertaTexto) importarAlertaTexto.textContent = '';
-            if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
-            if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
-            ocultarAvisoMpLocal();
-        }
+        });
+    }
 
-        function mostrarImportAviso(msg) {
-            if (importarAlerta && importarAlertaTexto) {
-                importarAlerta.classList.remove('d-none', 'alert-danger');
-                importarAlerta.classList.add('alert-warning');
-                importarAlertaTexto.textContent = msg;
+    function feedbackIconoCopiado(btn, tituloOk) {
+        if (!btn) {
+            return;
+        }
+        const icon = btn.querySelector('i');
+        const prevClass = icon ? icon.className : '';
+        const prevTitle = btn.title || '';
+        if (icon) {
+            icon.className = 'bi bi-clipboard-check text-success';
+        }
+        btn.title = '¡Copiado!';
+        window.setTimeout(() => {
+            if (icon) {
+                icon.className = prevClass || 'bi bi-clipboard';
             }
-        }
+            btn.title = tituloOk || prevTitle || 'Copiar';
+        }, 1500);
+    }
 
-        function textoResumenLineas(detalle) {
-            const total = Math.max(0, Number(detalle?.total) || 0);
-            const conAgile = Math.max(0, Number(detalle?.con_agile) || 0);
-            const sinAgile = Math.max(0, Number(detalle?.sin_agile) ?? (total - conAgile));
-            return total + ' línea(s) en la cotización (' + conAgile + ' con ID Agile, ' + sinAgile + ' sin ID Agile).';
-        }
-
-        function actualizarResumenLineas(detalle) {
-            const texto = textoResumenLineas(detalle);
-            const modalTxt = document.getElementById('importar-compra-agil-detalle-actual-texto');
-            const formTxt = document.getElementById('cotiz-resumen-lineas-actual');
-            if (modalTxt) modalTxt.textContent = texto.replace(' en la cotización', '');
-            if (formTxt) formTxt.textContent = texto;
-        }
-
-        function mensajeErrorImportJson(json, fallback) {
-            if (json?.error) return String(json.error);
-            if (json?.detail) {
-                if (typeof json.detail === 'string') return json.detail;
-                if (Array.isArray(json.detail)) {
-                    const partes = json.detail.map((item) => {
-                        if (typeof item === 'string') return item;
-                        if (item && typeof item.msg === 'string') return item.msg;
-                        return '';
-                    }).filter(Boolean);
-                    if (partes.length) return partes.join(' ');
-                }
+    document.getElementById('btn-copiar-encargado')?.addEventListener('click', () => {
+        const enc = document.getElementById('encargado');
+        const cod = String(enc?.value || '').trim();
+        const btn = document.getElementById('btn-copiar-encargado');
+        if (!cod) {
+            if (btn) {
+                btn.title = 'No hay número de cotización';
             }
-            if (json?.message && typeof json.message === 'string') return json.message;
-            if (json?.errors && typeof json.errors === 'object') {
-                const partes = [];
-                Object.values(json.errors).forEach((msgs) => {
-                    (Array.isArray(msgs) ? msgs : [msgs]).forEach((m) => {
-                        if (m) partes.push(String(m));
-                    });
-                });
+            return;
+        }
+        copiarTextoPortapapeles(cod).then(() => {
+            feedbackIconoCopiado(btn, 'Copiar número de cotización');
+        }).catch(() => {
+            if (btn) {
+                btn.title = 'No se pudo copiar';
+            }
+        });
+    });
+
+    document.getElementById('btn-copiar-frase-cotiz')?.addEventListener('click', () => {
+        const btn = document.getElementById('btn-copiar-frase-cotiz');
+        const frase = 'Buen día!, comparto la cotización con el detalle completo, según lo solicitado.(P.G.)';
+        copiarTextoPortapapeles(frase).then(() => {
+            feedbackIconoCopiado(btn, 'Copiar saludo para pegar en otro lado');
+        }).catch(() => {
+            if (btn) {
+                btn.title = 'No se pudo copiar';
+            }
+        });
+    });
+
+    document.getElementById('btnCopiarMP')?.addEventListener('click', async () => {
+        const items = recolectarItemsMercadoPublico();
+        if (items.length === 0) {
+            dlgAlert('No hay filas válidas en la tabla de productos para copiar.', { title: 'Copiar para MP' });
+            return;
+        }
+        const conPrecioCero = items.filter(it => it.valorUnitario <= 0);
+        if (conPrecioCero.length > 0) {
+            const ok = await dlgConfirm(
+                'Hay ítems con precio unitario 0 o vacío. ¿Desea copiar igualmente para completar después en Mercado Público?',
+                { title: 'Precio en cero', type: 'warning' },
+            );
+            if (!ok) return;
+        }
+        const payload = {
+            fuente: 'cotiz',
+            nronota: String(document.getElementById('nronota')?.value || '').trim(),
+            cotizacion: String(document.getElementById('encargado')?.value || '').trim(),
+            despacho: 0,
+            items,
+        };
+        const jsonStr = JSON.stringify(payload, null, 2);
+        const tsvLines = ['id_agile\tvalor_unitario', ...items.map(it => it.idAgile + '\t' + it.valorUnitario)];
+        const bloque = '--- JSON ---\n' + jsonStr + '\n\n--- TSV ---\n' + tsvLines.join('\n');
+        copiarTextoPortapapeles(bloque).then(() => {
+            const msg = document.getElementById('mpCopiaMsg');
+            if (msg) {
+                msg.textContent = 'Copiado: ' + items.length + ' unitario(s).';
+                msg.hidden = false;
+                setTimeout(() => { msg.hidden = true; }, 5000);
+            } else {
+                dlgAlert('Copiado al portapapeles (' + items.length + ' ítems).', { title: 'Copiado', type: 'success' });
+            }
+        }).catch(err => {
+            dlgAlert('No se pudo copiar (use HTTPS o localhost).\n' + (err?.message || ''), { title: 'Error al copiar', type: 'danger' });
+        });
+    });
+
+    const resumenLineasInicial = @json($resumenLineas);
+    let importarMpUrls = {
+        preview: @json(route('admin.cotizaciones.importar-compra-agil.preview', $nota->nronota)),
+        importar: @json(route('admin.cotizaciones.importar-compra-agil', $nota->nronota)),
+        coincidencias: @json(route('admin.cotizaciones.importar-compra-agil.coincidencias', $nota->nronota)),
+        limpiarAgile: @json(route('admin.cotizaciones.importar-compra-agil.limpiar-agile', $nota->nronota)),
+        pdfPreview: @json(route('admin.cotizaciones.importar-pdf.preview', $nota->nronota)),
+        pdfImportar: @json(route('admin.cotizaciones.importar-pdf', $nota->nronota)),
+        excelPreview: @json(route('admin.cotizaciones.importar-excel.preview', $nota->nronota)),
+        excelImportar: @json(route('admin.cotizaciones.importar-excel', $nota->nronota)),
+        materialesLockStatus: @json(route('admin.cotizaciones.importar-materiales.lock-status')),
+        materialesLockRelease: @json(route('admin.cotizaciones.importar-materiales.lock-release')),
+        apiValidar: @json(route('admin.cotizaciones.compra-agil-api.validar', $nota->nronota)),
+        apiExisteLocal: @json(route('admin.cotizaciones.compra-agil-api.existe-local', $nota->nronota)),
+        apiPreviewOportunidades: @json(route('admin.cotizaciones.compra-agil-api.preview-oportunidades', $nota->nronota)),
+        apiPreview: @json(route('admin.cotizaciones.compra-agil-api.preview', $nota->nronota)),
+        apiImportar: @json(route('admin.cotizaciones.compra-agil-api.importar', $nota->nronota)),
+        oportunidadesIndex: @json(route('admin.oportunidades.para-cotizar.index')),
+        adjuntosEstado: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
+        adjuntosBuscar: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
+        adjuntosListarBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
+        adjuntosVerBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
+    };
+    const modalImportarEl = document.getElementById('modal-importar-compra-agil');
+    const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
+    const importarTexto = document.getElementById('importar-compra-agil-texto');
+    const importarPdfInput = document.getElementById('importar-compra-agil-pdf');
+    const importarPdfColCant = document.getElementById('importar-compra-agil-pdf-col-cant');
+    const importarPdfColDesc = document.getElementById('importar-compra-agil-pdf-col-desc');
+    const btnImportarAnalizarPdf = document.getElementById('btn-importar-compra-agil-analizar-pdf');
+    const importarExcelInput = document.getElementById('importar-compra-agil-excel');
+    const importarExcelColDesc = document.getElementById('importar-compra-agil-excel-col-desc');
+    const importarExcelColCant = document.getElementById('importar-compra-agil-excel-col-cant');
+    const btnImportarAnalizarExcel = document.getElementById('btn-importar-compra-agil-analizar-excel');
+    const importarEstado = document.getElementById('importar-compra-agil-estado');
+    const importarCabecera = document.getElementById('importar-compra-agil-cabecera');
+    const importarCabeceraTexto = document.getElementById('importar-compra-agil-cabecera-texto');
+    const importarTablaWrap = document.getElementById('importar-compra-agil-tabla-wrap');
+    const importarResultados = document.getElementById('importar-compra-agil-resultados');
+    const importarResumen = document.getElementById('importar-compra-agil-resumen');
+    const importarProgresoWrap = document.getElementById('importar-compra-agil-progreso-wrap');
+    const importarProgresoBar = document.getElementById('importar-compra-agil-progreso');
+    const importarProgresoTexto = document.getElementById('importar-compra-agil-progreso-texto');
+    const importarAlerta = document.getElementById('importar-compra-agil-alerta');
+    const importarAlertaTexto = document.getElementById('importar-compra-agil-alerta-texto');
+    const importarConsultaPar = document.getElementById('importar-compra-agil-consulta-par');
+    const importarConsultaParTexto = document.getElementById('importar-compra-agil-consulta-par-texto');
+    const importarAvisoMp = document.getElementById('importar-compra-agil-aviso-mp');
+    const importarAvisoMpTexto = document.getElementById('importar-compra-agil-aviso-mp-texto');
+    const btnImportarAnalizar = document.getElementById('btn-importar-compra-agil-analizar');
+    const btnImportarConfirmar = document.getElementById('btn-importar-compra-agil-confirmar');
+    const bsModalImportar = modalImportarEl ? new bootstrap.Modal(modalImportarEl) : null;
+    let importPreviewData = null;
+    let importandoCompraAgil = false;
+    let importCodigoApi = null;
+    let importModo = 'texto';
+    let importPdfFile = null;
+    let importPdfColumnaCantidad = '';
+    let importPdfColumnaProducto = '';
+    let importExcelFile = null;
+    let importSimTimer = null;
+    let importMaterialesLockId = null;
+    let importMaterialesAnalisisActivo = false;
+    let importMaterialesAnalisisCancelado = false;
+
+    const TEXTO_ANALISIS_TEXTO = 'Analizando texto pegado…';
+    const TEXTO_ANALISIS_PDF = 'Analizando PDF / Word…';
+    const TEXTO_ANALISIS_EXCEL = 'Analizando Excel…';
+    const TEXTO_VINCULACION = 'Vinculando productos con catálogo…';
+
+    function escHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    const IMPORT_LOTE_SIZE = 40;
+    const PREVIEW_LOTE_SIZE = 40;
+    const IMPORT_MAX_ARCHIVO_MB = {{ (int) config('cotiz.materiales_import.max_archivo_mb', 50) }};
+    const IMPORT_MAX_ARCHIVO_BYTES = IMPORT_MAX_ARCHIVO_MB * 1024 * 1024;
+
+    function mensajeArchivoSuperaLimite(nombre) {
+        const nom = String(nombre || '').trim();
+        const limite = IMPORT_MAX_ARCHIVO_MB + ' MB';
+        if (nom) {
+            return 'El archivo «' + nom + '» supera el límite de ' + limite + '.';
+        }
+        return 'El archivo supera el límite de ' + limite + '.';
+    }
+
+    function archivoSuperaLimiteImport(fileOrBytes, nombre) {
+        let bytes = 0;
+        let nom = String(nombre || '');
+        if (fileOrBytes && typeof fileOrBytes === 'object' && typeof fileOrBytes.size === 'number') {
+            bytes = Number(fileOrBytes.size) || 0;
+            if (!nom) nom = String(fileOrBytes.name || '');
+        } else {
+            bytes = Number(fileOrBytes) || 0;
+        }
+        if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
+            mostrarImportError(mensajeArchivoSuperaLimite(nom));
+            return true;
+        }
+        return false;
+    }
+
+    function tamanoLoteImportar(total) {
+        const n = Math.max(0, Number(total) || 0);
+        if (n === 0) return IMPORT_LOTE_SIZE;
+        return Math.min(IMPORT_LOTE_SIZE, n);
+    }
+
+    function tamanoLotePreview(total) {
+        const n = Math.max(0, Number(total) || 0);
+        if (n === 0) return PREVIEW_LOTE_SIZE;
+        return Math.min(PREVIEW_LOTE_SIZE, n);
+    }
+
+    function construirResumenPreview(lineas) {
+        let vinculados = 0;
+        let conSugerencia = 0;
+        (lineas || []).forEach((ln) => {
+            if (ln.estado === 'vinculado') vinculados++;
+            if (ln.es_sugerencia) conSugerencia++;
+        });
+        const total = lineas.length;
+        return {
+            total,
+            vinculados,
+            pendientes: total - vinculados,
+            con_sugerencia: conSugerencia,
+        };
+    }
+
+    function limpiarImportAlerta() {
+        if (importarAlerta) {
+            importarAlerta.classList.add('d-none');
+            importarAlerta.classList.remove('alert-warning');
+            importarAlerta.classList.add('alert-danger');
+        }
+        if (importarAlertaTexto) importarAlertaTexto.textContent = '';
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+        ocultarAvisoMpLocal();
+    }
+
+    function mostrarImportAviso(msg) {
+        if (importarAlerta && importarAlertaTexto) {
+            importarAlerta.classList.remove('d-none', 'alert-danger');
+            importarAlerta.classList.add('alert-warning');
+            importarAlertaTexto.textContent = msg;
+        }
+    }
+
+    function textoResumenLineas(detalle) {
+        const total = Math.max(0, Number(detalle?.total) || 0);
+        const conAgile = Math.max(0, Number(detalle?.con_agile) || 0);
+        const sinAgile = Math.max(0, Number(detalle?.sin_agile) ?? (total - conAgile));
+        return total + ' línea(s) en la cotización (' + conAgile + ' con ID Agile, ' + sinAgile + ' sin ID Agile).';
+    }
+
+    function actualizarResumenLineas(detalle) {
+        const texto = textoResumenLineas(detalle);
+        const modalTxt = document.getElementById('importar-compra-agil-detalle-actual-texto');
+        const formTxt = document.getElementById('cotiz-resumen-lineas-actual');
+        if (modalTxt) modalTxt.textContent = texto.replace(' en la cotización', '');
+        if (formTxt) formTxt.textContent = texto;
+    }
+
+    function mensajeErrorImportJson(json, fallback) {
+        if (json?.error) return String(json.error);
+        if (json?.detail) {
+            if (typeof json.detail === 'string') return json.detail;
+            if (Array.isArray(json.detail)) {
+                const partes = json.detail.map((item) => {
+                    if (typeof item === 'string') return item;
+                    if (item && typeof item.msg === 'string') return item.msg;
+                    return '';
+                }).filter(Boolean);
                 if (partes.length) return partes.join(' ');
             }
-            return fallback;
         }
-
-        function mensajeErrorImportResp(res, json, fallback) {
-            const msg = mensajeErrorImportJson(json, '');
-            if (msg) return msg;
-            const status = Number(res?.status) || 0;
-            if (status === 504 || status === 502) {
-                return `Tiempo de espera agotado (HTTP ${status}). El archivo puede ser muy grande; intente de nuevo en unos minutos.`;
-            }
-            if (status === 413) {
-                return mensajeArchivoSuperaLimite();
-            }
-            if (status === 419) {
-                return 'Sesión expirada. Recargue la página e inicie sesión de nuevo.';
-            }
-            if (status === 409) {
-                return fallback + ' Otro análisis está en curso; espere o cancele e intente de nuevo.';
-            }
-            if (status >= 500) {
-                return `${fallback} (error del servidor HTTP ${status}).`;
-            }
-            if (status >= 400) {
-                return `${fallback} (HTTP ${status}).`;
-            }
-            return fallback;
-        }
-
-        function mostrarImportError(msg) {
-            if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
-            ocultarAvisoMpLocal();
-            if (importarAlerta && importarAlertaTexto) {
-                importarAlerta.classList.remove('d-none', 'alert-warning');
-                importarAlerta.classList.add('alert-danger');
-                importarAlertaTexto.textContent = msg;
-            }
-            if (importarEstado) importarEstado.textContent = '';
-            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-        }
-
-        function detenerProgresoSimuladoImportar() {
-            if (importSimTimer !== null) {
-                clearInterval(importSimTimer);
-                importSimTimer = null;
-            }
-        }
-
-        function iniciarProgresoAnalisisDocumento(mensaje) {
-            detenerProgresoSimuladoImportar();
-            const msg = mensaje || TEXTO_ANALISIS_PDF;
-            let pct = 3;
-
-            function tick() {
-                if (pct < 98) {
-                    const increment = pct < 70 ?
-                        0.8 + Math.random() * 1.1 :
-                        pct < 90 ?
-                        0.2 + Math.random() * 0.4 :
-                        0.06 + Math.random() * 0.12;
-                    pct += increment;
-                    pct = Math.min(98, pct);
-                }
-                actualizarProgresoImportar(Math.round(pct), 100, msg, {
-                    faseAnalisis: true
+        if (json?.message && typeof json.message === 'string') return json.message;
+        if (json?.errors && typeof json.errors === 'object') {
+            const partes = [];
+            Object.values(json.errors).forEach((msgs) => {
+                (Array.isArray(msgs) ? msgs : [msgs]).forEach((m) => {
+                    if (m) partes.push(String(m));
                 });
-            }
-
-            tick();
-            importSimTimer = setInterval(tick, 900);
-        }
-
-        function finalizarProgresoAnalisisDocumento(mensaje) {
-            detenerProgresoSimuladoImportar();
-            const msg = mensaje || TEXTO_ANALISIS_PDF;
-            actualizarProgresoImportar(100, 100, msg, {
-                faseAnalisis: true,
-                analisisCompleto: true
             });
+            if (partes.length) return partes.join(' ');
+        }
+        return fallback;
+    }
+
+    function mensajeErrorImportResp(res, json, fallback) {
+        const msg = mensajeErrorImportJson(json, '');
+        if (msg) return msg;
+        const status = Number(res?.status) || 0;
+        if (status === 504 || status === 502) {
+            return `Tiempo de espera agotado (HTTP ${status}). El archivo puede ser muy grande; intente de nuevo en unos minutos.`;
+        }
+        if (status === 413) {
+            return mensajeArchivoSuperaLimite();
+        }
+        if (status === 419) {
+            return 'Sesión expirada. Recargue la página e inicie sesión de nuevo.';
+        }
+        if (status === 409) {
+            return fallback + ' Otro análisis está en curso; espere o cancele e intente de nuevo.';
+        }
+        if (status >= 500) {
+            return `${fallback} (error del servidor HTTP ${status}).`;
+        }
+        if (status >= 400) {
+            return `${fallback} (HTTP ${status}).`;
+        }
+        return fallback;
+    }
+
+    function mostrarImportError(msg) {
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        ocultarAvisoMpLocal();
+        if (importarAlerta && importarAlertaTexto) {
+            importarAlerta.classList.remove('d-none', 'alert-warning');
+            importarAlerta.classList.add('alert-danger');
+            importarAlertaTexto.textContent = msg;
+        }
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+    }
+
+    function detenerProgresoSimuladoImportar() {
+        if (importSimTimer !== null) {
+            clearInterval(importSimTimer);
+            importSimTimer = null;
+        }
+    }
+
+    function iniciarProgresoAnalisisDocumento(mensaje) {
+        detenerProgresoSimuladoImportar();
+        const msg = mensaje || TEXTO_ANALISIS_PDF;
+        let pct = 3;
+
+        function tick() {
+            if (pct < 98) {
+                const increment = pct < 70
+                    ? 0.8 + Math.random() * 1.1
+                    : pct < 90
+                        ? 0.2 + Math.random() * 0.4
+                        : 0.06 + Math.random() * 0.12;
+                pct += increment;
+                pct = Math.min(98, pct);
+            }
+            actualizarProgresoImportar(Math.round(pct), 100, msg, { faseAnalisis: true });
         }
 
-        function iniciarProgresoSimuladoImportar(mensajes) {
+        tick();
+        importSimTimer = setInterval(tick, 900);
+    }
+
+    function finalizarProgresoAnalisisDocumento(mensaje) {
+        detenerProgresoSimuladoImportar();
+        const msg = mensaje || TEXTO_ANALISIS_PDF;
+        actualizarProgresoImportar(100, 100, msg, { faseAnalisis: true, analisisCompleto: true });
+    }
+
+    function iniciarProgresoSimuladoImportar(mensajes) {
+        detenerProgresoSimuladoImportar();
+        const msgs = Array.isArray(mensajes) && mensajes.length ? mensajes : ['Procesando…'];
+        let pct = 8;
+        let msgIdx = 0;
+
+        function tick() {
+            if (pct < 88) {
+                pct += 0.35 + Math.random() * 1.1;
+                pct = Math.min(88, pct);
+            }
+            actualizarProgresoImportar(Math.round(pct), 100, msgs[msgIdx], { estimado: true });
+            msgIdx = (msgIdx + 1) % msgs.length;
+        }
+
+        tick();
+        importSimTimer = setInterval(tick, 1100);
+    }
+
+    async function fetchConProgresoAnalisisDocumento(fetchFn, mensajeAnalisis) {
+        iniciarProgresoAnalisisDocumento(mensajeAnalisis);
+        try {
+            return await fetchFn();
+        } finally {
             detenerProgresoSimuladoImportar();
-            const msgs = Array.isArray(mensajes) && mensajes.length ? mensajes : ['Procesando…'];
-            let pct = 8;
-            let msgIdx = 0;
-
-            function tick() {
-                if (pct < 88) {
-                    pct += 0.35 + Math.random() * 1.1;
-                    pct = Math.min(88, pct);
-                }
-                actualizarProgresoImportar(Math.round(pct), 100, msgs[msgIdx], {
-                    estimado: true
-                });
-                msgIdx = (msgIdx + 1) % msgs.length;
-            }
-
-            tick();
-            importSimTimer = setInterval(tick, 1100);
         }
+    }
 
-        async function fetchConProgresoAnalisisDocumento(fetchFn, mensajeAnalisis) {
-            iniciarProgresoAnalisisDocumento(mensajeAnalisis);
-            try {
-                return await fetchFn();
-            } finally {
-                detenerProgresoSimuladoImportar();
-            }
+    function nuevoImportMaterialesLockId() {
+        importMaterialesLockId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : ('lock-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        return importMaterialesLockId;
+    }
+
+    function liberarImportMaterialesLockBeacon() {
+        if (!importMaterialesLockId) return;
+        const lockId = importMaterialesLockId;
+        importMaterialesLockId = null;
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('lock_id', lockId);
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+            navigator.sendBeacon(importarMpUrls.materialesLockRelease, body);
+            return;
         }
+        fetch(importarMpUrls.materialesLockRelease, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
+            keepalive: true,
+        }).catch(() => {});
+    }
 
-        function nuevoImportMaterialesLockId() {
-            importMaterialesLockId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ?
-                crypto.randomUUID() :
-                ('lock-' + Date.now() + '-' + Math.random().toString(36).slice(2));
-            return importMaterialesLockId;
-        }
-
-        function liberarImportMaterialesLockBeacon() {
-            if (!importMaterialesLockId) return;
-            const lockId = importMaterialesLockId;
-            importMaterialesLockId = null;
+    async function liberarImportMaterialesLock() {
+        if (!importMaterialesLockId) return;
+        const lockId = importMaterialesLockId;
+        importMaterialesLockId = null;
+        try {
             const body = new FormData();
             body.append('_token', csrf);
             body.append('lock_id', lockId);
-            if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-                navigator.sendBeacon(importarMpUrls.materialesLockRelease, body);
-                return;
-            }
-            fetch(importarMpUrls.materialesLockRelease, {
+            await fetch(importarMpUrls.materialesLockRelease, {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body,
-                keepalive: true,
-            }).catch(() => {});
-        }
-
-        async function liberarImportMaterialesLock() {
-            if (!importMaterialesLockId) return;
-            const lockId = importMaterialesLockId;
-            importMaterialesLockId = null;
-            try {
-                const body = new FormData();
-                body.append('_token', csrf);
-                body.append('lock_id', lockId);
-                await fetch(importarMpUrls.materialesLockRelease, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body,
-                });
-            } catch (_err) {
-                // ignorar error al liberar
-            }
-        }
-
-        function marcarAnalisisMaterialesIniciado() {
-            importMaterialesAnalisisActivo = true;
-            importMaterialesAnalisisCancelado = false;
-        }
-
-        function marcarAnalisisMaterialesTerminado() {
-            importMaterialesAnalisisActivo = false;
-            importMaterialesAnalisisCancelado = false;
-        }
-
-        function cancelarAnalisisMaterialesAlSalir() {
-            if (!importMaterialesAnalisisActivo && !importMaterialesLockId) return;
-            importMaterialesAnalisisCancelado = true;
-            importMaterialesAnalisisActivo = false;
-            liberarImportMaterialesLockBeacon();
-        }
-
-        function analisisMaterialesFueCancelado() {
-            return importMaterialesAnalisisCancelado;
-        }
-
-        window.addEventListener('pagehide', (event) => {
-            if (!event.persisted) {
-                cancelarAnalisisMaterialesAlSalir();
-            }
-        });
-
-        async function consultarLockAnalisisMaterialesActivo() {
-            const res = await fetch(importarMpUrls.materialesLockStatus, {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
             });
+        } catch (_err) {
+            // ignorar error al liberar
+        }
+    }
+
+    function marcarAnalisisMaterialesIniciado() {
+        importMaterialesAnalisisActivo = true;
+        importMaterialesAnalisisCancelado = false;
+    }
+
+    function marcarAnalisisMaterialesTerminado() {
+        importMaterialesAnalisisActivo = false;
+        importMaterialesAnalisisCancelado = false;
+    }
+
+    function cancelarAnalisisMaterialesAlSalir() {
+        if (!importMaterialesAnalisisActivo && !importMaterialesLockId) return;
+        importMaterialesAnalisisCancelado = true;
+        importMaterialesAnalisisActivo = false;
+        liberarImportMaterialesLockBeacon();
+    }
+
+    function analisisMaterialesFueCancelado() {
+        return importMaterialesAnalisisCancelado;
+    }
+
+    window.addEventListener('pagehide', (event) => {
+        if (!event.persisted) {
+            cancelarAnalisisMaterialesAlSalir();
+        }
+    });
+
+    async function consultarLockAnalisisMaterialesActivo() {
+        const res = await fetch(importarMpUrls.materialesLockStatus, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const json = await res.json().catch(() => ({}));
+        return json?.active === true ? (json.lock || null) : null;
+    }
+
+    function textoEsperaTurnoAnalisisMateriales(lock) {
+        const usuario = String(lock?.username || 'otro usuario').trim();
+        const archivo = String(lock?.original_name || '').trim();
+        const tipo = String(lock?.tipo || '').trim().toUpperCase();
+        const detalle = [tipo, archivo ? '«' + archivo + '»' : ''].filter(Boolean).join(' ');
+        return detalle
+            ? `Esperando turno: ${usuario} está analizando ${detalle}…`
+            : `Esperando turno: ${usuario} está analizando un archivo…`;
+    }
+
+    async function esperarTurnoAnalisisMateriales(lockInicial) {
+        let lock = lockInicial || null;
+        while (lock) {
+            actualizarProgresoImportar(12, 100, textoEsperaTurnoAnalisisMateriales(lock), { estimado: true });
+            await new Promise((resolve) => setTimeout(resolve, 12000));
+            lock = await consultarLockAnalisisMaterialesActivo();
+        }
+    }
+
+    async function fetchConProgresoSimulado(fetchFn, mensajes) {
+        iniciarProgresoSimuladoImportar(mensajes);
+        try {
+            return await fetchFn();
+        } finally {
+            detenerProgresoSimuladoImportar();
+        }
+    }
+
+    async function enviarPreviewMateriales(url, bodyBuilder, usarProgresoAnalisis, mensajeAnalisis) {
+        for (;;) {
+            const body = bodyBuilder();
+            body.append('lock_id', importMaterialesLockId || nuevoImportMaterialesLockId());
+
+            const ejecutarFetch = () => fetch(url, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+
+            const res = usarProgresoAnalisis
+                ? await fetchConProgresoAnalisisDocumento(ejecutarFetch, mensajeAnalisis)
+                : await ejecutarFetch();
+
             const json = await res.json().catch(() => ({}));
-            return json?.active === true ? (json.lock || null) : null;
-        }
 
-        function textoEsperaTurnoAnalisisMateriales(lock) {
-            const usuario = String(lock?.username || 'otro usuario').trim();
-            const archivo = String(lock?.original_name || '').trim();
-            const tipo = String(lock?.tipo || '').trim().toUpperCase();
-            const detalle = [tipo, archivo ? '«' + archivo + '»' : ''].filter(Boolean).join(' ');
-            return detalle ?
-                `Esperando turno: ${usuario} está analizando ${detalle}…` :
-                `Esperando turno: ${usuario} está analizando un archivo…`;
-        }
-
-        async function esperarTurnoAnalisisMateriales(lockInicial) {
-            let lock = lockInicial || null;
-            while (lock) {
-                actualizarProgresoImportar(12, 100, textoEsperaTurnoAnalisisMateriales(lock), {
-                    estimado: true
-                });
-                await new Promise((resolve) => setTimeout(resolve, 12000));
-                lock = await consultarLockAnalisisMaterialesActivo();
-            }
-        }
-
-        async function fetchConProgresoSimulado(fetchFn, mensajes) {
-            iniciarProgresoSimuladoImportar(mensajes);
-            try {
-                return await fetchFn();
-            } finally {
-                detenerProgresoSimuladoImportar();
-            }
-        }
-
-        async function enviarPreviewMateriales(url, bodyBuilder, usarProgresoAnalisis, mensajeAnalisis) {
-            for (;;) {
-                const body = bodyBuilder();
-                body.append('lock_id', importMaterialesLockId || nuevoImportMaterialesLockId());
-
-                const ejecutarFetch = () => fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body,
-                });
-
-                const res = usarProgresoAnalisis ?
-                    await fetchConProgresoAnalisisDocumento(ejecutarFetch, mensajeAnalisis) :
-                    await ejecutarFetch();
-
-                const json = await res.json().catch(() => ({}));
-
-                if (res.status === 409 && json.code === 'materiales_import_locked') {
-                    const msgLock = String(json.error || '');
-                    if (/expir[oó]|fue liberado|Analice el archivo de nuevo/i.test(msgLock)) {
-                        return {
-                            res,
-                            json
-                        };
-                    }
-                    await esperarTurnoAnalisisMateriales(json.lock || null);
-                    continue;
+            if (res.status === 409 && json.code === 'materiales_import_locked') {
+                const msgLock = String(json.error || '');
+                if (/expir[oó]|fue liberado|Analice el archivo de nuevo/i.test(msgLock)) {
+                    return { res, json };
                 }
-
-                return {
-                    res,
-                    json
-                };
+                await esperarTurnoAnalisisMateriales(json.lock || null);
+                continue;
             }
+
+            return { res, json };
+        }
+    }
+
+    function actualizarProgresoImportar(actual, total, textoExtra, opts) {
+        const options = opts || {};
+        const totalLineas = Math.max(0, Number(total) || 0);
+        const actualNum = Math.max(0, Number(actual) || 0);
+        const procesadas = totalLineas > 0 ? Math.min(actualNum, totalLineas) : actualNum;
+        let pct;
+        let mostrarPctEnBarra = true;
+
+        if (options.faseAnalisis) {
+            pct = Math.min(100, Math.max(0, Math.round(actualNum)));
+            mostrarPctEnBarra = true;
+        } else if (options.faseVinculacion || (totalLineas > 0 && !options.estimado && !options.faseAnalisis)) {
+            pct = Math.round((procesadas / totalLineas) * 100);
+            mostrarPctEnBarra = true;
+        } else if (options.estimado) {
+            pct = Math.min(92, Math.max(5, Math.round(actualNum)));
+            mostrarPctEnBarra = false;
+        } else if (textoExtra) {
+            pct = Math.min(18, Math.max(8, actualNum || 8));
+            mostrarPctEnBarra = false;
+        } else {
+            pct = actualNum > 0 ? 100 : 0;
         }
 
-        function actualizarProgresoImportar(actual, total, textoExtra, opts) {
-            const options = opts || {};
-            const totalLineas = Math.max(0, Number(total) || 0);
-            const actualNum = Math.max(0, Number(actual) || 0);
-            const procesadas = totalLineas > 0 ? Math.min(actualNum, totalLineas) : actualNum;
-            let pct;
-            let mostrarPctEnBarra = true;
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = pct + '%';
+            importarProgresoBar.setAttribute('aria-valuenow', String(pct));
+            importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+            importarProgresoBar.classList.toggle('bg-info', !!options.faseAnalisis);
+            importarProgresoBar.classList.toggle('bg-primary', !options.faseAnalisis);
+            importarProgresoBar.textContent = mostrarPctEnBarra ? (pct + '%') : '';
+        }
 
-            if (options.faseAnalisis) {
-                pct = Math.min(100, Math.max(0, Math.round(actualNum)));
-                mostrarPctEnBarra = true;
+        if (importarProgresoTexto) {
+            if (options.faseAnalisis && textoExtra) {
+                importarProgresoTexto.textContent = options.analisisCompleto
+                    ? textoExtra.replace(/…$/, '') + ' — completado (' + pct + '%)'
+                    : textoExtra + ' (' + pct + '%)';
             } else if (options.faseVinculacion || (totalLineas > 0 && !options.estimado && !options.faseAnalisis)) {
-                pct = Math.round((procesadas / totalLineas) * 100);
-                mostrarPctEnBarra = true;
-            } else if (options.estimado) {
-                pct = Math.min(92, Math.max(5, Math.round(actualNum)));
-                mostrarPctEnBarra = false;
+                const label = textoExtra || TEXTO_VINCULACION;
+                importarProgresoTexto.textContent = label + ' — ' + procesadas + ' de ' + totalLineas + ' (' + pct + '%)';
             } else if (textoExtra) {
-                pct = Math.min(18, Math.max(8, actualNum || 8));
-                mostrarPctEnBarra = false;
+                importarProgresoTexto.textContent = textoExtra;
+            } else if (totalLineas > 0) {
+                importarProgresoTexto.textContent = procesadas + ' de ' + totalLineas + ' líneas (' + pct + '%)';
             } else {
-                pct = actualNum > 0 ? 100 : 0;
+                importarProgresoTexto.textContent = 'Procesando…';
             }
+        }
+    }
 
-            if (importarProgresoBar) {
-                importarProgresoBar.style.width = pct + '%';
-                importarProgresoBar.setAttribute('aria-valuenow', String(pct));
-                importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-                importarProgresoBar.classList.toggle('bg-info', !!options.faseAnalisis);
-                importarProgresoBar.classList.toggle('bg-primary', !options.faseAnalisis);
-                importarProgresoBar.textContent = mostrarPctEnBarra ? (pct + '%') : '';
-            }
+    function previewOportunidadesDisponible() {
+        return desdeOportunidades
+            && oportunidadYaVinculada
+            && previewImportarCompraAgil
+            && typeof previewImportarCompraAgil === 'object'
+            && Array.isArray(previewImportarCompraAgil.lineas);
+    }
 
-            if (importarProgresoTexto) {
-                if (options.faseAnalisis && textoExtra) {
-                    importarProgresoTexto.textContent = options.analisisCompleto ?
-                        textoExtra.replace(/…$/, '') + ' — completado (' + pct + '%)' :
-                        textoExtra + ' (' + pct + '%)';
-                } else if (options.faseVinculacion || (totalLineas > 0 && !options.estimado && !options.faseAnalisis)) {
-                    const label = textoExtra || TEXTO_VINCULACION;
-                    importarProgresoTexto.textContent = label + ' — ' + procesadas + ' de ' + totalLineas + ' (' + pct + '%)';
-                } else if (textoExtra) {
-                    importarProgresoTexto.textContent = textoExtra;
-                } else if (totalLineas > 0) {
-                    importarProgresoTexto.textContent = procesadas + ' de ' + totalLineas + ' líneas (' + pct + '%)';
-                } else {
-                    importarProgresoTexto.textContent = 'Procesando…';
+    function bloquearCodigoImportarOportunidad() {
+        if (!desdeOportunidades || !codigoImportarCompraAgil) {
+            return;
+        }
+        const input = document.getElementById('ca-api-codigo');
+        if (input) {
+            input.value = codigoImportarCompraAgil;
+            input.readOnly = true;
+            input.classList.add('bg-light');
+        }
+        const enc = document.getElementById('encargado');
+        if (enc) {
+            enc.value = codigoImportarCompraAgil;
+            enc.readOnly = true;
+        }
+        actualizarBotonCargarSegunVinculo(previewOportunidadesDisponible() || !!(importPreviewData && importPreviewData.desde_cache));
+    }
+
+    function actualizarBotonCargarSegunVinculo(ocultar) {
+        const wrap = document.getElementById('wrap-ca-buscar-codigo');
+        if (wrap) {
+            wrap.classList.toggle('d-none', !!ocultar);
+        }
+    }
+
+    let adjuntosImportarArchivos = [];
+    let adjuntosImportarConsultado = false;
+    let adjuntoImportarSeleccionado = null;
+    const btnImportarBuscarAdjuntos = document.getElementById('btn-importar-buscar-adjuntos');
+    const btnImportarAnalizarAdjunto = document.getElementById('btn-importar-analizar-adjunto');
+    const wrapImportarAdjuntos = document.getElementById('importar-compra-agil-adjuntos');
+    const wrapImportarAdjuntosLinks = document.getElementById('importar-compra-agil-adjuntos-links');
+    const wrapImportarAdjuntosAnalizar = document.getElementById('modal-adjuntos-importar-analizar');
+
+    function puedeAdjuntosImportar() {
+        return !!(desdeOportunidades && codigoImportarCompraAgil && importarMpUrls.adjuntosListarBase);
+    }
+
+    function urlAdjuntosImportar(base, codigo) {
+        return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
+    }
+
+    function urlDescargarAdjuntoImportar(nombre) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        if (!importarMpUrls.adjuntosVerBase || !codigo || !nombre) {
+            return '#';
+        }
+        return `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&descargar=1`;
+    }
+
+    function tipoAdjuntoImportar(nombre) {
+        const n = String(nombre || '').toLowerCase();
+        if (/\.(xlsx|xls|csv)$/i.test(n)) return 'excel';
+        if (/\.(pdf|docx)$/i.test(n)) return 'pdf';
+        if (/\.doc$/i.test(n)) return 'doc';
+        return 'otro';
+    }
+
+    function esAdjuntoPdfAnalizable(tipo) {
+        return tipo === 'pdf' || tipo === 'doc';
+    }
+
+    function mimeAdjuntoImportar(nombre) {
+        const tipo = tipoAdjuntoImportar(nombre);
+        if (tipo === 'excel') {
+            if (/\.csv$/i.test(nombre)) return 'text/csv';
+            if (/\.xls$/i.test(nombre)) return 'application/vnd.ms-excel';
+            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        }
+        if (/\.docx$/i.test(nombre)) {
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        }
+        if (/\.pdf$/i.test(nombre)) return 'application/pdf';
+        return 'application/octet-stream';
+    }
+
+    function setAdjuntoAnalizarBusy(busy) {
+        if (btnImportarAnalizarAdjunto) {
+            btnImportarAnalizarAdjunto.disabled = !!busy;
+        }
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.disabled = !!busy;
+        }
+    }
+
+    function renderAdjuntosImportar() {
+        if (!wrapImportarAdjuntos || !puedeAdjuntosImportar()) {
+            wrapImportarAdjuntos?.classList.add('d-none');
+            return;
+        }
+        wrapImportarAdjuntos.classList.remove('d-none');
+        const hayArchivos = adjuntosImportarArchivos.length > 0;
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.classList.toggle('d-none', adjuntosImportarConsultado || hayArchivos);
+        }
+        if (wrapImportarAdjuntosLinks) {
+            wrapImportarAdjuntosLinks.innerHTML = '';
+            adjuntosImportarArchivos.forEach((a) => {
+                const nom = String(a.nombre || a || '');
+                if (!nom) return;
+                const row = document.createElement('div');
+                row.className = 'd-flex flex-wrap align-items-center gap-2';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-link btn-sm p-0 text-start';
+                btn.textContent = nom;
+                if (adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.nombre === nom) {
+                    btn.classList.add('fw-semibold');
                 }
-            }
-        }
-
-        function previewOportunidadesDisponible() {
-            return desdeOportunidades &&
-                oportunidadYaVinculada &&
-                previewImportarCompraAgil &&
-                typeof previewImportarCompraAgil === 'object' &&
-                Array.isArray(previewImportarCompraAgil.lineas);
-        }
-
-        function bloquearCodigoImportarOportunidad() {
-            if (!desdeOportunidades || !codigoImportarCompraAgil) {
-                return;
-            }
-            const input = document.getElementById('ca-api-codigo');
-            if (input) {
-                input.value = codigoImportarCompraAgil;
-                input.readOnly = true;
-                input.classList.add('bg-light');
-            }
-            const enc = document.getElementById('encargado');
-            if (enc) {
-                enc.value = codigoImportarCompraAgil;
-                enc.readOnly = true;
-            }
-            actualizarBotonCargarSegunVinculo(previewOportunidadesDisponible() || !!(importPreviewData && importPreviewData.desde_cache));
-        }
-
-        function actualizarBotonCargarSegunVinculo(ocultar) {
-            const wrap = document.getElementById('wrap-ca-buscar-codigo');
-            if (wrap) {
-                wrap.classList.toggle('d-none', !!ocultar);
-            }
-        }
-
-        let adjuntosImportarArchivos = [];
-        let adjuntosImportarConsultado = false;
-        let adjuntoImportarSeleccionado = null;
-        const btnImportarBuscarAdjuntos = document.getElementById('btn-importar-buscar-adjuntos');
-        const btnImportarAnalizarAdjunto = document.getElementById('btn-importar-analizar-adjunto');
-        const wrapImportarAdjuntos = document.getElementById('importar-compra-agil-adjuntos');
-        const wrapImportarAdjuntosLinks = document.getElementById('importar-compra-agil-adjuntos-links');
-        const wrapImportarAdjuntosAnalizar = document.getElementById('modal-adjuntos-importar-analizar');
-
-        function puedeAdjuntosImportar() {
-            return !!(desdeOportunidades && codigoImportarCompraAgil && importarMpUrls.adjuntosListarBase);
-        }
-
-        function urlAdjuntosImportar(base, codigo) {
-            return String(base || '').replace('__CODIGO__', encodeURIComponent(codigo));
-        }
-
-        function urlDescargarAdjuntoImportar(nombre) {
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            if (!importarMpUrls.adjuntosVerBase || !codigo || !nombre) {
-                return '#';
-            }
-            return `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&descargar=1`;
-        }
-
-        function tipoAdjuntoImportar(nombre) {
-            const n = String(nombre || '').toLowerCase();
-            if (/\.(xlsx|xls|csv)$/i.test(n)) return 'excel';
-            if (/\.(pdf|docx)$/i.test(n)) return 'pdf';
-            if (/\.doc$/i.test(n)) return 'doc';
-            return 'otro';
-        }
-
-        function esAdjuntoPdfAnalizable(tipo) {
-            return tipo === 'pdf' || tipo === 'doc';
-        }
-
-        function mimeAdjuntoImportar(nombre) {
-            const tipo = tipoAdjuntoImportar(nombre);
-            if (tipo === 'excel') {
-                if (/\.csv$/i.test(nombre)) return 'text/csv';
-                if (/\.xls$/i.test(nombre)) return 'application/vnd.ms-excel';
-                return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            }
-            if (/\.docx$/i.test(nombre)) {
-                return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            }
-            if (/\.pdf$/i.test(nombre)) return 'application/pdf';
-            return 'application/octet-stream';
-        }
-
-        function setAdjuntoAnalizarBusy(busy) {
-            if (btnImportarAnalizarAdjunto) {
-                btnImportarAnalizarAdjunto.disabled = !!busy;
-            }
-            if (btnImportarBuscarAdjuntos) {
-                btnImportarBuscarAdjuntos.disabled = !!busy;
-            }
-        }
-
-        function renderAdjuntosImportar() {
-            if (!wrapImportarAdjuntos || !puedeAdjuntosImportar()) {
-                wrapImportarAdjuntos?.classList.add('d-none');
-                return;
-            }
-            wrapImportarAdjuntos.classList.remove('d-none');
-            const hayArchivos = adjuntosImportarArchivos.length > 0;
-            if (btnImportarBuscarAdjuntos) {
-                btnImportarBuscarAdjuntos.classList.toggle('d-none', adjuntosImportarConsultado || hayArchivos);
-            }
-            if (wrapImportarAdjuntosLinks) {
-                wrapImportarAdjuntosLinks.innerHTML = '';
-                adjuntosImportarArchivos.forEach((a) => {
-                    const nom = String(a.nombre || a || '');
-                    if (!nom) return;
-                    const row = document.createElement('div');
-                    row.className = 'd-flex flex-wrap align-items-center gap-2';
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'btn btn-link btn-sm p-0 text-start';
-                    btn.textContent = nom;
-                    if (adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.nombre === nom) {
-                        btn.classList.add('fw-semibold');
+                btn.addEventListener('click', () => {
+                    seleccionarAdjuntoImportar(nom);
+                    const bytes = Number(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes) || 0;
+                    if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
+                        return;
                     }
-                    btn.addEventListener('click', () => {
-                        seleccionarAdjuntoImportar(nom);
-                        const bytes = Number(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes) || 0;
-                        if (bytes > IMPORT_MAX_ARCHIVO_BYTES) {
-                            return;
-                        }
-                        abrirPreviewAdjuntoImportar(nom);
-                    });
-                    const dl = document.createElement('a');
-                    dl.className = 'btn btn-outline-secondary btn-sm py-0 flex-shrink-0';
-                    dl.href = urlDescargarAdjuntoImportar(nom);
-                    dl.setAttribute('data-no-loader', '');
-                    dl.textContent = 'Descargar';
-                    row.appendChild(btn);
-                    row.appendChild(dl);
-                    wrapImportarAdjuntosLinks.appendChild(row);
+                    abrirPreviewAdjuntoImportar(nom);
                 });
-            }
+                const dl = document.createElement('a');
+                dl.className = 'btn btn-outline-secondary btn-sm py-0 flex-shrink-0';
+                dl.href = urlDescargarAdjuntoImportar(nom);
+                dl.setAttribute('data-no-loader', '');
+                dl.textContent = 'Descargar';
+                row.appendChild(btn);
+                row.appendChild(dl);
+                wrapImportarAdjuntosLinks.appendChild(row);
+            });
         }
+    }
 
-        function seleccionarAdjuntoImportar(nombre) {
-            const nom = String(nombre || '');
-            const meta = adjuntosImportarArchivos.find((a) => String(a.nombre || a || '') === nom);
-            adjuntoImportarSeleccionado = {
-                nombre: nom,
-                tipo: tipoAdjuntoImportar(nom),
-                bytes: Number(meta && meta.bytes) || 0,
-            };
-            if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado.bytes, nom)) {
-                wrapImportarAdjuntosAnalizar?.classList.add('d-none');
-                if (btnImportarAnalizarAdjunto) {
-                    btnImportarAnalizarAdjunto.classList.add('d-none');
-                }
-                renderAdjuntosImportar();
-                return;
-            }
-            const tipo = adjuntoImportarSeleccionado.tipo;
-            const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
-            const colsExcel = document.getElementById('importar-adjunto-cols-excel');
-            const analizable = esAdjuntoPdfAnalizable(tipo) || tipo === 'excel';
-            colsPdf?.classList.toggle('d-none', !esAdjuntoPdfAnalizable(tipo));
-            colsExcel?.classList.toggle('d-none', tipo !== 'excel');
-            wrapImportarAdjuntosAnalizar?.classList.toggle('d-none', !analizable);
+    function seleccionarAdjuntoImportar(nombre) {
+        const nom = String(nombre || '');
+        const meta = adjuntosImportarArchivos.find((a) => String(a.nombre || a || '') === nom);
+        adjuntoImportarSeleccionado = {
+            nombre: nom,
+            tipo: tipoAdjuntoImportar(nom),
+            bytes: Number(meta && meta.bytes) || 0,
+        };
+        if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado.bytes, nom)) {
+            wrapImportarAdjuntosAnalizar?.classList.add('d-none');
             if (btnImportarAnalizarAdjunto) {
-                btnImportarAnalizarAdjunto.classList.toggle('d-none', !analizable);
-            }
-            actualizarHintAdjuntoImportar();
-            const tabId = tipo === 'excel' ? 'tab-ca-excel' : (esAdjuntoPdfAnalizable(tipo) ? 'tab-ca-pdf' : '');
-            if (tabId) {
-                document.getElementById(tabId)?.click();
+                btnImportarAnalizarAdjunto.classList.add('d-none');
             }
             renderAdjuntosImportar();
+            return;
         }
+        const tipo = adjuntoImportarSeleccionado.tipo;
+        const colsPdf = document.getElementById('importar-adjunto-cols-pdf');
+        const colsExcel = document.getElementById('importar-adjunto-cols-excel');
+        const analizable = esAdjuntoPdfAnalizable(tipo) || tipo === 'excel';
+        colsPdf?.classList.toggle('d-none', !esAdjuntoPdfAnalizable(tipo));
+        colsExcel?.classList.toggle('d-none', tipo !== 'excel');
+        wrapImportarAdjuntosAnalizar?.classList.toggle('d-none', !analizable);
+        if (btnImportarAnalizarAdjunto) {
+            btnImportarAnalizarAdjunto.classList.toggle('d-none', !analizable);
+        }
+        actualizarHintAdjuntoImportar();
+        const tabId = tipo === 'excel' ? 'tab-ca-excel' : (esAdjuntoPdfAnalizable(tipo) ? 'tab-ca-pdf' : '');
+        if (tabId) {
+            document.getElementById(tabId)?.click();
+        }
+        renderAdjuntosImportar();
+    }
 
-        function actualizarHintAdjuntoImportar() {
-            const sel = adjuntoImportarSeleccionado;
-            const hintPdf = document.getElementById('importar-compra-agil-pdf-adjunto-hint');
-            const hintExcel = document.getElementById('importar-compra-agil-excel-adjunto-hint');
-            const hayPdfInput = !!(importarPdfInput?.files && importarPdfInput.files[0]);
-            const hayExcelInput = !!(importarExcelInput?.files && importarExcelInput.files[0]);
-            if (hintPdf) {
-                if (!hayPdfInput && sel && esAdjuntoPdfAnalizable(sel.tipo) && sel.nombre) {
-                    hintPdf.classList.remove('d-none');
-                    hintPdf.textContent = sel.tipo === 'doc' ?
-                        ('Adjunto seleccionado: ' + sel.nombre + ' (se analizará el PDF convertido)') :
-                        ('Adjunto seleccionado: ' + sel.nombre);
-                } else {
-                    hintPdf.classList.add('d-none');
-                    hintPdf.textContent = '';
-                }
-            }
-            if (hintExcel) {
-                if (!hayExcelInput && sel && sel.tipo === 'excel' && sel.nombre) {
-                    hintExcel.classList.remove('d-none');
-                    hintExcel.textContent = 'Adjunto seleccionado: ' + sel.nombre;
-                } else {
-                    hintExcel.classList.add('d-none');
-                    hintExcel.textContent = '';
-                }
+    function actualizarHintAdjuntoImportar() {
+        const sel = adjuntoImportarSeleccionado;
+        const hintPdf = document.getElementById('importar-compra-agil-pdf-adjunto-hint');
+        const hintExcel = document.getElementById('importar-compra-agil-excel-adjunto-hint');
+        const hayPdfInput = !!(importarPdfInput?.files && importarPdfInput.files[0]);
+        const hayExcelInput = !!(importarExcelInput?.files && importarExcelInput.files[0]);
+        if (hintPdf) {
+            if (!hayPdfInput && sel && esAdjuntoPdfAnalizable(sel.tipo) && sel.nombre) {
+                hintPdf.classList.remove('d-none');
+                hintPdf.textContent = sel.tipo === 'doc'
+                    ? ('Adjunto seleccionado: ' + sel.nombre + ' (se analizará el PDF convertido)')
+                    : ('Adjunto seleccionado: ' + sel.nombre);
+            } else {
+                hintPdf.classList.add('d-none');
+                hintPdf.textContent = '';
             }
         }
+        if (hintExcel) {
+            if (!hayExcelInput && sel && sel.tipo === 'excel' && sel.nombre) {
+                hintExcel.classList.remove('d-none');
+                hintExcel.textContent = 'Adjunto seleccionado: ' + sel.nombre;
+            } else {
+                hintExcel.classList.add('d-none');
+                hintExcel.textContent = '';
+            }
+        }
+    }
 
-        function valorColumnaImport(opciones, clave, valorTab, valorAdjunto) {
-            if (opciones[clave] != null && String(opciones[clave]).trim() !== '') {
-                return String(opciones[clave]).trim();
-            }
-            const tab = String(valorTab || '').trim();
-            const adj = String(valorAdjunto || '').trim();
-            const usaAdjunto = !!(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel' &&
-                !(importarExcelInput?.files && importarExcelInput.files[0]));
-            if (usaAdjunto && adj !== '') {
-                return adj;
-            }
-            if (tab !== '') {
-                return tab;
-            }
+    function valorColumnaImport(opciones, clave, valorTab, valorAdjunto) {
+        if (opciones[clave] != null && String(opciones[clave]).trim() !== '') {
+            return String(opciones[clave]).trim();
+        }
+        const tab = String(valorTab || '').trim();
+        const adj = String(valorAdjunto || '').trim();
+        const usaAdjunto = !!(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel'
+            && !(importarExcelInput?.files && importarExcelInput.files[0]));
+        if (usaAdjunto && adj !== '') {
             return adj;
         }
-
-        async function resolverArchivoAdjuntoSiFalta(file, tipoEsperado) {
-            if (file) {
-                return file;
-            }
-            const sel = adjuntoImportarSeleccionado;
-            if (!sel || !sel.nombre) {
-                return null;
-            }
-            if (tipoEsperado === 'pdf' && !esAdjuntoPdfAnalizable(sel.tipo)) {
-                return null;
-            }
-            if (tipoEsperado === 'excel' && sel.tipo !== 'excel') {
-                return null;
-            }
-            if (tipoEsperado !== 'pdf' && tipoEsperado !== 'excel' && sel.tipo !== tipoEsperado) {
-                return null;
-            }
-            if (importarEstado) {
-                importarEstado.textContent = sel.tipo === 'doc' ?
-                    'Convirtiendo .doc a PDF…' :
-                    'Descargando adjunto…';
-            }
-            return descargarAdjuntoComoFile(sel.nombre, sel.tipo);
+        if (tab !== '') {
+            return tab;
         }
+        return adj;
+    }
 
-        function bumpBackdropAdjuntoImportar() {
-            const backs = document.querySelectorAll('.modal-backdrop');
-            if (backs.length > 1) {
-                backs[backs.length - 1].style.zIndex = '1990';
+    async function resolverArchivoAdjuntoSiFalta(file, tipoEsperado) {
+        if (file) {
+            return file;
+        }
+        const sel = adjuntoImportarSeleccionado;
+        if (!sel || !sel.nombre) {
+            return null;
+        }
+        if (tipoEsperado === 'pdf' && !esAdjuntoPdfAnalizable(sel.tipo)) {
+            return null;
+        }
+        if (tipoEsperado === 'excel' && sel.tipo !== 'excel') {
+            return null;
+        }
+        if (tipoEsperado !== 'pdf' && tipoEsperado !== 'excel' && sel.tipo !== tipoEsperado) {
+            return null;
+        }
+        if (importarEstado) {
+            importarEstado.textContent = sel.tipo === 'doc'
+                ? 'Convirtiendo .doc a PDF…'
+                : 'Descargando adjunto…';
+        }
+        return descargarAdjuntoComoFile(sel.nombre, sel.tipo);
+    }
+
+    function bumpBackdropAdjuntoImportar() {
+        const backs = document.querySelectorAll('.modal-backdrop');
+        if (backs.length > 1) {
+            backs[backs.length - 1].style.zIndex = '1990';
+        }
+    }
+
+    function abrirPreviewAdjuntoImportar(nombre) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const modalEl = document.getElementById('modal-adjuntos-importar');
+        const label = document.getElementById('modal-adjuntos-importar-label');
+        const loading = document.getElementById('modal-adjuntos-importar-loading');
+        const convirtiendo = document.getElementById('modal-adjuntos-importar-convirtiendo');
+        const errBox = document.getElementById('modal-adjuntos-importar-error');
+        const frame = document.getElementById('modal-adjuntos-importar-frame');
+        const btnDescargar = document.getElementById('btn-descargar-adjunto-importar');
+        if (!modalEl || !importarMpUrls.adjuntosVerBase) {
+            return;
+        }
+        if (btnDescargar) {
+            if (nombre) {
+                btnDescargar.href = urlDescargarAdjuntoImportar(nombre);
+                btnDescargar.classList.remove('d-none');
+            } else {
+                btnDescargar.href = '#';
+                btnDescargar.classList.add('d-none');
             }
         }
-
-        function abrirPreviewAdjuntoImportar(nombre) {
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            const modalEl = document.getElementById('modal-adjuntos-importar');
-            const label = document.getElementById('modal-adjuntos-importar-label');
-            const loading = document.getElementById('modal-adjuntos-importar-loading');
-            const convirtiendo = document.getElementById('modal-adjuntos-importar-convirtiendo');
-            const errBox = document.getElementById('modal-adjuntos-importar-error');
-            const frame = document.getElementById('modal-adjuntos-importar-frame');
-            const btnDescargar = document.getElementById('btn-descargar-adjunto-importar');
-            if (!modalEl || !importarMpUrls.adjuntosVerBase) {
-                return;
-            }
-            if (btnDescargar) {
-                if (nombre) {
-                    btnDescargar.href = urlDescargarAdjuntoImportar(nombre);
-                    btnDescargar.classList.remove('d-none');
-                } else {
-                    btnDescargar.href = '#';
-                    btnDescargar.classList.add('d-none');
-                }
-            }
-            const bs = typeof bootstrap !== 'undefined' ?
-                bootstrap.Modal.getOrCreateInstance(modalEl) :
-                null;
-            if (label) {
-                label.textContent = nombre ? `Documentos — ${codigo} — ${nombre}` : `Documentos — ${codigo}`;
-            }
-            if (errBox) {
-                errBox.classList.add('d-none');
-                errBox.textContent = '';
-            }
-            if (convirtiendo) {
-                convirtiendo.classList.add('d-none');
-            }
-            if (frame) {
+        const bs = typeof bootstrap !== 'undefined'
+            ? bootstrap.Modal.getOrCreateInstance(modalEl)
+            : null;
+        if (label) {
+            label.textContent = nombre ? `Documentos — ${codigo} — ${nombre}` : `Documentos — ${codigo}`;
+        }
+        if (errBox) {
+            errBox.classList.add('d-none');
+            errBox.textContent = '';
+        }
+        if (convirtiendo) {
+            convirtiendo.classList.add('d-none');
+        }
+        if (frame) {
+            frame.onload = null;
+            frame.classList.add('d-none');
+            frame.src = 'about:blank';
+        }
+        loading?.classList.remove('d-none');
+        modalEl.addEventListener('shown.bs.modal', bumpBackdropAdjuntoImportar, { once: true });
+        bs?.show();
+        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&preview=1`;
+        const convertir = /\.(docx?|xlsx?)$/i.test(nombre) && !/\.pdf$/i.test(nombre);
+        if (convirtiendo) {
+            convirtiendo.classList.toggle('d-none', !convertir);
+        }
+        if (frame) {
+            frame.onload = () => {
+                loading?.classList.add('d-none');
+                convirtiendo?.classList.add('d-none');
+                frame.classList.remove('d-none');
                 frame.onload = null;
-                frame.classList.add('d-none');
-                frame.src = 'about:blank';
-            }
-            loading?.classList.remove('d-none');
-            modalEl.addEventListener('shown.bs.modal', bumpBackdropAdjuntoImportar, {
-                once: true
-            });
-            bs?.show();
-            const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?archivo=${encodeURIComponent(nombre)}&preview=1`;
-            const convertir = /\.(docx?|xlsx?)$/i.test(nombre) && !/\.pdf$/i.test(nombre);
-            if (convirtiendo) {
-                convirtiendo.classList.toggle('d-none', !convertir);
-            }
-            if (frame) {
-                frame.onload = () => {
-                    loading?.classList.add('d-none');
-                    convirtiendo?.classList.add('d-none');
-                    frame.classList.remove('d-none');
-                    frame.onload = null;
-                };
-                frame.src = url;
-            }
+            };
+            frame.src = url;
         }
+    }
 
-        function claveAdjuntosImportarCache(codigo) {
-            return 'cotiz.importar.adjuntos.' + String(codigo || '').toUpperCase();
+    function claveAdjuntosImportarCache(codigo) {
+        return 'cotiz.importar.adjuntos.' + String(codigo || '').toUpperCase();
+    }
+
+    function guardarAdjuntosImportarCache(codigo, archivos, consultado) {
+        try {
+            sessionStorage.setItem(claveAdjuntosImportarCache(codigo), JSON.stringify({
+                archivos,
+                consultado: !!consultado,
+            }));
+        } catch (_e) {
+            // sessionStorage no disponible
         }
+    }
 
-        function guardarAdjuntosImportarCache(codigo, archivos, consultado) {
-            try {
-                sessionStorage.setItem(claveAdjuntosImportarCache(codigo), JSON.stringify({
-                    archivos,
-                    consultado: !!consultado,
-                }));
-            } catch (_e) {
-                // sessionStorage no disponible
-            }
-        }
-
-        function restaurarAdjuntosImportarCache(codigo) {
-            try {
-                const raw = sessionStorage.getItem(claveAdjuntosImportarCache(codigo));
-                if (!raw) {
-                    return false;
-                }
-                const data = JSON.parse(raw);
-                if (!data || !Array.isArray(data.archivos) || data.archivos.length === 0) {
-                    return false;
-                }
-                adjuntosImportarArchivos = data.archivos;
-                adjuntosImportarConsultado = !!data.consultado;
-                return true;
-            } catch (_e) {
+    function restaurarAdjuntosImportarCache(codigo) {
+        try {
+            const raw = sessionStorage.getItem(claveAdjuntosImportarCache(codigo));
+            if (!raw) {
                 return false;
             }
+            const data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.archivos) || data.archivos.length === 0) {
+                return false;
+            }
+            adjuntosImportarArchivos = data.archivos;
+            adjuntosImportarConsultado = !!data.consultado;
+            return true;
+        } catch (_e) {
+            return false;
         }
+    }
 
-        async function cargarAdjuntosImportar() {
-            if (!puedeAdjuntosImportar()) {
-                return;
+    async function cargarAdjuntosImportar() {
+        if (!puedeAdjuntosImportar()) {
+            return;
+        }
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const teniaArchivos = adjuntosImportarArchivos.length > 0;
+        if (!teniaArchivos) {
+            restaurarAdjuntosImportarCache(codigo);
+            if (adjuntosImportarArchivos.length > 0) {
+                renderAdjuntosImportar();
             }
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            const teniaArchivos = adjuntosImportarArchivos.length > 0;
-            if (!teniaArchivos) {
-                restaurarAdjuntosImportarCache(codigo);
-                if (adjuntosImportarArchivos.length > 0) {
-                    renderAdjuntosImportar();
-                }
-            }
-            try {
-                const res = await fetch(urlAdjuntosImportar(importarMpUrls.adjuntosListarBase, codigo), {
-                    headers: {
-                        Accept: 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin',
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.ok) {
-                    if (adjuntosImportarArchivos.length === 0) {
-                        adjuntosImportarConsultado = false;
-                    }
-                } else {
-                    adjuntosImportarConsultado = !!data.consultado;
-                    const archivos = Array.isArray(data.archivos) ? data.archivos : [];
-                    if (archivos.length > 0 || adjuntosImportarArchivos.length === 0) {
-                        adjuntosImportarArchivos = archivos;
-                    }
-                    if (adjuntosImportarArchivos.length > 0) {
-                        guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, adjuntosImportarConsultado);
-                    }
-                }
-            } catch (_e) {
+        }
+        try {
+            const res = await fetch(urlAdjuntosImportar(importarMpUrls.adjuntosListarBase, codigo), {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
                 if (adjuntosImportarArchivos.length === 0) {
                     adjuntosImportarConsultado = false;
                 }
+            } else {
+                adjuntosImportarConsultado = !!data.consultado;
+                const archivos = Array.isArray(data.archivos) ? data.archivos : [];
+                if (archivos.length > 0 || adjuntosImportarArchivos.length === 0) {
+                    adjuntosImportarArchivos = archivos;
+                }
+                if (adjuntosImportarArchivos.length > 0) {
+                    guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, adjuntosImportarConsultado);
+                }
+            }
+        } catch (_e) {
+            if (adjuntosImportarArchivos.length === 0) {
+                adjuntosImportarConsultado = false;
+            }
+        }
+        renderAdjuntosImportar();
+    }
+
+    async function buscarAdjuntosImportar() {
+        if (!puedeAdjuntosImportar() || !importarMpUrls.adjuntosBuscar || !csrf) {
+            return;
+        }
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const labelPrev = btnImportarBuscarAdjuntos ? btnImportarBuscarAdjuntos.innerHTML : '';
+        if (btnImportarBuscarAdjuntos) {
+            btnImportarBuscarAdjuntos.disabled = true;
+            btnImportarBuscarAdjuntos.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando…';
+        }
+        try {
+            const res = await fetch(importarMpUrls.adjuntosBuscar, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ codigo }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                await dlgAlert((data && data.error) ? data.error : 'No se pudieron buscar adjuntos.', {
+                    title: 'Adjuntos',
+                    type: 'danger',
+                });
+                return;
+            }
+            adjuntosImportarConsultado = true;
+            adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
+            guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, true);
+            renderAdjuntosImportar();
+            if (data.sin_adjuntos) {
+                await dlgAlert('No hay adjuntos en Mercado Público para esta cotización.', {
+                    title: 'Adjuntos',
+                    type: 'info',
+                });
+            }
+        } catch (e) {
+            await dlgAlert(e && e.message ? e.message : 'Error de red.', { title: 'Adjuntos', type: 'danger' });
+        } finally {
+            if (btnImportarBuscarAdjuntos) {
+                btnImportarBuscarAdjuntos.disabled = false;
+                btnImportarBuscarAdjuntos.innerHTML = labelPrev;
             }
             renderAdjuntosImportar();
         }
+    }
 
-        async function buscarAdjuntosImportar() {
-            if (!puedeAdjuntosImportar() || !importarMpUrls.adjuntosBuscar || !csrf) {
-                return;
-            }
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            const labelPrev = btnImportarBuscarAdjuntos ? btnImportarBuscarAdjuntos.innerHTML : '';
-            if (btnImportarBuscarAdjuntos) {
-                btnImportarBuscarAdjuntos.disabled = true;
-                btnImportarBuscarAdjuntos.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Buscando…';
-            }
+    async function descargarAdjuntoComoFile(nombre, tipo) {
+        const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const tipoAdj = tipo || tipoAdjuntoImportar(nombre);
+        const qs = tipoAdj === 'doc'
+            ? `archivo=${encodeURIComponent(nombre)}&analizar=1`
+            : `archivo=${encodeURIComponent(nombre)}&descargar=1`;
+        const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?${qs}`;
+        const res = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!res.ok) {
+            let msg = 'No se pudo descargar el adjunto.';
             try {
-                const res = await fetch(importarMpUrls.adjuntosBuscar, {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': csrf,
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        codigo
-                    }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.ok) {
-                    await dlgAlert((data && data.error) ? data.error : 'No se pudieron buscar adjuntos.', {
-                        title: 'Adjuntos',
-                        type: 'danger',
-                    });
-                    return;
+                const data = await res.json();
+                if (data && data.error) {
+                    msg = String(data.error);
                 }
-                adjuntosImportarConsultado = true;
-                adjuntosImportarArchivos = Array.isArray(data.archivos) ? data.archivos : [];
-                guardarAdjuntosImportarCache(codigo, adjuntosImportarArchivos, true);
-                renderAdjuntosImportar();
-                if (data.sin_adjuntos) {
-                    await dlgAlert('No hay adjuntos en Mercado Público para esta cotización.', {
-                        title: 'Adjuntos',
-                        type: 'info',
-                    });
-                }
-            } catch (e) {
-                await dlgAlert(e && e.message ? e.message : 'Error de red.', {
-                    title: 'Adjuntos',
-                    type: 'danger'
-                });
-            } finally {
-                if (btnImportarBuscarAdjuntos) {
-                    btnImportarBuscarAdjuntos.disabled = false;
-                    btnImportarBuscarAdjuntos.innerHTML = labelPrev;
-                }
-                renderAdjuntosImportar();
+            } catch (_e) {
+                // keep default
             }
+            throw new Error(msg);
         }
-
-        async function descargarAdjuntoComoFile(nombre, tipo) {
-            const codigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            const tipoAdj = tipo || tipoAdjuntoImportar(nombre);
-            const qs = tipoAdj === 'doc' ?
-                `archivo=${encodeURIComponent(nombre)}&analizar=1` :
-                `archivo=${encodeURIComponent(nombre)}&descargar=1`;
-            const url = `${urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, codigo)}?${qs}`;
-            const res = await fetch(url, {
-                credentials: 'same-origin',
-                headers: {
-                    Accept: 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-            });
-            if (!res.ok) {
-                let msg = 'No se pudo descargar el adjunto.';
-                try {
-                    const data = await res.json();
-                    if (data && data.error) {
-                        msg = String(data.error);
-                    }
-                } catch (_e) {
-                    // keep default
-                }
-                throw new Error(msg);
+        const blob = await res.blob();
+        if (tipoAdj === 'doc') {
+            const cabeza = await blob.slice(0, 4).text();
+            if (cabeza !== '%PDF') {
+                throw new Error('No se pudo convertir el .doc a PDF para analizarlo.');
             }
-            const blob = await res.blob();
-            if (tipoAdj === 'doc') {
-                const cabeza = await blob.slice(0, 4).text();
-                if (cabeza !== '%PDF') {
-                    throw new Error('No se pudo convertir el .doc a PDF para analizarlo.');
-                }
-                const pdfName = String(nombre).replace(/\.doc$/i, '.pdf');
-                return new File([blob], pdfName, {
-                    type: 'application/pdf'
-                });
-            }
-            const mime = tipoAdj === 'excel' ?
-                (mimeAdjuntoImportar(nombre) || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') :
-                (blob.type || mimeAdjuntoImportar(nombre));
-            return new File([blob], nombre, {
-                type: mime
-            });
+            const pdfName = String(nombre).replace(/\.doc$/i, '.pdf');
+            return new File([blob], pdfName, { type: 'application/pdf' });
         }
+        const mime = tipoAdj === 'excel'
+            ? (mimeAdjuntoImportar(nombre) || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            : (blob.type || mimeAdjuntoImportar(nombre));
+        return new File([blob], nombre, { type: mime });
+    }
 
-        async function analizarAdjuntoImportar() {
-            const sel = adjuntoImportarSeleccionado;
-            if (!sel || !sel.nombre) {
-                return;
-            }
-            const tipo = sel.tipo;
-            if (!esAdjuntoPdfAnalizable(tipo) && tipo !== 'excel') {
-                if (importarEstado) {
-                    importarEstado.textContent = 'Este archivo no se puede analizar. Use PDF, Word o Excel.';
-                }
-                return;
-            }
-            if (archivoSuperaLimiteImport(sel.bytes, sel.nombre)) {
-                return;
-            }
-            const colCant = tipo === 'excel' ?
-                document.getElementById('importar-adjunto-excel-col-cant')?.value :
-                document.getElementById('importar-adjunto-pdf-col-cant')?.value;
-            const colDesc = tipo === 'excel' ?
-                document.getElementById('importar-adjunto-excel-col-desc')?.value :
-                document.getElementById('importar-adjunto-pdf-col-desc')?.value;
-            const modalEl = document.getElementById('modal-adjuntos-importar');
-            if (modalEl && typeof bootstrap !== 'undefined') {
-                bootstrap.Modal.getInstance(modalEl)?.hide();
-            }
-            if (tipo === 'excel') {
-                if (importarEstado) importarEstado.textContent = 'Analizando adjunto Excel…';
-                await analizarImportExcel({
-                    colCant,
-                    colDesc,
-                    desdeAdjunto: true,
-                });
-                return;
-            }
+    async function analizarAdjuntoImportar() {
+        const sel = adjuntoImportarSeleccionado;
+        if (!sel || !sel.nombre) {
+            return;
+        }
+        const tipo = sel.tipo;
+        if (!esAdjuntoPdfAnalizable(tipo) && tipo !== 'excel') {
             if (importarEstado) {
-                importarEstado.textContent = tipo === 'doc' ?
-                    'Convirtiendo .doc a PDF…' :
-                    'Descargando adjunto…';
+                importarEstado.textContent = 'Este archivo no se puede analizar. Use PDF, Word o Excel.';
             }
-            setAdjuntoAnalizarBusy(true);
-            try {
-                const file = await descargarAdjuntoComoFile(sel.nombre, tipo);
-                await analizarImportPdf({
-                    file,
-                    colCant,
-                    colDesc,
-                });
-            } catch (e) {
-                setAdjuntoAnalizarBusy(false);
-                mostrarImportError(e && e.message ? e.message : 'No se pudo analizar el adjunto.');
-            }
+            return;
         }
+        if (archivoSuperaLimiteImport(sel.bytes, sel.nombre)) {
+            return;
+        }
+        const colCant = tipo === 'excel'
+            ? document.getElementById('importar-adjunto-excel-col-cant')?.value
+            : document.getElementById('importar-adjunto-pdf-col-cant')?.value;
+        const colDesc = tipo === 'excel'
+            ? document.getElementById('importar-adjunto-excel-col-desc')?.value
+            : document.getElementById('importar-adjunto-pdf-col-desc')?.value;
+        const modalEl = document.getElementById('modal-adjuntos-importar');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getInstance(modalEl)?.hide();
+        }
+        if (tipo === 'excel') {
+            if (importarEstado) importarEstado.textContent = 'Analizando adjunto Excel…';
+            await analizarImportExcel({
+                colCant,
+                colDesc,
+                desdeAdjunto: true,
+            });
+            return;
+        }
+        if (importarEstado) {
+            importarEstado.textContent = tipo === 'doc'
+                ? 'Convirtiendo .doc a PDF…'
+                : 'Descargando adjunto…';
+        }
+        setAdjuntoAnalizarBusy(true);
+        try {
+            const file = await descargarAdjuntoComoFile(sel.nombre, tipo);
+            await analizarImportPdf({
+                file,
+                colCant,
+                colDesc,
+            });
+        } catch (e) {
+            setAdjuntoAnalizarBusy(false);
+            mostrarImportError(e && e.message ? e.message : 'No se pudo analizar el adjunto.');
+        }
+    }
 
-        function mostrarDetalleImportarOportunidades() {
+    function mostrarDetalleImportarOportunidades() {
+        bloquearCodigoImportarOportunidad();
+        document.getElementById('tab-ca-codigo')?.click();
+        actualizarResumenLineas(resumenLineasInicial);
+        cargarAdjuntosImportar();
+        if (previewOportunidadesDisponible()) {
+            aplicarPreviewCacheado(codigoImportarCompraAgil, previewImportarCompraAgil);
+            return;
+        }
+        if (importPreviewData && Array.isArray(importPreviewData.lineas) && importPreviewData.lineas.length > 0) {
+            renderImportPreview(importPreviewData);
+            return;
+        }
+        if (codigoImportarCompraAgil) {
+            analizarCodigoApi(codigoImportarCompraAgil);
+        }
+    }
+
+    function resetImportCompraAgilModal() {
+        importPreviewData = null;
+        importCodigoApi = null;
+        importModo = 'texto';
+        importPdfFile = null;
+        importExcelFile = null;
+        importandoCompraAgil = false;
+        cancelarAnalisisMaterialesAlSalir();
+        if (importarTexto) importarTexto.value = '';
+        if (importarPdfInput) importarPdfInput.value = '';
+        if (importarPdfColCant) importarPdfColCant.value = 'CANTIDAD';
+        if (importarPdfColDesc) importarPdfColDesc.value = '';
+        if (importarExcelInput) importarExcelInput.value = '';
+        if (importarExcelColCant) importarExcelColCant.value = 'A';
+        if (importarExcelColDesc) importarExcelColDesc.value = 'B';
+        adjuntoImportarSeleccionado = null;
+        actualizarHintAdjuntoImportar();
+        document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
+        if (desdeOportunidades && codigoImportarCompraAgil) {
             bloquearCodigoImportarOportunidad();
-            document.getElementById('tab-ca-codigo')?.click();
-            actualizarResumenLineas(resumenLineasInicial);
-            cargarAdjuntosImportar();
-            if (previewOportunidadesDisponible()) {
-                aplicarPreviewCacheado(codigoImportarCompraAgil, previewImportarCompraAgil);
-                return;
-            }
-            if (importPreviewData && Array.isArray(importPreviewData.lineas) && importPreviewData.lineas.length > 0) {
-                renderImportPreview(importPreviewData);
-                return;
-            }
-            if (codigoImportarCompraAgil) {
-                analizarCodigoApi(codigoImportarCompraAgil);
-            }
         }
+        if (importarEstado) importarEstado.textContent = '';
+        if (importarCabecera) importarCabecera.classList.add('d-none');
+        if (importarCabeceraTexto) importarCabeceraTexto.textContent = '';
+        if (importarTablaWrap) importarTablaWrap.classList.add('d-none');
+        if (importarResultados) importarResultados.innerHTML = '';
+        if (importarResumen) importarResumen.textContent = '';
+        limpiarImportAlerta();
+        ocultarProgresoImportar();
+        if (btnImportarConfirmar) {
+            btnImportarConfirmar.classList.add('d-none');
+            btnImportarConfirmar.disabled = false;
+        }
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+    }
 
-        function resetImportCompraAgilModal() {
-            importPreviewData = null;
-            importCodigoApi = null;
-            importModo = 'texto';
-            importPdfFile = null;
-            importExcelFile = null;
-            importandoCompraAgil = false;
-            cancelarAnalisisMaterialesAlSalir();
-            if (importarTexto) importarTexto.value = '';
-            if (importarPdfInput) importarPdfInput.value = '';
-            if (importarPdfColCant) importarPdfColCant.value = 'CANTIDAD';
-            if (importarPdfColDesc) importarPdfColDesc.value = '';
-            if (importarExcelInput) importarExcelInput.value = '';
-            if (importarExcelColCant) importarExcelColCant.value = 'A';
-            if (importarExcelColDesc) importarExcelColDesc.value = 'B';
-            adjuntoImportarSeleccionado = null;
-            actualizarHintAdjuntoImportar();
-            document.getElementById('ca-api-codigo') && (document.getElementById('ca-api-codigo').value = '');
-            if (desdeOportunidades && codigoImportarCompraAgil) {
-                bloquearCodigoImportarOportunidad();
-            }
-            if (importarEstado) importarEstado.textContent = '';
+    function renderImportPreview(data) {
+        importPreviewData = data;
+
+        if (!data) {
             if (importarCabecera) importarCabecera.classList.add('d-none');
-            if (importarCabeceraTexto) importarCabeceraTexto.textContent = '';
             if (importarTablaWrap) importarTablaWrap.classList.add('d-none');
             if (importarResultados) importarResultados.innerHTML = '';
             if (importarResumen) importarResumen.textContent = '';
-            limpiarImportAlerta();
-            ocultarProgresoImportar();
-            if (btnImportarConfirmar) {
+            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+            return;
+        }
+
+        if (data.error_cabecera) {
+            mostrarImportError(data.error_cabecera);
+        }
+
+        const cab = data?.cabecera || {};
+        const partes = [];
+        const codigoCab = String(cab.codigo_cotizacion || '').trim().toUpperCase();
+        if (codigoCab) {
+            partes.push(
+                'Cotización: ' + escHtml(codigoCab) +
+                ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline btn-copiar-codigo-cabecera"' +
+                ' data-codigo="' + escHtml(codigoCab) + '"' +
+                ' title="Copiar código ' + escHtml(codigoCab) + '"' +
+                ' aria-label="Copiar código">' +
+                '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
+            );
+        }
+        if (cab.empresa) partes.push('Cliente: ' + escHtml(cab.empresa));
+        if (cab.rutempresa) partes.push('RUT: ' + escHtml(cab.rutempresa));
+        if (cab.nombre) partes.push('Nombre: ' + escHtml(cab.nombre));
+
+        if (partes.length && importarCabecera && importarCabeceraTexto) {
+            importarCabeceraTexto.innerHTML = partes.join(' · ');
+            importarCabecera.classList.remove('d-none');
+        } else if (importarCabecera) {
+            importarCabecera.classList.add('d-none');
+        }
+
+        const lineas = data?.lineas || [];
+        if (!importarResultados || !importarTablaWrap) return;
+
+        if (lineas.length === 0) {
+            importarTablaWrap.classList.add('d-none');
+            importarResultados.innerHTML = '';
+            if (importarResumen) importarResumen.textContent = '';
+            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+            return;
+        }
+
+        importarTablaWrap.classList.remove('d-none');
+        importarResultados.innerHTML = lineas.map((ln, i) => {
+            const prod = ln.producto;
+            let estadoHtml;
+            if (ln.estado === 'vinculado') {
+                estadoHtml = '<span class="text-success">Vinculado</span>';
+            } else if (ln.es_sugerencia && prod) {
+                estadoHtml = '<span class="text-warning">Pendiente (sugerido)</span>';
+            } else {
+                estadoHtml = '<span class="text-danger">Pendiente</span>';
+            }
+            const prodTxt = prod
+                ? escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre) + (ln.es_sugerencia ? ' <span class="text-muted">(sugerencia)</span>' : '')
+                : '<span class="text-muted">Buscar despu&eacute;s de importar</span>';
+            const precioTxt = prod && prod.prod_valor != null && prod.prod_valor !== ''
+                ? fmtPrecio(prod.prod_valor)
+                : '—';
+
+            return '<tr>'
+                + '<td>'
+                +   '<div class="small text-muted">Línea ' + (i + 1) + '</div>'
+                +   '<div class="text-break">' + escHtml(ln.id_agile) + '</div>'
+                + '</td>'
+                + '<td>' + escHtml(ln.descripcion) + '</td>'
+                + '<td class="text-end">' + escHtml(ln.cantidad) + '</td>'
+                + '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>'
+                + '<td>' + prodTxt + '</td>'
+                + '<td class="text-end text-nowrap tabular-nums">' + precioTxt + '</td>'
+                + '<td>' + estadoHtml + '</td>'
+                + '</tr>';
+        }).join('');
+
+        const res = data?.resumen || {};
+        if (importarResumen) {
+            importarResumen.textContent = (res.total || 0) + ' línea(s): '
+                + (res.vinculados || 0) + ' vinculada(s), '
+                + (res.pendientes || 0) + ' pendiente(s).';
+        }
+
+        if (btnImportarConfirmar) {
+            const puedeImportar = data?.puede_importar !== false;
+            if ((res.total || 0) > 0 && puedeImportar) {
+                btnImportarConfirmar.classList.remove('d-none');
+            } else {
                 btnImportarConfirmar.classList.add('d-none');
-                btnImportarConfirmar.disabled = false;
-            }
-            if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
-            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
-        }
-
-        function renderImportPreview(data) {
-            importPreviewData = data;
-
-            if (!data) {
-                if (importarCabecera) importarCabecera.classList.add('d-none');
-                if (importarTablaWrap) importarTablaWrap.classList.add('d-none');
-                if (importarResultados) importarResultados.innerHTML = '';
-                if (importarResumen) importarResumen.textContent = '';
-                if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-                return;
-            }
-
-            if (data.error_cabecera) {
-                mostrarImportError(data.error_cabecera);
-            }
-
-            const cab = data?.cabecera || {};
-            const partes = [];
-            const codigoCab = String(cab.codigo_cotizacion || '').trim().toUpperCase();
-            if (codigoCab) {
-                partes.push(
-                    'Cotización: ' + escHtml(codigoCab) +
-                    ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline btn-copiar-codigo-cabecera"' +
-                    ' data-codigo="' + escHtml(codigoCab) + '"' +
-                    ' title="Copiar código ' + escHtml(codigoCab) + '"' +
-                    ' aria-label="Copiar código">' +
-                    '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
-                );
-            }
-            if (cab.empresa) partes.push('Cliente: ' + escHtml(cab.empresa));
-            if (cab.rutempresa) partes.push('RUT: ' + escHtml(cab.rutempresa));
-            if (cab.nombre) partes.push('Nombre: ' + escHtml(cab.nombre));
-
-            if (partes.length && importarCabecera && importarCabeceraTexto) {
-                importarCabeceraTexto.innerHTML = partes.join(' · ');
-                importarCabecera.classList.remove('d-none');
-            } else if (importarCabecera) {
-                importarCabecera.classList.add('d-none');
-            }
-
-            const lineas = data?.lineas || [];
-            if (!importarResultados || !importarTablaWrap) return;
-
-            if (lineas.length === 0) {
-                importarTablaWrap.classList.add('d-none');
-                importarResultados.innerHTML = '';
-                if (importarResumen) importarResumen.textContent = '';
-                if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-                return;
-            }
-
-            importarTablaWrap.classList.remove('d-none');
-            importarResultados.innerHTML = lineas.map((ln, i) => {
-                const prod = ln.producto;
-                let estadoHtml;
-                if (ln.estado === 'vinculado') {
-                    estadoHtml = '<span class="text-success">Vinculado</span>';
-                } else if (ln.es_sugerencia && prod) {
-                    estadoHtml = '<span class="text-warning">Pendiente (sugerido)</span>';
-                } else {
-                    estadoHtml = '<span class="text-danger">Pendiente</span>';
-                }
-                const prodTxt = prod ?
-                    escHtml(prod.prod_item) + ' — ' + escHtml(prod.prod_nombre) + (ln.es_sugerencia ? ' <span class="text-muted">(sugerencia)</span>' : '') :
-                    '<span class="text-muted">Buscar despu&eacute;s de importar</span>';
-                const precioTxt = prod && prod.prod_valor != null && prod.prod_valor !== '' ?
-                    fmtPrecio(prod.prod_valor) :
-                    '—';
-
-                return '<tr>' +
-                    '<td>' +
-                    '<div class="small text-muted">Línea ' + (i + 1) + '</div>' +
-                    '<div class="text-break">' + escHtml(ln.id_agile) + '</div>' +
-                    '</td>' +
-                    '<td>' + escHtml(ln.descripcion) + '</td>' +
-                    '<td class="text-end">' + escHtml(ln.cantidad) + '</td>' +
-                    '<td>' + (prod ? escHtml(prod.prod_item) : '—') + '</td>' +
-                    '<td>' + prodTxt + '</td>' +
-                    '<td class="text-end text-nowrap tabular-nums">' + precioTxt + '</td>' +
-                    '<td>' + estadoHtml + '</td>' +
-                    '</tr>';
-            }).join('');
-
-            const res = data?.resumen || {};
-            if (importarResumen) {
-                importarResumen.textContent = (res.total || 0) + ' línea(s): ' +
-                    (res.vinculados || 0) + ' vinculada(s), ' +
-                    (res.pendientes || 0) + ' pendiente(s).';
-            }
-
-            if (btnImportarConfirmar) {
-                const puedeImportar = data?.puede_importar !== false;
-                if ((res.total || 0) > 0 && puedeImportar) {
-                    btnImportarConfirmar.classList.remove('d-none');
-                } else {
-                    btnImportarConfirmar.classList.add('d-none');
-                }
             }
         }
+    }
 
-        async function analizarImportCompraAgil() {
-            importModo = 'texto';
-            importPdfFile = null;
-            importExcelFile = null;
-            const texto = String(importarTexto?.value || '').trim();
-            importCodigoApi = null;
-            limpiarImportAlerta();
-            if (!texto) {
-                if (importarEstado) importarEstado.textContent = 'Pegue el texto de Compra Ágil.';
-                return;
-            }
-
-            if (importarEstado) importarEstado.textContent = '';
-            if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
-            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-            mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
-
-            try {
-                const bodyCoin = new FormData();
-                bodyCoin.append('_token', csrf);
-                bodyCoin.append('texto', texto);
-
-                const resCoin = await fetch(importarMpUrls.coincidencias, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: bodyCoin,
-                });
-                const coin = await resCoin.json().catch(() => ({}));
-                if (!resCoin.ok) {
-                    ocultarProgresoImportar();
-                    mostrarImportError(coin.error || coin.message || 'Error al verificar coincidencias.');
-                    return;
-                }
-
-                if ((coin.con_agile || coin.total || 0) > 0) {
-                    const det = coin.detalle || {};
-                    const okReemplazo = await dlgConfirm(
-                        'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile' +
-                        (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '') +
-                        '. Al analizar se eliminarán todas las líneas con ID Agile (las manuales se conservan). ¿Continuar?', {
-                            title: 'Reemplazar líneas Agile',
-                            type: 'warning'
-                        },
-                    );
-                    if (!okReemplazo) {
-                        ocultarProgresoImportar();
-                        return;
-                    }
-
-                    const bodyLimp = new FormData();
-                    bodyLimp.append('_token', csrf);
-                    const resLimp = await fetch(importarMpUrls.limpiarAgile, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: bodyLimp,
-                    });
-                    const limp = await resLimp.json().catch(() => ({}));
-                    if (!resLimp.ok) {
-                        ocultarProgresoImportar();
-                        mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas Agile.');
-                        return;
-                    }
-                    if (limp.detalle) actualizarResumenLineas(limp.detalle);
-                    mostrarImportAviso('Se eliminaron ' + (limp.eliminadas || 0) + ' línea(s) con ID Agile. Analizando texto nuevo...');
-                }
-
-                let todasLineas = [];
-                let cabecera = null;
-                let total = 0;
-                let errorCabecera = null;
-                let puedeImportar = true;
-                let desde = 0;
-
-                while (desde === 0 || desde < total) {
-                    const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
-                    const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                    const esPrimeraPasada = total === 0;
-
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-
-                    const body = new FormData();
-                    body.append('_token', csrf);
-                    body.append('texto', texto);
-                    body.append('desde', String(desde));
-                    body.append('hasta', String(hasta));
-
-                    const res = esPrimeraPasada ?
-                        await fetchConProgresoAnalisisDocumento(
-                            () => fetch(importarMpUrls.preview, {
-                                method: 'POST',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'X-Requested-With': 'XMLHttpRequest'
-                                },
-                                body,
-                            }),
-                            TEXTO_ANALISIS_TEXTO,
-                        ) :
-                        await fetch(importarMpUrls.preview, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body,
-                        });
-
-                    const json = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportResp(res, json, 'Error al analizar.'));
-                        renderImportPreview(null);
-                        return;
-                    }
-
-                    if (json.cabecera) cabecera = json.cabecera;
-                    if (json.error_cabecera) {
-                        errorCabecera = json.error_cabecera;
-                        puedeImportar = false;
-                    }
-                    if (json.puede_importar === false) puedeImportar = false;
-
-                    if (esPrimeraPasada) {
-                        finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_TEXTO);
-                    }
-
-                    total = json.total ?? total;
-                    todasLineas = todasLineas.concat(json.lineas || []);
-                    desde = json.procesadas ?? hasta;
-
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-
-                    if (json.completado || (total > 0 && desde >= total)) break;
-                    if (total === 0 && (json.lineas || []).length === 0) break;
-                }
-
-                ocultarProgresoImportar();
-
-                const previewFinal = {
-                    cabecera: cabecera || {},
-                    lineas: todasLineas,
-                    resumen: construirResumenPreview(todasLineas),
-                    error_cabecera: errorCabecera,
-                    puede_importar: puedeImportar,
-                };
-
-                renderImportPreview(previewFinal);
-
-                if (importarEstado) {
-                    if (errorCabecera) {
-                        importarEstado.textContent = '';
-                    } else {
-                        const n = previewFinal.resumen.total || 0;
-                        importarEstado.textContent = n > 0 ?
-                            'Análisis listo.' :
-                            'No se detectaron productos. Revise el texto pegado.';
-                    }
-                }
-            } catch (err) {
-                ocultarProgresoImportar();
-                mostrarImportError('Error de conexión.');
-            } finally {
-                if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
-            }
+    async function analizarImportCompraAgil() {
+        importModo = 'texto';
+        importPdfFile = null;
+        importExcelFile = null;
+        const texto = String(importarTexto?.value || '').trim();
+        importCodigoApi = null;
+        limpiarImportAlerta();
+        if (!texto) {
+            if (importarEstado) importarEstado.textContent = 'Pegue el texto de Compra Ágil.';
+            return;
         }
 
-        async function analizarImportPdf(opciones) {
-            opciones = opciones || {};
-            importModo = 'pdf';
-            importCodigoApi = null;
-            importExcelFile = null;
-            let file = opciones.file || importarPdfInput?.files?.[0] || null;
-            try {
-                file = await resolverArchivoAdjuntoSiFalta(file, 'pdf');
-            } catch (e) {
-                if (importarEstado) {
-                    importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
-                }
-                return;
-            }
-            const colCant = valorColumnaImport(
-                opciones,
-                'colCant',
-                importarPdfColCant?.value,
-                document.getElementById('importar-adjunto-pdf-col-cant')?.value,
-            );
-            const colDesc = valorColumnaImport(
-                opciones,
-                'colDesc',
-                importarPdfColDesc?.value,
-                document.getElementById('importar-adjunto-pdf-col-desc')?.value,
-            );
-            if (!file) {
-                if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx), o pinche un adjunto.';
-                return;
-            }
-            if (archivoSuperaLimiteImport(file)) {
-                return;
-            }
-            if (!colCant || !colDesc) {
-                if (importarEstado) importarEstado.textContent = 'Indique el nombre de las columnas cantidad y producto (como en el encabezado del PDF).';
-                return;
-            }
-            if (colCant.toUpperCase() === colDesc.toUpperCase()) {
-                if (importarEstado) importarEstado.textContent = 'Las columnas cantidad y producto deben ser distintas.';
-                return;
-            }
-            importPdfColumnaCantidad = colCant;
-            importPdfColumnaProducto = colDesc;
-            importPdfFile = file;
-            limpiarImportAlerta();
-            if (importarEstado) importarEstado.textContent = '';
-            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
-            setAdjuntoAnalizarBusy(true);
-            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-            renderImportPreview(null);
-            mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
-            nuevoImportMaterialesLockId();
-            marcarAnalisisMaterialesIniciado();
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
 
-            try {
-                const okPrep = await prepararImportAgileAntesPreview({
-                    mantenerProgreso: true
-                });
-                if (!okPrep) {
-                    await liberarImportMaterialesLock();
-                    return;
-                }
-
-                if (analisisMaterialesFueCancelado()) return;
-
-                mostrarProgresoImportar();
-                actualizarProgresoImportar(3, 100, TEXTO_ANALISIS_PDF, {
-                    faseAnalisis: true
-                });
-
-                let todasLineas = [];
-                let cabeceraPdf = {};
-                let total = 0;
-                let desde = 0;
-
-                while (desde === 0 || desde < total) {
-                    if (analisisMaterialesFueCancelado()) return;
-
-                    const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
-                    const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                    const esPrimeraPasada = total === 0;
-
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-
-                    const {
-                        res,
-                        json
-                    } = await enviarPreviewMateriales(
-                        importarMpUrls.pdfPreview,
-                        () => {
-                            const body = new FormData();
-                            body.append('_token', csrf);
-                            body.append('pdf', importPdfFile);
-                            body.append('columna_cantidad', importPdfColumnaCantidad || colCant);
-                            body.append('columna_producto', importPdfColumnaProducto || colDesc);
-                            body.append('desde', String(desde));
-                            body.append('hasta', String(hasta));
-                            return body;
-                        },
-                        esPrimeraPasada,
-                        TEXTO_ANALISIS_PDF,
-                    );
-
-                    if (!res.ok) {
-                        ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el PDF o Word.'));
-                        return;
-                    }
-
-                    if (json.cabecera && typeof json.cabecera === 'object') {
-                        cabeceraPdf = json.cabecera;
-                    }
-
-                    if (esPrimeraPasada) {
-                        finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_PDF);
-                    }
-
-                    total = json.total ?? total;
-                    todasLineas = todasLineas.concat(json.lineas || []);
-                    desde = json.procesadas ?? hasta;
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-                    if (json.completado || (total > 0 && desde >= total)) break;
-                    if (total === 0 && (json.lineas || []).length === 0) break;
-                }
-
-                ocultarProgresoImportar();
-                const previewFinal = {
-                    cabecera: cabeceraPdf || {},
-                    lineas: todasLineas,
-                    resumen: construirResumenPreview(todasLineas),
-                    error_cabecera: null,
-                    puede_importar: true,
-                };
-                renderImportPreview(previewFinal);
-
-                if (importarEstado) {
-                    const n = previewFinal.resumen.total || 0;
-                    const nom = importPdfFile && importPdfFile.name ? String(importPdfFile.name) : 'el archivo';
-                    importarEstado.textContent = n > 0 ?
-                        'Análisis listo (PDF / Word): ' + nom :
-                        'No se detectaron productos en «' + nom + '».';
-                }
-            } catch (err) {
-                ocultarProgresoImportar();
-                mostrarImportError(err?.message ? String(err.message) : 'Error de conexión.');
-            } finally {
-                await liberarImportMaterialesLock();
-                marcarAnalisisMaterialesTerminado();
-                if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
-                setAdjuntoAnalizarBusy(false);
-            }
-        }
-
-        async function analizarImportExcel(opciones) {
-            opciones = opciones || {};
-            importModo = 'excel';
-            importCodigoApi = null;
-            importPdfFile = null;
-            let file = opciones.file || importarExcelInput?.files?.[0] || null;
-            const adjuntoCodigo = String(codigoImportarCompraAgil || '').toUpperCase();
-            const adjuntoNombre = adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel' ?
-                String(adjuntoImportarSeleccionado.nombre || '') :
-                '';
-            const desdeAdjunto = opciones.desdeAdjunto === true ||
-                (!file && adjuntoCodigo !== '' && adjuntoNombre !== '');
-            if (!desdeAdjunto) {
-                try {
-                    file = await resolverArchivoAdjuntoSiFalta(file, 'excel');
-                } catch (e) {
-                    if (importarEstado) {
-                        importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
-                    }
-                    return;
-                }
-            }
-            const colDesc = valorColumnaImport(
-                opciones,
-                'colDesc',
-                importarExcelColDesc?.value,
-                document.getElementById('importar-adjunto-excel-col-desc')?.value,
-            ).toUpperCase();
-            const colCant = valorColumnaImport(
-                opciones,
-                'colCant',
-                importarExcelColCant?.value,
-                document.getElementById('importar-adjunto-excel-col-cant')?.value,
-            ).toUpperCase();
-            if (!file && !desdeAdjunto) {
-                if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv), o pinche un adjunto.';
-                return;
-            }
-            if (desdeAdjunto) {
-                if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes, adjuntoNombre)) {
-                    return;
-                }
-            } else if (archivoSuperaLimiteImport(file)) {
-                return;
-            }
-            if (!colDesc || !colCant) {
-                if (importarEstado) importarEstado.textContent = 'Indique las columnas de cantidad y producto (ej. A y B).';
-                return;
-            }
-            if (colDesc === colCant) {
-                if (importarEstado) importarEstado.textContent = 'Las columnas de descripción y cantidad deben ser distintas.';
-                return;
-            }
-            importExcelFile = file;
-            limpiarImportAlerta();
-            if (importarEstado) importarEstado.textContent = '';
-            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
-            setAdjuntoAnalizarBusy(true);
-            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-            renderImportPreview(null);
-            mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
-            nuevoImportMaterialesLockId();
-            marcarAnalisisMaterialesIniciado();
-
-            try {
-                const okPrep = await prepararImportAgileAntesPreview({
-                    mantenerProgreso: true
-                });
-                if (!okPrep) {
-                    await liberarImportMaterialesLock();
-                    return;
-                }
-
-                if (analisisMaterialesFueCancelado()) return;
-
-                mostrarProgresoImportar();
-                actualizarProgresoImportar(3, 100, TEXTO_ANALISIS_EXCEL, {
-                    faseAnalisis: true
-                });
-
-                let todasLineas = [];
-                let cabeceraExcel = {};
-                let total = 0;
-                let desde = 0;
-                let omitidas = 0;
-
-                while (desde === 0 || desde < total) {
-                    if (analisisMaterialesFueCancelado()) return;
-
-                    const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
-                    const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                    const esPrimeraPasada = total === 0;
-
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-
-                    const {
-                        res,
-                        json
-                    } = await enviarPreviewMateriales(
-                        importarMpUrls.excelPreview,
-                        () => {
-                            const body = new FormData();
-                            body.append('_token', csrf);
-                            if (desdeAdjunto && adjuntoCodigo && adjuntoNombre) {
-                                body.append('adjunto_codigo', adjuntoCodigo);
-                                body.append('adjunto_nombre', adjuntoNombre);
-                            } else {
-                                body.append('excel', importExcelFile);
-                            }
-                            body.append('columna_descripcion', colDesc);
-                            body.append('columna_cantidad', colCant);
-                            body.append('desde', String(desde));
-                            body.append('hasta', String(hasta));
-                            return body;
-                        },
-                        esPrimeraPasada,
-                        TEXTO_ANALISIS_EXCEL,
-                    );
-
-                    if (!res.ok) {
-                        ocultarProgresoImportar();
-                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el Excel.'));
-                        return;
-                    }
-
-                    if (json.cabecera && typeof json.cabecera === 'object') {
-                        cabeceraExcel = json.cabecera;
-                    }
-                    if (typeof json.omitidas === 'number') {
-                        omitidas = json.omitidas;
-                    }
-
-                    if (esPrimeraPasada) {
-                        finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_EXCEL);
-                    }
-
-                    total = json.total ?? total;
-                    todasLineas = todasLineas.concat(json.lineas || []);
-                    desde = json.procesadas ?? hasta;
-                    if (total > 0) {
-                        actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, {
-                            faseVinculacion: true
-                        });
-                    }
-                    if (json.completado || (total > 0 && desde >= total)) break;
-                    if (total === 0 && (json.lineas || []).length === 0) break;
-                }
-
-                ocultarProgresoImportar();
-                const previewFinal = {
-                    cabecera: cabeceraExcel || {},
-                    lineas: todasLineas,
-                    resumen: construirResumenPreview(todasLineas),
-                    error_cabecera: null,
-                    puede_importar: true,
-                    omitidas,
-                };
-                renderImportPreview(previewFinal);
-
-                if (importarEstado) {
-                    const n = previewFinal.resumen.total || 0;
-                    const nom = (importExcelFile && importExcelFile.name) ?
-                        String(importExcelFile.name) :
-                        (adjuntoNombre || 'el archivo');
-                    let msg = n > 0 ?
-                        'Análisis listo (Excel): ' + nom :
-                        'No se detectaron productos en «' + nom + '».';
-                    if (n > 0 && omitidas > 0) {
-                        msg += ' Se omitieron ' + omitidas + ' fila(s) vacías o de título/total.';
-                    }
-                    importarEstado.textContent = msg;
-                }
-            } catch (err) {
-                ocultarProgresoImportar();
-                mostrarImportError('Error de conexión.');
-            } finally {
-                await liberarImportMaterialesLock();
-                marcarAnalisisMaterialesTerminado();
-                if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
-                setAdjuntoAnalizarBusy(false);
-            }
-        }
-
-        async function prepararImportAgileAntesPreview(opciones = {}) {
-            const mantenerProgreso = opciones.mantenerProgreso === true;
-            mostrarProgresoImportar();
-            actualizarProgresoImportar(0, 0, 'Revisando líneas Agile en esta cotización…');
-
+        try {
             const bodyCoin = new FormData();
             bodyCoin.append('_token', csrf);
-            bodyCoin.append('texto', '');
+            bodyCoin.append('texto', texto);
+
             const resCoin = await fetch(importarMpUrls.coincidencias, {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: bodyCoin,
             });
             const coin = await resCoin.json().catch(() => ({}));
             if (!resCoin.ok) {
                 ocultarProgresoImportar();
                 mostrarImportError(coin.error || coin.message || 'Error al verificar coincidencias.');
-                return false;
+                return;
             }
+
             if ((coin.con_agile || coin.total || 0) > 0) {
                 const det = coin.detalle || {};
-                ocultarProgresoImportar();
-                if (importarEstado) importarEstado.textContent = '';
                 const okReemplazo = await dlgConfirm(
-                    'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile' +
-                    (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '') +
-                    '. Al importar se eliminarán las líneas con ID Agile (las manuales se conservan). ¿Continuar?', {
-                        title: 'Reemplazar líneas Agile',
-                        type: 'warning'
-                    },
+                    'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile'
+                        + (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '')
+                        + '. Al analizar se eliminarán todas las líneas con ID Agile (las manuales se conservan). ¿Continuar?',
+                    { title: 'Reemplazar líneas Agile', type: 'warning' },
                 );
                 if (!okReemplazo) {
-                    return false;
+                    ocultarProgresoImportar();
+                    return;
                 }
-                mostrarProgresoImportar();
-                actualizarProgresoImportar(0, 0, 'Eliminando líneas Agile anteriores…');
+
                 const bodyLimp = new FormData();
                 bodyLimp.append('_token', csrf);
                 const resLimp = await fetch(importarMpUrls.limpiarAgile, {
                     method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: bodyLimp,
                 });
                 const limp = await resLimp.json().catch(() => ({}));
                 if (!resLimp.ok) {
                     ocultarProgresoImportar();
                     mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas Agile.');
-                    return false;
+                    return;
                 }
                 if (limp.detalle) actualizarResumenLineas(limp.detalle);
+                mostrarImportAviso('Se eliminaron ' + (limp.eliminadas || 0) + ' línea(s) con ID Agile. Analizando texto nuevo...');
             }
 
-            if (!mantenerProgreso) {
-                ocultarProgresoImportar();
-            }
-            return true;
-        }
+            let todasLineas = [];
+            let cabecera = null;
+            let total = 0;
+            let errorCabecera = null;
+            let puedeImportar = true;
+            let desde = 0;
 
-        function ocultarSoloAlertaConsultaPar() {
-            if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
-            if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
-        }
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                const esPrimeraPasada = total === 0;
 
-        function ocultarAvisoMpLocal() {
-            if (importarAvisoMp) importarAvisoMp.classList.add('d-none');
-            if (importarAvisoMpTexto) importarAvisoMpTexto.innerHTML = '';
-        }
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
 
-        function htmlAvisoCodigoNoRegistradoLocal() {
-            const url = escHtml(String(importarMpUrls.oportunidadesIndex || ''));
-            return '<strong>Código de cotización no registrado internamente.</strong> ' +
-                'Se obtendrá desde Mercado Público; la demora dependerá del tráfico de Mercado Público.<br>' +
-                'Para cotizaciones <strong>ya vinculadas</strong> a productos, use ' +
-                '<a href="' + url + '" class="alert-link fw-semibold">Oportunidades</a> ' +
-                'en lugar de cargar un código manualmente.';
-        }
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('texto', texto);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
 
-        function mostrarAvisoMpLocal() {
-            ocultarSoloAlertaConsultaPar();
-            if (importarAvisoMp && importarAvisoMpTexto) {
-                importarAvisoMp.classList.remove('d-none');
-                importarAvisoMpTexto.innerHTML = htmlAvisoCodigoNoRegistradoLocal();
-            }
-        }
-
-        async function intentarPreviewOportunidadesCache(codigo) {
-            const body = new FormData();
-            body.append('_token', csrf);
-            body.append('codigo', codigo);
-            const res = await fetch(importarMpUrls.apiPreviewOportunidades, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body,
-            });
-            const json = await res.json().catch(() => ({}));
-            if (res.ok && json.preview && Array.isArray(json.preview.lineas)) {
-                aplicarPreviewCacheado(codigo, json.preview);
-                return {
-                    ok: true
-                };
-            }
-            if (res.ok && json.existe_local && !json.preview) {
-                return {
-                    ok: false,
-                    motivo: json.motivo || 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.'
-                };
-            }
-            return {
-                ok: false
-            };
-        }
-
-        function ocultarProgresoConsultaPar() {
-            ocultarSoloAlertaConsultaPar();
-            ocultarAvisoMpLocal();
-            ocultarProgresoImportar();
-            if (importarEstado) importarEstado.textContent = '';
-        }
-
-        function mostrarProgresoConsultaPar(intento, max, mensaje) {
-            limpiarImportAlerta();
-            const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
-            const total = Math.max(1, Number(max) || 1);
-            const actual = Math.max(0, Number(intento) || 0);
-            if (importarConsultaPar && importarConsultaParTexto) {
-                importarConsultaPar.classList.remove('d-none');
-                importarConsultaParTexto.textContent = texto;
-            }
-            if (importarProgresoWrap) {
-                importarProgresoWrap.classList.remove('d-none');
-                importarProgresoWrap.scrollIntoView({
-                    block: 'nearest',
-                    behavior: 'smooth'
-                });
-            }
-            const pct = Math.min(95, Math.round((actual / total) * 100));
-            if (importarProgresoBar) {
-                importarProgresoBar.style.width = pct + '%';
-                importarProgresoBar.setAttribute('aria-valuenow', String(pct));
-                importarProgresoBar.textContent = pct + '%';
-                importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-            }
-            if (importarProgresoTexto) {
-                importarProgresoTexto.textContent = texto + ' (' + actual + ' de ' + total + ')';
-            }
-            if (importarEstado) importarEstado.textContent = '';
-        }
-
-        let analizandoCodigoApi = false;
-
-        async function analizarCodigoApi(codigo) {
-            codigo = String(codigo || '').trim().toUpperCase();
-            if (!codigo || analizandoCodigoApi) return;
-
-            analizandoCodigoApi = true;
-            importModo = 'api';
-            importPdfFile = null;
-            importExcelFile = null;
-            importCodigoApi = codigo;
-            renderImportPreview(null);
-            limpiarImportAlerta();
-            ocultarProgresoImportar();
-            if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
-            if (importarEstado) importarEstado.textContent = '';
-
-            const btnBuscar = document.getElementById('btn-ca-buscar-codigo');
-            if (btnBuscar) btnBuscar.disabled = true;
-
-            try {
-                ocultarSoloAlertaConsultaPar();
-                ocultarProgresoImportar();
-
-                let existeLocal = true;
-                try {
-                    const bodyLocal = new FormData();
-                    bodyLocal.append('_token', csrf);
-                    bodyLocal.append('codigo', codigo);
-                    const resLocal = await fetch(importarMpUrls.apiExisteLocal, {
+                const res = esPrimeraPasada
+                    ? await fetchConProgresoAnalisisDocumento(
+                        () => fetch(importarMpUrls.preview, {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            body,
+                        }),
+                        TEXTO_ANALISIS_TEXTO,
+                    )
+                    : await fetch(importarMpUrls.preview, {
                         method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: bodyLocal,
-                    });
-                    const jsonLocal = await resLocal.json().catch(() => ({}));
-                    if (resLocal.ok) {
-                        existeLocal = jsonLocal.existe_local === true;
-                    }
-                } catch (_err) {
-                    existeLocal = true;
-                }
-
-                if (existeLocal) {
-                    ocultarAvisoMpLocal();
-                    const previewLocal = await intentarPreviewOportunidadesCache(codigo);
-                    if (previewLocal.ok) {
-                        return;
-                    }
-                    if (previewLocal.motivo) {
-                        mostrarImportError(previewLocal.motivo);
-                        return;
-                    }
-                    mostrarImportError('No se pudo cargar el detalle desde Oportunidades.');
-                    return;
-                } else {
-                    mostrarAvisoMpLocal();
-                }
-
-                if (importarEstado) {
-                    importarEstado.textContent = 'Consultando Mercado Público…';
-                }
-
-                if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
-                if (importarProgresoBar) {
-                    importarProgresoBar.style.width = '0%';
-                    importarProgresoBar.setAttribute('aria-valuenow', '0');
-                    importarProgresoBar.textContent = '0%';
-                    importarProgresoBar.classList.add('progress-bar-animated');
-                }
-                if (importarProgresoTexto) {
-                    importarProgresoTexto.textContent = 'Consultando Mercado Público…';
-                }
-
-                let todasLineas = [];
-                let cabecera = null;
-                let total = 0;
-                let errorCabecera = null;
-                let puedeImportar = true;
-                let desde = 0;
-
-                while (desde === 0 || desde < total) {
-                    const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
-                    const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
-                    actualizarProgresoImportar(desde, total || hasta, 'Analizando productos en Mercado Público…');
-
-                    const body = new FormData();
-                    body.append('_token', csrf);
-                    body.append('codigo', codigo);
-                    body.append('desde', String(desde));
-                    body.append('hasta', String(hasta));
-
-                    const res = await fetch(importarMpUrls.apiPreview, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         body,
                     });
-                    const json = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        ocultarProgresoConsultaPar();
-                        const detalle = extraerMensajeError(json, '');
-                        mostrarImportError(
-                            detalle ||
-                            ('Error al analizar' + (res.status ? ' (HTTP ' + res.status + ')' : '') + '.')
-                        );
-                        return;
-                    }
-                    if (json.cabecera) cabecera = json.cabecera;
-                    if (json.error_cabecera) {
-                        errorCabecera = json.error_cabecera;
-                        puedeImportar = false;
-                    }
-                    if (json.puede_importar === false) puedeImportar = false;
-                    total = json.total ?? total;
-                    todasLineas = todasLineas.concat(json.lineas || []);
-                    desde = json.procesadas ?? hasta;
-                    if (json.completado || (total > 0 && desde >= total)) break;
-                    if (total === 0 && (json.lineas || []).length === 0) break;
-                }
 
-                ocultarProgresoImportar();
-                if (!errorCabecera && (todasLineas.length === 0) && (total === 0)) {
-                    ocultarProgresoConsultaPar();
-                    mostrarImportError('No se encontró la cotización «' + codigo + '» en Mercado Público.');
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'Error al analizar.'));
+                    renderImportPreview(null);
                     return;
                 }
-                renderImportPreview({
-                    cabecera: cabecera || {},
-                    lineas: todasLineas,
-                    resumen: construirResumenPreview(todasLineas),
-                    error_cabecera: errorCabecera,
-                    puede_importar: puedeImportar,
-                });
-                if (importarEstado) {
-                    importarEstado.textContent = errorCabecera ? '' : 'Análisis listo (API).';
+
+                if (json.cabecera) cabecera = json.cabecera;
+                if (json.error_cabecera) {
+                    errorCabecera = json.error_cabecera;
+                    puedeImportar = false;
                 }
-            } catch (err) {
-                ocultarProgresoConsultaPar();
-                mostrarImportError(err?.message || 'No se puede importar esta cotización.');
-            } finally {
-                analizandoCodigoApi = false;
-                if (btnBuscar) btnBuscar.disabled = false;
+                if (json.puede_importar === false) puedeImportar = false;
+
+                if (esPrimeraPasada) {
+                    finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_TEXTO);
+                }
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
+
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+
+            const previewFinal = {
+                cabecera: cabecera || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: errorCabecera,
+                puede_importar: puedeImportar,
+            };
+
+            renderImportPreview(previewFinal);
+
+            if (importarEstado) {
+                if (errorCabecera) {
+                    importarEstado.textContent = '';
+                } else {
+                    const n = previewFinal.resumen.total || 0;
+                    importarEstado.textContent = n > 0
+                        ? 'Análisis listo.'
+                        : 'No se detectaron productos. Revise el texto pegado.';
+                }
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        } finally {
+            if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+        }
+    }
+
+    async function analizarImportPdf(opciones) {
+        opciones = opciones || {};
+        importModo = 'pdf';
+        importCodigoApi = null;
+        importExcelFile = null;
+        let file = opciones.file || importarPdfInput?.files?.[0] || null;
+        try {
+            file = await resolverArchivoAdjuntoSiFalta(file, 'pdf');
+        } catch (e) {
+            if (importarEstado) {
+                importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+            }
+            return;
+        }
+        const colCant = valorColumnaImport(
+            opciones,
+            'colCant',
+            importarPdfColCant?.value,
+            document.getElementById('importar-adjunto-pdf-col-cant')?.value,
+        );
+        const colDesc = valorColumnaImport(
+            opciones,
+            'colDesc',
+            importarPdfColDesc?.value,
+            document.getElementById('importar-adjunto-pdf-col-desc')?.value,
+        );
+        if (!file) {
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo PDF o Word (.docx), o pinche un adjunto.';
+            return;
+        }
+        if (archivoSuperaLimiteImport(file)) {
+            return;
+        }
+        if (!colCant || !colDesc) {
+            if (importarEstado) importarEstado.textContent = 'Indique el nombre de las columnas cantidad y producto (como en el encabezado del PDF).';
+            return;
+        }
+        if (colCant.toUpperCase() === colDesc.toUpperCase()) {
+            if (importarEstado) importarEstado.textContent = 'Las columnas cantidad y producto deben ser distintas.';
+            return;
+        }
+        importPdfColumnaCantidad = colCant;
+        importPdfColumnaProducto = colDesc;
+        importPdfFile = file;
+        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
+        setAdjuntoAnalizarBusy(true);
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        renderImportPreview(null);
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        nuevoImportMaterialesLockId();
+        marcarAnalisisMaterialesIniciado();
+
+        try {
+            const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
+            if (!okPrep) {
+                await liberarImportMaterialesLock();
+                return;
+            }
+
+            if (analisisMaterialesFueCancelado()) return;
+
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(3, 100, TEXTO_ANALISIS_PDF, { faseAnalisis: true });
+
+            let todasLineas = [];
+            let cabeceraPdf = {};
+            let total = 0;
+            let desde = 0;
+
+            while (desde === 0 || desde < total) {
+                if (analisisMaterialesFueCancelado()) return;
+
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                const esPrimeraPasada = total === 0;
+
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
+
+                const { res, json } = await enviarPreviewMateriales(
+                    importarMpUrls.pdfPreview,
+                    () => {
+                        const body = new FormData();
+                        body.append('_token', csrf);
+                        body.append('pdf', importPdfFile);
+                        body.append('columna_cantidad', importPdfColumnaCantidad || colCant);
+                        body.append('columna_producto', importPdfColumnaProducto || colDesc);
+                        body.append('desde', String(desde));
+                        body.append('hasta', String(hasta));
+                        return body;
+                    },
+                    esPrimeraPasada,
+                    TEXTO_ANALISIS_PDF,
+                );
+
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el PDF o Word.'));
+                    return;
+                }
+
+                if (json.cabecera && typeof json.cabecera === 'object') {
+                    cabeceraPdf = json.cabecera;
+                }
+
+                if (esPrimeraPasada) {
+                    finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_PDF);
+                }
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            const previewFinal = {
+                cabecera: cabeceraPdf || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: null,
+                puede_importar: true,
+            };
+            renderImportPreview(previewFinal);
+
+            if (importarEstado) {
+                const n = previewFinal.resumen.total || 0;
+                const nom = importPdfFile && importPdfFile.name ? String(importPdfFile.name) : 'el archivo';
+                importarEstado.textContent = n > 0
+                    ? 'Análisis listo (PDF / Word): ' + nom
+                    : 'No se detectaron productos en «' + nom + '».';
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError(err?.message ? String(err.message) : 'Error de conexión.');
+        } finally {
+            await liberarImportMaterialesLock();
+            marcarAnalisisMaterialesTerminado();
+            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+            setAdjuntoAnalizarBusy(false);
+        }
+    }
+
+    async function analizarImportExcel(opciones) {
+        opciones = opciones || {};
+        importModo = 'excel';
+        importCodigoApi = null;
+        importPdfFile = null;
+        let file = opciones.file || importarExcelInput?.files?.[0] || null;
+        const adjuntoCodigo = String(codigoImportarCompraAgil || '').toUpperCase();
+        const adjuntoNombre = adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.tipo === 'excel'
+            ? String(adjuntoImportarSeleccionado.nombre || '')
+            : '';
+        const desdeAdjunto = opciones.desdeAdjunto === true
+            || (!file && adjuntoCodigo !== '' && adjuntoNombre !== '');
+        if (!desdeAdjunto) {
+            try {
+                file = await resolverArchivoAdjuntoSiFalta(file, 'excel');
+            } catch (e) {
+                if (importarEstado) {
+                    importarEstado.textContent = e && e.message ? String(e.message) : 'No se pudo descargar el adjunto.';
+                }
+                return;
             }
         }
+        const colDesc = valorColumnaImport(
+            opciones,
+            'colDesc',
+            importarExcelColDesc?.value,
+            document.getElementById('importar-adjunto-excel-col-desc')?.value,
+        ).toUpperCase();
+        const colCant = valorColumnaImport(
+            opciones,
+            'colCant',
+            importarExcelColCant?.value,
+            document.getElementById('importar-adjunto-excel-col-cant')?.value,
+        ).toUpperCase();
+        if (!file && !desdeAdjunto) {
+            if (importarEstado) importarEstado.textContent = 'Seleccione un archivo Excel (.xlsx, .xls o .csv), o pinche un adjunto.';
+            return;
+        }
+        if (desdeAdjunto) {
+            if (archivoSuperaLimiteImport(adjuntoImportarSeleccionado && adjuntoImportarSeleccionado.bytes, adjuntoNombre)) {
+                return;
+            }
+        } else if (archivoSuperaLimiteImport(file)) {
+            return;
+        }
+        if (!colDesc || !colCant) {
+            if (importarEstado) importarEstado.textContent = 'Indique las columnas de cantidad y producto (ej. A y B).';
+            return;
+        }
+        if (colDesc === colCant) {
+            if (importarEstado) importarEstado.textContent = 'Las columnas de descripción y cantidad deben ser distintas.';
+            return;
+        }
+        importExcelFile = file;
+        limpiarImportAlerta();
+        if (importarEstado) importarEstado.textContent = '';
+        if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
+        setAdjuntoAnalizarBusy(true);
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        renderImportPreview(null);
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        nuevoImportMaterialesLockId();
+        marcarAnalisisMaterialesIniciado();
 
-        function aplicarPreviewCacheado(codigo, preview) {
-            codigo = String(codigo || '').trim().toUpperCase();
-            if (!codigo || !preview || !Array.isArray(preview.lineas)) {
+        try {
+            const okPrep = await prepararImportAgileAntesPreview({ mantenerProgreso: true });
+            if (!okPrep) {
+                await liberarImportMaterialesLock();
+                return;
+            }
+
+            if (analisisMaterialesFueCancelado()) return;
+
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(3, 100, TEXTO_ANALISIS_EXCEL, { faseAnalisis: true });
+
+            let todasLineas = [];
+            let cabeceraExcel = {};
+            let total = 0;
+            let desde = 0;
+            let omitidas = 0;
+
+            while (desde === 0 || desde < total) {
+                if (analisisMaterialesFueCancelado()) return;
+
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                const esPrimeraPasada = total === 0;
+
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
+
+                const { res, json } = await enviarPreviewMateriales(
+                    importarMpUrls.excelPreview,
+                    () => {
+                        const body = new FormData();
+                        body.append('_token', csrf);
+                        if (desdeAdjunto && adjuntoCodigo && adjuntoNombre) {
+                            body.append('adjunto_codigo', adjuntoCodigo);
+                            body.append('adjunto_nombre', adjuntoNombre);
+                        } else {
+                            body.append('excel', importExcelFile);
+                        }
+                        body.append('columna_descripcion', colDesc);
+                        body.append('columna_cantidad', colCant);
+                        body.append('desde', String(desde));
+                        body.append('hasta', String(hasta));
+                        return body;
+                    },
+                    esPrimeraPasada,
+                    TEXTO_ANALISIS_EXCEL,
+                );
+
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo analizar el Excel.'));
+                    return;
+                }
+
+                if (json.cabecera && typeof json.cabecera === 'object') {
+                    cabeceraExcel = json.cabecera;
+                }
+                if (typeof json.omitidas === 'number') {
+                    omitidas = json.omitidas;
+                }
+
+                if (esPrimeraPasada) {
+                    finalizarProgresoAnalisisDocumento(TEXTO_ANALISIS_EXCEL);
+                }
+
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (total > 0) {
+                    actualizarProgresoImportar(desde, total, TEXTO_VINCULACION, { faseVinculacion: true });
+                }
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            const previewFinal = {
+                cabecera: cabeceraExcel || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: null,
+                puede_importar: true,
+                omitidas,
+            };
+            renderImportPreview(previewFinal);
+
+            if (importarEstado) {
+                const n = previewFinal.resumen.total || 0;
+                const nom = (importExcelFile && importExcelFile.name)
+                    ? String(importExcelFile.name)
+                    : (adjuntoNombre || 'el archivo');
+                let msg = n > 0
+                    ? 'Análisis listo (Excel): ' + nom
+                    : 'No se detectaron productos en «' + nom + '».';
+                if (n > 0 && omitidas > 0) {
+                    msg += ' Se omitieron ' + omitidas + ' fila(s) vacías o de título/total.';
+                }
+                importarEstado.textContent = msg;
+            }
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        } finally {
+            await liberarImportMaterialesLock();
+            marcarAnalisisMaterialesTerminado();
+            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
+            setAdjuntoAnalizarBusy(false);
+        }
+    }
+
+    async function prepararImportAgileAntesPreview(opciones = {}) {
+        const mantenerProgreso = opciones.mantenerProgreso === true;
+        mostrarProgresoImportar();
+        actualizarProgresoImportar(0, 0, 'Revisando líneas Agile en esta cotización…');
+
+        const bodyCoin = new FormData();
+        bodyCoin.append('_token', csrf);
+        bodyCoin.append('texto', '');
+        const resCoin = await fetch(importarMpUrls.coincidencias, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: bodyCoin,
+        });
+        const coin = await resCoin.json().catch(() => ({}));
+        if (!resCoin.ok) {
+            ocultarProgresoImportar();
+            mostrarImportError(coin.error || coin.message || 'Error al verificar coincidencias.');
+            return false;
+        }
+        if ((coin.con_agile || coin.total || 0) > 0) {
+            const det = coin.detalle || {};
+            ocultarProgresoImportar();
+            if (importarEstado) importarEstado.textContent = '';
+            const okReemplazo = await dlgConfirm(
+                'La cotización tiene ' + (coin.con_agile || coin.total) + ' línea(s) con ID Agile'
+                    + (det.sin_agile > 0 ? ' y ' + det.sin_agile + ' sin ID Agile' : '')
+                    + '. Al importar se eliminarán las líneas con ID Agile (las manuales se conservan). ¿Continuar?',
+                { title: 'Reemplazar líneas Agile', type: 'warning' },
+            );
+            if (!okReemplazo) {
                 return false;
             }
-
-            importModo = 'api';
-            importPdfFile = null;
-            importExcelFile = null;
-            importCodigoApi = codigo;
-            limpiarImportAlerta();
-            ocultarProgresoImportar();
-            ocultarProgresoConsultaPar();
-            ocultarSoloAlertaConsultaPar();
-
-            const lineas = preview.lineas;
-            renderImportPreview({
-                cabecera: preview.cabecera || {},
-                lineas,
-                resumen: preview.resumen || construirResumenPreview(lineas),
-                error_cabecera: preview.error_cabecera || null,
-                puede_importar: preview.puede_importar !== false,
-                desde_cache: true,
+            mostrarProgresoImportar();
+            actualizarProgresoImportar(0, 0, 'Eliminando líneas Agile anteriores…');
+            const bodyLimp = new FormData();
+            bodyLimp.append('_token', csrf);
+            const resLimp = await fetch(importarMpUrls.limpiarAgile, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: bodyLimp,
             });
-            if (importarEstado) {
-                importarEstado.textContent = preview.error_cabecera ?
-                    '' :
-                    'Análisis desde Oportunidades (sin consultar Mercado Público).';
+            const limp = await resLimp.json().catch(() => ({}));
+            if (!resLimp.ok) {
+                ocultarProgresoImportar();
+                mostrarImportError(limp.error || limp.message || 'No se pudieron eliminar las líneas Agile.');
+                return false;
             }
-            if (desdeOportunidades) {
-                bloquearCodigoImportarOportunidad();
-                actualizarBotonCargarSegunVinculo(true);
-            }
-            return true;
+            if (limp.detalle) actualizarResumenLineas(limp.detalle);
         }
 
-        document.getElementById('btn-ca-buscar-codigo')?.addEventListener('click', () => {
-            analizarCodigoApi(document.getElementById('ca-api-codigo')?.value || '');
+        if (!mantenerProgreso) {
+            ocultarProgresoImportar();
+        }
+        return true;
+    }
+
+    function ocultarSoloAlertaConsultaPar() {
+        if (importarConsultaPar) importarConsultaPar.classList.add('d-none');
+        if (importarConsultaParTexto) importarConsultaParTexto.textContent = '';
+    }
+
+    function ocultarAvisoMpLocal() {
+        if (importarAvisoMp) importarAvisoMp.classList.add('d-none');
+        if (importarAvisoMpTexto) importarAvisoMpTexto.innerHTML = '';
+    }
+
+    function htmlAvisoCodigoNoRegistradoLocal() {
+        const url = escHtml(String(importarMpUrls.oportunidadesIndex || ''));
+        return '<strong>Código de cotización no registrado internamente.</strong> '
+            + 'Se obtendrá desde Mercado Público; la demora dependerá del tráfico de Mercado Público.<br>'
+            + 'Para cotizaciones <strong>ya vinculadas</strong> a productos, use '
+            + '<a href="' + url + '" class="alert-link fw-semibold">Oportunidades</a> '
+            + 'en lugar de cargar un código manualmente.';
+    }
+
+    function mostrarAvisoMpLocal() {
+        ocultarSoloAlertaConsultaPar();
+        if (importarAvisoMp && importarAvisoMpTexto) {
+            importarAvisoMp.classList.remove('d-none');
+            importarAvisoMpTexto.innerHTML = htmlAvisoCodigoNoRegistradoLocal();
+        }
+    }
+
+    async function intentarPreviewOportunidadesCache(codigo) {
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('codigo', codigo);
+        const res = await fetch(importarMpUrls.apiPreviewOportunidades, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body,
         });
-
-        function mostrarProgresoImportar() {
-            if (importarEstado) importarEstado.textContent = '';
-            if (importarProgresoWrap) {
-                importarProgresoWrap.classList.remove('d-none');
-                importarProgresoWrap.scrollIntoView({
-                    block: 'nearest',
-                    behavior: 'smooth'
-                });
-            }
-            actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.preview && Array.isArray(json.preview.lineas)) {
+            aplicarPreviewCacheado(codigo, json.preview);
+            return { ok: true };
         }
+        if (res.ok && json.existe_local && !json.preview) {
+            return { ok: false, motivo: json.motivo || 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.' };
+        }
+        return { ok: false };
+    }
 
-        function ocultarProgresoImportar() {
-            detenerProgresoSimuladoImportar();
-            if (importarProgresoWrap) importarProgresoWrap.classList.add('d-none');
+    function ocultarProgresoConsultaPar() {
+        ocultarSoloAlertaConsultaPar();
+        ocultarAvisoMpLocal();
+        ocultarProgresoImportar();
+        if (importarEstado) importarEstado.textContent = '';
+    }
+
+    function mostrarProgresoConsultaPar(intento, max, mensaje) {
+        limpiarImportAlerta();
+        const texto = String(mensaje || consultaParConfig.mensaje || 'Levantando servicio, espere unos momentos.').trim();
+        const total = Math.max(1, Number(max) || 1);
+        const actual = Math.max(0, Number(intento) || 0);
+        if (importarConsultaPar && importarConsultaParTexto) {
+            importarConsultaPar.classList.remove('d-none');
+            importarConsultaParTexto.textContent = texto;
+        }
+        if (importarProgresoWrap) {
+            importarProgresoWrap.classList.remove('d-none');
+            importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        const pct = Math.min(95, Math.round((actual / total) * 100));
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = pct + '%';
+            importarProgresoBar.setAttribute('aria-valuenow', String(pct));
+            importarProgresoBar.textContent = pct + '%';
+            importarProgresoBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+        }
+        if (importarProgresoTexto) {
+            importarProgresoTexto.textContent = texto + ' (' + actual + ' de ' + total + ')';
+        }
+        if (importarEstado) importarEstado.textContent = '';
+    }
+
+    let analizandoCodigoApi = false;
+
+    async function analizarCodigoApi(codigo) {
+        codigo = String(codigo || '').trim().toUpperCase();
+        if (!codigo || analizandoCodigoApi) return;
+
+        analizandoCodigoApi = true;
+        importModo = 'api';
+        importPdfFile = null;
+        importExcelFile = null;
+        importCodigoApi = codigo;
+        renderImportPreview(null);
+        limpiarImportAlerta();
+        ocultarProgresoImportar();
+        if (btnImportarConfirmar) btnImportarConfirmar.classList.add('d-none');
+        if (importarEstado) importarEstado.textContent = '';
+
+        const btnBuscar = document.getElementById('btn-ca-buscar-codigo');
+        if (btnBuscar) btnBuscar.disabled = true;
+
+        try {
+            ocultarSoloAlertaConsultaPar();
+            ocultarProgresoImportar();
+
+            let existeLocal = true;
+            try {
+                const bodyLocal = new FormData();
+                bodyLocal.append('_token', csrf);
+                bodyLocal.append('codigo', codigo);
+                const resLocal = await fetch(importarMpUrls.apiExisteLocal, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: bodyLocal,
+                });
+                const jsonLocal = await resLocal.json().catch(() => ({}));
+                if (resLocal.ok) {
+                    existeLocal = jsonLocal.existe_local === true;
+                }
+            } catch (_err) {
+                existeLocal = true;
+            }
+
+            if (existeLocal) {
+                ocultarAvisoMpLocal();
+                const previewLocal = await intentarPreviewOportunidadesCache(codigo);
+                if (previewLocal.ok) {
+                    return;
+                }
+                if (previewLocal.motivo) {
+                    mostrarImportError(previewLocal.motivo);
+                    return;
+                }
+                mostrarImportError('No se pudo cargar el detalle desde Oportunidades.');
+                return;
+            } else {
+                mostrarAvisoMpLocal();
+            }
+
+            if (importarEstado) {
+                importarEstado.textContent = 'Consultando Mercado Público…';
+            }
+
+            if (importarProgresoWrap) importarProgresoWrap.classList.remove('d-none');
             if (importarProgresoBar) {
                 importarProgresoBar.style.width = '0%';
                 importarProgresoBar.setAttribute('aria-valuenow', '0');
                 importarProgresoBar.textContent = '0%';
                 importarProgresoBar.classList.add('progress-bar-animated');
             }
-        }
+            if (importarProgresoTexto) {
+                importarProgresoTexto.textContent = 'Consultando Mercado Público…';
+            }
 
-        async function confirmarImportCompraAgil() {
-            if (importandoCompraAgil || !importPreviewData) return;
+            let todasLineas = [];
+            let cabecera = null;
+            let total = 0;
+            let errorCabecera = null;
+            let puedeImportar = true;
+            let desde = 0;
 
-            const usarPdf = importModo === 'pdf';
-            const usarExcel = importModo === 'excel';
-            if ((usarPdf || usarExcel) && !(await asegurarNumeroCotizacionAlImportar({
-                    mensaje: usarExcel ?
-                        'Ingrese el número de cotización para importar el Excel. Se validará en este sitio y en el otro.' :
-                        'Ingrese el número de cotización para importar el PDF o Word. Se validará en este sitio y en el otro.',
-                    titulo: 'Número de cotización',
-                    okText: 'Guardar e importar',
-                }))) return;
+            while (desde === 0 || desde < total) {
+                const lote = tamanoLotePreview(total || PREVIEW_LOTE_SIZE);
+                const hasta = total > 0 ? Math.min(desde + lote, total) : desde + lote;
+                actualizarProgresoImportar(desde, total || hasta, 'Analizando productos en Mercado Público…');
 
-            if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
-                mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('codigo', codigo);
+                body.append('desde', String(desde));
+                body.append('hasta', String(hasta));
+
+                const res = await fetch(importarMpUrls.apiPreview, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoConsultaPar();
+                    const detalle = extraerMensajeError(json, '');
+                    mostrarImportError(
+                        detalle
+                        || ('Error al analizar' + (res.status ? ' (HTTP ' + res.status + ')' : '') + '.')
+                    );
+                    return;
+                }
+                if (json.cabecera) cabecera = json.cabecera;
+                if (json.error_cabecera) { errorCabecera = json.error_cabecera; puedeImportar = false; }
+                if (json.puede_importar === false) puedeImportar = false;
+                total = json.total ?? total;
+                todasLineas = todasLineas.concat(json.lineas || []);
+                desde = json.procesadas ?? hasta;
+                if (json.completado || (total > 0 && desde >= total)) break;
+                if (total === 0 && (json.lineas || []).length === 0) break;
+            }
+
+            ocultarProgresoImportar();
+            if (!errorCabecera && (todasLineas.length === 0) && (total === 0)) {
+                ocultarProgresoConsultaPar();
+                mostrarImportError('No se encontró la cotización «' + codigo + '» en Mercado Público.');
                 return;
             }
-
-            const texto = String(importarTexto?.value || '').trim();
-            const usarApi = !!importCodigoApi;
-
-            if (!usarApi && !usarPdf && !usarExcel && !texto) return;
-            if (usarPdf && !(importPreviewData?.lineas?.length) && !importPdfFile) return;
-            if (usarExcel && !(importPreviewData?.lineas?.length) && !importExcelFile) return;
-
-            const sinMatch = importPreviewData?.resumen?.pendientes || 0;
-            if (sinMatch > 0) {
-                const ok = await dlgConfirm(
-                    'Hay ' + sinMatch + ' línea(s) pendientes de vincular. Se importarán todas; use Buscar en cada fila para asignar el producto del maestro. ¿Continuar?', {
-                        title: 'Importar con pendientes',
-                        type: 'warning'
-                    },
-                );
-                if (!ok) return;
+            renderImportPreview({
+                cabecera: cabecera || {},
+                lineas: todasLineas,
+                resumen: construirResumenPreview(todasLineas),
+                error_cabecera: errorCabecera,
+                puede_importar: puedeImportar,
+            });
+            if (importarEstado) {
+                importarEstado.textContent = errorCabecera ? '' : 'Análisis listo (API).';
             }
+        } catch (err) {
+            ocultarProgresoConsultaPar();
+            mostrarImportError(err?.message || 'No se puede importar esta cotización.');
+        } finally {
+            analizandoCodigoApi = false;
+            if (btnBuscar) btnBuscar.disabled = false;
+        }
+    }
 
-            if (usarApi || usarPdf || usarExcel) {
-                const okAgile = await prepararImportAgileAntesPreview();
-                if (!okAgile) return;
-            }
+    function aplicarPreviewCacheado(codigo, preview) {
+        codigo = String(codigo || '').trim().toUpperCase();
+        if (!codigo || !preview || !Array.isArray(preview.lineas)) {
+            return false;
+        }
 
-            importandoCompraAgil = true;
-            if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
-            if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
-            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
-            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
-            mostrarProgresoImportar();
+        importModo = 'api';
+        importPdfFile = null;
+        importExcelFile = null;
+        importCodigoApi = codigo;
+        limpiarImportAlerta();
+        ocultarProgresoImportar();
+        ocultarProgresoConsultaPar();
+        ocultarSoloAlertaConsultaPar();
 
-            const total = importPreviewData?.resumen?.total || 0;
+        const lineas = preview.lineas;
+        renderImportPreview({
+            cabecera: preview.cabecera || {},
+            lineas,
+            resumen: preview.resumen || construirResumenPreview(lineas),
+            error_cabecera: preview.error_cabecera || null,
+            puede_importar: preview.puede_importar !== false,
+            desde_cache: true,
+        });
+        if (importarEstado) {
+            importarEstado.textContent = preview.error_cabecera
+                ? ''
+                : 'Análisis desde Oportunidades (sin consultar Mercado Público).';
+        }
+        if (desdeOportunidades) {
+            bloquearCodigoImportarOportunidad();
+            actualizarBotonCargarSegunVinculo(true);
+        }
+        return true;
+    }
 
-            try {
-                if (usarApi) {
-                    const desdeVinculo = !!importPreviewData?.desde_cache;
-                    const lineasPreview = desdeVinculo ?
-                        (importPreviewData.lineas || []).map((l) => ({
-                            id_agile: l.id_agile,
-                            descripcion: l.descripcion,
-                            cantidad: l.cantidad,
-                            categoria: l.categoria || '',
-                            estado: l.estado || '',
-                            es_sugerencia: !!l.es_sugerencia,
-                            producto: l.producto || null,
-                        })) :
-                        null;
-                    const cabeceraPreview = desdeVinculo ? (importPreviewData.cabecera || {}) : null;
-                    const lote = tamanoLoteImportar(total);
-                    for (let desde = 0; desde < total; desde += lote) {
-                        const hasta = Math.min(desde + lote, total);
-                        actualizarProgresoImportar(
-                            desde,
-                            total,
-                            desdeVinculo ? 'Importando desde Oportunidades…' : null,
-                        );
-                        const body = new FormData();
-                        body.append('_token', csrf);
-                        const codigoImportar = desdeVinculo ?
-                            String(document.getElementById('encargado')?.value || importCodigoApi || '').trim().toUpperCase() :
-                            importCodigoApi;
-                        body.append('codigo', codigoImportar);
-                        body.append('desde', String(desde));
-                        body.append('hasta', String(hasta));
-                        if (desdeVinculo && lineasPreview) {
-                            body.append('lineas_json', JSON.stringify(lineasPreview));
-                            if (desde === 0 && cabeceraPreview) {
-                                body.append('cabecera_json', JSON.stringify(cabeceraPreview));
-                            }
-                        }
-                        const res = await fetch(importarMpUrls.apiImportar, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body,
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            ocultarProgresoImportar();
-                            mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
-                            return;
-                        }
-                        sincronizarNronotaDesdeJson(json);
-                    }
-                } else if (usarPdf || usarExcel) {
-                    const lineasPreview = (importPreviewData.lineas || []).map((l) => ({
+    document.getElementById('btn-ca-buscar-codigo')?.addEventListener('click', () => {
+        analizarCodigoApi(document.getElementById('ca-api-codigo')?.value || '');
+    });
+
+    function mostrarProgresoImportar() {
+        if (importarEstado) importarEstado.textContent = '';
+        if (importarProgresoWrap) {
+            importarProgresoWrap.classList.remove('d-none');
+            importarProgresoWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        actualizarProgresoImportar(0, 0, 'Verificando líneas existentes...');
+    }
+
+    function ocultarProgresoImportar() {
+        detenerProgresoSimuladoImportar();
+        if (importarProgresoWrap) importarProgresoWrap.classList.add('d-none');
+        if (importarProgresoBar) {
+            importarProgresoBar.style.width = '0%';
+            importarProgresoBar.setAttribute('aria-valuenow', '0');
+            importarProgresoBar.textContent = '0%';
+            importarProgresoBar.classList.add('progress-bar-animated');
+        }
+    }
+
+    async function confirmarImportCompraAgil() {
+        if (importandoCompraAgil || !importPreviewData) return;
+
+        const usarPdf = importModo === 'pdf';
+        const usarExcel = importModo === 'excel';
+        if ((usarPdf || usarExcel) && !(await asegurarNumeroCotizacionAlImportar({
+            mensaje: usarExcel
+                ? 'Ingrese el número de cotización para importar el Excel. Se validará en este sitio y en el otro.'
+                : 'Ingrese el número de cotización para importar el PDF o Word. Se validará en este sitio y en el otro.',
+            titulo: 'Número de cotización',
+            okText: 'Guardar e importar',
+        }))) return;
+
+        if (importPreviewData.puede_importar === false || importPreviewData.error_cabecera) {
+            mostrarImportError(importPreviewData.error_cabecera || 'No se puede importar: el número de cotización ya existe.');
+            return;
+        }
+
+        const texto = String(importarTexto?.value || '').trim();
+        const usarApi = !!importCodigoApi;
+
+        if (!usarApi && !usarPdf && !usarExcel && !texto) return;
+        if (usarPdf && !(importPreviewData?.lineas?.length) && !importPdfFile) return;
+        if (usarExcel && !(importPreviewData?.lineas?.length) && !importExcelFile) return;
+
+        const sinMatch = importPreviewData?.resumen?.pendientes || 0;
+        if (sinMatch > 0) {
+            const ok = await dlgConfirm(
+                'Hay ' + sinMatch + ' línea(s) pendientes de vincular. Se importarán todas; use Buscar en cada fila para asignar el producto del maestro. ¿Continuar?',
+                { title: 'Importar con pendientes', type: 'warning' },
+            );
+            if (!ok) return;
+        }
+
+        if (usarApi || usarPdf || usarExcel) {
+            const okAgile = await prepararImportAgileAntesPreview();
+            if (!okAgile) return;
+        }
+
+        importandoCompraAgil = true;
+        if (btnImportarConfirmar) btnImportarConfirmar.disabled = true;
+        if (btnImportarAnalizar) btnImportarAnalizar.disabled = true;
+        if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = true;
+        if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = true;
+        mostrarProgresoImportar();
+
+        const total = importPreviewData?.resumen?.total || 0;
+
+        try {
+            if (usarApi) {
+                const desdeVinculo = !!importPreviewData?.desde_cache;
+                const lineasPreview = desdeVinculo
+                    ? (importPreviewData.lineas || []).map((l) => ({
                         id_agile: l.id_agile,
                         descripcion: l.descripcion,
                         cantidad: l.cantidad,
@@ -5236,65 +4931,34 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                         estado: l.estado || '',
                         es_sugerencia: !!l.es_sugerencia,
                         producto: l.producto || null,
-                    }));
-                    const cabeceraPreview = importPreviewData.cabecera || {};
-                    const importUrl = usarExcel ? importarMpUrls.excelImportar : importarMpUrls.pdfImportar;
-                    const errorSinLineas = usarExcel ?
-                        'No hay líneas del análisis para importar. Analice el Excel de nuevo.' :
-                        'No hay líneas del análisis para importar. Analice el PDF o Word de nuevo.';
-
-                    if (lineasPreview.length === 0) {
-                        ocultarProgresoImportar();
-                        mostrarImportError(errorSinLineas);
-                        return;
-                    }
-
-                    const lote = tamanoLoteImportar(total || lineasPreview.length);
-                    const totalLineas = lineasPreview.length;
-                    for (let desde = 0; desde < totalLineas; desde += lote) {
-                        const hasta = Math.min(desde + lote, totalLineas);
-                        actualizarProgresoImportar(desde, totalLineas, desde === 0 ? 'Importando líneas al detalle...' : null);
-
-                        const body = new FormData();
-                        body.append('_token', csrf);
-                        body.append('desde', String(desde));
-                        body.append('hasta', String(hasta));
-                        body.append('lineas_json', JSON.stringify(lineasPreview));
-                        if (desde === 0) {
-                            body.append('cabecera_json', JSON.stringify(cabeceraPreview));
-                        }
-
-                        const res = await fetch(importUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body,
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            ocultarProgresoImportar();
-                            mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
-                            return;
-                        }
-                        sincronizarNronotaDesdeJson(json);
-
-                        actualizarProgresoImportar(hasta, totalLineas);
-                    }
-                } else if (total === 0) {
+                    }))
+                    : null;
+                const cabeceraPreview = desdeVinculo ? (importPreviewData.cabecera || {}) : null;
+                const lote = tamanoLoteImportar(total);
+                for (let desde = 0; desde < total; desde += lote) {
+                    const hasta = Math.min(desde + lote, total);
+                    actualizarProgresoImportar(
+                        desde,
+                        total,
+                        desdeVinculo ? 'Importando desde Oportunidades…' : null,
+                    );
                     const body = new FormData();
                     body.append('_token', csrf);
-                    body.append('texto', texto);
-                    body.append('desde', '0');
-                    body.append('hasta', '0');
-
-                    const res = await fetch(importarMpUrls.importar, {
+                    const codigoImportar = desdeVinculo
+                        ? String(document.getElementById('encargado')?.value || importCodigoApi || '').trim().toUpperCase()
+                        : importCodigoApi;
+                    body.append('codigo', codigoImportar);
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+                    if (desdeVinculo && lineasPreview) {
+                        body.append('lineas_json', JSON.stringify(lineasPreview));
+                        if (desde === 0 && cabeceraPreview) {
+                            body.append('cabecera_json', JSON.stringify(cabeceraPreview));
+                        }
+                    }
+                    const res = await fetch(importarMpUrls.apiImportar, {
                         method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         body,
                     });
                     const json = await res.json().catch(() => ({}));
@@ -5304,1023 +4968,1055 @@ $totalConIva = (int) $total + (int) round(((int) $total) * 19 / 100);
                         return;
                     }
                     sincronizarNronotaDesdeJson(json);
-                } else {
-                    const lote = tamanoLoteImportar(total);
-                    for (let desde = 0; desde < total; desde += lote) {
-                        const hasta = Math.min(desde + lote, total);
-                        const textoProgreso = desde === 0 ?
-                            'Actualizando cabecera e importando líneas...' :
-                            null;
-                        actualizarProgresoImportar(desde, total, textoProgreso);
-
-                        const body = new FormData();
-                        body.append('_token', csrf);
-                        body.append('texto', texto);
-                        body.append('desde', String(desde));
-                        body.append('hasta', String(hasta));
-
-                        const res = await fetch(importarMpUrls.importar, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body,
-                        });
-
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            ocultarProgresoImportar();
-                            mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
-                            return;
-                        }
-                        sincronizarNronotaDesdeJson(json);
-
-                        actualizarProgresoImportar(hasta, total);
-                    }
                 }
+            } else if (usarPdf || usarExcel) {
+                const lineasPreview = (importPreviewData.lineas || []).map((l) => ({
+                    id_agile: l.id_agile,
+                    descripcion: l.descripcion,
+                    cantidad: l.cantidad,
+                    categoria: l.categoria || '',
+                    estado: l.estado || '',
+                    es_sugerencia: !!l.es_sugerencia,
+                    producto: l.producto || null,
+                }));
+                const cabeceraPreview = importPreviewData.cabecera || {};
+                const importUrl = usarExcel ? importarMpUrls.excelImportar : importarMpUrls.pdfImportar;
+                const errorSinLineas = usarExcel
+                    ? 'No hay líneas del análisis para importar. Analice el Excel de nuevo.'
+                    : 'No hay líneas del análisis para importar. Analice el PDF o Word de nuevo.';
 
-                actualizarProgresoImportar(total, total, 'Importación lista. Actualizando pantalla...');
-                if (importarProgresoBar) {
-                    importarProgresoBar.classList.remove('progress-bar-animated');
-                }
-                mostrarLoaderCotiz();
-                const destino = cotizNronotaActual > 0 ?
-                    String(cotizEditUrlTpl).replace('999999999', String(cotizNronotaActual)) :
-                    window.location.href;
-                window.location.href = destino;
-            } catch (err) {
-                ocultarProgresoImportar();
-                mostrarImportError('Error de conexión.');
-            } finally {
-                importandoCompraAgil = false;
-                if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
-                if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
-                if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
-                if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
-                setAdjuntoAnalizarBusy(false);
-            }
-        }
-
-        btnAbrirImportar?.addEventListener('click', () => {
-            if (desdeOportunidades && codigoImportarCompraAgil) {
-                mostrarDetalleImportarOportunidades();
-                bsModalImportar?.show();
-                return;
-            }
-            resetImportCompraAgilModal();
-            actualizarResumenLineas(resumenLineasInicial);
-            bsModalImportar?.show();
-            setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 200);
-        });
-
-        importarCabeceraTexto?.addEventListener('click', (e) => {
-            const btn = e.target.closest('button.btn-copiar-codigo-cabecera');
-            if (!btn) {
-                return;
-            }
-            e.preventDefault();
-            const cod = String(btn.getAttribute('data-codigo') || '').trim().toUpperCase();
-            if (!cod) {
-                return;
-            }
-            const icon = btn.querySelector('i');
-            const prevClass = icon ? icon.className : '';
-            copiarTextoPortapapeles(cod).then(() => {
-                if (icon) {
-                    icon.className = 'bi bi-clipboard-check text-success';
-                }
-                btn.title = '¡Copiado!';
-                window.setTimeout(() => {
-                    if (icon) {
-                        icon.className = prevClass || 'bi bi-clipboard';
-                    }
-                    btn.title = 'Copiar código ' + cod;
-                }, 1500);
-            }).catch(() => {
-                btn.title = 'No se pudo copiar';
-            });
-        });
-
-        btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
-        btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
-        btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
-        importarPdfInput?.addEventListener('change', () => {
-            const f = importarPdfInput.files && importarPdfInput.files[0];
-            if (f && archivoSuperaLimiteImport(f)) {
-                importarPdfInput.value = '';
-                return;
-            }
-            actualizarHintAdjuntoImportar();
-        });
-        importarExcelInput?.addEventListener('change', () => {
-            const f = importarExcelInput.files && importarExcelInput.files[0];
-            if (f && archivoSuperaLimiteImport(f)) {
-                importarExcelInput.value = '';
-                return;
-            }
-            actualizarHintAdjuntoImportar();
-        });
-        btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
-        btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
-        btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
-        ['importar-adjunto-excel-col-cant', 'importar-adjunto-excel-col-desc'].forEach((id) => {
-            document.getElementById(id)?.addEventListener('input', () => {
-                const cantAdj = document.getElementById('importar-adjunto-excel-col-cant')?.value;
-                const descAdj = document.getElementById('importar-adjunto-excel-col-desc')?.value;
-                if (importarExcelColCant && String(cantAdj || '').trim() !== '') importarExcelColCant.value = String(cantAdj).trim().toUpperCase();
-                if (importarExcelColDesc && String(descAdj || '').trim() !== '') importarExcelColDesc.value = String(descAdj).trim().toUpperCase();
-            });
-        });
-
-        modalImportarEl?.addEventListener('hidden.bs.modal', () => {
-            if (desdeOportunidades && codigoImportarCompraAgil) {
-                bloquearCodigoImportarOportunidad();
-                return;
-            }
-            resetImportCompraAgilModal();
-        });
-
-        let vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota - > nronota));
-        const popupVincularEl = document.getElementById('popupVincularAgile');
-        const popupVincularDesc = document.getElementById('popupVincularDescAgile');
-        const popupVincularBusqueda = document.getElementById('popupVincularBusqueda');
-        const popupVincularResultados = document.getElementById('popupVincularResultados');
-        let vincularFilaActual = null;
-        let vincularOrdenActual = null;
-        let vincularAgileIdActual = null;
-        let vincularResultadosActuales = [];
-        let vincularSortVenta = null;
-
-        function obtenerModoBusquedaVincular() {
-            const checked = document.querySelector('input[name="popupVincularModo"]:checked');
-            return checked?.value === 'texto' ? 'texto' : 'similitud';
-        }
-
-        function actualizarAyudaModoVincular() {
-            const ayuda = document.getElementById('popupVincularModoTextoAyuda');
-            if (ayuda) {
-                ayuda.classList.toggle('d-none', obtenerModoBusquedaVincular() !== 'texto');
-            }
-        }
-
-        function precioVentaProductoVincular(p) {
-            return precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor);
-        }
-
-        function iconoOrdenVentaVincular() {
-            if (vincularSortVenta === 'asc') return '<i class="bi bi-arrow-up-short ms-1" aria-hidden="true"></i>';
-            if (vincularSortVenta === 'desc') return '<i class="bi bi-arrow-down-short ms-1" aria-hidden="true"></i>';
-            return '<i class="bi bi-arrow-down-up ms-1 text-muted" aria-hidden="true"></i>';
-        }
-
-        function ordenarResultadosVincular(items) {
-            if (!vincularSortVenta) return items.slice();
-            const dir = vincularSortVenta === 'asc' ? 1 : -1;
-            return items.slice().sort((a, b) => {
-                const va = precioVentaProductoVincular(a);
-                const vb = precioVentaProductoVincular(b);
-                if (va === vb) {
-                    return String(a.prod_item || '').localeCompare(String(b.prod_item || ''), 'es');
-                }
-                return va > vb ? dir : -dir;
-            });
-        }
-
-        function renderResultadosVincularPopup(items) {
-            const cont = popupVincularResultados;
-            if (!cont) return;
-
-            vincularResultadosActuales = items.slice();
-            if (!items.length) {
-                cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
-                return;
-            }
-
-            const ordenados = ordenarResultadosVincular(items);
-            const resumenModo = obtenerModoBusquedaVincular() === 'texto' ?
-                '<p class="small text-muted mb-2">' + ordenados.length + ' producto(s) encontrado(s).</p>' :
-                '';
-
-            let html = resumenModo + '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>' +
-                '<th style="width:80px"></th>' +
-                '<th>Código</th><th>Nombre</th>' +
-                '<th class="text-end" style="width:70px">Stock</th>' +
-                '<th>Costo</th>' +
-                '<th class="text-end cotiz-vincular-sort-venta" style="cursor:pointer;user-select:none" role="button" tabindex="0"' +
-                ' aria-sort="' + (vincularSortVenta === 'asc' ? 'ascending' : (vincularSortVenta === 'desc' ? 'descending' : 'none')) + '">' +
-                'Venta' + iconoOrdenVentaVincular() + '</th><th></th>' +
-                '</tr></thead><tbody>';
-
-            ordenados.forEach((p) => {
-                const idx = vincularResultadosActuales.indexOf(p);
-                html += '<tr>' +
-                    '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>' +
-                    '<td>' + escHtml(p.prod_item) + '</td>' +
-                    '<td>' + escHtml(p.prod_nombre) + '</td>' +
-                    '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>' +
-                    '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>' +
-                    '<td class="text-end tabular-nums">' + formatMoneyCotiz(precioVentaProductoVincular(p)) + '</td>' +
-                    '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>' +
-                    '</tr>';
-            });
-            html += '</tbody></table>';
-            cont.innerHTML = html;
-            enlazarZoomImagenes(cont);
-
-            const thVenta = cont.querySelector('.cotiz-vincular-sort-venta');
-            const toggleSortVenta = () => {
-                if (!vincularSortVenta) {
-                    vincularSortVenta = 'asc';
-                } else {
-                    vincularSortVenta = vincularSortVenta === 'asc' ? 'desc' : 'asc';
-                }
-                renderResultadosVincularPopup(vincularResultadosActuales);
-            };
-            thVenta?.addEventListener('click', toggleSortVenta);
-            thVenta?.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleSortVenta();
-                }
-            });
-
-            cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                b.addEventListener('click', e => {
-                    e.stopPropagation();
-                    const p = vincularResultadosActuales[parseInt(b.dataset.vinculoIdx, 10)];
-                    if (!p) return;
-                    seleccionarVinculoAgile(
-                        p.prod_item,
-                        parseInt(p.prod_valor_costo, 10) || 0,
-                        parseInt(p.prod_valor, 10) || 0,
-                        p.prod_nombre || '',
-                        b,
-                        p.prod_item_softland || '',
-                    );
-                });
-            });
-        }
-
-        function formatMoneyCotiz(n) {
-            return Math.round(Number(n) || 0).toLocaleString('es-CL');
-        }
-
-        function terminoBusquedaVincularPorDefecto(fila, btn) {
-            const descAgile = descripcionAgileVincular(fila, btn);
-            if (descAgile) {
-                return descAgile;
-            }
-
-            let codigo = String(btn.dataset.prodItem || '').trim();
-            const hiddenProd = fila?.querySelector('input[name*="[prod_item]"]');
-            if (!codigo) {
-                codigo = String(fila?.dataset.prod || hiddenProd?.value || '').trim();
-            }
-            if (!codigo) {
-                codigo = String(fila?.querySelector('.linea-codigo-interno')?.textContent || '').trim();
-            }
-            if (codigo && codigo !== '0') {
-                return codigo;
-            }
-
-            return String(btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '').trim();
-        }
-
-        function descripcionAgileVincular(fila, btn) {
-            const desdeBtn = String(btn.dataset.descripcionAgile || '').trim();
-            if (desdeBtn) {
-                return desdeBtn;
-            }
-            const desdeCelda = String(fila?.querySelector('.linea-desc-agile')?.textContent || '').trim();
-            if (desdeCelda && desdeCelda !== '—' && desdeCelda !== '-') {
-                return desdeCelda;
-            }
-            return '';
-        }
-
-        function abrirPopupVincularAgile(btn) {
-            const fila = btn.closest('tr[data-linea]');
-            vincularFilaActual = fila?.dataset.linea ?? btn.dataset.fila ?? null;
-            vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
-            vincularAgileIdActual = btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '';
-            vincularSortVenta = null;
-
-            if (!bsModal || !modalInput) {
-                dlgAlert('No se puede abrir el buscador de productos en esta vista.', {
-                    title: 'Aviso',
-                    type: 'warning'
-                });
-                return;
-            }
-
-            const descAgile = descripcionAgileVincular(fila, btn);
-            const terminoBusqueda = terminoBusquedaVincularPorDefecto(fila, btn);
-            const modo = descAgile ? 'similitud' : 'texto';
-
-            setModalBuscarModoVincular(true);
-            setModoBusquedaModal(modo);
-            modalInput.value = terminoBusqueda;
-            limpiarProductosMarcados();
-            renderResultados([], {});
-            if (modalEstado) {
-                setModalBuscarEstado('Buscando…', true);
-            }
-            bsModal.show();
-            setTimeout(() => modalInput.focus(), 200);
-            ejecutarBusqueda(terminoBusqueda, modo);
-        }
-
-        function seleccionarVinculoAgileDesdeModal(p) {
-            if (!p || vincularOrdenActual == null) return;
-            seleccionarVinculoAgile(
-                p.prod_item,
-                parseInt(p.prod_valor_costo, 10) || 0,
-                parseInt(p.prod_valor, 10) || 0,
-                p.prod_nombre || '',
-                null,
-                p.prod_item_softland,
-            );
-        }
-
-        function cerrarPopupVincularAgile() {
-            if (popupVincularEl) popupVincularEl.style.display = 'none';
-            bsModal?.hide();
-            vincularFilaActual = null;
-            vincularOrdenActual = null;
-            vincularAgileIdActual = null;
-            vincularResultadosActuales = [];
-            vincularSortVenta = null;
-        }
-
-        function encontrarFilaVincular(filaIdx, orden, agileId) {
-            if (filaIdx != null && filaIdx !== '') {
-                const porIndice = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
-                if (porIndice) return porIndice;
-            }
-
-            return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'))
-                .find(tr => {
-                    if (String(tr.dataset.orden) !== String(orden)) return false;
-                    if (agileId) {
-                        return String(tr.dataset.prodItemAgile || '') === String(agileId);
-                    }
-                    return !tr.dataset.prodItemAgile;
-                }) || null;
-        }
-
-        function actualizarImagenLinea(tr, imageUrl, titulo) {
-            const cell = tr.querySelector('.linea-imagen-cell');
-            if (!cell) return;
-
-            if (imageUrl) {
-                const partesTitulo = String(titulo || '').split(' — ');
-                cell.innerHTML = buscarProductoThumbHtml({
-                    image_url: imageUrl,
-                    prod_item: partesTitulo[0] || tr.dataset.prod || '',
-                    prod_nombre: partesTitulo.slice(1).join(' — ') || '',
-                });
-            } else {
-                cell.innerHTML = buscarProductoThumbHtml({});
-            }
-
-            enlazarZoomImagenes(cell);
-        }
-
-        function buscarProductosVincularPopup() {
-            const q = popupVincularBusqueda?.value?.trim() || '';
-            const cont = popupVincularResultados;
-            if (!cont) return;
-            if (q.length < buscarConfig.minChars) {
-                cont.innerHTML = '<p class="text-muted small">Escriba al menos ' + buscarConfig.minChars + ' caracteres.</p>';
-                return;
-            }
-
-            const modo = obtenerModoBusquedaVincular();
-            let url = buscarConfig.url + '?q=' + encodeURIComponent(q) + '&modo=' + encodeURIComponent(modo);
-            if (modo === 'similitud') {
-                url += '&limit=' + buscarConfig.limit;
-            }
-
-            cont.innerHTML = buscarLoadingHtml('Buscando...');
-            fetch(url, {
-                    headers: {
-                        Accept: 'application/json'
-                    },
-                })
-                .then(r => r.json())
-                .then(data => {
-                    renderResultadosVincularPopup(data.data || []);
-                })
-                .catch(() => {
-                    cont.innerHTML = '<p class="text-danger small">Error al buscar.</p>';
-                });
-        }
-
-        function actualizarFilaVinculada(filaIdx, orden, agileId, linea) {
-            const tr = encontrarFilaVincular(filaIdx, orden, agileId);
-            if (!tr || !linea) return false;
-
-            const codigoRaw = String(linea.prod_item || '').trim();
-            const codigoMostrar = codigoProductoTexto(linea.prod_item);
-            const prodAnterior = tr.dataset.prod || '';
-            const tituloImagen = codigoMostrar + (linea.prod_nombre ? ' — ' + linea.prod_nombre : '');
-
-            const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + tr.dataset.orden + '"][data-prod="' + prodAnterior + '"]') ||
-                document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
-            if (delForm) {
-                delForm.dataset.prod = codigoRaw;
-                const delProdInput = delForm.querySelector('input[name="prod_item"]');
-                if (delProdInput) delProdInput.value = codigoRaw;
-            }
-
-            tr.dataset.prod = codigoRaw;
-            tr.classList.remove('linea-pendiente-vinculo');
-
-            const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
-            if (buscarBtn) {
-                buscarBtn.dataset.prodItem = codigoRaw;
-                if (linea.prod_descripcion_agile) {
-                    buscarBtn.dataset.descripcionAgile = linea.prod_descripcion_agile;
-                }
-            }
-
-            const codigoSpan = tr.querySelector('.linea-codigo-interno');
-            if (codigoSpan) {
-                codigoSpan.textContent = codigoMostrar;
-                codigoSpan.classList.remove('text-warning', 'fw-semibold');
-            }
-
-            tr.querySelectorAll('.linea-id-agile, .linea-desc-agile').forEach((el) => {
-                el.classList.remove('text-warning', 'fw-semibold');
-            });
-
-            const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
-            if (hiddenProd) hiddenProd.value = codigoRaw;
-
-            const softlandInput = tr.querySelector('input[name*="[prod_item_softland]"]');
-            if (softlandInput) {
-                softlandInput.value = linea.prod_item_softland != null ?
-                    String(linea.prod_item_softland) :
-                    '';
-            }
-
-            const nombreInput = tr.querySelector('.linea-prod-nombre-input');
-            const nombreCell = tr.querySelector('.linea-prod-nombre');
-            const nombreTexto = linea.prod_nombre || codigoMostrar;
-            if (nombreInput) {
-                nombreInput.value = nombreTexto;
-                if (nombreCell) nombreCell.textContent = nombreTexto;
-                requestAnimationFrame(() => syncCampoTooltipValor(nombreInput));
-            } else if (nombreCell) {
-                nombreCell.textContent = nombreTexto;
-                nombreCell.classList.remove('text-warning-emphasis');
-            }
-
-            actualizarImagenLinea(tr, linea.image_url || '', tituloImagen);
-
-            const pesoUnit = parseFloat(String(linea.peso_kg ?? '').replace(',', '.'));
-            if (Number.isFinite(pesoUnit) && pesoUnit > 0) {
-                tr.dataset.pesoKg = String(Math.round(pesoUnit * 1000) / 1000);
-            } else {
-                delete tr.dataset.pesoKg;
-            }
-
-            const descAgileTd = tr.querySelector('td .linea-desc-agile')?.closest('td') ||
-                tr.querySelector('.linea-id-agile')?.closest('tr')?.children[5];
-            if (descAgileTd && linea.prod_descripcion_agile) {
-                descAgileTd.innerHTML = '<span class="nv-fill linea-desc-agile small">' +
-                    escHtml(linea.prod_descripcion_agile) + '</span>';
-            }
-
-            const costoInput = tr.querySelector('.nv-precio-costo-sololectura');
-            if (costoInput) costoInput.value = linea.prod_valor_costo ?? 0;
-
-            const ventaInput = tr.querySelector('.linea-prod-valor');
-            if (ventaInput) ventaInput.value = linea.prod_valor ?? 0;
-
-            const fechaSpan = tr.querySelector('td:nth-child(8) .nv-fill');
-            if (fechaSpan && linea.prod_valor_fecha_fmt) {
-                fechaSpan.textContent = linea.prod_valor_fecha_fmt;
-                fechaSpan.classList.toggle('fecha-precio-antigua', !!linea.prod_valor_fecha_antigua);
-            }
-
-            const cantidad = parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1;
-            const totalTd = tr.querySelector('.linea-total');
-            if (totalTd) {
-                const subtotal = linea.subtotal ?? ((linea.prod_valor || 0) * cantidad);
-                totalTd.textContent = '$' + formatMoneyCotiz(subtotal);
-            }
-
-            tr.querySelectorAll('[data-prod]').forEach(el => {
-                if (el.classList.contains('eliminar-cell')) {
-                    el.dataset.prod = codigoRaw;
-                }
-            });
-
-            recalcularMontoTotal();
-            marcarLineasRepetidas();
-            limpiarLineaDirty(tr);
-
-            return true;
-        }
-
-        async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl, softland) {
-            if (vincularOrdenActual == null) return;
-
-            const filaIdx = vincularFilaActual;
-            const orden = parseInt(vincularOrdenActual, 10);
-            const agileId = vincularAgileIdActual || '';
-            const filaTr = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
-            const prodAnterior = filaTr?.dataset.prod || filaTr?.querySelector('input[name*="[prod_item]"]')?.value || '';
-            const filaOrden = filaTr?.dataset.orden;
-            const ordenEnvio = filaOrden ? parseInt(filaOrden, 10) : orden;
-
-            if (btnEl) {
-                btnEl.disabled = true;
-                btnEl.textContent = 'Vinculando...';
-                btnEl.closest('tr')?.classList.add('table-active');
-                popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                    if (b !== btnEl) b.disabled = true;
-                });
-            }
-
-            try {
-                const res = await fetch(vincularAgileUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': csrf,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: JSON.stringify({
-                        orden: ordenEnvio,
-                        prod_item_agile: agileId || null,
-                        prod_item: codigo,
-                        prod_item_anterior: prodAnterior || null,
-                        factor_precio_venta: factorInput?.value || formatFactorChile(factorActualCotiz()),
-                    }),
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    if (btnEl) {
-                        btnEl.disabled = false;
-                        btnEl.textContent = 'Seleccionar';
-                        btnEl.closest('tr')?.classList.remove('table-active');
-                    }
-                    popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                        b.disabled = false;
-                    });
-                    dlgAlert(json.error || 'No se pudo vincular el producto.', {
-                        title: 'Error',
-                        type: 'danger'
-                    });
+                if (lineasPreview.length === 0) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(errorSinLineas);
                     return;
                 }
 
-                const linea = json.linea || {
-                    prod_item: codigo,
-                    prod_item_softland: softland != null ? String(softland) : '',
-                    prod_nombre: nombre,
-                    prod_valor: venta,
-                    prod_valor_costo: costo,
-                    subtotal: venta * (parseInt(document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"] .linea-cantidad')?.value || '1', 10) || 1),
-                };
-                if (linea.prod_item_softland == null && softland != null) {
-                    linea.prod_item_softland = String(softland);
-                }
+                const lote = tamanoLoteImportar(total || lineasPreview.length);
+                const totalLineas = lineasPreview.length;
+                for (let desde = 0; desde < totalLineas; desde += lote) {
+                    const hasta = Math.min(desde + lote, totalLineas);
+                    actualizarProgresoImportar(desde, totalLineas, desde === 0 ? 'Importando líneas al detalle...' : null);
 
-                const actualizado = actualizarFilaVinculada(filaIdx, ordenEnvio, agileId, linea);
-                bsModal?.hide();
-                cerrarPopupVincularAgile();
+                    const body = new FormData();
+                    body.append('_token', csrf);
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+                    body.append('lineas_json', JSON.stringify(lineasPreview));
+                    if (desde === 0) {
+                        body.append('cabecera_json', JSON.stringify(cabeceraPreview));
+                    }
 
-                if (!actualizado) {
-                    dlgAlert('Producto vinculado, pero no se pudo refrescar la fila. Recargue la página.', {
-                        title: 'Aviso',
-                        type: 'warning'
+                    const res = await fetch(importUrl, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
                     });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        ocultarProgresoImportar();
+                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
+                        return;
+                    }
+                    sincronizarNronotaDesdeJson(json);
+
+                    actualizarProgresoImportar(hasta, totalLineas);
                 }
-            } catch (err) {
+            } else if (total === 0) {
+                const body = new FormData();
+                body.append('_token', csrf);
+                body.append('texto', texto);
+                body.append('desde', '0');
+                body.append('hasta', '0');
+
+                const res = await fetch(importarMpUrls.importar, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    ocultarProgresoImportar();
+                    mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
+                    return;
+                }
+                sincronizarNronotaDesdeJson(json);
+            } else {
+                const lote = tamanoLoteImportar(total);
+                for (let desde = 0; desde < total; desde += lote) {
+                    const hasta = Math.min(desde + lote, total);
+                    const textoProgreso = desde === 0
+                        ? 'Actualizando cabecera e importando líneas...'
+                        : null;
+                    actualizarProgresoImportar(desde, total, textoProgreso);
+
+                    const body = new FormData();
+                    body.append('_token', csrf);
+                    body.append('texto', texto);
+                    body.append('desde', String(desde));
+                    body.append('hasta', String(hasta));
+
+                    const res = await fetch(importarMpUrls.importar, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body,
+                    });
+
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        ocultarProgresoImportar();
+                        mostrarImportError(mensajeErrorImportResp(res, json, 'No se pudo importar.'));
+                        return;
+                    }
+                    sincronizarNronotaDesdeJson(json);
+
+                    actualizarProgresoImportar(hasta, total);
+                }
+            }
+
+            actualizarProgresoImportar(total, total, 'Importación lista. Actualizando pantalla...');
+            if (importarProgresoBar) {
+                importarProgresoBar.classList.remove('progress-bar-animated');
+            }
+            mostrarLoaderCotiz();
+            const destino = cotizNronotaActual > 0
+                ? String(cotizEditUrlTpl).replace('999999999', String(cotizNronotaActual))
+                : window.location.href;
+            window.location.href = destino;
+        } catch (err) {
+            ocultarProgresoImportar();
+            mostrarImportError('Error de conexión.');
+        } finally {
+            importandoCompraAgil = false;
+            if (btnImportarConfirmar) btnImportarConfirmar.disabled = false;
+            if (btnImportarAnalizar) btnImportarAnalizar.disabled = false;
+            if (btnImportarAnalizarPdf) btnImportarAnalizarPdf.disabled = false;
+            if (btnImportarAnalizarExcel) btnImportarAnalizarExcel.disabled = false;
+            setAdjuntoAnalizarBusy(false);
+        }
+    }
+
+    btnAbrirImportar?.addEventListener('click', () => {
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            mostrarDetalleImportarOportunidades();
+            bsModalImportar?.show();
+            return;
+        }
+        resetImportCompraAgilModal();
+        actualizarResumenLineas(resumenLineasInicial);
+        bsModalImportar?.show();
+        setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 200);
+    });
+
+    importarCabeceraTexto?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button.btn-copiar-codigo-cabecera');
+        if (!btn) {
+            return;
+        }
+        e.preventDefault();
+        const cod = String(btn.getAttribute('data-codigo') || '').trim().toUpperCase();
+        if (!cod) {
+            return;
+        }
+        const icon = btn.querySelector('i');
+        const prevClass = icon ? icon.className : '';
+        copiarTextoPortapapeles(cod).then(() => {
+            if (icon) {
+                icon.className = 'bi bi-clipboard-check text-success';
+            }
+            btn.title = '¡Copiado!';
+            window.setTimeout(() => {
+                if (icon) {
+                    icon.className = prevClass || 'bi bi-clipboard';
+                }
+                btn.title = 'Copiar código ' + cod;
+            }, 1500);
+        }).catch(() => {
+            btn.title = 'No se pudo copiar';
+        });
+    });
+
+    btnImportarAnalizar?.addEventListener('click', () => analizarImportCompraAgil());
+    btnImportarAnalizarPdf?.addEventListener('click', () => analizarImportPdf());
+    btnImportarAnalizarExcel?.addEventListener('click', () => analizarImportExcel());
+    importarPdfInput?.addEventListener('change', () => {
+        const f = importarPdfInput.files && importarPdfInput.files[0];
+        if (f && archivoSuperaLimiteImport(f)) {
+            importarPdfInput.value = '';
+            return;
+        }
+        actualizarHintAdjuntoImportar();
+    });
+    importarExcelInput?.addEventListener('change', () => {
+        const f = importarExcelInput.files && importarExcelInput.files[0];
+        if (f && archivoSuperaLimiteImport(f)) {
+            importarExcelInput.value = '';
+            return;
+        }
+        actualizarHintAdjuntoImportar();
+    });
+    btnImportarConfirmar?.addEventListener('click', () => confirmarImportCompraAgil());
+    btnImportarBuscarAdjuntos?.addEventListener('click', () => buscarAdjuntosImportar());
+    btnImportarAnalizarAdjunto?.addEventListener('click', () => analizarAdjuntoImportar());
+    ['importar-adjunto-excel-col-cant', 'importar-adjunto-excel-col-desc'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', () => {
+            const cantAdj = document.getElementById('importar-adjunto-excel-col-cant')?.value;
+            const descAdj = document.getElementById('importar-adjunto-excel-col-desc')?.value;
+            if (importarExcelColCant && String(cantAdj || '').trim() !== '') importarExcelColCant.value = String(cantAdj).trim().toUpperCase();
+            if (importarExcelColDesc && String(descAdj || '').trim() !== '') importarExcelColDesc.value = String(descAdj).trim().toUpperCase();
+        });
+    });
+
+    modalImportarEl?.addEventListener('hidden.bs.modal', () => {
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            bloquearCodigoImportarOportunidad();
+            return;
+        }
+        resetImportCompraAgilModal();
+    });
+
+    let vincularAgileUrl = @json(route('admin.cotizaciones.lineas.vincular-agile', $nota->nronota));
+    const popupVincularEl = document.getElementById('popupVincularAgile');
+    const popupVincularDesc = document.getElementById('popupVincularDescAgile');
+    const popupVincularBusqueda = document.getElementById('popupVincularBusqueda');
+    const popupVincularResultados = document.getElementById('popupVincularResultados');
+    let vincularFilaActual = null;
+    let vincularOrdenActual = null;
+    let vincularAgileIdActual = null;
+    let vincularResultadosActuales = [];
+    let vincularSortVenta = null;
+
+    function obtenerModoBusquedaVincular() {
+        const checked = document.querySelector('input[name="popupVincularModo"]:checked');
+        return checked?.value === 'texto' ? 'texto' : 'similitud';
+    }
+
+    function actualizarAyudaModoVincular() {
+        const ayuda = document.getElementById('popupVincularModoTextoAyuda');
+        if (ayuda) {
+            ayuda.classList.toggle('d-none', obtenerModoBusquedaVincular() !== 'texto');
+        }
+    }
+
+    function precioVentaProductoVincular(p) {
+        return precioVentaSegunFactorJs(p.prod_valor_costo, p.prod_valor);
+    }
+
+    function iconoOrdenVentaVincular() {
+        if (vincularSortVenta === 'asc') return '<i class="bi bi-arrow-up-short ms-1" aria-hidden="true"></i>';
+        if (vincularSortVenta === 'desc') return '<i class="bi bi-arrow-down-short ms-1" aria-hidden="true"></i>';
+        return '<i class="bi bi-arrow-down-up ms-1 text-muted" aria-hidden="true"></i>';
+    }
+
+    function ordenarResultadosVincular(items) {
+        if (!vincularSortVenta) return items.slice();
+        const dir = vincularSortVenta === 'asc' ? 1 : -1;
+        return items.slice().sort((a, b) => {
+            const va = precioVentaProductoVincular(a);
+            const vb = precioVentaProductoVincular(b);
+            if (va === vb) {
+                return String(a.prod_item || '').localeCompare(String(b.prod_item || ''), 'es');
+            }
+            return va > vb ? dir : -dir;
+        });
+    }
+
+    function renderResultadosVincularPopup(items) {
+        const cont = popupVincularResultados;
+        if (!cont) return;
+
+        vincularResultadosActuales = items.slice();
+        if (!items.length) {
+            cont.innerHTML = '<p class="text-muted small">Sin resultados.</p>';
+            return;
+        }
+
+        const ordenados = ordenarResultadosVincular(items);
+        const resumenModo = obtenerModoBusquedaVincular() === 'texto'
+            ? '<p class="small text-muted mb-2">' + ordenados.length + ' producto(s) encontrado(s).</p>'
+            : '';
+
+        let html = resumenModo + '<table class="table table-sm table-hover mb-0 cotiz-buscar-tabla"><thead><tr>'
+            + '<th style="width:80px"></th>'
+            + '<th>Código</th><th>Nombre</th>'
+            + '<th class="text-end" style="width:70px">Stock</th>'
+            + '<th>Costo</th>'
+            + '<th class="text-end cotiz-vincular-sort-venta" style="cursor:pointer;user-select:none" role="button" tabindex="0"'
+            + ' aria-sort="' + (vincularSortVenta === 'asc' ? 'ascending' : (vincularSortVenta === 'desc' ? 'descending' : 'none')) + '">'
+            + 'Venta' + iconoOrdenVentaVincular() + '</th><th></th>'
+            + '</tr></thead><tbody>';
+
+        ordenados.forEach((p) => {
+            const idx = vincularResultadosActuales.indexOf(p);
+            html += '<tr>'
+                + '<td class="text-center p-1">' + buscarProductoThumbHtml(p) + '</td>'
+                + '<td>' + escHtml(p.prod_item) + '</td>'
+                + '<td>' + escHtml(p.prod_nombre) + '</td>'
+                + '<td class="text-end small text-muted tabular-nums">' + (p.prod_stock_real != null ? p.prod_stock_real : '—') + '</td>'
+                + '<td>' + formatMoneyCotiz(p.prod_valor_costo) + '</td>'
+                + '<td class="text-end tabular-nums">' + formatMoneyCotiz(precioVentaProductoVincular(p)) + '</td>'
+                + '<td><button type="button" class="btn btn-sm btn-primary btn-seleccionar-vinculo" data-vinculo-idx="' + idx + '">Seleccionar</button></td>'
+                + '</tr>';
+        });
+        html += '</tbody></table>';
+        cont.innerHTML = html;
+        enlazarZoomImagenes(cont);
+
+        const thVenta = cont.querySelector('.cotiz-vincular-sort-venta');
+        const toggleSortVenta = () => {
+            if (!vincularSortVenta) {
+                vincularSortVenta = 'asc';
+            } else {
+                vincularSortVenta = vincularSortVenta === 'asc' ? 'desc' : 'asc';
+            }
+            renderResultadosVincularPopup(vincularResultadosActuales);
+        };
+        thVenta?.addEventListener('click', toggleSortVenta);
+        thVenta?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSortVenta();
+            }
+        });
+
+        cont.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
+            b.addEventListener('click', e => {
+                e.stopPropagation();
+                const p = vincularResultadosActuales[parseInt(b.dataset.vinculoIdx, 10)];
+                if (!p) return;
+                seleccionarVinculoAgile(
+                    p.prod_item,
+                    parseInt(p.prod_valor_costo, 10) || 0,
+                    parseInt(p.prod_valor, 10) || 0,
+                    p.prod_nombre || '',
+                    b,
+                    p.prod_item_softland || '',
+                );
+            });
+        });
+    }
+
+    function formatMoneyCotiz(n) {
+        return Math.round(Number(n) || 0).toLocaleString('es-CL');
+    }
+
+    function terminoBusquedaVincularPorDefecto(fila, btn) {
+        const descAgile = descripcionAgileVincular(fila, btn);
+        if (descAgile) {
+            return descAgile;
+        }
+
+        let codigo = String(btn.dataset.prodItem || '').trim();
+        const hiddenProd = fila?.querySelector('input[name*="[prod_item]"]');
+        if (!codigo) {
+            codigo = String(fila?.dataset.prod || hiddenProd?.value || '').trim();
+        }
+        if (!codigo) {
+            codigo = String(fila?.querySelector('.linea-codigo-interno')?.textContent || '').trim();
+        }
+        if (codigo && codigo !== '0') {
+            return codigo;
+        }
+
+        return String(btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '').trim();
+    }
+
+    function descripcionAgileVincular(fila, btn) {
+        const desdeBtn = String(btn.dataset.descripcionAgile || '').trim();
+        if (desdeBtn) {
+            return desdeBtn;
+        }
+        const desdeCelda = String(fila?.querySelector('.linea-desc-agile')?.textContent || '').trim();
+        if (desdeCelda && desdeCelda !== '—' && desdeCelda !== '-') {
+            return desdeCelda;
+        }
+        return '';
+    }
+
+    function abrirPopupVincularAgile(btn) {
+        const fila = btn.closest('tr[data-linea]');
+        vincularFilaActual = fila?.dataset.linea ?? btn.dataset.fila ?? null;
+        vincularOrdenActual = fila?.dataset.orden ?? btn.dataset.orden ?? null;
+        vincularAgileIdActual = btn.dataset.prodItemAgile || fila?.dataset.prodItemAgile || '';
+        vincularSortVenta = null;
+
+        if (!bsModal || !modalInput) {
+            dlgAlert('No se puede abrir el buscador de productos en esta vista.', { title: 'Aviso', type: 'warning' });
+            return;
+        }
+
+        const descAgile = descripcionAgileVincular(fila, btn);
+        const terminoBusqueda = terminoBusquedaVincularPorDefecto(fila, btn);
+        const modo = descAgile ? 'similitud' : 'texto';
+
+        setModalBuscarModoVincular(true);
+        setModoBusquedaModal(modo);
+        modalInput.value = terminoBusqueda;
+        limpiarProductosMarcados();
+        renderResultados([], {});
+        if (modalEstado) {
+            setModalBuscarEstado('Buscando…', true);
+        }
+        bsModal.show();
+        setTimeout(() => modalInput.focus(), 200);
+        ejecutarBusqueda(terminoBusqueda, modo);
+    }
+
+    function seleccionarVinculoAgileDesdeModal(p) {
+        if (!p || vincularOrdenActual == null) return;
+        seleccionarVinculoAgile(
+            p.prod_item,
+            parseInt(p.prod_valor_costo, 10) || 0,
+            parseInt(p.prod_valor, 10) || 0,
+            p.prod_nombre || '',
+            null,
+            p.prod_item_softland,
+        );
+    }
+
+    function cerrarPopupVincularAgile() {
+        if (popupVincularEl) popupVincularEl.style.display = 'none';
+        bsModal?.hide();
+        vincularFilaActual = null;
+        vincularOrdenActual = null;
+        vincularAgileIdActual = null;
+        vincularResultadosActuales = [];
+        vincularSortVenta = null;
+    }
+
+    function encontrarFilaVincular(filaIdx, orden, agileId) {
+        if (filaIdx != null && filaIdx !== '') {
+            const porIndice = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
+            if (porIndice) return porIndice;
+        }
+
+        return Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea]'))
+            .find(tr => {
+                if (String(tr.dataset.orden) !== String(orden)) return false;
+                if (agileId) {
+                    return String(tr.dataset.prodItemAgile || '') === String(agileId);
+                }
+                return !tr.dataset.prodItemAgile;
+            }) || null;
+    }
+
+    function actualizarImagenLinea(tr, imageUrl, titulo) {
+        const cell = tr.querySelector('.linea-imagen-cell');
+        if (!cell) return;
+
+        if (imageUrl) {
+            const partesTitulo = String(titulo || '').split(' — ');
+            cell.innerHTML = buscarProductoThumbHtml({
+                image_url: imageUrl,
+                prod_item: partesTitulo[0] || tr.dataset.prod || '',
+                prod_nombre: partesTitulo.slice(1).join(' — ') || '',
+            });
+        } else {
+            cell.innerHTML = buscarProductoThumbHtml({});
+        }
+
+        enlazarZoomImagenes(cell);
+    }
+
+    function buscarProductosVincularPopup() {
+        const q = popupVincularBusqueda?.value?.trim() || '';
+        const cont = popupVincularResultados;
+        if (!cont) return;
+        if (q.length < buscarConfig.minChars) {
+            cont.innerHTML = '<p class="text-muted small">Escriba al menos ' + buscarConfig.minChars + ' caracteres.</p>';
+            return;
+        }
+
+        const modo = obtenerModoBusquedaVincular();
+        let url = buscarConfig.url + '?q=' + encodeURIComponent(q) + '&modo=' + encodeURIComponent(modo);
+        if (modo === 'similitud') {
+            url += '&limit=' + buscarConfig.limit;
+        }
+
+        cont.innerHTML = buscarLoadingHtml('Buscando...');
+        fetch(url, {
+            headers: { Accept: 'application/json' },
+        })
+            .then(r => r.json())
+            .then(data => {
+                renderResultadosVincularPopup(data.data || []);
+            })
+            .catch(() => {
+                cont.innerHTML = '<p class="text-danger small">Error al buscar.</p>';
+            });
+    }
+
+    function actualizarFilaVinculada(filaIdx, orden, agileId, linea) {
+        const tr = encontrarFilaVincular(filaIdx, orden, agileId);
+        if (!tr || !linea) return false;
+
+        const codigoRaw = String(linea.prod_item || '').trim();
+        const codigoMostrar = codigoProductoTexto(linea.prod_item);
+        const prodAnterior = tr.dataset.prod || '';
+        const tituloImagen = codigoMostrar + (linea.prod_nombre ? ' — ' + linea.prod_nombre : '');
+
+        const delForm = document.querySelector('.form-eliminar-linea[data-orden="' + tr.dataset.orden + '"][data-prod="' + prodAnterior + '"]')
+            || document.querySelector('.form-eliminar-linea[data-orden="' + orden + '"][data-prod="' + prodAnterior + '"]');
+        if (delForm) {
+            delForm.dataset.prod = codigoRaw;
+            const delProdInput = delForm.querySelector('input[name="prod_item"]');
+            if (delProdInput) delProdInput.value = codigoRaw;
+        }
+
+        tr.dataset.prod = codigoRaw;
+        tr.classList.remove('linea-pendiente-vinculo');
+
+        const buscarBtn = tr.querySelector('.btn-buscar-linea-agile');
+        if (buscarBtn) {
+            buscarBtn.dataset.prodItem = codigoRaw;
+            if (linea.prod_descripcion_agile) {
+                buscarBtn.dataset.descripcionAgile = linea.prod_descripcion_agile;
+            }
+        }
+
+        const codigoSpan = tr.querySelector('.linea-codigo-interno');
+        if (codigoSpan) {
+            codigoSpan.textContent = codigoMostrar;
+            codigoSpan.classList.remove('text-warning', 'fw-semibold');
+        }
+
+        tr.querySelectorAll('.linea-id-agile, .linea-desc-agile').forEach((el) => {
+            el.classList.remove('text-warning', 'fw-semibold');
+        });
+
+        const hiddenProd = tr.querySelector('input[name*="[prod_item]"]');
+        if (hiddenProd) hiddenProd.value = codigoRaw;
+
+        const softlandInput = tr.querySelector('input[name*="[prod_item_softland]"]');
+        if (softlandInput) {
+            softlandInput.value = linea.prod_item_softland != null
+                ? String(linea.prod_item_softland)
+                : '';
+        }
+
+        const nombreInput = tr.querySelector('.linea-prod-nombre-input');
+        const nombreCell = tr.querySelector('.linea-prod-nombre');
+        const nombreTexto = linea.prod_nombre || codigoMostrar;
+        if (nombreInput) {
+            nombreInput.value = nombreTexto;
+            if (nombreCell) nombreCell.textContent = nombreTexto;
+            requestAnimationFrame(() => syncCampoTooltipValor(nombreInput));
+        } else if (nombreCell) {
+            nombreCell.textContent = nombreTexto;
+            nombreCell.classList.remove('text-warning-emphasis');
+        }
+
+        actualizarImagenLinea(tr, linea.image_url || '', tituloImagen);
+
+        const pesoUnit = parseFloat(String(linea.peso_kg ?? '').replace(',', '.'));
+        if (Number.isFinite(pesoUnit) && pesoUnit > 0) {
+            tr.dataset.pesoKg = String(Math.round(pesoUnit * 1000) / 1000);
+        } else {
+            delete tr.dataset.pesoKg;
+        }
+
+        const descAgileTd = tr.querySelector('td .linea-desc-agile')?.closest('td')
+            || tr.querySelector('.linea-id-agile')?.closest('tr')?.children[5];
+        if (descAgileTd && linea.prod_descripcion_agile) {
+            descAgileTd.innerHTML = '<span class="nv-fill linea-desc-agile small">'
+                + escHtml(linea.prod_descripcion_agile) + '</span>';
+        }
+
+        const costoInput = tr.querySelector('.nv-precio-costo-sololectura');
+        if (costoInput) costoInput.value = linea.prod_valor_costo ?? 0;
+
+        const ventaInput = tr.querySelector('.linea-prod-valor');
+        if (ventaInput) ventaInput.value = linea.prod_valor ?? 0;
+
+        const fechaSpan = tr.querySelector('td:nth-child(8) .nv-fill');
+        if (fechaSpan && linea.prod_valor_fecha_fmt) {
+            fechaSpan.textContent = linea.prod_valor_fecha_fmt;
+            fechaSpan.classList.toggle('fecha-precio-antigua', !!linea.prod_valor_fecha_antigua);
+        }
+
+        const cantidad = parseInt(tr.querySelector('.linea-cantidad')?.value || '1', 10) || 1;
+        const totalTd = tr.querySelector('.linea-total');
+        if (totalTd) {
+            const subtotal = linea.subtotal ?? ((linea.prod_valor || 0) * cantidad);
+            totalTd.textContent = '$' + formatMoneyCotiz(subtotal);
+        }
+
+        tr.querySelectorAll('[data-prod]').forEach(el => {
+            if (el.classList.contains('eliminar-cell')) {
+                el.dataset.prod = codigoRaw;
+            }
+        });
+
+        recalcularMontoTotal();
+        marcarLineasRepetidas();
+        limpiarLineaDirty(tr);
+
+        return true;
+    }
+
+    async function seleccionarVinculoAgile(codigo, costo, venta, nombre, btnEl, softland) {
+        if (vincularOrdenActual == null) return;
+
+        const filaIdx = vincularFilaActual;
+        const orden = parseInt(vincularOrdenActual, 10);
+        const agileId = vincularAgileIdActual || '';
+        const filaTr = document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"]');
+        const prodAnterior = filaTr?.dataset.prod || filaTr?.querySelector('input[name*="[prod_item]"]')?.value || '';
+        const filaOrden = filaTr?.dataset.orden;
+        const ordenEnvio = filaOrden ? parseInt(filaOrden, 10) : orden;
+
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = 'Vinculando...';
+            btnEl.closest('tr')?.classList.add('table-active');
+            popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
+                if (b !== btnEl) b.disabled = true;
+            });
+        }
+
+        try {
+            const res = await fetch(vincularAgileUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    orden: ordenEnvio,
+                    prod_item_agile: agileId || null,
+                    prod_item: codigo,
+                    prod_item_anterior: prodAnterior || null,
+                    factor_precio_venta: factorInput?.value || formatFactorChile(factorActualCotiz()),
+                }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
                 if (btnEl) {
                     btnEl.disabled = false;
                     btnEl.textContent = 'Seleccionar';
                     btnEl.closest('tr')?.classList.remove('table-active');
                 }
-                popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => {
-                    b.disabled = false;
-                });
-                dlgAlert('Error de conexión al vincular producto.', {
-                    title: 'Error',
-                    type: 'danger'
-                });
+                popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => { b.disabled = false; });
+                dlgAlert(json.error || 'No se pudo vincular el producto.', { title: 'Error', type: 'danger' });
+                return;
             }
+
+            const linea = json.linea || {
+                prod_item: codigo,
+                prod_item_softland: softland != null ? String(softland) : '',
+                prod_nombre: nombre,
+                prod_valor: venta,
+                prod_valor_costo: costo,
+                subtotal: venta * (parseInt(document.querySelector('#tabla_detalle tbody tr[data-linea="' + filaIdx + '"] .linea-cantidad')?.value || '1', 10) || 1),
+            };
+            if (linea.prod_item_softland == null && softland != null) {
+                linea.prod_item_softland = String(softland);
+            }
+
+            const actualizado = actualizarFilaVinculada(filaIdx, ordenEnvio, agileId, linea);
+            bsModal?.hide();
+            cerrarPopupVincularAgile();
+
+            if (!actualizado) {
+                dlgAlert('Producto vinculado, pero no se pudo refrescar la fila. Recargue la página.', { title: 'Aviso', type: 'warning' });
+            }
+        } catch (err) {
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.textContent = 'Seleccionar';
+                btnEl.closest('tr')?.classList.remove('table-active');
+            }
+            popupVincularResultados?.querySelectorAll('.btn-seleccionar-vinculo').forEach(b => { b.disabled = false; });
+            dlgAlert('Error de conexión al vincular producto.', { title: 'Error', type: 'danger' });
         }
+    }
 
-        document.getElementById('tabla_detalle')?.addEventListener('click', e => {
-            const btn = e.target.closest('.btn-buscar-linea-agile');
-            if (!btn) return;
+    document.getElementById('tabla_detalle')?.addEventListener('click', e => {
+        const btn = e.target.closest('.btn-buscar-linea-agile');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        abrirPopupVincularAgile(btn);
+    });
+    document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
+    document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
+    document.querySelectorAll('input[name="popupVincularModo"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            vincularSortVenta = null;
+            actualizarAyudaModoVincular();
+            buscarProductosVincularPopup();
+        });
+    });
+    document.getElementById('btnPopupVincularLimpiar')?.addEventListener('click', () => {
+        if (popupVincularBusqueda) {
+            popupVincularBusqueda.value = '';
+            popupVincularBusqueda.focus();
+        }
+        if (popupVincularResultados) {
+            popupVincularResultados.innerHTML = '';
+        }
+    });
+    popupVincularBusqueda?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
             e.preventDefault();
-            e.stopPropagation();
-            abrirPopupVincularAgile(btn);
-        });
-        document.getElementById('cerrarPopupVincularAgile')?.addEventListener('click', cerrarPopupVincularAgile);
-        document.getElementById('btnPopupVincularBuscar')?.addEventListener('click', buscarProductosVincularPopup);
-        document.querySelectorAll('input[name="popupVincularModo"]').forEach((radio) => {
-            radio.addEventListener('change', () => {
-                vincularSortVenta = null;
-                actualizarAyudaModoVincular();
-                buscarProductosVincularPopup();
-            });
-        });
-        document.getElementById('btnPopupVincularLimpiar')?.addEventListener('click', () => {
-            if (popupVincularBusqueda) {
-                popupVincularBusqueda.value = '';
-                popupVincularBusqueda.focus();
-            }
-            if (popupVincularResultados) {
-                popupVincularResultados.innerHTML = '';
-            }
-        });
-        popupVincularBusqueda?.addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                buscarProductosVincularPopup();
-            }
-        });
-        popupVincularEl?.addEventListener('click', e => {
-            if (e.target === popupVincularEl) cerrarPopupVincularAgile();
-        });
+            buscarProductosVincularPopup();
+        }
+    });
+    popupVincularEl?.addEventListener('click', e => {
+        if (e.target === popupVincularEl) cerrarPopupVincularAgile();
+    });
 
-        @if($lineas - > contains(fn($row) => $row['repetidos'] > 1))
+    @if($lineas->contains(fn ($row) => $row['repetidos'] > 1))
         dlgAlert('Existen productos que se repiten, estos están marcados con rojo, favor revisar si corresponde', {
             title: 'Productos repetidos',
             type: 'warning',
         });
-        @endif
+    @endif
 
-        if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar && !@json($cotizarIaHabilitado)) {
-            if (desdeOportunidades && codigoImportarCompraAgil) {
-                mostrarDetalleImportarOportunidades();
-                bsModalImportar.show();
-            } else {
-                resetImportCompraAgilModal();
-                actualizarResumenLineas(resumenLineasInicial);
-                if (codigoImportarCompraAgil) {
-                    const inputCodigo = document.getElementById('ca-api-codigo');
-                    if (inputCodigo) {
-                        inputCodigo.value = codigoImportarCompraAgil;
-                    }
-                    document.getElementById('tab-ca-codigo')?.click();
+    if ((abrirImportarAlInicio || codigoImportarCompraAgil) && bsModalImportar && !@json($cotizarIaHabilitado)) {
+        if (desdeOportunidades && codigoImportarCompraAgil) {
+            mostrarDetalleImportarOportunidades();
+            bsModalImportar.show();
+        } else {
+            resetImportCompraAgilModal();
+            actualizarResumenLineas(resumenLineasInicial);
+            if (codigoImportarCompraAgil) {
+                const inputCodigo = document.getElementById('ca-api-codigo');
+                if (inputCodigo) {
+                    inputCodigo.value = codigoImportarCompraAgil;
                 }
-                bsModalImportar.show();
-                if (codigoImportarCompraAgil) {
-                    const cache = previewImportarCompraAgil &&
-                        typeof previewImportarCompraAgil === 'object' &&
-                        Array.isArray(previewImportarCompraAgil.lineas) ?
-                        previewImportarCompraAgil :
-                        null;
-                    if (cache) {
-                        setTimeout(() => aplicarPreviewCacheado(codigoImportarCompraAgil, cache), 350);
-                    } else {
-                        setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
-                    }
+                document.getElementById('tab-ca-codigo')?.click();
+            }
+            bsModalImportar.show();
+            if (codigoImportarCompraAgil) {
+                const cache = previewImportarCompraAgil
+                    && typeof previewImportarCompraAgil === 'object'
+                    && Array.isArray(previewImportarCompraAgil.lineas)
+                    ? previewImportarCompraAgil
+                    : null;
+                if (cache) {
+                    setTimeout(() => aplicarPreviewCacheado(codigoImportarCompraAgil, cache), 350);
                 } else {
-                    setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
+                    setTimeout(() => analizarCodigoApi(codigoImportarCompraAgil), 350);
                 }
-            }
-        }
-
-        // --- Envío DEX (botón camión junto a precio unitario) ---
-        const modalEnvioDexEl = document.getElementById('modal-envio-dex');
-        const bsModalEnvioDex = modalEnvioDexEl && typeof bootstrap !== 'undefined' ?
-            bootstrap.Modal.getOrCreateInstance(modalEnvioDexEl) :
-            null;
-        const envioDexOrigen = document.getElementById('envio-dex-origen');
-        const envioDexDestino = document.getElementById('envio-dex-destino');
-        const envioDexDestinosList = document.getElementById('envio-dex-destinos-list');
-        const envioDexPeso = document.getElementById('envio-dex-peso');
-        const envioDexPesoLabel = document.getElementById('envio-dex-peso-label');
-        const envioDexValor = document.getElementById('envio-dex-valor');
-        const envioDexPesoDetalle = document.getElementById('envio-dex-peso-detalle');
-        const envioDexInfo = document.getElementById('envio-dex-info');
-        const envioDexError = document.getElementById('envio-dex-error');
-        const envioDexUnitarioActual = document.getElementById('envio-dex-unitario-actual');
-        const envioDexUnitarioEnvio = document.getElementById('envio-dex-unitario-envio');
-        const envioDexUnitarioNuevo = document.getElementById('envio-dex-unitario-nuevo');
-        let envioDexCatalogo = null;
-        let envioDexTargetInput = null;
-        let envioDexCantidad = 1;
-        let envioDexTienePesoProducto = false;
-
-        function fmtPesoKg(n) {
-            const v = Math.round(Number(n) * 1000) / 1000;
-            if (!Number.isFinite(v)) return '—';
-            return String(v).replace('.', ',');
-        }
-
-        function fmtClp(n) {
-            const v = parseInt(String(n), 10);
-            if (!Number.isFinite(v)) return '—';
-            return '$' + v.toLocaleString('es-CL');
-        }
-
-        function setEnvioDexPesoDetalle(html, esMuted) {
-            if (!envioDexPesoDetalle) return;
-            envioDexPesoDetalle.innerHTML = html || '';
-            envioDexPesoDetalle.className = 'small mb-2 ' + (esMuted ? 'text-muted' : 'text-body');
-        }
-
-        function actualizarResumenEnvioDex() {
-            const actual = parseInt(String(envioDexTargetInput?.value || '0'), 10) || 0;
-            const envioRaw = String(envioDexValor?.value || '').trim();
-            const envio = envioRaw === '' ? null : parseInt(envioRaw.replace(/\D/g, ''), 10);
-            if (envioDexUnitarioActual) envioDexUnitarioActual.textContent = fmtClp(actual);
-            if (envioDexUnitarioEnvio) {
-                envioDexUnitarioEnvio.textContent = (envio !== null && Number.isFinite(envio)) ? fmtClp(envio) : '—';
-            }
-            if (envioDexUnitarioNuevo) {
-                envioDexUnitarioNuevo.textContent = (envio !== null && Number.isFinite(envio)) ?
-                    fmtClp(actual + envio) :
-                    '—';
-            }
-        }
-
-        /** Peso producto (campo) × cantidad de la línea → peso para elegir tramo. */
-        function pesoTotalParaCotizar() {
-            const pesoRaw = String(envioDexPeso?.value ?? '').trim();
-            const pesoProducto = parseFloat(pesoRaw.replace(',', '.'));
-            if (pesoRaw === '' || !Number.isFinite(pesoProducto) || pesoProducto <= 0) {
-                return {
-                    ok: false,
-                    peso: null,
-                    pesoTotal: null
-                };
-            }
-            const cant = Math.max(1, parseInt(String(envioDexCantidad || 1), 10) || 1);
-            const total = Math.round(pesoProducto * cant * 1000) / 1000;
-            return {
-                ok: true,
-                peso: pesoProducto,
-                pesoTotal: total,
-                cantidad: cant
-            };
-        }
-
-        function refrescarDetallePesoManual() {
-            const r = pesoTotalParaCotizar();
-            if (!r.ok) {
-                setEnvioDexPesoDetalle(
-                    envioDexTienePesoProducto ?
-                    'Ingrese el <strong>peso del producto (kg)</strong>; se multiplicar&aacute; por cantidad <strong>' +
-                    envioDexCantidad + '</strong> para elegir el tramo.' :
-                    'Sin peso en la ficha — ingrese el <strong>peso producto (kg)</strong>; se multiplicar&aacute; por cantidad <strong>' +
-                    envioDexCantidad + '</strong> para elegir el tramo.',
-                    true
-                );
-                return;
-            }
-            setEnvioDexPesoDetalle(
-                'Peso producto: <strong>' + fmtPesoKg(r.peso) + ' kg</strong>' +
-                ' &times; cantidad <strong>' + r.cantidad + '</strong>' +
-                ' = <strong>' + fmtPesoKg(r.pesoTotal) + ' kg</strong> para el tramo',
-                false
-            );
-        }
-
-        function setEnvioDexError(msg) {
-            if (!envioDexError) return;
-            if (msg) {
-                envioDexError.textContent = msg;
-                envioDexError.classList.remove('d-none');
             } else {
-                envioDexError.textContent = '';
-                envioDexError.classList.add('d-none');
+                setTimeout(() => document.getElementById('ca-api-codigo')?.focus(), 250);
             }
         }
+    }
 
-        function filtrarDestinosPorOrigen(origen) {
-            if (!envioDexCatalogo || !envioDexDestinosList) return;
-            const origenKey = String(origen || '').trim().toUpperCase();
-            envioDexDestinosList.innerHTML = '';
-            (envioDexCatalogo.destinos || []).forEach((d) => {
-                if (origenKey && String(d.origen || '').trim().toUpperCase() !== origenKey) return;
+    // --- Envío DEX (botón camión junto a precio unitario) ---
+    const modalEnvioDexEl = document.getElementById('modal-envio-dex');
+    const bsModalEnvioDex = modalEnvioDexEl && typeof bootstrap !== 'undefined'
+        ? bootstrap.Modal.getOrCreateInstance(modalEnvioDexEl)
+        : null;
+    const envioDexOrigen = document.getElementById('envio-dex-origen');
+    const envioDexDestino = document.getElementById('envio-dex-destino');
+    const envioDexDestinosList = document.getElementById('envio-dex-destinos-list');
+    const envioDexPeso = document.getElementById('envio-dex-peso');
+    const envioDexPesoLabel = document.getElementById('envio-dex-peso-label');
+    const envioDexValor = document.getElementById('envio-dex-valor');
+    const envioDexPesoDetalle = document.getElementById('envio-dex-peso-detalle');
+    const envioDexInfo = document.getElementById('envio-dex-info');
+    const envioDexError = document.getElementById('envio-dex-error');
+    const envioDexUnitarioActual = document.getElementById('envio-dex-unitario-actual');
+    const envioDexUnitarioEnvio = document.getElementById('envio-dex-unitario-envio');
+    const envioDexUnitarioNuevo = document.getElementById('envio-dex-unitario-nuevo');
+    let envioDexCatalogo = null;
+    let envioDexTargetInput = null;
+    let envioDexCantidad = 1;
+    let envioDexTienePesoProducto = false;
+
+    function fmtPesoKg(n) {
+        const v = Math.round(Number(n) * 1000) / 1000;
+        if (!Number.isFinite(v)) return '—';
+        return String(v).replace('.', ',');
+    }
+
+    function fmtClp(n) {
+        const v = parseInt(String(n), 10);
+        if (!Number.isFinite(v)) return '—';
+        return '$' + v.toLocaleString('es-CL');
+    }
+
+    function setEnvioDexPesoDetalle(html, esMuted) {
+        if (!envioDexPesoDetalle) return;
+        envioDexPesoDetalle.innerHTML = html || '';
+        envioDexPesoDetalle.className = 'small mb-2 ' + (esMuted ? 'text-muted' : 'text-body');
+    }
+
+    function actualizarResumenEnvioDex() {
+        const actual = parseInt(String(envioDexTargetInput?.value || '0'), 10) || 0;
+        const envioRaw = String(envioDexValor?.value || '').trim();
+        const envio = envioRaw === '' ? null : parseInt(envioRaw.replace(/\D/g, ''), 10);
+        if (envioDexUnitarioActual) envioDexUnitarioActual.textContent = fmtClp(actual);
+        if (envioDexUnitarioEnvio) {
+            envioDexUnitarioEnvio.textContent = (envio !== null && Number.isFinite(envio)) ? fmtClp(envio) : '—';
+        }
+        if (envioDexUnitarioNuevo) {
+            envioDexUnitarioNuevo.textContent = (envio !== null && Number.isFinite(envio))
+                ? fmtClp(actual + envio)
+                : '—';
+        }
+    }
+
+    /** Peso producto (campo) × cantidad de la línea → peso para elegir tramo. */
+    function pesoTotalParaCotizar() {
+        const pesoRaw = String(envioDexPeso?.value ?? '').trim();
+        const pesoProducto = parseFloat(pesoRaw.replace(',', '.'));
+        if (pesoRaw === '' || !Number.isFinite(pesoProducto) || pesoProducto <= 0) {
+            return { ok: false, peso: null, pesoTotal: null };
+        }
+        const cant = Math.max(1, parseInt(String(envioDexCantidad || 1), 10) || 1);
+        const total = Math.round(pesoProducto * cant * 1000) / 1000;
+        return { ok: true, peso: pesoProducto, pesoTotal: total, cantidad: cant };
+    }
+
+    function refrescarDetallePesoManual() {
+        const r = pesoTotalParaCotizar();
+        if (!r.ok) {
+            setEnvioDexPesoDetalle(
+                envioDexTienePesoProducto
+                    ? 'Ingrese el <strong>peso del producto (kg)</strong>; se multiplicar&aacute; por cantidad <strong>'
+                        + envioDexCantidad + '</strong> para elegir el tramo.'
+                    : 'Sin peso en la ficha — ingrese el <strong>peso producto (kg)</strong>; se multiplicar&aacute; por cantidad <strong>'
+                        + envioDexCantidad + '</strong> para elegir el tramo.',
+                true
+            );
+            return;
+        }
+        setEnvioDexPesoDetalle(
+            'Peso producto: <strong>' + fmtPesoKg(r.peso) + ' kg</strong>'
+            + ' &times; cantidad <strong>' + r.cantidad + '</strong>'
+            + ' = <strong>' + fmtPesoKg(r.pesoTotal) + ' kg</strong> para el tramo',
+            false
+        );
+    }
+
+    function setEnvioDexError(msg) {
+        if (!envioDexError) return;
+        if (msg) {
+            envioDexError.textContent = msg;
+            envioDexError.classList.remove('d-none');
+        } else {
+            envioDexError.textContent = '';
+            envioDexError.classList.add('d-none');
+        }
+    }
+
+    function filtrarDestinosPorOrigen(origen) {
+        if (!envioDexCatalogo || !envioDexDestinosList) return;
+        const origenKey = String(origen || '').trim().toUpperCase();
+        envioDexDestinosList.innerHTML = '';
+        (envioDexCatalogo.destinos || []).forEach((d) => {
+            if (origenKey && String(d.origen || '').trim().toUpperCase() !== origenKey) return;
+            const opt = document.createElement('option');
+            opt.value = d.destino;
+            envioDexDestinosList.appendChild(opt);
+        });
+    }
+
+    async function cargarCatalogoEnvioDex() {
+        if (envioDexCatalogo) return envioDexCatalogo;
+        const res = await fetch(envioDexUrls.catalogo, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(json.error || 'No se pudo cargar el catálogo DEX.');
+        }
+        envioDexCatalogo = json;
+        if (envioDexOrigen) {
+            envioDexOrigen.innerHTML = '';
+            const origenes = json.origenes || ['SANTIAGO'];
+            origenes.forEach((o) => {
                 const opt = document.createElement('option');
-                opt.value = d.destino;
-                envioDexDestinosList.appendChild(opt);
+                opt.value = o;
+                opt.textContent = o;
+                envioDexOrigen.appendChild(opt);
             });
+            const def = json.origen_default || 'SANTIAGO';
+            const match = Array.from(envioDexOrigen.options).find(
+                (o) => String(o.value).toUpperCase() === String(def).toUpperCase()
+            );
+            envioDexOrigen.value = match ? match.value : (origenes[0] || def);
+        }
+        filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
+        return json;
+    }
+
+    async function abrirModalEnvioDex(ventaInput) {
+        envioDexTargetInput = ventaInput;
+        setEnvioDexError('');
+        setEnvioDexPesoDetalle('', true);
+        if (envioDexInfo) envioDexInfo.textContent = '';
+        if (envioDexValor) envioDexValor.value = '';
+        if (envioDexPeso) envioDexPeso.value = '';
+        try {
+            await cargarCatalogoEnvioDex();
+        } catch (err) {
+            setEnvioDexError(err?.message || 'Error al cargar tarifas.');
+        }
+        const comunaCab = String(document.getElementById('comuna')?.value || '').trim();
+        if (envioDexDestino) {
+            envioDexDestino.value = comunaCab;
+        }
+        filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
+
+        const tr = ventaInput?.closest('tr[data-linea]');
+        const pesoUnitario = parseFloat(String(tr?.dataset?.pesoKg || '').replace(',', '.'));
+        envioDexCantidad = parseInt(String(
+            tr?.querySelector('.linea-cantidad')?.value
+            || tr?.querySelector('input[name*="[cantidad]"]')?.value
+            || '1'
+        ).replace(/\D/g, ''), 10) || 1;
+        envioDexTienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
+        if (envioDexPesoLabel) envioDexPesoLabel.textContent = 'Peso producto (kg)';
+        if (envioDexPeso) envioDexPeso.placeholder = 'Ej. 2.7';
+        if (envioDexTienePesoProducto && envioDexPeso) {
+            // Peso de la ficha (oculto en data-peso-kg); al cotizar se × cantidad.
+            envioDexPeso.value = String(pesoUnitario);
+            refrescarDetallePesoManual();
+        } else {
+            if (envioDexPeso) envioDexPeso.value = '';
+            refrescarDetallePesoManual();
         }
 
-        async function cargarCatalogoEnvioDex() {
-            if (envioDexCatalogo) return envioDexCatalogo;
-            const res = await fetch(envioDexUrls.catalogo, {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
+        actualizarResumenEnvioDex();
+        bsModalEnvioDex?.show();
+        if (envioDexTienePesoProducto) {
+            await calcularEnvioDex();
+        } else {
+            setTimeout(() => envioDexPeso?.focus(), 250);
+        }
+    }
+
+    async function calcularEnvioDex() {
+        setEnvioDexError('');
+        refrescarDetallePesoManual();
+        const r = pesoTotalParaCotizar();
+        if (!r.ok) {
+            if (envioDexInfo) envioDexInfo.textContent = '';
+            setEnvioDexError('Ingrese el peso producto (kg); se multiplicará por la cantidad ' + envioDexCantidad + '.');
+            envioDexPeso?.focus();
+            actualizarResumenEnvioDex();
+            return;
+        }
+        if (envioDexInfo) {
+            envioDexInfo.textContent = 'Cotizando con ' + fmtPesoKg(r.pesoTotal) + ' kg ('
+                + fmtPesoKg(r.peso) + ' × ' + r.cantidad + ')…';
+        }
+        const body = new FormData();
+        body.append('_token', csrf);
+        body.append('origen', envioDexOrigen?.value || 'SANTIAGO');
+        body.append('destino', envioDexDestino?.value || '');
+        body.append('peso_kg', String(r.pesoTotal));
+        try {
+            const res = await fetch(envioDexUrls.cotizar, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
-                throw new Error(json.error || 'No se pudo cargar el catálogo DEX.');
+                if (envioDexInfo) envioDexInfo.textContent = '';
+                const pesoErr = json.errors?.peso_kg?.[0];
+                setEnvioDexError(pesoErr || json.error || json.message || 'No se pudo calcular el tramo.');
+                actualizarResumenEnvioDex();
+                return;
             }
-            envioDexCatalogo = json;
-            if (envioDexOrigen) {
-                envioDexOrigen.innerHTML = '';
-                const origenes = json.origenes || ['SANTIAGO'];
-                origenes.forEach((o) => {
-                    const opt = document.createElement('option');
-                    opt.value = o;
-                    opt.textContent = o;
-                    envioDexOrigen.appendChild(opt);
-                });
-                const def = json.origen_default || 'SANTIAGO';
-                const match = Array.from(envioDexOrigen.options).find(
-                    (o) => String(o.value).toUpperCase() === String(def).toUpperCase()
-                );
-                envioDexOrigen.value = match ? match.value : (origenes[0] || def);
+            if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
+            const partes = [
+                'Peso producto ' + fmtPesoKg(r.peso) + ' kg × ' + r.cantidad + ' = ' + fmtPesoKg(r.pesoTotal) + ' kg',
+                'Tramo ' + (json.tramo_kg || '?') + ' kg',
+                'Valor tramo $' + Number(json.precio_base || 0).toLocaleString('es-CL'),
+            ];
+            if (json.recargo_pct) {
+                partes.push('Recargo zona ' + json.recargo_pct + '%');
             }
-            filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
-            return json;
-        }
-
-        async function abrirModalEnvioDex(ventaInput) {
-            envioDexTargetInput = ventaInput;
-            setEnvioDexError('');
-            setEnvioDexPesoDetalle('', true);
-            if (envioDexInfo) envioDexInfo.textContent = '';
-            if (envioDexValor) envioDexValor.value = '';
-            if (envioDexPeso) envioDexPeso.value = '';
-            try {
-                await cargarCatalogoEnvioDex();
-            } catch (err) {
-                setEnvioDexError(err?.message || 'Error al cargar tarifas.');
-            }
-            const comunaCab = String(document.getElementById('comuna')?.value || '').trim();
-            if (envioDexDestino) {
-                envioDexDestino.value = comunaCab;
-            }
-            filtrarDestinosPorOrigen(envioDexOrigen?.value || 'SANTIAGO');
-
-            const tr = ventaInput?.closest('tr[data-linea]');
-            const pesoUnitario = parseFloat(String(tr?.dataset?.pesoKg || '').replace(',', '.'));
-            envioDexCantidad = parseInt(String(
-                tr?.querySelector('.linea-cantidad')?.value ||
-                tr?.querySelector('input[name*="[cantidad]"]')?.value ||
-                '1'
-            ).replace(/\D/g, ''), 10) || 1;
-            envioDexTienePesoProducto = Number.isFinite(pesoUnitario) && pesoUnitario > 0;
-            if (envioDexPesoLabel) envioDexPesoLabel.textContent = 'Peso producto (kg)';
-            if (envioDexPeso) envioDexPeso.placeholder = 'Ej. 2.7';
-            if (envioDexTienePesoProducto && envioDexPeso) {
-                // Peso de la ficha (oculto en data-peso-kg); al cotizar se × cantidad.
-                envioDexPeso.value = String(pesoUnitario);
-                refrescarDetallePesoManual();
-            } else {
-                if (envioDexPeso) envioDexPeso.value = '';
-                refrescarDetallePesoManual();
-            }
-
+            partes.push('A sumar $' + Number(json.precio || 0).toLocaleString('es-CL'));
+            if (envioDexInfo) envioDexInfo.textContent = partes.join(' · ');
             actualizarResumenEnvioDex();
-            bsModalEnvioDex?.show();
-            if (envioDexTienePesoProducto) {
-                await calcularEnvioDex();
-            } else {
-                setTimeout(() => envioDexPeso?.focus(), 250);
-            }
+        } catch (err) {
+            if (envioDexInfo) envioDexInfo.textContent = '';
+            setEnvioDexError('Error de conexión al calcular.');
+            actualizarResumenEnvioDex();
         }
+    }
 
-        async function calcularEnvioDex() {
-            setEnvioDexError('');
-            refrescarDetallePesoManual();
-            const r = pesoTotalParaCotizar();
-            if (!r.ok) {
-                if (envioDexInfo) envioDexInfo.textContent = '';
-                setEnvioDexError('Ingrese el peso producto (kg); se multiplicará por la cantidad ' + envioDexCantidad + '.');
-                envioDexPeso?.focus();
-                actualizarResumenEnvioDex();
-                return;
-            }
-            if (envioDexInfo) {
-                envioDexInfo.textContent = 'Cotizando con ' + fmtPesoKg(r.pesoTotal) + ' kg (' +
-                    fmtPesoKg(r.peso) + ' × ' + r.cantidad + ')…';
-            }
-            const body = new FormData();
-            body.append('_token', csrf);
-            body.append('origen', envioDexOrigen?.value || 'SANTIAGO');
-            body.append('destino', envioDexDestino?.value || '');
-            body.append('peso_kg', String(r.pesoTotal));
-            try {
-                const res = await fetch(envioDexUrls.cotizar, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body,
-                });
-                const json = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    if (envioDexInfo) envioDexInfo.textContent = '';
-                    const pesoErr = json.errors?.peso_kg?.[0];
-                    setEnvioDexError(pesoErr || json.error || json.message || 'No se pudo calcular el tramo.');
-                    actualizarResumenEnvioDex();
-                    return;
-                }
-                if (envioDexValor) envioDexValor.value = String(json.precio ?? '');
-                const partes = [
-                    'Peso producto ' + fmtPesoKg(r.peso) + ' kg × ' + r.cantidad + ' = ' + fmtPesoKg(r.pesoTotal) + ' kg',
-                    'Tramo ' + (json.tramo_kg || '?') + ' kg',
-                    'Valor tramo $' + Number(json.precio_base || 0).toLocaleString('es-CL'),
-                ];
-                if (json.recargo_pct) {
-                    partes.push('Recargo zona ' + json.recargo_pct + '%');
-                }
-                partes.push('A sumar $' + Number(json.precio || 0).toLocaleString('es-CL'));
-                if (envioDexInfo) envioDexInfo.textContent = partes.join(' · ');
-                actualizarResumenEnvioDex();
-            } catch (err) {
-                if (envioDexInfo) envioDexInfo.textContent = '';
-                setEnvioDexError('Error de conexión al calcular.');
-                actualizarResumenEnvioDex();
-            }
+    function aplicarEnvioDexAlUnitario() {
+        setEnvioDexError('');
+        const extra = parseInt(String(envioDexValor?.value || '').replace(/\D/g, ''), 10);
+        if (!Number.isFinite(extra) || extra < 0) {
+            setEnvioDexError('No hay valor de tramo. Elija destino (o pulse Calcular) para obtenerlo.');
+            return;
         }
-
-        function aplicarEnvioDexAlUnitario() {
-            setEnvioDexError('');
-            const extra = parseInt(String(envioDexValor?.value || '').replace(/\D/g, ''), 10);
-            if (!Number.isFinite(extra) || extra < 0) {
-                setEnvioDexError('No hay valor de tramo. Elija destino (o pulse Calcular) para obtenerlo.');
-                return;
-            }
-            if (!envioDexTargetInput) {
-                setEnvioDexError('No se encontró el precio unitario de la línea.');
-                return;
-            }
-            const actual = parseInt(String(envioDexTargetInput.value || '0'), 10) || 0;
-            envioDexTargetInput.value = String(actual + extra);
-            envioDexTargetInput.dispatchEvent(new Event('input', {
-                bubbles: true
-            }));
-            if (typeof recalcularMontoTotal === 'function') {
-                recalcularMontoTotal();
-            }
-            bsModalEnvioDex?.hide();
+        if (!envioDexTargetInput) {
+            setEnvioDexError('No se encontró el precio unitario de la línea.');
+            return;
         }
-
-        document.getElementById('tabla_detalle')?.addEventListener('click', (e) => {
-            const btn = e.target.closest('.btn-envio-dex-linea');
-            if (!btn) return;
-            e.preventDefault();
-            const tr = btn.closest('tr[data-linea]');
-            const ventaInput = tr?.querySelector('.linea-prod-valor');
-            if (!ventaInput) return;
-            abrirModalEnvioDex(ventaInput);
-        });
-
-        let envioDexAutoTimer = null;
-
-        function puedeAutocalcularEnvioDex() {
-            const destinoOk = String(envioDexDestino?.value || '').trim() !== '';
-            const pesoOk = pesoTotalParaCotizar().ok;
-            return destinoOk && pesoOk;
+        const actual = parseInt(String(envioDexTargetInput.value || '0'), 10) || 0;
+        envioDexTargetInput.value = String(actual + extra);
+        envioDexTargetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof recalcularMontoTotal === 'function') {
+            recalcularMontoTotal();
         }
+        bsModalEnvioDex?.hide();
+    }
 
-        function programarAutocalcularEnvioDex(delayMs) {
-            if (envioDexAutoTimer) clearTimeout(envioDexAutoTimer);
-            envioDexAutoTimer = setTimeout(() => {
-                envioDexAutoTimer = null;
-                if (!puedeAutocalcularEnvioDex()) return;
-                calcularEnvioDex();
-            }, delayMs ?? 350);
-        }
+    document.getElementById('tabla_detalle')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-envio-dex-linea');
+        if (!btn) return;
+        e.preventDefault();
+        const tr = btn.closest('tr[data-linea]');
+        const ventaInput = tr?.querySelector('.linea-prod-valor');
+        if (!ventaInput) return;
+        abrirModalEnvioDex(ventaInput);
+    });
 
-        envioDexOrigen?.addEventListener('change', () => {
-            filtrarDestinosPorOrigen(envioDexOrigen.value);
-            if (puedeAutocalcularEnvioDex()) {
-                programarAutocalcularEnvioDex(0);
-            }
-        });
-        envioDexDestino?.addEventListener('change', () => {
-            if (puedeAutocalcularEnvioDex()) {
-                programarAutocalcularEnvioDex(0);
-            }
-        });
-        envioDexDestino?.addEventListener('input', () => {
-            // Al elegir de la lista o terminar de escribir destino
-            programarAutocalcularEnvioDex(400);
-        });
-        envioDexPeso?.addEventListener('input', () => {
-            refrescarDetallePesoManual();
-            if (String(envioDexDestino?.value || '').trim() !== '') {
-                programarAutocalcularEnvioDex(400);
-            }
-        });
-        document.getElementById('btn-envio-dex-calcular')?.addEventListener('click', () => {
+    let envioDexAutoTimer = null;
+    function puedeAutocalcularEnvioDex() {
+        const destinoOk = String(envioDexDestino?.value || '').trim() !== '';
+        const pesoOk = pesoTotalParaCotizar().ok;
+        return destinoOk && pesoOk;
+    }
+    function programarAutocalcularEnvioDex(delayMs) {
+        if (envioDexAutoTimer) clearTimeout(envioDexAutoTimer);
+        envioDexAutoTimer = setTimeout(() => {
+            envioDexAutoTimer = null;
+            if (!puedeAutocalcularEnvioDex()) return;
             calcularEnvioDex();
-        });
-        document.getElementById('btn-envio-dex-aplicar')?.addEventListener('click', () => {
-            aplicarEnvioDexAlUnitario();
-        });
-    })();
+        }, delayMs ?? 350);
+    }
+
+    envioDexOrigen?.addEventListener('change', () => {
+        filtrarDestinosPorOrigen(envioDexOrigen.value);
+        if (puedeAutocalcularEnvioDex()) {
+            programarAutocalcularEnvioDex(0);
+        }
+    });
+    envioDexDestino?.addEventListener('change', () => {
+        if (puedeAutocalcularEnvioDex()) {
+            programarAutocalcularEnvioDex(0);
+        }
+    });
+    envioDexDestino?.addEventListener('input', () => {
+        // Al elegir de la lista o terminar de escribir destino
+        programarAutocalcularEnvioDex(400);
+    });
+    envioDexPeso?.addEventListener('input', () => {
+        refrescarDetallePesoManual();
+        if (String(envioDexDestino?.value || '').trim() !== '') {
+            programarAutocalcularEnvioDex(400);
+        }
+    });
+    document.getElementById('btn-envio-dex-calcular')?.addEventListener('click', () => {
+        calcularEnvioDex();
+    });
+    document.getElementById('btn-envio-dex-aplicar')?.addEventListener('click', () => {
+        aplicarEnvioDexAlUnitario();
+    });
+})();
 </script>
 @endpush
