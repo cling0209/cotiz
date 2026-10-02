@@ -5,6 +5,7 @@
     $estadoOc = $seg?->estadoOrdenCompraMp();
     $ocNota = $seg?->ocompraNota() ?? '';
     $ocMp = $seg?->ocompraMp() ?? '';
+    $registroOcNota = $ocNota !== '' ? ($seg?->nota?->textoRegistroOcompra() ?? '') : '';
     $empresaOc = trim((string) ($seg?->razon_social_ganador ?? ''));
 @endphp
 @if(!$idOc && $estadoOc === null)
@@ -17,9 +18,18 @@
         @if($estadoOc === \App\Enums\EstadoOrdenCompraMp::CODIGO)
             @if($ocNota !== '')
                 <div><span class="text-muted">OC nota:</span> <span class="font-monospace">{{ $ocNota }}</span></div>
+                @if($registroOcNota !== '')
+                    <div class="small text-muted">{{ $registroOcNota }}</div>
+                @endif
             @endif
             @if($ocMp !== '')
                 <div><span class="text-muted">OC MP:</span> <span class="font-monospace">{{ $ocMp }}</span></div>
+                @if($seg->ocompra_mp_resuelta_en)
+                    <div class="small text-muted">Obtenida {{ $seg->ocompra_mp_resuelta_en->format('d/m/Y H:i') }}</div>
+                @endif
+                @if($seg->oc_fecha_envio)
+                    <div class="small text-muted">Enviada {{ $seg->oc_fecha_envio->format('d/m/Y H:i') }}</div>
+                @endif
             @endif
             @if($seg->ocompraNoCoincide())
                 <div><span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span></div>

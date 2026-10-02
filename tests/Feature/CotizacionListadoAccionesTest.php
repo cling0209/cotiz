@@ -39,14 +39,103 @@ class CotizacionListadoAccionesTest extends TestCase
     {
         $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
 
-        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota));
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota), [
+            'ocompra' => '1234567890',
+            'fecha_envio_oc' => '2026-10-15T14:30',
+        ]);
 
         $response->assertRedirect(route('admin.cotizaciones.index'));
         $this->assertDatabaseHas('notas', [
             'nronota' => $nota->nronota,
             'estado' => 'aceptada',
             'estadousuario' => 'admin',
+            'ocompra' => '1234567890',
+            'ocompra_usuario' => 'admin',
+            'fecha_envio_oc_usuario' => 'admin',
         ]);
+        $nota->refresh();
+        $this->assertNotNull($nota->fecha_envio_oc);
+        $this->assertNotNull($nota->ocompra_registrada_en);
+    }
+
+    public function test_aceptar_no_copia_ocompra_mp_a_manual(): void
+    {
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '100-1-COT26',
+            'ocompra_mp' => '9876543210',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota), [
+            'ocompra' => '9876543210',
+            'fecha_envio_oc' => '2026-10-01T10:00',
+        ]);
+
+        $nota->refresh();
+        $this->assertSame('', trim((string) $nota->ocompra));
+        $this->assertTrue($nota->ocompraDesdeApi());
+        $this->assertSame('9876543210', $nota->ocompraEfectiva());
+    }
+
+    public function test_aceptar_ignora_fecha_post_si_mp_tiene_fecha(): void
+    {
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '100-1-COT26',
+            'oc_fecha_envio' => '2026-09-02 17:24:14',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota), [
+            'fecha_envio_oc' => '2026-10-01T10:00',
+        ]);
+
+        $response->assertRedirect(route('admin.cotizaciones.index'));
+        $nota->refresh();
+        $this->assertTrue($nota->estaAceptada());
+        $this->assertNull($nota->fecha_envio_oc);
+        $this->assertSame('2026-09-02 17:24:14', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
+    }
+
+    public function test_aceptar_usa_fecha_envio_de_mp_si_no_se_envia_manual(): void
+    {
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '100-1-COT26',
+            'oc_fecha_envio' => '2026-09-02 17:24:14',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota));
+
+        $nota->refresh();
+        $this->assertTrue($nota->estaAceptada());
+        $this->assertNull($nota->fecha_envio_oc);
+        $this->assertSame('2026-09-02 17:24:14', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
+        $this->assertTrue($nota->fechaEnvioOcDesdeApi());
+    }
+
+    public function test_aceptada_sin_fecha_manual_muestra_fecha_mp_en_efectiva(): void
+    {
+        $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => 'aceptada']);
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '100-1-COT26',
+            'oc_fecha_envio' => '2026-09-02 17:24:14',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $nota->load('mpSeguimiento');
+        $this->assertTrue($nota->fechaEnvioOcDesdeApi());
+        $this->assertSame('2026-09-02 17:24:14', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
     }
 
     public function test_ejecutivo_no_puede_aceptar_cotizacion(): void

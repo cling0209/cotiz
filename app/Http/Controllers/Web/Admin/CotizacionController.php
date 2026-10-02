@@ -451,6 +451,8 @@ class CotizacionController extends Controller
             $this->notaService->modificarCabecera($nota, $datos, $request->user()->username);
         } catch (RuntimeException $e) {
             return back()->withInput()->withErrors(['encargado' => $e->getMessage()]);
+        } catch (\InvalidArgumentException $e) {
+            return back()->withInput()->withErrors(['ocompra' => $e->getMessage()]);
         }
 
         if ($lineas !== []) {
@@ -523,6 +525,11 @@ class CotizacionController extends Controller
             return response()->json([
                 'error' => $e->getMessage(),
                 'errors' => ['encargado' => [$e->getMessage()]],
+            ], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errors' => ['ocompra' => [$e->getMessage()]],
             ], 422);
         }
 

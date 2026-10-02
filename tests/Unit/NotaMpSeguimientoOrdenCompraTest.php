@@ -37,22 +37,57 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
         return $seg;
     }
 
-    public function test_ocompra_mp_verificada_solo_si_la_marca_es_del_codigo_actual(): void
+    public function test_registro_ocompra_manual_solo_cuando_cambia_el_codigo(): void
     {
-        $this->assertFalse($this->seguimiento(['ocompra_mp' => '931-177-AG26'])->ocompraMpVerificada());
-        $this->assertTrue($this->seguimiento([
+        $this->assertSame([], Nota::registroOcompra('931-177-AG26', ' 931-177-ag26 ', 'ana'));
+        $this->assertSame(
+            ['ocompra_usuario' => null, 'ocompra_registrada_en' => null],
+            Nota::registroOcompra('931-177-AG26', '', 'ana'),
+        );
+
+        $nuevo = Nota::registroOcompra('', '931-177-AG26', 'ana');
+        $this->assertSame('ana', $nuevo['ocompra_usuario']);
+        $this->assertNotNull($nuevo['ocompra_registrada_en']);
+    }
+
+    public function test_texto_registro_ocompra_manual(): void
+    {
+        $nota = new Nota([
+            'ocompra' => '931-177-AG26',
+            'ocompra_usuario' => 'ana',
+            'ocompra_registrada_en' => '2026-10-02 14:30:00',
+        ]);
+        $this->assertSame('ana · 02/10/2026 14:30', $nota->textoRegistroOcompra());
+        $this->assertSame('', (new Nota(['ocompra' => '931-177-AG26']))->textoRegistroOcompra());
+    }
+
+    public function test_json_orden_compra_separa_manual_y_mp_con_fechas(): void
+    {
+        $seg = $this->seguimiento([
             'ocompra_mp' => '931-177-AG26',
-            'ocompra_verificada_codigo' => '931-177-ag26 ',
-        ])->ocompraMpVerificada());
-        // Cambió el código: hay que revisarlo de nuevo.
-        $this->assertFalse($this->seguimiento([
-            'ocompra_mp' => '931-177-AG26',
-            'ocompra_verificada_codigo' => '931-171-AG26',
-        ])->ocompraMpVerificada());
-        $this->assertFalse($this->seguimiento([
-            'ocompra_mp' => null,
-            'ocompra_verificada_codigo' => '931-171-AG26',
-        ])->ocompraMpVerificada());
+            'ocompra_mp_resuelta_en' => '2026-10-01 09:15:00',
+            'oc_fecha_envio' => '2026-09-30 18:00:00',
+        ]);
+
+        $json = $seg->ordenCompraParaJson();
+        $this->assertNull($json['orden_compra_nota']);
+        $this->assertSame('931-177-AG26', $json['orden_compra_mp']);
+        $this->assertSame('01/10/2026 09:15', $json['orden_compra_mp_resuelta_en']);
+        $this->assertSame('30/09/2026 18:00', $json['orden_compra_mp_fecha_envio']);
+    }
+
+    public function test_fecha_envio_oc_efectiva_manual_prevalece_sobre_mp(): void
+    {
+        $nota = new Nota([
+            'fecha_envio_oc' => '2026-10-01 10:00:00',
+        ]);
+        $seg = new NotaMpSeguimiento([
+            'oc_fecha_envio' => '2026-09-02 17:24:14',
+        ]);
+        $nota->setRelation('mpSeguimiento', $seg);
+
+        $this->assertSame('2026-10-01 10:00:00', $nota->fechaEnvioOcEfectiva()?->format('Y-m-d H:i:s'));
+        $this->assertFalse($nota->fechaEnvioOcDesdeApi());
     }
 
     public function test_nota_aceptada_por_boton(): void
@@ -93,7 +128,10 @@ class NotaMpSeguimientoOrdenCompraTest extends TestCase
             'orden_compra_estado' => 'otra_empresa',
             'orden_compra_texto' => 'OC entregada a otra empresa',
             'orden_compra_nota' => '3482-106-AG26',
+            'orden_compra_nota_registro' => null,
             'orden_compra_mp' => null,
+            'orden_compra_mp_resuelta_en' => null,
+            'orden_compra_mp_fecha_envio' => null,
             'orden_compra_no_coincide' => false,
         ], $seg->ordenCompraParaJson());
     }

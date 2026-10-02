@@ -22,7 +22,7 @@ class NotaAdjudicadaListadoService
         $query = Nota::query()
             ->select('notas.*')
             ->whereRaw("LOWER(COALESCE(notas.estado, '')) = 'aceptada'")
-            ->with('usuarioRel');
+            ->with(['usuarioRel', 'mpSeguimiento']);
 
         if ($user->username !== 'admin') {
             $query->where('notas.usuario', '<>', 'admin');

@@ -53,6 +53,7 @@ class NotaRecepcionApiService
 
             $fecha = $this->parseFecha($payload['fecha'] ?? null) ?? now()->toDateString();
             $fechaEntrega = $this->parseFecha($payload['fechaentrega'] ?? null);
+            $ocompra = trim((string) ($payload['ocompra'] ?? ''));
 
             Nota::query()->create([
                 'nronota' => $nronota,
@@ -73,10 +74,10 @@ class NotaRecepcionApiService
                 'estado' => trim((string) ($payload['estado'] ?? '')) ?: null,
                 'estadofecha' => now(),
                 'estadousuario' => trim((string) ($payload['estadousuario'] ?? $usuario)),
-                'ocompra' => trim((string) ($payload['ocompra'] ?? '')),
+                'ocompra' => $ocompra,
                 'fechaentrega' => $fechaEntrega,
                 'factor_precio_venta' => $this->parseFactor($payload['factor_precio_venta'] ?? null),
-            ]);
+            ] + Nota::registroOcompra('', $ocompra, $usuario));
 
             return $nronota;
         });

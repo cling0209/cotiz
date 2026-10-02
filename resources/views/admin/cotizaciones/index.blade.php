@@ -163,6 +163,7 @@
                         <th>Usuario</th>
                         <th>Obs. ejecutivo</th>
                         <th>Estado</th>
+                        <th>OC / env&iacute;o</th>
                             @if($puedeVerEstadoMp ?? false)
                                 <th>Estado MP</th>
                                 <th>Ganador / OC</th>
@@ -172,7 +173,7 @@
                 </thead>
                 <tbody>
                     @php
-                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 12 : 10;
+                        $colspanListado = ($puedeVerEstadoMp ?? false) ? 13 : 11;
                     @endphp
                     @forelse($cotizaciones as $nota)
                         @php
@@ -258,6 +259,9 @@
                                 @endif
                             </td>
                             <td>{{ $nota->estado ?: '—' }}</td>
+                            <td class="small text-nowrap">
+                                @include('admin.cotizaciones.partials.celda-oc-envio', ['nota' => $nota])
+                            </td>
                             @if($puedeVerEstadoMp ?? false)
                                 <td>@include('admin.compra-agil.partials.resultado-badge', ['resultado' => $estadoMp])</td>
                                 <td>
@@ -313,12 +317,15 @@
                                         @endif
 
                                         @if(!$estaAceptada)
-                                            <form method="post" action="{{ route('admin.cotizaciones.aceptar', $nota->nronota) }}" class="d-inline"
-                                                  data-confirm="¿Marcar cotización #{{ $nota->nronota }} como aceptada?">
-                                                @csrf
-                                                @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
-                                                <button type="submit" class="btn btn-outline-success btn-sm">Aceptar</button>
-                                            </form>
+                                            <button type="button"
+                                                    class="btn btn-outline-success btn-sm js-abrir-aceptar-cotizacion"
+                                                    data-nronota="{{ $nota->nronota }}"
+                                                    data-action="{{ route('admin.cotizaciones.aceptar', $nota->nronota) }}"
+                                                    data-ocompra-manual="{{ trim((string) $nota->ocompra) }}"
+                                                    data-ocompra-mp="{{ $nota->mpSeguimiento?->ocompraMp() ?? '' }}"
+                                                    data-fecha-mp="{{ $nota->mpSeguimiento?->oc_fecha_envio?->timezone(config('app.timezone'))->format('Y-m-d\TH:i') ?? '' }}">
+                                                Aceptar
+                                            </button>
                                         @else
                                             <form method="post" action="{{ route('admin.cotizaciones.no-aceptar', $nota->nronota) }}" class="d-inline"
                                                   data-confirm="¿Quitar estado aceptada de la cotización #{{ $nota->nronota }}?">
@@ -371,6 +378,48 @@
             </div>
         @endif
     </div>
+
+    @if($puedeGestionar)
+        <div class="modal fade" id="modalAceptarCotizacion" tabindex="-1" aria-labelledby="modalAceptarCotizacionLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" action="#" id="formAceptarCotizacion">
+                        @csrf
+                        @include('admin.cotizaciones._filtros_ocultos', ['filtros' => $filtros, 'page' => $cotizaciones->currentPage()])
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modalAceptarCotizacionLabel">Aceptar cotizaci&oacute;n</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="small text-muted mb-3" id="modalAceptarCotizacionTexto"></p>
+                            <div class="mb-3" id="wrapAceptarOcompraManual">
+                                <label class="form-label" for="ocompra">Orden de compra</label>
+                                <input type="text" name="ocompra" id="ocompra" class="form-control form-control-sm" maxlength="20" autocomplete="off">
+                            </div>
+                            <div class="mb-3" id="wrapAceptarOcompraMp" hidden>
+                                <span class="form-label d-block">Orden de compra (Mercado P&uacute;blico)</span>
+                                <p class="form-control-plaintext small mb-0 py-1" id="ocompraMpDisplay"></p>
+                                <p class="form-text mb-0">Obtenida desde la API; no se puede modificar.</p>
+                            </div>
+                            <div class="mb-2" id="wrapAceptarFechaManual">
+                                <label class="form-label" for="fecha_envio_oc">Fecha env&iacute;o OC</label>
+                                <input type="datetime-local" name="fecha_envio_oc" id="fecha_envio_oc" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="mb-2" id="wrapAceptarFechaMp" hidden>
+                                <span class="form-label d-block">Fecha env&iacute;o OC (Mercado P&uacute;blico)</span>
+                                <p class="form-control-plaintext small mb-0 py-1" id="fechaMpDisplay"></p>
+                                <p class="form-text mb-0">Obtenida desde la API; no se puede modificar.</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success btn-sm">Aceptar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>
 @endsection
 
@@ -428,5 +477,82 @@ document.addEventListener('submit', function (e) {
         form.submit();
     });
 });
+
+(function () {
+    const modalEl = document.getElementById('modalAceptarCotizacion');
+    const form = document.getElementById('formAceptarCotizacion');
+    if (!modalEl || !form) {
+        return;
+    }
+    const inputOcompra = document.getElementById('ocompra');
+    const inputFecha = document.getElementById('fecha_envio_oc');
+    const texto = document.getElementById('modalAceptarCotizacionTexto');
+    const wrapOcompraManual = document.getElementById('wrapAceptarOcompraManual');
+    const wrapOcompraMp = document.getElementById('wrapAceptarOcompraMp');
+    const ocompraMpDisplay = document.getElementById('acompraMpDisplay');
+    const wrapFechaManual = document.getElementById('wrapAceptarFechaManual');
+    const wrapFechaMp = document.getElementById('wrapAceptarFechaMp');
+    const fechaMpDisplay = document.getElementById('fechaMpDisplay');
+    const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+    function formatearFechaMpLocal(isoLocal) {
+        if (!isoLocal) {
+            return '';
+        }
+        const partes = isoLocal.split('T');
+        if (partes.length !== 2) {
+            return isoLocal;
+        }
+        const d = partes[0].split('-');
+        const h = partes[1].slice(0, 5);
+        if (d.length !== 3) {
+            return isoLocal;
+        }
+        return d[2] + '/' + d[1] + '/' + d[0] + ' ' + h;
+    }
+
+    document.querySelectorAll('.js-abrir-aceptar-cotizacion').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const nronota = btn.getAttribute('data-nronota') || '';
+            const action = btn.getAttribute('data-action') || '';
+            const ocompraManual = btn.getAttribute('data-ocompra-manual') || '';
+            const ocompraMp = btn.getAttribute('data-ocompra-mp') || '';
+            const fechaMp = btn.getAttribute('data-fecha-mp') || '';
+            const bloquearOcompraMp = ocompraManual === '' && ocompraMp !== '';
+            const bloquearFechaMp = fechaMp !== '';
+            form.action = action;
+            if (texto) {
+                texto.textContent = 'Cotizaci\u00f3n #' + nronota + '. Revise la orden de compra y la fecha de env\u00edo antes de aceptar.';
+            }
+            if (wrapOcompraManual) {
+                wrapOcompraManual.hidden = bloquearOcompraMp;
+            }
+            if (wrapOcompraMp) {
+                wrapOcompraMp.hidden = !bloquearOcompraMp;
+            }
+            if (ocompraMpDisplay) {
+                ocompraMpDisplay.textContent = bloquearOcompraMp ? ocompraMp : '';
+            }
+            if (inputOcompra) {
+                inputOcompra.value = bloquearOcompraMp ? '' : ocompraManual;
+                inputOcompra.required = !bloquearOcompraMp;
+            }
+            if (wrapFechaManual) {
+                wrapFechaManual.hidden = bloquearFechaMp;
+            }
+            if (wrapFechaMp) {
+                wrapFechaMp.hidden = !bloquearFechaMp;
+            }
+            if (fechaMpDisplay) {
+                fechaMpDisplay.textContent = bloquearFechaMp ? formatearFechaMpLocal(fechaMp) : '';
+            }
+            if (inputFecha) {
+                inputFecha.value = bloquearFechaMp ? '' : '';
+                inputFecha.required = !bloquearFechaMp;
+            }
+            bsModal.show();
+        });
+    });
+})();
 </script>
 @endpush

@@ -11,6 +11,7 @@ use App\Services\NotaListadoService;
 use App\Services\NotaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -87,7 +88,26 @@ class CotizacionListadoController extends Controller
             return $this->volverListado($request)->with('info', 'La cotización ya está aceptada.');
         }
 
-        $this->notaService->aceptar($nota, $request->user()->username);
+        $nota->loadMissing('mpSeguimiento');
+
+        $fechaEnvioOc = null;
+        if (! $nota->tieneFechaEnvioOcApiObtenida() && $request->filled('fecha_envio_oc')) {
+            $fechaEnvioOc = Carbon::parse(
+                (string) $request->input('fecha_envio_oc'),
+                (string) config('app.timezone', 'America/Santiago'),
+            );
+        }
+
+        $ocompra = null;
+        if (! $nota->tieneOcompraMpObtenida() && $request->has('ocompra')) {
+            $ocompra = (string) $request->input('ocompra');
+        }
+
+        try {
+            $this->notaService->aceptar($nota, $request->user()->username, $fechaEnvioOc, $ocompra);
+        } catch (\InvalidArgumentException $e) {
+            return $this->volverListado($request)->with('error', $e->getMessage());
+        }
 
         return $this->volverListado($request)->with('success', 'Cotización aceptada.');
     }

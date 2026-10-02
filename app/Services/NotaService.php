@@ -131,6 +131,8 @@ class NotaService
                 'enviadoapi' => 0,
                 'diashabiles' => $origen->diashabiles ?? (int) config('cotiz.diashabiles_rm', 5),
                 'ocompra' => $origen->ocompra,
+                'ocompra_usuario' => $origen->ocompra_usuario,
+                'ocompra_registrada_en' => $origen->ocompra_registrada_en,
                 'fechaentrega' => $origen->fechaentrega,
                 'factor_precio_venta' => $origen->factor_precio_venta,
                 'direccion_entrega' => $origen->direccion_entrega,
@@ -386,6 +388,19 @@ class NotaService
             $payload['observacion_ejecutivo'] = $obs !== '' ? $obs : null;
         }
 
+        $nota->loadMissing('mpSeguimiento');
+        $codigoMp = strtoupper(trim((string) ($nota->mpSeguimiento?->ocompra_mp ?? '')));
+        $manualActual = strtoupper(trim((string) ($nota->ocompra ?? '')));
+        $codigoSolicitado = strtoupper(trim((string) ($payload['ocompra'] ?? '')));
+        if ($codigoMp !== '' && $manualActual === '') {
+            if ($codigoSolicitado !== '' && $codigoSolicitado !== $codigoMp) {
+                throw new \InvalidArgumentException('No puede modificar la orden de compra obtenida de Mercado Público.');
+            }
+            $payload['ocompra'] = $nota->ocompra;
+        } else {
+            $payload += Nota::registroOcompra($nota->ocompra, $payload['ocompra'], $usuarioModifica);
+        }
+
         $nota->update($payload);
 
         $this->auditoria->registrarModificar(
@@ -564,13 +579,50 @@ class NotaService
     /**
      * Factor de precio venta: positivo, máximo 2 decimales (acepta coma o punto).
      */
-    public function aceptar(Nota $nota, string $usuario): Nota
-    {
-        $nota->update([
+    public function aceptar(
+        Nota $nota,
+        string $usuario,
+        ?\Carbon\Carbon $fechaEnvioOc = null,
+        ?string $ocompra = null,
+    ): Nota {
+        $nota->loadMissing('mpSeguimiento');
+
+        $codigoMp = strtoupper(trim((string) ($nota->mpSeguimiento?->ocompra_mp ?? '')));
+        $fechaMp = $nota->mpSeguimiento?->oc_fecha_envio;
+
+        if ($codigoMp !== '' && $ocompra !== null) {
+            $solicitado = mb_substr(strtoupper(trim($ocompra)), 0, 20);
+            if ($solicitado !== '' && $solicitado !== $codigoMp) {
+                throw new \InvalidArgumentException('No puede modificar la orden de compra obtenida de Mercado Público.');
+            }
+        }
+
+        if ($fechaMp !== null && $fechaEnvioOc !== null && ! $fechaEnvioOc->equalTo($fechaMp)) {
+            throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
+        }
+
+        $payload = [
             'estado' => 'aceptada',
             'estadofecha' => now(),
             'estadousuario' => $usuario,
-        ]);
+        ];
+
+        if ($ocompra !== null && $codigoMp === '') {
+            $ocompra = mb_substr(strtoupper(trim($ocompra)), 0, 20);
+            if ($ocompra !== '') {
+                $payload['ocompra'] = $ocompra;
+                $payload += Nota::registroOcompra($nota->ocompra, $ocompra, $usuario);
+            }
+        }
+
+        if ($fechaMp === null && $fechaEnvioOc !== null) {
+            $usuario = trim($usuario);
+            $payload['fecha_envio_oc'] = $fechaEnvioOc;
+            $payload['fecha_envio_oc_usuario'] = $usuario !== '' ? mb_substr($usuario, 0, 50) : null;
+            $payload['fecha_envio_oc_registrada_en'] = now();
+        }
+
+        $nota->update($payload);
 
         return $nota->fresh();
     }
@@ -581,6 +633,9 @@ class NotaService
             'estado' => '',
             'estadofecha' => now(),
             'estadousuario' => $usuario,
+            'fecha_envio_oc' => null,
+            'fecha_envio_oc_usuario' => null,
+            'fecha_envio_oc_registrada_en' => null,
         ]);
 
         return $nota->fresh();

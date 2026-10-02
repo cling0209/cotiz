@@ -9,6 +9,7 @@ cotiz-*.env
 *.env.local
 .phpactor.json
 .phpunit.result.cache
+/.php-local/
 /.codex
 /.cursor/
 /.idea

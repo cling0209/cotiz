@@ -8,6 +8,7 @@ use App\Services\CompraAgilGanadorResolver;
 use App\Services\CompraAgilTextoParserService;
 use App\Services\MercadoPublicoOrdenCompraService;
 use App\Services\NotaMpResultadosService;
+use App\Services\NotaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -197,119 +198,38 @@ class BackfillOcFechasTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_revalidar_ocompra_mp_borra_codigo_que_no_calza(): void
+    public function test_modificar_cabecera_registra_usuario_y_fecha_de_ocompra_manual(): void
     {
-        config([
-            'cotiz.mercadopublico.ticket' => 'test-ticket',
-            'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
-        ]);
-
         $nota = Nota::query()->create([
-            'nronota' => 16319,
-            'descripcion' => 'OC equivocada',
+            'nronota' => 16330,
+            'descripcion' => 'OC manual',
             'fecha' => now()->toDateString(),
             'usuario' => 'admin',
             'empresa' => 'Cliente',
-            'encargado' => '911-119-COT26',
-            'ocompra' => '911-171-AG26',
-            'nota_softland' => 1631900,
-            'enviadoapi' => 0,
-            'factor_precio_venta' => 1.30,
-        ]);
-
-        NotaMpSeguimiento::query()->create([
-            'nronota' => $nota->nronota,
-            'codigo_proceso' => '911-119-COT26',
-            'id_orden_compra' => 55500001,
-            'ocompra_mp' => '911-171-AG26',
-            'monto_total_ganador' => 543302,
-            'oc_estado' => 'Aceptada',
-            'resultado_propio' => 'cerrada',
-            'finalizado' => true,
-        ]);
-
-        Http::fake([
-            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
-                'Cantidad' => 1,
-                'Listado' => [['Codigo' => '911-171-AG26', 'Nombre' => 'ARTICULOS DE ASEO', 'Total' => 120000]],
-            ]),
-        ]);
-
-        $service = app(NotaMpResultadosService::class);
-
-        $simulado = $service->revalidarOcompraMp(16319);
-        $this->assertSame('no_coincide', $simulado['resultado']);
-        $this->assertDatabaseHas('nota_mp_seguimientos', ['nronota' => 16319, 'ocompra_mp' => '911-171-AG26']);
-
-        $this->assertDatabaseHas('nota_mp_seguimientos', ['nronota' => 16319, 'ocompra_verificada_codigo' => null]);
-
-        $aplicado = $service->revalidarOcompraMp(16319, aplicar: true, limpiarNota: true);
-        $this->assertSame('no_coincide', $aplicado['resultado']);
-        $this->assertTrue($aplicado['nota_limpiada']);
-        $this->assertDatabaseHas('nota_mp_seguimientos', [
-            'nronota' => 16319,
-            'ocompra_mp' => null,
-            'oc_estado' => null,
-            'ocompra_verificada_codigo' => '911-171-AG26',
-            'ocompra_verificacion' => 'no_coincide',
-        ]);
-        $this->assertDatabaseHas('notas', ['nronota' => 16319, 'ocompra' => '']);
-    }
-
-    public function test_revalidar_ocompra_mp_marca_verificada_si_trae_el_cot(): void
-    {
-        config([
-            'cotiz.mercadopublico.ticket' => 'test-ticket',
-            'cotiz.mercadopublico.oc_v1_base_url' => 'https://api.mercadopublico.cl/servicios/v1/publico',
-        ]);
-
-        $nota = Nota::query()->create([
-            'nronota' => 16320,
-            'descripcion' => 'OC correcta',
-            'fecha' => now()->toDateString(),
-            'usuario' => 'admin',
-            'empresa' => 'Cliente',
-            'encargado' => '931-119-COT26',
+            'encargado' => '931-330-COT26',
+            'celular' => '',
+            'contacto' => '',
+            'contactocorreo' => '',
             'ocompra' => '',
-            'nota_softland' => 1632000,
+            'nota_softland' => 1633000,
             'enviadoapi' => 0,
             'factor_precio_venta' => 1.30,
         ]);
 
-        NotaMpSeguimiento::query()->create([
-            'nronota' => $nota->nronota,
-            'codigo_proceso' => '931-119-COT26',
-            'id_orden_compra' => 55556573,
-            'ocompra_mp' => '931-177-AG26',
-            'monto_total_ganador' => 640927,
-            'resultado_propio' => 'cerrada',
-            'finalizado' => true,
-        ]);
+        $service = app(NotaService::class);
+        $service->modificarCabecera($nota, ['ocompra' => '931-400-AG26'], 'ejecutivo');
 
-        Http::fake([
-            'api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json*' => Http::response([
-                'Cantidad' => 1,
-                'Listado' => [[
-                    'Codigo' => '931-177-AG26',
-                    'Nombre' => 'compra ágil: 931-119-COT26 adquisición mat. de librería',
-                    'Total' => 640927,
-                ]],
-            ]),
-        ]);
+        $nota->refresh();
+        $this->assertSame('931-400-AG26', $nota->ocompra);
+        $this->assertSame('ejecutivo', $nota->ocompra_usuario);
+        $this->assertNotNull($nota->ocompra_registrada_en);
 
-        $r = app(NotaMpResultadosService::class)->revalidarOcompraMp(16320, aplicar: true);
-
-        $this->assertSame('ok_cot', $r['resultado']);
-        $this->assertDatabaseHas('nota_mp_seguimientos', [
-            'nronota' => 16320,
-            'ocompra_mp' => '931-177-AG26',
-            'ocompra_verificada_codigo' => '931-177-AG26',
-            'ocompra_verificacion' => 'ok_cot',
-        ]);
-        $this->assertTrue(NotaMpSeguimiento::query()->find(16320)->ocompraMpVerificada());
+        // Otro usuario guarda la cabecera sin cambiar el código: se conserva quién lo ingresó.
+        $service->modificarCabecera($nota, ['ocompra' => '931-400-AG26', 'descripcion' => 'Otra'], 'admin');
+        $this->assertSame('ejecutivo', $nota->fresh()->ocompra_usuario);
     }
 
-    public function test_revalidar_y_rellenar_omiten_nota_aceptada(): void
+    public function test_rellenar_omite_nota_aceptada(): void
     {
         $nota = Nota::query()->create([
             'nronota' => 16321,
@@ -338,7 +258,6 @@ class BackfillOcFechasTest extends TestCase
         Http::fake();
 
         $service = app(NotaMpResultadosService::class);
-        $this->assertSame('skipped', $service->revalidarOcompraMp(16321, aplicar: true)['resultado']);
         $this->assertSame('skipped', $service->rellenarOcompraDesdeIdOrdenCompra(16321));
         Http::assertNothingSent();
         $this->assertDatabaseHas('nota_mp_seguimientos', ['nronota' => 16321, 'ocompra_mp' => '2859-999-AG26']);

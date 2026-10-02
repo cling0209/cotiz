@@ -175,7 +175,7 @@ class CotizacionExportService
             $this->entreComillas($fecha),
             $this->entreComillas($fechaEntrega),
             '',
-            $this->entreComillas((string) ($nota->ocompra ?? '')),
+            $this->entreComillas($nota->ocompraEfectiva()),
             $this->entreComillas($rut),
             $this->entreComillas('01'),
             '',

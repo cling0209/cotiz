@@ -50,6 +50,7 @@
                         <th>Empresa</th>
                         <th>Usuario</th>
                         <th>Fecha entrega</th>
+                        <th>OC / env&iacute;o</th>
                         <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
@@ -61,6 +62,9 @@
                             <td>{{ $nota->empresa }}</td>
                             <td>{{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}</td>
                             <td>{{ $nota->fechaentrega?->format('d/m/Y') ?: '—' }}</td>
+                            <td class="small text-nowrap">
+                                @include('admin.cotizaciones.partials.celda-oc-envio', ['nota' => $nota])
+                            </td>
                             <td class="text-end">
                                 <a href="{{ route('admin.cotizaciones.edit', array_merge(['nronota' => $nota->nronota], $adjudicadasRetorno)) }}" class="btn btn-outline-primary btn-sm">
                                     Ver cotizaci&oacute;n
@@ -68,7 +72,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted py-4">Sin cotizaciones adjudicadas.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">Sin cotizaciones adjudicadas.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Nota;
 use App\Services\NotaMpResultadosService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class BackfillOcFechasCommand extends Command
@@ -41,9 +42,13 @@ class BackfillOcFechasCommand extends Command
         $nronotaOpt = $this->option('nronota');
 
         $query = Nota::query()
-            ->select(['notas.nronota', 'notas.ocompra', 'seg.rut_ganador'])
+            ->select([
+                'notas.nronota',
+                DB::raw("COALESCE(NULLIF(trim(notas.ocompra), ''), seg.ocompra_mp) as ocompra"),
+                'seg.rut_ganador',
+            ])
             ->join('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'notas.nronota')
-            ->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
+            ->whereRaw("trim(coalesce(NULLIF(trim(notas.ocompra), ''), seg.ocompra_mp, '')) <> ''")
             ->where(function ($q) {
                 $q->whereNull('seg.oc_fecha_envio')
                     ->orWhereNull('seg.oc_fecha_creacion');

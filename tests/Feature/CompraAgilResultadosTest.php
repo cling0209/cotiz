@@ -1603,7 +1603,7 @@ class CompraAgilResultadosTest extends TestCase
         Carbon::setTestNow();
     }
 
-    public function test_pendientes_incluye_cerrada_con_ocompra_mp_sin_verificar_salvo_aceptada(): void
+    public function test_pendientes_no_revalida_cerrada_con_ocompra_mp(): void
     {
         config([
             'app.timezone' => 'America/Santiago',
@@ -1612,7 +1612,7 @@ class CompraAgilResultadosTest extends TestCase
 
         Carbon::setTestNow(Carbon::parse('2026-10-01 10:00:00', 'America/Santiago'));
 
-        $crear = function (int $nronota, string $estado, ?string $verificada) {
+        $crear = function (int $nronota, string $estado) {
             Nota::query()->create([
                 'nronota' => $nronota,
                 'descripcion' => 'Cerrada con OC del proceso',
@@ -1635,19 +1635,17 @@ class CompraAgilResultadosTest extends TestCase
                 'finalizado' => true,
                 'id_orden_compra' => 55556573,
                 'ocompra_mp' => '931-171-AG26',
-                'ocompra_verificada_codigo' => $verificada,
                 'rut_ganador' => '76.356.855-5',
                 'ultimo_consultado_en' => Carbon::parse('2026-09-30 10:30:00', 'America/Santiago'),
             ]);
         };
 
-        $crear(16319, '', null);
-        $crear(16320, '', '931-171-AG26');
-        $crear(16321, 'aceptada', null);
+        $crear(16319, '');
+        $crear(16321, 'aceptada');
 
         $pendientes = $this->app->make(NotaMpResultadosService::class)->notasPendientesConsulta();
 
-        $this->assertSame([16319], $pendientes->pluck('nronota')->map(fn ($n) => (int) $n)->all());
+        $this->assertSame(0, $pendientes->count());
 
         Carbon::setTestNow();
     }

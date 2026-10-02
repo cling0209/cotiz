@@ -26,7 +26,6 @@ class NotaMpSeguimiento extends Model
         'fecha_cierre_primer_llamado', 'fecha_cierre_segundo_llamado',
         'rut_ganador', 'razon_social_ganador', 'id_orden_compra',
         'ocompra_mp', 'ocompra_mp_resuelta_en',
-        'ocompra_verificada_codigo', 'ocompra_verificacion', 'ocompra_verificada_en',
         'oc_fecha_envio', 'oc_fecha_creacion', 'oc_fecha_aceptacion', 'oc_estado',
         'monto_total_ganador',
         'resultado_propio', 'finalizado', 'ultimo_usuario', 'ultimo_consultado_en', 'ultima_corrida_id',
@@ -49,7 +48,6 @@ class NotaMpSeguimiento extends Model
             'oc_fecha_creacion' => 'datetime',
             'oc_fecha_aceptacion' => 'datetime',
             'ocompra_mp_resuelta_en' => 'datetime',
-            'ocompra_verificada_en' => 'datetime',
             'convocatoria_estado' => 'integer',
             'ultimo_consultado_en' => 'datetime',
         ];
@@ -119,15 +117,6 @@ class NotaMpSeguimiento extends Model
     public function ocompraMp(): string
     {
         return strtoupper(trim((string) ($this->ocompra_mp ?? '')));
-    }
-
-    /** El código MP actual ya se revisó contra MP (si cambia el código, vuelve a revisarse). */
-    public function ocompraMpVerificada(): bool
-    {
-        $codigo = $this->ocompraMp();
-
-        return $codigo !== ''
-            && strtoupper(trim((string) ($this->ocompra_verificada_codigo ?? ''))) === $codigo;
     }
 
     /** Código que cuenta para comisión y estado: el de la nota si existe; si no, el de MP. */
@@ -212,13 +201,17 @@ class NotaMpSeguimiento extends Model
      *     orden_compra_estado: ?string,
      *     orden_compra_texto: ?string,
      *     orden_compra_nota: ?string,
+     *     orden_compra_nota_registro: ?string,
      *     orden_compra_mp: ?string,
+     *     orden_compra_mp_resuelta_en: ?string,
+     *     orden_compra_mp_fecha_envio: ?string,
      *     orden_compra_no_coincide: bool
      * }
      */
     public function ordenCompraParaJson(): array
     {
         $estado = $this->estadoOrdenCompraMp();
+        $ocompraMp = $this->ocompraMp();
 
         return [
             'orden_compra' => $estado === EstadoOrdenCompraMp::CODIGO
@@ -227,7 +220,16 @@ class NotaMpSeguimiento extends Model
             'orden_compra_estado' => $estado?->value,
             'orden_compra_texto' => $estado?->etiqueta(),
             'orden_compra_nota' => $this->ocompraNota() ?: null,
-            'orden_compra_mp' => $this->ocompraMp() ?: null,
+            'orden_compra_nota_registro' => $this->ocompraNota() !== ''
+                ? ($this->nota?->textoRegistroOcompra() ?: null)
+                : null,
+            'orden_compra_mp' => $ocompraMp ?: null,
+            'orden_compra_mp_resuelta_en' => $ocompraMp !== ''
+                ? $this->ocompra_mp_resuelta_en?->format('d/m/Y H:i')
+                : null,
+            'orden_compra_mp_fecha_envio' => $ocompraMp !== ''
+                ? $this->oc_fecha_envio?->format('d/m/Y H:i')
+                : null,
             'orden_compra_no_coincide' => $this->ocompraNoCoincide(),
         ];
     }

@@ -10,6 +10,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CotizacionListadoExportService
 {
+    /** OC manual de la nota; si está vacía, la resuelta desde MP (requiere join `seg`). */
+    private const SQL_OCOMPRA_EFECTIVA = "COALESCE(NULLIF(TRIM(n.ocompra), ''), seg.ocompra_mp)";
+
     /**
      * @return Collection<int, object{prod_item: string, prod_nombre: string, prod_valor: int, valorconimpuesto: int}>
      */
@@ -308,6 +311,7 @@ class CotizacionListadoExportService
             $query = DB::table('notasdetalle as nd')
                 ->join('notas as n', 'n.nronota', '=', 'nd.nronota')
                 ->leftJoin('maeprod as mp', 'mp.prod_item', '=', 'nd.prod_item')
+                ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'n.nronota')
                 ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'");
 
             $this->aplicarFiltroFechaListado($query, $filtros);
@@ -319,7 +323,7 @@ class CotizacionListadoExportService
                     'nd.nronota',
                     'n.fecha',
                     'n.encargado as numero_cotizacion',
-                    'n.ocompra as orden_compra',
+                    DB::raw(self::SQL_OCOMPRA_EFECTIVA.' as orden_compra'),
                     'nd.prod_item as codigo_producto',
                     DB::raw("{$nombreProducto} as nombre_producto"),
                     'nd.cantidad',
@@ -397,6 +401,7 @@ class CotizacionListadoExportService
             $query = DB::table('notas as n')
                 ->join('notasdetalle as nd', 'nd.nronota', '=', 'n.nronota')
                 ->leftJoin('users as u', 'u.username', '=', 'n.usuario')
+                ->leftJoin('nota_mp_seguimientos as seg', 'seg.nronota', '=', 'n.nronota')
                 ->whereRaw("LOWER(COALESCE(n.estado, '')) = 'aceptada'")
                 ->orderByDesc('n.nronota')
                 ->orderBy('nd.orden');
@@ -426,7 +431,7 @@ class CotizacionListadoExportService
                 'n.contactocorreo',
                 'n.rutempresa',
                 'n.diashabiles',
-                'n.ocompra',
+                DB::raw(self::SQL_OCOMPRA_EFECTIVA.' as ocompra'),
                 'n.fechaentrega',
                 'n.descripcion',
                 'n.usuario',

@@ -518,6 +518,15 @@ class CompraAgilComisionesService
     /**
      * Fecha a mostrar en columna «Fecha envío OC o última modificación».
      */
+    private function fechaEnvioOcParaFila(?Nota $nota, NotaMpSeguimiento $seg): mixed
+    {
+        if ($nota?->estaAceptada()) {
+            return $nota->fechaEnvioOcEfectiva();
+        }
+
+        return $this->fechaEnvioOUltimaModificacion($seg);
+    }
+
     private function fechaEnvioOUltimaModificacion(NotaMpSeguimiento $seg): mixed
     {
         $resultado = (string) ($seg->resultado_propio ?? '');
@@ -698,9 +707,11 @@ class CompraAgilComisionesService
             'es_ganada' => $esGanada,
             'orden_compra' => $ordenCompra,
             'orden_compra_nota' => $seg->ocompraNota(),
+            'orden_compra_nota_registro' => $seg->ocompraNota() !== '' ? ($nota?->textoRegistroOcompra() ?? '') : '',
             'orden_compra_mp' => $seg->ocompraMp(),
+            'orden_compra_mp_resuelta_en' => $seg->ocompraMp() !== '' ? $seg->ocompra_mp_resuelta_en : null,
             'orden_compra_no_coincide' => $seg->ocompraNoCoincide(),
-            'fecha_envio_oc' => $this->fechaEnvioOUltimaModificacion($seg),
+            'fecha_envio_oc' => $this->fechaEnvioOcParaFila($nota, $seg),
             'ejecutivo' => $ejecutivo !== '' ? $ejecutivo : '—',
             'ejecutivo_username' => $ejecutivoUsername,
             'region_nombre' => $this->regionNombreNota($nota),

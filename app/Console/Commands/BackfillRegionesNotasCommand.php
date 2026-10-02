@@ -35,7 +35,15 @@ class BackfillRegionesNotasCommand extends Command
             ->orderByDesc('notas.nronota');
 
         if ($this->option('solo-con-oc')) {
-            $query->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''");
+            $query->where(function ($q) {
+                $q->whereRaw("trim(coalesce(notas.ocompra, '')) <> ''")
+                    ->orWhereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('nota_mp_seguimientos as seg')
+                            ->whereColumn('seg.nronota', 'notas.nronota')
+                            ->whereRaw("trim(coalesce(seg.ocompra_mp, '')) <> ''");
+                    });
+            });
         }
 
         if ($nronotaOpt !== null && $nronotaOpt !== '') {

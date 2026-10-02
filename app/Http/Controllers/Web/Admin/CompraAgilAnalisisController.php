@@ -143,7 +143,7 @@ class CompraAgilAnalisisController extends Controller
                 'finalizado' => $seg->finalizado,
                 'monto_total_ganador' => $seg->monto_total_ganador,
                 'id_orden_compra' => $seg->id_orden_compra,
-                'ocompra' => trim((string) ($seg->nota?->ocompra ?? '')) ?: null,
+                'ocompra' => $seg->ocompraEfectiva() ?: null,
                 ...$seg->ordenCompraParaJson(),
                 'es_ganador_grupo' => $seg->esGanadorGrupo(),
                 'es_ganador_propio' => $seg->esGanadorPropio(),

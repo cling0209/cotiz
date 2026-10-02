@@ -128,7 +128,35 @@
                 </tr>
                 <tr>
                     <th>O.Compra</th>
-                    <td><input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"></td>
+                    @php
+                        $segOc = $nota->exists ? $nota->mpSeguimiento : null;
+                        $ocompraMp = $segOc?->ocompraMp() ?? '';
+                        $registroOcManual = trim((string) $nota->ocompra) !== '' ? $nota->textoRegistroOcompra() : '';
+                    @endphp
+                    <td>
+                        @php
+                            $bloquearOcompraPorMp = $nota->exists && $nota->ocompraDesdeApi();
+                        @endphp
+                        <input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"
+                            @if($bloquearOcompraPorMp) readonly @endif>
+                        @if($bloquearOcompraPorMp)
+                            <small class="text-muted d-block">C&oacute;digo de Mercado P&uacute;blico; no se puede modificar aqu&iacute;.</small>
+                        @endif
+                        @if($registroOcManual !== '')
+                            <small class="text-muted d-block" title="Usuario y fecha en que se ingresó el código manual">Ingresada: {{ $registroOcManual }}</small>
+                        @endif
+                        @if($ocompraMp !== '')
+                            <small class="text-muted d-block" title="Código obtenido de Mercado Público; se usa mientras no se ingrese uno manual">
+                                MP: {{ $ocompraMp }}
+                                @if($segOc->ocompra_mp_resuelta_en)
+                                    · obtenida {{ $segOc->ocompra_mp_resuelta_en->format('d/m/Y H:i') }}
+                                @endif
+                                @if($segOc->oc_fecha_envio)
+                                    · enviada {{ $segOc->oc_fecha_envio->format('d/m/Y H:i') }}
+                                @endif
+                            </small>
+                        @endif
+                    </td>
                     <th>Entrega</th>
                     <td><input type="date" name="fechaentrega" id="fechaentrega" value="{{ old('fechaentrega', $nota->fechaentrega?->format('Y-m-d')) }}"></td>
                     <th>Descripci&oacute;n</th>

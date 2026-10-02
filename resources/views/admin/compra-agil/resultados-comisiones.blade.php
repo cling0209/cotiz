@@ -156,6 +156,9 @@
                             <td class="small">{{ $fila->es_ganada ? 'Sí' : 'No' }}</td>
                             <td class="small">
                                 <span class="font-monospace">{{ $fila->orden_compra_nota ?: '—' }}</span>
+                                @if($fila->orden_compra_nota_registro !== '')
+                                    <div class="text-muted">{{ $fila->orden_compra_nota_registro }}</div>
+                                @endif
                                 @if($fila->orden_compra_no_coincide)
                                     <div><span class="badge text-bg-danger" title="El código de la nota no coincide con el de Mercado Público">OC no coincide</span></div>
                                 @endif
@@ -163,6 +166,9 @@
                             <td class="small">
                                 @if($fila->orden_compra_mp !== '')
                                     <span class="font-monospace">{{ $fila->orden_compra_mp }}</span>
+                                    @if($fila->orden_compra_mp_resuelta_en)
+                                        <div class="text-muted">Obtenida {{ $fila->orden_compra_mp_resuelta_en->format('d/m/Y H:i') }}</div>
+                                    @endif
                                 @elseif($fila->orden_compra_nota === '' && $fila->orden_compra !== '')
                                     <span class="text-muted">{{ $fila->orden_compra }}</span>
                                 @else

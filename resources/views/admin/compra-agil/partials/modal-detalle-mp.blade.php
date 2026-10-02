@@ -291,12 +291,18 @@
         if (!nota && !mp) {
             return fmt('Código OC', r.orden_compra || '');
         }
+        const detalle = function (texto) {
+            return texto ? '<div class="small text-muted">' + escapeHtml(String(texto)) + '</div>' : '';
+        };
         let html = '';
         if (nota) {
             html += fmt('OC nota', nota);
+            html += detalle(r.orden_compra_nota_registro);
         }
         if (mp) {
             html += fmt('OC MP', mp);
+            html += detalle(r.orden_compra_mp_resuelta_en ? 'Obtenida ' + r.orden_compra_mp_resuelta_en : '');
+            html += detalle(r.orden_compra_mp_fecha_envio ? 'Enviada ' + r.orden_compra_mp_fecha_envio : '');
         }
         return html;
     }
