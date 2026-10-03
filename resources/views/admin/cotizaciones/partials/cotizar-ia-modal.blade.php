@@ -87,7 +87,7 @@
                                     <th class="text-end" style="width: 5rem;">Cant.</th>
                                     <th>V&iacute;nculo propuesto</th>
                                     <th class="text-end" style="width: 6.5rem;" title="Costo neto por unidad o por pack seg&uacute;n prorrateo">Costo</th>
-                                    <th class="text-center" style="width: 4.5rem;" title="Prorratear precio del pack por unidad solicitada">Prorr.</th>
+                                    <th class="text-center" style="width: 5rem;" title="Fila naranja: puede prorratear pack. Marque para cotizar por unidad.">Prorr.</th>
                                     <th class="text-end" style="width: 6.5rem;" title="Precio neto (costo &times; factor)">Precio venta</th>
                                     <th class="text-end" style="width: 7rem;">Total venta</th>
                                     <th class="text-center" style="width: 4rem;" title="Desmarque para dejar la l&iacute;nea pendiente sin v&iacute;nculo">Usar</th>
@@ -430,11 +430,19 @@
     }
 
     function actualizarFilaProrrateo(fila) {
-        const prorratear = fila.querySelector('.cotizar-ia-prorratear')?.checked;
-        fila.classList.toggle('cotizar-ia-fila-prorrateo', !!prorratear);
+        const puede = fila.dataset.puedeProrratear === '1';
+        const prorratear = puede && fila.querySelector('.cotizar-ia-prorratear')?.checked;
+        fila.classList.toggle('cotizar-ia-fila-prorrateo', puede);
         fila.querySelectorAll('.cotizar-ia-badge-prorrateo').forEach((badge) => {
             badge.classList.toggle('d-none', !prorratear);
         });
+        const estado = fila.querySelector('.cotizar-ia-prorrateo-estado');
+        if (estado) {
+            estado.textContent = prorratear ? 'S\u00ed' : 'No';
+            estado.classList.toggle('fw-semibold', !!prorratear);
+            estado.classList.toggle('text-body', !!prorratear);
+            estado.classList.toggle('text-muted', !prorratear);
+        }
     }
 
     function textoCostoCelda(fila, metricas) {
@@ -486,7 +494,7 @@
         const conVinculo = linea.estado !== 'pendiente';
         const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
         const puedeProrr = !!linea.puede_prorratear;
-        return '<tr data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
+        return '<tr' + (puedeProrr ? ' class="cotizar-ia-fila-prorrateo"' : '') + ' data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
             + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0)
             + '" data-precio-rm="' + (parseInt(linea.precio_rm, 10) || 0)
             + '" data-costo-estimado="' + (linea.costo_estimado ? '1' : '0')
@@ -504,7 +512,11 @@
             + '<td class="text-end tabular-nums cotizar-ia-costo">' + costoLinea(linea) + '</td>'
             + '<td class="text-center">'
             + (puedeProrr
-                ? '<input type="checkbox" class="form-check-input cotizar-ia-prorratear" data-indice="' + linea.indice + '" aria-label="Prorratear pack en l\u00ednea ' + (linea.indice + 1) + '">'
+                ? '<div class="d-flex flex-column align-items-center gap-1">'
+                    + '<span class="text-muted" style="font-size:0.65rem;line-height:1">Prorratea</span>'
+                    + '<input type="checkbox" class="form-check-input cotizar-ia-prorratear m-0" data-indice="' + linea.indice + '" aria-label="Prorratear pack en l\u00ednea ' + (linea.indice + 1) + '">'
+                    + '<span class="cotizar-ia-prorrateo-estado text-muted" style="font-size:0.7rem">No</span>'
+                    + '</div>'
                 : '')
             + '</td>'
             + '<td class="text-end tabular-nums cotizar-ia-venta"></td>'
