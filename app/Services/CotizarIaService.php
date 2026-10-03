@@ -1689,9 +1689,14 @@ TXT];
             return $producto;
         }
 
+        $valorListado = (int) ($producto['prod_valor'] ?? 0);
+        $costoListado = (int) ($producto['prod_valor_costo'] ?? 0);
+
         return [
-            'prod_valor' => self::prorrateo((int) ($producto['prod_valor'] ?? 0), $solicitadas, $pack),
-            'prod_valor_costo' => self::prorrateo((int) ($producto['prod_valor_costo'] ?? 0), $solicitadas, $pack),
+            'prod_valor_listado' => $valorListado,
+            'prod_valor_costo_listado' => $costoListado,
+            'prod_valor' => self::prorrateo($valorListado, $solicitadas, $pack),
+            'prod_valor_costo' => self::prorrateo($costoListado, $solicitadas, $pack),
             'pack_maestro' => $pack,
             'unidades_solicitud' => $solicitadas,
         ] + $producto;
@@ -2480,39 +2485,51 @@ TXT];
         $costoPack = 0;
         $precioRmProrrateado = 0;
         $precioRmPack = 0;
+        $precioListado = 0;
+        $costoListado = 0;
 
         if ($producto !== null) {
             $unidadesSolicitud = max(1, (int) ($producto['unidades_solicitud'] ?? 1));
             $packTamano = (int) ($producto['pack_maestro'] ?? 0);
             $unidades = max(1, (int) ($producto['unidades'] ?? 1));
-            $prorrateado = $this->preciosMaestro((int) $producto['prod_valor'], (int) $producto['prod_valor_costo'], $factor);
-            $costoProrrateado = $prorrateado['costo'];
-            $precioRmProrrateado = $prorrateado['precio_rm'];
-            $costoPack = $costoProrrateado;
-            $precioRmPack = $precioRmProrrateado;
+            $valorListado = (int) ($producto['prod_valor_listado'] ?? $producto['prod_valor']);
+            $costoListadoMae = (int) ($producto['prod_valor_costo_listado'] ?? $producto['prod_valor_costo']);
             if ($packTamano > $unidadesSolicitud && $unidades === 1) {
                 $puedeProrratear = true;
-                $valorPack = (int) round((int) $producto['prod_valor'] * $packTamano / $unidadesSolicitud);
-                $costoMaePack = (int) round((int) $producto['prod_valor_costo'] * $packTamano / $unidadesSolicitud);
-                $porPack = $this->preciosMaestro($valorPack, $costoMaePack, $factor);
+                $precioListado = $valorListado;
+                $costoListado = $costoListadoMae;
+                $valorUnit = self::prorrateo($valorListado, $unidadesSolicitud, $packTamano);
+                $costoUnitMae = self::prorrateo($costoListadoMae, $unidadesSolicitud, $packTamano);
+                $prorrateado = $this->preciosMaestro($valorUnit, $costoUnitMae, $factor);
+                $porPack = $this->preciosMaestro($valorListado, $costoListadoMae, $factor);
+                $costoProrrateado = $prorrateado['costo'];
+                $precioRmProrrateado = $prorrateado['precio_rm'];
                 $costoPack = $porPack['costo'];
                 $precioRmPack = $porPack['precio_rm'];
+            } else {
+                $prorrateado = $this->preciosMaestro((int) $producto['prod_valor'], (int) $producto['prod_valor_costo'], $factor);
+                $costoProrrateado = $prorrateado['costo'];
+                $precioRmProrrateado = $prorrateado['precio_rm'];
+                $costoPack = $costoProrrateado;
+                $precioRmPack = $precioRmProrrateado;
             }
-            $costo = $costoPack;
-            $precioRm = $precioRmPack;
-            $precioVenta = $precioRmPack > 0 && $this->esFactorMetropolitana($factor)
-                ? $precioRmPack
-                : (int) round($costoPack * $factor);
+            $costo = $puedeProrratear ? $costoProrrateado : $costoPack;
+            $precioRm = $puedeProrratear ? $precioRmProrrateado : $precioRmPack;
+            $precioVenta = $precioRm > 0 && $this->esFactorMetropolitana($factor)
+                ? $precioRm
+                : (int) round($costo * $factor);
         } elseif (is_array($referencia)) {
             $packTamano = max(1, (int) ($referencia['unidades_por_pack'] ?? 1));
             $unidadesSolicitud = max(1, (int) ($referencia['unidades_solicitud'] ?? 1));
             $costoProrrateado = (int) $referencia['neto_unitario'];
+            $precioListado = (int) ($referencia['precio_clp'] ?? 0);
             $costoPack = $packTamano > $unidadesSolicitud
                 ? (int) round($costoProrrateado * $packTamano / $unidadesSolicitud)
                 : $costoProrrateado;
             $puedeProrratear = $packTamano > $unidadesSolicitud;
-            $costo = $costoPack;
-            $precioVenta = (int) round($costoPack * $factor);
+            $costoListado = $costoPack;
+            $costo = $costoProrrateado;
+            $precioVenta = (int) round($costoProrrateado * $factor);
         }
 
         return [
@@ -2538,6 +2555,8 @@ TXT];
             'costo_pack' => $costoPack,
             'precio_rm_prorrateado' => $precioRmProrrateado,
             'precio_rm_pack' => $precioRmPack,
+            'precio_listado' => $precioListado,
+            'costo_listado' => $costoListado,
             'costo' => $costo,
             'costo_estimado' => $precioRm > 0,
             'precio_venta' => $precioVenta,

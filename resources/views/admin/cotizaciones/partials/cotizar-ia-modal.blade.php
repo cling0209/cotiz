@@ -352,6 +352,10 @@
                     ? ' <span class="badge text-bg-info cotizar-ia-badge-prorrateo d-none" title="Precio prorrateado del pack de ' + esc(linea.pack_tamano) + ' por unidad solicitada">prorrateado pack ' + esc(linea.pack_tamano) + '</span>'
                     : '')
                 + badgeStockPrisa(linea.stock_prisa)
+                + (linea.puede_prorratear && linea.precio_listado > 0
+                    ? '<div class="text-muted small">Listado: $' + numero.format(linea.precio_listado)
+                        + ' / ' + esc(linea.pack_tamano) + ' u.</div>'
+                    : '')
                 + (linea.producto.foto
                     ? '<div class="text-success small">Elegido por foto: se ve ' + esc(linea.producto.foto) + '</div>'
                     : '')
@@ -377,6 +381,10 @@
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
                 + stock
                 + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>'
+                + (linea.puede_prorratear && linea.precio_listado > 0
+                    ? '<div class="text-muted small">Listado: $' + numero.format(linea.precio_listado)
+                        + ' / ' + esc(linea.pack_tamano) + ' u.</div>'
+                    : '')
                 + notaStock(linea);
         }
         return '<span class="badge text-bg-secondary">Sin v\u00ednculo</span>' + notaStock(linea);
@@ -405,12 +413,9 @@
         let costo;
         let precioRm;
         let packsFacturar = 0;
-        if (puede && prorratear) {
+        if (puede) {
             costo = parseInt(fila.dataset.costoProrrateado, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRmProrrateado, 10) || 0;
-        } else if (puede) {
-            costo = parseInt(fila.dataset.costoPack, 10) || 0;
-            precioRm = parseInt(fila.dataset.precioRmPack, 10) || 0;
             packsFacturar = Math.ceil(cantidadAgile * solicitud / pack);
         } else {
             costo = parseInt(fila.dataset.costo, 10) || 0;
@@ -425,12 +430,6 @@
             } else {
                 venta = parseInt(fila.dataset.venta, 10) || 0;
             }
-        }
-        if (puede && !prorratear && cantidadAgile > 0 && packsFacturar > 0) {
-            const totalCosto = costo * packsFacturar;
-            const totalVenta = venta * packsFacturar;
-            costo = Math.round(totalCosto / cantidadAgile);
-            venta = Math.round(totalVenta / cantidadAgile);
         }
         return {
             costo,
@@ -467,9 +466,14 @@
         if (metricas.costo > 0 && ref) {
             html += ' <span class="text-muted" title="Costo referencial">(ref.)</span>';
         }
+        const listado = parseInt(fila.dataset.precioListado, 10) || 0;
+        const pack = parseInt(fila.dataset.packTamano, 10) || 0;
+        if (metricas.puede && listado > 0 && pack > 1) {
+            html += '<div class="text-muted" style="font-size:0.7rem">listado $' + numero.format(listado)
+                + ' &divide; ' + pack + ' u.</div>';
+        }
         if (metricas.puede && !metricas.prorratear && metricas.packsFacturar > 0) {
-            html += '<div class="text-muted" style="font-size:0.7rem">por un. &middot; '
-                + metricas.packsFacturar + ' pack(s) al aplicar</div>';
+            html += '<div class="text-muted" style="font-size:0.7rem">' + metricas.packsFacturar + ' pack(s) al aplicar</div>';
         }
         return html;
     }
@@ -515,7 +519,8 @@
             + '" data-costo-prorrateado="' + (parseInt(linea.costo_prorrateado, 10) || 0)
             + '" data-costo-pack="' + (parseInt(linea.costo_pack, 10) || 0)
             + '" data-precio-rm-prorrateado="' + (parseInt(linea.precio_rm_prorrateado, 10) || 0)
-            + '" data-precio-rm-pack="' + (parseInt(linea.precio_rm_pack, 10) || 0) + '">'
+            + '" data-precio-rm-pack="' + (parseInt(linea.precio_rm_pack, 10) || 0)
+            + '" data-precio-listado="' + (parseInt(linea.precio_listado, 10) || 0) + '">'
             + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
             + '<td>' + esc(linea.descripcion) + fuente + '</td>'
             + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
