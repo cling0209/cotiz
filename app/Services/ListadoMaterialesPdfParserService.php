@@ -3849,20 +3849,29 @@ class ListadoMaterialesPdfParserService
     public function parseDocxTablas(string $path): array
     {
         $xml = $this->leerDocumentXmlDocx($path);
-        $filas = $this->extraerFilasTablaDocx($xml);
-        if ($filas === []) {
+        $filasParrafos = $this->extraerFilasTablaDocxConParrafos($xml);
+        if ($filasParrafos === []) {
             return [];
         }
 
         $resultado = [];
         $indices = null;
 
-        foreach ($filas as $celdas) {
+        foreach ($filasParrafos as $parrafosPorCelda) {
+            $celdas = array_map(
+                static fn (array $parrafos): string => trim(preg_replace('/\s+/u', ' ', implode(' ', $parrafos)) ?? ''),
+                $parrafosPorCelda,
+            );
+
             if ($indices === null) {
                 $indices = $this->resolverIndicesColumnasProductoCantidad($celdas);
-                if ($indices !== null) {
-                    continue;
-                }
+
+                continue;
+            }
+
+            $apiladas = $this->extraerFilasApiladasDocx($parrafosPorCelda, $indices);
+            if ($apiladas !== null) {
+                array_push($resultado, ...$apiladas);
 
                 continue;
             }
@@ -3874,6 +3883,34 @@ class ListadoMaterialesPdfParserService
         }
 
         return $resultado;
+    }
+
+    /**
+     * Una sola fila Word con todas las cantidades apiladas (un párrafo c/u) en una celda
+     * y las descripciones apiladas en otra (ficha técnica Compra Ágil). Solo si los conteos calzan.
+     *
+     * @param  array<int, list<string>>  $parrafosPorCelda
+     * @param  array{producto: int, cantidad: int}  $indices
+     * @return list<array{cantidad: int, descripcion: string}>|null
+     */
+    private function extraerFilasApiladasDocx(array $parrafosPorCelda, array $indices): ?array
+    {
+        $cantidades = $parrafosPorCelda[$indices['cantidad']] ?? [];
+        $productos = $parrafosPorCelda[$indices['producto']] ?? [];
+        if (count($cantidades) < 2 || count($cantidades) !== count($productos)) {
+            return null;
+        }
+
+        $filas = [];
+        foreach ($cantidades as $i => $cantidadRaw) {
+            $fila = $this->intentarParColumnaProductoCantidad($productos[$i], $cantidadRaw);
+            if ($fila === null) {
+                return null;
+            }
+            $filas[] = $fila;
+        }
+
+        return $filas;
     }
 
     private function extraerTextoPdf(string $path): string
@@ -5982,6 +6019,7 @@ class ListadoMaterialesPdfParserService
             ['BIEN O SERVICIO', 'BIEN O SERVICIO'],
             ['PRODUCTO', 'NOMBRE DEL PRODUCTO', 'NOMBRE', 'DETALLE PRODUCTO', 'DETALLE'],
             ['ARTICULO', 'ITEM', 'ÍTEM'],
+            ['ESPECIFICACION'],
         ] as $candidatosProducto) {
             $candidato = $this->indiceColumna($normalizadas, $candidatosProducto);
             if ($candidato !== null && $candidato !== $idxCantidad) {
@@ -5999,7 +6037,7 @@ class ListadoMaterialesPdfParserService
         $celdaProducto = $normalizadas[$idxProducto] ?? '';
 
         $esEncabezado = preg_match('/^(?:CANTIDAD|UNIDADES|CANT|QTY)\b/u', $celdaCantidad) === 1
-            || preg_match('/^(?:DESCRIPCION|PRODUCTO|NOMBRE|DETALLE|ARTICULO|ITEM)\b/u', $celdaProducto) === 1;
+            || preg_match('/^(?:(?:DESCRIPCION|PRODUCTO|NOMBRE|DETALLE|ARTICULO|ITEM)\b|ESPECIFICACION)/u', $celdaProducto) === 1;
 
         if (! $esEncabezado) {
             return null;
@@ -9436,6 +9474,55 @@ class ListadoMaterialesPdfParserService
                     continue;
                 }
                 $celdas[] = $this->textoNodoDocx($tc);
+            }
+
+            if ($celdas !== []) {
+                $filas[] = $celdas;
+            }
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Igual que extraerFilasTablaDocx, pero cada celda conserva sus párrafos no vacíos.
+     *
+     * @return array<int, array<int, list<string>>>
+     */
+    private function extraerFilasTablaDocxConParrafos(string $xml): array
+    {
+        $dom = new DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $cargado = $dom->loadXML($xml);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        if (! $cargado) {
+            return [];
+        }
+
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+
+        $filas = [];
+        foreach ($xpath->query('//w:tr') ?: [] as $tr) {
+            if (! $tr instanceof DOMElement) {
+                continue;
+            }
+
+            $celdas = [];
+            foreach ($xpath->query('.//w:tc', $tr) ?: [] as $tc) {
+                if (! $tc instanceof DOMElement) {
+                    continue;
+                }
+                $parrafos = [];
+                foreach ($xpath->query('.//w:p', $tc) ?: [] as $p) {
+                    $texto = $this->textoNodoDocx($p);
+                    if ($texto !== '') {
+                        $parrafos[] = $texto;
+                    }
+                }
+                $celdas[] = $parrafos;
             }
 
             if ($celdas !== []) {

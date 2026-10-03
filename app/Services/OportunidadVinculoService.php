@@ -518,15 +518,21 @@ class OportunidadVinculoService
     /**
      * @return array{total: int, vinculados: int, porcentaje: int}
      */
-    public function vincularCodigo(string $codigo, mixed $fechaBusqueda = null): array
+    public function vincularCodigo(string $codigo, mixed $fechaBusqueda = null, bool $rescatarDesdeAdjunto = false): array
     {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
             throw new RuntimeException('Código vacío.');
         }
 
-        $payload = $this->api->detalle($codigo);
-        $parseado = $this->mapper->fromDetalle($payload);
+        try {
+            $parseado = $this->mapper->fromDetalle($this->api->detalle($codigo));
+        } catch (RuntimeException $e) {
+            $parseado = $rescatarDesdeAdjunto ? $this->parseadoDesdeAdjuntoTrasFalloMp($codigo, $e) : null;
+            if ($parseado === null) {
+                throw $e;
+            }
+        }
         $preview = $this->importService->previewDesdeDatos($parseado);
         $resumen = is_array($preview['resumen'] ?? null)
             ? $preview['resumen']
@@ -581,6 +587,41 @@ class OportunidadVinculoService
             'vinculados' => $vinculados,
             'porcentaje' => $porcentaje,
         ];
+    }
+
+    /**
+     * Solo en acciones manuales (botón Productos / Ir a cotizar): si MP no responde (504, timeout, cuota),
+     * intenta leer los productos desde el Word/PDF adjunto. No aplica si MP dice que la cotización no existe.
+     *
+     * @return array{cabecera: array<string, mixed>, lineas: list<array<string, mixed>>}|null
+     */
+    private function parseadoDesdeAdjuntoTrasFalloMp(string $codigo, Throwable $error): ?array
+    {
+        if (CompraAgilApiService::esErrorDefinitivoMp($error->getMessage())) {
+            return null;
+        }
+
+        try {
+            $parseado = app(OportunidadProductosAdjuntoService::class)->parseadoDesdeAdjuntos($codigo);
+        } catch (Throwable $e) {
+            Log::warning('OportunidadVinculo: rescate desde adjunto falló', [
+                'codigo' => $codigo,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if ($parseado !== null) {
+            Log::info('OportunidadVinculo: productos rescatados desde adjunto', [
+                'codigo' => $codigo,
+                'fuente' => $parseado['cabecera']['fuente_productos'] ?? null,
+                'lineas' => count($parseado['lineas']),
+                'error_mp' => $error->getMessage(),
+            ]);
+        }
+
+        return $parseado;
     }
 
     /**
@@ -742,8 +783,14 @@ class OportunidadVinculoService
         }
 
         try {
-            $payload = $this->api->detalle($codigo);
-            $parseado = $this->mapper->fromDetalle($payload);
+            try {
+                $parseado = $this->mapper->fromDetalle($this->api->detalle($codigo));
+            } catch (RuntimeException $e) {
+                $parseado = $this->parseadoDesdeAdjuntoTrasFalloMp($codigo, $e);
+                if ($parseado === null) {
+                    throw $e;
+                }
+            }
             $preview = $this->importService->previewDesdeDatos($parseado);
         } catch (Throwable $e) {
             Log::warning('OportunidadVinculo: no se pudo obtener detalle MP para modal', [
@@ -1114,7 +1161,7 @@ class OportunidadVinculoService
         }
 
         try {
-            $resultado = $this->vincularCodigo($codigo);
+            $resultado = $this->vincularCodigo($codigo, null, true);
             $row = OportunidadEncontrada::query()
                 ->where('codigo', $codigo)
                 ->orderByDesc('fecha_busqueda')

@@ -171,6 +171,8 @@ return [
         'max_lineas_web' => max(0, min(200, (int) env('COTIZ_GEMINI_MAX_LINEAS_WEB', 50))),
         'lote_web' => max(1, min(20, (int) env('COTIZ_GEMINI_LOTE_WEB', 10))),
         'max_adjuntos' => max(1, min(10, (int) env('COTIZ_GEMINI_MAX_ADJUNTOS', 4))),
+        // Oportunidades: si MP no responde y el parser no lee el adjunto, Gemini extrae los productos.
+        'rescate_adjunto' => filter_var(env('COTIZ_GEMINI_RESCATE_ADJUNTO', true), FILTER_VALIDATE_BOOL),
         'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
         // Fotos del maestro que la IA revisa por cotización cuando el nombre no confirma un accesorio; 0 = no revisar.
         'max_fotos' => max(0, min(60, (int) env('COTIZ_GEMINI_MAX_FOTOS', 24))),
@@ -369,6 +371,12 @@ return [
         ),
         // Clave pública del buscador (header user_key). Vacío = se obtiene del JS del portal.
         'compra_agil_user_key' => env('MP_COMPRA_AGIL_USER_KEY', ''),
+        // Respaldo de detalle (vinculación / oportunidades) cuando api2 da 502/503/504, timeout o cuota.
+        'detalle_respaldo_buscador' => filter_var(env('MP_DETALLE_RESPALDO_BUSCADOR', true), FILTER_VALIDATE_BOOL),
+        'buscador_api_base' => env('MP_BUSCADOR_API_BASE', 'https://api.buscador.mercadopublico.cl'),
+        // Clave pública (header x-api-key) del JS de buscador.mercadopublico.cl; si MP la rota, actualizar aquí.
+        'buscador_api_key' => env('MP_BUSCADOR_API_KEY', 'e93089e4-437c-4723-b343-4fa20045e3bc'),
+        'buscador_api_timeout_segundos' => max(10, min(60, (int) env('MP_BUSCADOR_API_TIMEOUT_SEG', 35))),
         'http_without_verifying' => filter_var(env('MP_HTTP_WITHOUT_VERIFYING', false), FILTER_VALIDATE_BOOL),
     ],
 ];

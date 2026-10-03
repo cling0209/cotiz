@@ -103,8 +103,111 @@ class CompraAgilApiService
         return Cache::remember(
             $this->detalleCacheKey($codigo),
             $this->detalleCacheTtl(),
-            fn () => $this->requestDetalle($codigo),
+            fn () => $this->requestDetalleConRespaldoBuscador($codigo),
         );
+    }
+
+    /**
+     * api2 primero; si responde 502/503/504, timeout o cuota agotada, usa la ficha pública
+     * del buscador (sin ticket). Solo para productos/cabecera: la ficha no trae el mismo
+     * bloque de resultados/adjudicación que api2.
+     *
+     * @return array<string, mixed>
+     */
+    private function requestDetalleConRespaldoBuscador(string $codigo): array
+    {
+        try {
+            return $this->requestDetalle($codigo);
+        } catch (RuntimeException $e) {
+            if (! $this->debeUsarRespaldoBuscador($e->getMessage())) {
+                throw $e;
+            }
+
+            try {
+                return $this->detalleDesdeBuscadorPublico($codigo);
+            } catch (RuntimeException $respaldo) {
+                throw new RuntimeException(
+                    $e->getMessage().' Ficha pública del buscador: '.$respaldo->getMessage(),
+                    $e->getCode(),
+                    $e,
+                );
+            }
+        }
+    }
+
+    private function debeUsarRespaldoBuscador(string $mensaje): bool
+    {
+        if (! (bool) config('cotiz.mercadopublico.detalle_respaldo_buscador', true)) {
+            return false;
+        }
+        if (self::esErrorDefinitivoMp($mensaje) || str_contains($mensaje, 'Ticket de Mercado Público inválido')) {
+            return false;
+        }
+
+        return self::esErrorGatewayMp($mensaje)
+            || str_contains($mensaje, 'Timeout o error de conexión')
+            || $this->mensajeIndicaCuotaAgotada($mensaje)
+            || str_contains($mensaje, 'API Mercado Público no configurada');
+    }
+
+    /**
+     * Ficha pública (api.buscador.mercadopublico.cl, la misma que usa buscador.mercadopublico.cl),
+     * normalizada al formato de detalle api2 que consume CompraAgilPayloadMapper.
+     *
+     * @return array<string, mixed>
+     */
+    public function detalleDesdeBuscadorPublico(string $codigo): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        $base = rtrim((string) config('cotiz.mercadopublico.buscador_api_base', 'https://api.buscador.mercadopublico.cl'), '/');
+        $apiKey = trim((string) config('cotiz.mercadopublico.buscador_api_key', ''));
+
+        $pending = Http::connectTimeout(10)
+            ->timeout(max(10, (int) config('cotiz.mercadopublico.buscador_api_timeout_segundos', 35)))
+            ->withHeaders(array_filter([
+                'x-api-key' => $apiKey,
+                'Origin' => 'https://buscador.mercadopublico.cl',
+                'Referer' => 'https://buscador.mercadopublico.cl/',
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            ]))
+            ->acceptJson();
+        if ((bool) config('cotiz.mercadopublico.http_without_verifying')) {
+            $pending = $pending->withoutVerifying();
+        }
+
+        try {
+            $response = $pending->get($base.'/compra-agil', ['action' => 'ficha', 'code' => $codigo]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException($this->mensajeErrorConexion($e), 1, $e);
+        }
+
+        $json = $response->json();
+        if ($response->status() === 504 || str_contains(mb_strtolower((string) ($json['message'] ?? '')), 'timed out')) {
+            throw new RuntimeException('Mercado Público no respondió a tiempo (HTTP 504 Gateway Timeout).');
+        }
+        if (! $response->successful() || ! is_array($json) || ($json['success'] ?? '') !== 'OK') {
+            $mensaje = $this->extraerErrores(is_array($json) ? ['errors' => $json['errores'] ?? null] : null);
+            throw new RuntimeException($mensaje !== '' ? $mensaje : 'Error al consultar la ficha pública (HTTP '.$response->status().').');
+        }
+
+        $payload = $json['payload'] ?? null;
+        if (! is_array($payload) || trim((string) ($payload['codigo'] ?? '')) === '') {
+            throw new RuntimeException(self::mensajeNoExisteEnMp($codigo));
+        }
+
+        $inst = is_array($payload['informacion_institucion'] ?? null) ? $payload['informacion_institucion'] : [];
+        $payload['institucion'] = array_filter([
+            'organismo_comprador' => $inst['organismo_comprador'] ?? null,
+            'rut' => $inst['rut_organismo_comprador'] ?? null,
+            'unidad_compra' => $inst['division'] ?? null,
+            'direccion_entrega' => $payload['direccion_entrega'] ?? null,
+        ], static fn ($v) => $v !== null && $v !== '');
+        $payload['productos_solicitados'] = is_array($payload['productos_solicitados'] ?? null)
+            ? $payload['productos_solicitados']
+            : [];
+        $payload['_fuente'] = 'buscador_publico';
+
+        return $payload;
     }
 
     /**
