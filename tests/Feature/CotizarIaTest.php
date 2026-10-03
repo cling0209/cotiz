@@ -1816,6 +1816,59 @@ class CotizarIaTest extends TestCase
         $this->assertSame('https://www.mercadolibre.cl/p/MLC80', $web['referencia']['url']);
     }
 
+    public function test_mercado_libre_toma_unidades_del_atributo_si_el_titulo_no_las_dice(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'PASTILLA PARA ESTANQUE INODORO';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]),
+            'api.mercadolibre.com/products/search*' => Http::response([
+                'results' => [[
+                    'id' => 'MLC90',
+                    'name' => 'Pastilla Para Estanque 3x Excell',
+                    'attributes' => [
+                        ['id' => 'UNITS_PER_PACK', 'value_name' => '1'],
+                        ['id' => 'UNITS_PER_PACKAGE', 'value_name' => '3'],
+                    ],
+                ]],
+            ]),
+            'api.mercadolibre.com/products/MLC90/items' => Http::response(['results' => [
+                ['item_id' => 'MLC5', 'price' => 4250, 'listing_type_id' => 'gold_pro'],
+            ]]),
+            'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => []]],
+            ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(3, $web['referencia']['unidades_por_pack']);
+        $this->assertSame(1417, $web['referencia']['neto_unitario']);
+    }
+
     public function test_mercado_libre_descarta_publicaciones_que_la_ia_marca_como_otro_producto(): void
     {
         config([

@@ -94,12 +94,15 @@ class MercadoLibreApiService
 
         $productos = [];
         $fotos = [];
+        $unidades = [];
         foreach ((array) ($respuesta['json']['results'] ?? []) as $fila) {
             $id = is_array($fila) ? trim((string) ($fila['id'] ?? '')) : '';
             $nombre = is_array($fila) ? mb_substr(trim((string) ($fila['name'] ?? '')), 0, 200) : '';
             if ($id !== '' && $nombre !== '' && preg_match('/^[A-Z]{3}\d+$/', $id) === 1) {
                 $productos[$id] = $nombre;
                 $fotos[$id] = $this->primeraFoto($fila);
+                // Los vendedores suelen dejar los atributos en 1 aunque el título diga «4 Pcs»: vale el mayor.
+                $unidades[$id] = max($this->unidadesPorPack($nombre), $this->unidadesDesdeAtributos($fila));
             }
         }
 
@@ -111,7 +114,7 @@ class MercadoLibreApiService
             $opciones[] = [
                 'titulo' => $productos[$id],
                 'precio_clp' => $precio,
-                'unidades_por_pack' => $this->unidadesPorPack($productos[$id]),
+                'unidades_por_pack' => $unidades[$id],
                 'stock_disponible' => null,
                 'url' => 'https://www.mercadolibre.cl/p/'.$id,
                 'imagen_url' => $fotos[$id],
@@ -256,6 +259,25 @@ class MercadoLibreApiService
     }
 
     /**
+     * Unidades que trae la venta según el catálogo: UNITS_PER_PACKAGE (unidades por envase) ×
+     * UNITS_PER_PACK (envases por venta). 1 si no vienen.
+     *
+     * @param  array<string, mixed>  $producto
+     */
+    public function unidadesDesdeAtributos(array $producto): int
+    {
+        $valores = [];
+        foreach ((array) ($producto['attributes'] ?? []) as $atributo) {
+            if (is_array($atributo) && isset($atributo['id'])) {
+                $valores[(string) $atributo['id']] = (int) ($atributo['value_name'] ?? 0);
+            }
+        }
+        $unidades = max(1, $valores['UNITS_PER_PACKAGE'] ?? 1) * max(1, $valores['UNITS_PER_PACK'] ?? 1);
+
+        return $unidades <= 1000 ? $unidades : 1;
+    }
+
+    /**
      * @param  array<string, mixed>  $producto
      */
     private function primeraFoto(array $producto): string
@@ -274,7 +296,7 @@ class MercadoLibreApiService
     public function unidadesPorPack(string $titulo): int
     {
         if (preg_match('/\b(?:pack|set|caja|bolsa)\s*(?:de|x|por)?\s*(\d{1,4})\b/iu', $titulo, $coincide) !== 1
-            && preg_match('/\b(\d{1,4})\s*(?:u|un|und|unds|unid|unidades)\b\.?/iu', $titulo, $coincide) !== 1) {
+            && preg_match('/\b(\d{1,4})\s*(?:u|un|und|unds|unid|unidades|ud|uds|pc|pcs|pz|pza|pzas|pzs|piezas?)\b\.?/iu', $titulo, $coincide) !== 1) {
             return 1;
         }
         $unidades = (int) $coincide[1];
