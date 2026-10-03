@@ -88,7 +88,7 @@
                                     <th>V&iacute;nculo propuesto</th>
                                     <th class="text-end" style="width: 6.5rem;" title="Costo neto por unidad o por pack seg&uacute;n prorrateo">Costo</th>
                                     <th class="text-center" style="width: 5rem;" title="Fila naranja: puede prorratear pack. Marque para cotizar por unidad.">Prorr.</th>
-                                    <th class="text-end" style="width: 6.5rem;" title="Precio neto (costo &times; factor)">Precio venta</th>
+                                    <th class="text-end" style="width: 6.5rem;" title="Precio neto por unidad de la columna Cant.">Precio venta</th>
                                     <th class="text-end" style="width: 7rem;">Total venta</th>
                                     <th class="text-center" style="width: 4rem;" title="Desmarque para dejar la l&iacute;nea pendiente sin v&iacute;nculo">Usar</th>
                                 </tr>
@@ -404,14 +404,14 @@
         const solicitud = parseInt(fila.dataset.unidadesSolicitud, 10) || 1;
         let costo;
         let precioRm;
-        let cantidadFacturar = cantidadAgile;
+        let packsFacturar = 0;
         if (puede && prorratear) {
             costo = parseInt(fila.dataset.costoProrrateado, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRmProrrateado, 10) || 0;
         } else if (puede) {
             costo = parseInt(fila.dataset.costoPack, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRmPack, 10) || 0;
-            cantidadFacturar = Math.ceil(cantidadAgile * solicitud / pack);
+            packsFacturar = Math.ceil(cantidadAgile * solicitud / pack);
         } else {
             costo = parseInt(fila.dataset.costo, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRm, 10) || 0;
@@ -426,7 +426,20 @@
                 venta = parseInt(fila.dataset.venta, 10) || 0;
             }
         }
-        return { costo, venta, cantidadFacturar, prorratear: !!prorratear, puede };
+        if (puede && !prorratear && cantidadAgile > 0 && packsFacturar > 0) {
+            const totalCosto = costo * packsFacturar;
+            const totalVenta = venta * packsFacturar;
+            costo = Math.round(totalCosto / cantidadAgile);
+            venta = Math.round(totalVenta / cantidadAgile);
+        }
+        return {
+            costo,
+            venta,
+            cantidadAgile,
+            packsFacturar,
+            prorratear: !!prorratear,
+            puede,
+        };
     }
 
     function actualizarFilaProrrateo(fila) {
@@ -454,11 +467,9 @@
         if (metricas.costo > 0 && ref) {
             html += ' <span class="text-muted" title="Costo referencial">(ref.)</span>';
         }
-        if (metricas.puede && !metricas.prorratear && metricas.costo > 0) {
-            html += '<div class="text-muted" style="font-size:0.7rem">por pack</div>';
-        }
-        if (metricas.puede && !metricas.prorratear && metricas.cantidadFacturar !== parseInt(fila.dataset.cantidad, 10)) {
-            html += '<div class="text-muted" style="font-size:0.7rem">' + metricas.cantidadFacturar + ' packs</div>';
+        if (metricas.puede && !metricas.prorratear && metricas.packsFacturar > 0) {
+            html += '<div class="text-muted" style="font-size:0.7rem">por un. &middot; '
+                + metricas.packsFacturar + ' pack(s) al aplicar</div>';
         }
         return html;
     }
@@ -480,7 +491,7 @@
                 celdaCosto.innerHTML = conPrecio ? textoCostoCelda(fila, m) : '';
             }
             fila.querySelector('.cotizar-ia-venta').textContent = conPrecio && m.venta > 0 ? '$' + numero.format(m.venta) : '';
-            const sub = conPrecio && m.venta > 0 ? m.venta * m.cantidadFacturar : 0;
+            const sub = conPrecio && m.venta > 0 && m.cantidadAgile > 0 ? m.venta * m.cantidadAgile : 0;
             fila.querySelector('.cotizar-ia-subtotal').textContent = sub > 0 ? '$' + numero.format(sub) : '';
             const usar = fila.querySelector('.cotizar-ia-usar');
             if (conPrecio && usar && usar.checked) {
