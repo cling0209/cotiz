@@ -1,4 +1,9 @@
 {{-- «Cotizar con IA»: solo usuarios de CotizarIaService::USUARIOS_PERMITIDOS. --}}
+<style>
+    #cotizar-ia-lineas tr.cotizar-ia-fila-prorrateo > td {
+        background-color: #fff4e6;
+    }
+</style>
 <div class="modal fade" id="modal-cotizar-ia" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="modal-cotizar-ia-label" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -81,8 +86,9 @@
                                     <th>Solicitado</th>
                                     <th class="text-end" style="width: 5rem;">Cant.</th>
                                     <th>V&iacute;nculo propuesto</th>
-                                    <th class="text-end" style="width: 6.5rem;" title="Costo neto por unidad solicitada">Costo</th>
-                                    <th class="text-end" style="width: 6.5rem;" title="Precio neto por unidad solicitada (costo &times; factor)">Precio venta</th>
+                                    <th class="text-end" style="width: 6.5rem;" title="Costo neto por unidad o por pack seg&uacute;n prorrateo">Costo</th>
+                                    <th class="text-center" style="width: 4.5rem;" title="Prorratear precio del pack por unidad solicitada">Prorr.</th>
+                                    <th class="text-end" style="width: 6.5rem;" title="Precio neto (costo &times; factor)">Precio venta</th>
                                     <th class="text-end" style="width: 7rem;">Total venta</th>
                                     <th class="text-center" style="width: 4rem;" title="Desmarque para dejar la l&iacute;nea pendiente sin v&iacute;nculo">Usar</th>
                                 </tr>
@@ -90,7 +96,7 @@
                             <tbody id="cotizar-ia-lineas"></tbody>
                             <tfoot>
                                 <tr class="table-light fw-semibold">
-                                    <td colspan="6" class="text-end">Total venta neto (l&iacute;neas marcadas)</td>
+                                    <td colspan="7" class="text-end">Total venta neto (l&iacute;neas marcadas)</td>
                                     <td class="text-end tabular-nums" id="cotizar-ia-total"></td>
                                     <td></td>
                                 </tr>
@@ -342,8 +348,8 @@
                 + (linea.producto.unidades > 1
                     ? ' <span class="badge text-bg-info" title="Se cotizan ' + esc(linea.producto.unidades) + ' unidades del maestro por cada una solicitada">x' + esc(linea.producto.unidades) + ' un.</span>'
                     : '')
-                + (linea.producto.pack_maestro > linea.producto.unidades_solicitud
-                    ? ' <span class="badge text-bg-info" title="El maestro es un pack de ' + esc(linea.producto.pack_maestro) + '; el precio es el de ' + esc(linea.producto.unidades_solicitud) + ' unidad(es) solicitada(s)">prorrateado pack ' + esc(linea.producto.pack_maestro) + '</span>'
+                + (linea.puede_prorratear
+                    ? ' <span class="badge text-bg-info cotizar-ia-badge-prorrateo d-none" title="Precio prorrateado del pack de ' + esc(linea.pack_tamano) + ' por unidad solicitada">prorrateado pack ' + esc(linea.pack_tamano) + '</span>'
                     : '')
                 + badgeStockPrisa(linea.stock_prisa)
                 + (linea.producto.foto
@@ -363,8 +369,8 @@
             const solicitud = ref.unidades_solicitud > 1
                 ? ' <span class="badge text-bg-info" title="La l\u00ednea pide un pack de ' + esc(ref.unidades_solicitud) + '; el costo es el de esas unidades">pack de ' + esc(ref.unidades_solicitud) + ' solicitado</span>'
                 : '';
-            const prorrateo = ref.unidades_por_pack > (ref.unidades_solicitud || 1)
-                ? ' <span class="badge text-bg-info" title="La publicaci\u00f3n es un pack de ' + esc(ref.unidades_por_pack) + '; el costo unitario es el precio del pack prorrateado por ' + esc(ref.unidades_por_pack) + ' unidad(es)">prorrateado pack ' + esc(ref.unidades_por_pack) + '</span>'
+            const prorrateo = linea.puede_prorratear
+                ? ' <span class="badge text-bg-info cotizar-ia-badge-prorrateo d-none" title="Costo unitario = precio del pack prorrateado">prorrateado pack ' + esc(linea.pack_tamano) + '</span>'
                 : '';
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
                 + esc(ref.titulo) + pack + prorrateo + solicitud
@@ -390,14 +396,63 @@
         return '<span class="text-danger" title="El producto no tiene costo ni precio en el maestro">sin costo</span>';
     }
 
-    /** Igual que al aplicar: en la Metropolitana el precio del maestro; si no, costo × factor. */
-    function precioVenta(fila, factor) {
-        const precioRm = parseInt(fila.dataset.precioRm, 10) || 0;
-        if (precioRm > 0 && Math.abs(factor - FACTOR_RM) < 0.001) {
-            return precioRm;
+    function metricasFila(fila, factor) {
+        const cantidadAgile = parseInt(fila.dataset.cantidad, 10) || 0;
+        const puede = fila.dataset.puedeProrratear === '1';
+        const prorratear = puede && fila.querySelector('.cotizar-ia-prorratear')?.checked;
+        const pack = parseInt(fila.dataset.packTamano, 10) || 1;
+        const solicitud = parseInt(fila.dataset.unidadesSolicitud, 10) || 1;
+        let costo;
+        let precioRm;
+        let cantidadFacturar = cantidadAgile;
+        if (puede && prorratear) {
+            costo = parseInt(fila.dataset.costoProrrateado, 10) || 0;
+            precioRm = parseInt(fila.dataset.precioRmProrrateado, 10) || 0;
+        } else if (puede) {
+            costo = parseInt(fila.dataset.costoPack, 10) || 0;
+            precioRm = parseInt(fila.dataset.precioRmPack, 10) || 0;
+            cantidadFacturar = Math.ceil(cantidadAgile * solicitud / pack);
+        } else {
+            costo = parseInt(fila.dataset.costo, 10) || 0;
+            precioRm = parseInt(fila.dataset.precioRm, 10) || 0;
         }
-        const costo = parseInt(fila.dataset.costo, 10) || 0;
-        return costo > 0 ? Math.round(costo * factor) : (parseInt(fila.dataset.venta, 10) || 0);
+        let venta = 0;
+        if (factor !== null) {
+            if (precioRm > 0 && Math.abs(factor - FACTOR_RM) < 0.001) {
+                venta = precioRm;
+            } else if (costo > 0) {
+                venta = Math.round(costo * factor);
+            } else {
+                venta = parseInt(fila.dataset.venta, 10) || 0;
+            }
+        }
+        return { costo, venta, cantidadFacturar, prorratear: !!prorratear, puede };
+    }
+
+    function actualizarFilaProrrateo(fila) {
+        const prorratear = fila.querySelector('.cotizar-ia-prorratear')?.checked;
+        fila.classList.toggle('cotizar-ia-fila-prorrateo', !!prorratear);
+        fila.querySelectorAll('.cotizar-ia-badge-prorrateo').forEach((badge) => {
+            badge.classList.toggle('d-none', !prorratear);
+        });
+    }
+
+    function textoCostoCelda(fila, metricas) {
+        if (fila.dataset.estado === 'pendiente') {
+            return '';
+        }
+        const ref = fila.dataset.costoEstimado === '1';
+        let html = metricas.costo > 0 ? '$' + numero.format(metricas.costo) : '<span class="text-danger">sin costo</span>';
+        if (metricas.costo > 0 && ref) {
+            html += ' <span class="text-muted" title="Costo referencial">(ref.)</span>';
+        }
+        if (metricas.puede && !metricas.prorratear && metricas.costo > 0) {
+            html += '<div class="text-muted" style="font-size:0.7rem">por pack</div>';
+        }
+        if (metricas.puede && !metricas.prorratear && metricas.cantidadFacturar !== parseInt(fila.dataset.cantidad, 10)) {
+            html += '<div class="text-muted" style="font-size:0.7rem">' + metricas.cantidadFacturar + ' packs</div>';
+        }
+        return html;
     }
 
     function factorActual() {
@@ -409,14 +464,19 @@
         const factor = factorActual();
         let total = 0;
         tbody.querySelectorAll('tr[data-indice]').forEach((fila) => {
-            const cantidad = parseInt(fila.dataset.cantidad, 10) || 0;
+            actualizarFilaProrrateo(fila);
             const conPrecio = fila.dataset.estado !== 'pendiente' && factor !== null;
-            const precio = conPrecio ? precioVenta(fila, factor) : 0;
-            fila.querySelector('.cotizar-ia-venta').textContent = conPrecio && precio > 0 ? '$' + numero.format(precio) : '';
-            fila.querySelector('.cotizar-ia-subtotal').textContent = conPrecio && precio > 0 ? '$' + numero.format(precio * cantidad) : '';
+            const m = metricasFila(fila, factor);
+            const celdaCosto = fila.querySelector('.cotizar-ia-costo');
+            if (celdaCosto) {
+                celdaCosto.innerHTML = conPrecio ? textoCostoCelda(fila, m) : '';
+            }
+            fila.querySelector('.cotizar-ia-venta').textContent = conPrecio && m.venta > 0 ? '$' + numero.format(m.venta) : '';
+            const sub = conPrecio && m.venta > 0 ? m.venta * m.cantidadFacturar : 0;
+            fila.querySelector('.cotizar-ia-subtotal').textContent = sub > 0 ? '$' + numero.format(sub) : '';
             const usar = fila.querySelector('.cotizar-ia-usar');
             if (conPrecio && usar && usar.checked) {
-                total += precio * cantidad;
+                total += sub;
             }
         });
         el('cotizar-ia-total').textContent = factor === null ? 'Factor inv\u00e1lido' : '$' + numero.format(total);
@@ -425,14 +485,28 @@
     function filaLinea(linea) {
         const conVinculo = linea.estado !== 'pendiente';
         const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
+        const puedeProrr = !!linea.puede_prorratear;
         return '<tr data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
             + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0)
-            + '" data-precio-rm="' + (parseInt(linea.precio_rm, 10) || 0) + '">'
+            + '" data-precio-rm="' + (parseInt(linea.precio_rm, 10) || 0)
+            + '" data-costo-estimado="' + (linea.costo_estimado ? '1' : '0')
+            + '" data-puede-prorratear="' + (puedeProrr ? '1' : '0')
+            + '" data-pack-tamano="' + (parseInt(linea.pack_tamano, 10) || 0)
+            + '" data-unidades-solicitud="' + (parseInt(linea.unidades_solicitud, 10) || 1)
+            + '" data-costo-prorrateado="' + (parseInt(linea.costo_prorrateado, 10) || 0)
+            + '" data-costo-pack="' + (parseInt(linea.costo_pack, 10) || 0)
+            + '" data-precio-rm-prorrateado="' + (parseInt(linea.precio_rm_prorrateado, 10) || 0)
+            + '" data-precio-rm-pack="' + (parseInt(linea.precio_rm_pack, 10) || 0) + '">'
             + '<td class="text-end tabular-nums">' + (linea.indice + 1) + '</td>'
             + '<td>' + esc(linea.descripcion) + fuente + '</td>'
             + '<td class="text-end tabular-nums">' + numero.format(linea.cantidad) + '</td>'
             + '<td>' + celdaVinculo(linea) + '</td>'
-            + '<td class="text-end tabular-nums">' + costoLinea(linea) + '</td>'
+            + '<td class="text-end tabular-nums cotizar-ia-costo">' + costoLinea(linea) + '</td>'
+            + '<td class="text-center">'
+            + (puedeProrr
+                ? '<input type="checkbox" class="form-check-input cotizar-ia-prorratear" data-indice="' + linea.indice + '" aria-label="Prorratear pack en l\u00ednea ' + (linea.indice + 1) + '">'
+                : '')
+            + '</td>'
             + '<td class="text-end tabular-nums cotizar-ia-venta"></td>'
             + '<td class="text-end tabular-nums cotizar-ia-subtotal"></td>'
             + '<td class="text-center">'
@@ -617,7 +691,10 @@
             && el('cotizar-ia-reemplazar').checked;
         const separar = separarActivo();
         try {
-            const cuerpo = { token, rechazados, reemplazar, separar };
+            const prorratear = Array.from(tbody.querySelectorAll('.cotizar-ia-prorratear'))
+                .filter((cb) => cb.checked)
+                .map((cb) => parseInt(cb.dataset.indice, 10));
+            const cuerpo = { token, rechazados, reemplazar, separar, prorratear };
             if (factorInicial === null || Math.abs(factor - factorInicial) >= 0.005) {
                 cuerpo.factor = Math.round(factor * 100) / 100;
             }
@@ -645,7 +722,7 @@
     el('cotizar-ia-separar-check').addEventListener('change', actualizarBotonAplicar);
     el('cotizar-ia-factor').addEventListener('input', recalcularVenta);
     tbody.addEventListener('change', (e) => {
-        if (e.target.classList.contains('cotizar-ia-usar')) {
+        if (e.target.classList.contains('cotizar-ia-usar') || e.target.classList.contains('cotizar-ia-prorratear')) {
             recalcularVenta();
         }
     });

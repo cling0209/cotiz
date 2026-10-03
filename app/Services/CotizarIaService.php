@@ -306,7 +306,7 @@ class CotizarIaService
      * @param  list<int>  $rechazados  índices cuyo vínculo/referencia el usuario descartó (quedan pendientes)
      * @return array{agregadas: int, vinculadas: int, referencias_web: int, pendientes: int, eliminadas: int, aprendidas: int, cotizaciones: list<array{nronota: int, solicitante: string, agregadas: int}>}
      */
-    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar, bool $separar = false, ?float $factorManual = null): array
+    public function aplicar(Nota $nota, string $usuario, string $token, array $rechazados, bool $reemplazar, bool $separar = false, ?float $factorManual = null, array $prorratear = []): array
     {
         $key = $this->cacheKey($usuario, $token);
         $guardado = $this->previewGuardado($usuario, $token);
@@ -324,6 +324,7 @@ class CotizarIaService
         }
 
         $rechazados = array_fill_keys(array_map('intval', $rechazados), true);
+        $prorratear = array_fill_keys(array_map('intval', $prorratear), true);
         $items = $this->copiarImagenesReferencia($guardado['items'], $rechazados);
 
         $codigosVinculados = [];
@@ -349,7 +350,7 @@ class CotizarIaService
         $paraAprender = [];
         $cotizaciones = [];
 
-        DB::transaction(function () use ($nota, $usuario, $items, $grupos, $rechazados, $maeprods, $reemplazar, $factor, &$conteo, &$paraAprender, &$cotizaciones) {
+        DB::transaction(function () use ($nota, $usuario, $items, $grupos, $rechazados, $prorratear, $maeprods, $reemplazar, $factor, &$conteo, &$paraAprender, &$cotizaciones) {
             $n = 0;
             foreach ($grupos as $solicitante => $indices) {
                 $solicitante = (string) $solicitante;
@@ -357,7 +358,7 @@ class CotizarIaService
 
                 $lote = [];
                 foreach ($indices as $i) {
-                    $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $factor, $conteo);
+                    $lote[] = $this->lineaLote($items[$i], isset($rechazados[$i]), $maeprods, $factor, $conteo, isset($prorratear[$i]));
                     if (! isset($rechazados[$i]) && $items[$i]['estado'] === self::ESTADO_VINCULADO
                         && $items[$i]['origen'] === self::ORIGEN_IA && $maeprods->has($items[$i]['producto']['prod_item'])
                         && (int) ($items[$i]['producto']['unidades'] ?? 1) === 1) {
@@ -441,10 +442,11 @@ class CotizarIaService
      * @param  array<string, int>  $conteo
      * @return array<string, mixed>
      */
-    private function lineaLote(array $item, bool $rechazado, $maeprods, float $factor, array &$conteo): array
+    private function lineaLote(array $item, bool $rechazado, $maeprods, float $factor, array &$conteo, bool $prorratearPack = false): array
     {
+        $cantidadAgile = (int) $item['cantidad'];
         $base = [
-            'cantidad' => (int) $item['cantidad'],
+            'cantidad' => $cantidadAgile,
             'prod_item_agile' => $item['id_agile'],
             'prod_descripcion_agile' => $item['descripcion'],
         ];
@@ -458,17 +460,25 @@ class CotizarIaService
             $costoMaestro = (int) ($mae->prod_valor_costo ?? 0) * $unidades;
             $pack = (int) ($item['producto']['pack_maestro'] ?? 0);
             $solicitadas = max(1, (int) ($item['producto']['unidades_solicitud'] ?? 1));
+            $notaPack = '';
             if ($pack > $solicitadas) {
-                $valor = self::prorrateo($valor, $solicitadas, $pack);
-                $costoMaestro = self::prorrateo($costoMaestro, $solicitadas, $pack);
+                if ($prorratearPack) {
+                    $valor = self::prorrateo($valor, $solicitadas, $pack);
+                    $costoMaestro = self::prorrateo($costoMaestro, $solicitadas, $pack);
+                } else {
+                    $packs = (int) ceil($cantidadAgile * $solicitadas / $pack);
+                    $base['cantidad'] = $packs;
+                    $notaPack = " Cotizado por pack de {$pack}: {$packs} pack(s) para cubrir {$cantidadAgile} solicitado(s).";
+                }
             }
             $precios = $this->preciosMaestro($valor, $costoMaestro, $factor);
             $observacion = trim(
                 ($unidades > 1 ? NotaDetalleService::observacionPack($unidades, (string) $mae->prod_item) : '')
-                .($pack > $solicitadas
+                .($pack > $solicitadas && $prorratearPack
                     ? 'Precio prorrateado: '.trim((string) $mae->prod_item)." viene en pack de {$pack}; se cotiza "
                         .($solicitadas > 1 ? "el pack de {$solicitadas} solicitado." : 'por unidad solicitada.')
                     : '')
+                .$notaPack
                 .(($item['producto']['foto'] ?? '') !== ''
                     ? ' Elegido por foto: se ve '.$item['producto']['foto'].' en la imagen de '.trim((string) $mae->prod_item).'.'
                     : ''),
@@ -484,12 +494,23 @@ class CotizarIaService
 
         if (! $rechazado && $item['estado'] === self::ESTADO_REFERENCIA_WEB && is_array($item['referencia'] ?? null)) {
             $conteo['referencias_web']++;
+            $ref = $item['referencia'];
+            $pack = max(1, (int) ($ref['unidades_por_pack'] ?? 1));
+            $solicitadas = max(1, (int) ($ref['unidades_solicitud'] ?? 1));
+            $costo = (int) $ref['neto_unitario'];
+            $notaPack = '';
+            if ($pack > $solicitadas && ! $prorratearPack) {
+                $packs = (int) ceil($cantidadAgile * $solicitadas / $pack);
+                $base['cantidad'] = $packs;
+                $costo = (int) round($costo * $pack / $solicitadas);
+                $notaPack = " Cotizado por pack de {$pack}: {$packs} pack(s) para cubrir {$cantidadAgile} solicitado(s).";
+            }
 
             return $base + [
                 'pendiente' => true,
-                'prod_valor_costo' => (int) $item['referencia']['neto_unitario'],
-                'observacion' => $this->observacionReferencia($item['referencia']),
-            ] + (($item['referencia']['imagen_ref'] ?? '') !== '' ? ['imagen_ref' => $item['referencia']['imagen_ref']] : []);
+                'prod_valor_costo' => $costo,
+                'observacion' => trim($this->observacionReferencia($ref).$notaPack),
+            ] + (($ref['imagen_ref'] ?? '') !== '' ? ['imagen_ref' => $ref['imagen_ref']] : []);
         }
 
         $conteo['pendientes']++;
@@ -2452,15 +2473,46 @@ TXT];
         $costo = 0;
         $precioVenta = 0;
         $precioRm = 0;
+        $puedeProrratear = false;
+        $packTamano = 0;
+        $unidadesSolicitud = 1;
+        $costoProrrateado = 0;
+        $costoPack = 0;
+        $precioRmProrrateado = 0;
+        $precioRmPack = 0;
+
         if ($producto !== null) {
-            [
-                'costo' => $costo,
-                'precio_venta' => $precioVenta,
-                'precio_rm' => $precioRm,
-            ] = $this->preciosMaestro((int) $producto['prod_valor'], (int) $producto['prod_valor_costo'], $factor);
+            $unidadesSolicitud = max(1, (int) ($producto['unidades_solicitud'] ?? 1));
+            $packTamano = (int) ($producto['pack_maestro'] ?? 0);
+            $unidades = max(1, (int) ($producto['unidades'] ?? 1));
+            $prorrateado = $this->preciosMaestro((int) $producto['prod_valor'], (int) $producto['prod_valor_costo'], $factor);
+            $costoProrrateado = $prorrateado['costo'];
+            $precioRmProrrateado = $prorrateado['precio_rm'];
+            $costoPack = $costoProrrateado;
+            $precioRmPack = $precioRmProrrateado;
+            if ($packTamano > $unidadesSolicitud && $unidades === 1) {
+                $puedeProrratear = true;
+                $valorPack = (int) round((int) $producto['prod_valor'] * $packTamano / $unidadesSolicitud);
+                $costoMaePack = (int) round((int) $producto['prod_valor_costo'] * $packTamano / $unidadesSolicitud);
+                $porPack = $this->preciosMaestro($valorPack, $costoMaePack, $factor);
+                $costoPack = $porPack['costo'];
+                $precioRmPack = $porPack['precio_rm'];
+            }
+            $costo = $costoPack;
+            $precioRm = $precioRmPack;
+            $precioVenta = $precioRmPack > 0 && $this->esFactorMetropolitana($factor)
+                ? $precioRmPack
+                : (int) round($costoPack * $factor);
         } elseif (is_array($referencia)) {
-            $costo = (int) $referencia['neto_unitario'];
-            $precioVenta = (int) round($costo * $factor);
+            $packTamano = max(1, (int) ($referencia['unidades_por_pack'] ?? 1));
+            $unidadesSolicitud = max(1, (int) ($referencia['unidades_solicitud'] ?? 1));
+            $costoProrrateado = (int) $referencia['neto_unitario'];
+            $costoPack = $packTamano > $unidadesSolicitud
+                ? (int) round($costoProrrateado * $packTamano / $unidadesSolicitud)
+                : $costoProrrateado;
+            $puedeProrratear = $packTamano > $unidadesSolicitud;
+            $costo = $costoPack;
+            $precioVenta = (int) round($costoPack * $factor);
         }
 
         return [
@@ -2479,6 +2531,13 @@ TXT];
                 'unidades_solicitud' => max(1, (int) ($producto['unidades_solicitud'] ?? 1)),
                 'foto' => (string) ($producto['foto'] ?? ''),
             ],
+            'puede_prorratear' => $puedeProrratear,
+            'pack_tamano' => $packTamano,
+            'unidades_solicitud' => $unidadesSolicitud,
+            'costo_prorrateado' => $costoProrrateado,
+            'costo_pack' => $costoPack,
+            'precio_rm_prorrateado' => $precioRmProrrateado,
+            'precio_rm_pack' => $precioRmPack,
             'costo' => $costo,
             'costo_estimado' => $precioRm > 0,
             'precio_venta' => $precioVenta,

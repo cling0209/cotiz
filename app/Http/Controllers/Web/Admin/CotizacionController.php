@@ -895,6 +895,8 @@ class CotizacionController extends Controller
             'reemplazar' => ['nullable', 'boolean'],
             'separar' => ['nullable', 'boolean'],
             'factor' => ['nullable', 'numeric', 'min:1', 'max:5'],
+            'prorratear' => ['nullable', 'array'],
+            'prorratear.*' => ['integer', 'min:0'],
         ]);
 
         $usuario = (string) $request->user()->username;
@@ -921,6 +923,7 @@ class CotizacionController extends Controller
                 (bool) ($datos['reemplazar'] ?? false),
                 (bool) ($datos['separar'] ?? false),
                 isset($datos['factor']) ? (float) $datos['factor'] : null,
+                array_values(array_unique(array_map('intval', $datos['prorratear'] ?? []))),
             );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
