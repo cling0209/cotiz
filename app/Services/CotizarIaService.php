@@ -72,6 +72,9 @@ class CotizarIaService
 
     private const FOTOS_POR_LINEA = 4;
 
+    /** Fotos por línea sin equivalente que se revisan antes de buscar en la web. */
+    private const FOTOS_RESCATE_POR_LINEA = 2;
+
     private const MAX_FOTO_BYTES = 2 * 1024 * 1024;
 
     // Request inline de Gemini ≤ 20 MB y base64 infla ~33%.
@@ -1093,6 +1096,7 @@ TXT];
             }
         }
 
+        $candidatos2 = [];
         if ($terminos2 !== [] && ! $this->iaSinCuota) {
             // Segunda pasada: nombre genérico sin marca y términos alternativos que sugirió la IA.
             $this->detalle('Segunda pasada con términos alternativos para '.count($terminos2).' línea(s)');
@@ -1131,7 +1135,24 @@ TXT];
             }
         }
 
-        return $this->vincularPorFoto($items, array_filter($porFoto));
+        // Sin equivalente ni dudosos, el nombre del maestro puede ser ambiguo («25 UNIDADES» = 25 hojas):
+        // se revisa la foto de los mejores candidatos antes de buscar fuera. Van al final para no quitar
+        // cupo de fotos a los dudosos que marcó la IA.
+        $rescate = [];
+        foreach ($paraIa as $i) {
+            if ($items[$i]['estado'] === self::ESTADO_VINCULADO || ($porFoto[$i] ?? []) !== []) {
+                continue;
+            }
+            $lista = $this->candidatosRescateFoto(
+                ($candidatos[$i] ?? []) + ($candidatos2[$i] ?? []),
+                (string) $items[$i]['descripcion'],
+            );
+            if ($lista !== []) {
+                $rescate[$i] = $lista;
+            }
+        }
+
+        return $this->vincularPorFoto($items, array_filter($porFoto) + $rescate);
     }
 
     /**
@@ -1153,6 +1174,30 @@ TXT];
         }
 
         return array_slice($equivalentes, 0, self::FOTOS_POR_LINEA, true);
+    }
+
+    /**
+     * Mejores candidatos del buscador (de medida exacta o sin medida) para confirmar por foto
+     * cuando la IA no encontró equivalente solo con los nombres.
+     *
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
+     * @return array<string, array<string, mixed>>
+     */
+    private function candidatosRescateFoto(array $candidatos, string $descripcion): array
+    {
+        $out = [];
+        foreach ($candidatos as $codigo => $producto) {
+            if ($this->conPrecioOCosto($producto) === null || $this->diferenciaMedida($descripcion, $producto['prod_nombre']) > 1e-9) {
+                continue;
+            }
+            $out[$codigo] = $this->prorratearPackMaestro(['unidades' => 1] + $producto, $descripcion)
+                + ['falta' => 'que sea el producto solicitado (tipo, medida, cantidad y color)'];
+            if (count($out) >= self::FOTOS_RESCATE_POR_LINEA) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1567,6 +1612,9 @@ TXT];
             .'Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente '
             .'(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), '
             .'con las unidades calculadas por la cantidad del producto solicitado que trae el kit. '
+            .'En papelería «N unidades» del catálogo suele contar hojas o pliegos, no la pieza menor: '
+            .'«etiqueta 14 por hoja 25 unidades» son 25 hojas y equivale a «etiquetas 25 hojas» (unidades = 1). '
+            .'Si el nombre no permite saber si coincide la cantidad o el color pedido, ponlo en "revisar_foto" en vez de descartarlo. '
             ."No consideres precio. Puedes marcar varios equivalentes.\n"
             .'Si un candidato es el mismo producto pero su nombre no dice si trae un accesorio o característica que el solicitado exige '
             .'(ej. cordón o lanyard, mosquetón, tapa, estuche, pilas, color), no lo marques como equivalente: ponlo en "revisar_foto" '
@@ -1681,7 +1729,7 @@ TXT];
         }
         $pack = $this->mercadolibre->unidadesPorPack((string) ($producto['prod_nombre'] ?? ''));
         $solicitadas = $this->mercadolibre->unidadesPorPack($descripcion);
-        if ($pack <= $solicitadas) {
+        if ($pack <= $solicitadas || self::pideMismoPackEnHojas($descripcion, $pack)) {
             return $producto;
         }
 
@@ -1707,6 +1755,15 @@ TXT];
         return $producto !== null && ((int) ($producto['prod_valor'] ?? 0) > 0 || (int) ($producto['prod_valor_costo'] ?? 0) > 0)
             ? $producto
             : null;
+    }
+
+    /**
+     * «25 hojas» pedido y maestro «… 25 UNIDADES»: las unidades del pack son las hojas, no se prorratea.
+     */
+    private static function pideMismoPackEnHojas(string $descripcion, int $pack): bool
+    {
+        return $pack > 1
+            && preg_match('/\b'.$pack.'\s*(?:hojas?|pliegos?|l[áa]minas?|folios?)\b/iu', $descripcion) === 1;
     }
 
     private static function prorrateo(int $valor, int $solicitadas, int $pack): int

@@ -56,6 +56,7 @@ class CotizarIaTest extends TestCase
             'cotiz.prisa.habilitado' => false,
             'cotiz.prisa.base_url' => 'https://prisa.test',
             'cotiz.mercadolibre.habilitado' => false,
+            'products.image_base_url' => null,
         ]);
 
         $this->admin = User::factory()->create([
@@ -446,6 +447,39 @@ class CotizarIaTest extends TestCase
         $ia = NotaDetalle::query()->where('nronota', $nota->nronota)->get()->keyBy('prod_descripcion_agile')[self::DESC_IA];
         $this->assertSame('HIG001', trim($ia->prod_item));
         $this->assertStringContainsString('Elegido por foto: se ve rollo con hoja doble en el envase en la imagen de HIG001', (string) $ia->observacion);
+    }
+
+    public function test_sin_equivalente_por_nombre_se_revisa_la_foto_de_los_mejores_candidatos(): void
+    {
+        config(['products.image_base_url' => 'https://img.test']);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake([
+            'img.test/*' => Http::response('JPEG', 200, ['Content-Type' => 'image/jpeg']),
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => [], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]))
+                ->push($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'codigo' => 'HIG002', 'coincide' => true, 'se_ve' => 'envase dice hoja doble 50 mts'],
+                    ],
+                ]))
+                ->push($this->respuestaGemini(['resultados' => []])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_IA);
+        $this->assertSame(CotizarIaService::ORIGEN_FOTO, $linea['origen']);
+        $this->assertSame('HIG002', $linea['producto']['prod_item']);
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'Confirmar: que sea el producto solicitado'));
     }
 
     public function test_dudoso_mas_barato_que_el_equivalente_se_revisa_por_foto_y_lo_reemplaza(): void
