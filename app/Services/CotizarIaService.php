@@ -31,6 +31,9 @@ class CotizarIaService
     /** Por ahora solo estos usuarios ven y usan el botón. */
     public const USUARIOS_PERMITIDOS = ['admin', 'pame'];
 
+    /** Ven el consumo de tokens y su costo en la vista previa (subconjunto de USUARIOS_PERMITIDOS). */
+    public const USUARIOS_VEN_CONSUMO = ['admin', 'pame'];
+
     public const FUENTE_COTIZACION = 'cotizacion';
 
     public const FUENTE_ADJUNTO = 'adjunto';
@@ -127,6 +130,11 @@ class CotizarIaService
         return $username !== '' && in_array($username, self::USUARIOS_PERMITIDOS, true);
     }
 
+    public static function usuarioVeConsumo(string $usuario): bool
+    {
+        return in_array(mb_strtolower(trim($usuario)), self::USUARIOS_VEN_CONSUMO, true);
+    }
+
     /**
      * Solo lectura: no graba nada en la nota hasta aplicar().
      *
@@ -143,6 +151,7 @@ class CotizarIaService
             : null;
         $this->gemini->observar(fn (string $mensaje) => $this->detalle($mensaje));
         $this->gemini->reiniciarUsoPago();
+        $this->gemini->reiniciarUso();
 
         try {
             return $this->ejecutarPreview($nota, $usuario, $codigo);
@@ -284,6 +293,7 @@ class CotizarIaService
                 : [],
             'lineas_actuales' => $lineasActuales,
             'lineas_actuales_agile' => $lineasActualesAgile,
+            'uso_ia' => self::usuarioVeConsumo($usuario) ? $this->gemini->resumenUso() : null,
         ];
     }
 
@@ -856,7 +866,7 @@ Responde SOLO JSON:
 TXT];
 
         try {
-            $respuesta = $this->gemini->generar($parts, ['json' => true, 'system' => $this->instruccionSistema()]);
+            $respuesta = $this->gemini->generar($parts, ['json' => true, 'system' => $this->instruccionSistema(), 'etapa' => 'Lectura de adjuntos']);
         } catch (GeminiCuotaAgotadaException $e) {
             $this->iaSinCuota = true;
             $this->avisos[] = $e->getMessage().' Se vinculó solo con reglas.';
@@ -1160,7 +1170,7 @@ TXT];
         }
 
         try {
-            $respuesta = $this->gemini->generar($parts, ['json' => true, 'system' => $this->instruccionSistema()]);
+            $respuesta = $this->gemini->generar($parts, ['json' => true, 'system' => $this->instruccionSistema(), 'etapa' => 'Revisión de fotos']);
         } catch (GeminiCuotaAgotadaException $e) {
             $this->iaSinCuota = true;
             $this->avisos[] = $e->getMessage().' No se revisaron las fotos del maestro.';
@@ -1548,7 +1558,7 @@ TXT];
             .'"revisar_foto":[{"codigo":"CODIGO","unidades":1,"falta":"cordón"}],"busqueda":["termino"],"generico":"nombre genérico"}]}';
 
         try {
-            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
+            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema(), 'etapa' => 'Equivalencias con el maestro']);
         } catch (GeminiCuotaAgotadaException $e) {
             $this->iaSinCuota = true;
             $this->avisos[] = $e->getMessage().' Las líneas restantes quedaron sin vincular por IA.';
@@ -2029,7 +2039,7 @@ TXT];
                 .'Responde SOLO JSON: {"resultados":[{"i":0,"descartar":[1,3]}]}';
 
             try {
-                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema()]);
+                $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema(), 'etapa' => 'Revisión Mercado Libre']);
             } catch (GeminiCuotaAgotadaException $e) {
                 $this->iaSinCuota = true;
                 $this->avisos[] = $e->getMessage().' No se revisaron con IA las publicaciones de Mercado Libre.';
@@ -2121,6 +2131,7 @@ TXT];
             'google_search' => true,
             'modelo' => (string) config('cotiz.gemini.modelo_web', ''),
             'thinking_level' => (string) config('cotiz.gemini.thinking_web', ''),
+            'etapa' => 'Búsqueda web (Sodimac)',
         ];
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], $opciones);

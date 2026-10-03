@@ -172,6 +172,14 @@ return [
         'max_adjunto_mb' => max(1, min(14, (int) env('COTIZ_GEMINI_MAX_ADJUNTO_MB', 14))),
         // Fotos del maestro que la IA revisa por cotización cuando el nombre no confirma un accesorio; 0 = no revisar.
         'max_fotos' => max(0, min(60, (int) env('COTIZ_GEMINI_MAX_FOTOS', 24))),
+        // Tarifas para estimar el costo mostrado en «Cotizar con IA» (USD). Verificar en la lista de precios de Google.
+        // Los tokens de pensamiento se cobran como salida; la búsqueda web se cobra por llamada con google_search.
+        'precios' => [
+            'entrada_usd_1m' => (float) env('COTIZ_GEMINI_PRECIO_ENTRADA_USD_1M', 0.30),
+            'salida_usd_1m' => (float) env('COTIZ_GEMINI_PRECIO_SALIDA_USD_1M', 2.50),
+            'busqueda_usd' => (float) env('COTIZ_GEMINI_PRECIO_BUSQUEDA_USD', 0.035),
+            'usd_clp' => (float) env('COTIZ_USD_CLP', 950),
+        ],
     ],
 
     // Búsqueda de publicaciones en Mercado Libre (API). Sodimac sigue por Gemini.

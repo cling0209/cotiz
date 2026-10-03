@@ -30,6 +30,31 @@
                         <div id="cotizar-ia-motivo" class="text-muted mt-1"></div>
                         <div id="cotizar-ia-adjuntos" class="text-muted mt-1"></div>
                     </div>
+                    <div id="cotizar-ia-uso" class="border rounded p-2 mb-2 small bg-light d-none">
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <strong><i class="bi bi-cpu"></i> Consumo de IA</strong>
+                            <span>Tokens: <strong class="tabular-nums" id="cotizar-ia-uso-tokens"></strong></span>
+                            <span>Costo: <strong class="tabular-nums" id="cotizar-ia-uso-costo"></strong></span>
+                            <span class="text-muted" id="cotizar-ia-uso-referencial"></span>
+                            <button type="button" class="btn btn-link btn-sm p-0 ms-auto" data-bs-toggle="collapse" data-bs-target="#cotizar-ia-uso-detalle" aria-expanded="false" aria-controls="cotizar-ia-uso-detalle">Ver detalle</button>
+                        </div>
+                        <div class="collapse mt-2" id="cotizar-ia-uso-detalle">
+                            <table class="table table-sm table-bordered mb-1 bg-white">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Etapa</th>
+                                        <th class="text-end">Llamadas</th>
+                                        <th class="text-end">Entrada</th>
+                                        <th class="text-end">Salida</th>
+                                        <th class="text-end">Pensamiento</th>
+                                        <th class="text-end">Costo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cotizar-ia-uso-etapas"></tbody>
+                            </table>
+                            <div class="text-muted" id="cotizar-ia-uso-nota"></div>
+                        </div>
+                    </div>
                     <div id="cotizar-ia-avisos" class="alert alert-warning py-2 small d-none" role="status"></div>
                     <div id="cotizar-ia-separar" class="alert alert-info py-2 small d-none" role="status">
                         <div class="fw-semibold mb-1"><i class="bi bi-diagram-3"></i> El comprador pide cotizaciones separadas por solicitante</div>
@@ -419,8 +444,40 @@
         btnAplicar.classList.add('d-none');
     }
 
+    function pesos(valor) {
+        return '$' + numero.format(Math.round(Number(valor) || 0));
+    }
+
+    function pintarUso(uso) {
+        const box = el('cotizar-ia-uso');
+        if (!uso || !uso.llamadas) {
+            box.classList.add('d-none');
+            return;
+        }
+        el('cotizar-ia-uso-tokens').textContent = numero.format(uso.total_tokens || 0);
+        el('cotizar-ia-uso-costo').textContent = pesos(uso.costo_clp);
+        const gratis = (uso.llamadas || 0) - (uso.llamadas_pago || 0);
+        el('cotizar-ia-uso-referencial').textContent = uso.llamadas + ' llamada(s): '
+            + (uso.llamadas_pago || 0) + ' pagada(s), ' + gratis + ' gratuita(s)'
+            + (gratis > 0 ? ' \u00b7 si todo fuera pagado: ' + pesos(uso.costo_referencial_clp) : '');
+        el('cotizar-ia-uso-etapas').innerHTML = (uso.etapas || []).map((e) => '<tr>'
+            + '<td>' + esc(e.etapa) + '</td>'
+            + '<td class="text-end tabular-nums">' + numero.format(e.llamadas) + '</td>'
+            + '<td class="text-end tabular-nums">' + numero.format(e.entrada) + '</td>'
+            + '<td class="text-end tabular-nums">' + numero.format(e.salida) + '</td>'
+            + '<td class="text-end tabular-nums">' + numero.format(e.pensamiento) + '</td>'
+            + '<td class="text-end tabular-nums">' + pesos(e.costo_clp)
+            + (e.costo_referencial_clp > e.costo_clp ? ' <span class="text-muted">(ref. ' + pesos(e.costo_referencial_clp) + ')</span>' : '')
+            + '</td>'
+            + '</tr>').join('');
+        el('cotizar-ia-uso-nota').textContent = 'Costo estimado con las tarifas configuradas y d\u00f3lar a '
+            + pesos(uso.usd_clp) + '. La cuenta gratuita de Gemini no se cobra; el pensamiento se cobra como salida.';
+        box.classList.remove('d-none');
+    }
+
     function pintar(data) {
         token = data.token;
+        pintarUso(data.uso_ia);
         el('cotizar-ia-fuente').textContent = FUENTES[data.fuente] || data.fuente;
         el('cotizar-ia-motivo').textContent = data.fuente_motivo || '';
         el('cotizar-ia-adjuntos').textContent = (data.adjuntos_usados || []).length

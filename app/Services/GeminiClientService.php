@@ -25,6 +25,13 @@ class GeminiClientService
 
     private int $llamadasPago = 0;
 
+    /** @var list<array{etapa: string, cuenta: string, modelo: string, entrada: int, salida: int, pensamiento: int, busqueda: bool}> */
+    private array $uso = [];
+
+    private string $cuentaUltima = '';
+
+    private string $modeloUltimo = '';
+
     /**
      * Recibe avisos de reintento / cambio de modelo (para mostrar avance al usuario).
      *
@@ -51,9 +58,110 @@ class GeminiClientService
         return $this->llamadasPago;
     }
 
+    public function reiniciarUso(): void
+    {
+        $this->uso = [];
+    }
+
+    /**
+     * Tokens y costo estimado de las llamadas exitosas desde reiniciarUso(), en total y por etapa.
+     * La cuenta gratuita no se cobra: su costo se informa aparte como referencial.
+     *
+     * @return array{
+     *     llamadas: int,
+     *     llamadas_pago: int,
+     *     entrada: int,
+     *     salida: int,
+     *     pensamiento: int,
+     *     total_tokens: int,
+     *     costo_clp: int,
+     *     costo_referencial_clp: int,
+     *     usd_clp: float,
+     *     etapas: list<array{etapa: string, llamadas: int, entrada: int, salida: int, pensamiento: int, costo_clp: int, costo_referencial_clp: int}>
+     * }
+     */
+    public function resumenUso(): array
+    {
+        $usdClp = (float) config('cotiz.gemini.precios.usd_clp', 950);
+        $total = ['llamadas' => 0, 'llamadas_pago' => 0, 'entrada' => 0, 'salida' => 0, 'pensamiento' => 0, 'costo' => 0.0, 'referencial' => 0.0];
+        $etapas = [];
+
+        foreach ($this->uso as $llamada) {
+            $costo = $this->costoUsd($llamada) * $usdClp;
+            $esPago = $llamada['cuenta'] === self::CUENTA_PAGO;
+            $etapa = $llamada['etapa'] !== '' ? $llamada['etapa'] : 'Otras';
+            $etapas[$etapa] ??= ['etapa' => $etapa, 'llamadas' => 0, 'entrada' => 0, 'salida' => 0, 'pensamiento' => 0, 'costo' => 0.0, 'referencial' => 0.0];
+
+            foreach ([&$total, &$etapas[$etapa]] as &$acumulado) {
+                $acumulado['llamadas']++;
+                $acumulado['entrada'] += $llamada['entrada'];
+                $acumulado['salida'] += $llamada['salida'];
+                $acumulado['pensamiento'] += $llamada['pensamiento'];
+                $acumulado['referencial'] += $costo;
+                if ($esPago) {
+                    $acumulado['costo'] += $costo;
+                }
+            }
+            unset($acumulado);
+            if ($esPago) {
+                $total['llamadas_pago']++;
+            }
+        }
+
+        return [
+            'llamadas' => $total['llamadas'],
+            'llamadas_pago' => $total['llamadas_pago'],
+            'entrada' => $total['entrada'],
+            'salida' => $total['salida'],
+            'pensamiento' => $total['pensamiento'],
+            'total_tokens' => $total['entrada'] + $total['salida'] + $total['pensamiento'],
+            'costo_clp' => (int) round($total['costo']),
+            'costo_referencial_clp' => (int) round($total['referencial']),
+            'usd_clp' => $usdClp,
+            'etapas' => array_values(array_map(static fn (array $e) => [
+                'etapa' => $e['etapa'],
+                'llamadas' => $e['llamadas'],
+                'entrada' => $e['entrada'],
+                'salida' => $e['salida'],
+                'pensamiento' => $e['pensamiento'],
+                'costo_clp' => (int) round($e['costo']),
+                'costo_referencial_clp' => (int) round($e['referencial']),
+            ], $etapas)),
+        ];
+    }
+
+    /**
+     * @param  array{entrada: int, salida: int, pensamiento: int, busqueda: bool}  $llamada
+     */
+    private function costoUsd(array $llamada): float
+    {
+        $precios = (array) config('cotiz.gemini.precios', []);
+
+        return $llamada['entrada'] / 1_000_000 * (float) ($precios['entrada_usd_1m'] ?? 0)
+            + ($llamada['salida'] + $llamada['pensamiento']) / 1_000_000 * (float) ($precios['salida_usd_1m'] ?? 0)
+            + ($llamada['busqueda'] ? (float) ($precios['busqueda_usd'] ?? 0) : 0.0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function registrarUso(array $data, string $etapa, bool $conBusqueda): void
+    {
+        $meta = is_array($data['usageMetadata'] ?? null) ? $data['usageMetadata'] : [];
+        $this->uso[] = [
+            'etapa' => $etapa,
+            'cuenta' => $this->cuentaUltima,
+            'modelo' => $this->modeloUltimo,
+            'entrada' => (int) ($meta['promptTokenCount'] ?? 0) + (int) ($meta['toolUsePromptTokenCount'] ?? 0),
+            'salida' => (int) ($meta['candidatesTokenCount'] ?? 0),
+            'pensamiento' => (int) ($meta['thoughtsTokenCount'] ?? 0),
+            'busqueda' => $conBusqueda,
+        ];
+    }
+
     /**
      * @param  list<array<string, mixed>>  $parts  partes del mensaje de usuario (text / inline_data)
-     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float, thinking_level?: string, modelo?: string}  $opciones
+     * @param  array{json?: bool, google_search?: bool, system?: string, temperature?: float, thinking_level?: string, modelo?: string, etapa?: string}  $opciones
      * @return array{json: mixed, texto: string, fuentes: list<array{uri: string, title: string}>}
      *
      * @throws GeminiCuotaAgotadaException
@@ -95,6 +203,7 @@ class GeminiClientService
         $response = $this->enviarConReintento($payload, $conBusqueda, trim((string) ($opciones['modelo'] ?? '')));
         $data = $response->json();
         $data = is_array($data) ? $data : [];
+        $this->registrarUso($data, trim((string) ($opciones['etapa'] ?? '')), $conBusqueda);
         $texto = $this->textoRespuesta($data);
 
         $json = null;
@@ -154,6 +263,8 @@ class GeminiClientService
             }
             $resultado = $this->enviarConModelos($cuenta, $payload, $modeloPreferido);
             if ($resultado instanceof Response) {
+                $this->cuentaUltima = $cuenta;
+
                 return $resultado;
             }
             [$sinCuota, $ultimoError] = $resultado;
@@ -188,6 +299,8 @@ class GeminiClientService
             }
             $resultado = $this->enviarAModelo($cuenta, $model, $payload);
             if ($resultado instanceof Response) {
+                $this->modeloUltimo = $model;
+
                 return $resultado;
             }
             [$status, $ultimoError] = $resultado;
