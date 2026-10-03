@@ -1192,6 +1192,7 @@ class OportunidadVinculoService
                 'cambios_frase' => 0,
                 'item' => $this->resumenCodigo($codigo),
                 'error' => $e->getMessage(),
+                'puede_cotizar_manual' => CompraAgilApiService::permiteCotizarManual($e->getMessage()),
             ];
         }
     }

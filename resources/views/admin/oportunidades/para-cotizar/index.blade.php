@@ -3191,6 +3191,7 @@
                     return {
                         ok: false,
                         error: data?.error || `HTTP ${res.status}`,
+                        puedeCotizarManual: data?.puede_cotizar_manual === true,
                     };
                 }
                 return { ok: true };
@@ -3402,7 +3403,8 @@
                 cotizarEnCursoCodigo = cod;
                 renderTabla(false);
                 const prev = await asegurarVinculoAntes(cod);
-                if (!prev.ok) {
+                // MP no respondió pero el código existe: se cotiza cargando productos a mano.
+                if (!prev.ok && !prev.puedeCotizarManual) {
                     cotizarEnCursoCodigo = '';
                     renderTabla(false);
                     if (bsModalVinculo && modalVinculoLabel && modalVinculoError) {

@@ -231,8 +231,18 @@ class CompraAgilBusquedaController extends Controller
         if ($preview === null) {
             $existeLocal = $this->oportunidad->existeEnBaseLocal($codigo);
             $motivo = null;
-            if (OportunidadEncontrada::query()->where('codigo', $codigo)->exists()) {
-                $motivo = 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.';
+            $manual = false;
+            $oportunidad = OportunidadEncontrada::query()
+                ->where('codigo', $codigo)
+                ->orderByDesc('fecha_busqueda')
+                ->orderByDesc('id')
+                ->first();
+            if ($oportunidad !== null) {
+                $errorVinculo = trim((string) ($oportunidad->vinculo_error ?? ''));
+                $manual = $errorVinculo !== '' && CompraAgilApiService::permiteCotizarManual($errorVinculo);
+                $motivo = $manual
+                    ? 'No se pudo vincular: Mercado Público no entregó el detalle de productos y no se pudieron leer desde los adjuntos. Ingrese los productos manualmente.'
+                    : 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.';
             }
 
             return response()->json([
@@ -240,6 +250,7 @@ class CompraAgilBusquedaController extends Controller
                 'preview' => null,
                 'existe_local' => $existeLocal,
                 'motivo' => $motivo,
+                'manual' => $manual,
             ]);
         }
 

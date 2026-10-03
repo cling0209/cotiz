@@ -710,6 +710,7 @@ class OportunidadParaCotizarController extends Controller
                 'ok' => false,
                 'error' => $resultado['error'] ?? 'No se pudo vincular la cotización.',
                 'item' => $resultado['item'],
+                'puede_cotizar_manual' => (bool) ($resultado['puede_cotizar_manual'] ?? false),
             ], 422);
         }
 

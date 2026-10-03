@@ -737,6 +737,24 @@ class CompraAgilApiService
         return in_array($status, [502, 503, 504], true);
     }
 
+    /**
+     * MP no respondió (502/503/504, timeout, cuota) pero el código es válido: se puede cotizar
+     * cargando productos a mano y el seguimiento posterior por API sigue funcionando.
+     * «No existe» / código inválido / ticket: no.
+     */
+    public static function permiteCotizarManual(string $mensaje): bool
+    {
+        if (self::esErrorDefinitivoMp($mensaje)) {
+            return false;
+        }
+        $texto = mb_strtolower($mensaje);
+
+        return self::esErrorGatewayMp($mensaje)
+            || str_contains($texto, 'timeout o error de conexión')
+            || str_contains($texto, 'no respondió a tiempo')
+            || str_contains($texto, 'cuota');
+    }
+
     /** 502/503/504: no reintentar HTTP en el mismo request. */
     public static function esErrorGatewayMp(string $mensaje): bool
     {

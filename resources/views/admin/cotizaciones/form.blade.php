@@ -4656,7 +4656,11 @@
             return { ok: true };
         }
         if (res.ok && json.existe_local && !json.preview) {
-            return { ok: false, motivo: json.motivo || 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.' };
+            return {
+                ok: false,
+                manual: json.manual === true,
+                motivo: json.motivo || 'La oportunidad aún no tiene detalle listo. Espere la vinculación en Oportunidades o vincúlela desde allí.',
+            };
         }
         return { ok: false };
     }
@@ -4740,6 +4744,10 @@
                 ocultarAvisoMpLocal();
                 const previewLocal = await intentarPreviewOportunidadesCache(codigo);
                 if (previewLocal.ok) {
+                    return;
+                }
+                if (previewLocal.manual) {
+                    mostrarImportAviso(previewLocal.motivo);
                     return;
                 }
                 if (previewLocal.motivo) {
