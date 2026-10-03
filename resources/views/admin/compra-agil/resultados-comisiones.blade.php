@@ -92,8 +92,9 @@ array_merge($filtros, ['por_pagina' => $items->perPage()]),
                 <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                     <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle
                 </a>
-                <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle-productos', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
-                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle con productos
+                <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-detalle-productos', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader
+                    title="Solo cotizaciones ganadas (ganador propio con orden de compra)">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Descargar detalle con productos (solo ganadas)
                 </a>
                 <a href="{{ route('admin.compra-agil.resultados.comisiones.exportar-resumen', request()->query()) }}" class="btn btn-outline-success btn-sm js-comisiones-export" data-no-loader>
                     <i class="bi bi-file-earmark-excel"></i> Descargar resumen por ejecutivo (Excel)
