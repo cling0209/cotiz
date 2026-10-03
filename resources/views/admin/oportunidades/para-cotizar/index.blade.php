@@ -693,6 +693,7 @@
                         <table class="table table-sm table-striped align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
+                                    <th class="text-end text-nowrap" style="width: 2.5rem;">#</th>
                                     <th>Producto MP</th>
                                     <th class="text-end text-nowrap">Cant.</th>
                                     <th>Estado</th>
@@ -3295,7 +3296,8 @@
                 }
                 const lineas = Array.isArray(data.lineas) ? data.lineas : [];
                 if (modalVinculoTbody) {
-                    modalVinculoTbody.innerHTML = lineas.map((linea) => {
+                    modalVinculoTbody.innerHTML = lineas.map((linea, idx) => {
+                        const numLinea = String(idx + 1);
                         const desc = String(linea.descripcion || '').trim() || '—';
                         const cant = linea.cantidad != null ? String(linea.cantidad) : '—';
                         const prod = linea.producto && typeof linea.producto === 'object' ? linea.producto : null;
@@ -3309,13 +3311,14 @@
                             ? ('$' + Math.round(Number(prod.prod_valor) || 0).toLocaleString('es-CL'))
                             : '—';
                         return `<tr>
+                            <td class="text-end tabular-nums small text-muted">${escapeHtml(numLinea)}</td>
                             <td class="small">${escapeHtml(desc)}</td>
                             <td class="text-end tabular-nums small">${escapeHtml(cant)}</td>
                             <td class="small">${badgeEstadoVinculo(linea.estado, linea.es_sugerencia)}</td>
                             <td class="small">${prodTxt}</td>
                             <td class="text-end tabular-nums text-nowrap small">${escapeHtml(precioTxt)}</td>
                         </tr>`;
-                    }).join('') || '<tr><td colspan="5" class="text-muted text-center">Sin productos.</td></tr>';
+                    }).join('') || '<tr><td colspan="6" class="text-muted text-center">Sin productos.</td></tr>';
                 }
                 if (modalVinculoTablaWrap) {
                     modalVinculoTablaWrap.classList.remove('d-none');
