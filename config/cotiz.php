@@ -159,8 +159,10 @@ return [
         'reintento_espera_ms' => max(0, (int) env('COTIZ_GEMINI_REINTENTO_ESPERA_MS', 2500)),
         'endpoint' => rtrim((string) env('COTIZ_GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'), '/'),
         'timeout' => max(20, min(300, (int) env('COTIZ_GEMINI_TIMEOUT', 120))),
-        // Búsqueda web (Google Search grounding) para referencias en Mercado Libre / Sodimac.
+        // Búsqueda web (Google Search grounding) para referencias sin vínculo en el maestro.
         'busqueda_web' => filter_var(env('COTIZ_GEMINI_BUSQUEDA_WEB', true), FILTER_VALIDATE_BOOL),
+        // Sodimac vía Gemini (costosa y poco útil). Con Mercado Libre API activa, no se usa salvo true.
+        'busqueda_web_sodimac' => filter_var(env('COTIZ_GEMINI_BUSQUEDA_WEB_SODIMAC', false), FILTER_VALIDATE_BOOL),
         // Modelo preferido para la búsqueda web: gemini-3.8-flash con google_search responde sin contenido.
         'modelo_web' => trim((string) env('COTIZ_GEMINI_MODELO_WEB', 'gemini-3.7-flash')),
         // Vacío = el del modelo. Con «low» el modelo no busca en Google e inventa URLs.
@@ -182,7 +184,7 @@ return [
         ],
     ],
 
-    // Búsqueda de publicaciones en Mercado Libre (API). Sodimac sigue por Gemini.
+    // Búsqueda de publicaciones en Mercado Libre (API). Sodimac opcional vía Gemini (cotiz.gemini.busqueda_web_sodimac).
     'mercadolibre' => [
         'habilitado' => filter_var(env('MERCADOLIBRE_HABILITADO', true), FILTER_VALIDATE_BOOL),
         'client_id' => trim((string) (env('MERCADOLIBRE_CLIENTE_ID') ?: env('MERCADOLIBRE_CLIENT_ID', ''))),

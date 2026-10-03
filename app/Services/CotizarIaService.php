@@ -244,7 +244,9 @@ class CotizarIaService
         $this->etapa(4, 'Vinculando '.count($items).' línea(s) con frases y aprendidos');
         $items = $this->vincular($items);
         $items = $this->revisarStockPrisa($items);
-        $this->etapa(7, 'Buscando referencias en Mercado Libre / Sodimac');
+        $this->etapa(7, $this->mercadolibre->configurado() && ! $this->busquedaWebSodimacHabilitada()
+            ? 'Buscando referencias en Mercado Libre'
+            : 'Buscando referencias en Mercado Libre / Sodimac');
         $items = $this->buscarReferenciasWeb($items);
         if ($this->gemini->llamadasPago() > 0) {
             $this->avisos[] = 'Se usó la cuenta pagada de Gemini en '.$this->gemini->llamadasPago().' llamada(s).';
@@ -1828,7 +1830,8 @@ TXT];
     }
 
     /**
-     * Sin equivalente en el maestro: Mercado Libre por su API y, si queda pendiente, Sodimac vía Google Search.
+     * Sin equivalente en el maestro: Mercado Libre por su API y, si queda pendiente y está habilitado,
+     * Sodimac vía Google Search (por defecto desactivado).
      *
      * @param  list<array<string, mixed>>  $items
      * @return list<array<string, mixed>>
@@ -1842,13 +1845,16 @@ TXT];
                 $pendientes[] = $i;
             }
         }
-        $buscarGemini = ! $this->iaSinCuota
+        $buscarGeminiWeb = ! $this->iaSinCuota
             && (bool) config('cotiz.gemini.busqueda_web', true)
             && ! Cache::has(self::CACHE_WEB_SIN_CUOTA);
         $buscarMl = $this->mercadolibre->configurado();
-        if ($pendientes === [] || (! $buscarMl && ! $buscarGemini)) {
+        $buscarGeminiSodimac = $buscarGeminiWeb && $this->busquedaWebSodimacHabilitada();
+        $buscarGeminiMlGoogle = $buscarGeminiWeb && ! $buscarMl;
+        $ejecutarGeminiGrounding = $buscarGeminiMlGoogle || ($buscarMl && $buscarGeminiSodimac);
+        if ($pendientes === [] || (! $buscarMl && ! $ejecutarGeminiGrounding)) {
             if ($pendientes !== [] && ! $buscarMl && ! $this->iaSinCuota && config('cotiz.gemini.busqueda_web', true) && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
-                $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
+                $this->avisos[] = 'Búsqueda web en Mercado Libre sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
             }
 
             return $items;
@@ -1866,15 +1872,15 @@ TXT];
         $sinStockSuficiente = 0;
         $this->urlsWebDescartadas = 0;
         if ($buscarMl) {
-            $items = $this->referenciasMercadoLibre($items, $pendientes, $sinStockSuficiente, $buscarGemini);
+            $items = $this->referenciasMercadoLibre($items, $pendientes, $sinStockSuficiente, $ejecutarGeminiGrounding);
             $pendientes = array_values(array_filter(
                 $pendientes,
                 static fn (int $i) => $items[$i]['estado'] === self::ESTADO_PENDIENTE,
             ));
         }
-        if (! $buscarGemini || $pendientes === []) {
-            if ($pendientes !== [] && ! $buscarGemini && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
-                $this->avisos[] = 'Búsqueda en Sodimac sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
+        if (! $ejecutarGeminiGrounding || $pendientes === []) {
+            if ($pendientes !== [] && ! $ejecutarGeminiGrounding && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
+                $this->avisos[] = 'Búsqueda web sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
             }
             $this->avisarReferenciasWeb($items, $sinStockSuficiente, 0, 0);
 
@@ -1894,7 +1900,7 @@ TXT];
                 $lotesIlegibles++;
             } catch (GeminiCuotaAgotadaException) {
                 Cache::put(self::CACHE_WEB_SIN_CUOTA, true, now()->addHour());
-                $this->avisos[] = 'Búsqueda en Mercado Libre / Sodimac sin cuota disponible por ahora; las líneas sin vínculo restantes quedaron pendientes.';
+                $this->avisos[] = 'Búsqueda web sin cuota disponible por ahora; las líneas sin vínculo restantes quedaron pendientes.';
 
                 break;
             } catch (RuntimeException $e) {
@@ -2117,8 +2123,11 @@ TXT];
             'cantidad' => (int) $items[$i]['cantidad'],
         ], $pendientes);
 
-        $soloSodimac = $this->mercadolibre->configurado();
-        $prompt = 'Busca en Google cada producto SOLO en '.($soloSodimac ? 'sodimac.cl' : 'mercadolibre.cl y sodimac.cl')." (Chile).\n"
+        $soloSodimac = $this->mercadolibre->configurado() && $this->busquedaWebSodimacHabilitada();
+        $dominios = $soloSodimac
+            ? 'sodimac.cl'
+            : ($this->busquedaWebSodimacHabilitada() ? 'mercadolibre.cl y sodimac.cl' : 'mercadolibre.cl');
+        $prompt = 'Busca en Google cada producto SOLO en '.$dominios." (Chile).\n"
             .'Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, función, medida y formato; de cualquier marca), '
             ."priorizando las más baratas, con su precio actual en pesos chilenos IVA incluido.\n"
             ."Si la publicación vende un pack o caja, indica cuántas unidades trae en unidades_por_pack (si es unitario, 1).\n"
@@ -2135,7 +2144,7 @@ TXT];
             'google_search' => true,
             'modelo' => (string) config('cotiz.gemini.modelo_web', ''),
             'thinking_level' => (string) config('cotiz.gemini.thinking_web', ''),
-            'etapa' => 'Búsqueda web (Sodimac)',
+            'etapa' => $soloSodimac ? 'Búsqueda web (Sodimac)' : 'Búsqueda web (Mercado Libre)',
         ];
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], $opciones);
@@ -2523,6 +2532,11 @@ TXT];
     {
         return 'Eres el asistente de cotizaciones de una comercializadora chilena que responde compras ágiles de Mercado Público '
             .'(insumos de aseo, oficina, ferretería, alimentos, etc.). Respondes siempre en español y solo con el JSON pedido.';
+    }
+
+    private function busquedaWebSodimacHabilitada(): bool
+    {
+        return (bool) config('cotiz.gemini.busqueda_web_sodimac', false);
     }
 
     private function idAgileAdjunto(string $descripcion, ?int $posicion = null): string

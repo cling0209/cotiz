@@ -3,7 +3,10 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header py-2">
-                <h2 class="modal-title fs-6" id="modal-cotizar-ia-label"><i class="bi bi-stars"></i> Cotizar con IA</h2>
+                <h2 class="modal-title fs-6 d-flex flex-wrap align-items-center gap-2" id="modal-cotizar-ia-label">
+                    <span><i class="bi bi-stars"></i> Cotizar con IA</span>
+                    <span class="badge text-bg-secondary font-monospace fw-normal" id="cotizar-ia-codigo" hidden></span>
+                </h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body py-2">
@@ -174,6 +177,21 @@
         const bytes = new Uint8Array(16);
         crypto.getRandomValues(bytes);
         return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function mostrarCodigoCotizacion(codigo) {
+        const badge = el('cotizar-ia-codigo');
+        if (!badge) {
+            return;
+        }
+        const cod = String(codigo || '').trim().toUpperCase();
+        if (cod === '') {
+            badge.textContent = '';
+            badge.hidden = true;
+            return;
+        }
+        badge.textContent = cod;
+        badge.hidden = false;
     }
 
     function pintarProgreso(p) {
@@ -477,6 +495,7 @@
 
     function pintar(data) {
         token = data.token;
+        mostrarCodigoCotizacion(data.codigo);
         pintarUso(data.uso_ia);
         el('cotizar-ia-fuente').textContent = FUENTES[data.fuente] || data.fuente;
         el('cotizar-ia-motivo').textContent = data.fuente_motivo || '';
@@ -542,12 +561,14 @@
         }
         const codigo = String(document.getElementById('encargado')?.value || '').trim().toUpperCase();
         if (!codigo) {
+            mostrarCodigoCotizacion('');
             mostrarError('Ingrese el n\u00famero de cotizaci\u00f3n de Mercado P\u00fablico.');
             resultado.classList.add('d-none');
             btnAplicar.classList.add('d-none');
             modal.show();
             return;
         }
+        mostrarCodigoCotizacion(codigo);
         enCurso = true;
         token = null;
         grupos = [];
