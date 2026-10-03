@@ -294,7 +294,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame(2800, $linea['costo']);
         $this->assertSame(3416, $linea['precio_venta']);
 
-        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'redondeado hacia arriba'));
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'redondeo hacia arriba'));
     }
 
     public function test_aprendido_a_producto_sin_precio_ni_costo_no_se_usa_y_se_busca_otro(): void
