@@ -1532,10 +1532,14 @@ TXT];
             ? 'Si ninguno es equivalente (o no hay candidatos), devuelve "equivalentes": [] y en "busqueda" 2 o 3 términos cortos alternativos para buscar ese producto en el catálogo (nombre genérico o comercial usado en Chile, sin cantidades).'
             : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
 
-        $prompt = "Para cada producto solicitado indica qué candidatos del catálogo son el MISMO producto y sirven para cotizarlo.\n"
-            .'Criterios: mismo tipo de producto y misma función; capacidad, gramaje y formato compatibles; si el solicitado exige color o material, deben coincidir. '
-            .'Una medida algo distinta (ej. 65 mm por 70 mm) no descarta el candidato: inclúyelo igual, el sistema prefiere la medida exacta y avisa la diferencia. '
-            .'La marca NO importa: el mismo producto de otra marca es equivalente aunque el solicitado nombre una marca. '
+        $prompt = "Para cada producto solicitado indica qué candidatos del catálogo sirven para cotizarlo, es decir, que cumplen la misma función para el comprador.\n"
+            .'Criterio principal: misma función y mismo uso. Un producto de nombre o tipo distinto que cumple esa función es equivalente '
+            .'(ej. para «cera en aerosol para auto» sirve «silicona de auto en aerosol»; para «renovador de neumáticos» sirve «renovador de goma»). '
+            .'La marca NO importa: el producto de otra marca es equivalente aunque el solicitado nombre una marca. '
+            .'Lo que SÍ diferencia son las dimensiones: tamaño, medida, capacidad, volumen, peso o gramaje. '
+            .'Una medida algo distinta (ej. 65 mm por 70 mm, 360 cc por 400 cc) no descarta el candidato: inclúyelo, el sistema prefiere la medida exacta y avisa la diferencia. '
+            .'Una medida claramente distinta (ej. 1 litro por 5 litros, carta por oficio, 10 cm por 1 m) no es equivalente. '
+            .'No es equivalente si sirve para otra cosa (ej. limpiavidrios por desengrasante) o si el solicitado exige expresamente color o material y el candidato no lo cumple. '
             .'un pack o caja del catálogo solo es equivalente si el solicitado pide ese mismo formato o uno mayor. '
             .'Si el solicitado es un pack o caja de N unidades (ej. «pack 2U», «set de 3», «caja 100 unidades») y el candidato es el mismo producto '
             .'vendido por unidad o en un pack menor de M unidades, sí es equivalente con unidades = N / M redondeado hacia arriba: los packs del catálogo '
