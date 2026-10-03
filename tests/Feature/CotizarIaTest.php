@@ -1761,6 +1761,61 @@ class CotizarIaTest extends TestCase
         $this->assertSame(7560, $web['referencia']['neto_unitario']);
     }
 
+    public function test_mercado_libre_usa_precio_premium_que_muestra_la_pagina_y_no_la_clasica_mas_barata(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'PASTILLA PARA ESTANQUE INODORO AZUL';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]),
+            'api.mercadolibre.com/products/search*' => Http::response([
+                'results' => [
+                    ['id' => 'MLC80', 'name' => 'Pastilla Para Estanque Inodoro Azul'],
+                    ['id' => 'MLC81', 'name' => 'Pastilla Para Estanque Inodoro Azul Ambientador'],
+                ],
+            ]),
+            'api.mercadolibre.com/products/MLC80/items' => Http::response(['results' => [
+                ['item_id' => 'MLC1', 'price' => 2800, 'listing_type_id' => 'gold_pro'],
+                ['item_id' => 'MLC2', 'price' => 2990, 'listing_type_id' => 'gold_pro'],
+                ['item_id' => 'MLC3', 'price' => 2500, 'listing_type_id' => 'gold_special'],
+            ]]),
+            'api.mercadolibre.com/products/MLC81/items' => Http::response(['results' => [
+                ['item_id' => 'MLC4', 'price' => 3100, 'listing_type_id' => 'gold_special'],
+            ]]),
+            'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => []]],
+            ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame(2800, $web['referencia']['precio_clp']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC80', $web['referencia']['url']);
+    }
+
     public function test_mercado_libre_descarta_publicaciones_que_la_ia_marca_como_otro_producto(): void
     {
         config([

@@ -26,6 +26,9 @@ class MercadoLibreApiService
     /** Muchos productos del catálogo no tienen publicaciones activas; se piden más para encontrar precio. */
     private const PRODUCTOS_POR_BUSQUEDA = 10;
 
+    /** Tipo de publicación «Premium» en /products/{id}/items (las Clásicas son gold_special). */
+    private const LISTING_PREMIUM = 'gold_pro';
+
     public function configurado(): bool
     {
         return (bool) config('cotiz.mercadolibre.habilitado', true)
@@ -150,6 +153,8 @@ class MercadoLibreApiService
 
     /**
      * Precio más bajo de las publicaciones activas de cada producto, en el orden recibido.
+     * Con publicaciones Premium se toma el más bajo entre ellas: es el precio que muestra la página
+     * del producto (las Clásicas más baratas no aparecen ahí). Sin Premium, el más bajo de todas.
      * Los productos sin publicaciones (404) o con error se omiten.
      *
      * @param  list<string>  $ids
@@ -176,14 +181,19 @@ class MercadoLibreApiService
                 continue;
             }
             $minimo = null;
+            $minimoPremium = null;
             foreach ((array) ($respuesta->json('results') ?? []) as $item) {
                 $precio = is_array($item) ? (int) round((float) ($item['price'] ?? 0)) : 0;
-                if ($precio > 0 && ($minimo === null || $precio < $minimo)) {
-                    $minimo = $precio;
+                if ($precio <= 0) {
+                    continue;
+                }
+                $minimo = $minimo === null ? $precio : min($minimo, $precio);
+                if (($item['listing_type_id'] ?? '') === self::LISTING_PREMIUM) {
+                    $minimoPremium = $minimoPremium === null ? $precio : min($minimoPremium, $precio);
                 }
             }
-            if ($minimo !== null) {
-                $precios[$id] = $minimo;
+            if (($minimoPremium ?? $minimo) !== null) {
+                $precios[$id] = $minimoPremium ?? $minimo;
             }
         }
 
