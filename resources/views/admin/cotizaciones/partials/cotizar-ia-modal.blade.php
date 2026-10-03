@@ -363,8 +363,11 @@
             const solicitud = ref.unidades_solicitud > 1
                 ? ' <span class="badge text-bg-info" title="La l\u00ednea pide un pack de ' + esc(ref.unidades_solicitud) + '; el costo es el de esas unidades">pack de ' + esc(ref.unidades_solicitud) + ' solicitado</span>'
                 : '';
+            const prorrateo = ref.unidades_por_pack > (ref.unidades_solicitud || 1)
+                ? ' <span class="badge text-bg-info" title="La publicaci\u00f3n es un pack de ' + esc(ref.unidades_por_pack) + '; el costo unitario es el precio del pack prorrateado por ' + esc(ref.unidades_por_pack) + ' unidad(es)">prorrateado pack ' + esc(ref.unidades_por_pack) + '</span>'
+                : '';
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
-                + esc(ref.titulo) + pack + solicitud
+                + esc(ref.titulo) + pack + prorrateo + solicitud
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
                 + stock
                 + '<div class="text-muted">$' + numero.format(ref.precio_clp) + ' c/IVA</div>'
