@@ -466,9 +466,7 @@ class CotizarIaService
                     $valor = self::prorrateo($valor, $solicitadas, $pack);
                     $costoMaestro = self::prorrateo($costoMaestro, $solicitadas, $pack);
                 } else {
-                    $packs = (int) ceil($cantidadAgile * $solicitadas / $pack);
-                    $base['cantidad'] = $packs;
-                    $notaPack = " Cotizado por pack de {$pack}: {$packs} pack(s) para cubrir {$cantidadAgile} solicitado(s).";
+                    $notaPack = " Sin prorrateo: precio del pack de {$pack} un. por cada unidad de la cantidad solicitada.";
                 }
             }
             $precios = $this->preciosMaestro($valor, $costoMaestro, $factor);
@@ -500,10 +498,8 @@ class CotizarIaService
             $costo = (int) $ref['neto_unitario'];
             $notaPack = '';
             if ($pack > $solicitadas && ! $prorratearPack) {
-                $packs = (int) ceil($cantidadAgile * $solicitadas / $pack);
-                $base['cantidad'] = $packs;
                 $costo = (int) round($costo * $pack / $solicitadas);
-                $notaPack = " Cotizado por pack de {$pack}: {$packs} pack(s) para cubrir {$cantidadAgile} solicitado(s).";
+                $notaPack = " Sin prorrateo: precio del pack de {$pack} un. por cada unidad de la cantidad solicitada.";
             }
 
             return $base + [
@@ -2513,8 +2509,9 @@ TXT];
                 $costoPack = $costoProrrateado;
                 $precioRmPack = $precioRmProrrateado;
             }
-            $costo = $puedeProrratear ? $costoProrrateado : $costoPack;
-            $precioRm = $puedeProrratear ? $precioRmProrrateado : $precioRmPack;
+            // Vista previa por defecto (sin prorratear): precio/costo del pack completo × cantidad Agile.
+            $costo = $puedeProrratear ? $costoPack : $costoProrrateado;
+            $precioRm = $puedeProrratear ? $precioRmPack : $precioRmProrrateado;
             $precioVenta = $precioRm > 0 && $this->esFactorMetropolitana($factor)
                 ? $precioRm
                 : (int) round($costo * $factor);
@@ -2528,8 +2525,8 @@ TXT];
                 : $costoProrrateado;
             $puedeProrratear = $packTamano > $unidadesSolicitud;
             $costoListado = $costoPack;
-            $costo = $costoProrrateado;
-            $precioVenta = (int) round($costoProrrateado * $factor);
+            $costo = $costoPack;
+            $precioVenta = (int) round($costoPack * $factor);
         }
 
         return [

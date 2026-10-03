@@ -174,7 +174,7 @@ class CotizarIaTest extends TestCase
         $this->assertSame(119, $lineas[self::DESC_WEB]['referencia']['neto_unitario']);
         $this->assertTrue($lineas[self::DESC_WEB]['puede_prorratear']);
         $this->assertSame(11900, $lineas[self::DESC_WEB]['precio_listado']);
-        $this->assertSame(119, $lineas[self::DESC_WEB]['costo']);
+        $this->assertSame(11900, $lineas[self::DESC_WEB]['costo']);
         $this->assertSame(119, $lineas[self::DESC_WEB]['costo_prorrateado']);
         $this->assertFalse($lineas[self::DESC_WEB]['referencia']['stock_verificado']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'stock no verificado')));
@@ -213,9 +213,9 @@ class CotizarIaTest extends TestCase
         $this->assertStringStartsWith('NOK-', (string) $web->prod_item);
         $this->assertSame(11900, (int) $web->prod_valor_costo);
         $this->assertSame(14518, (int) $web->prod_valor);
-        $this->assertSame(1, (int) $web->cantidad);
+        $this->assertSame(5, (int) $web->cantidad);
         $this->assertStringContainsString('Ref. Mercado Libre', (string) $web->observacion);
-        $this->assertStringContainsString('Cotizado por pack de 100', (string) $web->observacion);
+        $this->assertStringContainsString('Sin prorrateo', (string) $web->observacion);
         $this->assertStringContainsString('https://articulo.mercadolibre.cl/MLC-123-tornillo', (string) $web->observacion);
         $this->assertStringContainsString('stock no verificado', (string) $web->observacion);
         $this->assertNull($detalle[self::DESC_IA]->observacion);
@@ -350,8 +350,8 @@ class CotizarIaTest extends TestCase
         $this->assertSame(100, $linea['producto']['pack_maestro']);
         $this->assertTrue($linea['puede_prorratear']);
         $this->assertSame(3900, $linea['precio_listado']);
-        $this->assertSame(37, $linea['precio_venta']);
-        $this->assertSame(30, $linea['costo']);
+        $this->assertSame(3660, $linea['precio_venta']);
+        $this->assertSame(3000, $linea['costo']);
         $this->assertSame(30, $linea['costo_prorrateado']);
         $this->assertSame(3000, $linea['costo_pack']);
 

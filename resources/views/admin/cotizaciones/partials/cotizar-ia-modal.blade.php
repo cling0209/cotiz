@@ -413,10 +413,12 @@
         let costo;
         let precioRm;
         let packsFacturar = 0;
-        if (puede) {
+        if (puede && prorratear) {
             costo = parseInt(fila.dataset.costoProrrateado, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRmProrrateado, 10) || 0;
-            packsFacturar = Math.ceil(cantidadAgile * solicitud / pack);
+        } else if (puede) {
+            costo = parseInt(fila.dataset.costoPack, 10) || 0;
+            precioRm = parseInt(fila.dataset.precioRmPack, 10) || 0;
         } else {
             costo = parseInt(fila.dataset.costo, 10) || 0;
             precioRm = parseInt(fila.dataset.precioRm, 10) || 0;
@@ -468,12 +470,12 @@
         }
         const listado = parseInt(fila.dataset.precioListado, 10) || 0;
         const pack = parseInt(fila.dataset.packTamano, 10) || 0;
-        if (metricas.puede && listado > 0 && pack > 1) {
-            html += '<div class="text-muted" style="font-size:0.7rem">listado $' + numero.format(listado)
+        if (metricas.puede && listado > 0 && pack > 1 && metricas.prorratear) {
+            html += '<div class="text-muted" style="font-size:0.7rem">$' + numero.format(listado)
                 + ' &divide; ' + pack + ' u.</div>';
         }
-        if (metricas.puede && !metricas.prorratear && metricas.packsFacturar > 0) {
-            html += '<div class="text-muted" style="font-size:0.7rem">' + metricas.packsFacturar + ' pack(s) al aplicar</div>';
+        if (metricas.puede && !metricas.prorratear && listado > 0) {
+            html += '<div class="text-muted" style="font-size:0.7rem">precio pack (listado)</div>';
         }
         return html;
     }
