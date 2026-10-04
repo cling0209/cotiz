@@ -255,7 +255,7 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertSame('HB', end($tokens));
     }
 
-    public function test_set_geometrico_es_familia_regla_y_solapa_con_set_reglas(): void
+    public function test_busqueda_equivalencias_config_liga_geometrico_con_reglas(): void
     {
         $consulta = 'SET GEOMETRICO GRANDE 30 CM 04 U';
         $maestro = 'SET REGLAS ACRILICAS 30CM 4 PCS';
@@ -267,6 +267,23 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $alts = $this->service->terminosSinonimos($consulta);
         $this->assertTrue(collect($alts)->contains(fn (string $t) => str_contains($t, 'REGLAS') && ! str_contains($t, 'GEOMETRICO')));
         $this->assertTrue(collect($alts)->contains(fn (string $t) => ! str_contains($t, 'GRANDE')));
+    }
+
+    public function test_busqueda_equivalencias_grupo_extra_desde_config(): void
+    {
+        config([
+            'cotiz.busqueda_equivalencias' => [
+                [
+                    'familia' => 'FOAMI',
+                    'terminos' => ['FOAMI', 'GOMA', 'EVA'],
+                ],
+            ],
+        ]);
+        $service = new MaeprodBusquedaSimilitudService;
+
+        $this->assertSame(['GOMA', 'EVA'], $service->equivalentesDeToken('FOAMI'));
+        $this->assertContains('FOAMI', $service->terminosSinonimos('PLIEGO GOMA EVA 20X30'));
+        $this->assertFalse($service->hayConflictoFamilia('PLIEGO GOMA EVA', 'FOAMI OFFIONE 20X30'));
     }
 
     public function test_elige_el_mas_economico(): void
