@@ -50,6 +50,74 @@ class PrisaStockService
         return (bool) config('cotiz.prisa.habilitado', true);
     }
 
+    public function busquedaTextoHabilitada(): bool
+    {
+        return $this->habilitado() && (bool) config('cotiz.prisa.busqueda_texto', true);
+    }
+
+    /**
+     * Resultados del buscador público por descripción (orden de relevancia de Prisa).
+     *
+     * @return list<array{sku: string, nombre: string, stock_prisa: array{estado: string, etiqueta: string, url: string}}>|false
+     *                                                                                                                          false = no se pudo consultar
+     */
+    public function buscarPorTexto(string $termino): array|false
+    {
+        $termino = trim($termino);
+        if ($termino === '') {
+            return [];
+        }
+        $termino = mb_substr($termino, 0, (int) config('cotiz.prisa.busqueda_texto_max_caracteres', 120));
+
+        $cacheKey = 'prisa_busqueda_texto:'.md5(mb_strtolower($termino));
+        $horas = (int) config('cotiz.prisa.cache_horas', 3);
+        if ($horas > 0) {
+            $guardado = Cache::get($cacheKey);
+            if (is_array($guardado) && array_key_exists('r', $guardado)) {
+                return $guardado['r'];
+            }
+        }
+
+        $cuerpo = $this->obtenerCuerpoBusqueda($termino);
+        if ($cuerpo === null) {
+            return false;
+        }
+        if ($cuerpo === '') {
+            $resultado = [];
+        } else {
+            $filas = $this->filasDesdeBusqueda($cuerpo);
+            if ($filas === false) {
+                return false;
+            }
+            $resultado = [];
+            $max = max(1, min(40, (int) config('cotiz.prisa.busqueda_texto_max_resultados', 20)));
+            foreach (array_slice($filas, 0, $max) as $fila) {
+                if (! is_array($fila)) {
+                    continue;
+                }
+                $sku = trim((string) ($fila['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $stock = $this->stockDesdeFila($fila);
+                if ($stock === null) {
+                    continue;
+                }
+                $resultado[] = [
+                    'sku' => $sku,
+                    'nombre' => trim((string) ($fila['name'] ?? '')),
+                    'stock_prisa' => $stock,
+                ];
+            }
+        }
+
+        if ($horas > 0) {
+            Cache::put($cacheKey, ['r' => $resultado], now()->addHours($horas));
+        }
+
+        return $resultado;
+    }
+
     /**
      * @param  list<string>  $codigos
      * @return array<string, array{estado: string, etiqueta: string, url: string}|null>
@@ -164,27 +232,79 @@ class PrisaStockService
      */
     public function estadoDesdeBusqueda(string $html, string $codigo): array|null|false
     {
-        $filas = $this->extraerJson(html_entity_decode($html, ENT_QUOTES | ENT_HTML5), '"data":{"data":');
-        if ($filas === null) {
+        $filas = $this->filasDesdeBusqueda($html);
+        if ($filas === false) {
             return false;
         }
         foreach ($filas as $fila) {
             if (! is_array($fila) || strcasecmp(trim((string) ($fila['sku'] ?? '')), $codigo) !== 0) {
                 continue;
             }
-            $id = (int) ($fila['availability'] ?? 0);
-            $link = (string) ($fila['view_link'] ?? '');
+            $stock = $this->stockDesdeFila($fila);
 
-            return [
-                'estado' => match (true) {
-                    in_array($id, self::CON_STOCK, true) => self::ESTADO_DISPONIBLE,
-                    in_array($id, self::ULTIMAS_UNIDADES, true) => self::ESTADO_ULTIMAS_UNIDADES,
-                    isset(self::ETIQUETAS[$id]) => self::ESTADO_SIN_STOCK,
-                    default => self::ESTADO_DESCONOCIDO,
-                },
-                'etiqueta' => self::ETIQUETAS[$id] ?? 'ESTADO '.$id,
-                'url' => str_starts_with($link, '/') ? config('cotiz.prisa.base_url').$link : '',
-            ];
+            return $stock ?? ['estado' => self::ESTADO_DESCONOCIDO, 'etiqueta' => 'DESCONOCIDO', 'url' => ''];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>|false
+     */
+    public function filasDesdeBusqueda(string $html): array|false
+    {
+        $filas = $this->extraerJson(html_entity_decode($html, ENT_QUOTES | ENT_HTML5), '"data":{"data":');
+        if ($filas === null) {
+            return false;
+        }
+
+        return is_array($filas) ? $filas : false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fila
+     * @return array{estado: string, etiqueta: string, url: string}|null
+     */
+    private function stockDesdeFila(array $fila): ?array
+    {
+        $id = (int) ($fila['availability'] ?? 0);
+        $link = (string) ($fila['view_link'] ?? '');
+
+        return [
+            'estado' => match (true) {
+                in_array($id, self::CON_STOCK, true) => self::ESTADO_DISPONIBLE,
+                in_array($id, self::ULTIMAS_UNIDADES, true) => self::ESTADO_ULTIMAS_UNIDADES,
+                isset(self::ETIQUETAS[$id]) => self::ESTADO_SIN_STOCK,
+                default => self::ESTADO_DESCONOCIDO,
+            },
+            'etiqueta' => self::ETIQUETAS[$id] ?? 'ESTADO '.$id,
+            'url' => str_starts_with($link, '/') ? config('cotiz.prisa.base_url').$link : '',
+        ];
+    }
+
+    private function obtenerCuerpoBusqueda(string $termino): ?string
+    {
+        for ($intento = 0; $intento < 2; $intento++) {
+            try {
+                $resp = $this->peticion(Http::getFacadeRoot())->get($this->urlBusqueda(), ['search' => $termino]);
+            } catch (Throwable $e) {
+                report($e);
+
+                return null;
+            }
+            if ($this->sinResultados($resp)) {
+                return '';
+            }
+            if (! $resp->successful()) {
+                return null;
+            }
+            $cuerpo = $resp->body();
+            if (! $this->esDesafio($cuerpo)) {
+                return $cuerpo;
+            }
+            if (! $this->resolverDesafio($cuerpo)) {
+                return null;
+            }
         }
 
         return null;

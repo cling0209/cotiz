@@ -54,6 +54,7 @@ class CotizarIaTest extends TestCase
             'cotiz.gemini.modelos_respaldo' => ['gemini-respaldo'],
             'cotiz.gemini.reintento_espera_ms' => 0,
             'cotiz.prisa.habilitado' => false,
+            'cotiz.prisa.busqueda_texto' => false,
             'cotiz.prisa.base_url' => 'https://prisa.test',
             'cotiz.mercadolibre.habilitado' => false,
             'products.image_base_url' => null,
@@ -1505,9 +1506,72 @@ class CotizarIaTest extends TestCase
         $this->assertStringContainsString(route('admin.cotizaciones.edit', $copia->nronota), (string) $aplicar->json('cotizaciones.1.edit_url'));
     }
 
+    public function test_pendiente_se_vincula_desde_busqueda_prisa_antes_de_mercado_libre(): void
+    {
+        config([
+            'cotiz.prisa.habilitado' => true,
+            'cotiz.prisa.busqueda_texto' => true,
+            'cotiz.mercadolibre.habilitado' => false,
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'TORN001',
+            'prod_nombre' => 'TORNILLO AUTOPERFORANTE 8 X 1 PULGADA CAJA 100 UNIDADES',
+            'prod_valor' => 5000,
+            'prod_valor_costo' => 4000,
+            'prod_familia' => 'VARIOS',
+        ]);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake(function (HttpRequest $request) {
+            if (str_starts_with($request->url(), 'https://prisa.test/')) {
+                if (! str_contains($request->header('Cookie')[0] ?? '', 'OCXS=')) {
+                    return Http::response('<script>var a=toNumbers("'.str_repeat('a1', 16).'"),b=toNumbers("'.str_repeat('b2', 16).'"),'
+                        .'c=toNumbers("'.str_repeat('c3', 16).'");document.cookie="OCXS="+toHex(slowAES.decrypt(c,2,a,b));</script>');
+                }
+                $busqueda = mb_strtoupper((string) ($request->data()['search'] ?? ''));
+                if (str_contains($busqueda, 'TORNILLO')) {
+                    $filas = [['sku' => 'TORN001', 'name' => 'Tornillo autoperforante', 'availability' => 9103, 'view_link' => '/tornillo']];
+                } else {
+                    $filas = [];
+                }
+
+                return Http::response('<div data-page-component-options="'
+                    .htmlspecialchars(json_encode(['data' => ['data' => $filas]]), ENT_QUOTES).'"></div>');
+            }
+
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                return Http::response($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001', 'HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]));
+            }
+
+            return null;
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_VINCULADO, $web['estado']);
+        $this->assertSame(CotizarIaService::ORIGEN_PRISA, $web['origen']);
+        $this->assertSame('TORN001', $web['producto']['prod_item']);
+        $this->assertSame('DISPONIBLE', $web['stock_prisa']['etiqueta']);
+        $this->assertNull($web['referencia']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'vinculadas al maestro por búsqueda por descripción')));
+    }
+
     public function test_stock_prisa_cambia_agotado_por_equivalente_y_a_pedido_queda_pendiente(): void
     {
-        config(['cotiz.prisa.habilitado' => true]);
+        Cache::flush();
+        config([
+            'cotiz.prisa.habilitado' => true,
+            'cotiz.prisa.busqueda_texto' => false,
+        ]);
         $nota = $this->crearNota();
         foreach ([self::DESC_FRASE, self::DESC_APRENDIDO, self::DESC_IA] as $n => $desc) {
             NotaDetalle::query()->create([
@@ -2169,6 +2233,75 @@ class CotizarIaTest extends TestCase
         $this->assertSame('https://www.mercadolibre.cl/p/MLC70', $linea['referencia']['url']);
         $this->assertNull($linea['medida_nota']);
         $this->assertStringContainsString('TAMP65', (string) $linea['stock_nota']);
+    }
+
+    public function test_set_geometrico_vincula_set_reglas_del_maestro_y_no_mercado_libre(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'REGLHOL005',
+            'prod_nombre' => 'SET REGLAS ACRILICAS 30CM 4 PCS',
+            'prod_valor' => 1990,
+            'prod_valor_costo' => 1200,
+            'prod_familia' => 'LIBR',
+        ]);
+        $this->partialMock(MaeprodBusquedaSimilitudService::class, function ($mock) {
+            $mock->shouldReceive('buscar')->andReturnUsing(function (string $term) {
+                $t = mb_strtoupper($term);
+                if (str_contains($t, 'GEOMETR') || str_contains($t, 'REGLA')) {
+                    return Maeprod::query()->where('prod_item', 'REGLHOL005')->get();
+                }
+
+                return collect();
+            });
+        });
+
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 86,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => 'SET GEOMETRICO GRANDE 30 CM 04 U',
+            'prod_descripcion_maestro' => 'SET GEOMETRICO GRANDE 30 CM 04 U',
+        ]);
+
+        Http::fake(function (HttpRequest $request) {
+            $url = $request->url();
+            if (str_contains($url, 'api.mercadolibre.com/oauth/token')) {
+                return Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com')) {
+                return Http::response(['results' => [
+                    ['id' => 'MLC30', 'name' => 'Set Geometrico Art and Craft 30 cm pack 4'],
+                ]]);
+            }
+
+            return Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => ['REGLHOL005'], 'busqueda' => []]],
+            ]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->firstWhere('descripcion', 'SET GEOMETRICO GRANDE 30 CM 04 U');
+        $this->assertSame(CotizarIaService::ESTADO_VINCULADO, $linea['estado']);
+        $this->assertSame(CotizarIaService::ORIGEN_IA, $linea['origen']);
+        $this->assertSame('REGLHOL005', $linea['producto']['prod_item']);
+        $this->assertNull($linea['referencia'] ?? null);
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/products'));
     }
 
     private function notaConMedidaDistinta(): Nota

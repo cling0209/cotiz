@@ -56,6 +56,8 @@ class CotizarIaService
 
     public const ORIGEN_FOTO = 'ia_foto';
 
+    public const ORIGEN_PRISA = 'prisa_busqueda';
+
     /** Dominio permitido => nombre visible. Incluye subdominios (articulo.mercadolibre.cl). */
     private const SITIOS_WEB = [
         'mercadolibre.cl' => 'Mercado Libre',
@@ -247,6 +249,7 @@ class CotizarIaService
         $this->etapa(4, 'Vinculando '.count($items).' línea(s) con frases y aprendidos');
         $items = $this->vincular($items);
         $items = $this->revisarStockPrisa($items);
+        $items = $this->vincularDesdeBusquedaPrisa($items);
         $this->etapa(7, $this->mercadolibre->configurado() && ! $this->busquedaWebSodimacHabilitada()
             ? 'Buscando referencias en Mercado Libre'
             : 'Buscando referencias en Mercado Libre / Sodimac');
@@ -1696,6 +1699,8 @@ TXT];
             .'Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente '
             .'(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), '
             .'con las unidades calculadas por la cantidad del producto solicitado que trae el kit. '
+            .'Un set, juego o kit geométrico es un set de reglas (regla, escuadras, transportador): el catálogo suele llamarlo '
+            .'«set reglas», «set reglas acrílicas» o «set reglas geométrico»; eso es equivalente. '
             .'En papelería «N unidades» del catálogo suele contar hojas o pliegos, no la pieza menor: '
             .'«etiqueta 14 por hoja 25 unidades» son 25 hojas y equivale a «etiquetas 25 hojas» (unidades = 1). '
             .'Si el nombre no permite saber si coincide la cantidad o el color pedido, ponlo en "revisar_foto" en vez de descartarlo. '
@@ -1987,6 +1992,95 @@ TXT];
             $this->avisos[] = "Prisa: {$sinStock} producto(s) sin stock (agotado, a pedido o descontinuado). "
                 ."{$reemplazados} se cambiaron por otro equivalente con stock y "
                 .($sinStock - $reemplazados).' pasan a buscar en Mercado Libre / Sodimac.';
+        }
+
+        return $items;
+    }
+
+    /**
+     * Líneas pendientes: busca en Prisa por descripción y vincula si el SKU existe en maeprod con stock.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function vincularDesdeBusquedaPrisa(array $items): array
+    {
+        if (! $this->prisa->busquedaTextoHabilitada()) {
+            return $items;
+        }
+
+        $pendientes = array_keys(array_filter(
+            $items,
+            static fn (array $item) => $item['estado'] === self::ESTADO_PENDIENTE,
+        ));
+        if ($pendientes === []) {
+            return $items;
+        }
+
+        $max = (int) config('cotiz.prisa.busqueda_texto_max_lineas', 40);
+        if ($max <= 0) {
+            return $items;
+        }
+        if (count($pendientes) > $max) {
+            $this->avisos[] = "Prisa: se buscó por descripción solo en {$max} de ".count($pendientes).' línea(s) sin vínculo.';
+            $pendientes = array_slice($pendientes, 0, $max);
+        }
+
+        $this->detalle('Buscando en Prisa por descripción para '.count($pendientes).' línea(s) sin vínculo al maestro');
+        $conStock = [PrisaStockService::ESTADO_DISPONIBLE, PrisaStockService::ESTADO_ULTIMAS_UNIDADES];
+        $vinculados = 0;
+        $fallos = 0;
+
+        foreach ($pendientes as $i) {
+            $resultados = $this->prisa->buscarPorTexto($this->terminoBusqueda($items[$i]));
+            if ($resultados === false) {
+                $fallos++;
+
+                continue;
+            }
+            if ($resultados === []) {
+                continue;
+            }
+
+            $skus = array_values(array_unique(array_map(static fn (array $r) => $r['sku'], $resultados)));
+            $maeprods = Maeprod::query()->whereIn('prod_item', $skus)->get()->keyBy('prod_item');
+            $stockPorSku = [];
+            $candidatos = [];
+            foreach ($resultados as $fila) {
+                if (! in_array($fila['stock_prisa']['estado'], $conStock, true)) {
+                    continue;
+                }
+                if (! $maeprods->has($fila['sku'])) {
+                    continue;
+                }
+                $producto = $this->conPrecioOCosto($this->productoDesdeFila($maeprods->get($fila['sku'])));
+                if ($producto === null || ! $this->pasaFiltros((string) $items[$i]['descripcion'], $producto['prod_nombre'])) {
+                    continue;
+                }
+                $candidatos[] = $producto;
+                $stockPorSku[$producto['prod_item']] = $fila['stock_prisa'];
+            }
+
+            $elegido = $this->elegirEquivalente((string) $items[$i]['descripcion'], $candidatos);
+            if ($elegido === null) {
+                continue;
+            }
+
+            $items[$i] = $this->marcarVinculado(
+                $items[$i],
+                $this->prorratearPackMaestro($elegido, (string) $items[$i]['descripcion']),
+                self::ORIGEN_PRISA,
+            );
+            $items[$i]['stock_prisa'] = $stockPorSku[$elegido['prod_item']] ?? null;
+            $items[$i]['stock_nota'] = 'Prisa: vinculado por búsqueda ('.$elegido['prod_item'].').';
+            $vinculados++;
+        }
+
+        if ($vinculados > 0) {
+            $this->avisos[] = "Prisa: {$vinculados} línea(s) vinculadas al maestro por búsqueda por descripción.";
+        }
+        if ($fallos > 0) {
+            $this->avisos[] = "No se pudo buscar en Prisa por descripción en {$fallos} línea(s).";
         }
 
         return $items;

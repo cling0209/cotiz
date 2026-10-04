@@ -202,6 +202,11 @@ return [
     // Estado de stock en Prisa (búsqueda pública por código = prod_item) para «Cotizar con IA».
     'prisa' => [
         'habilitado' => (bool) env('COTIZ_PRISA_STOCK', true),
+        // Líneas sin vínculo al maestro: buscar en prisa.cl por descripción antes de Mercado Libre.
+        'busqueda_texto' => (bool) env('COTIZ_PRISA_BUSQUEDA_TEXTO', true),
+        'busqueda_texto_max_lineas' => max(0, min(120, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_LINEAS', 40))),
+        'busqueda_texto_max_resultados' => max(1, min(40, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_RESULTADOS', 20))),
+        'busqueda_texto_max_caracteres' => max(10, min(200, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_CARACTERES', 120))),
         // Solo esquema + dominio: una URL con ruta (ej. la del login) no cambia dónde se busca.
         'base_url' => (static function (string $url): string {
             $partes = parse_url($url);
