@@ -117,7 +117,7 @@ return [
      */
     'busqueda_vectores' => [
         'habilitado' => filter_var(env('COTIZ_BUSQUEDA_VECTORES', true), FILTER_VALIDATE_BOOL),
-        'modelo' => env('COTIZ_EMBEDDING_MODEL', 'text-embedding-004'),
+        'modelo' => env('COTIZ_EMBEDDING_MODEL', 'gemini-embedding-001'),
         'dimension' => max(64, min(3072, (int) env('COTIZ_EMBEDDING_DIMENSION', 768))),
         'task_type' => env('COTIZ_EMBEDDING_TASK_TYPE', ''),
         'task_document' => env('COTIZ_EMBEDDING_TASK_DOCUMENT', 'RETRIEVAL_DOCUMENT'),

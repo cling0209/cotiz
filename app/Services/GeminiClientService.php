@@ -63,11 +63,12 @@ class GeminiClientService
             return [];
         }
 
-        $model = trim((string) config('cotiz.busqueda_vectores.modelo', 'text-embedding-004'));
+        $model = trim((string) config('cotiz.busqueda_vectores.modelo', 'gemini-embedding-001'));
         $url = config('cotiz.gemini.endpoint').'/models/'.rawurlencode($model).':embedContent';
         $timeout = max(10, min(120, (int) config('cotiz.busqueda_vectores.timeout_seg', 30)));
 
         $payload = [
+            'model' => 'models/'.$model,
             'content' => ['parts' => [['text' => $texto]]],
         ];
 
