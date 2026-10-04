@@ -163,6 +163,11 @@ class CotizarIaTest extends TestCase
             ->json();
 
         $this->assertSame(CotizarIaService::FUENTE_COTIZACION, $preview['fuente']);
+        $this->assertSame(1, $preview['cotizar_ia_veces']);
+        $this->assertDatabaseHas('oportunidad_cotizar_ia', [
+            'codigo' => '1000-1-COT26',
+            'veces' => 1,
+        ]);
         $lineas = collect($preview['lineas'])->keyBy('descripcion');
 
         $this->assertSame(CotizarIaService::ORIGEN_FRASE, $lineas[self::DESC_FRASE]['origen']);
@@ -1758,6 +1763,139 @@ class CotizarIaTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer token-ml'));
         Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), 'api.mercadolibre.com/sites/'));
         Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->body(), 'google_search'));
+    }
+
+    public function test_mercado_libre_busca_auto_como_automotriz(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'SHAMPOO AUTO CONCENTRADO';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 200,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+
+        Http::fake(function (HttpRequest $request) {
+            $url = $request->url();
+            if (str_contains($url, 'api.mercadolibre.com/oauth/token')) {
+                return Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/search')) {
+                parse_str((string) parse_url($url, PHP_URL_QUERY), $params);
+                $q = mb_strtolower((string) ($params['q'] ?? ''));
+                if (! str_contains($q, 'automotriz')) {
+                    return Http::response(['results' => []]);
+                }
+
+                return Http::response(['results' => [[
+                    'id' => 'MLC88',
+                    'name' => 'Shampoo Automotriz Concentrado 5 L',
+                ]]]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/MLC88/items')) {
+                return Http::response(['results' => [['price' => 313]]]);
+            }
+
+            return Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => [], 'generico' => 'shampoo concentrado']],
+            ]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC88', $web['referencia']['url']);
+        $this->assertSame(313, $web['referencia']['precio_clp']);
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), 'products/search')
+            && str_contains(mb_strtolower(urldecode($request->url())), 'automotriz'));
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->body(), 'google_search'));
+    }
+
+    public function test_mercado_libre_sin_catalogo_busca_publicacion_en_google(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'SHAMPOO AUTO CONCENTRADO';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 200,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+        $listado = $this->urlBusqueda('https://articulo.mercadolibre.cl/MLC-143-shampoo-automotriz');
+
+        Http::fake(function (HttpRequest $request) use ($listado) {
+            $url = $request->url();
+            $prefijo = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/';
+            if (str_starts_with($url, $prefijo)) {
+                return Http::response('', 302, [
+                    'Location' => base64_decode(strtr(substr($url, strlen($prefijo)), '-_', '+/')),
+                ]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/oauth/token')) {
+                return Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]);
+            }
+            if (str_contains($url, 'api.mercadolibre.com/products/search')) {
+                return Http::response(['results' => []]);
+            }
+            if (str_contains($request->body(), 'google_search')) {
+                return Http::response($this->respuestaGemini([
+                    'resultados' => [[
+                        'i' => 0,
+                        'opciones' => [[
+                            'sitio' => 'mercadolibre',
+                            'titulo' => 'Shampoo Automotriz Pink Ph Neutro Profix 5 Lts',
+                            'precio_clp' => 313,
+                            'unidades_por_pack' => 1,
+                            'url' => $listado,
+                        ]],
+                    ]],
+                ]));
+            }
+
+            return Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => []]],
+            ]));
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame('https://articulo.mercadolibre.cl/MLC-143-shampoo-automotriz', $web['referencia']['url']);
+        $this->assertSame(313, $web['referencia']['precio_clp']);
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->body(), 'google_search'));
     }
 
     public function test_mercado_libre_solicitud_de_caja_usa_costo_de_la_caja_completa(): void

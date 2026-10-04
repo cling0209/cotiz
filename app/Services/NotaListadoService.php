@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Nota;
+use App\Models\NotaCotizarIaAplicacion;
 use App\Models\User;
+use App\Services\CotizarIaService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -50,8 +52,50 @@ class NotaListadoService
         }
 
         $this->marcarGanadorPropio($paginado->getCollection());
+        if ($this->puedeVerMetricasCotizarIa($user)) {
+            $this->hidratarCotizarIaAplicada($paginado->getCollection());
+        }
 
         return $paginado;
+    }
+
+    /** Métricas de uso de «Cotizar con IA» en listados (solo admin y pame). */
+    public function puedeVerMetricasCotizarIa(User $user): bool
+    {
+        return CotizarIaService::usuarioVeConsumo((string) $user->username);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Nota>  $notas
+     */
+    private function hidratarCotizarIaAplicada(\Illuminate\Database\Eloquent\Collection $notas): void
+    {
+        if ($notas->isEmpty()) {
+            return;
+        }
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('nota_cotizar_ia_aplicaciones')) {
+            foreach ($notas as $nota) {
+                $nota->setAttribute('cotizar_ia_aplicaciones_nota', 0);
+                $nota->setAttribute('cotizar_ia_ultima_aplicacion_at', null);
+            }
+
+            return;
+        }
+
+        $ids = $notas->pluck('nronota')->all();
+        $conteos = NotaCotizarIaAplicacion::query()
+            ->selectRaw('nronota, count(*) as total, max(aplicado_at) as ultima')
+            ->whereIn('nronota', $ids)
+            ->groupBy('nronota')
+            ->get()
+            ->keyBy('nronota');
+
+        foreach ($notas as $nota) {
+            $row = $conteos->get($nota->nronota);
+            $nota->setAttribute('cotizar_ia_aplicaciones_nota', (int) ($row?->total ?? 0));
+            $nota->setAttribute('cotizar_ia_ultima_aplicacion_at', $row?->ultima ?? null);
+        }
     }
 
     /**
@@ -178,6 +222,18 @@ class NotaListadoService
                 $q->whereNotNull('notas.asignado_por')
                     ->whereRaw("trim(coalesce(notas.asignado_por, '')) <> ''");
             });
+        }
+
+        if (! empty($filtros['solo_ia_aplicada']) && $this->puedeVerMetricasCotizarIa($user)) {
+            if (\Illuminate\Support\Facades\Schema::hasTable('nota_cotizar_ia_aplicaciones')) {
+                $query->whereExists(function ($q): void {
+                    $q->selectRaw('1')
+                        ->from('nota_cotizar_ia_aplicaciones as ia')
+                        ->whereColumn('ia.nronota', 'notas.nronota');
+                });
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if (! empty($filtros['nronota'])) {

@@ -76,6 +76,21 @@ $filtros,
                         <label class="form-check-label" for="filtro-solo-asignadas">Solo asignadas</label>
                     </div>
                 </div>
+                @if($puedeVerMetricasCotizarIa ?? false)
+                <div class="col-md-auto">
+                    <div class="form-check mb-0">
+                        <input
+                            type="checkbox"
+                            class="form-check-input"
+                            name="solo_ia_aplicada"
+                            id="filtro-solo-ia-aplicada"
+                            value="1"
+                            @checked(!empty($filtros['solo_ia_aplicada']))
+                            onchange="this.form.submit()">
+                        <label class="form-check-label" for="filtro-solo-ia-aplicada">Solo con IA aplicada</label>
+                    </div>
+                </div>
+                @endif
                 @if($puedeVerEstadoMp ?? false)
                 <div class="col-md-2">
                     <label class="form-label" for="filtro-estado-mp">Estado MP</label>
@@ -159,6 +174,9 @@ $filtros,
                             <a href="{{ $sortLink('total', 'DESC') }}" class="text-white-50 small">&#9660;</a>
                         </th>
                         <th>Cotizaci&oacute;n</th>
+                        @if($puedeVerMetricasCotizarIa ?? false)
+                        <th>IA</th>
+                        @endif
                         <th>Usuario</th>
                         <th>Obs. ejecutivo</th>
                         <th>Estado</th>
@@ -172,7 +190,9 @@ $filtros,
                 </thead>
                 <tbody>
                     @php
-                    $colspanListado = ($puedeVerEstadoMp ?? false) ? 13 : 11;
+                    $colspanListado = 11
+                        + (($puedeVerEstadoMp ?? false) ? 2 : 0)
+                        + (($puedeVerMetricasCotizarIa ?? false) ? 1 : 0);
                     @endphp
                     @forelse($cotizaciones as $nota)
                     @php
@@ -227,6 +247,16 @@ $filtros,
                             @endif
                             @endif
                         </td>
+                        @if($puedeVerMetricasCotizarIa ?? false)
+                        <td class="small text-muted text-nowrap">
+                            @php $iaAplic = (int) ($nota->cotizar_ia_aplicaciones_nota ?? 0); @endphp
+                            @if($iaAplic > 0)
+                            <span class="badge text-bg-info" title="Veces que se aplicaron líneas con Cotizar con IA en esta nota">Aplic. {{ $iaAplic }}</span>
+                            @else
+                            <span class="text-muted">—</span>
+                            @endif
+                        </td>
+                        @endif
                         <td>
                             {{ $nota->usuarioRel?->fullName() ?: $nota->usuario }}
                             @if(trim((string) ($nota->asignado_por ?? '')) !== '')

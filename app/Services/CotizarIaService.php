@@ -277,9 +277,18 @@ class CotizarIaService
             ->where('prod_item_agile', '!=', '')
             ->count();
 
+        $metricasIa = ['cotizar_ia_veces' => 0, 'cotizar_ia_aplicadas_veces' => 0];
+        try {
+            $metricasIa = app(OportunidadParaCotizarService::class)->registrarCotizarIaEjecucion($codigo);
+        } catch (Throwable $e) {
+            report($e);
+        }
+
         return [
             'token' => $token,
             'codigo' => $codigo,
+            'cotizar_ia_veces' => (int) ($metricasIa['cotizar_ia_veces'] ?? 0),
+            'cotizar_ia_aplicadas_veces' => (int) ($metricasIa['cotizar_ia_aplicadas_veces'] ?? 0),
             'fuente' => $decision['fuente'],
             'fuente_motivo' => $decision['motivo'],
             'adjuntos_usados' => $decision['adjuntos_usados'],
@@ -416,17 +425,36 @@ class CotizarIaService
         Cache::forget($key);
 
         $codigoNorm = strtoupper(trim($codigo));
+        $metricasIa = [
+            'cotizar_ia_veces' => 0,
+            'cotizar_ia_aplicadas_veces' => 0,
+        ];
         if ($codigoNorm !== '') {
-            try {
-                app(OportunidadParaCotizarService::class)->registrarCotizarIaUso($codigoNorm);
-            } catch (Throwable $e) {
-                report($e);
+            $oportunidades = app(OportunidadParaCotizarService::class);
+            foreach ($cotizaciones as $c) {
+                $nronotaAplic = (int) ($c['nronota'] ?? 0);
+                if ($nronotaAplic <= 0) {
+                    continue;
+                }
+                try {
+                    $metricasIa = $oportunidades->registrarCotizarIaAplicacion(
+                        $codigoNorm,
+                        $nronotaAplic,
+                        $usuario,
+                        (int) ($c['agregadas'] ?? 0),
+                    );
+                } catch (Throwable $e) {
+                    report($e);
+                }
             }
         }
 
         return $conteo + [
             'aprendidas' => $aprendidas,
             'cotizaciones' => $cotizaciones,
+            'codigo' => $codigoNorm,
+            'cotizar_ia_veces' => (int) ($metricasIa['cotizar_ia_veces'] ?? 0),
+            'cotizar_ia_aplicadas_veces' => (int) ($metricasIa['cotizar_ia_aplicadas_veces'] ?? 0),
         ];
     }
 
@@ -1509,6 +1537,53 @@ TXT];
         return $generico !== '' ? $generico : (string) $item['descripcion'];
     }
 
+    /**
+     * Consultas para Mercado Libre: primero lo pedido (conserva «auto»/medida) y luego el genérico sin marca.
+     *
+     * @param  array<string, mixed>  $item
+     * @return list<string>
+     */
+    private function terminosMercadoLibre(array $item): array
+    {
+        $terminos = [];
+        foreach ([trim((string) ($item['descripcion'] ?? '')), trim((string) ($item['generico'] ?? ''))] as $termino) {
+            if ($termino === '') {
+                continue;
+            }
+            $clave = mb_strtolower($termino);
+            if (! isset($terminos[$clave])) {
+                $terminos[$clave] = $termino;
+            }
+        }
+
+        return array_values($terminos);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return list<array<string, mixed>>
+     */
+    private function opcionesMercadoLibreDeLinea(array $item): array
+    {
+        $opciones = [];
+        $urls = [];
+        foreach ($this->terminosMercadoLibre($item) as $termino) {
+            foreach ($this->mercadolibre->buscar($termino) as $opcion) {
+                $url = is_array($opcion) ? trim((string) ($opcion['url'] ?? '')) : '';
+                if ($url === '' || isset($urls[$url])) {
+                    continue;
+                }
+                $urls[$url] = true;
+                $opciones[] = $opcion;
+                if (count($opciones) >= 5) {
+                    return $opciones;
+                }
+            }
+        }
+
+        return $opciones;
+    }
+
     private function colorMasculino(string $texto): string
     {
         return (string) preg_replace_callback(
@@ -1918,8 +1993,8 @@ TXT];
     }
 
     /**
-     * Sin equivalente en el maestro: Mercado Libre por su API y, si queda pendiente y está habilitado,
-     * Sodimac vía Google Search (por defecto desactivado).
+     * Sin equivalente en el maestro: Mercado Libre por su API y, si queda pendiente,
+     * publicaciones de Mercado Libre (y Sodimac si está habilitado) vía Google Search.
      *
      * @param  list<array<string, mixed>>  $items
      * @return list<array<string, mixed>>
@@ -1937,9 +2012,7 @@ TXT];
             && (bool) config('cotiz.gemini.busqueda_web', true)
             && ! Cache::has(self::CACHE_WEB_SIN_CUOTA);
         $buscarMl = $this->mercadolibre->configurado();
-        $buscarGeminiSodimac = $buscarGeminiWeb && $this->busquedaWebSodimacHabilitada();
-        $buscarGeminiMlGoogle = $buscarGeminiWeb && ! $buscarMl;
-        $ejecutarGeminiGrounding = $buscarGeminiMlGoogle || ($buscarMl && $buscarGeminiSodimac);
+        $ejecutarGeminiGrounding = $buscarGeminiWeb;
         if ($pendientes === [] || (! $buscarMl && ! $ejecutarGeminiGrounding)) {
             if ($pendientes !== [] && ! $buscarMl && ! $this->iaSinCuota && config('cotiz.gemini.busqueda_web', true) && Cache::has(self::CACHE_WEB_SIN_CUOTA)) {
                 $this->avisos[] = 'Búsqueda web en Mercado Libre sin cuota disponible por ahora; las líneas sin vínculo quedaron pendientes.';
@@ -2025,7 +2098,7 @@ TXT];
         try {
             $opcionesPorLinea = [];
             foreach ($aproximados as $i) {
-                $opcionesPorLinea[$i] = $this->mercadolibre->buscar($this->terminoBusqueda($items[$i]));
+                $opcionesPorLinea[$i] = $this->opcionesMercadoLibreDeLinea($items[$i]);
             }
             $opcionesPorLinea = $this->descartarOtrosProductosWeb($items, $opcionesPorLinea);
 
@@ -2075,7 +2148,7 @@ TXT];
         try {
             $opcionesPorLinea = [];
             foreach ($pendientes as $i) {
-                $opcionesPorLinea[$i] = $this->mercadolibre->buscar($this->terminoBusqueda($items[$i]));
+                $opcionesPorLinea[$i] = $this->opcionesMercadoLibreDeLinea($items[$i]);
             }
             $opcionesPorLinea = $this->descartarOtrosProductosWeb($items, $opcionesPorLinea);
 
@@ -2174,7 +2247,7 @@ TXT];
     private function avisarReferenciasWeb(array $items, int $sinStockSuficiente, int $lotesIlegibles, int $lotes): void
     {
         if ($lotesIlegibles > 0) {
-            $donde = $this->mercadolibre->configurado() ? 'Sodimac' : 'Mercado Libre / Sodimac';
+            $donde = $this->busquedaWebSodimacHabilitada() ? 'Mercado Libre / Sodimac' : 'Mercado Libre';
             $this->avisos[] = $lotes > 1
                 ? "La búsqueda en {$donde} no devolvió un resultado legible en {$lotesIlegibles} de {$lotes} tanda(s) (se reintentó); esas líneas quedaron pendientes."
                 : "La búsqueda en {$donde} no devolvió un resultado legible (se reintentó); las líneas sin vínculo quedaron pendientes.";
@@ -2207,14 +2280,11 @@ TXT];
     {
         $entrada = array_map(fn (int $i) => [
             'i' => $i,
-            'solicitado' => $this->terminoBusqueda($items[$i]),
+            'solicitado' => $this->terminosMercadoLibre($items[$i])[0] ?? $this->terminoBusqueda($items[$i]),
             'cantidad' => (int) $items[$i]['cantidad'],
         ], $pendientes);
 
-        $soloSodimac = $this->mercadolibre->configurado() && $this->busquedaWebSodimacHabilitada();
-        $dominios = $soloSodimac
-            ? 'sodimac.cl'
-            : ($this->busquedaWebSodimacHabilitada() ? 'mercadolibre.cl y sodimac.cl' : 'mercadolibre.cl');
+        $dominios = $this->busquedaWebSodimacHabilitada() ? 'mercadolibre.cl y sodimac.cl' : 'mercadolibre.cl';
         $prompt = 'Busca en Google cada producto SOLO en '.$dominios." (Chile).\n"
             .'Para cada uno devuelve hasta 5 publicaciones del mismo producto (mismo tipo, función, medida y formato; de cualquier marca), '
             ."priorizando las más baratas, con su precio actual en pesos chilenos IVA incluido.\n"
@@ -2232,7 +2302,7 @@ TXT];
             'google_search' => true,
             'modelo' => (string) config('cotiz.gemini.modelo_web', ''),
             'thinking_level' => (string) config('cotiz.gemini.thinking_web', ''),
-            'etapa' => $soloSodimac ? 'Búsqueda web (Sodimac)' : 'Búsqueda web (Mercado Libre)',
+            'etapa' => $this->busquedaWebSodimacHabilitada() ? 'Búsqueda web (Mercado Libre / Sodimac)' : 'Búsqueda web (Mercado Libre)',
         ];
         try {
             $respuesta = $this->gemini->generar([['text' => $prompt]], $opciones);

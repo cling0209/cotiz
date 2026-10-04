@@ -29,7 +29,8 @@ class CotizacionListadoController extends Controller
     {
         $user = $request->user();
         $puedeVerEstadoMp = $this->listadoService->puedeVerEstadoMp($user);
-        $filtros = $this->normalizarFiltros($request, $puedeVerEstadoMp);
+        $puedeVerMetricasCotizarIa = $this->listadoService->puedeVerMetricasCotizarIa($user);
+        $filtros = $this->normalizarFiltros($request, $puedeVerEstadoMp, $puedeVerMetricasCotizarIa);
         $porPagina = ListadoPorPagina::resolver($request);
         $cotizaciones = $this->listadoService->listar($user, $filtros, $porPagina);
         $segundoLlamado = $this->listadoService->cotizacionesSegundoLlamadoParaPostular($user);
@@ -39,6 +40,7 @@ class CotizacionListadoController extends Controller
             'filtros' => $filtros,
             'puedeGestionar' => $this->listadoService->puedeGestionar($user),
             'puedeVerEstadoMp' => $puedeVerEstadoMp,
+            'puedeVerMetricasCotizarIa' => $puedeVerMetricasCotizarIa,
             'estadosMpFiltro' => NotaListadoService::ESTADOS_MP_FILTRO,
             'segundoLlamadoParaPostular' => $segundoLlamado,
             'nronotasSegundoLlamado' => $segundoLlamado->pluck('nronota')->all(),
@@ -311,6 +313,7 @@ class CotizacionListadoController extends Controller
             'cotizacion' => $request->input('cotizacion'),
             'estado_mp' => $request->input('estado_mp'),
             'solo_asignadas' => $request->boolean('solo_asignadas') ? '1' : null,
+            'solo_ia_aplicada' => $request->boolean('solo_ia_aplicada') ? '1' : null,
             'orden_campo' => $request->input('orden_campo'),
             'orden_dir' => $request->input('orden_dir'),
             'page' => $request->input('page'),
@@ -319,7 +322,7 @@ class CotizacionListadoController extends Controller
         return redirect()->route('admin.cotizaciones.index', $query);
     }
 
-    private function normalizarFiltros(Request $request, bool $puedeVerEstadoMp = false): array
+    private function normalizarFiltros(Request $request, bool $puedeVerEstadoMp = false, bool $puedeVerMetricasCotizarIa = false): array
     {
         $nronota = (int) $request->input('nronota', 0);
         $cotizacion = trim((string) $request->input('cotizacion', ''));
@@ -357,6 +360,7 @@ class CotizacionListadoController extends Controller
             'fechahasta' => $fechahasta,
             'estado_mp' => $estadoMp,
             'solo_asignadas' => $request->boolean('solo_asignadas'),
+            'solo_ia_aplicada' => $puedeVerMetricasCotizarIa && $request->boolean('solo_ia_aplicada'),
             'orden_campo' => $ordenCampo,
             'orden_dir' => $ordenDir,
         ];

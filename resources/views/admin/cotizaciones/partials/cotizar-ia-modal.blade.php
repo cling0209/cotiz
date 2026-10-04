@@ -136,6 +136,7 @@
     const urlPreviewTpl = @json(route('admin.cotizaciones.cotizar-ia.preview', 999999999));
     const urlAplicarTpl = @json(route('admin.cotizaciones.cotizar-ia.aplicar', 999999999));
     const urlProgresoTpl = @json(route('admin.cotizaciones.cotizar-ia.progreso', str_repeat('0', 32)));
+    const oportunidadesUserId = @json((int) (auth()->id() ?? 0));
     const nronotaActual = () => String(parseInt(document.getElementById('nronota')?.value || '0', 10) || 0);
     const urlCon = (tpl) => tpl.replace('999999999', nronotaActual());
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -600,9 +601,34 @@
         box.classList.remove('d-none');
     }
 
+    function guardarMetricaIaOportunidad(codigo, tipo, veces) {
+        const codigoNorm = String(codigo || '').toUpperCase().trim();
+        const n = Number(veces) || 0;
+        if (!codigoNorm || n <= 0 || oportunidadesUserId <= 0) {
+            return;
+        }
+        const sufijo = tipo === 'aplic' ? 'cotizar_ia_aplic.' : 'cotizar_ia_ejec.';
+        const storageKey = 'cotiz.oportunidades.' + sufijo + oportunidadesUserId;
+        try {
+            const mapa = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            mapa[codigoNorm] = Math.max(Number(mapa[codigoNorm]) || 0, n);
+            localStorage.setItem(storageKey, JSON.stringify(mapa));
+        } catch (e) {
+            // storage no disponible
+        }
+    }
+
     function pintar(data) {
         token = data.token;
         mostrarCodigoCotizacion(data.codigo);
+        if (data.codigo) {
+            if (Number(data.cotizar_ia_veces) > 0) {
+                guardarMetricaIaOportunidad(data.codigo, 'ejec', data.cotizar_ia_veces);
+            }
+            if (Number(data.cotizar_ia_aplicadas_veces) > 0) {
+                guardarMetricaIaOportunidad(data.codigo, 'aplic', data.cotizar_ia_aplicadas_veces);
+            }
+        }
         pintarUso(data.uso_ia);
         el('cotizar-ia-fuente').textContent = FUENTES[data.fuente] || data.fuente;
         el('cotizar-ia-motivo').textContent = data.fuente_motivo || '';
@@ -729,6 +755,9 @@
                 cuerpo.factor = Math.round(factor * 100) / 100;
             }
             const data = await postJson(urlCon(urlAplicarTpl), cuerpo);
+            if (data.codigo && Number(data.cotizar_ia_aplicadas_veces) > 0) {
+                guardarMetricaIaOportunidad(data.codigo, 'aplic', data.cotizar_ia_aplicadas_veces);
+            }
             const cotizaciones = data.cotizaciones || [];
             if (cotizaciones.length > 1) {
                 token = null;

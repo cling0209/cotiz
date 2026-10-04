@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Nota;
+use App\Models\NotaCotizarIaAplicacion;
 use App\Models\OportunidadCotizarIa;
 use App\Models\OportunidadEncontrada;
 use App\Models\User;
@@ -32,20 +34,59 @@ class OportunidadCotizarIaTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_registrar_cotizar_ia_incrementa_contador_global(): void
+    public function test_registrar_cotizar_ia_ejecucion_incrementa_contador(): void
     {
         $servicio = app(OportunidadParaCotizarService::class);
 
-        $this->assertSame(1, $servicio->registrarCotizarIaUso('1000-1-cot26'));
-        $this->assertSame(2, $servicio->registrarCotizarIaUso('1000-1-COT26'));
+        $m1 = $servicio->registrarCotizarIaEjecucion('1000-1-cot26');
+        $m2 = $servicio->registrarCotizarIaEjecucion('1000-1-COT26');
+
+        $this->assertSame(1, $m1['cotizar_ia_veces']);
+        $this->assertSame(0, $m1['cotizar_ia_aplicadas_veces']);
+        $this->assertSame(2, $m2['cotizar_ia_veces']);
 
         $this->assertDatabaseHas('oportunidad_cotizar_ia', [
             'codigo' => '1000-1-COT26',
             'veces' => 2,
+            'veces_aplicada' => 0,
         ]);
     }
 
-    public function test_listado_incluye_cotizar_ia_veces_solo_para_admin_y_pame(): void
+    public function test_registrar_cotizar_ia_aplicacion_incrementa_y_guarda_nota(): void
+    {
+        $servicio = app(OportunidadParaCotizarService::class);
+        $servicio->registrarCotizarIaEjecucion('1000-1-COT26');
+
+        $nota = Nota::query()->create([
+            'nronota' => 501,
+            'descripcion' => 'Test',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => '',
+            'encargado' => '1000-1-COT26',
+            'nota_softland' => 50100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        $metricas = $servicio->registrarCotizarIaAplicacion('1000-1-COT26', (int) $nota->nronota, 'admin', 3);
+
+        $this->assertSame(1, $metricas['cotizar_ia_aplicadas_veces']);
+        $this->assertSame(1, $metricas['cotizar_ia_aplicaciones_nota']);
+        $this->assertDatabaseHas('oportunidad_cotizar_ia', [
+            'codigo' => '1000-1-COT26',
+            'veces' => 1,
+            'veces_aplicada' => 1,
+        ]);
+        $this->assertDatabaseHas('nota_cotizar_ia_aplicaciones', [
+            'nronota' => 501,
+            'codigo' => '1000-1-COT26',
+            'usuario' => 'admin',
+            'lineas_agregadas' => 3,
+        ]);
+    }
+
+    public function test_listado_incluye_metricas_ia_solo_para_admin_y_pame(): void
     {
         config(['cotiz.mercadopublico.analisis_admin_habilitado' => false]);
 
@@ -68,6 +109,7 @@ class OportunidadCotizarIaTest extends TestCase
         OportunidadCotizarIa::query()->create([
             'codigo' => '1000-1-COT26',
             'veces' => 4,
+            'veces_aplicada' => 2,
             'ultimo_uso_at' => now(),
         ]);
 
@@ -89,17 +131,65 @@ class OportunidadCotizarIaTest extends TestCase
             ->assertOk()
             ->getContent();
         $this->assertStringContainsString('"cotizar_ia_veces":4', $htmlAdmin);
+        $this->assertStringContainsString('"cotizar_ia_aplicadas_veces":2', $htmlAdmin);
 
         $htmlPame = $this->actingAs($pame)
             ->get(route('admin.oportunidades.para-cotizar.index'))
             ->assertOk()
             ->getContent();
-        $this->assertStringContainsString('"cotizar_ia_veces":4', $htmlPame);
+        $this->assertStringContainsString('"cotizar_ia_aplicadas_veces":2', $htmlPame);
 
         $htmlEjecutivo = $this->actingAs($ejecutivo)
             ->get(route('admin.oportunidades.para-cotizar.index'))
             ->assertOk()
             ->getContent();
         $this->assertStringNotContainsString('"cotizar_ia_veces":4', $htmlEjecutivo);
+        $this->assertStringNotContainsString('"cotizar_ia_aplicadas_veces":2', $htmlEjecutivo);
+    }
+
+    public function test_listado_cotizaciones_muestra_ia_aplicada_solo_admin(): void
+    {
+        $admin = User::factory()->create([
+            'username' => 'admin',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+        $ejecutivo = User::factory()->create([
+            'username' => 'ejecutivo',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+
+        $nota = Nota::query()->create([
+            'nronota' => 601,
+            'descripcion' => 'Con IA',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Demo',
+            'encargado' => '1000-1-COT26',
+            'nota_softland' => 60100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.22,
+        ]);
+
+        NotaCotizarIaAplicacion::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo' => '1000-1-COT26',
+            'usuario' => 'admin',
+            'lineas_agregadas' => 5,
+            'aplicado_at' => now(),
+        ]);
+
+        $htmlAdmin = $this->actingAs($admin)
+            ->get(route('admin.cotizaciones.index', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Aplic. 1', $htmlAdmin);
+        $this->assertStringContainsString('filtro-solo-ia-aplicada', $htmlAdmin);
+
+        $htmlEjecutivo = $this->actingAs($ejecutivo)
+            ->get(route('admin.cotizaciones.index', ['nronota' => $nota->nronota]))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('Aplic. 1', $htmlEjecutivo);
+        $this->assertStringNotContainsString('filtro-solo-ia-aplicada', $htmlEjecutivo);
     }
 }

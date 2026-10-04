@@ -43,4 +43,22 @@ class MercadoLibreUnidadesPorPackTest extends TestCase
         $this->assertSame(1, $svc->unidadesDesdeAtributos($atributos(['SALE_FORMAT' => 'Unidad'])));
         $this->assertSame(1, $svc->unidadesDesdeAtributos([]));
     }
+
+    public function test_consulta_auto_suelto_prioriza_automotriz(): void
+    {
+        $svc = app(MercadoLibreApiService::class);
+
+        $this->assertSame(
+            ['SHAMPOO automotriz CONCENTRADO', 'SHAMPOO AUTO CONCENTRADO', 'SHAMPOO CONCENTRADO para autos'],
+            $svc->consultasBusqueda('SHAMPOO AUTO CONCENTRADO'),
+        );
+        $this->assertSame(
+            ['CERA EN AEROSOL PARA automotriz', 'CERA EN AEROSOL PARA AUTO'],
+            $svc->consultasBusqueda('CERA EN AEROSOL PARA AUTO'),
+        );
+        $this->assertSame(
+            ['TORNILLO AUTOPERFORANTE 8 x 1 pulgada'],
+            $svc->consultasBusqueda('TORNILLO AUTOPERFORANTE 8 x 1 pulgada'),
+        );
+    }
 }

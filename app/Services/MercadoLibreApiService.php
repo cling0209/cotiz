@@ -71,57 +71,87 @@ class MercadoLibreApiService
      */
     public function buscar(string $consulta): array
     {
-        $consulta = trim($consulta);
-        if ($consulta === '' || ! $this->configurado()) {
+        $consultas = $this->consultasBusqueda($consulta);
+        if ($consultas === [] || ! $this->configurado()) {
             return [];
         }
 
         $token = $this->accessToken();
-        $respuesta = $this->consultarCatalogo($consulta, $token);
-        if ($respuesta['status'] === 401) {
-            Cache::forget(self::CACHE_ACCESS);
-            $token = $this->accessToken();
-            $respuesta = $this->consultarCatalogo($consulta, $token);
-        }
-        if ($respuesta['status'] === 403) {
-            throw new RuntimeException(
-                'Mercado Libre rechazó la búsqueda. Entra una vez a '.url('/admin/mercadolibre/conectar').' con la cuenta y vuelve a cotizar.'
-            );
-        }
-        if ($respuesta['status'] < 200 || $respuesta['status'] >= 300) {
-            throw new RuntimeException('Mercado Libre respondió HTTP '.$respuesta['status'].' al buscar productos.');
-        }
-
-        $productos = [];
-        $fotos = [];
-        $unidades = [];
-        foreach ((array) ($respuesta['json']['results'] ?? []) as $fila) {
-            $id = is_array($fila) ? trim((string) ($fila['id'] ?? '')) : '';
-            $nombre = is_array($fila) ? mb_substr(trim((string) ($fila['name'] ?? '')), 0, 200) : '';
-            if ($id !== '' && $nombre !== '' && preg_match('/^[A-Z]{3}\d+$/', $id) === 1) {
-                $productos[$id] = $nombre;
-                $fotos[$id] = $this->primeraFoto($fila);
-                // Los vendedores suelen dejar los atributos en 1 aunque el título diga «4 Pcs»: vale el mayor.
-                $unidades[$id] = max($this->unidadesPorPack($nombre), $this->unidadesDesdeAtributos($fila));
-            }
-        }
-
         $opciones = [];
-        foreach ($this->preciosMinimos(array_keys($productos), $token) as $id => $precio) {
-            if (count($opciones) >= 5) {
-                break;
+        $urls = [];
+        $reintento401 = false;
+        foreach ($consultas as $q) {
+            $respuesta = $this->consultarCatalogo($q, $token);
+            if ($respuesta['status'] === 401 && ! $reintento401) {
+                Cache::forget(self::CACHE_ACCESS);
+                $token = $this->accessToken();
+                $reintento401 = true;
+                $respuesta = $this->consultarCatalogo($q, $token);
             }
-            $opciones[] = [
-                'titulo' => $productos[$id],
-                'precio_clp' => $precio,
-                'unidades_por_pack' => $unidades[$id],
-                'stock_disponible' => null,
-                'url' => 'https://www.mercadolibre.cl/p/'.$id,
-                'imagen_url' => $fotos[$id],
-            ];
+            if ($respuesta['status'] === 403) {
+                throw new RuntimeException(
+                    'Mercado Libre rechazó la búsqueda. Entra una vez a '.url('/admin/mercadolibre/conectar').' con la cuenta y vuelve a cotizar.'
+                );
+            }
+            if ($respuesta['status'] < 200 || $respuesta['status'] >= 300) {
+                throw new RuntimeException('Mercado Libre respondió HTTP '.$respuesta['status'].' al buscar productos.');
+            }
+
+            foreach ($this->opcionesDesdeCatalogo($respuesta['json'], $token) as $opcion) {
+                $url = $opcion['url'];
+                if (isset($urls[$url])) {
+                    continue;
+                }
+                $urls[$url] = true;
+                $opciones[] = $opcion;
+                if (count($opciones) >= 5) {
+                    return $opciones;
+                }
+            }
+            if ($opciones !== []) {
+                return $opciones;
+            }
         }
 
         return $opciones;
+    }
+
+    /**
+     * Variantes para el catálogo: «AUTO» suelto (no «autoperforante») se busca también como automotriz.
+     *
+     * @return list<string>
+     */
+    public function consultasBusqueda(string $consulta): array
+    {
+        $consulta = trim(preg_replace('/\s+/u', ' ', $consulta) ?? '');
+        if ($consulta === '') {
+            return [];
+        }
+
+        $variantes = [$consulta];
+        if (preg_match('/\bAUTOS?\b/iu', $consulta) === 1) {
+            $automotriz = trim(preg_replace('/\bAUTOS?\b/iu', 'automotriz', $consulta) ?? '');
+            if ($automotriz !== '' && mb_strtolower($automotriz) !== mb_strtolower($consulta)) {
+                array_unshift($variantes, $automotriz);
+            }
+            if (preg_match('/\bpara\s+autos?\b/iu', $consulta) !== 1
+                && preg_match('/\bautomotriz\b/iu', $consulta) !== 1) {
+                $sinAuto = trim(preg_replace('/\s+/u', ' ', (string) preg_replace('/\bAUTOS?\b/iu', '', $consulta)) ?? '');
+                if ($sinAuto !== '') {
+                    $variantes[] = $sinAuto.' para autos';
+                }
+            }
+        }
+
+        $unicas = [];
+        foreach ($variantes as $variante) {
+            $clave = mb_strtolower($variante);
+            if (! isset($unicas[$clave])) {
+                $unicas[$clave] = $variante;
+            }
+        }
+
+        return array_values($unicas);
     }
 
     public function redirectUri(): string
@@ -152,6 +182,44 @@ class MercadoLibreApiService
             'status' => $respuesta->status(),
             'json' => is_array($json) ? $json : [],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return list<array{titulo: string, precio_clp: int, unidades_por_pack: int, stock_disponible: null, url: string, imagen_url: string}>
+     */
+    private function opcionesDesdeCatalogo(array $json, string $token): array
+    {
+        $productos = [];
+        $fotos = [];
+        $unidades = [];
+        foreach ((array) ($json['results'] ?? []) as $fila) {
+            $id = is_array($fila) ? trim((string) ($fila['id'] ?? '')) : '';
+            $nombre = is_array($fila) ? mb_substr(trim((string) ($fila['name'] ?? '')), 0, 200) : '';
+            if ($id !== '' && $nombre !== '' && preg_match('/^[A-Z]{3}\d+$/', $id) === 1) {
+                $productos[$id] = $nombre;
+                $fotos[$id] = $this->primeraFoto($fila);
+                // Los vendedores suelen dejar los atributos en 1 aunque el título diga «4 Pcs»: vale el mayor.
+                $unidades[$id] = max($this->unidadesPorPack($nombre), $this->unidadesDesdeAtributos($fila));
+            }
+        }
+
+        $opciones = [];
+        foreach ($this->preciosMinimos(array_keys($productos), $token) as $id => $precio) {
+            if (count($opciones) >= 5) {
+                break;
+            }
+            $opciones[] = [
+                'titulo' => $productos[$id],
+                'precio_clp' => $precio,
+                'unidades_por_pack' => $unidades[$id],
+                'stock_disponible' => null,
+                'url' => 'https://www.mercadolibre.cl/p/'.$id,
+                'imagen_url' => $fotos[$id],
+            ];
+        }
+
+        return $opciones;
     }
 
     /**

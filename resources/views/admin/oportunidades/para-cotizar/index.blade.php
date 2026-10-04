@@ -865,6 +865,15 @@
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
             `cotiz.oportunidades.filtros.${filtrosUserId}` :
             '';
+        const COTIZAR_IA_EJEC_STORAGE_KEY = filtrosUserId > 0
+            ? `cotiz.oportunidades.cotizar_ia_ejec.${filtrosUserId}`
+            : '';
+        const COTIZAR_IA_APLIC_STORAGE_KEY = filtrosUserId > 0
+            ? `cotiz.oportunidades.cotizar_ia_aplic.${filtrosUserId}`
+            : '';
+        const COTIZAR_IA_LEGACY_STORAGE_KEY = filtrosUserId > 0
+            ? `cotiz.oportunidades.cotizar_ia.${filtrosUserId}`
+            : '';
         const VISITAS_STORAGE_KEY = filtrosUserId > 0 ?
             `cotiz.oportunidades.visitas.${filtrosUserId}` :
             '';
@@ -1022,6 +1031,10 @@
                         cotizar_ia_veces: Math.max(
                             Number(prev.cotizar_ia_veces) || 0,
                             Number(item.cotizar_ia_veces) || 0,
+                        ),
+                        cotizar_ia_aplicadas_veces: Math.max(
+                            Number(prev.cotizar_ia_aplicadas_veces) || 0,
+                            Number(item.cotizar_ia_aplicadas_veces) || 0,
                         ),
                     });
                     return;
@@ -1670,6 +1683,56 @@
             } catch (e) {
                 return {};
             }
+        }
+
+        function leerMapaLocal(storageKey, legacyKey) {
+            if (!storageKey) {
+                return {};
+            }
+            try {
+                const raw = localStorage.getItem(storageKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    return parsed && typeof parsed === 'object' ? parsed : {};
+                }
+                if (legacyKey) {
+                    const leg = localStorage.getItem(legacyKey);
+                    if (leg) {
+                        const parsed = JSON.parse(leg);
+                        return parsed && typeof parsed === 'object' ? parsed : {};
+                    }
+                }
+                return {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function guardarMapaLocal(storageKey, mapa) {
+            if (!storageKey) {
+                return;
+            }
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(mapa || {}));
+            } catch (e) {
+                // localStorage no disponible
+            }
+        }
+
+        function leerCotizarIaEjecLocales() {
+            return leerMapaLocal(COTIZAR_IA_EJEC_STORAGE_KEY, COTIZAR_IA_LEGACY_STORAGE_KEY);
+        }
+
+        function guardarCotizarIaEjecLocales(mapa) {
+            guardarMapaLocal(COTIZAR_IA_EJEC_STORAGE_KEY, mapa);
+        }
+
+        function leerCotizarIaAplicLocales() {
+            return leerMapaLocal(COTIZAR_IA_APLIC_STORAGE_KEY, null);
+        }
+
+        function guardarCotizarIaAplicLocales(mapa) {
+            guardarMapaLocal(COTIZAR_IA_APLIC_STORAGE_KEY, mapa);
         }
 
         function guardarVisitasLocales(mapa) {
@@ -2703,6 +2766,45 @@
             return Math.max(servidor, local);
         }
 
+        function cotizarIaEjecDeItem(item) {
+            const codigo = String(item?.codigo || '').toUpperCase().trim();
+            const servidor = Number(item?.cotizar_ia_veces) || 0;
+            const local = Number(leerCotizarIaEjecLocales()[codigo]) || 0;
+            return Math.max(servidor, local);
+        }
+
+        function cotizarIaAplicDeItem(item) {
+            const codigo = String(item?.codigo || '').toUpperCase().trim();
+            const servidor = Number(item?.cotizar_ia_aplicadas_veces) || 0;
+            const local = Number(leerCotizarIaAplicLocales()[codigo]) || 0;
+            return Math.max(servidor, local);
+        }
+
+        function sincronizarCotizarIaLocalesEnMapa() {
+            const mapaEjec = leerCotizarIaEjecLocales();
+            Object.keys(mapaEjec).forEach((codigo) => {
+                const item = porCodigo.get(codigo);
+                if (!item) {
+                    return;
+                }
+                const local = Number(mapaEjec[codigo]) || 0;
+                if (local > (Number(item.cotizar_ia_veces) || 0)) {
+                    item.cotizar_ia_veces = local;
+                }
+            });
+            const mapaAplic = leerCotizarIaAplicLocales();
+            Object.keys(mapaAplic).forEach((codigo) => {
+                const item = porCodigo.get(codigo);
+                if (!item) {
+                    return;
+                }
+                const local = Number(mapaAplic[codigo]) || 0;
+                if (local > (Number(item.cotizar_ia_aplicadas_veces) || 0)) {
+                    item.cotizar_ia_aplicadas_veces = local;
+                }
+            });
+        }
+
         function sincronizarVisitasLocalesEnMapa() {
             const mapa = leerVisitasLocales();
             Object.keys(mapa).forEach((codigo) => {
@@ -2844,10 +2946,15 @@
                 const vistoHtml = visitas > 0
                     ? ` <span class="opc-meta">visto ${visitas}</span>`
                     : '';
-                const iaVeces = puedeVerUsoIa ? (Number(item.cotizar_ia_veces) || 0) : 0;
-                const iaHtml = iaVeces > 0
-                    ? ` <span class="opc-meta" title="Veces que se aplicó Cotizar con IA en esta oportunidad">IA ${iaVeces}</span>`
+                const iaEjec = puedeVerUsoIa ? cotizarIaEjecDeItem(item) : 0;
+                const iaAplic = puedeVerUsoIa ? cotizarIaAplicDeItem(item) : 0;
+                const iaEjecHtml = iaEjec > 0
+                    ? ` <span class="opc-meta" title="Veces que se ejecutó Cotizar con IA (vista previa)">IA ejec. ${iaEjec}</span>`
                     : '';
+                const iaAplicHtml = iaAplic > 0
+                    ? ` <span class="opc-meta" title="Veces que se aplicaron líneas a una cotización">IA aplic. ${iaAplic}</span>`
+                    : '';
+                const iaHtml = iaEjecHtml + iaAplicHtml;
                 const btnCopiarCodigo = codigo
                     ? `<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline btn-copiar-codigo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Copiar código ${escapeHtml(codigo)}" aria-label="Copiar código">
                         <i class="bi bi-clipboard" aria-hidden="true"></i>
@@ -5109,6 +5216,7 @@
                 porCodigo = new Map();
                 cargarItems(corrida.items);
                 sincronizarVisitasLocalesEnMapa();
+                sincronizarCotizarIaLocalesEnMapa();
             }
             aplicarEstadoVinculo(corrida.vinculo || null);
             aplicarPipelineActivo(corrida.pipeline || null);
@@ -5627,6 +5735,7 @@
         if (Array.isArray(guardadasIniciales) && guardadasIniciales.length > 0) {
             cargarItems(guardadasIniciales);
             sincronizarVisitasLocalesEnMapa();
+            sincronizarCotizarIaLocalesEnMapa();
             if (fechaBusquedaInicial && relFecha) {
                 relFecha.textContent = `(${fechaBusquedaInicial})`;
             }

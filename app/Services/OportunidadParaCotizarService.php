@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
 use App\Models\OportunidadTomada;
+use App\Models\NotaCotizarIaAplicacion;
 use App\Models\OportunidadCotizarIa;
 use App\Models\OportunidadVisita;
 use App\Models\User;
@@ -311,20 +312,22 @@ class OportunidadParaCotizarService
     }
 
     /**
-     * Registra un uso exitoso de «Cotizar con IA» para el código MP (contador global).
+     * Ejecución exitosa de la vista previa «Cotizar con IA» (botón / preview por código MP).
+     *
+     * @return array{cotizar_ia_veces: int, cotizar_ia_aplicadas_veces: int}
      */
-    public function registrarCotizarIaUso(string $codigo): int
+    public function registrarCotizarIaEjecucion(string $codigo): array
     {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
-            return 0;
+            return ['cotizar_ia_veces' => 0, 'cotizar_ia_aplicadas_veces' => 0];
         }
 
         if (! \Illuminate\Support\Facades\Schema::hasTable('oportunidad_cotizar_ia')) {
-            return 0;
+            return ['cotizar_ia_veces' => 0, 'cotizar_ia_aplicadas_veces' => 0];
         }
 
-        return (int) DB::transaction(function () use ($codigo) {
+        return DB::transaction(function () use ($codigo) {
             $row = OportunidadCotizarIa::query()->firstOrNew([
                 'codigo' => $codigo,
             ]);
@@ -332,7 +335,65 @@ class OportunidadParaCotizarService
             $row->ultimo_uso_at = now();
             $row->save();
 
-            return (int) $row->veces;
+            return [
+                'cotizar_ia_veces' => (int) $row->veces,
+                'cotizar_ia_aplicadas_veces' => (int) ($row->veces_aplicada ?? 0),
+            ];
+        });
+    }
+
+    /**
+     * Aplicación exitosa de líneas «Cotizar con IA» en una nota (contador por oportunidad + historial por nota).
+     *
+     * @return array{cotizar_ia_veces: int, cotizar_ia_aplicadas_veces: int, cotizar_ia_aplicaciones_nota: int}
+     */
+    public function registrarCotizarIaAplicacion(string $codigo, int $nronota, string $usuario, int $lineasAgregadas): array
+    {
+        $codigo = strtoupper(trim($codigo));
+        $usuario = trim($usuario);
+        if ($codigo === '' || $nronota <= 0 || $usuario === '') {
+            return [
+                'cotizar_ia_veces' => 0,
+                'cotizar_ia_aplicadas_veces' => 0,
+                'cotizar_ia_aplicaciones_nota' => 0,
+            ];
+        }
+
+        $lineasAgregadas = max(0, $lineasAgregadas);
+        $ahora = now();
+
+        return DB::transaction(function () use ($codigo, $nronota, $usuario, $lineasAgregadas, $ahora) {
+            $vecesEjec = 0;
+            $vecesAplic = 0;
+
+            if (\Illuminate\Support\Facades\Schema::hasTable('oportunidad_cotizar_ia')) {
+                $row = OportunidadCotizarIa::query()->firstOrNew(['codigo' => $codigo]);
+                $row->veces_aplicada = (int) ($row->veces_aplicada ?? 0) + 1;
+                $row->ultima_aplicacion_at = $ahora;
+                $row->save();
+                $vecesEjec = (int) ($row->veces ?? 0);
+                $vecesAplic = (int) $row->veces_aplicada;
+            }
+
+            $aplicacionesNota = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('nota_cotizar_ia_aplicaciones')) {
+                NotaCotizarIaAplicacion::query()->create([
+                    'nronota' => $nronota,
+                    'codigo' => $codigo,
+                    'usuario' => $usuario,
+                    'lineas_agregadas' => $lineasAgregadas,
+                    'aplicado_at' => $ahora,
+                ]);
+                $aplicacionesNota = (int) NotaCotizarIaAplicacion::query()
+                    ->where('nronota', $nronota)
+                    ->count();
+            }
+
+            return [
+                'cotizar_ia_veces' => $vecesEjec,
+                'cotizar_ia_aplicadas_veces' => $vecesAplic,
+                'cotizar_ia_aplicaciones_nota' => $aplicacionesNota,
+            ];
         });
     }
 
@@ -499,17 +560,19 @@ class OportunidadParaCotizarService
         }
 
         try {
-            $conteos = OportunidadCotizarIa::query()
+            $filas = OportunidadCotizarIa::query()
                 ->whereIn('codigo', array_keys($codigos))
-                ->pluck('veces', 'codigo')
-                ->all();
+                ->get()
+                ->keyBy('codigo');
         } catch (\Throwable) {
-            $conteos = [];
+            $filas = collect();
         }
 
         foreach ($items as &$item) {
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
-            $item['cotizar_ia_veces'] = (int) ($conteos[$codigo] ?? 0);
+            $row = $filas->get($codigo);
+            $item['cotizar_ia_veces'] = (int) ($row?->veces ?? 0);
+            $item['cotizar_ia_aplicadas_veces'] = (int) ($row?->veces_aplicada ?? 0);
         }
         unset($item);
 
