@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadPalabraClave;
 use App\Models\OportunidadTomada;
+use App\Models\OportunidadCotizarIa;
 use App\Models\OportunidadVisita;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -167,7 +168,7 @@ class OportunidadParaCotizarService
      *
      * @return list<array<string, mixed>>
      */
-    public function listarGuardadasVigentesDesde(?string $desde = null, ?int $userId = null): array
+    public function listarGuardadasVigentesDesde(?string $desde = null, ?int $userId = null, bool $incluirCotizarIaVeces = false): array
     {
         $desde = $this->normalizarFechaBusqueda(
             $desde ?? config('cotiz.mercadopublico.fecha_inicio_busqueda', '2026-07-14'),
@@ -204,7 +205,12 @@ class OportunidadParaCotizarService
         $items = array_values($porCodigo);
         usort($items, [$this, 'compararOportunidades']);
 
-        return $this->adjuntarVisitasUsuario($items, $userId);
+        $items = $this->adjuntarVisitasUsuario($items, $userId);
+        if ($incluirCotizarIaVeces) {
+            $items = $this->adjuntarCotizarIaVeces($items);
+        }
+
+        return $items;
     }
 
     /**
@@ -301,6 +307,32 @@ class OportunidadParaCotizarService
             $visita->save();
 
             return (int) $visita->veces;
+        });
+    }
+
+    /**
+     * Registra un uso exitoso de «Cotizar con IA» para el código MP (contador global).
+     */
+    public function registrarCotizarIaUso(string $codigo): int
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return 0;
+        }
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('oportunidad_cotizar_ia')) {
+            return 0;
+        }
+
+        return (int) DB::transaction(function () use ($codigo) {
+            $row = OportunidadCotizarIa::query()->firstOrNew([
+                'codigo' => $codigo,
+            ]);
+            $row->veces = (int) ($row->veces ?? 0) + 1;
+            $row->ultimo_uso_at = now();
+            $row->save();
+
+            return (int) $row->veces;
         });
     }
 
@@ -438,6 +470,46 @@ class OportunidadParaCotizarService
         foreach ($items as &$item) {
             $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
             $item['visitas_usuario'] = (int) ($conteos[$codigo] ?? 0);
+        }
+        unset($item);
+
+        return $items;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function adjuntarCotizarIaVeces(array $items): array
+    {
+        if ($items === []) {
+            return $items;
+        }
+
+        $codigos = [];
+        foreach ($items as $item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            if ($codigo !== '') {
+                $codigos[$codigo] = true;
+            }
+        }
+
+        if ($codigos === []) {
+            return $items;
+        }
+
+        try {
+            $conteos = OportunidadCotizarIa::query()
+                ->whereIn('codigo', array_keys($codigos))
+                ->pluck('veces', 'codigo')
+                ->all();
+        } catch (\Throwable) {
+            $conteos = [];
+        }
+
+        foreach ($items as &$item) {
+            $codigo = strtoupper(trim((string) ($item['codigo'] ?? '')));
+            $item['cotizar_ia_veces'] = (int) ($conteos[$codigo] ?? 0);
         }
         unset($item);
 

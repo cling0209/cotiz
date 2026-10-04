@@ -415,6 +415,15 @@ class CotizarIaService
 
         Cache::forget($key);
 
+        $codigoNorm = strtoupper(trim($codigo));
+        if ($codigoNorm !== '') {
+            try {
+                app(OportunidadParaCotizarService::class)->registrarCotizarIaUso($codigoNorm);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+
         return $conteo + [
             'aprendidas' => $aprendidas,
             'cotizaciones' => $cotizaciones,

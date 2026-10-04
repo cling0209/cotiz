@@ -2079,7 +2079,16 @@ class OportunidadBusquedaService
 
         if ($incluirItems) {
             // Listado acumulado (catch-up): vigentes desde fecha de inicio.
-            $payload['items'] = $this->oportunidades->listarGuardadasVigentesDesde();
+            $userId = isset($opciones['user_id']) ? (int) $opciones['user_id'] : null;
+            if ($userId !== null && $userId <= 0) {
+                $userId = null;
+            }
+            $incluirCotizarIaVeces = (bool) ($opciones['incluir_cotizar_ia_veces'] ?? false);
+            $payload['items'] = $this->oportunidades->listarGuardadasVigentesDesde(
+                null,
+                $userId,
+                $incluirCotizarIaVeces,
+            );
         }
 
         return $payload;

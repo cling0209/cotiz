@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\CompraAgilRegionScope;
+use App\Services\CotizarIaService;
 use App\Services\OportunidadAdjuntoCorridaService;
 use App\Services\OportunidadAdjuntoService;
 use App\Services\OportunidadBusquedaService;
@@ -36,13 +37,18 @@ class OportunidadParaCotizarController extends Controller
         $puedePalabras = (bool) $request->user()?->canAccessPalabrasClave();
         $palabras = ($puedeBuscar || $puedePalabras) ? $this->servicio->palabrasClave() : [];
         $userId = (int) ($request->user()?->id ?? 0);
+        $puedeVerUsoIa = CotizarIaService::usuarioVeConsumo((string) $request->user()?->username);
         // Carga liviana (admin búsqueda): listado/sync/items van por AJAX tras pintar.
         // Vista solo-lectura: aún necesita el listado en el HTML (no tiene endpoint estado).
         $corridaEstado = $puedeBuscar
             ? $this->busqueda->estado(null, ['incluir_items' => false, 'retomar_vinculo' => false])
             : null;
         $guardadas = (! $puedeBuscar && (bool) $request->user()?->canVerOportunidades())
-            ? $this->servicio->listarGuardadasVigentesDesde(null, $userId > 0 ? $userId : null)
+            ? $this->servicio->listarGuardadasVigentesDesde(
+                null,
+                $userId > 0 ? $userId : null,
+                $puedeVerUsoIa,
+            )
             : [];
 
         $regionesFiltro = [];
@@ -68,6 +74,7 @@ class OportunidadParaCotizarController extends Controller
             'vinculoPendientes' => 0,
             'regionesFiltro' => $regionesFiltro,
             'filtrosUserId' => $userId,
+            'puedeVerUsoIa' => $puedeVerUsoIa,
             'syncPar' => null,
         ]);
     }
@@ -434,6 +441,8 @@ class OportunidadParaCotizarController extends Controller
     {
         $incluirItems = $request->boolean('items');
         $incluirSync = $request->boolean('sync_par');
+        $userId = (int) ($request->user()?->id ?? 0);
+        $puedeVerUsoIa = CotizarIaService::usuarioVeConsumo((string) $request->user()?->username);
 
         return response()->json([
             'ok' => true,
@@ -441,6 +450,8 @@ class OportunidadParaCotizarController extends Controller
                 'incluir_items' => $incluirItems,
                 // Retomar el 2.º proceso si la búsqueda ya terminó y quedaron pendientes.
                 'retomar_vinculo' => true,
+                'user_id' => $userId > 0 ? $userId : null,
+                'incluir_cotizar_ia_veces' => $puedeVerUsoIa,
             ]),
             'sync_par' => $incluirSync ? $this->encontradaRelay->resumenSyncPar() : null,
         ]);

@@ -6,6 +6,7 @@ use App\Models\Nota;
 use App\Models\OportunidadEncontrada;
 use App\Models\OportunidadEncontradaSyncPendiente;
 use App\Models\OportunidadTomada;
+use App\Models\OportunidadCotizarIa;
 use App\Models\OportunidadVisita;
 use App\Support\CotizInstanciaPar;
 use Illuminate\Database\QueryException;
@@ -1299,6 +1300,7 @@ class OportunidadEncontradaRelayService
         }
 
         OportunidadVisita::query()->where('codigo', $codigo)->delete();
+        OportunidadCotizarIa::query()->where('codigo', $codigo)->delete();
 
         return (int) OportunidadEncontrada::query()->where('codigo', $codigo)->delete();
     }

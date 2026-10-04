@@ -861,6 +861,7 @@
         let hidratacionAdjuntosEnCurso = false;
         const syncParInicial = @json($syncPar ?? null);
         const filtrosUserId = @json((int)($filtrosUserId ?? 0));
+        const puedeVerUsoIa = @json((bool) ($puedeVerUsoIa ?? false));
         const FILTROS_STORAGE_KEY = filtrosUserId > 0 ?
             `cotiz.oportunidades.filtros.${filtrosUserId}` :
             '';
@@ -1017,6 +1018,10 @@
                         visitas_usuario: Math.max(
                             Number(prev.visitas_usuario) || 0,
                             Number(item.visitas_usuario) || 0,
+                        ),
+                        cotizar_ia_veces: Math.max(
+                            Number(prev.cotizar_ia_veces) || 0,
+                            Number(item.cotizar_ia_veces) || 0,
                         ),
                     });
                     return;
@@ -2839,6 +2844,10 @@
                 const vistoHtml = visitas > 0
                     ? ` <span class="opc-meta">visto ${visitas}</span>`
                     : '';
+                const iaVeces = puedeVerUsoIa ? (Number(item.cotizar_ia_veces) || 0) : 0;
+                const iaHtml = iaVeces > 0
+                    ? ` <span class="opc-meta" title="Veces que se aplicó Cotizar con IA en esta oportunidad">IA ${iaVeces}</span>`
+                    : '';
                 const btnCopiarCodigo = codigo
                     ? `<button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline btn-copiar-codigo" data-no-loader data-codigo="${escapeHtml(codigo)}" title="Copiar código ${escapeHtml(codigo)}" aria-label="Copiar código">
                         <i class="bi bi-clipboard" aria-hidden="true"></i>
@@ -2899,7 +2908,7 @@
                     : '<span class="text-muted small">—</span>';
                 return `<tr>
                 <td>
-                    <span class="text-nowrap"><code>${codigoSolo}</code>${btnCopiarCodigo}${vistoHtml}</span>
+                    <span class="text-nowrap"><code>${codigoSolo}</code>${btnCopiarCodigo}${vistoHtml}${iaHtml}</span>
                     ${nombreHtml}
                     ${fraseBajoCodigo}
                     ${productosBajoCodigo}
