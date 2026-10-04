@@ -11,7 +11,8 @@ use Throwable;
 /**
  * Estado de stock en Prisa (prisa.cl) por código de producto, que es el mismo prod_item del maestro.
  * Usa la búsqueda pública (sin sesión: el login exige reCAPTCHA); cada resultado trae el
- * «Estado de Producto» de Prisa. El precio público no es el del cliente, así que no se usa.
+ * «Estado de Producto» de Prisa. El precio público no es el del cliente Romulo: solo se usa como
+ * referencia web cuando no hay producto en el maestro (antes de Mercado Libre).
  */
 class PrisaStockService
 {
@@ -55,10 +56,16 @@ class PrisaStockService
         return $this->habilitado() && (bool) config('cotiz.prisa.busqueda_texto', true);
     }
 
+    public function referenciaSinMaestroHabilitada(): bool
+    {
+        return $this->busquedaTextoHabilitada()
+            && (bool) config('cotiz.prisa.referencia_sin_maestro', true);
+    }
+
     /**
      * Resultados del buscador público por descripción (orden de relevancia de Prisa).
      *
-     * @return list<array{sku: string, nombre: string, stock_prisa: array{estado: string, etiqueta: string, url: string}}>|false
+     * @return list<array{sku: string, nombre: string, precio_clp: int, imagen_url: string, stock_prisa: array{estado: string, etiqueta: string, url: string}}>|false
      *                                                                                                                          false = no se pudo consultar
      */
     public function buscarPorTexto(string $termino): array|false
@@ -106,6 +113,8 @@ class PrisaStockService
                 $resultado[] = [
                     'sku' => $sku,
                     'nombre' => trim((string) ($fila['name'] ?? '')),
+                    'precio_clp' => $this->precioDesdeFila($fila),
+                    'imagen_url' => $this->imagenDesdeFila($fila),
                     'stock_prisa' => $stock,
                 ];
             }
@@ -265,6 +274,43 @@ class PrisaStockService
      * @param  array<string, mixed>  $fila
      * @return array{estado: string, etiqueta: string, url: string}|null
      */
+    /**
+     * @param  array<string, mixed>  $fila
+     */
+    private function precioDesdeFila(array $fila): int
+    {
+        foreach (['minimal_price', 'minimal_price_sort', 'price'] as $clave) {
+            if (! isset($fila[$clave]) || ! is_numeric($fila[$clave])) {
+                continue;
+            }
+            $precio = (int) round((float) $fila[$clave]);
+            if ($precio > 0) {
+                return $precio;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fila
+     */
+    private function imagenDesdeFila(array $fila): string
+    {
+        $imagen = trim((string) ($fila['image'] ?? ''));
+        if ($imagen === '') {
+            return '';
+        }
+        if (str_starts_with($imagen, '//')) {
+            return 'https:'.$imagen;
+        }
+        if (str_starts_with($imagen, '/')) {
+            return config('cotiz.prisa.base_url').$imagen;
+        }
+
+        return $imagen;
+    }
+
     private function stockDesdeFila(array $fila): ?array
     {
         $id = (int) ($fila['availability'] ?? 0);

@@ -39,7 +39,7 @@ class PrisaStockBusquedaTextoTest extends TestCase
         $html = '<div data-page-component-options="'
             .htmlspecialchars(json_encode([
                 'data' => ['data' => [
-                    ['sku' => 'TORN001', 'name' => 'Tornillo 8x1', 'availability' => 9103, 'view_link' => '/tornillo'],
+                    ['sku' => 'TORN001', 'name' => 'Tornillo 8x1', 'availability' => 9103, 'view_link' => '/tornillo', 'minimal_price' => 11900],
                 ]],
             ]), ENT_QUOTES).'"></div>';
 
@@ -51,5 +51,6 @@ class PrisaStockBusquedaTextoTest extends TestCase
         $this->assertCount(1, $resultado);
         $this->assertSame('TORN001', $resultado[0]['sku']);
         $this->assertSame(PrisaStockService::ESTADO_DISPONIBLE, $resultado[0]['stock_prisa']['estado']);
+        $this->assertSame(11900, $resultado[0]['precio_clp']);
     }
 }

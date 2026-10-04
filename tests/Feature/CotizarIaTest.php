@@ -1508,10 +1508,14 @@ class CotizarIaTest extends TestCase
 
     public function test_pendiente_se_vincula_desde_busqueda_prisa_antes_de_mercado_libre(): void
     {
+        Cache::flush();
         config([
             'cotiz.prisa.habilitado' => true,
             'cotiz.prisa.busqueda_texto' => true,
+            'cotiz.prisa.referencia_sin_maestro' => false,
+            'cotiz.prisa.cache_horas' => 0,
             'cotiz.mercadolibre.habilitado' => false,
+            'cotiz.gemini.busqueda_web' => false,
         ]);
         Maeprod::query()->create([
             'prod_item' => 'TORN001',
@@ -1563,6 +1567,67 @@ class CotizarIaTest extends TestCase
         $this->assertSame('DISPONIBLE', $web['stock_prisa']['etiqueta']);
         $this->assertNull($web['referencia']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'vinculadas al maestro por búsqueda por descripción')));
+    }
+
+    public function test_pendiente_usa_referencia_prisa_sin_maestro_antes_de_mercado_libre(): void
+    {
+        Cache::flush();
+        config([
+            'cotiz.prisa.habilitado' => true,
+            'cotiz.prisa.busqueda_texto' => true,
+            'cotiz.prisa.referencia_sin_maestro' => true,
+            'cotiz.prisa.cache_horas' => 0,
+            'cotiz.mercadolibre.habilitado' => false,
+            'cotiz.gemini.busqueda_web' => false,
+        ]);
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake(function (HttpRequest $request) {
+            if (str_starts_with($request->url(), 'https://prisa.test/')) {
+                if (! str_contains($request->header('Cookie')[0] ?? '', 'OCXS=')) {
+                    return Http::response('<script>var a=toNumbers("'.str_repeat('a1', 16).'"),b=toNumbers("'.str_repeat('b2', 16).'"),'
+                        .'c=toNumbers("'.str_repeat('c3', 16).'");document.cookie="OCXS="+toHex(slowAES.decrypt(c,2,a,b));</script>');
+                }
+                $busqueda = mb_strtoupper((string) ($request->data()['search'] ?? ''));
+                $filas = str_contains($busqueda, 'TORNILLO')
+                    ? [[
+                        'sku' => 'PRISA999',
+                        'name' => 'Tornillo autoperforante 8 x 1 pulgada caja 100',
+                        'availability' => 9103,
+                        'view_link' => '/tornillo-prisa',
+                        'minimal_price' => 11900,
+                    ]]
+                    : [];
+
+                return Http::response('<div data-page-component-options="'
+                    .htmlspecialchars(json_encode(['data' => ['data' => $filas]]), ENT_QUOTES).'"></div>');
+            }
+
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                return Http::response($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001', 'HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]));
+            }
+
+            return null;
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', self::DESC_WEB);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame(CotizarIaService::ORIGEN_PRISA_REFERENCIA, $web['origen']);
+        $this->assertSame('Prisa', $web['referencia']['sitio']);
+        $this->assertSame(11900, $web['referencia']['precio_clp']);
+        $this->assertSame(119, $web['referencia']['neto_unitario']);
+        $this->assertNull($web['producto']);
+        $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'referencia web (sin maestro)')));
     }
 
     public function test_prisa_busqueda_usa_equivalencias_de_config_antes_de_mercado_libre(): void

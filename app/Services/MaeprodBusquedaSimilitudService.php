@@ -50,6 +50,7 @@ class MaeprodBusquedaSimilitudService
         'SIMILAR', 'SUPERIOR', 'INFERIOR', 'CUMPLIR', 'ESPECIFICACION', 'EXCLUYENTE',
         'ORIGINAL', 'GENERICO', 'JUMBO',
         'GRANDE', 'GRANDES', 'PEQUENO', 'PEQUENA', 'PEQUENOS', 'PEQUENAS',
+        'NEON', 'PASTEL', 'PASTELES',
     ];
 
     /**
@@ -97,6 +98,7 @@ class MaeprodBusquedaSimilitudService
         'LAPIZ' => ['LAPIZ', 'LAPICES'],
         'MARCADOR' => ['MARCADOR'],
         'GOMA_BORRAR' => ['BORRADOR'],
+        'PINTURA_ACRILICA' => ['ACRILICOS', 'PINTURAS ACRILICAS', 'PINTURA ACRILICA'],
     ];
 
     /** @var string[] */
@@ -190,6 +192,39 @@ class MaeprodBusquedaSimilitudService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Términos cortos como los usaría un vendedor en el buscador del maestro (sin colores/neón/pack genéricos).
+     *
+     * @return list<string>
+     */
+    public function terminosBusquedaVendedor(string $descripcion): array
+    {
+        $norm = $this->normalizarBusqueda($descripcion);
+        if ($norm === '') {
+            return [];
+        }
+
+        $vistos = [];
+        $out = [];
+        foreach ([
+            $this->fraseSinTokensGenericos($norm),
+            trim(implode(' ', array_slice($this->tokensSignificativos($norm), 0, 4))),
+        ] as $termino) {
+            $termino = trim($termino);
+            if ($termino === '' || mb_strlen($termino) < 3) {
+                continue;
+            }
+            $clave = mb_strtolower($termino);
+            if (isset($vistos[$clave]) || $clave === mb_strtolower($norm)) {
+                continue;
+            }
+            $vistos[$clave] = true;
+            $out[] = $termino;
+        }
+
+        return $out;
     }
 
     /**

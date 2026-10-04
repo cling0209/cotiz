@@ -269,6 +269,18 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertTrue(collect($alts)->contains(fn (string $t) => ! str_contains($t, 'GRANDE')));
     }
 
+    public function test_set_acrilicos_no_confunde_con_destacadores(): void
+    {
+        $consulta = 'SET ACRILICOS 12 COLORES NEON Y PASTEL 12 ML';
+
+        $this->assertContains('PINTURA_ACRILICA', $this->service->familiasProducto($consulta));
+        $this->assertTrue($this->service->hayConflictoFamilia($consulta, 'DESTACADORES NEON PASTEL SET 12 COLORES NUOVO'));
+        $this->assertFalse($this->service->hayConflictoFamilia($consulta, 'SET ACRILICOS ARTEL 12 COLORES DE 12ML'));
+        $vendedor = $this->service->terminosBusquedaVendedor($consulta);
+        $this->assertNotSame([], $vendedor);
+        $this->assertTrue(collect($vendedor)->contains(fn (string $t) => str_contains($t, 'ACRILICOS')));
+    }
+
     public function test_busqueda_equivalencias_grupo_extra_desde_config(): void
     {
         config([

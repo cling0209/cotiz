@@ -58,10 +58,13 @@ class CotizarIaService
 
     public const ORIGEN_PRISA = 'prisa_busqueda';
 
+    public const ORIGEN_PRISA_REFERENCIA = 'prisa_referencia';
+
     /** Dominio permitido => nombre visible. Incluye subdominios (articulo.mercadolibre.cl). */
     private const SITIOS_WEB = [
         'mercadolibre.cl' => 'Mercado Libre',
         'sodimac.cl' => 'Sodimac',
+        'prisa.cl' => 'Prisa',
     ];
 
     private const IVA = 1.19;
@@ -1113,7 +1116,10 @@ TXT];
         $this->etapa(5, 'IA buscando equivalencias en el maestro para '.count($paraIa).' línea(s)');
         $candidatos = [];
         foreach ($paraIa as $i) {
-            $candidatos[$i] = $this->candidatosMaeprod($items[$i]['descripcion'], [$items[$i]['descripcion']]);
+            $candidatos[$i] = $this->candidatosMaeprod(
+                $items[$i]['descripcion'],
+                $this->terminosBusquedaMaestro($items[$i]['descripcion']),
+            );
         }
 
         $resultado = $this->equivalenciasIa($items, $candidatos, true);
@@ -1423,10 +1429,38 @@ TXT];
      * @param  list<string>  $terminos
      * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>
      */
+    private function terminosBusquedaMaestro(string $descripcion): array
+    {
+        $vistos = [];
+        $out = [];
+        foreach (array_merge(
+            [$descripcion],
+            $this->busqueda->terminosBusquedaVendedor($descripcion),
+            $this->busqueda->terminosSinonimos($descripcion),
+        ) as $termino) {
+            $termino = trim($termino);
+            if ($termino === '') {
+                continue;
+            }
+            $clave = mb_strtolower($termino);
+            if (isset($vistos[$clave])) {
+                continue;
+            }
+            $vistos[$clave] = true;
+            $out[] = $termino;
+        }
+
+        return array_slice($out, 0, 6);
+    }
+
+    /**
+     * @param  list<string>  $terminos
+     * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>
+     */
     private function candidatosMaeprod(string $descripcion, array $terminos): array
     {
         $out = [];
-        foreach (array_slice($terminos, 0, 4) as $termino) {
+        foreach (array_slice($terminos, 0, 6) as $termino) {
             $termino = trim((string) $termino);
             if ($termino === '') {
                 continue;
@@ -1448,12 +1482,30 @@ TXT];
                 }
                 $out[$producto['prod_item']] = $producto;
                 if (count($out) >= self::CANDIDATOS_POR_LINEA) {
-                    return $out;
+                    return $this->ordenarCandidatosMaestro($descripcion, $out);
                 }
             }
         }
 
-        return $out;
+        return $this->ordenarCandidatosMaestro($descripcion, $out);
+    }
+
+    /**
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
+     * @return array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>
+     */
+    private function ordenarCandidatosMaestro(string $descripcion, array $candidatos): array
+    {
+        if ($candidatos === []) {
+            return [];
+        }
+        uasort(
+            $candidatos,
+            fn (array $a, array $b) => $this->busqueda->scoreSimilitudFila($descripcion, $b['prod_item'], $b['prod_nombre'])
+                <=> $this->busqueda->scoreSimilitudFila($descripcion, $a['prod_item'], $a['prod_nombre']),
+        );
+
+        return $candidatos;
     }
 
     /**
@@ -1702,7 +1754,14 @@ TXT];
             ? 'Si ninguno es equivalente (o no hay candidatos), devuelve "equivalentes": [] y en "busqueda" 2 o 3 términos cortos alternativos para buscar ese producto en el catálogo (nombre genérico o comercial usado en Chile, sin cantidades).'
             : 'Si ninguno es equivalente devuelve "equivalentes": [] y "busqueda": [].';
 
-        $prompt = "Para cada producto solicitado indica qué candidatos del catálogo sirven para cotizarlo, es decir, que cumplen la misma función para el comprador.\n"
+        $prompt = "Actúas como un vendedor del catálogo Romulo/Prisa: tu trabajo es elegir códigos del maestro listados en candidatos, "
+            .'no productos de otra categoría aunque la búsqueda textual comparta palabras. '
+            .'Ejemplos de categorías distintas: pintura acrílica en set o tubo ≠ destacador/resaltador, '
+            .'≠ marcador acrílico de pintar, ≠ regla/vaso acrílico; «neón» o «pastel» en la licitación '
+            .'no convierte un set de pintura en destacadores. '
+            .'Si piden set acrílicos con neón/pastel y hay en candidatos un set 6+6 o equivalente, preferirlo; '
+            .'si no, un set estándar de la misma cantidad de colores y formato (ej. 12×12 ml) suele servir al comprador.\n'
+            ."Para cada producto solicitado indica qué candidatos del catálogo sirven para cotizarlo, es decir, que cumplen la misma función para el comprador.\n"
             .'Criterio principal: misma función y mismo uso. Un producto de nombre o tipo distinto que cumple esa función es equivalente '
             .'(ej. para «cera en aerosol para auto» sirve «silicona de auto en aerosol»; para «renovador de neumáticos» sirve «renovador de goma»). '
             .'La marca NO importa: el producto de otra marca es equivalente aunque el solicitado nombre una marca. '
@@ -1737,7 +1796,7 @@ TXT];
             .'"revisar_foto":[{"codigo":"CODIGO","unidades":1,"falta":"cordón"}],"busqueda":["termino"],"generico":"nombre genérico"}]}';
 
         try {
-            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistema(), 'etapa' => 'Equivalencias con el maestro']);
+            $respuesta = $this->gemini->generar([['text' => $prompt]], ['json' => true, 'system' => $this->instruccionSistemaVendedor(), 'etapa' => 'Equivalencias con el maestro']);
         } catch (GeminiCuotaAgotadaException $e) {
             $this->iaSinCuota = true;
             $this->avisos[] = $e->getMessage().' Las líneas restantes quedaron sin vincular por IA.';
@@ -2048,11 +2107,13 @@ TXT];
         $this->detalle('Buscando en Prisa por descripción para '.count($pendientes).' línea(s) sin vínculo al maestro');
         $conStock = [PrisaStockService::ESTADO_DISPONIBLE, PrisaStockService::ESTADO_ULTIMAS_UNIDADES];
         $vinculados = 0;
+        $referencias = 0;
         $fallos = 0;
 
         foreach ($pendientes as $i) {
             $errorLinea = false;
             $vinculoLinea = false;
+            $porSku = [];
             foreach ($this->terminosBusquedaLinea($items[$i]) as $termino) {
                 $resultados = $this->prisa->buscarPorTexto($termino);
                 if ($resultados === false) {
@@ -2060,11 +2121,13 @@ TXT];
 
                     continue;
                 }
-                if ($resultados === []) {
-                    continue;
+                foreach ($resultados as $fila) {
+                    $porSku[$fila['sku']] = $fila;
                 }
-
-                $skus = array_values(array_unique(array_map(static fn (array $r) => $r['sku'], $resultados)));
+            }
+            $resultados = array_values($porSku);
+            if ($resultados !== []) {
+                $skus = array_keys($porSku);
                 $maeprods = Maeprod::query()->whereIn('prod_item', $skus)->get()->keyBy('prod_item');
                 $stockPorSku = [];
                 $candidatos = [];
@@ -2084,21 +2147,47 @@ TXT];
                 }
 
                 $elegido = $this->elegirEquivalente((string) $items[$i]['descripcion'], $candidatos);
-                if ($elegido === null) {
-                    continue;
+                if ($elegido !== null) {
+                    $items[$i] = $this->marcarVinculado(
+                        $items[$i],
+                        $this->prorratearPackMaestro($elegido, (string) $items[$i]['descripcion']),
+                        self::ORIGEN_PRISA,
+                    );
+                    $items[$i]['stock_prisa'] = $stockPorSku[$elegido['prod_item']] ?? null;
+                    $items[$i]['stock_nota'] = 'Prisa: vinculado por búsqueda ('.$elegido['prod_item'].').';
+                    $vinculados++;
+                    $vinculoLinea = true;
                 }
-
-                $items[$i] = $this->marcarVinculado(
-                    $items[$i],
-                    $this->prorratearPackMaestro($elegido, (string) $items[$i]['descripcion']),
-                    self::ORIGEN_PRISA,
-                );
-                $items[$i]['stock_prisa'] = $stockPorSku[$elegido['prod_item']] ?? null;
-                $items[$i]['stock_nota'] = 'Prisa: vinculado por búsqueda ('.$elegido['prod_item'].').';
-                $vinculados++;
-                $vinculoLinea = true;
-                break;
             }
+
+            if (! $vinculoLinea && $this->prisa->referenciaSinMaestroHabilitada() && $resultados !== []) {
+                $opciones = $this->opcionesReferenciaPrisa($items[$i], $resultados);
+                if ($opciones !== []) {
+                    $cantidad = max(1, (int) $items[$i]['cantidad']);
+                    $unidadesSolicitud = min(
+                        self::MAX_UNIDADES_POR_SOLICITADO,
+                        $this->mercadolibre->unidadesPorPack((string) $items[$i]['descripcion']),
+                    );
+                    [$mejor] = $this->mejorReferencia((string) $items[$i]['descripcion'], $cantidad, $opciones, $unidadesSolicitud);
+                    if ($mejor !== null) {
+                        $items[$i]['estado'] = self::ESTADO_REFERENCIA_WEB;
+                        $items[$i]['origen'] = self::ORIGEN_PRISA_REFERENCIA;
+                        $items[$i]['referencia'] = $mejor;
+                        $items[$i]['producto'] = null;
+                        $items[$i]['medida_nota'] = $this->notaMedida((string) $items[$i]['descripcion'], $mejor['titulo']);
+                        $items[$i]['stock_nota'] = 'Prisa: referencia sin producto en maestro (precio público).';
+                        foreach ($resultados as $fila) {
+                            if (($fila['stock_prisa']['url'] ?? '') === $mejor['url']) {
+                                $items[$i]['stock_prisa'] = $fila['stock_prisa'];
+                                break;
+                            }
+                        }
+                        $referencias++;
+                        $vinculoLinea = true;
+                    }
+                }
+            }
+
             if ($errorLinea && ! $vinculoLinea) {
                 $fallos++;
             }
@@ -2107,11 +2196,54 @@ TXT];
         if ($vinculados > 0) {
             $this->avisos[] = "Prisa: {$vinculados} línea(s) vinculadas al maestro por búsqueda por descripción.";
         }
+        if ($referencias > 0) {
+            $this->avisos[] = "Prisa: {$referencias} línea(s) con referencia web (sin maestro) antes de Mercado Libre.";
+        }
         if ($fallos > 0) {
             $this->avisos[] = "No se pudo buscar en Prisa por descripción en {$fallos} línea(s).";
         }
 
         return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  list<array{sku: string, nombre: string, precio_clp: int, imagen_url: string, stock_prisa: array{estado: string, etiqueta: string, url: string}}>  $resultados
+     * @return list<array<string, mixed>>
+     */
+    private function opcionesReferenciaPrisa(array $item, array $resultados): array
+    {
+        $conStock = [PrisaStockService::ESTADO_DISPONIBLE, PrisaStockService::ESTADO_ULTIMAS_UNIDADES];
+        $opciones = [];
+        $urls = [];
+        foreach ($resultados as $fila) {
+            if (! in_array($fila['stock_prisa']['estado'], $conStock, true)) {
+                continue;
+            }
+            $precio = (int) ($fila['precio_clp'] ?? 0);
+            $titulo = trim((string) ($fila['nombre'] ?? ''));
+            if ($titulo === '') {
+                $titulo = 'SKU '.$fila['sku'];
+            }
+            $url = trim((string) ($fila['stock_prisa']['url'] ?? ''));
+            if ($precio <= 0 || $url === '' || isset($urls[$url])) {
+                continue;
+            }
+            if (! $this->pasaFiltros((string) $item['descripcion'], $titulo)) {
+                continue;
+            }
+            $urls[$url] = true;
+            $opciones[] = [
+                'titulo' => $titulo,
+                'precio_clp' => $precio,
+                'url' => $url,
+                'unidades_por_pack' => max(1, $this->mercadolibre->unidadesPorPack($titulo)),
+                'stock_disponible' => null,
+                'imagen_url' => trim((string) ($fila['imagen_url'] ?? '')),
+            ];
+        }
+
+        return $opciones;
     }
 
     /**
@@ -2497,7 +2629,7 @@ TXT];
             }
             $unidades = max(1, (int) ($opcion['unidades_por_pack'] ?? 1));
             // En Mercado Libre el costo es el precio publicado, con IVA; en Sodimac, el neto.
-            $conIva = $sitio === self::SITIOS_WEB['mercadolibre.cl'];
+            $conIva = $sitio === self::SITIOS_WEB['mercadolibre.cl'] || $sitio === self::SITIOS_WEB['prisa.cl'];
             $neto = (int) round($precio / ($conIva ? 1 : self::IVA) / $unidades * $unidadesSolicitud);
             if ($neto <= 0) {
                 continue;
@@ -2674,8 +2806,21 @@ TXT];
                 return $nombre;
             }
         }
+        if ($this->hostEsPrisa($host)) {
+            return self::SITIOS_WEB['prisa.cl'];
+        }
 
         return null;
+    }
+
+    private function hostEsPrisa(string $host): bool
+    {
+        $configHost = strtolower((string) parse_url((string) config('cotiz.prisa.base_url'), PHP_URL_HOST));
+        if ($configHost === '') {
+            return false;
+        }
+
+        return $host === $configHost || str_ends_with($host, '.'.$configHost);
     }
 
     /**
@@ -2865,6 +3010,13 @@ TXT];
     {
         return 'Eres el asistente de cotizaciones de una comercializadora chilena que responde compras ágiles de Mercado Público '
             .'(insumos de aseo, oficina, ferretería, alimentos, etc.). Respondes siempre en español y solo con el JSON pedido.';
+    }
+
+    private function instruccionSistemaVendedor(): string
+    {
+        return $this->instruccionSistema().' Al vincular con el maestro, razona como un vendedor con experiencia: '
+            .'prioriza siempre un código del catálogo interno cuando cumpla la función; '
+            .'descarta candidatos de otra familia de producto aunque su nombre repita «acrílico», «neón», «12 colores» u otras palabras genéricas.';
     }
 
     private function busquedaWebSodimacHabilitada(): bool
