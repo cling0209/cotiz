@@ -111,6 +111,20 @@ return [
     'buscar_productos_puntaje_minimo' => (int) env('COTIZ_BUSCAR_PRODUCTOS_PUNTAJE_MINIMO', 55),
     'buscar_productos_score_php_minimo' => (int) env('COTIZ_BUSCAR_PRODUCTOS_SCORE_PHP_MINIMO', 5000),
 
+    /*
+     * Términos intercambiables entre licitación/adjunto y nombre en maeprod.
+     * Cada grupo: misma familia lógica, búsqueda ampliada y sin conflicto entre sí.
+     * - familia: etiqueta interna (opcional; por defecto el primer término).
+     * - terminos: palabras equivalentes (mayúsculas en config; se normalizan al usar).
+     * Agregar grupos aquí; no hace falta tocar MaeprodBusquedaSimilitudService.
+     */
+    'busqueda_equivalencias' => [
+        [
+            'familia' => 'REGLA',
+            'terminos' => ['REGLA', 'REGLAS', 'GEOMETRICO', 'GEOMETRICA', 'GEOMETRICOS', 'GEOMETRICAS'],
+        ],
+    ],
+
     'import' => [
         'background' => filter_var(env('MAEPROD_IMPORT_BACKGROUND', true), FILTER_VALIDATE_BOOL),
         // Defaults de carga masiva maeprod (la UI puede sobreescribir por importación).

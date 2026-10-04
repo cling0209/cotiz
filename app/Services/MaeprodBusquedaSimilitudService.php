@@ -46,6 +46,7 @@ class MaeprodBusquedaSimilitudService
         'REF', 'COD', 'CODIGO', 'INT', 'PG', 'PC',
         'SIMILAR', 'SUPERIOR', 'INFERIOR', 'CUMPLIR', 'ESPECIFICACION', 'EXCLUYENTE',
         'ORIGINAL', 'GENERICO', 'JUMBO',
+        'GRANDE', 'GRANDES', 'PEQUENO', 'PEQUENA', 'PEQUENOS', 'PEQUENAS',
     ];
 
     /**
@@ -136,6 +137,178 @@ class MaeprodBusquedaSimilitudService
         }
 
         $limit = max(1, $limit);
+        $merged = [];
+        // Consultas de config (busqueda_equivalencias) primero, luego el texto original.
+        foreach (array_values(array_unique(array_merge($this->terminosSinonimos($term), [$term]))) as $consulta) {
+            foreach ($this->buscarConsulta($consulta, $familia, $limit) as $fila) {
+                $item = trim((string) $fila->prod_item);
+                if ($item === '' || isset($merged[$item])) {
+                    continue;
+                }
+                $merged[$item] = $fila;
+                if (count($merged) >= $limit) {
+                    return collect(array_values($merged));
+                }
+            }
+        }
+
+        return collect(array_values($merged));
+    }
+
+    /**
+     * Consultas alternativas cuando el listado usa un nombre comercial distinto al maestro.
+     *
+     * @return list<string>
+     */
+    public function terminosSinonimos(string $term): array
+    {
+        $norm = $this->normalizarBusqueda($term);
+        if ($norm === '') {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+            foreach ($grupo['terminos'] as $de) {
+                if (! $this->textoContienePalabra($norm, $de)) {
+                    continue;
+                }
+                foreach ($grupo['terminos'] as $reemplazo) {
+                    if ($de === $reemplazo) {
+                        continue;
+                    }
+                    $alt = trim((string) preg_replace('/\b'.preg_quote($de, '/').'\b/u', $reemplazo, $norm));
+                    $alt = $this->fraseSinTokensGenericos($alt);
+                    if ($alt !== '' && $alt !== $norm) {
+                        $out[] = $alt;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Otros términos del mismo grupo de equivalencia (config cotiz.busqueda_equivalencias).
+     *
+     * @return list<string>
+     */
+    public function equivalentesDeToken(string $token): array
+    {
+        $token = mb_strtoupper(trim($token), 'UTF-8');
+        if ($token === '') {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+            if (! in_array($token, $grupo['terminos'], true)) {
+                continue;
+            }
+            foreach ($grupo['terminos'] as $otro) {
+                if ($otro !== $token) {
+                    $out[] = $otro;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @return string[]
+     */
+    private function ampliarTokensConSinonimos(array $tokens): array
+    {
+        $out = $tokens;
+        $hay = [];
+        foreach ($tokens as $token) {
+            $hay[mb_strtoupper((string) $token, 'UTF-8')] = true;
+        }
+        foreach ($tokens as $token) {
+            foreach ($this->equivalentesDeToken((string) $token) as $sinonimo) {
+                if (! isset($hay[$sinonimo])) {
+                    $out[] = $sinonimo;
+                    $hay[$sinonimo] = true;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{familia: string, terminos: list<string>}>
+     */
+    private function gruposEquivalenciaBusqueda(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $cache = [];
+        foreach ((array) config('cotiz.busqueda_equivalencias', []) as $entrada) {
+            if (! is_array($entrada)) {
+                continue;
+            }
+            if (array_key_exists('terminos', $entrada)) {
+                $terminos = $this->normalizarTerminosEquivalencia((array) $entrada['terminos']);
+                $familia = mb_strtoupper(trim((string) ($entrada['familia'] ?? ($terminos[0] ?? ''))), 'UTF-8');
+            } else {
+                $terminos = $this->normalizarTerminosEquivalencia($entrada);
+                $familia = $terminos[0] ?? '';
+            }
+            if ($terminos === [] || $familia === '') {
+                continue;
+            }
+            $cache[] = ['familia' => $familia, 'terminos' => $terminos];
+        }
+
+        return $cache;
+    }
+
+    /**
+     * @param  list<mixed>  $items
+     * @return list<string>
+     */
+    private function normalizarTerminosEquivalencia(array $items): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            $t = mb_strtoupper(trim((string) $item), 'UTF-8');
+            if ($t !== '') {
+                $out[] = $t;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    private function textoContienePalabra(string $textoNormalizado, string $palabra): bool
+    {
+        $palabra = mb_strtoupper(trim($palabra), 'UTF-8');
+        if ($textoNormalizado === '' || $palabra === '') {
+            return false;
+        }
+
+        return preg_match('/\b'.preg_quote($palabra, '/').'\b/u', $textoNormalizado) === 1;
+    }
+
+    private function fraseSinTokensGenericos(string $frase): string
+    {
+        $palabras = preg_split('/\s+/u', trim($frase), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $filtradas = array_values(array_filter(
+            $palabras,
+            fn (string $p) => ! $this->esTokenGenerico($p) && ! $this->esStopword($p),
+        ));
+
+        return trim(implode(' ', $filtradas));
+    }
+
+    private function buscarConsulta(string $term, ?string $familia, int $limit): Collection
+    {
         $payload = $this->codificarPayloadBuscarSimilitud($term);
         if ($payload === '') {
             return collect();
@@ -314,6 +487,15 @@ class MaeprodBusquedaSimilitudService
             }
         }
 
+        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+            foreach ($grupo['terminos'] as $kw) {
+                if ($this->textoContienePalabra($norm, $kw)) {
+                    $familias[] = $grupo['familia'];
+                    break;
+                }
+            }
+        }
+
         return array_values(array_unique($familias));
     }
 
@@ -324,6 +506,10 @@ class MaeprodBusquedaSimilitudService
      */
     public function hayConflictoFamilia(string $textoA, string $textoB): bool
     {
+        if ($this->compartenGrupoEquivalencia($textoA, $textoB)) {
+            return false;
+        }
+
         $fa = $this->familiasProducto($textoA);
         $fb = $this->familiasProducto($textoB);
         if ($fa === [] || $fb === []) {
@@ -331,6 +517,33 @@ class MaeprodBusquedaSimilitudService
         }
 
         return array_intersect($fa, $fb) === [];
+    }
+
+    private function compartenGrupoEquivalencia(string $textoA, string $textoB): bool
+    {
+        $na = $this->normalizarBusqueda($textoA);
+        $nb = $this->normalizarBusqueda($textoB);
+        if ($na === '' || $nb === '') {
+            return false;
+        }
+
+        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+            $enA = false;
+            $enB = false;
+            foreach ($grupo['terminos'] as $term) {
+                if ($this->textoContienePalabra($na, $term)) {
+                    $enA = true;
+                }
+                if ($this->textoContienePalabra($nb, $term)) {
+                    $enB = true;
+                }
+            }
+            if ($enA && $enB) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function tieneSolapeDistintivo(string $textoConsulta, string $textoCandidato): bool
@@ -413,7 +626,7 @@ class MaeprodBusquedaSimilitudService
         }
 
         $extraidos = $this->extraerTokens($norm);
-        $tokens = $this->tokensConsultaSql($extraidos);
+        $tokens = $this->ampliarTokensConSinonimos($this->tokensConsultaSql($extraidos));
         // Números de 2 dígitos (40 hojas, caja 12) suman puntaje; van al final para no cortar bigramas de palabras.
         foreach ($extraidos as $t) {
             if (preg_match('/^\d{2}$/', $t) && ! in_array($t, $tokens, true)) {
@@ -472,6 +685,9 @@ class MaeprodBusquedaSimilitudService
         }
 
         $vars = [$token];
+        foreach ($this->equivalentesDeToken($token) as $sinonimo) {
+            $vars[] = $sinonimo;
+        }
 
         if (mb_strlen($token, 'UTF-8') >= 5 && str_ends_with($token, 'S') && ! preg_match('/\d/u', $token)) {
             $singular = mb_substr($token, 0, -1, 'UTF-8');

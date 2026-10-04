@@ -255,6 +255,20 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertSame('HB', end($tokens));
     }
 
+    public function test_set_geometrico_es_familia_regla_y_solapa_con_set_reglas(): void
+    {
+        $consulta = 'SET GEOMETRICO GRANDE 30 CM 04 U';
+        $maestro = 'SET REGLAS ACRILICAS 30CM 4 PCS';
+
+        $this->assertContains('REGLA', $this->service->familiasProducto($consulta));
+        $this->assertFalse($this->service->hayConflictoFamilia($consulta, $maestro));
+        $this->assertTrue($this->service->tieneSolapeDistintivo($consulta, $maestro));
+        $this->assertContains('REGLA', $this->service->tokenVariantes('GEOMETRICO'));
+        $alts = $this->service->terminosSinonimos($consulta);
+        $this->assertTrue(collect($alts)->contains(fn (string $t) => str_contains($t, 'REGLAS') && ! str_contains($t, 'GEOMETRICO')));
+        $this->assertTrue(collect($alts)->contains(fn (string $t) => ! str_contains($t, 'GRANDE')));
+    }
+
     public function test_elige_el_mas_economico(): void
     {
         $elegido = $this->service->elegirMasEconomico([
