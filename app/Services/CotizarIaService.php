@@ -1894,6 +1894,8 @@ TXT];
             .'con las unidades calculadas por la cantidad del producto solicitado que trae el kit. '
             .'Set o pack de marcadores permanentes (punta fina, multi-superficie, etc.) suele equivaler en el maestro a '
             .'«MARCADORES N COLORES» o «SET … MARCADORES … N …» aunque no diga «permanente» en el nombre del catálogo. '
+            .'En manualidades, «CARPETA» junto a GOMA EVA / pliegos / flúor suele ser el empaque (carpeta de pliegos), '
+            .'no carpeta archivador: equivalente a GOMA EVA FLUOR, 6 pliegos o 20×30 cm aunque el maestro tenga nombre corto. '
             .'Si el solicitado y el candidato usan nombres distintos pero es el mismo artículo '
             .'(misma función, medida y formato), márcalo equivalente aunque no repitan las mismas palabras. '
             .'En papelería «N unidades» del catálogo suele contar hojas o pliegos, no la pieza menor: '
@@ -3141,7 +3143,8 @@ TXT];
         return $this->instruccionSistema().' Al vincular con el maestro, razona como un vendedor con experiencia: '
             .'prioriza siempre un código del catálogo interno cuando cumpla la función; '
             .'descarta candidatos de otra familia de producto aunque su nombre repita «acrílico», «neón», «12 colores» u otras palabras genéricas; '
-            .'un set de marcadores de la licitación encaja con «MARCADORES N COLORES» del maestro aunque falte la palabra permanente.';
+            .'un set de marcadores de la licitación encaja con «MARCADORES N COLORES» del maestro aunque falte la palabra permanente; '
+            .'«CARPETA» con GOMA EVA o pliegos en la licitación es empaque del producto, no carpeta archivador.';
     }
 
     /**

@@ -127,6 +127,10 @@ return [
             'familia' => 'MARCADOR',
             'terminos' => ['MARCADOR', 'MARCADORES', 'PERMANENTE', 'PERMANENTES'],
         ],
+        [
+            'familia' => 'GOMA_EVA',
+            'terminos' => ['FOAMI', 'GOMA', 'EVA', 'PLIEGO', 'FLUOR', 'FLUORESCENTE', 'FLUORESCENTES'],
+        ],
     ],
 
     'import' => [

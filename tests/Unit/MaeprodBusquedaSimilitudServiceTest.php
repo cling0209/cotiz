@@ -281,6 +281,24 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertTrue(collect($vendedor)->contains(fn (string $t) => str_contains($t, 'ACRILICOS')));
     }
 
+    public function test_goma_eva_carpeta_empaque_no_confunde_con_carpeta_archivador(): void
+    {
+        $mp = 'GOMA EVA ADHESIVA FLUOR CARPETA 020X030 CM 06 U COLOR SURTIDOS';
+        $familias = $this->service->familiasProducto($mp);
+
+        $this->assertContains('GOMA_EVA', $familias);
+        $this->assertNotContains('CARPETA', $familias);
+        $this->assertFalse($this->service->hayConflictoFamilia($mp, 'GOMA EVA FLUOR'));
+        $this->assertTrue($this->service->tieneSolapeDistintivo($mp, 'GOMA EVA FLUOR'));
+        $this->assertTrue(collect($this->service->terminosSinonimos('GOMA EVA FLUOR CARPETA'))->isNotEmpty());
+    }
+
+    public function test_carpeta_archivador_sigue_detectando_familia_carpeta(): void
+    {
+        $this->assertContains('CARPETA', $this->service->familiasProducto('CARPETA ARCHIVADOR OFICIO LOMO ANCHO'));
+        $this->assertNotContains('GOMA_EVA', $this->service->familiasProducto('CARPETA ARCHIVADOR OFICIO LOMO ANCHO'));
+    }
+
     public function test_busqueda_equivalencias_grupo_extra_desde_config(): void
     {
         config([

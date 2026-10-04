@@ -72,7 +72,7 @@ class MaeprodBusquedaSimilitudService
         'CARTULINA' => ['CARTULINA', 'CARTULUNA'],
         'CINTA' => ['CINTA', 'MASKING'],
         'CARPETA' => ['CARPETA', 'ARCHIVADOR', 'REVISTERO'],
-        'GOMA_EVA' => ['FOAMI'],
+        'GOMA_EVA' => ['FOAMI', 'GOMA', 'EVA'],
         'CHINCHE' => ['CHINCHE'],
         'LLAVERO' => ['LLAVERO'],
         'CANAMO' => ['CANAMO', 'PITILLA'],
@@ -684,7 +684,32 @@ class MaeprodBusquedaSimilitudService
             }
         }
 
+        if ($this->esContextoGomaEvaEmpaque($norm)) {
+            $familias = array_values(array_filter(
+                $familias,
+                static fn (string $familia) => $familia !== 'CARPETA',
+            ));
+        }
+
         return array_values(array_unique($familias));
+    }
+
+    /**
+     * En licitaciones «CARPETA DE GOMA EVA…» / «CARPETA 020X030» = empaque de pliegos, no carpeta archivador.
+     */
+    private function esContextoGomaEvaEmpaque(string $textoNormalizado): bool
+    {
+        if ($this->textoContienePalabra($textoNormalizado, 'FOAMI')) {
+            return true;
+        }
+        if ($this->textoContienePalabra($textoNormalizado, 'GOMA')
+            && $this->textoContienePalabra($textoNormalizado, 'EVA')) {
+            return true;
+        }
+
+        return $this->textoContienePalabra($textoNormalizado, 'PLIEGO')
+            && ($this->textoContienePalabra($textoNormalizado, 'GOMA')
+                || $this->textoContienePalabra($textoNormalizado, 'EVA'));
     }
 
     /**
