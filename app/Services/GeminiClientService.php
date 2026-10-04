@@ -85,24 +85,56 @@ class GeminiClientService
             $payload['outputDimensionality'] = max(64, min(3072, $dimension));
         }
 
-        $response = Http::timeout($timeout)
-            ->connectTimeout(15)
-            ->withHeaders(['x-goog-api-key' => $this->key(self::CUENTA_GRATIS) ?: $this->key(self::CUENTA_PAGO)])
-            ->acceptJson()
-            ->asJson()
-            ->post($url, $payload);
+        $cuentas = array_values(array_filter(
+            [self::CUENTA_GRATIS, self::CUENTA_PAGO],
+            fn (string $cuenta) => $this->key($cuenta) !== '',
+        ));
 
-        if (! $response->successful()) {
+        $ultimoError = 'Gemini embedding no respondió.';
+        foreach ($cuentas as $n => $cuenta) {
+            if ($cuenta === self::CUENTA_PAGO) {
+                if (! $this->reservarLlamadaPago()) {
+                    Log::warning('Gemini embedding: tope mensual cuenta pagada alcanzado');
+
+                    continue;
+                }
+                if ($n > 0) {
+                    $this->avisar('Embedding: cuenta gratuita sin cuota; usando cuenta pagada…');
+                }
+            }
+
+            $response = Http::timeout($timeout)
+                ->connectTimeout(15)
+                ->withHeaders(['x-goog-api-key' => $this->key($cuenta)])
+                ->acceptJson()
+                ->asJson()
+                ->post($url, $payload);
+
+            if ($response->successful()) {
+                $values = $response->json('embedding.values');
+                if (! is_array($values) || $values === []) {
+                    throw new RuntimeException('Gemini embedding sin valores en la respuesta.');
+                }
+                $this->cuentaUltima = $cuenta;
+
+                return array_map(static fn ($v) => (float) $v, $values);
+            }
+
+            $status = $response->status();
             $mensaje = trim((string) ($response->json('error.message') ?? ''));
-            throw new RuntimeException('Gemini embedding HTTP '.$response->status().($mensaje !== '' ? ': '.$mensaje : ''));
+            $ultimoError = 'Gemini embedding HTTP '.$status.($mensaje !== '' ? ': '.$mensaje : '');
+            Log::warning('Gemini embedding: respuesta no exitosa', [
+                'status' => $status,
+                'cuenta' => $cuenta,
+                'message' => $mensaje,
+            ]);
+
+            if (! in_array($status, [429, 503], true) && $status < 500) {
+                throw new RuntimeException($ultimoError);
+            }
         }
 
-        $values = $response->json('embedding.values');
-        if (! is_array($values) || $values === []) {
-            throw new RuntimeException('Gemini embedding sin valores en la respuesta.');
-        }
-
-        return array_map(static fn ($v) => (float) $v, $values);
+        throw new RuntimeException($ultimoError);
     }
 
     public function reiniciarUsoPago(): void

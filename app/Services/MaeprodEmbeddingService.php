@@ -90,11 +90,11 @@ class MaeprodEmbeddingService
         $fail = 0;
         $procesados = 0;
 
-        $query = Maeprod::query()
-            ->whereNotNull('prod_nombre')
-            ->where('prod_nombre', '!=', '')
-            ->whereNotNull('prod_item')
-            ->where('prod_item', '!=', '')
+        $query = $this->queryCatalogoConNombre()
+            ->where(function ($q) {
+                $q->whereNull('prod_embedding')
+                    ->orWhereNull('prod_embedding_fuente');
+            })
             ->orderBy('prod_item');
 
         $query->chunk(50, function ($productos) use ($limite, $sleepMs, &$ok, &$fail, &$procesados) {
@@ -132,6 +132,18 @@ class MaeprodEmbeddingService
             'procesados' => $procesados,
             'pendientes_estimados' => $pendientes,
         ];
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<Maeprod>
+     */
+    private function queryCatalogoConNombre()
+    {
+        return Maeprod::query()
+            ->whereNotNull('prod_nombre')
+            ->where('prod_nombre', '!=', '')
+            ->whereNotNull('prod_item')
+            ->where('prod_item', '!=', '');
     }
 
     public function textoParaProducto(Maeprod $producto): string

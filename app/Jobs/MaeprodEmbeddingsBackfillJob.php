@@ -30,9 +30,16 @@ class MaeprodEmbeddingsBackfillJob implements ShouldQueue
 
         Log::info('MaeprodEmbeddingsBackfillJob: lote', $resultado);
 
-        if (($resultado['procesados'] ?? 0) >= $lote) {
-            $pausa = max(1, (int) config('cotiz.busqueda_vectores.backfill_pausa_entre_jobs_seg', 3));
-            self::dispatch()->delay(now()->addSeconds($pausa));
+        $pendientes = (int) ($resultado['pendientes_estimados'] ?? 0);
+        if ($pendientes <= 0) {
+            return;
         }
+
+        $pausa = max(1, (int) config('cotiz.busqueda_vectores.backfill_pausa_entre_jobs_seg', 3));
+        if (($resultado['ok'] ?? 0) === 0 && ($resultado['fail'] ?? 0) > 0) {
+            $pausa = max(60, (int) config('cotiz.busqueda_vectores.backfill_pausa_sin_ok_seg', 120));
+        }
+
+        self::dispatch()->delay(now()->addSeconds($pausa));
     }
 }
