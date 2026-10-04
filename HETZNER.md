@@ -232,6 +232,10 @@ cd /opt/cotiz-romulo
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f app
 docker stats
+
+# Embeddings pgvector (maeprod.prod_embedding) — Reicol + Rómulo; usa API Gemini
+bash /opt/cotiz-romulo/scripts/vps-backfill-maeprod-embeddings.sh status
+bash /opt/cotiz-romulo/scripts/vps-backfill-maeprod-embeddings.sh
 ```
 
 ## 6. RAM del VPS
