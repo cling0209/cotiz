@@ -1431,12 +1431,14 @@ TXT];
      */
     private function terminosBusquedaMaestro(string $descripcion): array
     {
+        $descripcion = trim($descripcion);
         $vistos = [];
         $out = [];
+        // Términos cortos primero: la descripción MP larga no debe agotar el cupo de candidatos.
         foreach (array_merge(
-            [$descripcion],
             $this->busqueda->terminosBusquedaVendedor($descripcion),
             $this->busqueda->terminosSinonimos($descripcion),
+            $descripcion !== '' ? [$descripcion] : [],
         ) as $termino) {
             $termino = trim($termino);
             if ($termino === '') {
@@ -1450,7 +1452,9 @@ TXT];
             $out[] = $termino;
         }
 
-        return array_slice($out, 0, 6);
+        $maxTerminos = max(3, (int) config('cotiz.cotizar_ia.busqueda_max_terminos', 6));
+
+        return array_slice($out, 0, $maxTerminos);
     }
 
     /**
@@ -1459,14 +1463,18 @@ TXT];
      */
     private function candidatosMaeprod(string $descripcion, array $terminos): array
     {
+        $maxTerminos = max(3, (int) config('cotiz.cotizar_ia.busqueda_max_terminos', 6));
+        $porTermino = max(5, (int) config('cotiz.cotizar_ia.candidatos_por_termino', 12));
+        $maxTotal = max(10, (int) config('cotiz.cotizar_ia.candidatos_por_linea', self::CANDIDATOS_POR_LINEA));
+
         $out = [];
-        foreach (array_slice($terminos, 0, 6) as $termino) {
+        foreach (array_slice($terminos, 0, $maxTerminos) as $termino) {
             $termino = trim((string) $termino);
             if ($termino === '') {
                 continue;
             }
             try {
-                $filas = $this->busqueda->buscar($termino, null, self::CANDIDATOS_POR_LINEA);
+                $filas = $this->busqueda->buscar($termino, null, $porTermino);
             } catch (Throwable $e) {
                 report($e);
 
@@ -1481,13 +1489,15 @@ TXT];
                     continue;
                 }
                 $out[$producto['prod_item']] = $producto;
-                if (count($out) >= self::CANDIDATOS_POR_LINEA) {
-                    return $this->ordenarCandidatosMaestro($descripcion, $out);
-                }
             }
         }
 
-        return $this->ordenarCandidatosMaestro($descripcion, $out);
+        $out = $this->ordenarCandidatosMaestro($descripcion, $out);
+        if (count($out) <= $maxTotal) {
+            return $out;
+        }
+
+        return array_slice($out, 0, $maxTotal, true);
     }
 
     /**

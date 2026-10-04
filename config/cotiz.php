@@ -200,6 +200,13 @@ return [
         ],
     ],
 
+    // Pool de candidatos del maestro antes de equivalencias Gemini (solo código+nombre; no sube tokens de IA).
+    'cotizar_ia' => [
+        'candidatos_por_linea' => max(10, min(40, (int) env('COTIZ_COTIZAR_IA_CANDIDATOS_POR_LINEA', 20))),
+        'candidatos_por_termino' => max(5, min(20, (int) env('COTIZ_COTIZAR_IA_CANDIDATOS_POR_TERMINO', 12))),
+        'busqueda_max_terminos' => max(3, min(10, (int) env('COTIZ_COTIZAR_IA_BUSQUEDA_MAX_TERMINOS', 6))),
+    ],
+
     // Búsqueda de publicaciones en Mercado Libre (API). Sodimac opcional vía Gemini (cotiz.gemini.busqueda_web_sodimac).
     'mercadolibre' => [
         'habilitado' => filter_var(env('MERCADOLIBRE_HABILITADO', true), FILTER_VALIDATE_BOOL),
