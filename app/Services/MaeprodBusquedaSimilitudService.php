@@ -101,6 +101,14 @@ class MaeprodBusquedaSimilitudService
         'PINTURA_ACRILICA' => ['ACRILICOS', 'PINTURAS ACRILICAS', 'PINTURA ACRILICA'],
     ];
 
+    /**
+     * Presentación «conjunto»: SET es stopword en la similitud, así que «SET GEOMETRICO» buscaba
+     * reglas sueltas y dejaba fuera los sets del maestro.
+     *
+     * @var string[]
+     */
+    private const PALABRAS_CONJUNTO = ['SET', 'JUEGO', 'KIT'];
+
     /** @var string[] */
     private const COLORES_PRODUCTO = [
         'AZUL', 'ROJO', 'ROJA', 'VERDE', 'NEGRO', 'NEGRA', 'BLANCO', 'BLANCA',
@@ -225,6 +233,109 @@ class MaeprodBusquedaSimilitudService
         }
 
         return $out;
+    }
+
+    public function esConjunto(string $texto): bool
+    {
+        $norm = $this->normalizarTexto($texto);
+        foreach (self::PALABRAS_CONJUNTO as $palabra) {
+            if ($this->textoContienePalabra($norm, $palabra)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Palabras que nombran el producto dentro del conjunto (GEOMETRICO → GEOMETRICO, REGLA, GEOMETRIA…).
+     *
+     * @return list<string>
+     */
+    private function nucleosConjunto(string $descripcion): array
+    {
+        $out = [];
+        foreach ($this->tokensDistintivos($this->normalizarBusqueda($descripcion)) as $token) {
+            if (preg_match('/\d/u', $token) || mb_strlen($token, 'UTF-8') < 4 || in_array($token, self::PALABRAS_CONJUNTO, true)) {
+                continue;
+            }
+            $out[] = $token;
+            foreach ($this->equivalentesDeToken($token) as $equivalente) {
+                $out[] = $equivalente;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Consultas «SET {núcleo}» para buscadores de texto literal (Prisa, ML) cuando se pide un conjunto.
+     *
+     * @return list<string>
+     */
+    public function terminosConjunto(string $descripcion, int $max = 3): array
+    {
+        if (! $this->esConjunto($descripcion)) {
+            return [];
+        }
+
+        $out = [];
+        $raices = [];
+        foreach ($this->nucleosConjunto($descripcion) as $nucleo) {
+            $raiz = (string) preg_replace('/(OS|AS|ES|O|A|S)$/u', '', $nucleo);
+            if (isset($raices[$raiz])) {
+                continue;
+            }
+            $raices[$raiz] = true;
+            $out[] = 'SET '.$nucleo;
+            if (count($out) >= $max) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Productos del maestro que son conjunto (SET/JUEGO/KIT) y nombran el núcleo pedido.
+     */
+    public function buscarConjunto(string $descripcion, int $limit = 12): Collection
+    {
+        if (! $this->esConjunto($descripcion)) {
+            return collect();
+        }
+
+        $variantes = [];
+        foreach ($this->nucleosConjunto($descripcion) as $nucleo) {
+            foreach ($this->tokenVariantes($nucleo) as $variante) {
+                if (mb_strlen($variante, 'UTF-8') >= 4) {
+                    $variantes[] = $variante;
+                }
+            }
+        }
+        $variantes = array_values(array_unique($variantes));
+        if ($variantes === []) {
+            return collect();
+        }
+
+        $like = $this->likeOperator();
+        $columna = "(' ' || ".$this->columnaNombreSinTildesSql()." || ' ')";
+
+        return Maeprod::query()
+            ->whereNotNull('prod_item')
+            ->where('prod_item', '!=', '')
+            ->where(function ($q) use ($columna, $like) {
+                foreach (self::PALABRAS_CONJUNTO as $palabra) {
+                    $q->orWhereRaw($columna.' '.$like.' ?', ['% '.$palabra.' %']);
+                }
+            })
+            ->where(function ($q) use ($columna, $like, $variantes) {
+                foreach ($variantes as $variante) {
+                    $q->orWhereRaw($columna.' '.$like.' ?', ['%'.$variante.'%']);
+                }
+            })
+            ->limit(max(1, $limit))
+            ->get();
     }
 
     /**

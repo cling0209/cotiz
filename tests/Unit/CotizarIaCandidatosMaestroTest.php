@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\Maeprod;
 use App\Services\CotizarIaService;
+use App\Services\MaeprodBusquedaSimilitudService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionClass;
 use Tests\TestCase;
@@ -63,5 +64,41 @@ class CotizarIaCandidatosMaestroTest extends TestCase
 
         $this->assertArrayHasKey('25000005', $candidatos);
         $this->assertGreaterThanOrEqual(1, count($candidatos));
+    }
+
+    public function test_set_pedido_incluye_sets_del_maestro_aunque_haya_muchas_reglas_sueltas(): void
+    {
+        $desc = 'SET GEOMETRICO GRANDE 30 CM';
+        for ($n = 1; $n <= 25; $n++) {
+            Maeprod::query()->create([
+                'prod_item' => 'REGLA'.$n,
+                'prod_nombre' => 'REGLA PLASTICA TRANSPARENTE 30 CM MODELO '.$n,
+                'prod_valor' => 500 + $n,
+                'prod_valor_costo' => 300,
+                'prod_familia' => 'LIBR',
+            ]);
+        }
+        Maeprod::query()->create([
+            'prod_item' => 'REGLHOL0051',
+            'prod_nombre' => 'SET REGLAS ACRILICAS 30CM 4PCS',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 750,
+            'prod_familia' => 'LIBR',
+        ]);
+
+        $service = app(CotizarIaService::class);
+        $terminos = $this->invocar($service, 'terminosBusquedaMaestro', $desc);
+        $candidatos = $this->invocar($service, 'candidatosMaeprod', $desc, $terminos);
+
+        $this->assertSame('REGLHOL0051', array_key_first($candidatos));
+    }
+
+    public function test_terminos_conjunto_para_prisa(): void
+    {
+        $terminos = app(MaeprodBusquedaSimilitudService::class)->terminosConjunto('SET GEOMETRICO GRANDE 30 CM');
+
+        $this->assertContains('SET GEOMETRICO', $terminos);
+        $this->assertContains('SET GEOMETRIA', $terminos);
+        $this->assertSame([], app(MaeprodBusquedaSimilitudService::class)->terminosConjunto('REGLA 30 CM'));
     }
 }

@@ -121,7 +121,7 @@ return [
     'busqueda_equivalencias' => [
         [
             'familia' => 'REGLA',
-            'terminos' => ['REGLA', 'REGLAS', 'GEOMETRICO', 'GEOMETRICA', 'GEOMETRICOS', 'GEOMETRICAS'],
+            'terminos' => ['REGLA', 'REGLAS', 'GEOMETRICO', 'GEOMETRICA', 'GEOMETRICOS', 'GEOMETRICAS', 'GEOMETRIA'],
         ],
     ],
 

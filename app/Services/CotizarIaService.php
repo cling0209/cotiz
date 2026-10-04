@@ -1485,13 +1485,16 @@ TXT];
         $maxTotal = max(10, (int) config('cotiz.cotizar_ia.candidatos_por_linea', self::CANDIDATOS_POR_LINEA));
 
         $out = [];
-        foreach (array_slice($terminos, 0, $maxTerminos) as $termino) {
-            $termino = trim((string) $termino);
+        // null = productos conjunto (SET/JUEGO/KIT), que la similitud no encuentra porque SET es stopword.
+        foreach (array_merge([null], array_slice($terminos, 0, $maxTerminos)) as $termino) {
+            $termino = $termino === null ? null : trim((string) $termino);
             if ($termino === '') {
                 continue;
             }
             try {
-                $filas = $this->busqueda->buscar($termino, null, $porTermino);
+                $filas = $termino === null
+                    ? $this->busqueda->buscarConjunto($descripcion, $porTermino)
+                    : $this->busqueda->buscar($termino, null, $porTermino);
             } catch (Throwable $e) {
                 report($e);
 
@@ -1526,10 +1529,16 @@ TXT];
         if ($candidatos === []) {
             return [];
         }
+        $conjunto = $this->busqueda->esConjunto($descripcion);
         uasort(
             $candidatos,
-            fn (array $a, array $b) => $this->busqueda->scoreSimilitudFila($descripcion, $b['prod_item'], $b['prod_nombre'])
-                <=> $this->busqueda->scoreSimilitudFila($descripcion, $a['prod_item'], $a['prod_nombre']),
+            fn (array $a, array $b) => [
+                $conjunto && $this->busqueda->esConjunto($b['prod_nombre']),
+                $this->busqueda->scoreSimilitudFila($descripcion, $b['prod_item'], $b['prod_nombre']),
+            ] <=> [
+                $conjunto && $this->busqueda->esConjunto($a['prod_nombre']),
+                $this->busqueda->scoreSimilitudFila($descripcion, $a['prod_item'], $a['prod_nombre']),
+            ],
         );
 
         return $candidatos;
@@ -2141,7 +2150,11 @@ TXT];
             $errorLinea = false;
             $vinculoLinea = false;
             $porSku = [];
-            foreach ($this->terminosBusquedaLinea($items[$i]) as $termino) {
+            $terminosPrisa = array_values(array_unique(array_merge(
+                $this->busqueda->terminosConjunto((string) ($items[$i]['descripcion'] ?? '')),
+                $this->terminosBusquedaLinea($items[$i]),
+            )));
+            foreach ($terminosPrisa as $termino) {
                 $resultados = $this->prisa->buscarPorTexto($termino);
                 if ($resultados === false) {
                     $errorLinea = true;
