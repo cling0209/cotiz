@@ -513,6 +513,7 @@ class MaeprodImportJobService
             } while ($result['finished'] !== true);
 
             $progress->complete($uploadId, $result);
+            app(MaeprodEmbeddingService::class)->programarBackfillMasivo();
             $lock->release($uploadId);
         } catch (\Throwable $e) {
             $progress->fail($uploadId, $e->getMessage());

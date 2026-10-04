@@ -25,6 +25,7 @@ class MaeprodAdminService
         protected ProductImageStorageService $imageStorage,
         protected MaeprodBusquedaSimilitudService $busquedaSimilitud,
         protected MaeprodSoftlandService $softlandService,
+        protected MaeprodEmbeddingService $embeddings,
     ) {}
 
     public function listado(?string $term, ?string $familia, int $perPage = 20): LengthAwarePaginator
@@ -246,6 +247,8 @@ class MaeprodAdminService
             );
         }
 
+        $this->embeddings->actualizarAlGuardarProducto($producto);
+
         return $producto;
     }
 
@@ -275,6 +278,8 @@ class MaeprodAdminService
             $updates['prod_valor_costo'] = $nuevoCosto;
         }
 
+        $nombreAntes = mb_strtoupper(trim((string) $producto->prod_nombre));
+        $familiaAntes = trim((string) ($producto->prod_familia ?? ''));
         $producto->update($updates);
 
         if (array_key_exists('prod_item_softland', $datos)) {
@@ -286,7 +291,14 @@ class MaeprodAdminService
             );
         }
 
-        return $producto->fresh();
+        $actualizado = $producto->fresh();
+        $nombreNuevo = mb_strtoupper(trim((string) $actualizado->prod_nombre));
+        $familiaNueva = trim((string) ($actualizado->prod_familia ?? ''));
+        if ($nombreNuevo !== $nombreAntes || $familiaNueva !== $familiaAntes) {
+            $this->embeddings->actualizarAlGuardarProducto($actualizado);
+        }
+
+        return $actualizado;
     }
 
     public function actualizarImagen(

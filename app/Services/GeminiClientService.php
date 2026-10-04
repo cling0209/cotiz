@@ -47,6 +47,63 @@ class GeminiClientService
         return $this->key(self::CUENTA_GRATIS) !== '' || $this->key(self::CUENTA_PAGO) !== '';
     }
 
+    /**
+     * Embedding de texto para búsqueda semántica en catálogo (pgvector).
+     *
+     * @return list<float>
+     */
+    public function embedir(string $texto, ?string $taskType = null): array
+    {
+        if (! $this->isConfigured()) {
+            throw new RuntimeException('Gemini no está configurado. Defina GEMINI_API_KEY para embeddings.');
+        }
+
+        $texto = trim($texto);
+        if ($texto === '') {
+            return [];
+        }
+
+        $model = trim((string) config('cotiz.busqueda_vectores.modelo', 'text-embedding-004'));
+        $url = config('cotiz.gemini.endpoint').'/models/'.rawurlencode($model).':embedContent';
+        $timeout = max(10, min(120, (int) config('cotiz.busqueda_vectores.timeout_seg', 30)));
+
+        $payload = [
+            'content' => ['parts' => [['text' => $texto]]],
+        ];
+
+        $taskType = trim((string) ($taskType ?? ''));
+        if ($taskType === '') {
+            $taskType = trim((string) config('cotiz.busqueda_vectores.task_type', ''));
+        }
+        if ($taskType !== '') {
+            $payload['taskType'] = $taskType;
+        }
+
+        $dimension = (int) config('cotiz.busqueda_vectores.dimension', 768);
+        if ($dimension > 0) {
+            $payload['outputDimensionality'] = max(64, min(3072, $dimension));
+        }
+
+        $response = Http::timeout($timeout)
+            ->connectTimeout(15)
+            ->withHeaders(['x-goog-api-key' => $this->key(self::CUENTA_GRATIS) ?: $this->key(self::CUENTA_PAGO)])
+            ->acceptJson()
+            ->asJson()
+            ->post($url, $payload);
+
+        if (! $response->successful()) {
+            $mensaje = trim((string) ($response->json('error.message') ?? ''));
+            throw new RuntimeException('Gemini embedding HTTP '.$response->status().($mensaje !== '' ? ': '.$mensaje : ''));
+        }
+
+        $values = $response->json('embedding.values');
+        if (! is_array($values) || $values === []) {
+            throw new RuntimeException('Gemini embedding sin valores en la respuesta.');
+        }
+
+        return array_map(static fn ($v) => (float) $v, $values);
+    }
+
     public function reiniciarUsoPago(): void
     {
         $this->llamadasPago = 0;

@@ -112,6 +112,29 @@ return [
     'buscar_productos_score_php_minimo' => (int) env('COTIZ_BUSCAR_PRODUCTOS_SCORE_PHP_MINIMO', 5000),
 
     /*
+     * Búsqueda semántica local (pgvector + Gemini embeddings). Cada instancia (Reicol/Romulo)
+     * tiene su propia BD: migrar y ejecutar cotiz:maeprod-embeddings en ambas.
+     */
+    'busqueda_vectores' => [
+        'habilitado' => filter_var(env('COTIZ_BUSQUEDA_VECTORES', true), FILTER_VALIDATE_BOOL),
+        'modelo' => env('COTIZ_EMBEDDING_MODEL', 'text-embedding-004'),
+        'dimension' => max(64, min(3072, (int) env('COTIZ_EMBEDDING_DIMENSION', 768))),
+        'task_type' => env('COTIZ_EMBEDDING_TASK_TYPE', ''),
+        'task_document' => env('COTIZ_EMBEDDING_TASK_DOCUMENT', 'RETRIEVAL_DOCUMENT'),
+        'task_query' => env('COTIZ_EMBEDDING_TASK_QUERY', 'RETRIEVAL_QUERY'),
+        'timeout_seg' => max(10, min(120, (int) env('COTIZ_EMBEDDING_TIMEOUT_SEG', 30))),
+        'top_k' => max(5, min(80, (int) env('COTIZ_BUSQUEDA_VECTORES_TOP_K', 30))),
+        'boost_score' => (float) env('COTIZ_BUSQUEDA_VECTORES_BOOST_SCORE', 200000),
+        // Distancia coseno pgvector (<=>): menor = más parecido. ~0,25–0,35 suele ser buen match.
+        'max_distancia_coseno' => (float) env('COTIZ_BUSQUEDA_VECTORES_MAX_DIST', 0.42),
+        'cache_consulta_seg' => max(60, (int) env('COTIZ_BUSQUEDA_VECTORES_CACHE_SEG', 3600)),
+        // Backfill masivo: un job procesa N SKUs y se re-encola solo si llenó el lote.
+        'backfill_por_job' => max(10, min(500, (int) env('COTIZ_EMBEDDING_BACKFILL_POR_JOB', 150))),
+        'backfill_sleep_ms' => max(0, min(5000, (int) env('COTIZ_EMBEDDING_BACKFILL_SLEEP_MS', 150))),
+        'backfill_pausa_entre_jobs_seg' => max(1, min(120, (int) env('COTIZ_EMBEDDING_BACKFILL_PAUSA_SEG', 3))),
+    ],
+
+    /*
      * Términos intercambiables entre licitación/adjunto y nombre en maeprod.
      * Cada grupo: misma familia lógica, búsqueda ampliada y sin conflicto entre sí.
      * - familia: etiqueta interna (opcional; por defecto el primer término).

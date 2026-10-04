@@ -85,7 +85,7 @@ services:
       - cotiz
 
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     ports:
       - "5434:5432"
     environment:

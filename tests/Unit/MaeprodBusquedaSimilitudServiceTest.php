@@ -12,7 +12,7 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new MaeprodBusquedaSimilitudService;
+        $this->service = app(MaeprodBusquedaSimilitudService::class);
     }
 
     public function test_normaliza_texto_y_extrae_tokens(): void
@@ -309,7 +309,7 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
                 ],
             ],
         ]);
-        $service = new MaeprodBusquedaSimilitudService;
+        $service = app(MaeprodBusquedaSimilitudService::class);
 
         $this->assertSame(['GOMA', 'EVA'], $service->equivalentesDeToken('FOAMI'));
         $alts = $service->terminosSinonimos('PLIEGO GOMA EVA 20X30');

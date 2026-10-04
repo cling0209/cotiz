@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
  */
 class MaeprodBusquedaSimilitudService
 {
+    public function __construct(
+        protected MaeprodEmbeddingService $embeddings,
+    ) {}
+
     /** @var ?list<array{familia: string, terminos: list<string>}> */
     private ?array $gruposEquivalenciaCache = null;
 
@@ -502,7 +506,9 @@ class MaeprodBusquedaSimilitudService
             return collect();
         }
 
-        $filas = $this->buscarSimilitudEnSql($payload, $term, $familia, $limit);
+        $filasSql = $this->buscarSimilitudEnSql($payload, $term, $familia, $limit);
+        $filasVector = $this->buscarConsultaPorVectores($term, $familia, $limit);
+        $filas = $this->fusionarResultadosBusqueda($term, $filasSql, $filasVector, $limit);
         if ($filas->isNotEmpty()) {
             return $filas;
         }
@@ -519,6 +525,76 @@ class MaeprodBusquedaSimilitudService
         $ranked = $this->rankTopSimilares($term, $candidatos->all(), $limit);
 
         return collect($this->filtrarPorPuntajeMinimo($ranked, $term));
+    }
+
+    private function buscarConsultaPorVectores(string $term, ?string $familia, int $limit): Collection
+    {
+        if (! $this->embeddings->vectoresHabilitados()) {
+            return collect();
+        }
+
+        $candidatos = $this->embeddings->buscarSimilares($term, $familia, max($limit, 15));
+        if ($candidatos->isEmpty()) {
+            return collect();
+        }
+
+        $filtrados = [];
+        foreach ($candidatos as $fila) {
+            $nombre = (string) $fila->prod_nombre;
+            if (! $this->pasaFiltrosAtributos($term, $nombre)) {
+                continue;
+            }
+            if ($this->hayConflictoFamilia($term, $nombre)) {
+                continue;
+            }
+            $filtrados[] = $fila;
+        }
+
+        return collect(array_slice($filtrados, 0, max(1, $limit)));
+    }
+
+    /**
+     * @param  Collection<int, Maeprod>  $sql
+     * @param  Collection<int, Maeprod>  $vector
+     * @return Collection<int, Maeprod>
+     */
+    private function fusionarResultadosBusqueda(string $term, Collection $sql, Collection $vector, int $limit): Collection
+    {
+        $desdeVector = [];
+        foreach ($vector as $fila) {
+            $item = trim((string) $fila->prod_item);
+            if ($item !== '') {
+                $desdeVector[$item] = true;
+            }
+        }
+
+        $boostSemantico = (float) config('cotiz.busqueda_vectores.boost_score', 200000);
+        $porItem = [];
+        foreach ($sql->merge($vector) as $fila) {
+            $item = trim((string) $fila->prod_item);
+            if ($item === '') {
+                continue;
+            }
+            $nombre = (string) $fila->prod_nombre;
+            $score = $this->scoreSimilitudFila($term, $item, $nombre);
+            if (isset($desdeVector[$item])) {
+                $score = max($score, $boostSemantico);
+            }
+            if (! isset($porItem[$item]) || $score > $porItem[$item]['score']) {
+                $porItem[$item] = ['score' => $score, 'row' => $fila];
+            }
+        }
+
+        if ($porItem === []) {
+            return collect();
+        }
+
+        uasort($porItem, static fn (array $a, array $b) => $b['score'] <=> $a['score']);
+
+        return collect(array_map(
+            static fn (array $e) => $e['row'],
+            array_slice(array_values($porItem), 0, max(1, $limit)),
+        ));
     }
 
     /**
