@@ -52,6 +52,7 @@ sites_to_run() {
 
 compose_cmd() {
   local dir="$1"
+  shift
   (cd "$dir" && docker compose --env-file .env.prod -f docker-compose.prod.yml "$@")
 }
 
