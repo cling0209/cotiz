@@ -377,6 +377,9 @@
             const prorrateo = linea.puede_prorratear
                 ? ' <span class="badge text-bg-info cotizar-ia-badge-prorrateo d-none" title="Costo unitario = precio del pack prorrateado">prorrateado pack ' + esc(linea.pack_tamano) + '</span>'
                 : '';
+            const imgRef = ref.imagen_mostrar
+                ? '<div class="mt-1"><img src="' + esc(ref.imagen_mostrar) + '" alt="" class="rounded border" style="max-height:48px;max-width:64px;object-fit:contain" loading="lazy" /></div>'
+                : '';
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
                 + esc(ref.titulo) + pack + prorrateo + solicitud
                 + ' <a href="' + esc(ref.url) + '" target="_blank" rel="noopener noreferrer">ver</a>'
@@ -386,6 +389,7 @@
                     ? '<div class="text-muted small">Listado: $' + numero.format(linea.precio_listado)
                         + ' / ' + esc(linea.pack_tamano) + ' u.</div>'
                     : '')
+                + imgRef
                 + notaStock(linea);
         }
         return '<span class="badge text-bg-secondary">Sin v\u00ednculo</span>' + notaStock(linea);

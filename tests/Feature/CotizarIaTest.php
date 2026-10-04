@@ -1577,6 +1577,7 @@ class CotizarIaTest extends TestCase
             'cotiz.prisa.busqueda_texto' => true,
             'cotiz.prisa.referencia_sin_maestro' => true,
             'cotiz.prisa.cache_horas' => 0,
+            'cotiz.prisa.base_url' => 'https://prisa.test',
             'cotiz.mercadolibre.habilitado' => false,
             'cotiz.gemini.busqueda_web' => false,
         ]);
@@ -1596,6 +1597,7 @@ class CotizarIaTest extends TestCase
                         'availability' => 9103,
                         'view_link' => '/tornillo-prisa',
                         'minimal_price' => 11900,
+                        'image' => 'https://prisa.test/media/tornillo.jpg',
                     ]]
                     : [];
 
@@ -1626,8 +1628,89 @@ class CotizarIaTest extends TestCase
         $this->assertSame('Prisa', $web['referencia']['sitio']);
         $this->assertSame(11900, $web['referencia']['precio_clp']);
         $this->assertSame(119, $web['referencia']['neto_unitario']);
+        $this->assertSame('https://prisa.test/media/tornillo.jpg', $web['referencia']['imagen_url']);
+        $this->assertSame('https://prisa.test/media/tornillo.jpg', $web['referencia']['imagen_mostrar']);
+        $this->assertSame('PRISA999', $web['referencia']['sku']);
         $this->assertNull($web['producto']);
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'referencia web (sin maestro)')));
+    }
+
+    public function test_referencia_prisa_sin_maestro_guarda_imagen_al_aplicar(): void
+    {
+        Cache::flush();
+        config([
+            'cotiz.prisa.habilitado' => true,
+            'cotiz.prisa.busqueda_texto' => true,
+            'cotiz.prisa.referencia_sin_maestro' => true,
+            'cotiz.prisa.cache_horas' => 0,
+            'cotiz.prisa.base_url' => 'https://prisa.test',
+            'cotiz.mercadolibre.habilitado' => false,
+            'cotiz.gemini.busqueda_web' => false,
+            'products.storage_disk' => 'r2',
+            'products.r2_prefix' => 'productos',
+            'products.image_base_url' => 'https://pub.r2.dev/productos',
+            'filesystems.disks.r2.bucket' => 'bucket',
+            'filesystems.disks.r2.key' => 'key',
+            'filesystems.disks.r2.secret' => 'secret',
+        ]);
+        Storage::fake('r2');
+        $nota = $this->crearNotaConLineas();
+
+        Http::fake(function (HttpRequest $request) {
+            if (str_starts_with($request->url(), 'https://prisa.test/')) {
+                if (str_contains($request->url(), 'media/tornillo.jpg')) {
+                    return Http::response('jpeg-falso', 200, ['Content-Type' => 'image/jpeg']);
+                }
+                if (! str_contains($request->header('Cookie')[0] ?? '', 'OCXS=')) {
+                    return Http::response('<script>var a=toNumbers("'.str_repeat('a1', 16).'"),b=toNumbers("'.str_repeat('b2', 16).'"),'
+                        .'c=toNumbers("'.str_repeat('c3', 16).'");document.cookie="OCXS="+toHex(slowAES.decrypt(c,2,a,b));</script>');
+                }
+                $busqueda = mb_strtoupper((string) ($request->data()['search'] ?? ''));
+                $filas = str_contains($busqueda, 'TORNILLO')
+                    ? [[
+                        'sku' => 'PRISA999',
+                        'name' => 'Tornillo autoperforante 8 x 1 pulgada caja 100',
+                        'availability' => 9103,
+                        'view_link' => '/tornillo-prisa',
+                        'minimal_price' => 11900,
+                        'image' => 'https://prisa.test/media/tornillo.jpg',
+                    ]]
+                    : [];
+
+                return Http::response('<div data-page-component-options="'
+                    .htmlspecialchars(json_encode(['data' => ['data' => $filas]]), ENT_QUOTES).'"></div>');
+            }
+
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                return Http::response($this->respuestaGemini([
+                    'resultados' => [
+                        ['i' => 2, 'equivalentes' => ['HIG001', 'HIG002'], 'busqueda' => []],
+                        ['i' => 3, 'equivalentes' => [], 'busqueda' => []],
+                    ],
+                ]));
+            }
+
+            return null;
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.aplicar', $nota->nronota), [
+                'token' => $preview['token'],
+                'rechazados' => [],
+                'reemplazar' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('referencias_web', 1);
+
+        $relativa = 'PRISA/'.now()->format('Y/m').'/PRISA999.jpg';
+        Storage::disk('r2')->assertExists('productos/'.$relativa);
+        $linea = NotaDetalle::query()->where('nronota', $nota->nronota)->where('prod_descripcion_agile', self::DESC_WEB)->firstOrFail();
+        $this->assertSame($relativa, $linea->imagen_ref);
     }
 
     public function test_prisa_busqueda_usa_equivalencias_de_config_antes_de_mercado_libre(): void

@@ -561,8 +561,7 @@ class CotizarIaService
     }
 
     /**
-     * Copia al bucket la foto de cada referencia de Mercado Libre aceptada (antes de la
-     * transacción: son descargas). Si una falla, la línea queda sin foto.
+     * Copia al bucket la foto de cada referencia web aceptada (Mercado Libre o Prisa).
      *
      * @param  list<array<string, mixed>>  $items
      * @param  array<int, true>  $rechazados
@@ -571,15 +570,33 @@ class CotizarIaService
     private function copiarImagenesReferencia(array $items, array $rechazados): array
     {
         foreach ($items as $i => $item) {
-            $url = (string) ($item['referencia']['imagen_url'] ?? '');
-            if (isset($rechazados[$i]) || $item['estado'] !== self::ESTADO_REFERENCIA_WEB || $url === ''
-                || preg_match('~/p/([A-Z]{3}\d+)~', (string) ($item['referencia']['url'] ?? ''), $id) !== 1) {
+            if (isset($rechazados[$i]) || $item['estado'] !== self::ESTADO_REFERENCIA_WEB || ! is_array($item['referencia'] ?? null)) {
                 continue;
             }
+            $ref = $item['referencia'];
+            $url = trim((string) ($ref['imagen_url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+            $sitio = (string) ($ref['sitio'] ?? '');
             try {
-                $items[$i]['referencia']['imagen_ref'] = $this->imagenesWeb->guardar($url, $id[1]);
+                if ($sitio === self::SITIOS_WEB['prisa.cl']) {
+                    $sku = trim((string) ($ref['sku'] ?? ''));
+                    if ($sku === '' || ! ImagenReferenciaWebService::urlPermitidaPrisa($url)) {
+                        continue;
+                    }
+                    $items[$i]['referencia']['imagen_ref'] = $this->imagenesWeb->guardarPrisa($url, $sku);
+                } elseif ($sitio === self::SITIOS_WEB['mercadolibre.cl']
+                    && preg_match('~/p/([A-Z]{3}\d+)~', (string) ($ref['url'] ?? ''), $id) === 1
+                    && ImagenReferenciaWebService::urlPermitida($url)) {
+                    $items[$i]['referencia']['imagen_ref'] = $this->imagenesWeb->guardar($url, $id[1]);
+                }
             } catch (Throwable $e) {
-                Log::warning('CotizarIa: no se copió la imagen de Mercado Libre', ['url' => $url, 'message' => $e->getMessage()]);
+                Log::warning('CotizarIa: no se copió la imagen de referencia web', [
+                    'sitio' => $sitio,
+                    'url' => $url,
+                    'message' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -2247,6 +2264,7 @@ TXT];
                 'titulo' => $titulo,
                 'precio_clp' => $precio,
                 'url' => $url,
+                'sku' => $fila['sku'],
                 'unidades_por_pack' => max(1, $this->mercadolibre->unidadesPorPack($titulo)),
                 'stock_disponible' => null,
                 'imagen_url' => trim((string) ($fila['imagen_url'] ?? '')),
@@ -2668,8 +2686,12 @@ TXT];
                 'stock_verificado' => $stock !== null,
             ];
             $imagen = trim((string) ($opcion['imagen_url'] ?? ''));
-            if (ImagenReferenciaWebService::urlPermitida($imagen)) {
+            if (ImagenReferenciaWebService::urlReferenciaPermitida($imagen)) {
                 $candidata['imagen_url'] = $imagen;
+            }
+            $sku = trim((string) ($opcion['sku'] ?? ''));
+            if ($sku !== '') {
+                $candidata['sku'] = $sku;
             }
             if ($stock !== null) {
                 if ($this->referenciaMejor($descripcion, $candidata, $confirmada)) {
@@ -2940,6 +2962,7 @@ TXT];
             $costoListado = $costoPack;
             $costo = $costoPack;
             $precioVenta = (int) round($costoPack * $factor);
+            $referencia = $this->referenciaParaRespuesta($referencia);
         }
 
         return [
@@ -3027,6 +3050,24 @@ TXT];
         return $this->instruccionSistema().' Al vincular con el maestro, razona como un vendedor con experiencia: '
             .'prioriza siempre un código del catálogo interno cuando cumpla la función; '
             .'descarta candidatos de otra familia de producto aunque su nombre repita «acrílico», «neón», «12 colores» u otras palabras genéricas.';
+    }
+
+    /**
+     * @param  array<string, mixed>  $referencia
+     * @return array<string, mixed>
+     */
+    private function referenciaParaRespuesta(array $referencia): array
+    {
+        $imagenRef = trim((string) ($referencia['imagen_ref'] ?? ''));
+        $imagenUrl = trim((string) ($referencia['imagen_url'] ?? ''));
+        $base = rtrim((string) config('products.image_base_url'), '/');
+        if ($imagenRef !== '' && $base !== '') {
+            $referencia['imagen_mostrar'] = $base.'/'.ltrim($imagenRef, '/');
+        } elseif ($imagenUrl !== '') {
+            $referencia['imagen_mostrar'] = $imagenUrl;
+        }
+
+        return $referencia;
     }
 
     private function busquedaWebSodimacHabilitada(): bool
