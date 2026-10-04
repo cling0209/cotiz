@@ -1565,6 +1565,71 @@ class CotizarIaTest extends TestCase
         $this->assertTrue(collect($preview['avisos'])->contains(fn ($a) => str_contains($a, 'vinculadas al maestro por búsqueda por descripción')));
     }
 
+    public function test_prisa_busqueda_usa_equivalencias_de_config_antes_de_mercado_libre(): void
+    {
+        config([
+            'cotiz.prisa.habilitado' => true,
+            'cotiz.prisa.busqueda_texto' => true,
+            'cotiz.mercadolibre.habilitado' => false,
+        ]);
+        Maeprod::query()->create([
+            'prod_item' => 'REGLHOL005',
+            'prod_nombre' => 'SET REGLAS ACRILICAS 30CM 4 PCS',
+            'prod_valor' => 1990,
+            'prod_valor_costo' => 1200,
+            'prod_familia' => 'LIBR',
+        ]);
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 10,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => 'SET GEOMETRICO GRANDE 30 CM 04 U',
+            'prod_descripcion_maestro' => 'SET GEOMETRICO GRANDE 30 CM 04 U',
+        ]);
+
+        Http::fake(function (HttpRequest $request) {
+            if (str_starts_with($request->url(), 'https://prisa.test/')) {
+                if (! str_contains($request->header('Cookie')[0] ?? '', 'OCXS=')) {
+                    return Http::response('<script>var a=toNumbers("'.str_repeat('a1', 16).'"),b=toNumbers("'.str_repeat('b2', 16).'"),'
+                        .'c=toNumbers("'.str_repeat('c3', 16).'");document.cookie="OCXS="+toHex(slowAES.decrypt(c,2,a,b));</script>');
+                }
+                $busqueda = mb_strtoupper((string) ($request->data()['search'] ?? ''));
+                if (str_contains($busqueda, 'GEOMETRICO')) {
+                    $filas = [];
+                } elseif (str_contains($busqueda, 'REGLAS')) {
+                    $filas = [['sku' => 'REGLHOL005', 'name' => 'Set reglas', 'availability' => 9103, 'view_link' => '/reglas']];
+                } else {
+                    $filas = [];
+                }
+
+                return Http::response('<div data-page-component-options="'
+                    .htmlspecialchars(json_encode(['data' => ['data' => $filas]]), ENT_QUOTES).'"></div>');
+            }
+
+            if (str_contains($request->url(), 'generativelanguage.googleapis.com')) {
+                return Http::response($this->respuestaGemini(['resultados' => []]));
+            }
+
+            return null;
+        });
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $linea = collect($preview['lineas'])->first();
+        $this->assertSame(CotizarIaService::ESTADO_VINCULADO, $linea['estado']);
+        $this->assertSame(CotizarIaService::ORIGEN_PRISA, $linea['origen']);
+        $this->assertSame('REGLHOL005', $linea['producto']['prod_item']);
+    }
+
     public function test_stock_prisa_cambia_agotado_por_equivalente_y_a_pedido_queda_pendiente(): void
     {
         Cache::flush();

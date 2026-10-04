@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\DB;
  */
 class MaeprodBusquedaSimilitudService
 {
+    /** @var ?list<array{familia: string, terminos: list<string>}> */
+    private ?array $gruposEquivalenciaCache = null;
+
     /** @var string[] */
     private const STOPWORDS = [
         'PARA', 'CON', 'SIN', 'DEL', 'DE', 'LA', 'LAS', 'LOS', 'EL', 'EN',
@@ -243,9 +246,8 @@ class MaeprodBusquedaSimilitudService
      */
     private function gruposEquivalenciaBusqueda(): array
     {
-        static $cache = null;
-        if ($cache !== null) {
-            return $cache;
+        if ($this->gruposEquivalenciaCache !== null) {
+            return $this->gruposEquivalenciaCache;
         }
 
         $cache = [];
@@ -266,7 +268,9 @@ class MaeprodBusquedaSimilitudService
             $cache[] = ['familia' => $familia, 'terminos' => $terminos];
         }
 
-        return $cache;
+        $this->gruposEquivalenciaCache = $cache;
+
+        return $this->gruposEquivalenciaCache;
     }
 
     /**

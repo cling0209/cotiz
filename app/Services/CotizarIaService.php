@@ -1535,31 +1535,50 @@ TXT];
     /** Término para buscar la línea fuera del maestro: el nombre genérico sin marca si la IA lo dio. */
     private function terminoBusqueda(array $item): string
     {
-        $generico = trim((string) ($item['generico'] ?? ''));
+        $terminos = $this->terminosBusquedaLinea($item);
 
-        return $generico !== '' ? $generico : (string) $item['descripcion'];
+        return $terminos[0] ?? (string) ($item['descripcion'] ?? '');
     }
 
     /**
-     * Consultas para Mercado Libre: primero lo pedido (conserva «auto»/medida) y luego el genérico sin marca.
+     * Descripción, genérico (IA) y alternativas de cotiz.busqueda_equivalencias (Prisa antes que ML).
+     *
+     * @param  array<string, mixed>  $item
+     * @return list<string>
+     */
+    private function terminosBusquedaLinea(array $item): array
+    {
+        $vistos = [];
+        $out = [];
+        foreach ([trim((string) ($item['descripcion'] ?? '')), trim((string) ($item['generico'] ?? ''))] as $base) {
+            if ($base === '') {
+                continue;
+            }
+            foreach (array_merge([$base], $this->busqueda->terminosSinonimos($base)) as $termino) {
+                $termino = trim($termino);
+                if ($termino === '') {
+                    continue;
+                }
+                $clave = mb_strtolower($termino);
+                if (! isset($vistos[$clave])) {
+                    $vistos[$clave] = true;
+                    $out[] = $termino;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Consultas para Mercado Libre: mismos términos que Prisa (descripción, genérico, equivalencias).
      *
      * @param  array<string, mixed>  $item
      * @return list<string>
      */
     private function terminosMercadoLibre(array $item): array
     {
-        $terminos = [];
-        foreach ([trim((string) ($item['descripcion'] ?? '')), trim((string) ($item['generico'] ?? ''))] as $termino) {
-            if ($termino === '') {
-                continue;
-            }
-            $clave = mb_strtolower($termino);
-            if (! isset($terminos[$clave])) {
-                $terminos[$clave] = $termino;
-            }
-        }
-
-        return array_values($terminos);
+        return $this->terminosBusquedaLinea($item);
     }
 
     /**
@@ -2032,48 +2051,57 @@ TXT];
         $fallos = 0;
 
         foreach ($pendientes as $i) {
-            $resultados = $this->prisa->buscarPorTexto($this->terminoBusqueda($items[$i]));
-            if ($resultados === false) {
+            $errorLinea = false;
+            $vinculoLinea = false;
+            foreach ($this->terminosBusquedaLinea($items[$i]) as $termino) {
+                $resultados = $this->prisa->buscarPorTexto($termino);
+                if ($resultados === false) {
+                    $errorLinea = true;
+
+                    continue;
+                }
+                if ($resultados === []) {
+                    continue;
+                }
+
+                $skus = array_values(array_unique(array_map(static fn (array $r) => $r['sku'], $resultados)));
+                $maeprods = Maeprod::query()->whereIn('prod_item', $skus)->get()->keyBy('prod_item');
+                $stockPorSku = [];
+                $candidatos = [];
+                foreach ($resultados as $fila) {
+                    if (! in_array($fila['stock_prisa']['estado'], $conStock, true)) {
+                        continue;
+                    }
+                    if (! $maeprods->has($fila['sku'])) {
+                        continue;
+                    }
+                    $producto = $this->conPrecioOCosto($this->productoDesdeFila($maeprods->get($fila['sku'])));
+                    if ($producto === null || ! $this->pasaFiltros((string) $items[$i]['descripcion'], $producto['prod_nombre'])) {
+                        continue;
+                    }
+                    $candidatos[] = $producto;
+                    $stockPorSku[$producto['prod_item']] = $fila['stock_prisa'];
+                }
+
+                $elegido = $this->elegirEquivalente((string) $items[$i]['descripcion'], $candidatos);
+                if ($elegido === null) {
+                    continue;
+                }
+
+                $items[$i] = $this->marcarVinculado(
+                    $items[$i],
+                    $this->prorratearPackMaestro($elegido, (string) $items[$i]['descripcion']),
+                    self::ORIGEN_PRISA,
+                );
+                $items[$i]['stock_prisa'] = $stockPorSku[$elegido['prod_item']] ?? null;
+                $items[$i]['stock_nota'] = 'Prisa: vinculado por búsqueda ('.$elegido['prod_item'].').';
+                $vinculados++;
+                $vinculoLinea = true;
+                break;
+            }
+            if ($errorLinea && ! $vinculoLinea) {
                 $fallos++;
-
-                continue;
             }
-            if ($resultados === []) {
-                continue;
-            }
-
-            $skus = array_values(array_unique(array_map(static fn (array $r) => $r['sku'], $resultados)));
-            $maeprods = Maeprod::query()->whereIn('prod_item', $skus)->get()->keyBy('prod_item');
-            $stockPorSku = [];
-            $candidatos = [];
-            foreach ($resultados as $fila) {
-                if (! in_array($fila['stock_prisa']['estado'], $conStock, true)) {
-                    continue;
-                }
-                if (! $maeprods->has($fila['sku'])) {
-                    continue;
-                }
-                $producto = $this->conPrecioOCosto($this->productoDesdeFila($maeprods->get($fila['sku'])));
-                if ($producto === null || ! $this->pasaFiltros((string) $items[$i]['descripcion'], $producto['prod_nombre'])) {
-                    continue;
-                }
-                $candidatos[] = $producto;
-                $stockPorSku[$producto['prod_item']] = $fila['stock_prisa'];
-            }
-
-            $elegido = $this->elegirEquivalente((string) $items[$i]['descripcion'], $candidatos);
-            if ($elegido === null) {
-                continue;
-            }
-
-            $items[$i] = $this->marcarVinculado(
-                $items[$i],
-                $this->prorratearPackMaestro($elegido, (string) $items[$i]['descripcion']),
-                self::ORIGEN_PRISA,
-            );
-            $items[$i]['stock_prisa'] = $stockPorSku[$elegido['prod_item']] ?? null;
-            $items[$i]['stock_nota'] = 'Prisa: vinculado por búsqueda ('.$elegido['prod_item'].').';
-            $vinculados++;
         }
 
         if ($vinculados > 0) {

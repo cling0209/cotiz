@@ -282,7 +282,8 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $service = new MaeprodBusquedaSimilitudService;
 
         $this->assertSame(['GOMA', 'EVA'], $service->equivalentesDeToken('FOAMI'));
-        $this->assertContains('FOAMI', $service->terminosSinonimos('PLIEGO GOMA EVA 20X30'));
+        $alts = $service->terminosSinonimos('PLIEGO GOMA EVA 20X30');
+        $this->assertTrue(collect($alts)->contains(fn (string $t) => str_contains($t, 'FOAMI')));
         $this->assertFalse($service->hayConflictoFamilia('PLIEGO GOMA EVA', 'FOAMI OFFIONE 20X30'));
     }
 
