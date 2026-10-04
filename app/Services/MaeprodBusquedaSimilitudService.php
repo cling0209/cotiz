@@ -141,13 +141,13 @@ class MaeprodBusquedaSimilitudService
             return collect();
         }
 
-        $filas = $this->buscarSimilitudEnSql($payload, $familia, $limit);
+        $filas = $this->buscarSimilitudEnSql($payload, $term, $familia, $limit);
         if ($filas->isNotEmpty()) {
             return $filas;
         }
 
         $candidatosMax = max(50, (int) config('cotiz.buscar_productos_candidatos_max', 250));
-        $tokens = $this->tokensSignificativos($this->normalizarTexto($term));
+        $tokens = $this->tokensSignificativos($this->normalizarBusqueda($term));
         $patron = implode('%', $tokens);
 
         if ($tokens === []) {
@@ -160,10 +160,29 @@ class MaeprodBusquedaSimilitudService
         return collect($this->filtrarPorPuntajeMinimo($ranked, $term));
     }
 
+    /**
+     * Clave estable de frases y aprendizaje guardados en BD: no cambiar su salida.
+     */
     public function normalizarTexto(string $texto): string
     {
         $texto = $this->sinTildes(mb_strtoupper($texto, 'UTF-8'));
         $texto = preg_replace('/[^A-Z0-9ÁÉÍÓÚÑ\s]/u', ' ', $texto) ?? '';
+        $texto = preg_replace('/\s+/u', ' ', $texto) ?? '';
+
+        return trim($texto);
+    }
+
+    /**
+     * Como normalizarTexto pero conserva el decimal («0,5 MM» = «0.5 MM»): separarlo en «0 5»
+     * perdía la medida y el token que distingue el producto.
+     */
+    public function normalizarBusqueda(string $texto): string
+    {
+        $texto = $this->sinTildes(mb_strtoupper($texto, 'UTF-8'));
+        $texto = preg_replace('/(?<=\d)\.(?=\d{3}(?!\d))/u', '', $texto) ?? '';
+        $texto = preg_replace('/(?<=\d),(?=\d)/u', '.', $texto) ?? '';
+        $texto = preg_replace('/[^A-Z0-9ÁÉÍÓÚÑ\s.]/u', ' ', $texto) ?? '';
+        $texto = preg_replace('/(?<!\d)\.|\.(?!\d)/u', ' ', $texto) ?? '';
         $texto = preg_replace('/\s+/u', ' ', $texto) ?? '';
 
         return trim($texto);
@@ -182,7 +201,9 @@ class MaeprodBusquedaSimilitudService
         $tokens = [];
 
         foreach ($words as $w) {
-            if (preg_match('/^([A-ZÁÉÍÓÚÑ]{1,2})(\d)$/u', $w, $m)) {
+            if (preg_match('/^\d+\.\d+$/u', $w)) {
+                $tokens[] = $w;
+            } elseif (preg_match('/^([A-ZÁÉÍÓÚÑ]{1,2})(\d)$/u', $w, $m)) {
                 $tokens[] = $m[2];
             } elseif (preg_match('/^([A-ZÁÉÍÓÚÑ])(\d{2,})$/u', $w, $m)) {
                 $tokens[] = $w;
@@ -193,7 +214,7 @@ class MaeprodBusquedaSimilitudService
             } elseif (preg_match('/^[A-ZÁÉÍÓÚÑ]{2,}$/u', $w)) {
                 $tokens[] = $w;
             } else {
-                preg_match_all('/[A-ZÁÉÍÓÚÑ]{2,}|\d+/u', $w, $sm);
+                preg_match_all('/[A-ZÁÉÍÓÚÑ]{2,}|\d+(?:\.\d+)?/u', $w, $sm);
                 if (! empty($sm[0])) {
                     foreach ($sm[0] as $t) {
                         $tokens[] = $t;
@@ -320,12 +341,12 @@ class MaeprodBusquedaSimilitudService
             return false;
         }
 
-        $distConsulta = $this->tokensDistintivos($this->normalizarTexto($textoConsulta));
+        $distConsulta = $this->tokensDistintivos($this->normalizarBusqueda($textoConsulta));
         if ($distConsulta === []) {
             return false;
         }
 
-        $candidatoNorm = $this->normalizarTexto($textoCandidato);
+        $candidatoNorm = $this->normalizarBusqueda($textoCandidato);
         if ($candidatoNorm === '') {
             return false;
         }
@@ -381,7 +402,7 @@ class MaeprodBusquedaSimilitudService
 
     public function codificarPayloadBuscarSimilitud(string $textoBusqueda, int $maxLen = 255): string
     {
-        $norm = $this->normalizarTexto($textoBusqueda);
+        $norm = $this->normalizarBusqueda($textoBusqueda);
         if ($norm === '') {
             return '';
         }
@@ -396,6 +417,12 @@ class MaeprodBusquedaSimilitudService
         // Números de 2 dígitos (40 hojas, caja 12) suman puntaje; van al final para no cortar bigramas de palabras.
         foreach ($extraidos as $t) {
             if (preg_match('/^\d{2}$/', $t) && ! in_array($t, $tokens, true)) {
+                $tokens[] = $t;
+            }
+        }
+        // Códigos de 2 letras (HB, 2B…) distinguen el producto pero no bastan para filtrar: solo suman puntaje.
+        foreach ($extraidos as $t) {
+            if ($this->esCodigoCorto($t) && ! in_array($t, $tokens, true)) {
                 $tokens[] = $t;
             }
         }
@@ -576,7 +603,7 @@ class MaeprodBusquedaSimilitudService
      */
     public function extraerMedidas(string $texto): array
     {
-        $norm = $this->normalizarTexto($texto);
+        $norm = $this->normalizarBusqueda($texto);
         if ($norm === '') {
             return [];
         }
@@ -728,7 +755,7 @@ class MaeprodBusquedaSimilitudService
     public function medidasTexto(string $texto): array
     {
         $unidades = implode('|', array_keys(self::UNIDADES_MEDIDA));
-        preg_match_all('/\d+(?:[.,]\d+)?\s*(?:'.$unidades.')\b/u', $this->normalizarTexto($texto), $matches);
+        preg_match_all('/\d+(?:[.,]\d+)?\s*(?:'.$unidades.')\b/u', $this->normalizarBusqueda($texto), $matches);
 
         return array_values(array_unique($matches[0]));
     }
@@ -797,10 +824,10 @@ class MaeprodBusquedaSimilitudService
     public function scoreSimilitudFila(string $textoCrudo, string $prodItem, string $prodNombre): float
     {
         $textoCrudo = trim($textoCrudo);
-        $textoNorm = $this->normalizarTexto($textoCrudo);
+        $textoNorm = $this->normalizarBusqueda($textoCrudo);
         $tokens = $this->tokensSignificativos($textoNorm);
         $distintivos = $this->tokensDistintivos($textoNorm);
-        $nombreNorm = $this->normalizarTexto($prodNombre);
+        $nombreNorm = $this->normalizarBusqueda($prodNombre);
         $itemU = mb_strtoupper(trim($prodItem), 'UTF-8');
 
         if ($textoCrudo !== '' && strcasecmp($textoCrudo, trim($prodItem)) === 0) {
@@ -896,7 +923,7 @@ class MaeprodBusquedaSimilitudService
         return $out;
     }
 
-    private function buscarSimilitudEnSql(string $payload, ?string $familia, int $limit): Collection
+    private function buscarSimilitudEnSql(string $payload, string $term, ?string $familia, int $limit): Collection
     {
         [$phrase, $tokens] = $this->parsearPayloadSimilitud($payload);
         if ($phrase === '' && $tokens === []) {
@@ -929,11 +956,19 @@ class MaeprodBusquedaSimilitudService
             .'ORDER BY puntaje DESC, prod_nombre ASC '
             .'LIMIT ?';
 
+        // Muchos empatan en puntaje SQL (solo comparten una palabra); el orden alfabético dejaba fuera
+        // al producto correcto. Se trae un margen y se desempata con la similitud del nombre.
         $bindings = array_merge($bindings, $whereBindings, $scoreBindings);
         $bindings[] = $minPuntaje;
-        $bindings[] = $limit;
+        $bindings[] = min(200, max($limit * 4, 60));
 
-        $rows = DB::select($sql, $bindings);
+        $rows = array_map(fn ($row) => [
+            'row' => $row,
+            'puntaje' => (float) $row->puntaje,
+            'similitud' => $this->scoreSimilitudFila($term, (string) $row->prod_item, (string) $row->prod_nombre),
+        ], DB::select($sql, $bindings));
+        usort($rows, static fn (array $a, array $b) => [$b['puntaje'], $b['similitud']] <=> [$a['puntaje'], $a['similitud']]);
+        $rows = array_column(array_slice($rows, 0, $limit), 'row');
 
         return collect($rows)->map(function ($row) {
             return Maeprod::query()->find($row->prod_item) ?? new Maeprod([
@@ -979,6 +1014,16 @@ class MaeprodBusquedaSimilitudService
                 continue;
             }
 
+            if ($this->esCodigoCorto($tok)) {
+                // Sin WHERE: «%HB%» caería en cualquier nombre; con límite de palabra solo desempata.
+                if ($this->isPostgres()) {
+                    $scoreParts[] = '(CASE WHEN '.$nombre.' ~* ? THEN 40 ELSE 0 END)';
+                    $scoreBindings[] = '\\m'.$tok.'\\M';
+                }
+
+                continue;
+            }
+
             $generico = $this->esTokenGenerico($tok);
             if ($prevTok !== '' && ! preg_match('/^\d+$/', $prevTok) && ! preg_match('/^\d+$/', $tok)
                 && ! $generico && ! $this->esTokenGenerico($prevTok)) {
@@ -997,7 +1042,14 @@ class MaeprodBusquedaSimilitudService
                 $whereBindings[] = $ordered;
             }
 
-            if (preg_match('/^\d+$/', $tok)) {
+            if (preg_match('/^\d+\.\d+$/', $tok) && $this->isPostgres()) {
+                // «0.5» no debe caer en «10.5» ni «0.55».
+                $regex = '(^|[^0-9.])'.preg_quote($tok, '/').'([^0-9]|$)';
+                $scoreParts[] = '(CASE WHEN '.$nombre.' ~ ? THEN 84 ELSE 0 END)';
+                $scoreBindings[] = $regex;
+                $whereParts[] = $nombre.' ~ ?';
+                $whereBindings[] = $regex;
+            } elseif (preg_match('/^\d+$/', $tok)) {
                 $tokLen = strlen($tok);
                 if ($tokLen <= 2 && $this->isPostgres()) {
                     $regex = '\\m'.preg_quote($tok, '/').'\\M';
@@ -1082,11 +1134,12 @@ class MaeprodBusquedaSimilitudService
 
     /**
      * ILIKE de Postgres distingue tildes (COLÓN ≠ COLON) y el maestro las mezcla; se comparan ambos lados sin tildes.
+     * La coma pasa a punto porque la búsqueda normaliza «0,5» como «0.5».
      */
     private function columnaNombreSinTildesSql(): string
     {
         return $this->isPostgres()
-            ? "translate(prod_nombre, 'ÁÉÍÓÚÜáéíóúü', 'AEIOUUaeiouu')"
+            ? "translate(prod_nombre, 'ÁÉÍÓÚÜáéíóúü,', 'AEIOUUaeiouu.')"
             : 'prod_nombre';
     }
 
@@ -1126,6 +1179,13 @@ class MaeprodBusquedaSimilitudService
     private function esStopword(string $token): bool
     {
         return in_array(mb_strtoupper($token, 'UTF-8'), self::STOPWORDS, true);
+    }
+
+    private function esCodigoCorto(string $token): bool
+    {
+        return preg_match('/^[A-ZÑ]{2}$/u', $token) === 1
+            && ! $this->esStopword($token)
+            && ! $this->esTokenGenerico($token);
     }
 
     private function palabraCoincideVariante(string $palabra, string $variante): bool

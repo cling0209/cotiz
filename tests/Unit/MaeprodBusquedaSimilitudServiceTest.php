@@ -231,6 +231,30 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertSame(['70 MM'], $this->service->medidasTexto('Tampón huella 70 mm'));
     }
 
+    public function test_busqueda_conserva_decimal_y_clave_de_frases_no_cambia(): void
+    {
+        $this->assertSame('MINA 0.5 MM HB TUBO 12 UNIDADES', $this->service->normalizarBusqueda('Mina 0,5 mm HB (Tubo 12 unidades)'));
+        $this->assertSame('CAJA 1000 ML', $this->service->normalizarBusqueda('Caja 1.000 ml.'));
+        $this->assertSame('MINA 0 5 MM HB', $this->service->normalizarTexto('MINA 0,5 MM HB'));
+
+        $this->assertSame(['0.5 MM'], $this->service->medidasTexto('MINA 0,5 MM HB'));
+        $this->assertSame(0.0, $this->service->diferenciaMedida('MINA 0,5 MM HB', 'MINAS 0.5 MM HB'));
+        $this->assertFalse($this->service->medidasCompatibles('MINA 0,5 MM', 'MINA 5 MM'));
+    }
+
+    public function test_payload_incluye_decimal_y_codigo_corto(): void
+    {
+        [, $tokens] = $this->service->parsearPayloadSimilitud(
+            $this->service->codificarPayloadBuscarSimilitud('MINA 0,5 MM HB (Tubo 12 unidades)')
+        );
+
+        $this->assertContains('MINA', $tokens);
+        $this->assertContains('0.5', $tokens);
+        $this->assertContains('HB', $tokens);
+        $this->assertNotContains('MM', $tokens);
+        $this->assertSame('HB', end($tokens));
+    }
+
     public function test_elige_el_mas_economico(): void
     {
         $elegido = $this->service->elegirMasEconomico([
