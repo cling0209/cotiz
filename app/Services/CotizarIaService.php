@@ -1485,16 +1485,21 @@ TXT];
         $maxTotal = max(10, (int) config('cotiz.cotizar_ia.candidatos_por_linea', self::CANDIDATOS_POR_LINEA));
 
         $out = [];
-        // null = productos conjunto (SET/JUEGO/KIT), que la similitud no encuentra porque SET es stopword.
-        foreach (array_merge([null], array_slice($terminos, 0, $maxTerminos)) as $termino) {
-            $termino = $termino === null ? null : trim((string) $termino);
+        $pasadas = [];
+        if ($this->busqueda->esConjunto($descripcion)) {
+            $pasadas[] = fn () => $this->busqueda->buscarConjunto($descripcion, $porTermino);
+            $pasadas[] = fn () => $this->busqueda->buscarPackConjunto($descripcion, $porTermino);
+        }
+        foreach (array_slice($terminos, 0, $maxTerminos) as $termino) {
+            $termino = trim((string) $termino);
             if ($termino === '') {
                 continue;
             }
+            $pasadas[] = fn () => $this->busqueda->buscar($termino, null, $porTermino);
+        }
+        foreach ($pasadas as $buscar) {
             try {
-                $filas = $termino === null
-                    ? $this->busqueda->buscarConjunto($descripcion, $porTermino)
-                    : $this->busqueda->buscar($termino, null, $porTermino);
+                $filas = $buscar();
             } catch (Throwable $e) {
                 report($e);
 
@@ -1530,18 +1535,57 @@ TXT];
             return [];
         }
         $conjunto = $this->busqueda->esConjunto($descripcion);
+        $packSolicitado = $conjunto ? $this->cantidadPackSolicitada($descripcion) : 1;
         uasort(
             $candidatos,
             fn (array $a, array $b) => [
+                $conjunto && $packSolicitado > 1 && $this->packEnNombreCoincide($packSolicitado, $b['prod_nombre']),
                 $conjunto && $this->busqueda->esConjunto($b['prod_nombre']),
                 $this->busqueda->scoreSimilitudFila($descripcion, $b['prod_item'], $b['prod_nombre']),
             ] <=> [
+                $conjunto && $packSolicitado > 1 && $this->packEnNombreCoincide($packSolicitado, $a['prod_nombre']),
                 $conjunto && $this->busqueda->esConjunto($a['prod_nombre']),
                 $this->busqueda->scoreSimilitudFila($descripcion, $a['prod_item'], $a['prod_nombre']),
             ],
         );
 
         return $candidatos;
+    }
+
+    private function packEnNombreCoincide(int $packSolicitado, string $nombreProducto): bool
+    {
+        if ($packSolicitado <= 1) {
+            return false;
+        }
+        if ($this->mercadolibre->unidadesPorPack($nombreProducto) === $packSolicitado) {
+            return true;
+        }
+        $norm = $this->busqueda->normalizarBusqueda($nombreProducto);
+        $n = (string) $packSolicitado;
+
+        return preg_match('/\b'.$n.'\s+COLORES?\b/u', $norm) === 1
+            || preg_match('/\b'.$n.'\s+PCS?\b/u', $norm) === 1
+            || preg_match('/\b'.$n.'\s+MARCADOR/u', $norm) === 1;
+    }
+
+    private function cantidadPackSolicitada(string $descripcion): int
+    {
+        $porPatron = $this->mercadolibre->unidadesPorPack($descripcion);
+        if ($porPatron > 1) {
+            return $porPatron;
+        }
+        $norm = $this->busqueda->normalizarBusqueda($descripcion);
+        if (preg_match('/\b(?:SET|DE)\s+(\d{1,3})\s+MARCADOR/u', $norm, $coincide) === 1) {
+            return max(1, (int) $coincide[1]);
+        }
+        if (preg_match('/\b(\d{1,3})\s+MARCADOR/u', $norm, $coincide) === 1) {
+            return max(1, (int) $coincide[1]);
+        }
+        if (preg_match('/\b(\d{1,3})\s+COLORES?\b/u', $norm, $coincide) === 1) {
+            return max(1, (int) $coincide[1]);
+        }
+
+        return 1;
     }
 
     /**
@@ -1656,6 +1700,41 @@ TXT];
         }
 
         return $out;
+    }
+
+    /**
+     * Términos cortos para Prisa (vendedor + conjunto + equivalencias), antes que el párrafo largo de MP.
+     *
+     * @param  array<string, mixed>  $item
+     * @return list<string>
+     */
+    private function terminosBusquedaPrisa(array $item): array
+    {
+        $descripcion = trim((string) ($item['descripcion'] ?? ''));
+        $generico = trim((string) ($item['generico'] ?? ''));
+        $vistos = [];
+        $out = [];
+        foreach (array_merge(
+            $descripcion !== '' ? $this->busqueda->terminosConjunto($descripcion) : [],
+            $descripcion !== '' ? $this->busqueda->terminosBusquedaVendedor($descripcion) : [],
+            $generico !== '' ? $this->busqueda->terminosBusquedaVendedor($generico) : [],
+            $this->terminosBusquedaLinea($item),
+        ) as $termino) {
+            $termino = trim($termino);
+            if ($termino === '') {
+                continue;
+            }
+            $clave = mb_strtolower($termino);
+            if (isset($vistos[$clave])) {
+                continue;
+            }
+            $vistos[$clave] = true;
+            $out[] = $termino;
+        }
+
+        $max = max(4, (int) config('cotiz.prisa.busqueda_max_terminos', 8));
+
+        return array_slice($out, 0, $max);
     }
 
     /**
@@ -1813,6 +1892,8 @@ TXT];
             .'Un kit, set o combo del catálogo que trae el producto solicitado junto con otros artículos también es equivalente '
             .'(ej. para «lanyard porta credencial» sirven «pack 100 porta credenciales incluye 100 lanyard» y «lanyard + porta credencial»), '
             .'con las unidades calculadas por la cantidad del producto solicitado que trae el kit. '
+            .'Set o pack de marcadores permanentes (punta fina, multi-superficie, etc.) suele equivaler en el maestro a '
+            .'«MARCADORES N COLORES» o «SET … MARCADORES … N …» aunque no diga «permanente» en el nombre del catálogo. '
             .'Si el solicitado y el candidato usan nombres distintos pero es el mismo artículo '
             .'(misma función, medida y formato), márcalo equivalente aunque no repitan las mismas palabras. '
             .'En papelería «N unidades» del catálogo suele contar hojas o pliegos, no la pieza menor: '
@@ -2150,10 +2231,7 @@ TXT];
             $errorLinea = false;
             $vinculoLinea = false;
             $porSku = [];
-            $terminosPrisa = array_values(array_unique(array_merge(
-                $this->busqueda->terminosConjunto((string) ($items[$i]['descripcion'] ?? '')),
-                $this->terminosBusquedaLinea($items[$i]),
-            )));
+            $terminosPrisa = $this->terminosBusquedaPrisa($items[$i]);
             foreach ($terminosPrisa as $termino) {
                 $resultados = $this->prisa->buscarPorTexto($termino);
                 if ($resultados === false) {
@@ -3062,7 +3140,8 @@ TXT];
     {
         return $this->instruccionSistema().' Al vincular con el maestro, razona como un vendedor con experiencia: '
             .'prioriza siempre un código del catálogo interno cuando cumpla la función; '
-            .'descarta candidatos de otra familia de producto aunque su nombre repita «acrílico», «neón», «12 colores» u otras palabras genéricas.';
+            .'descarta candidatos de otra familia de producto aunque su nombre repita «acrílico», «neón», «12 colores» u otras palabras genéricas; '
+            .'un set de marcadores de la licitación encaja con «MARCADORES N COLORES» del maestro aunque falte la palabra permanente.';
     }
 
     /**

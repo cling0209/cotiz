@@ -339,6 +339,44 @@ class MaeprodBusquedaSimilitudService
     }
 
     /**
+     * Cuando la licitación pide SET/JUEGO/KIT pero el maestro no repite esa palabra
+     * (ej. «MARCADORES 24 COLORES»), busca por núcleo del producto.
+     */
+    public function buscarPackConjunto(string $descripcion, int $limit = 12): Collection
+    {
+        if (! $this->esConjunto($descripcion)) {
+            return collect();
+        }
+
+        $variantes = [];
+        foreach ($this->nucleosConjunto($descripcion) as $nucleo) {
+            foreach ($this->tokenVariantes($nucleo) as $variante) {
+                if (mb_strlen($variante, 'UTF-8') >= 4) {
+                    $variantes[] = $variante;
+                }
+            }
+        }
+        $variantes = array_values(array_unique($variantes));
+        if ($variantes === []) {
+            return collect();
+        }
+
+        $like = $this->likeOperator();
+        $columna = "(' ' || ".$this->columnaNombreSinTildesSql()." || ' ')";
+
+        return Maeprod::query()
+            ->whereNotNull('prod_item')
+            ->where('prod_item', '!=', '')
+            ->where(function ($q) use ($columna, $like, $variantes) {
+                foreach ($variantes as $variante) {
+                    $q->orWhereRaw($columna.' '.$like.' ?', ['%'.$variante.'%']);
+                }
+            })
+            ->limit(max(1, $limit))
+            ->get();
+    }
+
+    /**
      * Otros términos del mismo grupo de equivalencia (config cotiz.busqueda_equivalencias).
      *
      * @return list<string>

@@ -123,6 +123,10 @@ return [
             'familia' => 'REGLA',
             'terminos' => ['REGLA', 'REGLAS', 'GEOMETRICO', 'GEOMETRICA', 'GEOMETRICOS', 'GEOMETRICAS', 'GEOMETRIA'],
         ],
+        [
+            'familia' => 'MARCADOR',
+            'terminos' => ['MARCADOR', 'MARCADORES', 'PERMANENTE', 'PERMANENTES'],
+        ],
     ],
 
     'import' => [
@@ -228,6 +232,7 @@ return [
         'busqueda_texto_max_lineas' => max(0, min(120, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_LINEAS', 40))),
         'busqueda_texto_max_resultados' => max(1, min(40, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_RESULTADOS', 20))),
         'busqueda_texto_max_caracteres' => max(10, min(200, (int) env('COTIZ_PRISA_BUSQUEDA_TEXTO_MAX_CARACTERES', 120))),
+        'busqueda_max_terminos' => max(4, min(12, (int) env('COTIZ_PRISA_BUSQUEDA_MAX_TERMINOS', 8))),
         // Sin maeprod: cotizar con precio/URL públicos de Prisa (referencia web) antes de Mercado Libre.
         'referencia_sin_maestro' => (bool) env('COTIZ_PRISA_REFERENCIA_SIN_MAESTRO', true),
         // Solo esquema + dominio: una URL con ruta (ej. la del login) no cambia dónde se busca.

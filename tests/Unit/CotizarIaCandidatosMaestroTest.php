@@ -101,4 +101,47 @@ class CotizarIaCandidatosMaestroTest extends TestCase
         $this->assertContains('SET GEOMETRIA', $terminos);
         $this->assertSame([], app(MaeprodBusquedaSimilitudService::class)->terminosConjunto('REGLA 30 CM'));
     }
+
+    public function test_pack_conjunto_sin_set_en_nombre_prioriza_marcadores_24(): void
+    {
+        $desc = 'SET DE 24 MARCADORES PERMANENTES PUNTA FINA DE ESCRITURA';
+        for ($n = 1; $n <= 22; $n++) {
+            Maeprod::query()->create([
+                'prod_item' => 'MARC'.$n,
+                'prod_nombre' => 'MARCADOR PERMANENTE PIZARRA 12 COLORES MODELO '.$n,
+                'prod_valor' => 800 + $n,
+                'prod_valor_costo' => 500,
+                'prod_familia' => 'LIBR',
+            ]);
+        }
+        Maeprod::query()->create([
+            'prod_item' => '10702',
+            'prod_nombre' => 'MARCADORES 24 COLORES',
+            'prod_valor' => 5000,
+            'prod_valor_costo' => 3500,
+            'prod_familia' => 'LIBR',
+        ]);
+
+        $service = app(CotizarIaService::class);
+        $terminos = $this->invocar($service, 'terminosBusquedaMaestro', $desc);
+        $candidatos = $this->invocar($service, 'candidatosMaeprod', $desc, $terminos);
+
+        $this->assertArrayHasKey('10702', $candidatos);
+        $this->assertSame('10702', (string) array_key_first($candidatos));
+    }
+
+    public function test_terminos_busqueda_prisa_priorizan_cortos(): void
+    {
+        $item = [
+            'descripcion' => 'SET DE 24 MARCADORES PERMANENTES PUNTA FINA DE ESCRITURA SOBRE MULTIPLES SUPERFICIES',
+            'generico' => '',
+        ];
+        $terminos = $this->invocar(app(CotizarIaService::class), 'terminosBusquedaPrisa', $item);
+
+        $this->assertNotSame([], $terminos);
+        $this->assertTrue(mb_strlen($terminos[0]) < mb_strlen($item['descripcion']));
+        $this->assertTrue(
+            collect($terminos)->contains(fn (string $t) => str_contains(mb_strtoupper($t), 'MARCADOR')),
+        );
+    }
 }
