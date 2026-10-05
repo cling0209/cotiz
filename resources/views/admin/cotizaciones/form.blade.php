@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=precio-cols-4" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=adjunto-pdf-2" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -783,6 +783,7 @@
                 <span class="ms-2 small">Convirtiendo para mostrar&hellip;</span>
             </div>
             <div id="panel-adjunto-flotante-error" class="alert alert-warning py-2 small d-none mb-2 mx-2 mt-2"></div>
+            <div id="panel-adjunto-flotante-pdf" class="cotiz-adjunto-flotante-pdf d-none" aria-label="Vista previa PDF"></div>
             <iframe id="panel-adjunto-flotante-frame" class="cotiz-adjunto-flotante-frame d-none" title="Vista previa del adjunto"></iframe>
         </div>
     </div>
@@ -889,6 +890,10 @@
 @endsection
 
 @push('scripts')
+@if($puedeVerAdjuntosMp ?? false)
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{{ asset('js/cotiz-adjunto-pdf.js') }}?v=2"></script>
+@endif
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
 <script>
@@ -6109,6 +6114,7 @@
         const convirtiendo = document.getElementById('panel-adjunto-flotante-convirtiendo');
         const errBox = document.getElementById('panel-adjunto-flotante-error');
         const frame = document.getElementById('panel-adjunto-flotante-frame');
+        const pdfPane = document.getElementById('panel-adjunto-flotante-pdf');
         const btnCerrar = document.getElementById('panel-adjunto-flotante-cerrar');
         const linkPestaña = document.getElementById('panel-adjunto-flotante-pestaña');
         const linkDescargar = document.getElementById('panel-adjunto-flotante-descargar');
@@ -6138,6 +6144,8 @@
                 errBox.textContent = '';
             }
             convirtiendo?.classList.add('d-none');
+            window.CotizAdjuntoPdfPreview?.reset?.(pdfPane);
+            pdfPane?.classList.add('d-none');
             if (frame) {
                 frame.onload = null;
                 frame.classList.add('d-none');
@@ -6150,6 +6158,27 @@
             resetVista();
             panel.classList.add('d-none');
             panel.setAttribute('aria-hidden', 'true');
+        }
+
+        function cargarPreviewIframe(previewUrl, esPdf, convertir) {
+            if (!frame) {
+                return;
+            }
+            frame.classList.toggle('d-none', convertir);
+            let mostrado = false;
+            const mostrarFrame = () => {
+                if (mostrado) {
+                    return;
+                }
+                mostrado = true;
+                loading?.classList.add('d-none');
+                convirtiendo?.classList.add('d-none');
+                frame.classList.remove('d-none');
+                frame.onload = null;
+            };
+            frame.onload = () => mostrarFrame();
+            window.setTimeout(mostrarFrame, esPdf ? 350 : 12000);
+            frame.src = previewUrl;
         }
 
         function cargarPreview(codigo, nombre) {
@@ -6165,29 +6194,40 @@
             if (convirtiendo) {
                 convirtiendo.classList.toggle('d-none', !convertir);
             }
-            if (frame) {
-                frame.classList.toggle('d-none', convertir);
-                let mostrado = false;
-                const mostrarFrame = () => {
-                    if (mostrado) {
-                        return;
-                    }
-                    mostrado = true;
-                    loading?.classList.add('d-none');
-                    convirtiendo?.classList.add('d-none');
-                    frame.classList.remove('d-none');
-                    frame.onload = null;
-                };
-                frame.onload = () => mostrarFrame();
-                window.setTimeout(mostrarFrame, esPdf ? 350 : 12000);
-                frame.src = previewUrl;
-            }
             if (linkPestaña) {
                 linkPestaña.href = previewUrl;
+                linkPestaña.setAttribute('data-no-loader', '');
             }
             if (linkDescargar) {
                 linkDescargar.href = urlVer(codigo, nom, false);
+                linkDescargar.setAttribute('data-no-loader', '');
             }
+
+            if (esPdf && pdfPane && window.CotizAdjuntoPdfPreview) {
+                pdfPane.classList.remove('d-none');
+                window.CotizAdjuntoPdfPreview.render(pdfPane, previewUrl)
+                    .then(() => {
+                        loading?.classList.add('d-none');
+                    })
+                    .catch((err) => {
+                        loading?.classList.add('d-none');
+                        window.CotizAdjuntoPdfPreview.reset(pdfPane);
+                        pdfPane.classList.add('d-none');
+                        const mensaje = (err && err.message)
+                            ? err.message
+                            : 'No se pudo mostrar el PDF en el panel.';
+                        if (errBox) {
+                            errBox.innerHTML = mensaje
+                                + ' Use <a class="alert-link" href="' + previewUrl.replace(/"/g, '&quot;')
+                                + '" target="_blank" rel="noopener noreferrer" data-no-loader>Abrir</a> o Descargar.';
+                            errBox.classList.remove('d-none');
+                        }
+                    });
+
+                return;
+            }
+
+            cargarPreviewIframe(previewUrl, esPdf, convertir);
         }
 
         function asegurarPanelVisible() {
@@ -6196,7 +6236,8 @@
                 document.body.appendChild(panel);
             }
             panel.style.position = 'fixed';
-            panel.style.zIndex = '2200';
+            const iaAbierta = document.getElementById('modal-cotizar-ia')?.classList.contains('show');
+            panel.style.zIndex = iaAbierta ? '2250' : '2200';
             panel.removeAttribute('inert');
             panel.style.pointerEvents = 'auto';
         }
