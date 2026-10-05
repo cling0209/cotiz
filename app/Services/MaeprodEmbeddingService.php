@@ -255,7 +255,7 @@ class MaeprodEmbeddingService
         $affected = DB::update(
             'UPDATE maeprod SET prod_embedding = CAST(:vec AS vector), prod_embedding_fuente = :fuente, '
             .'prod_embedding_model = :modelo, prod_embedding_at = :at '
-            ."WHERE encode(prod_item::bytea, 'hex') = :item_hex",
+            ."WHERE prod_item = convert_from(decode(:item_hex, 'hex'), 'UTF8')",
             [
                 'vec' => $literal,
                 'fuente' => $fuente,

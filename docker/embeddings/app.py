@@ -1,4 +1,18 @@
 import os
+
+# Limitar hilos ANTES de cargar ONNX/FastEmbed. En un CX33 compartido, usar todas
+# las vCPU deja el host al 400% (sidecar + Postgres HNSW) y Hetzner recorta el fair-share.
+_THREADS = max(1, min(8, int(os.environ.get("EMBEDDING_THREADS", "1"))))
+for _key in (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "ORT_INTRA_OP_NUM_THREADS",
+    "ORT_INTER_OP_NUM_THREADS",
+):
+    os.environ[_key] = str(_THREADS)
+
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -18,7 +32,7 @@ def get_model():
 
         if MODEL_NAME == "intfloat/multilingual-e5-small":
             try:
-                TextEmbedding(model_name=MODEL_NAME)
+                TextEmbedding(model_name=MODEL_NAME, threads=_THREADS)
             except ValueError:
                 TextEmbedding.add_custom_model(
                     model=MODEL_NAME,
@@ -29,7 +43,7 @@ def get_model():
                     model_file="onnx/model.onnx",
                 )
 
-        _model = TextEmbedding(model_name=MODEL_NAME)
+        _model = TextEmbedding(model_name=MODEL_NAME, threads=_THREADS)
     return _model
 
 
@@ -52,7 +66,7 @@ class EmbedBatchRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_NAME}
+    return {"ok": True, "model": MODEL_NAME, "threads": _THREADS}
 
 
 @app.post("/embed")
@@ -62,7 +76,7 @@ def embed_one(body: EmbedRequest):
         raise HTTPException(status_code=400, detail="text vacío")
     prefixed = prefix_text(text, body.task)
     model = get_model()
-    vectors = list(model.embed([prefixed]))
+    vectors = list(model.embed([prefixed], parallel=None))
     if not vectors:
         raise HTTPException(status_code=500, detail="sin vector")
     vec = vectors[0]
@@ -80,7 +94,7 @@ def embed_batch(body: EmbedBatchRequest):
         raise HTTPException(status_code=400, detail="texts vacíos")
     prefixed = [prefix_text(t, body.task) for t in cleaned]
     model = get_model()
-    vectors = list(model.embed(prefixed))
+    vectors = list(model.embed(prefixed, parallel=None))
     out = []
     for vec in vectors:
         out.append([float(x) for x in vec])
@@ -91,7 +105,7 @@ def embed_batch(body: EmbedBatchRequest):
 def warmup():
     if os.environ.get("EMBEDDING_WARMUP", "true").lower() in ("1", "true", "yes"):
         try:
-            get_model().embed(["passage: warmup"])
+            get_model().embed(["passage: warmup"], parallel=None)
         except Exception as exc:
             import logging
 

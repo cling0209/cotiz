@@ -118,12 +118,31 @@ run_site_queue() {
   embedding_count "$site" | awk -v s="$site" '{print "[" s "] embeddings ahora:", $0}'
 }
 
+drop_hnsw_index() {
+  local site="$1"
+  local dir="${SITE_DIR[$site]}"
+  local db="${SITE_DB[$site]}"
+  echo "[$site] DROP INDEX HNSW (evita CPU en cada UPDATE del backfill)" | tee -a "$LOG"
+  compose_cmd "$dir" exec -T postgres psql -U "$db" -d "$db" -c \
+    "DROP INDEX IF EXISTS maeprod_prod_embedding_hnsw_idx;"
+}
+
+create_hnsw_index() {
+  local site="$1"
+  local dir="${SITE_DIR[$site]}"
+  local db="${SITE_DB[$site]}"
+  echo "[$site] CREATE INDEX HNSW (búsqueda vectorial)" | tee -a "$LOG"
+  compose_cmd "$dir" exec -T postgres psql -U "$db" -d "$db" -c \
+    "SET maintenance_work_mem = '256MB'; CREATE INDEX IF NOT EXISTS maeprod_prod_embedding_hnsw_idx ON maeprod USING hnsw (prod_embedding vector_cosine_ops);"
+}
+
 run_site_sync() {
   local site="$1"
   local dir="${SITE_DIR[$site]}"
   echo "======== $site SYNC ($dir) ========" | tee -a "$LOG"
   compose_cmd "$dir" exec -T app php artisan migrate --force
   compose_cmd "$dir" exec -T app php artisan config:clear
+  drop_hnsw_index "$site"
   local round=0
   while true; do
     round=$((round + 1))
@@ -137,6 +156,7 @@ run_site_sync() {
     after="$(embedding_count "$site" | tr -d ' \r\n')"
     if echo "$out" | grep -q 'No hay productos pendientes'; then
       echo "[$site] Sin pendientes." | tee -a "$LOG"
+      create_hnsw_index "$site"
       break
     fi
     if [[ "$after" == "$before" ]] && echo "$out" | grep -qE '0 OK'; then
