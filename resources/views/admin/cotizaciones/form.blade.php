@@ -6156,17 +6156,26 @@
             resetVista();
             loading?.classList.remove('d-none');
             const previewUrl = urlVer(codigo, nom, true);
-            const convertir = /\.(docx?|xlsx?)$/i.test(nom) && !/\.pdf$/i.test(nom);
+            const esPdf = /\.pdf$/i.test(nom);
+            const convertir = /\.(docx?|xlsx?)$/i.test(nom) && !esPdf;
             if (convirtiendo) {
                 convirtiendo.classList.toggle('d-none', !convertir);
             }
             if (frame) {
-                frame.onload = () => {
+                frame.classList.toggle('d-none', convertir);
+                let mostrado = false;
+                const mostrarFrame = () => {
+                    if (mostrado) {
+                        return;
+                    }
+                    mostrado = true;
                     loading?.classList.add('d-none');
                     convirtiendo?.classList.add('d-none');
                     frame.classList.remove('d-none');
                     frame.onload = null;
                 };
+                frame.onload = () => mostrarFrame();
+                window.setTimeout(mostrarFrame, esPdf ? 350 : 12000);
                 frame.src = previewUrl;
             }
             if (linkPestaña) {
@@ -6177,11 +6186,16 @@
             }
         }
 
-        function asegurarPanelEnBody() {
-            if (panel.parentElement !== document.body) {
-                document.body.appendChild(panel);
+        function asegurarPanelVisible() {
+            const iaModal = document.getElementById('modal-cotizar-ia');
+            const host = iaModal?.classList.contains('show') ? iaModal : document.body;
+            if (panel.parentElement !== host) {
+                host.appendChild(panel);
             }
+            panel.style.position = 'fixed';
             panel.style.zIndex = '2200';
+            panel.removeAttribute('inert');
+            panel.style.pointerEvents = 'auto';
         }
 
         function abrir(codigo, nombre) {
@@ -6190,7 +6204,7 @@
             if (!cod || !nom) {
                 return;
             }
-            asegurarPanelEnBody();
+            asegurarPanelVisible();
             if (titulo) {
                 titulo.textContent = nom;
                 titulo.title = `${cod} — ${nom}`;

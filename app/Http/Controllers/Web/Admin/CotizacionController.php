@@ -184,7 +184,8 @@ class CotizacionController extends Controller
             'desdeOportunidades' => $desdeOportunidades,
             'oportunidadYaVinculada' => $previewImportarCompraAgil !== null,
             'puedeAdjuntosOportunidad' => $desdeOportunidades && (bool) $request->user()?->canVerOportunidades(),
-            'puedeVerAdjuntosMp' => (bool) $request->user()?->canVerOportunidades(),
+            'puedeVerAdjuntosMp' => (bool) $request->user()?->canVerOportunidades()
+                || CotizarIaService::usuarioPermitido($request->user()),
             'cotizacionListadoUrl' => CotizacionListadoRetorno::url($request),
             'cotizacionListadoLabel' => CotizacionListadoRetorno::label($request),
             'cotizacionListadoQuery' => $cotizacionListadoQuery,
