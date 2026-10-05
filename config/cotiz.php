@@ -164,7 +164,12 @@ return [
         ],
         [
             'familia' => 'GOMA_EVA',
-            'terminos' => ['FOAMI', 'GOMA', 'EVA', 'PLIEGO', 'FLUOR', 'FLUORESCENTE', 'FLUORESCENTES'],
+            'terminos' => ['FOAMI', 'GOMA', 'EVA'],
+        ],
+        // Sinónimos de búsqueda: no arman familia ni anulan el conflicto (flúor ≠ cinta fluorescente).
+        [
+            'solo_busqueda' => true,
+            'terminos' => ['FLUOR', 'FLUORESCENTE', 'FLUORESCENTES'],
         ],
     ],
 

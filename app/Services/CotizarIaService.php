@@ -1190,6 +1190,25 @@ TXT];
             }
         }
 
+        foreach ($paraIa as $i) {
+            $preferido = $this->productoConAcabadoPedido(
+                (string) $items[$i]['descripcion'],
+                ($candidatos[$i] ?? []) + ($candidatos2[$i] ?? []),
+            );
+            if ($preferido === null) {
+                continue;
+            }
+            $actual = $items[$i]['estado'] === self::ESTADO_VINCULADO ? $items[$i]['producto'] : null;
+            if (is_array($actual) && $this->busqueda->comparteAcabado((string) $items[$i]['descripcion'], (string) ($actual['prod_nombre'] ?? ''))) {
+                continue;
+            }
+            $items[$i] = $this->marcarVinculado(
+                $items[$i],
+                $this->prorratearPackMaestro(['unidades' => 1] + $preferido, (string) $items[$i]['descripcion']),
+                self::ORIGEN_IA,
+            );
+        }
+
         // Con equivalente ya elegido, solo vale la pena mirar la foto de los dudosos más baratos.
         foreach ($porFoto as $i => $lista) {
             if ($items[$i]['estado'] === self::ESTADO_VINCULADO) {
@@ -1539,10 +1558,12 @@ TXT];
         uasort(
             $candidatos,
             fn (array $a, array $b) => [
+                $this->busqueda->comparteAcabado($descripcion, $b['prod_nombre']),
                 $conjunto && $packSolicitado > 1 && $this->packEnNombreCoincide($packSolicitado, $b['prod_nombre']),
                 $conjunto && $this->busqueda->esConjunto($b['prod_nombre']),
                 $this->busqueda->scoreSimilitudFila($descripcion, $b['prod_item'], $b['prod_nombre']),
             ] <=> [
+                $this->busqueda->comparteAcabado($descripcion, $a['prod_nombre']),
                 $conjunto && $packSolicitado > 1 && $this->packEnNombreCoincide($packSolicitado, $a['prod_nombre']),
                 $conjunto && $this->busqueda->esConjunto($a['prod_nombre']),
                 $this->busqueda->scoreSimilitudFila($descripcion, $a['prod_item'], $a['prod_nombre']),
@@ -1599,6 +1620,7 @@ TXT];
         $nombreProducto = $this->colorMasculino($nombreProducto);
 
         return ! $this->busqueda->hayConflictoFamilia($descripcion, $nombreProducto)
+            && $this->busqueda->acabadosCompatibles($descripcion, $nombreProducto)
             && $this->diferenciaMedida($descripcion, $nombreProducto) <= $this->toleranciaMedida()
             && $this->busqueda->coloresCompatibles($descripcion, $nombreProducto);
     }
@@ -1628,6 +1650,59 @@ TXT];
      * @param  list<T>  $productos
      * @return ?T
      */
+    /**
+     * Si el pedido nombra un acabado (flúor, lisa, glitter…) y el maestro tiene ese acabado,
+     * ese producto gana sobre uno de otro acabado y sobre una referencia web.
+     *
+     * @param  array<string, array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}>  $candidatos
+     * @return ?array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     */
+    private function productoConAcabadoPedido(string $descripcion, array $candidatos): ?array
+    {
+        if ($this->busqueda->extraerAcabados($descripcion) === []) {
+            return null;
+        }
+
+        $coinciden = [];
+        foreach ($candidatos as $producto) {
+            if ($this->conPrecioOCosto($producto) === null) {
+                continue;
+            }
+            if (! $this->pasaFiltros($descripcion, (string) $producto['prod_nombre'])) {
+                continue;
+            }
+            if (! $this->busqueda->comparteAcabado($descripcion, (string) $producto['prod_nombre'])) {
+                continue;
+            }
+            $coinciden[] = $producto;
+        }
+        if ($coinciden === []) {
+            return null;
+        }
+
+        usort($coinciden, function (array $a, array $b) use ($descripcion): int {
+            $prioridadA = $this->prioridadMedidaDeclarada($descripcion, (string) $a['prod_nombre']);
+            $prioridadB = $this->prioridadMedidaDeclarada($descripcion, (string) $b['prod_nombre']);
+
+            return $prioridadA <=> $prioridadB
+                ?: $this->busqueda->costoPropuesta((int) $a['prod_valor'], (int) $a['prod_valor_costo'])
+                    <=> $this->busqueda->costoPropuesta((int) $b['prod_valor'], (int) $b['prod_valor_costo']);
+        });
+
+        return $coinciden[0];
+    }
+
+    /**
+     * @return array{0: int, 1: float}
+     */
+    private function prioridadMedidaDeclarada(string $descripcion, string $nombreProducto): array
+    {
+        $diff = $this->busqueda->diferenciaMedida($descripcion, $nombreProducto);
+        $grupo = $diff === null ? 1 : ($diff <= 1e-9 ? 0 : 2);
+
+        return [$grupo, $diff ?? 0.0];
+    }
+
     private function elegirEquivalente(string $descripcion, array $productos): ?array
     {
         if ($productos === []) {
@@ -1896,6 +1971,7 @@ TXT];
             .'«MARCADORES N COLORES» o «SET … MARCADORES … N …» aunque no diga «permanente» en el nombre del catálogo. '
             .'En manualidades, «CARPETA» junto a GOMA EVA / pliegos / flúor suele ser el empaque (carpeta de pliegos), '
             .'no carpeta archivador: equivalente a GOMA EVA FLUOR, 6 pliegos o 20×30 cm aunque el maestro tenga nombre corto. '
+            .'El acabado sí distingue: flúor o fluorescente no es goma eva lisa, metálica, glitter ni pastel. '
             .'Si el solicitado y el candidato usan nombres distintos pero es el mismo artículo '
             .'(misma función, medida y formato), márcalo equivalente aunque no repitan las mismas palabras. '
             .'En papelería «N unidades» del catálogo suele contar hojas o pliegos, no la pieza menor: '

@@ -450,15 +450,100 @@ class MaeprodBusquedaSimilitudService
                 $terminos = $this->normalizarTerminosEquivalencia($entrada);
                 $familia = $terminos[0] ?? '';
             }
-            if ($terminos === [] || $familia === '') {
+            $soloBusqueda = (bool) ($entrada['solo_busqueda'] ?? false);
+            if ($terminos === [] || ($familia === '' && ! $soloBusqueda)) {
                 continue;
             }
-            $cache[] = ['familia' => $familia, 'terminos' => $terminos];
+            $cache[] = [
+                'familia' => $familia,
+                'terminos' => $terminos,
+                'solo_busqueda' => $soloBusqueda,
+            ];
         }
 
         $this->gruposEquivalenciaCache = $cache;
 
         return $this->gruposEquivalenciaCache;
+    }
+
+    /**
+     * Grupos que identifican el tipo de producto. Los de solo_busqueda amplían
+     * sinónimos (flúor = fluorescente) sin mezclar familias distintas.
+     *
+     * @return list<array{familia: string, terminos: list<string>, solo_busqueda: bool}>
+     */
+    private function gruposEquivalenciaDeFamilia(): array
+    {
+        return array_values(array_filter(
+            $this->gruposEquivalenciaBusqueda(),
+            static fn (array $grupo): bool => ($grupo['solo_busqueda'] ?? false) !== true,
+        ));
+    }
+
+    /**
+     * Acabados que no se sustituyen entre sí (flúor ≠ lisa, metálica, glitter, pastel).
+     *
+     * @var array<string, list<string>>
+     */
+    private const ACABADOS = [
+        'FLUOR' => ['FLUOR', 'FLUORESCENTE', 'FLUORESCENTES'],
+        'LISA' => ['LISA', 'LISAS', 'LISO', 'LISOS'],
+        'METALICA' => ['METALICA', 'METALICO', 'METALICAS', 'METALICOS'],
+        'GLITTER' => ['GLITTER'],
+        'PASTEL' => ['PASTEL', 'PASTELES'],
+        'PLUSH' => ['PLUSH'],
+        'PERFORADA' => ['PERFORADA', 'PERFORADO', 'PERFORADAS'],
+        'TOALLA' => ['TOALLA'],
+    ];
+
+    /**
+     * @return list<string>
+     */
+    public function extraerAcabados(string $texto): array
+    {
+        $norm = $this->normalizarBusqueda($texto);
+        if ($norm === '') {
+            return [];
+        }
+
+        $out = [];
+        foreach (self::ACABADOS as $id => $palabras) {
+            foreach ($palabras as $palabra) {
+                if ($this->textoContienePalabra($norm, $palabra)) {
+                    $out[] = $id;
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Si ambos textos nombran un acabado, tienen que compartir uno. Si alguno no lo dice, no descarta.
+     */
+    public function acabadosCompatibles(string $textoConsulta, string $textoCandidato): bool
+    {
+        $pedidos = $this->extraerAcabados($textoConsulta);
+        if ($pedidos === []) {
+            return true;
+        }
+        $delCandidato = $this->extraerAcabados($textoCandidato);
+        if ($delCandidato === []) {
+            return true;
+        }
+
+        return array_intersect($pedidos, $delCandidato) !== [];
+    }
+
+    public function comparteAcabado(string $textoConsulta, string $textoCandidato): bool
+    {
+        $pedidos = $this->extraerAcabados($textoConsulta);
+        if ($pedidos === []) {
+            return false;
+        }
+
+        return array_intersect($pedidos, $this->extraerAcabados($textoCandidato)) !== [];
     }
 
     /**
@@ -751,7 +836,7 @@ class MaeprodBusquedaSimilitudService
             }
         }
 
-        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+        foreach ($this->gruposEquivalenciaDeFamilia() as $grupo) {
             foreach ($grupo['terminos'] as $kw) {
                 if ($this->textoContienePalabra($norm, $kw)) {
                     $familias[] = $grupo['familia'];
@@ -816,7 +901,7 @@ class MaeprodBusquedaSimilitudService
             return false;
         }
 
-        foreach ($this->gruposEquivalenciaBusqueda() as $grupo) {
+        foreach ($this->gruposEquivalenciaDeFamilia() as $grupo) {
             $enA = false;
             $enB = false;
             foreach ($grupo['terminos'] as $term) {
