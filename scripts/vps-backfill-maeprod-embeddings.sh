@@ -92,6 +92,15 @@ print_status() {
   done
 }
 
+move_backfill_jobs_to_embeddings_queue() {
+  local site="$1"
+  local dir="${SITE_DIR[$site]}"
+  local db="${SITE_DB[$site]}"
+  compose_cmd "$dir" exec -T postgres psql -U "$db" -d "$db" -c \
+    "UPDATE jobs SET queue = 'embeddings' WHERE queue = 'default' AND payload LIKE '%MaeprodEmbeddingsBackfillJob%';" \
+    2>/dev/null || true
+}
+
 run_site_queue() {
   local site="$1"
   local dir="${SITE_DIR[$site]}"
@@ -100,10 +109,12 @@ run_site_queue() {
     echo "Falta $dir/.env.prod" >&2
     return 1
   fi
+  compose_cmd "$dir" up -d --build queue-embeddings
   compose_cmd "$dir" exec -T app php artisan migrate --force
   compose_cmd "$dir" exec -T app php artisan config:clear
+  move_backfill_jobs_to_embeddings_queue "$site"
   compose_cmd "$dir" exec -T app php artisan cotiz:maeprod-embeddings --queue
-  echo "Encolado. Asegúrate RUN_QUEUE_WORKER=true en .env.prod y contenedor app activo."
+  echo "Encolado. Worker dedicado: docker compose ... up -d queue-embeddings (cola embeddings)."
   embedding_count "$site" | awk -v s="$site" '{print "[" s "] embeddings ahora:", $0}'
 }
 

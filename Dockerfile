@@ -43,7 +43,9 @@ COPY --from=composer-build /app /var/www/html
 COPY docker/nginx/koyeb.conf /etc/nginx/http.d/default.conf.template
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 COPY docker/entrypoint.prod.sh /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh \
+COPY docker/queue-embeddings-loop.sh /queue-embeddings-loop.sh
+RUN sed -i 's/\r$//' /entrypoint.sh /queue-embeddings-loop.sh \
+    && chmod +x /entrypoint.sh /queue-embeddings-loop.sh \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 WORKDIR /var/www/html

@@ -41,6 +41,25 @@ services:
       libreoffice:
         condition: service_started
 
+  # Worker solo cola embeddings (backfill pgvector); no compite con MP/import en default.
+  queue-embeddings:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.prod
+    entrypoint: ["/queue-embeddings-loop.sh"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      COTIZ_EMBEDDING_URL: ${COTIZ_EMBEDDING_URL:-http://host.docker.internal:8091}
+      COTIZ_EMBEDDING_BACKFILL_QUEUE: ${COTIZ_EMBEDDING_BACKFILL_QUEUE:-embeddings}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   libreoffice:
     image: cotiz-libreoffice:local
     build:

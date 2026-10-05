@@ -235,6 +235,8 @@ docker stats
 
 # Embeddings pgvector (contenedor local, puerto 8091; compartido Reicol + Rómulo)
 bash /opt/cotiz-reicol/scripts/vps-start-embeddings.sh
+# Worker dedicado backfill (cola `embeddings`, no bloqueado por MP):
+# cd /opt/cotiz-reicol && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d queue-embeddings
 bash /opt/cotiz-romulo/scripts/vps-backfill-maeprod-embeddings.sh status
 bash /opt/cotiz-romulo/scripts/vps-backfill-maeprod-embeddings.sh
 # Orden por defecto: Reicol, luego Rómulo

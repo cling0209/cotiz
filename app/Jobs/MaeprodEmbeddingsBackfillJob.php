@@ -19,6 +19,14 @@ class MaeprodEmbeddingsBackfillJob implements ShouldQueue
 
     public int $tries = 1;
 
+    public function __construct()
+    {
+        $queue = trim((string) config('cotiz.busqueda_vectores.backfill_queue', 'embeddings'));
+        if ($queue !== '') {
+            $this->onQueue($queue);
+        }
+    }
+
     public function handle(MaeprodEmbeddingService $embeddings): void
     {
         if (! $embeddings->vectoresHabilitados()) {

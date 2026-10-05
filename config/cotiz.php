@@ -143,6 +143,7 @@ return [
         'backfill_sleep_ms' => max(0, min(5000, (int) env('COTIZ_EMBEDDING_BACKFILL_SLEEP_MS', 150))),
         'backfill_pausa_entre_jobs_seg' => max(1, min(120, (int) env('COTIZ_EMBEDDING_BACKFILL_PAUSA_SEG', 3))),
         'backfill_pausa_sin_ok_seg' => max(30, min(600, (int) env('COTIZ_EMBEDDING_BACKFILL_PAUSA_SIN_OK_SEG', 120))),
+        'backfill_queue' => trim((string) env('COTIZ_EMBEDDING_BACKFILL_QUEUE', 'embeddings')),
     ],
 
     /*
