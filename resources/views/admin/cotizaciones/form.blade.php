@@ -6203,6 +6203,12 @@
             if (!cod || !nom) {
                 return;
             }
+            window.PageLoader?.hide?.();
+            try {
+                sessionStorage.removeItem('page-loader-pending');
+            } catch (_err) {
+                // sin sessionStorage
+            }
             asegurarPanelVisible();
             if (titulo) {
                 titulo.textContent = nom;

@@ -115,12 +115,33 @@
         return /\/(exportar|export|plantilla)(\/|\?|$)/i.test(href || '');
     }
 
+    function isAdjuntoMpHref(href) {
+        const raw = String(href || '').trim();
+        if (!raw || raw.startsWith('#') || raw.startsWith('javascript:')) {
+            return false;
+        }
+        try {
+            const u = new URL(raw, window.location.origin);
+            if (u.origin !== window.location.origin) {
+                return false;
+            }
+            return /\/oportunidades\/para-cotizar\/adjuntos\/[^/]+\/archivo$/i.test(u.pathname);
+        } catch (error) {
+            return /\/oportunidades\/para-cotizar\/adjuntos\/[^/]+\/archivo/i.test(raw);
+        }
+    }
+
     function isDownloadLink(link) {
         if (link.dataset.noLoader !== undefined || link.hasAttribute('download')) {
             return true;
         }
 
-        return isExportHref(link.getAttribute('href') || '');
+        const href = link.getAttribute('href') || '';
+        if (isAdjuntoMpHref(href)) {
+            return true;
+        }
+
+        return isExportHref(href);
     }
 
     function parseFilename(disposition, fallback) {

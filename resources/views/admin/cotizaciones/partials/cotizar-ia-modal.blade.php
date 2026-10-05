@@ -331,6 +331,12 @@
         if (!nom || !cod) {
             return;
         }
+        window.PageLoader?.hide?.();
+        try {
+            sessionStorage.removeItem('page-loader-pending');
+        } catch (_e) {
+            // sin sessionStorage
+        }
         if (window.CotizAdjuntoFlotante?.puedeVer?.()) {
             window.CotizAdjuntoFlotante.abrir(cod, nom);
             return;
