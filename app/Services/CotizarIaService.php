@@ -283,6 +283,8 @@ class CotizarIaService
             ->where('prod_item_agile', '!=', '')
             ->count();
 
+        $imageUrlsPorSku = $this->imageUrlsParaItems($items);
+
         $metricasIa = ['cotizar_ia_veces' => 0, 'cotizar_ia_aplicadas_veces' => 0];
         try {
             $metricasIa = app(OportunidadParaCotizarService::class)->registrarCotizarIaEjecucion($codigo);
@@ -301,7 +303,11 @@ class CotizarIaService
             'adjuntos_disponibles' => array_map(static fn (array $a) => $a['nombre'], $adjuntos),
             'avisos' => array_values(array_unique($this->avisos)),
             'venta' => $venta,
-            'lineas' => array_map(fn (array $item, int $i) => $this->itemParaRespuesta($item, $i, $venta['factor']), $items, array_keys($items)),
+            'lineas' => array_map(
+                fn (array $item, int $i) => $this->itemParaRespuesta($item, $i, $venta['factor'], $imageUrlsPorSku),
+                $items,
+                array_keys($items),
+            ),
             'resumen' => $this->resumen($items),
             'separar' => $separar,
             'grupos' => $separar
@@ -3066,12 +3072,41 @@ TXT];
     }
 
     /**
+     * @param  list<array<string, mixed>>  $items
+     * @return array<string, string>
+     */
+    private function imageUrlsParaItems(array $items): array
+    {
+        $codigos = [];
+        foreach ($items as $item) {
+            if (! is_array($item['producto'] ?? null)) {
+                continue;
+            }
+            $sku = trim((string) ($item['producto']['prod_item'] ?? ''));
+            if ($sku !== '') {
+                $codigos[$sku] = true;
+            }
+        }
+        if ($codigos === []) {
+            return [];
+        }
+
+        $urls = [];
+        foreach (Maeprod::query()->whereIn('prod_item', array_keys($codigos))->get() as $mae) {
+            $urls[trim((string) $mae->prod_item)] = $mae->resolveImageUrl();
+        }
+
+        return $urls;
+    }
+
+    /**
      * costo y precio_venta por unidad solicitada, calculados igual que al aplicar (ver preciosMaestro).
      *
      * @param  array<string, mixed>  $item
+     * @param  array<string, string>  $imageUrlsPorSku
      * @return array<string, mixed>
      */
-    private function itemParaRespuesta(array $item, int $indice, float $factor): array
+    private function itemParaRespuesta(array $item, int $indice, float $factor, array $imageUrlsPorSku = []): array
     {
         $producto = $item['producto'];
         $referencia = $item['referencia'];
@@ -3149,6 +3184,7 @@ TXT];
                 'pack_maestro' => (int) ($producto['pack_maestro'] ?? 0),
                 'unidades_solicitud' => max(1, (int) ($producto['unidades_solicitud'] ?? 1)),
                 'foto' => (string) ($producto['foto'] ?? ''),
+                'image_url' => $imageUrlsPorSku[trim((string) ($producto['prod_item'] ?? ''))] ?? '',
             ],
             'puede_prorratear' => $puedeProrratear,
             'pack_tamano' => $packTamano,

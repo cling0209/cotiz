@@ -3,6 +3,19 @@
     #cotizar-ia-lineas tr.cotizar-ia-fila-prorrateo > td {
         background-color: #fff4e6;
     }
+    #modal-cotizar-ia .cotiz-buscar-thumb {
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+        display: block;
+    }
+    #modal-cotizar-ia .cotiz-buscar-thumb-btn {
+        cursor: zoom-in;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        line-height: 0;
+    }
 </style>
 <div class="modal fade" id="modal-cotizar-ia" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="modal-cotizar-ia-label" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -378,10 +391,28 @@
             + (linea.stock_nota ? '<div class="text-danger">' + esc(linea.stock_nota) + '</div>' : '');
     }
 
+    function thumbVinculoHtml(prodItem, prodNombre, imageUrl) {
+        const zoom = window.CotizProductoZoom;
+        if (!zoom?.thumbHtml) {
+            return '';
+        }
+        const html = zoom.thumbHtml({
+            prod_item: prodItem || '',
+            prod_nombre: prodNombre || '',
+            image_url: imageUrl || '',
+        });
+        return html ? '<div class="mt-1">' + html + '</div>' : '';
+    }
+
+    function enlazarZoomVinculoIa(contenedor) {
+        window.CotizProductoZoom?.enlazar?.(contenedor || tbody);
+    }
+
     function celdaVinculo(linea) {
         if (linea.estado === 'vinculado' && linea.producto) {
             const [txt, cls] = ORIGENES[linea.origen] || ['Maestro', 'text-bg-secondary'];
-            return '<span class="badge ' + cls + ' me-1">' + esc(txt) + '</span>'
+            return thumbVinculoHtml(linea.producto.prod_item, linea.producto.prod_nombre, linea.producto.image_url)
+                + '<span class="badge ' + cls + ' me-1">' + esc(txt) + '</span>'
                 + '<span class="font-monospace">' + esc(linea.producto.prod_item) + '</span> '
                 + esc(linea.producto.prod_nombre)
                 + (linea.producto.unidades > 1
@@ -416,7 +447,7 @@
                 ? ' <span class="badge text-bg-info cotizar-ia-badge-prorrateo d-none" title="Costo unitario = precio del pack prorrateado">prorrateado pack ' + esc(linea.pack_tamano) + '</span>'
                 : '';
             const imgRef = ref.imagen_mostrar
-                ? '<div class="mt-1"><img src="' + esc(ref.imagen_mostrar) + '" alt="" class="rounded border" style="max-height:48px;max-width:64px;object-fit:contain" loading="lazy" /></div>'
+                ? thumbVinculoHtml('', ref.titulo || '', ref.imagen_mostrar)
                 : '';
             return '<span class="badge text-bg-warning me-1">' + esc(ref.sitio) + '</span>'
                 + esc(ref.titulo) + pack + prorrateo + solicitud
@@ -710,6 +741,7 @@
         } else {
             tbody.innerHTML = lineas.map(filaLinea).join('');
         }
+        enlazarZoomVinculoIa(tbody);
         el('cotizar-ia-separar').classList.toggle('d-none', grupos.length < 2);
         actualizarBotonAplicar();
 

@@ -2414,7 +2414,9 @@
             modalImagenTitle.textContent = trigger.dataset.imageTitle || 'Imagen producto';
         }
         if (modalImagenEl) {
-            modalImagenEl.dataset.zoomAbovePopup = trigger?.closest('.cotiz-popup-overlay') ? '1' : '0';
+            modalImagenEl.dataset.zoomAbovePopup = (trigger?.closest('.cotiz-popup-overlay') || trigger?.closest('#modal-cotizar-ia'))
+                ? '1'
+                : '0';
         }
         bsModalImagen.show();
     }
@@ -2439,6 +2441,11 @@
     }
 
     enlazarZoomImagenes(document.querySelector('.cotizacion-ingreso'));
+
+    window.CotizProductoZoom = {
+        thumbHtml: buscarProductoThumbHtml,
+        enlazar: enlazarZoomImagenes,
+    };
 
     modalImagenEl?.addEventListener('shown.bs.modal', ajustarBackdropImagenAmpliada);
 
