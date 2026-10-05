@@ -1642,15 +1642,6 @@ TXT];
     }
 
     /**
-     * Entre los equivalentes, los de medida exacta (o sin medida declarada); si ninguno, los de medida más cercana.
-     * De ellos, el más barato.
-     *
-     * @template T of array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
-     *
-     * @param  list<T>  $productos
-     * @return ?T
-     */
-    /**
      * Si el pedido nombra un acabado (flúor, lisa, glitter…) y el maestro tiene ese acabado,
      * ese producto gana sobre uno de otro acabado y sobre una referencia web.
      *
@@ -1703,6 +1694,15 @@ TXT];
         return [$grupo, $diff ?? 0.0];
     }
 
+    /**
+     * Entre los equivalentes, los de medida exacta (o sin medida declarada); si ninguno, los de medida más cercana.
+     * De ellos, el más barato.
+     *
+     * @template T of array{prod_item: string, prod_nombre: string, prod_valor: int, prod_valor_costo: int}
+     *
+     * @param  list<T>  $productos
+     * @return ?T
+     */
     private function elegirEquivalente(string $descripcion, array $productos): ?array
     {
         if ($productos === []) {

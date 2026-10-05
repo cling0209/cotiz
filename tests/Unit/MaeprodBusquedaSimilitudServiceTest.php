@@ -291,6 +291,15 @@ class MaeprodBusquedaSimilitudServiceTest extends TestCase
         $this->assertFalse($this->service->hayConflictoFamilia($mp, 'GOMA EVA FLUOR'));
         $this->assertTrue($this->service->tieneSolapeDistintivo($mp, 'GOMA EVA FLUOR'));
         $this->assertTrue(collect($this->service->terminosSinonimos('GOMA EVA FLUOR CARPETA'))->isNotEmpty());
+        $this->assertTrue($this->service->acabadosCompatibles($mp, 'CARPETA GOMA EVA FLUOR AUTOADHESIVA 6 PLIEGOS 20X30 CM'));
+        $this->assertTrue($this->service->acabadosCompatibles($mp, 'CARPETA GOMA EVA FLUORESCENTE TORRE'));
+        $this->assertFalse($this->service->acabadosCompatibles($mp, 'Goma Eva Lisa Adhesiva 20x30cm 6 Colores Surtidos'));
+        $this->assertFalse($this->service->acabadosCompatibles($mp, 'GOMA EVA ADHESIVA METALICA CARPETA 020X030 CM'));
+        $this->assertFalse($this->service->acabadosCompatibles($mp, 'CARPETA C/PAPEL GOMA EVA METAL ADHESIVA'));
+        $this->assertFalse($this->service->acabadosCompatibles($mp, 'CARPETA CON GOMA EVA GLITTER ADHESIVA'));
+        $this->assertTrue($this->service->hayConflictoFamilia($mp, 'CINTA ADHESIVA TELA FLUORESCENTE COLOR NEON'));
+        $this->assertTrue($this->service->comparteAcabado($mp, '6 PLIEGOS GOMA EVA FLUOR'));
+        $this->assertFalse($this->service->comparteAcabado($mp, 'GOMA EVA ADHESIVA 20X30 CMS 6 COL'));
     }
 
     public function test_carpeta_archivador_sigue_detectando_familia_carpeta(): void

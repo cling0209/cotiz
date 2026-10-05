@@ -488,7 +488,7 @@ class MaeprodBusquedaSimilitudService
     private const ACABADOS = [
         'FLUOR' => ['FLUOR', 'FLUORESCENTE', 'FLUORESCENTES'],
         'LISA' => ['LISA', 'LISAS', 'LISO', 'LISOS'],
-        'METALICA' => ['METALICA', 'METALICO', 'METALICAS', 'METALICOS'],
+        'METALICA' => ['METALICA', 'METALICO', 'METALICAS', 'METALICOS', 'METAL'],
         'GLITTER' => ['GLITTER'],
         'PASTEL' => ['PASTEL', 'PASTELES'],
         'PLUSH' => ['PLUSH'],
