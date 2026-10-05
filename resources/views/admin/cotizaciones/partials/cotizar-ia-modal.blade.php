@@ -322,7 +322,7 @@
         const lista = usados.length ? usados : disp;
         codigoMpAdjuntos = String(data.codigo || '').trim().toUpperCase();
         adjuntoMpPorDefecto = lista.length ? String(lista[0]) : '';
-        if (!lista.length || !window.CotizAdjuntoFlotante?.puedeVer?.()) {
+        if (!lista.length || !puedeVerAdjuntoMp()) {
             cont.textContent = lista.length
                 ? (usados.length ? 'Adjuntos usados: ' : 'Adjuntos revisados: ') + lista.join(', ')
                 : '';
@@ -581,14 +581,21 @@
         el('cotizar-ia-total').textContent = factor === null ? 'Factor inv\u00e1lido' : '$' + numero.format(total);
     }
 
+    function puedeVerAdjuntoMp() {
+        return !!window.CotizAdjuntoFlotante?.puedeVer?.();
+    }
+
+    function badgeAdjuntoFilaHtml() {
+        if (!puedeVerAdjuntoMp()) {
+            return ' <span class="badge text-bg-light border">adjunto</span>';
+        }
+        return ' <button type="button" class="badge text-bg-light border cotizar-ia-adjunto-ver cotizar-ia-adjunto-badge"'
+            + ' data-nombre="' + escAttr(adjuntoMpPorDefecto) + '" title="Ver documento adjunto">adjunto</button>';
+    }
+
     function filaLinea(linea) {
         const conVinculo = linea.estado !== 'pendiente';
-        const fuente = linea.fuente === 'adjunto'
-            ? (window.CotizAdjuntoFlotante?.puedeVer?.()
-                ? ' <button type="button" class="badge text-bg-light border cotizar-ia-adjunto-ver cotizar-ia-adjunto-badge"'
-                    + ' data-nombre="' + escAttr(adjuntoMpPorDefecto) + '" title="Ver documento adjunto">adjunto</button>'
-                : ' <span class="badge text-bg-light border">adjunto</span>')
-            : '';
+        const fuente = linea.fuente === 'adjunto' ? badgeAdjuntoFilaHtml() : '';
         const puedeProrr = !!linea.puede_prorratear;
         return '<tr' + (puedeProrr ? ' class="cotizar-ia-fila-prorrateo"' : '') + ' data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
             + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0)
@@ -863,12 +870,13 @@
         }
     });
 
-    resultado?.addEventListener('click', (e) => {
+    modalEl.addEventListener('click', (e) => {
         const btn = e.target.closest('.cotizar-ia-adjunto-ver');
         if (!btn) {
             return;
         }
         e.preventDefault();
+        e.stopPropagation();
         abrirAdjuntoFlotante(btn.dataset.nombre || '');
     });
 

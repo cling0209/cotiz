@@ -2421,11 +2421,32 @@
         bsModalImagen.show();
     }
 
-    function ajustarBackdropImagenAmpliada() {
-        if (!modalImagenEl || modalImagenEl.dataset.zoomAbovePopup !== '1') return;
-        document.querySelectorAll('.modal-backdrop.show').forEach(backdrop => {
-            backdrop.style.zIndex = '1085';
+    function limpiarBackdropImagenAmpliada() {
+        document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
+            backdrop.style.removeProperty('z-index');
         });
+        const iaModal = document.getElementById('modal-cotizar-ia');
+        if (iaModal) {
+            iaModal.style.removeProperty('z-index');
+        }
+    }
+
+    function ajustarBackdropImagenAmpliada() {
+        if (!modalImagenEl || modalImagenEl.dataset.zoomAbovePopup !== '1') {
+            return;
+        }
+        const backs = document.querySelectorAll('.modal-backdrop.show');
+        if (backs.length === 0) {
+            return;
+        }
+        if (backs.length > 1) {
+            backs[0].style.zIndex = '1050';
+            const iaModal = document.getElementById('modal-cotizar-ia');
+            if (iaModal?.classList.contains('show')) {
+                iaModal.style.zIndex = '1060';
+            }
+        }
+        backs[backs.length - 1].style.zIndex = '1085';
     }
 
     function enlazarZoomImagenes(contenedor) {
@@ -2457,6 +2478,7 @@
         if (modalImagenEl) {
             delete modalImagenEl.dataset.zoomAbovePopup;
         }
+        limpiarBackdropImagenAmpliada();
     });
 
     function actualizarBotonAgregarSeleccionados() {
