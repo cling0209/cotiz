@@ -2978,7 +2978,7 @@
         adjuntosEstado: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.estado') : ''),
         adjuntosBuscar: @json(($puedeAdjuntosOportunidad ?? false) ? route('admin.oportunidades.para-cotizar.adjuntos.buscar') : ''),
         adjuntosListarBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.listar', ['codigo' => '__CODIGO__']) : ''),
-        adjuntosVerBase: @json(($puedeAdjuntosOportunidad ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
+        adjuntosVerBase: @json(($puedeVerAdjuntosMp ?? false) ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__']) : ''),
     };
     const modalImportarEl = document.getElementById('modal-importar-compra-agil');
     const btnAbrirImportar = document.getElementById('btn-abrir-importar-compra-agil');
@@ -6177,12 +6177,20 @@
             }
         }
 
+        function asegurarPanelEnBody() {
+            if (panel.parentElement !== document.body) {
+                document.body.appendChild(panel);
+            }
+            panel.style.zIndex = '2200';
+        }
+
         function abrir(codigo, nombre) {
             const cod = String(codigo || '').toUpperCase().trim();
             const nom = String(nombre || '').trim();
             if (!cod || !nom) {
                 return;
             }
+            asegurarPanelEnBody();
             if (titulo) {
                 titulo.textContent = nom;
                 titulo.title = `${cod} — ${nom}`;

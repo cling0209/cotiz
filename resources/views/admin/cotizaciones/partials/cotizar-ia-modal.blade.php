@@ -303,9 +303,17 @@
         return esc(valor).replace(/"/g, '&quot;');
     }
 
+    function codigoMpParaAdjuntos() {
+        const desdePreview = String(codigoMpAdjuntos || '').trim().toUpperCase();
+        if (desdePreview) {
+            return desdePreview;
+        }
+        return String(document.getElementById('encargado')?.value || '').trim().toUpperCase();
+    }
+
     function abrirAdjuntoFlotante(nombre) {
         const nom = String(nombre || adjuntoMpPorDefecto || '').trim();
-        const cod = codigoMpAdjuntos;
+        const cod = codigoMpParaAdjuntos();
         if (!nom || !cod || !window.CotizAdjuntoFlotante?.puedeVer?.()) {
             return;
         }
@@ -786,6 +794,7 @@
             return;
         }
         mostrarCodigoCotizacion(codigo);
+        codigoMpAdjuntos = codigo;
         enCurso = true;
         token = null;
         grupos = [];
