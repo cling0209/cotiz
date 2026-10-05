@@ -2085,6 +2085,9 @@ class CotizarIaTest extends TestCase
             if (str_contains($url, 'api.mercadolibre.com/products/MLC88/items')) {
                 return Http::response(['results' => [['price' => 313]]]);
             }
+            if ($this->esFichaMercadoLibre($url)) {
+                return Http::response(['buy_box_winner' => null]);
+            }
 
             return Http::response($this->respuestaGemini([
                 'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => [], 'generico' => 'shampoo concentrado']],
@@ -2142,6 +2145,9 @@ class CotizarIaTest extends TestCase
             }
             if (str_contains($url, 'api.mercadolibre.com/products/search')) {
                 return Http::response(['results' => []]);
+            }
+            if ($this->esFichaMercadoLibre($url)) {
+                return Http::response(['buy_box_winner' => null]);
             }
             if (str_contains($request->body(), 'google_search')) {
                 return Http::response($this->respuestaGemini([
@@ -2221,7 +2227,67 @@ class CotizarIaTest extends TestCase
         $this->assertSame(7560, $web['referencia']['neto_unitario']);
     }
 
-    public function test_mercado_libre_usa_precio_premium_que_muestra_la_pagina_y_no_la_clasica_mas_barata(): void
+    public function test_mercado_libre_usa_precio_del_buy_box_y_no_el_premium_mas_barato(): void
+    {
+        config([
+            'cotiz.mercadolibre.habilitado' => true,
+            'cotiz.mercadolibre.client_id' => '7269705659698000',
+            'cotiz.mercadolibre.client_secret' => 'secreto',
+            'cotiz.mercadolibre.refresh_token' => '',
+        ]);
+        $desc = 'SILLA VISITA ISO PP AZUL FORM';
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'NOK-1',
+            'prod_valor' => 0,
+            'cantidad' => 12,
+            'fechahora' => now(),
+            'orden' => 1,
+            'prod_valor_costo' => 0,
+            'prod_item_agile' => 'MP1',
+            'prod_descripcion_agile' => $desc,
+            'prod_descripcion_maestro' => $desc,
+        ]);
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response(['access_token' => 'token-ml', 'expires_in' => 21600]),
+            'api.mercadolibre.com/products/search*' => Http::response([
+                'results' => [
+                    ['id' => 'MLC44627536', 'name' => 'Silla Visita Iso Pp Azul Form'],
+                ],
+            ]),
+            'api.mercadolibre.com/products/MLC44627536' => Http::response([
+                'buy_box_winner' => [
+                    'item_id' => 'MLC-oficial',
+                    'price' => 38900,
+                    'listing_type_id' => 'gold_pro',
+                    'official_store_id' => 123,
+                ],
+            ]),
+            'api.mercadolibre.com/products/MLC44627536/items' => Http::response(['results' => [
+                ['item_id' => 'MLC-barato', 'price' => 32900, 'listing_type_id' => 'gold_pro'],
+                ['item_id' => 'MLC-oficial', 'price' => 38900, 'listing_type_id' => 'gold_pro'],
+                ['item_id' => 'MLC-clasica', 'price' => 25000, 'listing_type_id' => 'gold_special'],
+            ]]),
+            'generativelanguage.googleapis.com/*' => Http::response($this->respuestaGemini([
+                'resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => []]],
+            ])),
+        ]);
+
+        $preview = $this->actingAs($this->admin)
+            ->postJson(route('admin.cotizaciones.cotizar-ia.preview', $nota->nronota))
+            ->assertOk()
+            ->json();
+
+        $web = collect($preview['lineas'])->firstWhere('descripcion', $desc);
+        $this->assertSame(CotizarIaService::ESTADO_REFERENCIA_WEB, $web['estado']);
+        $this->assertSame(38900, $web['referencia']['precio_clp']);
+        $this->assertSame('https://www.mercadolibre.cl/p/MLC44627536', $web['referencia']['url']);
+        Http::assertNotSent(fn (HttpRequest $request) => str_contains($request->url(), '/items'));
+    }
+
+    public function test_mercado_libre_sin_buy_box_usa_precio_premium_y_no_la_clasica_mas_barata(): void
     {
         config([
             'cotiz.mercadolibre.habilitado' => true,
@@ -2252,6 +2318,8 @@ class CotizarIaTest extends TestCase
                     ['id' => 'MLC81', 'name' => 'Pastilla Para Estanque Inodoro Azul Ambientador'],
                 ],
             ]),
+            'api.mercadolibre.com/products/MLC80' => Http::response(['buy_box_winner' => null]),
+            'api.mercadolibre.com/products/MLC81' => Http::response(['buy_box_winner' => null]),
             'api.mercadolibre.com/products/MLC80/items' => Http::response(['results' => [
                 ['item_id' => 'MLC1', 'price' => 2800, 'listing_type_id' => 'gold_pro'],
                 ['item_id' => 'MLC2', 'price' => 2990, 'listing_type_id' => 'gold_pro'],
@@ -2369,8 +2437,11 @@ class CotizarIaTest extends TestCase
             if (str_contains($url, 'api.mercadolibre.com/products/MLC21/items')) {
                 return Http::response(['results' => [['price' => 6000]]]);
             }
+            if ($this->esFichaMercadoLibre($url)) {
+                return Http::response(['buy_box_winner' => null]);
+            }
 
-            return Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+            return Http::response($this->respuestaGemini($this->esRevisionPublicacionesMl($request)
                 ? ['resultados' => [['i' => 0, 'descartar' => [0]]]]
                 : ['resultados' => [['i' => 0, 'equivalentes' => [], 'busqueda' => [], 'generico' => 'corrector cinta 5 mm caja 12 unidades']]]));
         });
@@ -2388,7 +2459,7 @@ class CotizarIaTest extends TestCase
     public function test_medida_cercana_del_maestro_se_cotiza_con_aviso(): void
     {
         $nota = $this->notaConMedidaDistinta();
-        Http::fake(fn (HttpRequest $request) => Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+        Http::fake(fn (HttpRequest $request) => Http::response($this->respuestaGemini($this->esRevisionPublicacionesMl($request)
             ? ['resultados' => []]
             : ['resultados' => [['i' => 0, 'equivalentes' => ['TAMP65'], 'busqueda' => []]]])));
 
@@ -2430,8 +2501,11 @@ class CotizarIaTest extends TestCase
             if (str_contains($url, 'api.mercadolibre.com/products/MLC70/items')) {
                 return Http::response(['results' => [['price' => 1100]]]);
             }
+            if ($this->esFichaMercadoLibre($url)) {
+                return Http::response(['buy_box_winner' => null]);
+            }
 
-            return Http::response($this->respuestaGemini(str_contains($request->body(), 'descartar')
+            return Http::response($this->respuestaGemini($this->esRevisionPublicacionesMl($request)
                 ? ['resultados' => []]
                 : ['resultados' => [['i' => 0, 'equivalentes' => ['TAMP65'], 'busqueda' => []]]]));
         });
@@ -2667,6 +2741,20 @@ class CotizarIaTest extends TestCase
     private function urlBusqueda(string $destino): string
     {
         return 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/'.rtrim(strtr(base64_encode($destino), '+/', '-_'), '=');
+    }
+
+    /** Prompt de revisión de publicaciones ML, no el de equivalentes (que dice «descartarlo»). */
+    private function esRevisionPublicacionesMl(HttpRequest $request): bool
+    {
+        return str_contains($request->body(), 'publicaciones NO son el mismo producto');
+    }
+
+    /** Ficha /products/{id} (no búsqueda ni listado de publicaciones). */
+    private function esFichaMercadoLibre(string $url): bool
+    {
+        $ruta = (string) parse_url($url, PHP_URL_PATH);
+
+        return (bool) preg_match('#/products/[A-Z]{3}\d+$#', $ruta);
     }
 
     private function respuestaGemini(array $json): array

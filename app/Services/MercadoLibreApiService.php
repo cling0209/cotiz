@@ -63,9 +63,9 @@ class MercadoLibreApiService
     }
 
     /**
-     * Hasta 5 productos del catálogo con el precio vigente más bajo de sus publicaciones.
+     * Hasta 5 productos del catálogo con el precio de la ficha (/p/{id}): buy_box_winner.
      * La API no permite a esta app buscar publicaciones (/sites/{site}/search) ni leer /items/{id};
-     * el catálogo (/products/search + /products/{id}/items) sí. El catálogo no informa stock.
+     * el catálogo (/products/search, /products/{id} y /products/{id}/items) sí. El catálogo no informa stock.
      *
      * @return list<array{titulo: string, precio_clp: int, unidades_por_pack: int, stock_disponible: null, url: string, imagen_url: string}>
      */
@@ -205,7 +205,7 @@ class MercadoLibreApiService
         }
 
         $opciones = [];
-        foreach ($this->preciosMinimos(array_keys($productos), $token) as $id => $precio) {
+        foreach ($this->preciosDeFicha(array_keys($productos), $token) as $id => $precio) {
             if (count($opciones) >= 5) {
                 break;
             }
@@ -223,9 +223,62 @@ class MercadoLibreApiService
     }
 
     /**
+     * Precio de la ficha /p/{id}: el del ganador del recuadro de compra (buy_box_winner).
+     * Ese es el valor que ve el comprador; no el Premium más barato, que puede ser de otro vendedor.
+     * Si no hay ganador, se cae al Premium más bajo; si no hay Premium, al más bajo de todas.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, int>
+     */
+    private function preciosDeFicha(array $ids, string $token): array
+    {
+        $precios = $this->preciosBuyBox($ids, $token);
+        $faltan = array_values(array_filter($ids, fn (string $id) => ! isset($precios[$id])));
+        if ($faltan === []) {
+            return $precios;
+        }
+
+        return $precios + $this->preciosMinimos($faltan, $token);
+    }
+
+    /**
+     * @param  list<string>  $ids
+     * @return array<string, int>
+     */
+    private function preciosBuyBox(array $ids, string $token): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $respuestas = Http::pool(fn (Pool $pool) => array_map(
+            fn (string $id) => $pool->timeout($this->timeout())
+                ->withToken($token)
+                ->acceptJson()
+                ->get('https://api.mercadolibre.com/products/'.rawurlencode($id)),
+            $ids,
+        ));
+
+        $precios = [];
+        foreach ($ids as $n => $id) {
+            $respuesta = $respuestas[$n] ?? null;
+            if (! $respuesta instanceof Response || ! $respuesta->successful()) {
+                continue;
+            }
+            $ganador = $respuesta->json('buy_box_winner');
+            $precio = is_array($ganador) ? (int) round((float) ($ganador['price'] ?? 0)) : 0;
+            if ($precio > 0) {
+                $precios[$id] = $precio;
+            }
+        }
+
+        return $precios;
+    }
+
+    /**
      * Precio más bajo de las publicaciones activas de cada producto, en el orden recibido.
-     * Con publicaciones Premium se toma el más bajo entre ellas: es el precio que muestra la página
-     * del producto (las Clásicas más baratas no aparecen ahí). Sin Premium, el más bajo de todas.
+     * Con publicaciones Premium se toma el más bajo entre ellas (las Clásicas más baratas
+     * no aparecen en la ficha). Sin Premium, el más bajo de todas.
      * Los productos sin publicaciones (404) o con error se omiten.
      *
      * @param  list<string>  $ids
