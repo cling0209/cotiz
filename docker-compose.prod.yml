@@ -28,6 +28,9 @@ services:
       DB_PORT: "5432"
       COTIZ_PADDLEOCR_URL: http://paddleocr:8080
       COTIZ_LIBREOFFICE_URL: http://libreoffice:8080
+      COTIZ_EMBEDDING_URL: ${COTIZ_EMBEDDING_URL:-http://host.docker.internal:8091}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${APP_PORT:-8001}:8000"
     depends_on:

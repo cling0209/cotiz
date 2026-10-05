@@ -112,13 +112,23 @@ return [
     'buscar_productos_score_php_minimo' => (int) env('COTIZ_BUSCAR_PRODUCTOS_SCORE_PHP_MINIMO', 5000),
 
     /*
-     * Búsqueda semántica local (pgvector + Gemini embeddings). Cada instancia (Reicol/Romulo)
-     * tiene su propia BD: migrar y ejecutar cotiz:maeprod-embeddings en ambas.
+     * Búsqueda semántica (pgvector). Proveedor: local (contenedor HTTP en VPS) o gemini.
+     * Cada instancia (Reicol/Romulo) tiene su propia BD: migrar y cotiz:maeprod-embeddings en ambas.
      */
     'busqueda_vectores' => [
         'habilitado' => filter_var(env('COTIZ_BUSQUEDA_VECTORES', true), FILTER_VALIDATE_BOOL),
-        'modelo' => env('COTIZ_EMBEDDING_MODEL', 'gemini-embedding-001'),
-        'dimension' => max(64, min(3072, (int) env('COTIZ_EMBEDDING_DIMENSION', 768))),
+        'provider' => strtolower(trim((string) env('COTIZ_EMBEDDING_PROVIDER', 'local'))),
+        'url' => rtrim(trim((string) env('COTIZ_EMBEDDING_URL', 'http://host.docker.internal:8091')), '/'),
+        'modelo' => env(
+            'COTIZ_EMBEDDING_MODEL',
+            strtolower(trim((string) env('COTIZ_EMBEDDING_PROVIDER', 'local'))) === 'gemini'
+                ? 'gemini-embedding-001'
+                : 'intfloat/multilingual-e5-small'
+        ),
+        'dimension' => max(64, min(3072, (int) env(
+            'COTIZ_EMBEDDING_DIMENSION',
+            strtolower(trim((string) env('COTIZ_EMBEDDING_PROVIDER', 'local'))) === 'gemini' ? 768 : 384
+        ))),
         'task_type' => env('COTIZ_EMBEDDING_TASK_TYPE', ''),
         'task_document' => env('COTIZ_EMBEDDING_TASK_DOCUMENT', 'RETRIEVAL_DOCUMENT'),
         'task_query' => env('COTIZ_EMBEDDING_TASK_QUERY', 'RETRIEVAL_QUERY'),

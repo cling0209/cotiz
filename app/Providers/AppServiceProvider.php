@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\Embeddings\GeminiProductEmbeddingProvider;
+use App\Services\Embeddings\HttpProductEmbeddingProvider;
+use App\Services\Embeddings\ProductEmbeddingProvider;
 use App\Services\NotaService;
 use App\Support\MailDevelopmentLogger;
 use App\Support\RenderKeepAlive;
@@ -18,7 +21,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(ProductEmbeddingProvider::class, function ($app) {
+            $provider = strtolower(trim((string) config('cotiz.busqueda_vectores.provider', 'local')));
+            if ($provider === 'gemini') {
+                return $app->make(GeminiProductEmbeddingProvider::class);
+            }
+
+            return $app->make(HttpProductEmbeddingProvider::class);
+        });
     }
 
     /**

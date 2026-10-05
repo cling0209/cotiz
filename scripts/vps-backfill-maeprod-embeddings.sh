@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # VPS Hetzner: llenar maeprod.prod_embedding (pgvector) en Reicol y/o Rómulo.
-# Los vectores se generan con Gemini (API); PostgreSQL solo los guarda y busca.
+# Por defecto: contenedor local (multilingual-e5-small). Alternativa: COTIZ_EMBEDDING_PROVIDER=gemini.
+# Antes: bash scripts/vps-start-embeddings.sh
 #
 # Ejecutar EN EL VPS (como root o con docker):
 #   bash /opt/cotiz-romulo/scripts/vps-backfill-maeprod-embeddings.sh
@@ -20,7 +21,7 @@ set -euo pipefail
 
 MODE="${MODE:-queue}"
 BATCH="${BATCH:-150}"
-SLEEP_MS="${SLEEP_MS:-200}"
+SLEEP_MS="${SLEEP_MS:-0}"
 LOG="${LOG:-/var/log/cotiz-embeddings.log}"
 
 declare -A SITE_DIR=(
@@ -43,7 +44,7 @@ sites_to_run() {
   local arg="${1:-both}"
   case "$arg" in
     romulo|reicol) echo "$arg" ;;
-    both|"") printf '%s\n' romulo reicol ;;
+    both|"") printf '%s\n' reicol romulo ;;
     status) echo "__status__" ;;
     -h|--help) usage ;;
     *) echo "Sitio desconocido: $arg" >&2; usage ;;
@@ -74,7 +75,7 @@ pending_estimate() {
 }
 
 print_status() {
-  for site in romulo reicol; do
+  for site in reicol romulo; do
     local dir="${SITE_DIR[$site]}"
     if [[ ! -d "$dir" ]]; then
       echo "[$site] no existe $dir"
@@ -128,7 +129,7 @@ run_site_sync() {
       break
     fi
     if [[ "$after" == "$before" ]] && echo "$out" | grep -qE '0 OK'; then
-      echo "[$site] Sin avance (¿cuota Gemini?). Esperando 120s…" | tee -a "$LOG"
+      echo "[$site] Sin avance (¿servicio embeddings caído?). Esperando 120s…" | tee -a "$LOG"
       sleep 120
     else
       sleep 3

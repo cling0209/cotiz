@@ -27,8 +27,13 @@ class MaeprodEmbeddingsCommand extends Command
             return self::FAILURE;
         }
 
-        if (! app(\App\Services\GeminiClientService::class)->isConfigured()) {
-            $this->error('GEMINI_API_KEY no configurada.');
+        if (! $embeddings->proveedorEmbeddingsDisponible()) {
+            $provider = config('cotiz.busqueda_vectores.provider', 'local');
+            if ($provider === 'gemini') {
+                $this->error('GEMINI_API_KEY no configurada.');
+            } else {
+                $this->error('Servicio de embeddings no disponible (COTIZ_EMBEDDING_URL / contenedor local).');
+            }
 
             return self::FAILURE;
         }

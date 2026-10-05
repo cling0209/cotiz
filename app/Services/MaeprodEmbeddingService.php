@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\MaeprodEmbeddingsBackfillJob;
 use App\Models\Maeprod;
+use App\Services\Embeddings\ProductEmbeddingProvider;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +19,13 @@ use Throwable;
 class MaeprodEmbeddingService
 {
     public function __construct(
-        protected GeminiClientService $gemini,
+        protected ProductEmbeddingProvider $embeddingProvider,
     ) {}
 
-    private const TASK_DOCUMENT = 'RETRIEVAL_DOCUMENT';
-
-    private const TASK_QUERY = 'RETRIEVAL_QUERY';
+    public function proveedorEmbeddingsDisponible(): bool
+    {
+        return $this->embeddingProvider->isAvailable();
+    }
 
     public function vectoresHabilitados(): bool
     {
@@ -53,7 +55,7 @@ class MaeprodEmbeddingService
      */
     public function programarBackfillMasivo(): void
     {
-        if (! $this->vectoresHabilitados() || ! app(GeminiClientService::class)->isConfigured()) {
+        if (! $this->vectoresHabilitados() || ! $this->proveedorEmbeddingsDisponible()) {
             return;
         }
 
@@ -65,7 +67,7 @@ class MaeprodEmbeddingService
      */
     public function actualizarAlGuardarProducto(Maeprod $producto): void
     {
-        if (! $this->vectoresHabilitados() || ! app(GeminiClientService::class)->isConfigured()) {
+        if (! $this->vectoresHabilitados() || ! $this->proveedorEmbeddingsDisponible()) {
             return;
         }
 
@@ -90,10 +92,13 @@ class MaeprodEmbeddingService
         $fail = 0;
         $procesados = 0;
 
+        $modeloEsperado = $this->embeddingProvider->modelId();
         $query = $this->queryCatalogoConNombre()
-            ->where(function ($q) {
+            ->where(function ($q) use ($modeloEsperado) {
                 $q->whereNull('prod_embedding')
-                    ->orWhereNull('prod_embedding_fuente');
+                    ->orWhereNull('prod_embedding_fuente')
+                    ->orWhereNull('prod_embedding_model')
+                    ->orWhere('prod_embedding_model', '!=', $modeloEsperado);
             })
             ->orderBy('prod_item');
 
@@ -120,9 +125,11 @@ class MaeprodEmbeddingService
         $pendientes = (int) Maeprod::query()
             ->whereNotNull('prod_nombre')
             ->where('prod_nombre', '!=', '')
-            ->where(function ($q) {
+            ->where(function ($q) use ($modeloEsperado) {
                 $q->whereNull('prod_embedding')
-                    ->orWhereNull('prod_embedding_fuente');
+                    ->orWhereNull('prod_embedding_fuente')
+                    ->orWhereNull('prod_embedding_model')
+                    ->orWhere('prod_embedding_model', '!=', $modeloEsperado);
             })
             ->count();
 
@@ -167,9 +174,7 @@ class MaeprodEmbeddingService
             return [];
         }
 
-        $task = trim((string) config('cotiz.busqueda_vectores.task_document', self::TASK_DOCUMENT));
-
-        return $this->gemini->embedir($texto, $task !== '' ? $task : self::TASK_DOCUMENT);
+        return $this->embeddingProvider->embedDocument($texto);
     }
 
     /**
@@ -182,9 +187,7 @@ class MaeprodEmbeddingService
             return [];
         }
 
-        $task = trim((string) config('cotiz.busqueda_vectores.task_query', self::TASK_QUERY));
-
-        return $this->gemini->embedir($texto, $task !== '' ? $task : self::TASK_QUERY);
+        return $this->embeddingProvider->embedQuery($texto);
     }
 
     public function necesitaActualizar(Maeprod $producto): bool
@@ -196,6 +199,16 @@ class MaeprodEmbeddingService
         $fuente = $this->textoParaProducto($producto);
         if ($fuente === '') {
             return false;
+        }
+
+        if ($producto->prod_embedding === null) {
+            return true;
+        }
+
+        $modeloEsperado = $this->embeddingProvider->modelId();
+        $modeloGuardado = trim((string) ($producto->prod_embedding_model ?? ''));
+        if ($modeloGuardado === '' || $modeloGuardado !== $modeloEsperado) {
+            return true;
         }
 
         $guardada = trim((string) ($producto->prod_embedding_fuente ?? ''));
@@ -234,9 +247,10 @@ class MaeprodEmbeddingService
         }
 
         $literal = $this->vectorLiteral($vector);
+        $modelo = $this->embeddingProvider->modelId();
         DB::update(
-            'UPDATE maeprod SET prod_embedding = ?::vector, prod_embedding_fuente = ?, prod_embedding_at = ? WHERE prod_item = ?',
-            [$literal, $fuente, now(), $producto->prod_item],
+            'UPDATE maeprod SET prod_embedding = ?::vector, prod_embedding_fuente = ?, prod_embedding_model = ?, prod_embedding_at = ? WHERE prod_item = ?',
+            [$literal, $fuente, $modelo, now(), $producto->prod_item],
         );
         Cache::forget('maeprod:embeddings:count');
 
