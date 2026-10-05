@@ -29,6 +29,12 @@ class MercadoLibreApiService
     /** Tipo de publicación «Premium» en /products/{id}/items (las Clásicas son gold_special). */
     private const LISTING_PREMIUM = 'gold_pro';
 
+    /**
+     * Si el Premium más caro supera al más barato en esta proporción, se asume precio de la ficha (buy box),
+     * cuando la API no envía buy_box_winner ni tienda oficial en /items.
+     */
+    private const RATIO_PREMIUM_GANADOR_FICHA = 1.12;
+
     public function configurado(): bool
     {
         return (bool) config('cotiz.mercadolibre.habilitado', true)
@@ -232,20 +238,29 @@ class MercadoLibreApiService
      */
     private function preciosDeFicha(array $ids, string $token): array
     {
-        $precios = $this->preciosBuyBox($ids, $token);
-        $faltan = array_values(array_filter($ids, fn (string $id) => ! isset($precios[$id])));
+        $detalle = $this->detalleProductosCatalogo($ids, $token);
+        $precios = [];
+        $faltan = [];
+        foreach ($ids as $id) {
+            $precio = $this->precioBuyBoxDesdeProducto($detalle[$id] ?? []);
+            if ($precio > 0) {
+                $precios[$id] = $precio;
+            } else {
+                $faltan[] = $id;
+            }
+        }
         if ($faltan === []) {
             return $precios;
         }
 
-        return $precios + $this->preciosMinimos($faltan, $token);
+        return $precios + $this->preciosMinimos($faltan, $token, $detalle);
     }
 
     /**
      * @param  list<string>  $ids
-     * @return array<string, int>
+     * @return array<string, array<string, mixed>>
      */
-    private function preciosBuyBox(array $ids, string $token): array
+    private function detalleProductosCatalogo(array $ids, string $token): array
     {
         if ($ids === []) {
             return [];
@@ -259,19 +274,19 @@ class MercadoLibreApiService
             $ids,
         ));
 
-        $precios = [];
+        $detalle = [];
         foreach ($ids as $n => $id) {
             $respuesta = $respuestas[$n] ?? null;
             if (! $respuesta instanceof Response || ! $respuesta->successful()) {
                 continue;
             }
-            $precio = $this->precioBuyBoxDesdeProducto((array) $respuesta->json());
-            if ($precio > 0) {
-                $precios[$id] = $precio;
+            $json = $respuesta->json();
+            if (is_array($json)) {
+                $detalle[$id] = $json;
             }
         }
 
-        return $precios;
+        return $detalle;
     }
 
     /**
@@ -308,9 +323,10 @@ class MercadoLibreApiService
      * Los productos sin publicaciones (404) o con error se omiten.
      *
      * @param  list<string>  $ids
+     * @param  array<string, array<string, mixed>>  $detalleProducto
      * @return array<string, int>
      */
-    private function preciosMinimos(array $ids, string $token): array
+    private function preciosMinimos(array $ids, string $token, array $detalleProducto = []): array
     {
         if ($ids === []) {
             return [];
@@ -330,10 +346,19 @@ class MercadoLibreApiService
             if (! $respuesta instanceof Response || ! $respuesta->successful()) {
                 continue;
             }
+            $resultados = (array) ($respuesta->json('results') ?? []);
+            $precioGanador = $this->precioItemGanadorDesdeListado($detalleProducto[$id] ?? [], $resultados);
+            if ($precioGanador > 0) {
+                $precios[$id] = $precioGanador;
+
+                continue;
+            }
+
             $minimo = null;
             $minimoPremium = null;
+            $maximoPremium = null;
             $minimoPremiumOficial = null;
-            foreach ((array) ($respuesta->json('results') ?? []) as $item) {
+            foreach ($resultados as $item) {
                 if (! is_array($item)) {
                     continue;
                 }
@@ -346,11 +371,18 @@ class MercadoLibreApiService
                     continue;
                 }
                 $minimoPremium = $minimoPremium === null ? $precio : min($minimoPremium, $precio);
+                $maximoPremium = $maximoPremium === null ? $precio : max($maximoPremium, $precio);
                 if ($this->itemEsTiendaOficial($item)) {
                     $minimoPremiumOficial = $minimoPremiumOficial === null ? $precio : min($minimoPremiumOficial, $precio);
                 }
             }
-            $elegido = $minimoPremiumOficial ?? $minimoPremium ?? $minimo;
+            $elegido = $minimoPremiumOficial;
+            if ($elegido === null && $minimoPremium !== null && $maximoPremium !== null
+                && $maximoPremium > $minimoPremium
+                && $maximoPremium / $minimoPremium >= self::RATIO_PREMIUM_GANADOR_FICHA) {
+                $elegido = $maximoPremium;
+            }
+            $elegido ??= $minimoPremium ?? $minimo;
             if ($elegido !== null) {
                 $precios[$id] = $elegido;
             }
@@ -360,11 +392,45 @@ class MercadoLibreApiService
     }
 
     /**
+     * Precio de la publicación ganadora cuando buy_box_winner trae item_id pero no price.
+     *
+     * @param  array<string, mixed>  $producto
+     * @param  list<mixed>  $resultados
+     */
+    private function precioItemGanadorDesdeListado(array $producto, array $resultados): int
+    {
+        $ganador = $producto['buy_box_winner'] ?? null;
+        if (! is_array($ganador)) {
+            return 0;
+        }
+        $itemId = trim((string) ($ganador['item_id'] ?? ''));
+        if ($itemId === '') {
+            return 0;
+        }
+        foreach ($resultados as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            if (trim((string) ($item['item_id'] ?? '')) !== $itemId) {
+                continue;
+            }
+            $precio = (int) round((float) ($item['price'] ?? 0));
+
+            return $precio > 0 ? $precio : 0;
+        }
+
+        return 0;
+    }
+
+    /**
      * @param  array<string, mixed>  $item
      */
     private function itemEsTiendaOficial(array $item): bool
     {
         $oficial = $item['official_store_id'] ?? null;
+        if ($oficial === null && is_array($item['official_store'] ?? null)) {
+            $oficial = $item['official_store']['id'] ?? $item['official_store']['official_store_id'] ?? null;
+        }
         if ($oficial === null || $oficial === '' || $oficial === 0 || $oficial === '0') {
             return false;
         }

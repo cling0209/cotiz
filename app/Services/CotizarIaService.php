@@ -2888,7 +2888,7 @@ TXT];
     }
 
     /**
-     * Primero la medida más cercana a la pedida; a igual medida, el menor costo.
+     * Primero la medida más cercana a la pedida; a igual medida, el título más parecido; si empatan, el menor costo.
      *
      * @param  array{titulo: string, neto_unitario: int}  $candidata
      * @param  ?array{titulo: string, neto_unitario: int}  $actual
@@ -2904,7 +2904,25 @@ TXT];
             return $medidaCandidata < $medidaActual;
         }
 
+        $similitudCandidata = $this->similitudTituloReferencia($descripcion, $candidata['titulo']);
+        $similitudActual = $this->similitudTituloReferencia($descripcion, $actual['titulo']);
+        if (abs($similitudCandidata - $similitudActual) > 1.5) {
+            return $similitudCandidata > $similitudActual;
+        }
+
         return $candidata['neto_unitario'] < $actual['neto_unitario'];
+    }
+
+    private function similitudTituloReferencia(string $descripcion, string $titulo): float
+    {
+        $a = mb_strtoupper(preg_replace('/\s+/u', ' ', trim($descripcion)) ?? '');
+        $b = mb_strtoupper(preg_replace('/\s+/u', ' ', trim($titulo)) ?? '');
+        if ($a === '' || $b === '') {
+            return 0.0;
+        }
+        similar_text($a, $b, $porcentaje);
+
+        return (float) $porcentaje;
     }
 
     /**
