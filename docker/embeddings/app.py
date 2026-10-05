@@ -14,6 +14,20 @@ def get_model():
     global _model
     if _model is None:
         from fastembed import TextEmbedding
+        from fastembed.common.model_description import ModelSource, PoolingType
+
+        if MODEL_NAME == "intfloat/multilingual-e5-small":
+            try:
+                TextEmbedding(model_name=MODEL_NAME)
+            except ValueError:
+                TextEmbedding.add_custom_model(
+                    model=MODEL_NAME,
+                    pooling=PoolingType.MEAN,
+                    normalization=True,
+                    sources=ModelSource(hf=MODEL_NAME),
+                    dim=384,
+                    model_file="onnx/model.onnx",
+                )
 
         _model = TextEmbedding(model_name=MODEL_NAME)
     return _model
@@ -76,4 +90,9 @@ def embed_batch(body: EmbedBatchRequest):
 @app.on_event("startup")
 def warmup():
     if os.environ.get("EMBEDDING_WARMUP", "true").lower() in ("1", "true", "yes"):
-        get_model().embed(["passage: warmup"])
+        try:
+            get_model().embed(["passage: warmup"])
+        except Exception as exc:
+            import logging
+
+            logging.warning("Warmup falló (se reintentará en /embed): %s", exc)
