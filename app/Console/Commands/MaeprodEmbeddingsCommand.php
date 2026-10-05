@@ -58,51 +58,68 @@ class MaeprodEmbeddingsCommand extends Command
             $soloMissing = true;
         }
 
-        $query = Maeprod::query()
-            ->whereNotNull('prod_nombre')
-            ->where('prod_nombre', '!=', '')
-            ->whereNotNull('prod_item')
-            ->where('prod_item', '!=', '')
-            ->orderBy('prod_item');
-
         if ($item !== '') {
-            $query->where('prod_item', $item);
-        }
+            $producto = Maeprod::query()->where('prod_item', $item)->first();
+            if ($producto === null) {
+                $this->error("No existe prod_item: {$item}");
 
-        if ($limit > 0) {
-            $query->limit($limit);
-        }
-
-        $total = (clone $query)->count();
-        if ($total === 0) {
-            $this->info('No hay productos pendientes de embedding.');
-
-            return self::SUCCESS;
-        }
-
-        $this->info('Procesando hasta '.$total.' producto(s)…');
-        $ok = 0;
-        $fail = 0;
-        $n = 0;
-
-        $query->chunk(50, function ($productos) use ($embeddings, $all, $soloMissing, $sleepMs, &$ok, &$fail, &$n) {
-            foreach ($productos as $producto) {
-                if ($soloMissing && ! $all && ! $embeddings->necesitaActualizar($producto)) {
-                    continue;
-                }
-                $n++;
-                if ($embeddings->guardarEmbedding($producto, $all)) {
-                    $ok++;
-                    $this->line("  [{$n}] OK {$producto->prod_item}");
-                } else {
-                    $fail++;
-                    $this->warn("  [{$n}] FALLÓ {$producto->prod_item}");
-                }
-                if ($sleepMs > 0) {
-                    usleep($sleepMs * 1000);
-                }
+                return self::FAILURE;
             }
-        });
+            if ($soloMissing && ! $all && ! $embeddings->necesitaActualizar($producto)) {
+                $this->info("{$item} ya tiene embedding actualizado.");
+
+                return self::SUCCESS;
+            }
+            $ok = $embeddings->guardarEmbedding($producto, $all) ? 1 : 0;
+            $fail = $ok === 1 ? 0 : 1;
+            $this->info($ok === 1 ? "OK {$item}" : "FALLÓ {$item}");
+        } elseif ($soloMissing && ! $all) {
+            $lote = $limit > 0 ? $limit : max(10, (int) config('cotiz.busqueda_vectores.backfill_por_job', 150));
+            $this->info("Procesando lote de hasta {$lote} pendiente(s)…");
+            $resultado = $embeddings->procesarLotePendientes($lote);
+            $ok = (int) ($resultado['ok'] ?? 0);
+            $fail = (int) ($resultado['fail'] ?? 0);
+            $this->line("  ok={$ok} fail={$fail} pendientes_estimados=".($resultado['pendientes_estimados'] ?? '?'));
+        } else {
+            $query = Maeprod::query()
+                ->whereNotNull('prod_nombre')
+                ->where('prod_nombre', '!=', '')
+                ->whereNotNull('prod_item')
+                ->where('prod_item', '!=', '')
+                ->orderBy('prod_item');
+
+            if ($limit > 0) {
+                $query->limit($limit);
+            }
+
+            $total = (clone $query)->count();
+            if ($total === 0) {
+                $this->info('No hay productos pendientes de embedding.');
+
+                return self::SUCCESS;
+            }
+
+            $this->info('Procesando hasta '.$total.' producto(s)…');
+            $ok = 0;
+            $fail = 0;
+            $n = 0;
+
+            $query->chunk(50, function ($productos) use ($embeddings, $all, $sleepMs, &$ok, &$fail, &$n) {
+                foreach ($productos as $producto) {
+                    $n++;
+                    if ($embeddings->guardarEmbedding($producto, $all)) {
+                        $ok++;
+                        $this->line("  [{$n}] OK {$producto->prod_item}");
+                    } else {
+                        $fail++;
+                        $this->warn("  [{$n}] FALLÓ {$producto->prod_item}");
+                    }
+                    if ($sleepMs > 0) {
+                        usleep($sleepMs * 1000);
+                    }
+                }
+            });
+        }
 
         $conEmbedding = (int) DB::table('maeprod')->whereNotNull('prod_embedding')->count();
         $this->newLine();

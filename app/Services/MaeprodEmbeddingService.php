@@ -248,10 +248,29 @@ class MaeprodEmbeddingService
 
         $literal = $this->vectorLiteral($vector);
         $modelo = $this->embeddingProvider->modelId();
-        DB::update(
-            'UPDATE maeprod SET prod_embedding = ?::vector, prod_embedding_fuente = ?, prod_embedding_model = ?, prod_embedding_at = ? WHERE prod_item = ?',
-            [$literal, $fuente, $modelo, now(), $producto->prod_item],
+        // Evitar ?::vector (PDO interpreta :vector como placeholder).
+        // En pgsql nativo, binds en prod_item (SKU con espacios) y vector en el mismo UPDATE fallan;
+        // WHERE por encode(hex) del SKU es estable.
+        $itemHex = bin2hex((string) $producto->prod_item);
+        $affected = DB::update(
+            'UPDATE maeprod SET prod_embedding = CAST(:vec AS vector), prod_embedding_fuente = :fuente, '
+            .'prod_embedding_model = :modelo, prod_embedding_at = :at '
+            ."WHERE encode(prod_item::bytea, 'hex') = :item_hex",
+            [
+                'vec' => $literal,
+                'fuente' => $fuente,
+                'modelo' => $modelo,
+                'at' => now(),
+                'item_hex' => $itemHex,
+            ],
         );
+        if ($affected < 1) {
+            Log::warning('MaeprodEmbedding: UPDATE no afectó filas', [
+                'prod_item' => $producto->prod_item,
+            ]);
+
+            return false;
+        }
         Cache::forget('maeprod:embeddings:count');
 
         return true;
@@ -288,22 +307,26 @@ class MaeprodEmbeddingService
         }
 
         $literal = $this->vectorLiteral($vector);
-        $bindings = [$literal, $literal, $maxDistancia];
         $sql = 'SELECT prod_item, prod_nombre, prod_valor, prod_valor_costo, prod_stock_real, prod_familia, prod_imagen, '
-            .'(prod_embedding <=> ?::vector) AS distancia '
+            .'(prod_embedding <=> CAST(:qvec AS vector)) AS distancia '
             .'FROM maeprod '
             .'WHERE prod_embedding IS NOT NULL '
             .'AND prod_nombre IS NOT NULL AND prod_nombre <> \'\' '
             .'AND prod_item IS NOT NULL AND prod_item <> \'\' '
-            .'AND (prod_embedding <=> ?::vector) <= ? ';
+            .'AND (prod_embedding <=> CAST(:qvec AS vector)) <= :max_dist ';
+
+        $bindings = [
+            'qvec' => $literal,
+            'max_dist' => $maxDistancia,
+        ];
 
         if ($familia !== null && trim($familia) !== '') {
-            $sql .= 'AND prod_familia = ? ';
-            $bindings[] = trim($familia);
+            $sql .= 'AND prod_familia = :familia ';
+            $bindings['familia'] = trim($familia);
         }
 
-        $sql .= 'ORDER BY distancia ASC LIMIT ?';
-        $bindings[] = $topK;
+        $sql .= 'ORDER BY distancia ASC LIMIT :lim';
+        $bindings['lim'] = $topK;
 
         $rows = DB::select($sql, $bindings);
 
