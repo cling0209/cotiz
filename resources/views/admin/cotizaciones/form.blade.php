@@ -765,6 +765,28 @@
     </div>
     @endunless
 
+    <div id="panel-adjunto-flotante" class="cotiz-adjunto-flotante d-none" role="dialog" aria-labelledby="panel-adjunto-flotante-titulo" aria-hidden="true">
+        <div class="cotiz-adjunto-flotante-header" id="panel-adjunto-flotante-header">
+            <i class="bi bi-grip-vertical text-muted flex-shrink-0" aria-hidden="true"></i>
+            <span class="flex-grow-1 text-truncate small fw-semibold" id="panel-adjunto-flotante-titulo">Documento</span>
+            <a class="btn btn-link btn-sm py-0 px-1 flex-shrink-0" id="panel-adjunto-flotante-pestaña" href="#" target="_blank" rel="noopener noreferrer" data-no-loader>Abrir</a>
+            <a class="btn btn-link btn-sm py-0 px-1 flex-shrink-0" id="panel-adjunto-flotante-descargar" href="#" data-no-loader>Descargar</a>
+            <button type="button" class="btn-close btn-close-sm flex-shrink-0" id="panel-adjunto-flotante-cerrar" aria-label="Cerrar"></button>
+        </div>
+        <div class="cotiz-adjunto-flotante-body">
+            <div id="panel-adjunto-flotante-loading" class="text-center text-muted py-4 d-none">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="ms-2 small">Cargando documento&hellip;</span>
+            </div>
+            <div id="panel-adjunto-flotante-convirtiendo" class="text-center text-muted py-4 d-none">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="ms-2 small">Convirtiendo para mostrar&hellip;</span>
+            </div>
+            <div id="panel-adjunto-flotante-error" class="alert alert-warning py-2 small d-none mb-2 mx-2 mt-2"></div>
+            <iframe id="panel-adjunto-flotante-frame" class="cotiz-adjunto-flotante-frame d-none" title="Vista previa del adjunto"></iframe>
+        </div>
+    </div>
+
     <div id="popupVincularAgile" class="cotiz-popup-overlay" style="display:none">
         <div class="cotiz-popup-content">
             <div class="cotiz-popup-header">
@@ -6049,6 +6071,150 @@
     document.getElementById('btn-envio-dex-aplicar')?.addEventListener('click', () => {
         aplicarEnvioDexAlUnitario();
     });
+
+    (function initPanelAdjuntoFlotante() {
+        const panel = document.getElementById('panel-adjunto-flotante');
+        const header = document.getElementById('panel-adjunto-flotante-header');
+        const titulo = document.getElementById('panel-adjunto-flotante-titulo');
+        const loading = document.getElementById('panel-adjunto-flotante-loading');
+        const convirtiendo = document.getElementById('panel-adjunto-flotante-convirtiendo');
+        const errBox = document.getElementById('panel-adjunto-flotante-error');
+        const frame = document.getElementById('panel-adjunto-flotante-frame');
+        const btnCerrar = document.getElementById('panel-adjunto-flotante-cerrar');
+        const linkPestaña = document.getElementById('panel-adjunto-flotante-pestaña');
+        const linkDescargar = document.getElementById('panel-adjunto-flotante-descargar');
+        const stub = { abrir() {}, cerrar() {}, puedeVer: () => false };
+        if (!panel || !importarMpUrls.adjuntosVerBase) {
+            window.CotizAdjuntoFlotante = stub;
+            return;
+        }
+
+        let dragPointerId = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        function urlVer(codigo, nombre, preview) {
+            const base = urlAdjuntosImportar(importarMpUrls.adjuntosVerBase, String(codigo || '').toUpperCase());
+            const qs = `archivo=${encodeURIComponent(nombre)}${preview ? '&preview=1' : '&descargar=1'}`;
+            return `${base}?${qs}`;
+        }
+
+        function resetVista() {
+            if (errBox) {
+                errBox.classList.add('d-none');
+                errBox.textContent = '';
+            }
+            convirtiendo?.classList.add('d-none');
+            if (frame) {
+                frame.onload = null;
+                frame.classList.add('d-none');
+                frame.src = 'about:blank';
+            }
+            loading?.classList.add('d-none');
+        }
+
+        function cerrar() {
+            resetVista();
+            panel.classList.add('d-none');
+            panel.setAttribute('aria-hidden', 'true');
+        }
+
+        function cargarPreview(codigo, nombre) {
+            const nom = String(nombre || '').trim();
+            if (!nom) {
+                return;
+            }
+            resetVista();
+            loading?.classList.remove('d-none');
+            const previewUrl = urlVer(codigo, nom, true);
+            const convertir = /\.(docx?|xlsx?)$/i.test(nom) && !/\.pdf$/i.test(nom);
+            if (convirtiendo) {
+                convirtiendo.classList.toggle('d-none', !convertir);
+            }
+            if (frame) {
+                frame.onload = () => {
+                    loading?.classList.add('d-none');
+                    convirtiendo?.classList.add('d-none');
+                    frame.classList.remove('d-none');
+                    frame.onload = null;
+                };
+                frame.src = previewUrl;
+            }
+            if (linkPestaña) {
+                linkPestaña.href = previewUrl;
+            }
+            if (linkDescargar) {
+                linkDescargar.href = urlVer(codigo, nom, false);
+            }
+        }
+
+        function abrir(codigo, nombre) {
+            const cod = String(codigo || '').toUpperCase().trim();
+            const nom = String(nombre || '').trim();
+            if (!cod || !nom) {
+                return;
+            }
+            if (titulo) {
+                titulo.textContent = nom;
+                titulo.title = `${cod} — ${nom}`;
+            }
+            panel.classList.remove('d-none');
+            panel.setAttribute('aria-hidden', 'false');
+            cargarPreview(cod, nom);
+        }
+
+        btnCerrar?.addEventListener('click', cerrar);
+
+        header?.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || e.target.closest('a, button')) {
+                return;
+            }
+            const rect = panel.getBoundingClientRect();
+            dragPointerId = e.pointerId;
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            header.setPointerCapture(e.pointerId);
+            header.classList.add('cotiz-adjunto-flotante-header--dragging');
+            e.preventDefault();
+        });
+        header?.addEventListener('pointermove', (e) => {
+            if (dragPointerId !== e.pointerId) {
+                return;
+            }
+            const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+            const maxTop = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
+            const left = Math.min(maxLeft, Math.max(8, e.clientX - dragOffsetX));
+            const top = Math.min(maxTop, Math.max(8, e.clientY - dragOffsetY));
+            panel.style.left = `${left}px`;
+            panel.style.top = `${top}px`;
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+        });
+        header?.addEventListener('pointerup', (e) => {
+            if (dragPointerId !== e.pointerId) {
+                return;
+            }
+            dragPointerId = null;
+            header.classList.remove('cotiz-adjunto-flotante-header--dragging');
+            try {
+                header.releasePointerCapture(e.pointerId);
+            } catch (_err) {
+                // sin captura activa
+            }
+        });
+        header?.addEventListener('pointercancel', (e) => {
+            if (dragPointerId === e.pointerId) {
+                dragPointerId = null;
+                header.classList.remove('cotiz-adjunto-flotante-header--dragging');
+            }
+        });
+
+        window.CotizAdjuntoFlotante = {
+            abrir,
+            cerrar,
+            puedeVer: () => true,
+        };
+    })();
 })();
 </script>
 @endpush

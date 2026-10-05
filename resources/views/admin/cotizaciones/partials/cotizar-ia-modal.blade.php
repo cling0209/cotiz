@@ -170,6 +170,8 @@
     let factorInicial = null;
     let grupos = [];
     let destinoAlCerrar = null;
+    let codigoMpAdjuntos = '';
+    let adjuntoMpPorDefecto = '';
     let enCurso = false;
     let relojId = null;
     let sondeoId = null;
@@ -282,6 +284,42 @@
         const div = document.createElement('div');
         div.textContent = valor == null ? '' : String(valor);
         return div.innerHTML;
+    }
+
+    function escAttr(valor) {
+        return esc(valor).replace(/"/g, '&quot;');
+    }
+
+    function abrirAdjuntoFlotante(nombre) {
+        const nom = String(nombre || adjuntoMpPorDefecto || '').trim();
+        const cod = codigoMpAdjuntos;
+        if (!nom || !cod || !window.CotizAdjuntoFlotante?.puedeVer?.()) {
+            return;
+        }
+        window.CotizAdjuntoFlotante.abrir(cod, nom);
+    }
+
+    function pintarAdjuntosIa(data) {
+        const cont = el('cotizar-ia-adjuntos');
+        if (!cont) {
+            return;
+        }
+        const usados = data.adjuntos_usados || [];
+        const disp = data.adjuntos_disponibles || [];
+        const lista = usados.length ? usados : disp;
+        codigoMpAdjuntos = String(data.codigo || '').trim().toUpperCase();
+        adjuntoMpPorDefecto = lista.length ? String(lista[0]) : '';
+        if (!lista.length || !window.CotizAdjuntoFlotante?.puedeVer?.()) {
+            cont.textContent = lista.length
+                ? (usados.length ? 'Adjuntos usados: ' : 'Adjuntos revisados: ') + lista.join(', ')
+                : '';
+            return;
+        }
+        const etiqueta = usados.length ? 'Adjuntos usados' : 'Adjuntos revisados';
+        cont.innerHTML = esc(etiqueta) + ': '
+            + lista.map((nom, i) => '<button type="button" class="btn btn-link btn-sm p-0 align-baseline cotizar-ia-adjunto-ver"'
+                + ' data-nombre="' + escAttr(nom) + '">' + esc(nom) + '</button>'
+                + (i < lista.length - 1 ? ', ' : '')).join('');
     }
 
     function mostrarError(mensaje) {
@@ -514,7 +552,12 @@
 
     function filaLinea(linea) {
         const conVinculo = linea.estado !== 'pendiente';
-        const fuente = linea.fuente === 'adjunto' ? ' <span class="badge text-bg-light border">adjunto</span>' : '';
+        const fuente = linea.fuente === 'adjunto'
+            ? (window.CotizAdjuntoFlotante?.puedeVer?.()
+                ? ' <button type="button" class="badge text-bg-light border cotizar-ia-adjunto-ver cotizar-ia-adjunto-badge"'
+                    + ' data-nombre="' + escAttr(adjuntoMpPorDefecto) + '" title="Ver documento adjunto">adjunto</button>'
+                : ' <span class="badge text-bg-light border">adjunto</span>')
+            : '';
         const puedeProrr = !!linea.puede_prorratear;
         return '<tr' + (puedeProrr ? ' class="cotizar-ia-fila-prorrateo"' : '') + ' data-indice="' + linea.indice + '" data-estado="' + esc(linea.estado) + '" data-cantidad="' + (parseInt(linea.cantidad, 10) || 0)
             + '" data-costo="' + (parseInt(linea.costo, 10) || 0) + '" data-venta="' + (parseInt(linea.precio_venta, 10) || 0)
@@ -636,9 +679,7 @@
         pintarUso(data.uso_ia);
         el('cotizar-ia-fuente').textContent = FUENTES[data.fuente] || data.fuente;
         el('cotizar-ia-motivo').textContent = data.fuente_motivo || '';
-        el('cotizar-ia-adjuntos').textContent = (data.adjuntos_usados || []).length
-            ? 'Adjuntos usados: ' + data.adjuntos_usados.join(', ')
-            : ((data.adjuntos_disponibles || []).length ? 'Adjuntos revisados: ' + data.adjuntos_disponibles.join(', ') : '');
+        pintarAdjuntosIa(data);
 
         const avisos = data.avisos || [];
         const avisosEl = el('cotizar-ia-avisos');
@@ -790,7 +831,17 @@
         }
     });
 
+    resultado?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.cotizar-ia-adjunto-ver');
+        if (!btn) {
+            return;
+        }
+        e.preventDefault();
+        abrirAdjuntoFlotante(btn.dataset.nombre || '');
+    });
+
     modalEl.addEventListener('hidden.bs.modal', () => {
+        window.CotizAdjuntoFlotante?.cerrar?.();
         if (destinoAlCerrar) {
             window.location.href = destinoAlCerrar;
         }
