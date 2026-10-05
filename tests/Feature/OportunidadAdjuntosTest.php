@@ -250,6 +250,24 @@ class OportunidadAdjuntosTest extends TestCase
             ->assertJsonPath('resumen.consultados', 1);
     }
 
+    public function test_usuario_cotizar_ia_sin_oportunidades_puede_ver_preview_pdf(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'pame',
+            'perfil' => User::PERFIL_EJECUTIVO,
+        ]);
+        Storage::disk('r2_adjuntos')->put('1388974-346-COT26/SAD 393.pdf', '%PDF-1.4 cotizar-ia-test');
+
+        $this->actingAs($user)
+            ->get(route('admin.oportunidades.para-cotizar.adjuntos.ver', [
+                'codigo' => '1388974-346-COT26',
+                'archivo' => 'SAD 393.pdf',
+                'preview' => 1,
+            ]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+    }
+
     public function test_preview_pdf_no_llama_a_libreoffice(): void
     {
         $user = $this->superadmin();

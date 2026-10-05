@@ -6113,10 +6113,14 @@
         const linkPestaña = document.getElementById('panel-adjunto-flotante-pestaña');
         const linkDescargar = document.getElementById('panel-adjunto-flotante-descargar');
         const stub = { abrir() {}, cerrar() {}, puedeVer: () => false };
-        if (!panel || !importarMpUrls.adjuntosVerBase) {
+        const adjuntosVerBasePanel = String(importarMpUrls.adjuntosVerBase || @json(($puedeVerAdjuntosMp ?? false)
+            ? url()->route('admin.oportunidades.para-cotizar.adjuntos.ver', ['codigo' => '__CODIGO__'])
+            : '')).trim();
+        if (!panel || !adjuntosVerBasePanel) {
             window.CotizAdjuntoFlotante = stub;
             return;
         }
+        importarMpUrls.adjuntosVerBase = adjuntosVerBasePanel;
 
         let dragPointerId = null;
         let dragOffsetX = 0;
