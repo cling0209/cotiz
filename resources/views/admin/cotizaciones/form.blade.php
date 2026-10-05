@@ -6187,10 +6187,9 @@
         }
 
         function asegurarPanelVisible() {
-            const iaModal = document.getElementById('modal-cotizar-ia');
-            const host = iaModal?.classList.contains('show') ? iaModal : document.body;
-            if (panel.parentElement !== host) {
-                host.appendChild(panel);
+            // Siempre en body: dentro de #modal-cotizar-ia el z-index queda bajo el backdrop de Bootstrap.
+            if (panel.parentElement !== document.body) {
+                document.body.appendChild(panel);
             }
             panel.style.position = 'fixed';
             panel.style.zIndex = '2200';
