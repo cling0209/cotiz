@@ -225,7 +225,7 @@ class MercadoLibreApiService
     /**
      * Precio de la ficha /p/{id}: el del ganador del recuadro de compra (buy_box_winner).
      * Ese es el valor que ve el comprador; no el Premium más barato, que puede ser de otro vendedor.
-     * Si no hay ganador, se cae al Premium más bajo; si no hay Premium, al más bajo de todas.
+     * Si no hay ganador, se cae a Premium de tienda oficial; luego al Premium más bajo; si no hay Premium, al más bajo de todas.
      *
      * @param  list<string>  $ids
      * @return array<string, int>
@@ -265,8 +265,7 @@ class MercadoLibreApiService
             if (! $respuesta instanceof Response || ! $respuesta->successful()) {
                 continue;
             }
-            $ganador = $respuesta->json('buy_box_winner');
-            $precio = is_array($ganador) ? (int) round((float) ($ganador['price'] ?? 0)) : 0;
+            $precio = $this->precioBuyBoxDesdeProducto((array) $respuesta->json());
             if ($precio > 0) {
                 $precios[$id] = $precio;
             }
@@ -276,9 +275,36 @@ class MercadoLibreApiService
     }
 
     /**
+     * Precio visible en la ficha según GET /products/{id} (ganador o tope del rango buy box).
+     *
+     * @param  array<string, mixed>  $producto
+     */
+    private function precioBuyBoxDesdeProducto(array $producto): int
+    {
+        $ganador = $producto['buy_box_winner'] ?? null;
+        if (is_array($ganador)) {
+            $precio = (int) round((float) ($ganador['price'] ?? $ganador['sale_price'] ?? 0));
+            if ($precio > 0) {
+                return $precio;
+            }
+        }
+
+        $tope = $producto['buy_box_winner_price_range']['max'] ?? null;
+        if (is_array($tope)) {
+            $precio = (int) round((float) ($tope['price'] ?? 0));
+            if ($precio > 0) {
+                return $precio;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * Precio más bajo de las publicaciones activas de cada producto, en el orden recibido.
      * Con publicaciones Premium se toma el más bajo entre ellas (las Clásicas más baratas
-     * no aparecen en la ficha). Sin Premium, el más bajo de todas.
+     * no aparecen en la ficha). Si hay Premium de tienda oficial, ese precio (el de la ficha
+     * cuando gana la marca). Sin Premium, el más bajo de todas.
      * Los productos sin publicaciones (404) o con error se omiten.
      *
      * @param  list<string>  $ids
@@ -306,22 +332,44 @@ class MercadoLibreApiService
             }
             $minimo = null;
             $minimoPremium = null;
+            $minimoPremiumOficial = null;
             foreach ((array) ($respuesta->json('results') ?? []) as $item) {
-                $precio = is_array($item) ? (int) round((float) ($item['price'] ?? 0)) : 0;
+                if (! is_array($item)) {
+                    continue;
+                }
+                $precio = (int) round((float) ($item['price'] ?? 0));
                 if ($precio <= 0) {
                     continue;
                 }
                 $minimo = $minimo === null ? $precio : min($minimo, $precio);
-                if (($item['listing_type_id'] ?? '') === self::LISTING_PREMIUM) {
-                    $minimoPremium = $minimoPremium === null ? $precio : min($minimoPremium, $precio);
+                if (($item['listing_type_id'] ?? '') !== self::LISTING_PREMIUM) {
+                    continue;
+                }
+                $minimoPremium = $minimoPremium === null ? $precio : min($minimoPremium, $precio);
+                if ($this->itemEsTiendaOficial($item)) {
+                    $minimoPremiumOficial = $minimoPremiumOficial === null ? $precio : min($minimoPremiumOficial, $precio);
                 }
             }
-            if (($minimoPremium ?? $minimo) !== null) {
-                $precios[$id] = $minimoPremium ?? $minimo;
+            $elegido = $minimoPremiumOficial ?? $minimoPremium ?? $minimo;
+            if ($elegido !== null) {
+                $precios[$id] = $elegido;
             }
         }
 
         return $precios;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function itemEsTiendaOficial(array $item): bool
+    {
+        $oficial = $item['official_store_id'] ?? null;
+        if ($oficial === null || $oficial === '' || $oficial === 0 || $oficial === '0') {
+            return false;
+        }
+
+        return true;
     }
 
     private function accessToken(): string
