@@ -7,15 +7,44 @@
     let renderToken = 0;
     let activePdfDoc = null;
 
+    function workerSrc() {
+        const local = typeof window.COTIZ_PDFJS_WORKER_URL === 'string'
+            ? window.COTIZ_PDFJS_WORKER_URL.trim()
+            : '';
+        if (local) {
+            return local;
+        }
+
+        return PDFJS_CDN + 'pdf.worker.min.js';
+    }
+
     function ensurePdfJs() {
         if (typeof pdfjsLib === 'undefined') {
             return Promise.reject(new Error('No se pudo cargar el visor PDF.'));
         }
-        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_CDN + 'pdf.worker.min.js';
-        }
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc();
 
         return Promise.resolve(pdfjsLib);
+    }
+
+    async function cargarPdf(lib, url) {
+        const response = await fetch(url, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/pdf,*/*' },
+        });
+        if (!response.ok) {
+            throw new Error(`No se pudo descargar el PDF (HTTP ${response.status}).`);
+        }
+        const data = await response.arrayBuffer();
+        if (!data || data.byteLength < 5) {
+            throw new Error('El archivo PDF está vacío o no es válido.');
+        }
+
+        try {
+            return await lib.getDocument({ data }).promise;
+        } catch (_workerErr) {
+            return await lib.getDocument({ data, disableWorker: true }).promise;
+        }
     }
 
     window.CotizAdjuntoPdfPreview = {
@@ -50,8 +79,7 @@
             container.innerHTML = '';
 
             const lib = await ensurePdfJs();
-            const task = lib.getDocument({ url, withCredentials: true });
-            const pdf = await task.promise;
+            const pdf = await cargarPdf(lib, url);
 
             if (token !== renderToken) {
                 pdf.destroy();
@@ -59,6 +87,10 @@
             }
 
             activePdfDoc = pdf;
+
+            if (pdf.numPages < 1) {
+                throw new Error('El PDF no tiene páginas para mostrar.');
+            }
 
             await new Promise((resolve) => {
                 requestAnimationFrame(() => resolve());

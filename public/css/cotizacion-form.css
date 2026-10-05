@@ -795,6 +795,7 @@
 .cotiz-adjunto-flotante-pdf {
     position: absolute;
     inset: 0;
+    z-index: 1;
     overflow: auto;
     padding: 0.5rem;
     background: #525659;

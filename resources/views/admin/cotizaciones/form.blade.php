@@ -3,7 +3,7 @@
 @section('title', ($desdeAdjudicadas ?? false) ? 'Cotizaciones adjudicadas' : (($esBorrador ?? false) ? 'Nueva cotización' : 'Cotización '.$nota->nronota))
 
 @push('head')
-<link href="{{ asset('css/cotizacion-form.css') }}?v=adjunto-pdf-2" rel="stylesheet">
+<link href="{{ asset('css/cotizacion-form.css') }}?v=adjunto-pdf-3" rel="stylesheet">
 @endpush
 
 @section('content')
@@ -891,8 +891,11 @@
 
 @push('scripts')
 @if($puedeVerAdjuntosMp ?? false)
+<script>
+window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="{{ asset('js/cotiz-adjunto-pdf.js') }}?v=2"></script>
+<script src="{{ asset('js/cotiz-adjunto-pdf.js') }}?v=3"></script>
 @endif
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script src="{{ asset('js/product-image.js') }}" defer></script>
