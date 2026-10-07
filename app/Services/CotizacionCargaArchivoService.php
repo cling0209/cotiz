@@ -289,7 +289,7 @@ class CotizacionCargaArchivoService
                     continue;
                 }
 
-                $maeprod = Maeprod::query()->find($codigo);
+                $maeprod = Maeprod::encontrarPorCodigo($codigo);
                 if (! $maeprod) {
                     $errores[] = "Línea {$lineaCsv}: Código «{$codigo}» - No existe en maestro de productos";
                     $detalleOmitidos++;

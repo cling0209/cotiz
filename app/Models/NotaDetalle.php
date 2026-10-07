@@ -47,7 +47,7 @@ class NotaDetalle extends Model
     {
         $codigo = $this->codigoProducto();
 
-        return $codigo !== '' ? Maeprod::query()->find($codigo) : null;
+        return $codigo !== '' ? Maeprod::encontrarPorCodigo($codigo) : null;
     }
 
     /** Foto de la referencia web aplicada (ruta relativa a products.image_base_url). */

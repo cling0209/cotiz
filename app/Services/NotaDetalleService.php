@@ -38,10 +38,7 @@ class NotaDetalleService
 
         $maeprods = $codigosProducto === []
             ? collect()
-            : Maeprod::query()
-                ->whereIn('prod_item', $codigosProducto)
-                ->get()
-                ->keyBy(fn (Maeprod $p) => trim((string) $p->prod_item));
+            : Maeprod::mapPorCodigos($codigosProducto);
 
         $agileIds = $lineas
             ->map(fn (NotaDetalle $linea) => trim((string) ($linea->prod_item_agile ?? '')))
@@ -160,7 +157,7 @@ class NotaDetalleService
             $prodItem = $linea->prod_item;
             $orden = (int) $linea->orden;
 
-            $producto = Maeprod::query()->find(trim((string) $prodItem));
+            $producto = Maeprod::encontrarPorCodigo((string) $prodItem);
             $prodValor = (int) ($datos['prod_valor'] ?? $linea->prod_valor);
             $cantidad = (int) ($datos['cantidad'] ?? $linea->cantidad);
             $costo = (int) ($datos['prod_valor_costo'] ?? $linea->prod_valor_costo);
@@ -485,7 +482,7 @@ class NotaDetalleService
         ?string $prodDescripcionAgile = null,
     ): NotaDetalle {
         return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
-            $producto = Maeprod::query()->find(trim($prodItem));
+            $producto = Maeprod::encontrarPorCodigo($prodItem);
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
 
             $orden = ((int) NotaDetalle::query()
@@ -656,10 +653,7 @@ class NotaDetalleService
 
             $maeprods = $codigos === []
                 ? collect()
-                : Maeprod::query()
-                    ->whereIn('prod_item', array_keys($codigos))
-                    ->get()
-                    ->keyBy(fn (Maeprod $m) => (string) $m->prod_item);
+                : Maeprod::mapPorCodigos(array_keys($codigos));
 
             $ahora = now();
             $rows = [];
@@ -798,7 +792,7 @@ class NotaDetalleService
             );
         }
 
-        $producto = Maeprod::query()->find($codigo);
+        $producto = Maeprod::encontrarPorCodigo($codigo);
         if (! $producto) {
             throw new \InvalidArgumentException('Producto no encontrado.');
         }

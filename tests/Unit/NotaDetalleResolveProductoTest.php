@@ -33,6 +33,25 @@ class NotaDetalleResolveProductoTest extends TestCase
         $this->assertSame('CARPETA VINIL JM OFICIO AZUL', $producto->prod_nombre);
     }
 
+    public function test_resolve_producto_encuentra_maeprod_guardado_con_espacios(): void
+    {
+        DB::table('maeprod')->insert([
+            'prod_item' => 'MEZCDAN001 ',
+            'prod_nombre' => 'MEZCLADOR DANES',
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+        ]);
+
+        $linea = new NotaDetalle([
+            'prod_item' => 'MEZCDAN001',
+        ]);
+
+        $producto = $linea->resolveProducto();
+
+        $this->assertNotNull($producto);
+        $this->assertSame('MEZCLADOR DANES', $producto->prod_nombre);
+    }
+
     public function test_lineas_de_nota_resuelve_descripcion_maestro_con_codigo_con_espacios(): void
     {
         $nota = Nota::query()->create([

@@ -7,6 +7,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CotizacionOrdenLineaTest extends TestCase
@@ -306,6 +307,43 @@ class CotizacionOrdenLineaTest extends TestCase
         $this->assertDatabaseHas('maeprod', [
             'prod_item' => 'PROD130',
             'prod_valor' => 1220,
+        ]);
+    }
+
+    public function test_agregar_producto_encuentra_maeprod_con_codigo_con_espacios(): void
+    {
+        DB::table('maeprod')->insert([
+            'prod_item' => 'MEZCDAN001 ',
+            'prod_nombre' => 'MEZCLADOR DANES',
+            'prod_valor' => 1500,
+            'prod_valor_costo' => 1000,
+            'prod_familia' => 'LIBR',
+        ]);
+
+        $nota = $this->crearNota([
+            'nronota' => 202,
+            'nota_softland' => 20002,
+            'encargado' => 'COT-ORDEN-003',
+            'factor_precio_venta' => 1.30,
+        ]);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.lineas.store', $nota->nronota),
+            [
+                'prod_item' => 'MEZCDAN001',
+                'cantidad' => 1,
+                'factor_precio_venta' => '1,30',
+            ],
+        )
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('prod_item', 'MEZCDAN001');
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'MEZCDAN001',
+            'prod_valor_costo' => 1000,
+            'cantidad' => 1,
         ]);
     }
 

@@ -645,7 +645,7 @@ class CotizacionController extends Controller
             'factor_precio_venta' => ['nullable', 'string'],
         ]);
 
-        $producto = Maeprod::query()->find($datos['prod_item']);
+        $producto = Maeprod::encontrarPorCodigo($datos['prod_item']);
         if (! $producto) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Producto no encontrado.'], 422);

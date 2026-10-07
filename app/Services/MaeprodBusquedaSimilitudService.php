@@ -1561,7 +1561,7 @@ class MaeprodBusquedaSimilitudService
         $rows = array_column(array_slice($rows, 0, $limit), 'row');
 
         return collect($rows)->map(function ($row) {
-            return Maeprod::query()->find($row->prod_item) ?? new Maeprod([
+            return Maeprod::encontrarPorCodigo((string) $row->prod_item) ?? new Maeprod([
                 'prod_item' => $row->prod_item,
                 'prod_nombre' => $row->prod_nombre,
                 'prod_valor' => $row->prod_valor,

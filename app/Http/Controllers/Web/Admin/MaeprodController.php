@@ -922,15 +922,7 @@ class MaeprodController extends Controller
             return null;
         }
 
-        $producto = Maeprod::query()->whereKey($codigo)->first();
-        if ($producto !== null) {
-            return $producto;
-        }
-
-        return Maeprod::query()
-            ->whereRaw('trim(prod_item) = ?', [$codigo])
-            ->orderBy('prod_item')
-            ->first();
+        return Maeprod::encontrarPorCodigo($codigo);
     }
 
     private function listadoQuery(Request $request): array

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Maeprod extends Model
 {
@@ -18,8 +19,16 @@ class Maeprod extends Model
     public $timestamps = false;
 
     /**
-     * El índice único de prod_item puede no ver filas que sí están en la tabla.
-     * trim() obliga a leer la fila y permite guardarla.
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @return MaeprodBuilder
+     */
+    public function newEloquentBuilder($query): MaeprodBuilder
+    {
+        return new MaeprodBuilder($query);
+    }
+
+    /**
+     * El índice único de prod_item no aplica trim; comparar trim(columna) = trim(valor).
      *
      * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
      * @return \Illuminate\Database\Eloquent\Builder<static>
@@ -27,7 +36,7 @@ class Maeprod extends Model
     protected function setKeysForSelectQuery($query)
     {
         $query->whereRaw(
-            'trim('.$this->getTable().'.prod_item) = ?',
+            'trim('.$this->getTable().'.prod_item) = trim(?)',
             [(string) $this->getKeyForSelectQuery()]
         );
 
@@ -41,11 +50,49 @@ class Maeprod extends Model
     protected function setKeysForSaveQuery($query)
     {
         $query->whereRaw(
-            'trim('.$this->getTable().'.prod_item) = ?',
+            'trim('.$this->getTable().'.prod_item) = trim(?)',
             [(string) $this->getKeyForSaveQuery()]
         );
 
         return $query;
+    }
+
+    /**
+     * Búsqueda directa por código: trim del índice guardado y trim del código pedido.
+     */
+    public static function encontrarPorCodigo(?string $prodItem): ?self
+    {
+        $codigo = trim((string) $prodItem);
+        if ($codigo === '') {
+            return null;
+        }
+
+        return static::query()->find($codigo);
+    }
+
+    /**
+     * @param  list<string|null>|array<int|string, string|null>  $codigos
+     * @return Collection<string, static> keyed by trim(prod_item)
+     */
+    public static function mapPorCodigos(array $codigos): Collection
+    {
+        $normalizados = [];
+        foreach ($codigos as $codigo) {
+            $codigo = trim((string) $codigo);
+            if ($codigo !== '') {
+                $normalizados[$codigo] = true;
+            }
+        }
+
+        $lista = array_keys($normalizados);
+        if ($lista === []) {
+            return collect();
+        }
+
+        return static::query()
+            ->whereKey($lista)
+            ->get()
+            ->keyBy(fn (self $producto) => trim((string) $producto->prod_item));
     }
 
     /** @var array<string, string>|null codigo/nombre familia → carpeta imagen */
