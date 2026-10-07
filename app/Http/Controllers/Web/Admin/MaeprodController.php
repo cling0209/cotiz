@@ -123,7 +123,7 @@ class MaeprodController extends Controller
         );
 
         $listadoQuery = $this->listadoQuery($request);
-        $producto = Maeprod::query()->find($prod_item);
+        $producto = $this->encontrarProducto($prod_item);
 
         if (! $producto) {
             return redirect()
@@ -147,7 +147,7 @@ class MaeprodController extends Controller
         );
 
         $listadoQuery = $this->listadoQuery($request);
-        $producto = Maeprod::query()->find($prod_item);
+        $producto = $this->encontrarProducto($prod_item);
 
         if (! $producto) {
             return redirect()
@@ -180,13 +180,15 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
-        $producto = Maeprod::query()->with(['frases', 'frasesBusqueda'])->find($prod_item);
+        $producto = $this->encontrarProducto($prod_item);
 
         if (! $producto) {
             return redirect()
                 ->route('admin.productos.index', $this->listadoQuery($request))
                 ->with('info', 'El producto ya no existe o fue eliminado.');
         }
+
+        $producto->load(['frases', 'frasesBusqueda']);
 
         $puedeModificarProducto = $request->user()->isSuperAdmin();
 
@@ -211,7 +213,7 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $producto = $this->encontrarProducto($prod_item) ?? abort(404);
 
         $datos = $request->validate($this->maeprodService->reglasValidacion(false, true, $producto->prod_gramaje));
         $datos = $this->maeprodService->normalizarDatosConImagen($datos, $request->file('imagen'), $producto);
@@ -235,7 +237,7 @@ class MaeprodController extends Controller
         );
 
         $listadoQuery = $this->listadoQuery($request);
-        $producto = Maeprod::query()->find($prod_item);
+        $producto = $this->encontrarProducto($prod_item);
 
         if (! $producto) {
             if ($this->wantsFraseJson($request)) {
@@ -310,7 +312,7 @@ class MaeprodController extends Controller
         );
 
         $listadoQuery = $this->listadoQuery($request);
-        $producto = Maeprod::query()->find($prod_item);
+        $producto = $this->encontrarProducto($prod_item);
 
         if (! $producto) {
             if ($this->wantsFraseJson($request)) {
@@ -391,7 +393,7 @@ class MaeprodController extends Controller
 
     public function destroy(Request $request, string $prod_item): RedirectResponse
     {
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $producto = $this->encontrarProducto($prod_item) ?? abort(404);
         $producto->delete();
 
         return redirect()
@@ -909,6 +911,28 @@ class MaeprodController extends Controller
      *
      * @return array{q?: string, familia?: string, page?: int}
      */
+    /**
+     * La búsqueda del listado encuentra la fila, pero find() por PK a veces no
+     * (índice desfasado en PostgreSQL). El trim no usa ese índice.
+     */
+    private function encontrarProducto(string $prodItem): ?Maeprod
+    {
+        $codigo = trim($prodItem);
+        if ($codigo === '') {
+            return null;
+        }
+
+        $producto = Maeprod::query()->whereKey($codigo)->first();
+        if ($producto !== null) {
+            return $producto;
+        }
+
+        return Maeprod::query()
+            ->whereRaw('trim(prod_item) = ?', [$codigo])
+            ->orderBy('prod_item')
+            ->first();
+    }
+
     private function listadoQuery(Request $request): array
     {
         $query = [];
