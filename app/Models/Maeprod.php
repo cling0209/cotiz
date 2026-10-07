@@ -17,6 +17,37 @@ class Maeprod extends Model
 
     public $timestamps = false;
 
+    /**
+     * El índice único de prod_item puede no ver filas que sí están en la tabla.
+     * trim() obliga a leer la fila y permite guardarla.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    protected function setKeysForSelectQuery($query)
+    {
+        $query->whereRaw(
+            'trim('.$this->getTable().'.prod_item) = ?',
+            [(string) $this->getKeyForSelectQuery()]
+        );
+
+        return $query;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    protected function setKeysForSaveQuery($query)
+    {
+        $query->whereRaw(
+            'trim('.$this->getTable().'.prod_item) = ?',
+            [(string) $this->getKeyForSaveQuery()]
+        );
+
+        return $query;
+    }
+
     /** @var array<string, string>|null codigo/nombre familia → carpeta imagen */
     private static ?array $familiaFolderLookup = null;
 

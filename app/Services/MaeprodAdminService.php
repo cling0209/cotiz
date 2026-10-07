@@ -282,16 +282,18 @@ class MaeprodAdminService
         $familiaAntes = trim((string) ($producto->prod_familia ?? ''));
         $producto->update($updates);
 
+        $fresco = $producto->fresh() ?? $producto;
+
         if (array_key_exists('prod_item_softland', $datos)) {
             $this->softlandService->aplicar(
-                $producto->fresh(),
+                $fresco,
                 (string) $datos['prod_item_softland'],
                 $usuarioUpd,
                 MaeprodSoftlandOrigen::PRODUCTO,
             );
         }
 
-        $actualizado = $producto->fresh();
+        $actualizado = $fresco->fresh() ?? $fresco;
         $nombreNuevo = mb_strtoupper(trim((string) $actualizado->prod_nombre));
         $familiaNueva = trim((string) ($actualizado->prod_familia ?? ''));
         if ($nombreNuevo !== $nombreAntes || $familiaNueva !== $familiaAntes) {
