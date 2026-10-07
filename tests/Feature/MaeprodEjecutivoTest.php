@@ -126,6 +126,27 @@ class MaeprodEjecutivoTest extends TestCase
             ->assertDontSee('name="prod_valor"', false);
     }
 
+    public function test_imagen_de_producto_inexistente_redirige_al_listado(): void
+    {
+        $busqueda = 'Rollo Laminado En Frío Glossy';
+
+        $this->actingAs($this->ejecutivo)
+            ->get(route('admin.productos.imagen.edit', [
+                'prod_item' => 'NOEXISTE',
+                'q' => $busqueda,
+            ]))
+            ->assertRedirect(route('admin.productos.index', ['q' => $busqueda]))
+            ->assertSessionHas('info', 'El producto ya no existe o fue eliminado.');
+
+        $this->actingAs($this->ejecutivo)
+            ->put(route('admin.productos.imagen.update', 'NOEXISTE'), [
+                'q' => $busqueda,
+                'prod_imagen' => 'nueva.jpg',
+            ])
+            ->assertRedirect(route('admin.productos.index', ['q' => $busqueda]))
+            ->assertSessionHas('info', 'El producto ya no existe o fue eliminado.');
+    }
+
     public function test_ejecutivo_puede_actualizar_solo_imagen(): void
     {
         Maeprod::query()->create([

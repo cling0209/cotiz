@@ -114,7 +114,7 @@ class MaeprodController extends Controller
             ->with('success', 'Producto creado.');
     }
 
-    public function editImagen(Request $request, string $prod_item): View
+    public function editImagen(Request $request, string $prod_item): View|RedirectResponse
     {
         abort_unless(
             $request->user()->isSuperAdmin() || $request->user()->isEjecutivo(),
@@ -122,9 +122,14 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
-        $producto = Maeprod::query()->findOrFail($prod_item);
-
         $listadoQuery = $this->listadoQuery($request);
+        $producto = Maeprod::query()->find($prod_item);
+
+        if (! $producto) {
+            return redirect()
+                ->route('admin.productos.index', $listadoQuery)
+                ->with('info', 'El producto ya no existe o fue eliminado.');
+        }
 
         return view('admin.maeprod.imagen', [
             'producto' => $producto,
@@ -141,7 +146,14 @@ class MaeprodController extends Controller
             'Acceso no autorizado.',
         );
 
-        $producto = Maeprod::query()->findOrFail($prod_item);
+        $listadoQuery = $this->listadoQuery($request);
+        $producto = Maeprod::query()->find($prod_item);
+
+        if (! $producto) {
+            return redirect()
+                ->route('admin.productos.index', $listadoQuery)
+                ->with('info', 'El producto ya no existe o fue eliminado.');
+        }
 
         $datos = $request->validate($this->maeprodService->reglasValidacionImagen());
 
@@ -155,7 +167,7 @@ class MaeprodController extends Controller
         return redirect()
             ->route('admin.productos.imagen.edit', array_merge(
                 ['prod_item' => $producto->prod_item],
-                $this->listadoQuery($request),
+                $listadoQuery,
             ))
             ->with('success', 'Imagen actualizada.');
     }
