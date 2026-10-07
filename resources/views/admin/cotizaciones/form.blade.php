@@ -6209,11 +6209,7 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
             if (esPdf && pdfPane && window.CotizAdjuntoPdfPreview) {
                 pdfPane.classList.remove('d-none');
                 window.CotizAdjuntoPdfPreview.render(pdfPane, previewUrl)
-                    .then(() => {
-                        loading?.classList.add('d-none');
-                    })
                     .catch((err) => {
-                        loading?.classList.add('d-none');
                         window.CotizAdjuntoPdfPreview.reset(pdfPane);
                         pdfPane.classList.add('d-none');
                         const mensaje = (err && err.message)
@@ -6225,6 +6221,9 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
                                 + '" target="_blank" rel="noopener noreferrer" data-no-loader>Abrir</a> o Descargar.';
                             errBox.classList.remove('d-none');
                         }
+                    })
+                    .finally(() => {
+                        loading?.classList.add('d-none');
                     });
 
                 return;
