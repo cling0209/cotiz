@@ -295,7 +295,7 @@ class NotaService
     {
         return Nota::query()
             ->where('usuario', $usuario)
-            ->where('es_compra_agil', true)
+            ->whereEsCompraAgil(true)
             ->whereRaw("trim(coalesce(encargado, '')) = ''")
             ->orderByDesc('nronota')
             ->first();
@@ -310,7 +310,7 @@ class NotaService
     {
         $ultima = Nota::query()
             ->where('usuario', $usuario)
-            ->where('es_compra_agil', ! $interna)
+            ->whereEsCompraAgil(! $interna)
             ->orderByDesc('nronota')
             ->first();
         if ($ultima === null) {

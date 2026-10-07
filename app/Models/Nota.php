@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -264,6 +265,19 @@ class Nota extends Model
     public function esCopiaDeCotizacion(): bool
     {
         return (int) ($this->correlativo ?? 1) > 1;
+    }
+
+    /**
+     * En PostgreSQL con prepares emulados, where(columna, true) se envía como "= 1"
+     * y la columna boolean lo rechaza. El literal true/false evita ese error.
+     */
+    public function scopeWhereEsCompraAgil(Builder $query, bool $valor = true): Builder
+    {
+        if ($query->getConnection()->getDriverName() === 'pgsql') {
+            return $query->whereRaw('es_compra_agil is '.($valor ? 'true' : 'false'));
+        }
+
+        return $query->where('es_compra_agil', $valor);
     }
 
     public function esCotizacionInterna(): bool
