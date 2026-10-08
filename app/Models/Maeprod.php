@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ProductCodeNormalizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
@@ -58,7 +59,7 @@ class Maeprod extends Model
     }
 
     /**
-     * Búsqueda directa por código: trim del índice guardado y trim del código pedido.
+     * Búsqueda directa por código: trim del índice y, si no hay match exacto, sin distinguir mayúsculas.
      */
     public static function encontrarPorCodigo(?string $prodItem): ?self
     {
@@ -67,7 +68,16 @@ class Maeprod extends Model
             return null;
         }
 
-        return static::query()->find($codigo);
+        $exacto = static::query()->find($codigo);
+        if ($exacto) {
+            return $exacto;
+        }
+
+        $tabla = (new static)->getTable();
+
+        return static::query()
+            ->whereRaw('lower(trim('.$tabla.'.prod_item)) = lower(?)', [$codigo])
+            ->first();
     }
 
     /**
@@ -89,10 +99,36 @@ class Maeprod extends Model
             return collect();
         }
 
+        $lowered = array_map(static fn (string $codigo) => mb_strtolower($codigo, 'UTF-8'), $lista);
+        $placeholders = implode(',', array_fill(0, count($lowered), '?'));
+
         return static::query()
-            ->whereKey($lista)
+            ->where(function ($query) use ($lista, $lowered, $placeholders) {
+                $query->whereKey($lista)
+                    ->orWhereRaw('lower(trim(prod_item)) in ('.$placeholders.')', $lowered);
+            })
             ->get()
             ->keyBy(fn (self $producto) => trim((string) $producto->prod_item));
+    }
+
+    public static function desdeMapa(Collection $mapa, ?string $prodItem): ?self
+    {
+        $codigo = trim((string) $prodItem);
+        if ($codigo === '' || $mapa->isEmpty()) {
+            return null;
+        }
+
+        $directo = $mapa->get($codigo);
+        if ($directo instanceof self) {
+            return $directo;
+        }
+
+        $hallado = $mapa->first(
+            fn (self $producto, mixed $key) => ProductCodeNormalizer::equals((string) $key, $codigo)
+                || ProductCodeNormalizer::equals($producto->prod_item, $codigo)
+        );
+
+        return $hallado instanceof self ? $hallado : null;
     }
 
     /** @var array<string, string>|null codigo/nombre familia → carpeta imagen */

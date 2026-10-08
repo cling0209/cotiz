@@ -57,4 +57,35 @@ class MaeprodEncontrarPorCodigoTest extends TestCase
         $this->assertFalse($mapa->has('NOEXISTE'));
         $this->assertSame('MEZCLADOR DANES', $mapa->get('MEZCDAN001')?->prod_nombre);
     }
+
+    public function test_encontrar_por_codigo_ignora_mayusculas(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'CARTSU',
+            'prod_nombre' => 'Cartulina surtido',
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+        ]);
+
+        $producto = Maeprod::encontrarPorCodigo('cartsu');
+
+        $this->assertNotNull($producto);
+        $this->assertSame('CARTSU', $producto->prod_item);
+        $this->assertSame('Cartulina surtido', $producto->prod_nombre);
+    }
+
+    public function test_map_por_codigos_ignora_mayusculas(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'CARTSU',
+            'prod_nombre' => 'Cartulina surtido',
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+        ]);
+
+        $mapa = Maeprod::mapPorCodigos(['cartsu']);
+
+        $this->assertSame('Cartulina surtido', Maeprod::desdeMapa($mapa, 'cartsu')?->prod_nombre);
+        $this->assertSame('Cartulina surtido', Maeprod::desdeMapa($mapa, 'CARTSU')?->prod_nombre);
+    }
 }

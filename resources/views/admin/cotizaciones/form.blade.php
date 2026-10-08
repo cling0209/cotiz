@@ -1073,6 +1073,10 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
         return (mantissa * Math.pow(10, exp)).toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
     }
 
+    function codigosProductoIguales(a, b) {
+        return codigoProductoTexto(a).toLowerCase() === codigoProductoTexto(b).toLowerCase();
+    }
+
     const montototal = document.getElementById('montototal');
     const montototalIva = document.getElementById('montototal_iva');
     const factorInput = document.getElementById('factor_precio_venta');
@@ -1579,6 +1583,7 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
             const lotes = chunkArray(lineas, lineasPorLote);
             let guardadasTotal = 0;
             let omitidasTotal = 0;
+            const fallidas = [];
 
             if (lotes.length === 0) {
                 setLoaderMensaje('Sin cambios en el detalle…');
@@ -1596,6 +1601,9 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
                 sincronizarNronotaDesdeJson(json);
                 guardadasTotal += json.guardadas ?? lotes[i].length;
                 omitidasTotal += json.omitidas ?? 0;
+                if (Array.isArray(json.fallidas)) {
+                    fallidas.push(...json.fallidas);
+                }
             }
 
             document.querySelectorAll('#tabla_detalle tbody tr[data-linea][data-dirty="1"]').forEach(limpiarLineaDirty);
@@ -1614,7 +1622,12 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
                 }
                 mensajeOk += '.';
             }
-            dlgAlert(mensajeOk, { title: 'Guardado', type: 'success' });
+            if (fallidas.length > 0) {
+                mensajeOk += ' No se pudieron guardar ' + fallidas.length + ' línea' + (fallidas.length === 1 ? '' : 's') + ': ' + fallidas.join(' ');
+                dlgAlert(mensajeOk, { title: 'Guardado parcial', type: 'warning' });
+            } else {
+                dlgAlert(mensajeOk, { title: 'Guardado', type: 'success' });
+            }
             if (jsonCab.edit_url && jsonCab.recien_creada) {
                 window.location.href = jsonCab.edit_url;
             } else {
@@ -1656,11 +1669,10 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
     });
 
     function encontrarFilaPorOrdenProd(orden, prodItem) {
-        const porProd = document.querySelector(
-            '#tabla_detalle tbody tr[data-orden="' + orden + '"][data-prod="' + CSS.escape(String(prodItem || '')) + '"]'
-        );
+        const rows = Array.from(document.querySelectorAll('#tabla_detalle tbody tr[data-linea][data-orden="' + orden + '"]'));
+        const porProd = rows.find(tr => codigosProductoIguales(tr.dataset.prod, prodItem));
         if (porProd) return porProd;
-        return document.querySelector('#tabla_detalle tbody tr[data-orden="' + orden + '"]');
+        return rows[0] || document.querySelector('#tabla_detalle tbody tr[data-orden="' + orden + '"]');
     }
 
     async function aplicarFactorAjax() {
@@ -2057,10 +2069,10 @@ window.COTIZ_PDFJS_WORKER_URL = @json(asset('js/pdf.worker.min.js?v=1'));
             const prod = linea.prod_item;
             const agile = String(linea.prod_item_agile || '');
             let row = rows.find(r => ! used.has(r)
-                && r.dataset.prod === prod
+                && codigosProductoIguales(r.dataset.prod, prod)
                 && String(r.dataset.prodItemAgile || '') === agile);
             if (!row) {
-                row = rows.find(r => ! used.has(r) && r.dataset.prod === prod);
+                row = rows.find(r => ! used.has(r) && codigosProductoIguales(r.dataset.prod, prod));
             }
             if (!row) row = rows[idx];
             if (row) used.add(row);

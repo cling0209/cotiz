@@ -33,6 +33,20 @@ class ProductCodeNormalizer
         return self::expandScientificString($code) ?? $code;
     }
 
+    /**
+     * Compara códigos ignorando espacios y mayúsculas (CARTSU ≡ cartsu ≡ " cartsu ").
+     */
+    public static function equals(mixed $a, mixed $b): bool
+    {
+        $na = self::normalize($a);
+        $nb = self::normalize($b);
+        if ($na === '' || $nb === '') {
+            return $na === $nb;
+        }
+
+        return strcasecmp($na, $nb) === 0;
+    }
+
     private static function expandScientificString(string $code): ?string
     {
         $compact = str_replace(' ', '', $code);

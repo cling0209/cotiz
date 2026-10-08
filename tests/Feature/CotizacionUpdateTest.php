@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Maeprod;
 use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Models\User;
@@ -169,6 +170,138 @@ class CotizacionUpdateTest extends TestCase
             'orden' => 3,
             'cantidad' => 4,
             'prod_valor' => 1500,
+        ]);
+    }
+
+    public function test_lote_resuelve_linea_con_codigo_en_otra_capitalizacion(): void
+    {
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARTSU',
+            'orden' => 15,
+            'cantidad' => 1,
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'fechahora' => now(),
+        ]);
+
+        $response = $this->actingAs($this->ejecutivo)->postJson(
+            route('admin.cotizaciones.lineas.lote', $nota->nronota),
+            [
+                'lineas' => [[
+                    'prod_item' => 'cartsu',
+                    'orden' => 15,
+                    'observacion' => 'Obs interna',
+                    'cantidad' => 2,
+                    'prod_valor' => 1000,
+                    'prod_valor_costo' => 800,
+                ]],
+            ],
+        );
+
+        $response->assertOk()->assertJson(['ok' => true, 'guardadas' => 1]);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARTSU',
+            'orden' => 15,
+            'cantidad' => 2,
+            'observacion' => 'Obs interna',
+        ]);
+    }
+
+    public function test_lote_resuelve_linea_si_orden_desactualizado_y_codigo_cambia_mayusculas(): void
+    {
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARTSU',
+            'orden' => 12,
+            'cantidad' => 1,
+            'prod_valor' => 1000,
+            'prod_valor_costo' => 800,
+            'fechahora' => now(),
+        ]);
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'OTRO',
+            'orden' => 13,
+            'cantidad' => 1,
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+            'fechahora' => now(),
+        ]);
+
+        $response = $this->actingAs($this->ejecutivo)->postJson(
+            route('admin.cotizaciones.lineas.lote', $nota->nronota),
+            [
+                'lineas' => [[
+                    'prod_item' => 'cartsu',
+                    'orden' => 15,
+                    'cantidad' => 3,
+                    'prod_valor' => 1100,
+                    'prod_valor_costo' => 800,
+                ]],
+            ],
+        );
+
+        $response->assertOk()->assertJson(['ok' => true, 'guardadas' => 1]);
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARTSU',
+            'orden' => 12,
+            'cantidad' => 3,
+            'prod_valor' => 1100,
+        ]);
+    }
+
+    public function test_lote_guarda_softland_en_maestro_aunque_la_linea_no_este_en_la_nota(): void
+    {
+        $admin = User::factory()->create([
+            'username' => 'admin01',
+            'perfil' => User::PERFIL_SUPERADMIN,
+        ]);
+
+        Maeprod::query()->create([
+            'prod_item' => 'CARTSU',
+            'prod_nombre' => 'Cartulina surtido',
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $nota = $this->crearNota();
+        NotaDetalle::query()->create([
+            'nronota' => $nota->nronota,
+            'prod_item' => 'OTRO',
+            'orden' => 1,
+            'cantidad' => 1,
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+            'fechahora' => now(),
+        ]);
+
+        $response = $this->actingAs($admin)->postJson(
+            route('admin.cotizaciones.lineas.lote', $nota->nronota),
+            [
+                'lineas' => [[
+                    'prod_item' => 'cartsu',
+                    'orden' => 15,
+                    'prod_item_softland' => 'SL-CARTSU',
+                    'cantidad' => 1,
+                    'prod_valor' => 500,
+                    'prod_valor_costo' => 400,
+                ]],
+            ],
+        );
+
+        $response->assertOk()->assertJson(['ok' => true, 'guardadas' => 1]);
+
+        $this->assertDatabaseHas('maeprod', [
+            'prod_item' => 'CARTSU',
+            'prod_item_softland' => 'SL-CARTSU',
         ]);
     }
 

@@ -585,6 +585,7 @@ class CotizacionController extends Controller
             'guardadas' => $resultado['actualizadas'],
             'omitidas' => $resultado['omitidas'],
             'recibidas' => $resultado['recibidas'],
+            'fallidas' => $resultado['fallidas'] ?? [],
         ], $this->metaNotaJson($nota, $recienCreada)));
     }
 

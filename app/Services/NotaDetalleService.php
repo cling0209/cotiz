@@ -10,6 +10,7 @@ use App\Models\Nota;
 use App\Models\NotaDetalle;
 use App\Support\AgileDescripcion;
 use App\Support\ProdValorFechaUi;
+use App\Support\ProductCodeNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -62,7 +63,7 @@ class NotaDetalleService
                     $linea,
                     $descripcionesAgile,
                     (int) ($repetidosPorProd[$linea->prod_item] ?? 0),
-                    $maeprods->get($linea->codigoProducto()),
+                    Maeprod::desdeMapa($maeprods, $linea->codigoProducto()),
                     productoYaResuelto: true,
                 );
             });
@@ -153,7 +154,11 @@ class NotaDetalleService
         ?string $usuarioUpd = null,
     ): bool {
         return (bool) DB::transaction(function () use ($nota, $prodItem, $orden, $datos, $usuarioUpd) {
-            $linea = $this->resolverLineaParaGuardar($nota, $prodItem, $orden);
+            try {
+                $linea = $this->resolverLineaParaGuardar($nota, $prodItem, $orden);
+            } catch (\InvalidArgumentException $e) {
+                return $this->aplicarSoftlandSiProductoExiste($nota, $prodItem, $datos, $usuarioUpd, $e);
+            }
             $prodItem = $linea->prod_item;
             $orden = (int) $linea->orden;
 
@@ -345,29 +350,34 @@ class NotaDetalleService
 
     /**
      * @param  array<int, array<string, mixed>>  $lineas
-     * @return array{actualizadas: int, omitidas: int, recibidas: int}
+     * @return array{actualizadas: int, omitidas: int, recibidas: int, fallidas: list<string>}
      */
     public function guardarLineas(Nota $nota, array $lineas, ?string $usuarioUpd = null): array
     {
         $actualizadas = 0;
         $omitidas = 0;
         $recibidas = 0;
+        $fallidas = [];
 
         foreach ($lineas as $data) {
             if (empty($data['prod_item']) || ! isset($data['orden'])) {
                 continue;
             }
             $recibidas++;
-            if ($this->actualizarLinea(
-                $nota,
-                (string) $data['prod_item'],
-                (int) $data['orden'],
-                $data,
-                $usuarioUpd,
-            )) {
-                $actualizadas++;
-            } else {
-                $omitidas++;
+            try {
+                if ($this->actualizarLinea(
+                    $nota,
+                    (string) $data['prod_item'],
+                    (int) $data['orden'],
+                    $data,
+                    $usuarioUpd,
+                )) {
+                    $actualizadas++;
+                } else {
+                    $omitidas++;
+                }
+            } catch (\InvalidArgumentException $e) {
+                $fallidas[] = $e->getMessage();
             }
         }
 
@@ -375,10 +385,15 @@ class NotaDetalleService
             $this->auditoria->registrarModificar($nota, $usuarioUpd, 'Modificación de líneas');
         }
 
+        if ($fallidas !== [] && $actualizadas === 0 && $omitidas === 0) {
+            throw new \InvalidArgumentException($fallidas[0]);
+        }
+
         return [
             'actualizadas' => $actualizadas,
             'omitidas' => $omitidas,
             'recibidas' => $recibidas,
+            'fallidas' => $fallidas,
         ];
     }
 
@@ -483,6 +498,7 @@ class NotaDetalleService
     ): NotaDetalle {
         return DB::transaction(function () use ($nota, $prodItem, $cantidad, $prodValor, $prodValorCosto, $usuarioUpd, $prodItemAgile, $prodDescripcionAgile) {
             $producto = Maeprod::encontrarPorCodigo($prodItem);
+            $prodItem = trim((string) ($producto?->prod_item ?? $prodItem));
             $costo = $prodValorCosto ?? $producto?->prod_valor_costo ?? 0;
 
             $orden = ((int) NotaDetalle::query()
@@ -685,7 +701,10 @@ class NotaDetalleService
                 } else {
                     $prodItem = trim((string) ($linea['prod_item'] ?? ''));
                     /** @var Maeprod|null $producto */
-                    $producto = $maeprods->get($prodItem);
+                    $producto = Maeprod::desdeMapa($maeprods, $prodItem);
+                    if ($producto) {
+                        $prodItem = trim((string) $producto->prod_item);
+                    }
                     $costo = array_key_exists('prod_valor_costo', $linea)
                         ? (int) $linea['prod_valor_costo']
                         : (int) ($producto?->prod_valor_costo ?? 0);
@@ -796,6 +815,8 @@ class NotaDetalleService
         if (! $producto) {
             throw new \InvalidArgumentException('Producto no encontrado.');
         }
+
+        $codigo = trim((string) $producto->prod_item);
 
         $costo = (int) ($producto->prod_valor_costo ?? 0);
         if ($costo <= 0) {
@@ -1189,52 +1210,81 @@ class NotaDetalleService
             throw new \InvalidArgumentException('Línea no encontrada.');
         }
 
-        if ($candidatas->count() === 1) {
-            return $candidatas->first();
-        }
-
         $prodItem = trim((string) $prodItem);
         if ($prodItem !== '') {
-            $porProd = $candidatas->first(fn (NotaDetalle $linea) => $linea->prod_item === $prodItem);
+            $porProd = $this->primeraLineaConCodigo($candidatas, $prodItem);
             if ($porProd) {
                 return $porProd;
             }
+        }
+
+        if ($candidatas->count() === 1) {
+            return $candidatas->first();
         }
 
         throw new \InvalidArgumentException('Línea no encontrada.');
     }
 
     /**
+     * Softland vive en maeprod: si la fila de la nota está desfasada pero el código existe
+     * en el maestro, igual se persiste el Softland en lugar de abortar el grabar.
+     *
+     * @param  array<string, mixed>  $datos
+     */
+    private function aplicarSoftlandSiProductoExiste(
+        Nota $nota,
+        string $prodItem,
+        array $datos,
+        ?string $usuarioUpd,
+        \InvalidArgumentException $errorLinea,
+    ): bool {
+        if (! array_key_exists('prod_item_softland', $datos)) {
+            throw $errorLinea;
+        }
+
+        $producto = Maeprod::encontrarPorCodigo($prodItem);
+        if (! $producto) {
+            throw $errorLinea;
+        }
+
+        return $this->softlandService->aplicar(
+            $producto,
+            (string) $datos['prod_item_softland'],
+            $usuarioUpd,
+            MaeprodSoftlandOrigen::COTIZACION,
+            (int) $nota->nronota,
+        );
+    }
+
+    /**
      * Resuelve la fila a actualizar tolerando desajustes prod_item/orden tras vincular Agile o reordenar.
+     * Compara códigos con trim y sin distinguir mayúsculas (CARTSU ≡ cartsu).
      */
     private function resolverLineaParaGuardar(Nota $nota, string $prodItem, int $orden): NotaDetalle
     {
         $prodItem = trim($prodItem);
 
-        $porClave = NotaDetalle::query()
+        $lineas = NotaDetalle::query()
             ->where('nronota', $nota->nronota)
-            ->where('prod_item', $prodItem)
-            ->where('orden', $orden)
-            ->first();
-
-        if ($porClave) {
-            return $porClave;
-        }
-
-        $porOrden = NotaDetalle::query()
-            ->where('nronota', $nota->nronota)
-            ->where('orden', $orden)
             ->get();
+
+        $porOrden = $lineas->filter(fn (NotaDetalle $linea) => (int) $linea->orden === $orden);
+
+        if ($prodItem !== '') {
+            $porClave = $this->primeraLineaConCodigo($porOrden, $prodItem);
+            if ($porClave) {
+                return $porClave;
+            }
+        }
 
         if ($porOrden->count() === 1) {
             return $porOrden->first();
         }
 
         if ($prodItem !== '') {
-            $porProd = NotaDetalle::query()
-                ->where('nronota', $nota->nronota)
-                ->where('prod_item', $prodItem)
-                ->get();
+            $porProd = $lineas->filter(
+                fn (NotaDetalle $linea) => ProductCodeNormalizer::equals($linea->prod_item, $prodItem)
+            );
 
             if ($porProd->count() === 1) {
                 return $porProd->first();
@@ -1243,6 +1293,16 @@ class NotaDetalleService
 
         throw new \InvalidArgumentException(
             'No se encontró la línea (producto «'.$prodItem.'», orden '.$orden.'). Recargue la página e intente de nuevo.',
+        );
+    }
+
+    /**
+     * @param  Collection<int, NotaDetalle>  $lineas
+     */
+    private function primeraLineaConCodigo(Collection $lineas, string $prodItem): ?NotaDetalle
+    {
+        return $lineas->first(
+            fn (NotaDetalle $linea) => ProductCodeNormalizer::equals($linea->prod_item, $prodItem)
         );
     }
 

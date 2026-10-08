@@ -347,6 +347,39 @@ class CotizacionOrdenLineaTest extends TestCase
         ]);
     }
 
+    public function test_agregar_producto_usa_codigo_canonico_si_cambia_mayusculas(): void
+    {
+        Maeprod::query()->create([
+            'prod_item' => 'CARTSU',
+            'prod_nombre' => 'Cartulina surtido',
+            'prod_valor' => 500,
+            'prod_valor_costo' => 400,
+            'prod_familia' => 'PAPEL',
+        ]);
+
+        $nota = $this->crearNota([
+            'nronota' => 203,
+            'nota_softland' => 20003,
+            'encargado' => 'COT-ORDEN-004',
+        ]);
+
+        $this->actingAs($this->admin)->postJson(
+            route('admin.cotizaciones.lineas.store', $nota->nronota),
+            [
+                'prod_item' => 'cartsu',
+                'cantidad' => 1,
+            ],
+        )
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('prod_item', 'CARTSU');
+
+        $this->assertDatabaseHas('notasdetalle', [
+            'nronota' => $nota->nronota,
+            'prod_item' => 'CARTSU',
+        ]);
+    }
+
     private function crearNota(array $attrs = []): Nota
     {
         return Nota::query()->create(array_merge([

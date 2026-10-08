@@ -24,4 +24,12 @@ class ProductCodeNormalizerTest extends TestCase
             'float whole number' => [50100000000000.0, '50100000000000'],
         ];
     }
+
+    public function test_equals_ignora_mayusculas_y_espacios(): void
+    {
+        $this->assertTrue(ProductCodeNormalizer::equals('CARTSU', 'cartsu'));
+        $this->assertTrue(ProductCodeNormalizer::equals(' cartsu ', 'CARTSU'));
+        $this->assertFalse(ProductCodeNormalizer::equals('CARTSU', 'CARTSURTIDO'));
+        $this->assertFalse(ProductCodeNormalizer::equals('CARTSU', ''));
+    }
 }
