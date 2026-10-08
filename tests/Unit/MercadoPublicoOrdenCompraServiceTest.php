@@ -709,4 +709,43 @@ class MercadoPublicoOrdenCompraServiceTest extends TestCase
             ),
         );
     }
+
+    public function test_no_asigna_oc_de_otro_organismo_por_nombre_generico(): void
+    {
+        $this->fakeMp(['2961-633-AG26' => 393176]);
+
+        $nombre = 'MATERIAL DE OFICINA';
+        $listado = [
+            ['Codigo' => '2961-633-AG26', 'Nombre' => $nombre],
+        ];
+
+        $this->assertNull($this->service->buscarCodigoEnListado(
+            $listado,
+            '449-306-COT26',
+            $nombre,
+            190082.0,
+        ));
+    }
+
+    public function test_asigna_oc_mismo_organismo_por_texto_cot(): void
+    {
+        Http::fake();
+
+        $listado = [
+            [
+                'Codigo' => '449-331-AG26',
+                'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 449-306-COT26',
+            ],
+            [
+                'Codigo' => '2961-633-AG26',
+                'Nombre' => 'Orden de Compra generada por invitación a compra ágil: 2546-959-COT26',
+            ],
+        ];
+
+        $this->assertSame(
+            '449-331-AG26',
+            $this->service->buscarCodigoEnListado($listado, '449-306-COT26'),
+        );
+        Http::assertNothingSent();
+    }
 }

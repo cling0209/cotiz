@@ -603,7 +603,7 @@ class MercadoPublicoOrdenCompraService
             );
             if (str_contains($texto, $codigoCot)) {
                 $codigo = $this->codigoAgDesdeItem($item);
-                if ($codigo !== null) {
+                if ($codigo !== null && $this->codigoAgMismoOrganismoQueCot($codigo, $codigoCot)) {
                     return $codigo;
                 }
             }
@@ -648,7 +648,7 @@ class MercadoPublicoOrdenCompraService
                 continue;
             }
             $codigo = $this->codigoAgDesdeItem($item);
-            if ($codigo !== null) {
+            if ($codigo !== null && $this->codigoAgMismoOrganismoQueCot($codigo, $codigoCot)) {
                 $matches[] = $codigo;
             }
         }
@@ -856,6 +856,30 @@ class MercadoPublicoOrdenCompraService
         }
 
         return count($matches) === 1 ? $matches[0] : null;
+    }
+
+    /**
+     * Primer segmento numérico del código COT/AG (organismo en Mercado Público), ej. 449 en 449-306-COT26.
+     */
+    public function prefijoOrganismoDesdeCodigo(string $codigo): ?string
+    {
+        $prefix = explode('-', strtoupper(trim($codigo)))[0] ?? '';
+        if ($prefix !== '' && preg_match('/^\d+$/', $prefix)) {
+            return $prefix;
+        }
+
+        return null;
+    }
+
+    /** La OC debe compartir organismo con la COT (449-…-COT26 ↔ 449-…-AG26). */
+    public function codigoAgMismoOrganismoQueCot(string $codigoAg, string $codigoCot): bool
+    {
+        $prefijoCot = $this->prefijoOrganismoDesdeCodigo($codigoCot);
+        if ($prefijoCot === null) {
+            return true;
+        }
+
+        return str_starts_with(strtoupper(trim($codigoAg)), $prefijoCot.'-');
     }
 
     public function normalizarNombreOc(string $nombre): string
