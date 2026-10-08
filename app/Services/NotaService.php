@@ -392,24 +392,14 @@ class NotaService
         $codigoMp = strtoupper(trim((string) ($nota->mpSeguimiento?->ocompra_mp ?? '')));
         $manualActual = strtoupper(trim((string) ($nota->ocompra ?? '')));
         $codigoSolicitado = strtoupper(trim((string) ($payload['ocompra'] ?? '')));
-        if ($codigoMp !== '' && $manualActual === '') {
-            if ($codigoSolicitado !== '' && $codigoSolicitado !== $codigoMp) {
-                throw new \InvalidArgumentException('No puede modificar la orden de compra obtenida de Mercado Público.');
-            }
+        if ($codigoMp !== '' && $manualActual === '' && ($codigoSolicitado === '' || $codigoSolicitado === $codigoMp)) {
             $payload['ocompra'] = $nota->ocompra;
         } else {
             $payload += Nota::registroOcompra($nota->ocompra, $payload['ocompra'], $usuarioModifica);
         }
 
         if (array_key_exists('fecha_envio_oc', $datos)) {
-            $fechaMp = $nota->mpSeguimiento?->oc_fecha_envio;
             $nueva = Nota::normalizarFechaEnvioOcManual($datos['fecha_envio_oc']);
-            if ($fechaMp !== null && $nueva !== null) {
-                $desdeMp = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
-                if (! $nueva->equalTo($desdeMp)) {
-                    throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
-                }
-            }
 
             $anterior = $nota->fecha_envio_oc;
             $anteriorDia = $anterior?->format('Y-m-d');

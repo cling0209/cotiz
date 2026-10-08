@@ -136,13 +136,12 @@
                     @endphp
                     <td>
                         @php
-                            $bloquearOcompraPorMp = $nota->exists && $nota->ocompraDesdeApi();
+                            $ocompraEnNota = trim((string) $nota->ocompra);
+                            $ocompraSugerida = $ocompraEnNota !== '' ? $ocompraEnNota : $ocompraMp;
                         @endphp
-                        <input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $nota->ocompra) }}"
-                            @if($bloquearOcompraPorMp || ! $puedeEditarOcompraYFechaEnvioOc) readonly @endif>
-                        @if($bloquearOcompraPorMp)
-                            <small class="text-muted d-block">C&oacute;digo de Mercado P&uacute;blico; no se puede modificar aqu&iacute;.</small>
-                        @elseif(! $puedeEditarOcompraYFechaEnvioOc)
+                        <input type="text" name="ocompra" id="ocompra" maxlength="20" value="{{ old('ocompra', $ocompraSugerida) }}"
+                            @if(! $puedeEditarOcompraYFechaEnvioOc) readonly @endif>
+                        @if(! $puedeEditarOcompraYFechaEnvioOc)
                             <small class="text-muted d-block">Solo un administrador puede ingresar o cambiar la orden de compra manual.</small>
                         @endif
                         @if($registroOcManual !== '')
@@ -179,12 +178,6 @@
                         @if($puedeEditarOcompraYFechaEnvioOc && $nota->exists && $nota->estaAceptada())
                             <input type="date" name="fecha_envio_oc" id="fecha_envio_oc" class="form-control form-control-sm d-inline-block w-auto"
                                 value="{{ $valorFechaEnvioOcInput }}">
-                            @if($nota->fechaEnvioOcDesdeApi())
-                                <small class="text-muted d-block mt-1">
-                                    Mercado P&uacute;blico: {{ $nota->mpSeguimiento->oc_fecha_envio->format('d/m/Y H:i') }}.
-                                    Solo puede guardar la fecha (d&iacute;a) de MP, sin cambiarla.
-                                </small>
-                            @endif
                             @if($registroFechaEnvioOc !== '')
                                 <small class="text-muted d-block" title="Usuario y fecha de registro">Registrada: {{ $registroFechaEnvioOc }}</small>
                             @endif

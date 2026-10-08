@@ -229,6 +229,45 @@ class BackfillOcFechasTest extends TestCase
         $this->assertSame('ejecutivo', $nota->fresh()->ocompra_usuario);
     }
 
+    public function test_modificar_cabecera_permite_cambiar_oc_y_fecha_obtenidas_de_mp(): void
+    {
+        $nota = Nota::query()->create([
+            'nronota' => 16331,
+            'descripcion' => 'OC desde MP',
+            'fecha' => now()->toDateString(),
+            'usuario' => 'admin',
+            'empresa' => 'Cliente',
+            'encargado' => '2961-633-COT26',
+            'celular' => '',
+            'contacto' => '',
+            'contactocorreo' => '',
+            'ocompra' => '',
+            'estado' => 'aceptada',
+            'nota_softland' => 1633100,
+            'enviadoapi' => 0,
+            'factor_precio_venta' => 1.30,
+        ]);
+
+        NotaMpSeguimiento::query()->create([
+            'nronota' => $nota->nronota,
+            'codigo_proceso' => '2961-633-COT26',
+            'ocompra_mp' => '2961-633-AG26',
+            'oc_fecha_envio' => '2026-08-27 15:40:00',
+            'resultado_propio' => 'cerrada',
+            'finalizado' => true,
+        ]);
+
+        $service = app(NotaService::class);
+        $service->modificarCabecera($nota, [
+            'ocompra' => '1111-222-AG26',
+            'fecha_envio_oc' => '2026-09-01',
+        ], 'admin');
+
+        $nota->refresh();
+        $this->assertSame('1111-222-AG26', $nota->ocompra);
+        $this->assertSame('2026-09-01', $nota->fecha_envio_oc?->format('Y-m-d'));
+    }
+
     public function test_rellenar_omite_nota_aceptada(): void
     {
         $nota = Nota::query()->create([
