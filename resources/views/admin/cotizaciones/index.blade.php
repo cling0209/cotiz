@@ -422,23 +422,13 @@ $filtros,
                     </div>
                     <div class="modal-body">
                         <p class="small text-muted mb-3" id="modalAceptarCotizacionTexto"></p>
-                        <div class="mb-3" id="wrapAceptarOcompraManual">
+                        <div class="mb-3">
                             <label class="form-label" for="ocompra">Orden de compra</label>
-                            <input type="text" name="ocompra" id="ocompra" class="form-control form-control-sm" maxlength="20" autocomplete="off">
+                            <input type="text" name="ocompra" id="ocompra" class="form-control form-control-sm" maxlength="20" autocomplete="off" required>
                         </div>
-                        <div class="mb-3" id="wrapAceptarOcompraMp" hidden>
-                            <span class="form-label d-block">Orden de compra (Mercado P&uacute;blico)</span>
-                            <p class="form-control-plaintext small mb-0 py-1" id="ocompraMpDisplay"></p>
-                            <p class="form-text mb-0">Obtenida desde la API; no se puede modificar.</p>
-                        </div>
-                        <div class="mb-2" id="wrapAceptarFechaManual">
+                        <div class="mb-2">
                             <label class="form-label" for="fecha_envio_oc">Fecha env&iacute;o OC</label>
-                                <input type="date" name="fecha_envio_oc" id="fecha_envio_oc" class="form-control form-control-sm" required>
-                        </div>
-                        <div class="mb-2" id="wrapAceptarFechaMp" hidden>
-                            <span class="form-label d-block">Fecha env&iacute;o OC (Mercado P&uacute;blico)</span>
-                            <p class="form-control-plaintext small mb-0 py-1" id="fechaMpDisplay"></p>
-                            <p class="form-text mb-0">La hora queda en MP. Al aceptar se guarda solo la fecha en la nota.</p>
+                            <input type="date" name="fecha_envio_oc" id="fecha_envio_oc" class="form-control form-control-sm" required>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -543,24 +533,7 @@ $filtros,
         const inputOcompra = document.getElementById('ocompra');
         const inputFecha = document.getElementById('fecha_envio_oc');
         const texto = document.getElementById('modalAceptarCotizacionTexto');
-        const wrapOcompraManual = document.getElementById('wrapAceptarOcompraManual');
-        const wrapOcompraMp = document.getElementById('wrapAceptarOcompraMp');
-        const ocompraMpDisplay = document.getElementById('ocompraMpDisplay');
-        const wrapFechaManual = document.getElementById('wrapAceptarFechaManual');
-        const wrapFechaMp = document.getElementById('wrapAceptarFechaMp');
-        const fechaMpDisplay = document.getElementById('fechaMpDisplay');
         const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
-
-    function formatearFechaMpLocal(isoDate) {
-        if (!isoDate) {
-            return '';
-        }
-        const d = isoDate.split('-');
-        if (d.length !== 3) {
-            return isoDate;
-        }
-        return d[2] + '/' + d[1] + '/' + d[0];
-    }
 
         document.querySelectorAll('.js-abrir-aceptar-cotizacion').forEach(function(btn) {
             btn.addEventListener('click', function() {
@@ -569,37 +542,15 @@ $filtros,
                 const ocompraManual = btn.getAttribute('data-ocompra-manual') || '';
                 const ocompraMp = btn.getAttribute('data-ocompra-mp') || '';
                 const fechaMp = btn.getAttribute('data-fecha-mp') || '';
-                const bloquearOcompraMp = ocompraManual === '' && ocompraMp !== '';
-                const bloquearFechaMp = fechaMp !== '';
                 form.action = action;
                 if (texto) {
                     texto.textContent = 'Cotizaci\u00f3n #' + nronota + '. Revise la orden de compra y la fecha de env\u00edo antes de aceptar.';
                 }
-                if (wrapOcompraManual) {
-                    wrapOcompraManual.hidden = bloquearOcompraMp;
-                }
-                if (wrapOcompraMp) {
-                    wrapOcompraMp.hidden = !bloquearOcompraMp;
-                }
-                if (ocompraMpDisplay) {
-                    ocompraMpDisplay.textContent = bloquearOcompraMp ? ocompraMp : '';
-                }
                 if (inputOcompra) {
-                    inputOcompra.value = bloquearOcompraMp ? '' : ocompraManual;
-                    inputOcompra.required = !bloquearOcompraMp;
-                }
-                if (wrapFechaManual) {
-                    wrapFechaManual.hidden = bloquearFechaMp;
-                }
-                if (wrapFechaMp) {
-                    wrapFechaMp.hidden = !bloquearFechaMp;
-                }
-                if (fechaMpDisplay) {
-                    fechaMpDisplay.textContent = bloquearFechaMp ? formatearFechaMpLocal(fechaMp) : '';
+                    inputOcompra.value = ocompraManual !== '' ? ocompraManual : ocompraMp;
                 }
                 if (inputFecha) {
-                    inputFecha.value = bloquearFechaMp ? '' : '';
-                    inputFecha.required = !bloquearFechaMp;
+                    inputFecha.value = fechaMp;
                 }
                 bsModal.show();
             });

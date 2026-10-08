@@ -92,15 +92,11 @@ class CotizacionListadoController extends Controller
 
         $nota->loadMissing('mpSeguimiento');
 
-        $fechaEnvioOc = null;
-        if (! $nota->tieneFechaEnvioOcApiObtenida() && $request->filled('fecha_envio_oc')) {
-            $fechaEnvioOc = Nota::normalizarFechaEnvioOcManual((string) $request->input('fecha_envio_oc'));
-        }
+        $fechaEnvioOc = $request->filled('fecha_envio_oc')
+            ? Nota::normalizarFechaEnvioOcManual((string) $request->input('fecha_envio_oc'))
+            : null;
 
-        $ocompra = null;
-        if (! $nota->tieneOcompraMpObtenida() && $request->has('ocompra')) {
-            $ocompra = (string) $request->input('ocompra');
-        }
+        $ocompra = $request->has('ocompra') ? (string) $request->input('ocompra') : null;
 
         try {
             $this->notaService->aceptar($nota, $request->user()->username, $fechaEnvioOc, $ocompra);

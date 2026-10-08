@@ -617,40 +617,25 @@ class NotaService
         $codigoMp = strtoupper(trim((string) ($nota->mpSeguimiento?->ocompra_mp ?? '')));
         $fechaMp = $nota->mpSeguimiento?->oc_fecha_envio;
 
-        if ($codigoMp !== '' && $ocompra !== null) {
-            $solicitado = mb_substr(strtoupper(trim($ocompra)), 0, 20);
-            if ($solicitado !== '' && $solicitado !== $codigoMp) {
-                throw new \InvalidArgumentException('No puede modificar la orden de compra obtenida de Mercado Público.');
-            }
-        }
-
-        if ($fechaMp !== null && $fechaEnvioOc !== null) {
-            $solicitada = Nota::normalizarFechaEnvioOcManual($fechaEnvioOc);
-            $desdeMp = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
-            if ($solicitada !== null && ! $solicitada->equalTo($desdeMp)) {
-                throw new \InvalidArgumentException('No puede modificar la fecha de envío obtenida de Mercado Público.');
-            }
-        }
-
         $payload = [
             'estado' => 'aceptada',
             'estadofecha' => now(),
             'estadousuario' => $usuario,
         ];
 
-        if ($ocompra !== null && $codigoMp === '') {
-            $ocompra = mb_substr(strtoupper(trim($ocompra)), 0, 20);
-            if ($ocompra !== '') {
-                $payload['ocompra'] = $ocompra;
-                $payload += Nota::registroOcompra($nota->ocompra, $ocompra, $usuario);
+        if ($ocompra !== null) {
+            $solicitado = mb_substr(strtoupper(trim($ocompra)), 0, 20);
+            if ($solicitado !== '' && $solicitado !== $codigoMp) {
+                $payload['ocompra'] = $solicitado;
+                $payload += Nota::registroOcompra($nota->ocompra, $solicitado, $usuario);
             }
         }
 
         $fechaManual = null;
-        if ($fechaMp !== null) {
-            $fechaManual = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
-        } elseif ($fechaEnvioOc !== null) {
+        if ($fechaEnvioOc !== null) {
             $fechaManual = Nota::normalizarFechaEnvioOcManual($fechaEnvioOc);
+        } elseif ($fechaMp !== null) {
+            $fechaManual = Nota::fechaEnvioOcManualDesdeMp($fechaMp);
         }
 
         if ($fechaManual !== null) {

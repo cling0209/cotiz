@@ -80,26 +80,30 @@ class CotizacionListadoAccionesTest extends TestCase
         $this->assertSame('9876543210', $nota->ocompraEfectiva());
     }
 
-    public function test_aceptar_rescata_solo_fecha_mp_a_manual(): void
+    public function test_aceptar_guarda_fecha_y_oc_modificadas_aunque_vengan_de_mp(): void
     {
         $nota = $this->crearNota(['usuario' => 'ejecutivo', 'estado' => '']);
         NotaMpSeguimiento::query()->create([
             'nronota' => $nota->nronota,
             'codigo_proceso' => '100-1-COT26',
+            'ocompra_mp' => '2961-633-AG26',
             'oc_fecha_envio' => '2026-09-02 17:24:14',
             'resultado_propio' => 'cerrada',
             'finalizado' => true,
         ]);
 
         $response = $this->actingAs($this->admin)->post(route('admin.cotizaciones.aceptar', $nota->nronota), [
-            'fecha_envio_oc' => '2026-10-01T10:00',
+            'ocompra' => '1111-222-AG26',
+            'fecha_envio_oc' => '2026-10-01',
         ]);
 
         $response->assertRedirect(route('admin.cotizaciones.index'));
         $nota->refresh();
         $this->assertTrue($nota->estaAceptada());
-        $this->assertSame('2026-09-02', $nota->fecha_envio_oc?->format('Y-m-d'));
-        $this->assertSame('02/09/2026', $nota->formatoFechaEnvioOcEfectiva());
+        $this->assertSame('1111-222-AG26', $nota->ocompra);
+        $this->assertSame('1111-222-AG26', $nota->ocompraEfectiva());
+        $this->assertSame('2026-10-01', $nota->fecha_envio_oc?->format('Y-m-d'));
+        $this->assertSame('01/10/2026', $nota->formatoFechaEnvioOcEfectiva());
     }
 
     public function test_aceptar_usa_fecha_envio_de_mp_si_no_se_envia_manual(): void
