@@ -581,6 +581,16 @@
         }
     }
 
+    function detalleProrrateo(texto, titulo) {
+        return '<div class="text-muted" style="font-size:0.7rem"'
+            + (titulo ? ' title="' + escAttr(titulo) + '"' : '')
+            + '>' + texto + '</div>';
+    }
+
+    function textoFactor(factor) {
+        return factor.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     function textoCostoCelda(fila, metricas) {
         if (fila.dataset.estado === 'pendiente') {
             return '';
@@ -591,13 +601,44 @@
             html += ' <span class="text-muted" title="Costo referencial">(ref.)</span>';
         }
         const listado = parseInt(fila.dataset.precioListado, 10) || 0;
+        const costoPack = parseInt(fila.dataset.costoPack, 10) || 0;
         const pack = parseInt(fila.dataset.packTamano, 10) || 0;
-        if (metricas.puede && listado > 0 && pack > 1 && metricas.prorratear) {
-            html += '<div class="text-muted" style="font-size:0.7rem">$' + numero.format(listado)
-                + ' &divide; ' + pack + ' u.</div>';
+        const solicitud = parseInt(fila.dataset.unidadesSolicitud, 10) || 1;
+        if (metricas.puede && metricas.prorratear && costoPack > 0 && pack > 1) {
+            const formula = solicitud > 1
+                ? 'costo $' + numero.format(costoPack) + ' &times; ' + solicitud + ' &divide; ' + pack + ' u.'
+                : 'costo $' + numero.format(costoPack) + ' &divide; ' + pack + ' u.';
+            html += detalleProrrateo(formula, 'Costo del pack repartido por las unidades solicitadas, redondeado hacia arriba');
         }
         if (metricas.puede && !metricas.prorratear && listado > 0) {
-            html += '<div class="text-muted" style="font-size:0.7rem">precio pack (listado)</div>';
+            html += detalleProrrateo('precio pack (listado)');
+        }
+        return html;
+    }
+
+    function textoVentaCelda(metricas, factor) {
+        if (!(metricas.venta > 0)) {
+            return '';
+        }
+        let html = '$' + numero.format(metricas.venta);
+        const usaFactor = metricas.prorratear && metricas.costo > 0 && factor !== null
+            && Math.round(metricas.costo * factor) === metricas.venta;
+        if (usaFactor) {
+            html += detalleProrrateo(numero.format(metricas.costo) + ' &times; ' + textoFactor(factor));
+        }
+        return html;
+    }
+
+    function textoSubtotalCelda(metricas) {
+        const sub = metricas.venta > 0 && metricas.cantidadAgile > 0
+            ? metricas.venta * metricas.cantidadAgile
+            : 0;
+        if (sub <= 0) {
+            return '';
+        }
+        let html = '$' + numero.format(sub);
+        if (metricas.prorratear) {
+            html += detalleProrrateo(numero.format(metricas.venta) + ' &times; ' + numero.format(metricas.cantidadAgile));
         }
         return html;
     }
@@ -618,9 +659,9 @@
             if (celdaCosto) {
                 celdaCosto.innerHTML = conPrecio ? textoCostoCelda(fila, m) : '';
             }
-            fila.querySelector('.cotizar-ia-venta').textContent = conPrecio && m.venta > 0 ? '$' + numero.format(m.venta) : '';
+            fila.querySelector('.cotizar-ia-venta').innerHTML = conPrecio ? textoVentaCelda(m, factor) : '';
             const sub = conPrecio && m.venta > 0 && m.cantidadAgile > 0 ? m.venta * m.cantidadAgile : 0;
-            fila.querySelector('.cotizar-ia-subtotal').textContent = sub > 0 ? '$' + numero.format(sub) : '';
+            fila.querySelector('.cotizar-ia-subtotal').innerHTML = conPrecio ? textoSubtotalCelda(m) : '';
             const usar = fila.querySelector('.cotizar-ia-usar');
             if (conPrecio && usar && usar.checked) {
                 total += sub;
