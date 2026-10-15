@@ -15,6 +15,9 @@ class CotizacionExportService
     /** Descripción de cabecera NV, largo del layout Softland. */
     private const DESCRIPCION_NV_MAX = 200;
 
+    /** Cliente (columna 13), largo del layout Softland. */
+    private const CLIENTE_SOFTLAND_MAX = 60;
+
     public function __construct(
         protected NotaDetalleService $detalleService,
     ) {}
@@ -175,7 +178,7 @@ class CotizacionExportService
         $fechaEntrega = $nota->fechaentrega?->format('d/m/Y') ?? '';
         $rut = $this->rutEmpresaSinFormato((string) ($nota->rutempresa ?? ''));
         $numeroOrden = $this->numeroOrdenCompra($nota);
-        $contacto = trim((string) ($nota->contacto ?? ''));
+        $cliente = mb_substr(trim((string) ($nota->empresa ?? '')), 0, self::CLIENTE_SOFTLAND_MAX);
         $softland = trim($prodItemSoftland);
 
         $campos = array_merge(
@@ -192,7 +195,7 @@ class CotizacionExportService
                 $this->entreComillas($this->descripcionOrdenCompra($numeroOrden)),
                 '',
                 $this->entreComillas('002'),
-                $this->entreComillas($contacto),
+                $this->entreComillas($cliente),
             ],
             array_fill(0, 22, ''),
             [
