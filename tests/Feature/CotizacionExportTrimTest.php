@@ -55,6 +55,7 @@ class CotizacionExportTrimTest extends TestCase
         $this->assertStringStartsWith('CARPUSI013;;;;;;;2', $guia);
 
         $softland = $this->streamedContent($service->respuestaSoftlandTxt($nota));
+        $this->assertStringContainsString('"O/C 4185-300"', $softland);
         $this->assertStringContainsString('"SL-CARPUSI013"', $softland);
         $this->assertStringContainsString('"CARPETA VINIL JM OFICIO AZUL"', $softland);
         $this->assertStringContainsString('"76356855"', $softland);
@@ -81,6 +82,7 @@ class CotizacionExportTrimTest extends TestCase
             'celular' => '',
             'contacto' => '',
             'contactocorreo' => '',
+            'ocompra' => '4185-300',
             'nota_softland' => 10000,
             'enviadoapi' => 0,
             'factor_precio_venta' => 1.22,

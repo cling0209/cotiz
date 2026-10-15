@@ -175,7 +175,7 @@ class CotizacionExportService
             $this->entreComillas($fecha),
             $this->entreComillas($fechaEntrega),
             '',
-            $this->entreComillas($nota->ocompraEfectiva()),
+            $this->entreComillas($this->ordenCompraParaSoftland($nota)),
             $this->entreComillas($rut),
             $this->entreComillas('01'),
             '',
@@ -198,6 +198,23 @@ class CotizacionExportService
         ];
 
         return implode(';', $campos);
+    }
+
+    /**
+     * Softland espera el prefijo fijo «O/C» y, a continuación, el código que se ve en O.Compra.
+     */
+    private function ordenCompraParaSoftland(Nota $nota): string
+    {
+        $codigo = trim($nota->ocompraEfectiva());
+        if ($codigo === '') {
+            return '';
+        }
+
+        if (preg_match('/^O\/C\b/i', $codigo) === 1) {
+            return $codigo;
+        }
+
+        return 'O/C '.$codigo;
     }
 
     private function rutEmpresaSinFormato(string $rut): string
