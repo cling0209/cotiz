@@ -18,6 +18,7 @@ class CotizacionExportServiceSoftlandTest extends TestCase
             'rutempresa' => '61.607.402-5',
             'ocompra' => 'O/C 2103-644-AG26',
             'empresa' => 'Hospital Lonquimay',
+            'contacto' => 'María Pérez',
         ]), new NotaDetalle([
             'cantidad' => 30,
             'prod_valor' => 1158,
@@ -32,8 +33,10 @@ class CotizacionExportServiceSoftlandTest extends TestCase
         $this->assertSame('2103-644-AG26', $columnas[4]);
         $this->assertSame('61607402', $columnas[5]);
         $this->assertSame('01', $columnas[6]);
+        $this->assertSame('01', $columnas[8]);
         $this->assertSame('O/C 2103-644-AG26', $columnas[9]);
-        $this->assertSame('61607402', $columnas[12]);
+        $this->assertSame('002', $columnas[11]);
+        $this->assertSame('María Pérez', $columnas[12]);
         $this->assertSame('', $columnas[34]);
         $this->assertSame('42192', $columnas[35]);
         $this->assertSame('', $columnas[36]);

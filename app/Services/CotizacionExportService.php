@@ -175,6 +175,7 @@ class CotizacionExportService
         $fechaEntrega = $nota->fechaentrega?->format('d/m/Y') ?? '';
         $rut = $this->rutEmpresaSinFormato((string) ($nota->rutempresa ?? ''));
         $numeroOrden = $this->numeroOrdenCompra($nota);
+        $contacto = trim((string) ($nota->contacto ?? ''));
         $softland = trim($prodItemSoftland);
 
         $campos = array_merge(
@@ -187,11 +188,11 @@ class CotizacionExportService
                 $this->entreComillas($rut),
                 $this->entreComillas('01'),
                 '',
-                '',
+                $this->entreComillas('01'),
                 $this->entreComillas($this->descripcionOrdenCompra($numeroOrden)),
                 '',
-                '',
-                $this->entreComillas($rut),
+                $this->entreComillas('002'),
+                $this->entreComillas($contacto),
             ],
             array_fill(0, 22, ''),
             [
