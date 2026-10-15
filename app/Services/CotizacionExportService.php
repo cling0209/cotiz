@@ -9,6 +9,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CotizacionExportService
 {
+    /** Glosa del encabezado en Softland (iw_gsaen.Glosa). */
+    private const GLOSA_SOFTLAND_MAX = 60;
+
     public function __construct(
         protected NotaDetalleService $detalleService,
     ) {}
@@ -180,7 +183,7 @@ class CotizacionExportService
             $this->entreComillas('01'),
             '',
             '',
-            $this->entreComillas((string) $nota->descripcion),
+            $this->entreComillas($this->glosaClienteParaSoftland($nota)),
             '',
             '',
             $this->entreComillas($rut),
@@ -198,6 +201,16 @@ class CotizacionExportService
         ];
 
         return implode(';', $campos);
+    }
+
+    /**
+     * Glosa Softland: el cliente que se ve en pantalla, recortado al largo de la glosa.
+     */
+    private function glosaClienteParaSoftland(Nota $nota): string
+    {
+        $cliente = trim((string) ($nota->empresa ?? ''));
+
+        return mb_substr($cliente, 0, self::GLOSA_SOFTLAND_MAX);
     }
 
     /**

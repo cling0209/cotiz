@@ -55,6 +55,10 @@ class CotizacionExportTrimTest extends TestCase
         $this->assertStringStartsWith('CARPUSI013;;;;;;;2', $guia);
 
         $softland = $this->streamedContent($service->respuestaSoftlandTxt($nota));
+        $cliente = 'Hospital Lonquimay de la comuna con un nombre que supera el tope de Softland';
+        $this->assertStringContainsString('"'.mb_substr($cliente, 0, 60).'"', $softland);
+        $this->assertStringNotContainsString('"'.$cliente.'"', $softland);
+        $this->assertStringNotContainsString('Cotización export', $softland);
         $this->assertStringContainsString('"O/C 4185-300"', $softland);
         $this->assertStringContainsString('"SL-CARPUSI013"', $softland);
         $this->assertStringContainsString('"CARPETA VINIL JM OFICIO AZUL"', $softland);
@@ -77,7 +81,7 @@ class CotizacionExportTrimTest extends TestCase
             'fecha' => now()->toDateString(),
             'usuario' => $this->ejecutivo->username,
             'encargado' => 'COT-13325',
-            'empresa' => 'Cliente test',
+            'empresa' => 'Hospital Lonquimay de la comuna con un nombre que supera el tope de Softland',
             'rutempresa' => '76.356.855-5',
             'celular' => '',
             'contacto' => '',
