@@ -61,6 +61,24 @@ class CotizacionExportServiceSoftlandTest extends TestCase
         $this->assertSame('', $columnas[9]);
     }
 
+    public function test_columna_5_recorta_la_orden_a_20_caracteres(): void
+    {
+        $fila = $this->filaSoftland(new Nota([
+            'nota_softland' => 1,
+            'ocompra' => 'O/C 12345678901234567890EXTRA',
+        ]), new NotaDetalle([
+            'cantidad' => 1,
+            'prod_valor' => 10,
+        ]), 'ABC', 'Producto');
+
+        $columnas = str_getcsv($fila, ';', '"', '\\');
+
+        $this->assertSame('12345678901234567890', $columnas[4]);
+        $this->assertSame(20, mb_strlen($columnas[4]));
+        $this->assertSame('O/C 12345678901234567890', $columnas[9]);
+        $this->assertLessThanOrEqual(50, mb_strlen($columnas[9]));
+    }
+
     private function filaSoftland(Nota $nota, NotaDetalle $linea, string $codigo, string $nombre): string
     {
         $detalle = $this->createMock(NotaDetalleService::class);

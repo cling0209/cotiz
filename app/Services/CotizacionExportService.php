@@ -10,10 +10,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class CotizacionExportService
 {
     /** Nº orden de compra (cabecera NV), largo del layout Softland. */
-    private const ORDEN_COMPRA_MAX = 15;
+    private const ORDEN_COMPRA_MAX = 20;
 
-    /** Descripción de cabecera NV, largo del layout Softland. */
-    private const DESCRIPCION_NV_MAX = 200;
+    /** Columna 10 (O/C + número), largo del layout Softland. */
+    private const DESCRIPCION_NV_MAX = 50;
 
     /** Cliente (columna 13), largo del layout Softland. */
     private const CLIENTE_SOFTLAND_MAX = 60;
