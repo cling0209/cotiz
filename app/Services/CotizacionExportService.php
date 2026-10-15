@@ -9,8 +9,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CotizacionExportService
 {
-    /** Glosa del encabezado en Softland (iw_gsaen.Glosa). */
-    private const GLOSA_SOFTLAND_MAX = 60;
+    /** Nº orden de compra (cabecera NV), largo del layout Softland. */
+    private const ORDEN_COMPRA_MAX = 15;
+
+    /** Descripción de cabecera NV, largo del layout Softland. */
+    private const DESCRIPCION_NV_MAX = 200;
 
     public function __construct(
         protected NotaDetalleService $detalleService,
@@ -168,66 +171,66 @@ class CotizacionExportService
 
     private function filaSoftland(Nota $nota, NotaDetalle $linea, string $prodItemSoftland, string $prodNombre): string
     {
-        $fecha = $nota->fecha?->format('d-m-Y') ?? '';
-        $fechaEntrega = $nota->fechaentrega?->format('d-m-Y') ?? '';
+        $fecha = $nota->fecha?->format('d/m/Y') ?? '';
+        $fechaEntrega = $nota->fechaentrega?->format('d/m/Y') ?? '';
         $rut = $this->rutEmpresaSinFormato((string) ($nota->rutempresa ?? ''));
+        $numeroOrden = $this->numeroOrdenCompra($nota);
         $softland = trim($prodItemSoftland);
 
-        $campos = [
-            (string) ($nota->nota_softland ?? ''),
-            $this->entreComillas($fecha),
-            $this->entreComillas($fechaEntrega),
-            '',
-            $this->entreComillas($this->ordenCompraParaSoftland($nota)),
-            $this->entreComillas($rut),
-            $this->entreComillas('01'),
-            '',
-            '',
-            $this->entreComillas($this->glosaClienteParaSoftland($nota)),
-            '',
-            '',
-            $this->entreComillas($rut),
-            '',
-            '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
-            '',
-            $this->entreComillas($softland),
-            '',
-            (string) $linea->cantidad,
-            (string) $linea->prod_valor,
-            '', '', '', '', '', '', '', '', '',
-            '', '', '',
-            $this->entreComillas(trim($prodNombre)),
-            '', '', '', '',
-        ];
+        $campos = array_merge(
+            [
+                (string) ($nota->nota_softland ?? ''),
+                $this->entreComillas($fecha),
+                $this->entreComillas($fechaEntrega),
+                '',
+                $this->entreComillas($numeroOrden),
+                $this->entreComillas($rut),
+                $this->entreComillas('01'),
+                '',
+                '',
+                $this->entreComillas($this->descripcionOrdenCompra($numeroOrden)),
+                '',
+                '',
+                $this->entreComillas($rut),
+            ],
+            array_fill(0, 22, ''),
+            [
+                $this->entreComillas($softland),
+                '',
+                (string) $linea->cantidad,
+                (string) $linea->prod_valor,
+            ],
+            array_fill(0, 13, ''),
+            [
+                $this->entreComillas(trim($prodNombre)),
+            ],
+            array_fill(0, 4, ''),
+        );
 
         return implode(';', $campos);
     }
 
     /**
-     * Glosa Softland: el cliente que se ve en pantalla, recortado al largo de la glosa.
+     * Columna 5: solo el número de la orden, sin el prefijo O/C.
      */
-    private function glosaClienteParaSoftland(Nota $nota): string
+    private function numeroOrdenCompra(Nota $nota): string
     {
-        $cliente = trim((string) ($nota->empresa ?? ''));
+        $codigo = trim($nota->ocompraEfectiva());
+        $numero = trim((string) preg_replace('/^O\/C\s*/i', '', $codigo));
 
-        return mb_substr($cliente, 0, self::GLOSA_SOFTLAND_MAX);
+        return mb_substr($numero, 0, self::ORDEN_COMPRA_MAX);
     }
 
     /**
-     * Softland espera el prefijo fijo «O/C» y, a continuación, el código que se ve en O.Compra.
+     * Columna 10: «O/C» más el número de la orden. Vacío si no hay orden.
      */
-    private function ordenCompraParaSoftland(Nota $nota): string
+    private function descripcionOrdenCompra(string $numeroOrden): string
     {
-        $codigo = trim($nota->ocompraEfectiva());
-        if ($codigo === '') {
+        if ($numeroOrden === '') {
             return '';
         }
 
-        if (preg_match('/^O\/C\b/i', $codigo) === 1) {
-            return $codigo;
-        }
-
-        return 'O/C '.$codigo;
+        return mb_substr('O/C '.$numeroOrden, 0, self::DESCRIPCION_NV_MAX);
     }
 
     private function rutEmpresaSinFormato(string $rut): string
